@@ -71,7 +71,7 @@ all = [
     "lz4",
     "msgpack >=1.0.0",
     "ndindex",
-    "numpy",
+    "numpy <2.0.0",
     "openpyxl",
     "orjson",
     "packaging",
@@ -100,7 +100,7 @@ all = [
 # These are needed by the client and server to transmit/receive arrays.
 array = [
     "dask[array]",
-    "numpy",
+    "numpy <2.0.0",
 ]
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
@@ -116,7 +116,7 @@ client = [
     "lz4",
     "msgpack >=1.0.0",
     "ndindex",
-    "numpy",
+    "numpy <2.0.0",
     "orjson",
     "pandas",
     "pyarrow",
@@ -246,7 +246,7 @@ server = [
     "lz4",
     "msgpack >=1.0.0",
     "ndindex",
-    "numpy",
+    "numpy <2.0.0",
     "openpyxl",
     "orjson",
     "packaging",
