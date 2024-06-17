@@ -49,7 +49,7 @@ class TableStructure:
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(df.columns))
 
     @classmethod
-    def from_arrow(cls, arr, names):
+    def from_arrays(cls, arr, names):
         print("HEREEEEEE in table structure arrowy")
         import pyarrow
 
@@ -57,6 +57,16 @@ class TableStructure:
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(names))
+
+    @classmethod
+    def from_arrow_table(cls, tble) -> "TableStructure":
+        print("HEREEEEEE in table structure arrowy")
+        schema_bytes = tble.schema.serialize()
+        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
+        data_uri = B64_ENCODED_PREFIX + schema_b64
+        return cls(
+            arrow_schema=data_uri, npartitions=1, columns=list(tble.column_names)
+        )
 
     @property
     def arrow_schema_decoded(self):
