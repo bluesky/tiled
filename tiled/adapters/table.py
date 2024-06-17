@@ -223,9 +223,11 @@ class TableAdapter:
             else:
                 ddf = dask.dataframe.concat(self._partitions, axis=0)
             return ddf.compute()
-        if isinstance(self._partitions[0], pyarrow.Table):
-            return pyarrow.concat_tables(self._partitions)
 
+        if isinstance(self._partitions[0], pyarrow.ipc.RecordBatchStreamReader):
+            return pyarrow.concat_tables(
+                [partition.read_all() for partition in self._partitions]
+            )
         df = pandas.concat(self._partitions, axis=0)
         if fields is not None:
             df = df[fields]
@@ -255,8 +257,8 @@ class TableAdapter:
             df = df[fields]
         if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
-        if isinstance(df, pyarrow.Table):
-            return None
+        if isinstance(df, pyarrow.ipc.RecordBatchStreamReader):
+            return df.read_all()
         return partition
 
 

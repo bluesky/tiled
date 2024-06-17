@@ -55,13 +55,24 @@ class TableStructure:
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(d.keys()))
-    def from_arrow(cls, arr, names):
+
+    def from_arrays(cls, arr, names):
         import pyarrow
 
         schema_bytes = pyarrow.Table.from_arrays(arr, names).schema.serialize()
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(names))
+
+    @classmethod
+    def from_arrow_table(cls, tble) -> "TableStructure":
+        schema_bytes = tble.schema.serialize()
+        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
+        data_uri = B64_ENCODED_PREFIX + schema_b64
+        return cls(
+            arrow_schema=data_uri, npartitions=1, columns=list(tble.column_names)
+        )
+
     @property
     def arrow_schema_decoded(self):
         import pyarrow

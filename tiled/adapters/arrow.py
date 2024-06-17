@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import dask.dataframe
 import pandas
 import pyarrow
+import pyarrow.feather as feather
 
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
@@ -93,8 +94,10 @@ class ArrowAdapter:
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         if structure is None:
-            table = dask.dataframe.read_csv(self._partition_paths)
-            structure = TableStructure.from_dask_dataframe(table)
+            # table = dask.dataframe.read_csv(self._partition_paths)
+            table = feather.read_table(self._partition_paths)
+            # structure = TableStructure.from_dask_dataframe(table)
+            structure = TableStructure.from_arrow_table(table)
         self._structure = structure
         self.specs = list(specs or [])
         self.access_policy = access_policy
@@ -122,7 +125,8 @@ class ArrowAdapter:
                 partition = None
             else:
                 # partition = dask.dataframe.read_csv(path)
-                partition = pyarrow.feather.read_table(path)
+                with pyarrow.ipc.open_stream(path) as reader:
+                    partition = reader
             partitions.append(partition)
         return DataFrameAdapter(partitions, self._structure)
 
@@ -143,7 +147,7 @@ class ArrowAdapter:
         directory.mkdir(parents=True, exist_ok=True)
         assets = [
             Asset(
-                data_uri=f"{data_uri}/partition-{i}.csv",
+                data_uri=f"{data_uri}/partition-{i}.arrow",
                 is_directory=False,
                 parameter="data_uris",
                 num=i,
@@ -167,7 +171,11 @@ class ArrowAdapter:
 
         """
         uri = self._partition_paths[partition]
-        data.to_csv(uri, index=False, mode="a", header=False)
+        # feather.write_feather(data, uri)
+        print("HELL0 URI In APPEND", type(uri))
+        # with pyarrow.OSFile('/tmp/test_csv_adapter/partition-0.arrow', mode='ab') as sink:
+        with pyarrow.ipc.new_stream(uri, data.schema) as writer:
+            writer.write_batch(data)
 
     def write_partition(
         self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
@@ -183,8 +191,13 @@ class ArrowAdapter:
         -------
 
         """
+        # print("CAME TO WRTIE PARTITION IN ARROW")
         uri = self._partition_paths[partition]
-        data.to_feather(uri)
+        # feather.write_feather(data, uri)
+        print("HELL URI", uri)
+        # with pyarrow.OSFile('/tmp/test_csv_adapter/partition-0.arrow', mode='wb') as sink:
+        with pyarrow.ipc.new_stream(uri, data.schema) as writer:
+            writer.write_batch(data)
 
     def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
         """
