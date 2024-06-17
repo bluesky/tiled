@@ -165,17 +165,17 @@ def expected_shape(
     return tuple(map(int, expected_shape.split(",")))
 
 
+def np_style_slicer(indices: tuple):
+    return indices[0] if len(indices) == 1 else slice_func(*indices)
+
+
+def parse_slice_str(dim: str):
+    return np_style_slicer(tuple(int(idx) if idx else None for idx in dim.split(":")))
+
+
 def slice_(
-    slice: str = Query(None, pattern=SLICE_REGEX),
+    slice: Optional[str] = Query(None, pattern=SLICE_REGEX),
 ):
     "Specify and parse a block index parameter."
-
-    def np_style_slicer(indices: tuple):
-        return indices[0] if len(indices) == 1 else slice_func(*indices)
-
-    def parse_slice_str(dim: str):
-        return np_style_slicer(
-            tuple(int(idx) if idx else None for idx in dim.split(":"))
-        )
 
     return tuple(parse_slice_str(dim) for dim in (slice or "").split(",") if dim)

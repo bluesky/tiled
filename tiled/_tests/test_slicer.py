@@ -129,8 +129,8 @@ def test_slicer_malicious_exec(slice: str):
         _ = slice_(slice)
 
 
-@pytest.mark.parametrize("slice", slice_typo_data + slice_malicious_data)
-def test_slicer_fastapi_query_rejectsion(slice, client):
+@pytest.mark.parametrize("slice_", slice_typo_data + slice_malicious_data)
+def test_slicer_fastapi_query_rejection(slice_, client):
     http_client = client.context.http_client
-    response = http_client.get(f"/api/v1/array/block/x?block=0&slice={slice}")
+    response = http_client.get(f"/api/v1/array/block/x?block=0&slice={slice_}")
     assert response.status_code == HTTP_422_UNPROCESSABLE_ENTITY
