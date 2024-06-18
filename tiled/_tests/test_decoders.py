@@ -23,6 +23,7 @@ def client():
 
 
 def test_zstd(client):
+    pytest.importorskip("zstandard")
     with record_history() as h:
         client["compresses_well"]
     (response,) = h.responses
@@ -32,6 +33,7 @@ def test_zstd(client):
 
 
 def test_blosc2(client):
+    pytest.importorskip("blosc2")
     ac = client["compresses_well"]
     with record_history() as h:
         ac[:]
