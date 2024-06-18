@@ -9,6 +9,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Minor implementation changes were necessary to make Tiled compatible with
   Numpy 2.0.
+- For improved security, the server-side array slicing function has been
+  refactored to avoid using `eval()`. To be clear: there were no known
+  exploitable vulnerabilities in the `eval()` approach. The input was validated
+  against a regular expression before being passed to `eval()`. However,
+  avoiding `eval()` altogether is better practice for defense-in-depth against
+  potential code injection attacks due to current or future bugs in Tiled or
+  its upstream dependencies.
 
 ## v0.1.0b3 (2024-06-04)
 

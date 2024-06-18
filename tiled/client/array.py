@@ -125,7 +125,7 @@ class _DaskArrayClient(BaseClient):
 
     def read(self, slice=None):
         """
-        Acess the entire array or a slice.
+        Access the entire array or a slice.
 
         The array will be internally chunked with dask.
         """
