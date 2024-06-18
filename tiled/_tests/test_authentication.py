@@ -591,6 +591,9 @@ def test_admin_create_service_principal(enter_password, principals_context):
         context.api_key = service_api_key_info["secret"]
         assert context.whoami()["type"] == "service"
 
+        # Test service repr
+        assert f"authenticated as service '{principal_uuid}'" in repr(context)
+
 
 def test_admin_api_key_any_principal_exceeds_scopes(enter_password, principals_context):
     """

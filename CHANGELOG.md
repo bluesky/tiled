@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+- When authenticated as a Service Principal, display the SP's uuid in
+  the client Context repr.
+
 ## v0.1.0b4 (2024-06-18)
 
 ### Changed
