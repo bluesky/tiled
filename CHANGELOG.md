@@ -16,6 +16,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   avoiding `eval()` altogether is better practice for defense-in-depth against
   potential code injection attacks due to current or future bugs in Tiled or
   its upstream dependencies.
+- Updated container base image to Python 3.12.
 
 ## v0.1.0b3 (2024-06-04)
 
