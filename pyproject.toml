@@ -52,7 +52,7 @@ all = [
     "asyncpg",
     "appdirs",
     "awkward >=2.4.3",
-    "blosc2",
+    "blosc2; python_version >= '3.10'",
     "cachetools",
     "dask",
     "dask[array]",
@@ -106,7 +106,7 @@ array = [
 client = [
     "appdirs",
     "awkward >=2.4.3",
-    "blosc2",
+    "blosc2; python_version >= '3.10'",
     "dask[array]",
     "dask[dataframe]",
     "entrypoints",
@@ -131,7 +131,7 @@ client = [
 # These are used by the client/server to more efficiently compress.
 # They fall back to gzip (which is slower) if these are not installed.
 compression = [
-    "blosc2",
+    "blosc2; python_version >= '3.10'",
     "lz4",
     "zstandard",
 ]
@@ -228,7 +228,7 @@ server = [
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
-    "blosc2",
+    "blosc2; python_version >= '3.10'",
     "cachetools",
     "dask",
     "dask[array]",
