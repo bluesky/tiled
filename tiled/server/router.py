@@ -1616,7 +1616,7 @@ async def get_asset(
         status_code = HTTP_206_PARTIAL_CONTENT
     else:
         range = None
-        status_code = (HTTP_200_OK,)
+        status_code = HTTP_200_OK
     return FileResponseWithRange(
         full_path,
         stat_result=stat_result,
