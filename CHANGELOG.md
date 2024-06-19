@@ -5,6 +5,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+- Support partial download of an asset using the
+  [HTTP `Range` Header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range).
+
 ### Fixed
 - When authenticated as a Service Principal, display the SP's uuid in
   the client Context repr.
