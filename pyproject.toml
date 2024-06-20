@@ -164,7 +164,6 @@ dev = [
     "sphinx-copybutton",
     "sphinx_rtd_theme",
     "sphinxcontrib-mermaid",
-    # These are dependencies of various sphinx extensions for documentation.
 ]
 # These are used by the server to read files in the respective formats.
 formats = [
