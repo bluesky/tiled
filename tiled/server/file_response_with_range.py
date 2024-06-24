@@ -14,19 +14,20 @@ from starlette.responses import (
     formatdate,
     md5_hexdigest,
 )
+from starlette.status import HTTP_200_OK, HTTP_206_PARTIAL_CONTENT
 
 
 class FileResponseWithRange(FileResponse):
     def __init__(
         self,
         path: typing.Union[str, "os.PathLike[str]"],
-        status_code: int = 200,
+        status_code: int = HTTP_200_OK,
         *args,
         range: typing.Optional[typing.Tuple[int, int]] = None,
         **kwargs,
     ):
-        if (range is not None) and (status_code != 206):
-            raise RuntimeError("Range requests must have a 206 status code.")
+        if (range is not None) and (status_code != HTTP_206_PARTIAL_CONTENT):
+            raise RuntimeError(f"Range requests must have a {HTTP_206_PARTIAL_CONTENT} status code.")
         self.range = range
         super().__init__(path, status_code, *args, **kwargs)
 
