@@ -27,7 +27,9 @@ class FileResponseWithRange(FileResponse):
         **kwargs,
     ):
         if (range is not None) and (status_code != HTTP_206_PARTIAL_CONTENT):
-            raise RuntimeError(f"Range requests must have a {HTTP_206_PARTIAL_CONTENT} status code.")
+            raise RuntimeError(
+                f"Range requests must have a {HTTP_206_PARTIAL_CONTENT} status code."
+            )
         self.range = range
         super().__init__(path, status_code, *args, **kwargs)
 
