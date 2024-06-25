@@ -125,6 +125,7 @@ class ArrowAdapter:
                 partition = None
             else:
                 # partition = dask.dataframe.read_csv(path)
+                # with pyarrow.ipc.open_file(path) as reader:
                 with pyarrow.ipc.open_stream(path) as reader:
                     partition = reader
             partitions.append(partition)
@@ -174,8 +175,8 @@ class ArrowAdapter:
         # feather.write_feather(data, uri)
         print("HELL0 URI In APPEND", type(uri))
         # with pyarrow.OSFile('/tmp/test_csv_adapter/partition-0.arrow', mode='ab') as sink:
-        with pyarrow.ipc.new_stream(uri, data.schema) as writer:
-            writer.write_batch(data)
+        self.stream_writer.write_batch(data)
+        # self.stream_writer.close()
 
     def write_partition(
         self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
@@ -191,13 +192,11 @@ class ArrowAdapter:
         -------
 
         """
-        # print("CAME TO WRTIE PARTITION IN ARROW")
         uri = self._partition_paths[partition]
-        # feather.write_feather(data, uri)
-        print("HELL URI", uri)
-        # with pyarrow.OSFile('/tmp/test_csv_adapter/partition-0.arrow', mode='wb') as sink:
-        with pyarrow.ipc.new_stream(uri, data.schema) as writer:
-            writer.write_batch(data)
+        if not hasattr(self, "stream_writer"):
+            self.stream_writer = pyarrow.ipc.new_stream(uri, data.schema)
+
+        self.stream_writer.write_batch(data)
 
     def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
         """
@@ -213,6 +212,8 @@ class ArrowAdapter:
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
+        if not hasattr(self, "stream_writer"):
+            self.stream_writer = pyarrow.ipc.new_stream(uri, data.schema)
         data.to_csv(uri, index=False)
 
     def read(

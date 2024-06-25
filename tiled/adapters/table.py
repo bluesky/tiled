@@ -237,6 +237,7 @@ class TableAdapter:
     def read_partition(
         self,
         partition: int,
+        batch: int,
         fields: Optional[str] = None,
     ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
@@ -257,8 +258,10 @@ class TableAdapter:
             df = df[fields]
         if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
+        # if isinstance(df, pyarrow.ipc.RecordBatchFileReader):
         if isinstance(df, pyarrow.ipc.RecordBatchStreamReader):
-            return df.read_all()
+            batches = [b for b in df]
+            return batches[batch]
         return partition
 
 
