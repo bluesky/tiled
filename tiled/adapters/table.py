@@ -182,7 +182,7 @@ class TableAdapter:
         -------
 
         """
-        print("Ever in adapters/table read????", self._partitions[0])
+        print("Ever in adapters/table read????", len(self._partitions))
         if any(p is None for p in self._partitions):
             raise ValueError("Not all partitions have been stored.")
         if isinstance(self._partitions[0], dask.dataframe.DataFrame):
@@ -208,6 +208,7 @@ class TableAdapter:
     def read_partition(
         self,
         partition: int,
+        batch: int,
         fields: Optional[str] = None,
     ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
@@ -228,8 +229,10 @@ class TableAdapter:
             df = df[fields]
         if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
+        # if isinstance(df, pyarrow.ipc.RecordBatchFileReader):
         if isinstance(df, pyarrow.ipc.RecordBatchStreamReader):
-            return df.read_all()
+            batches = [b for b in df]
+            return batches[batch]
         return partition
 
 
