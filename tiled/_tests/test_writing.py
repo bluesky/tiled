@@ -146,8 +146,28 @@ def test_write_dataframe_full(tree):
         assert result.metadata == metadata
         assert result.specs == specs
 
+def test_write_dataframe_data(tree):
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
 
-# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
+        data = {f"Column{i}": (1 + i) * numpy.ones(5) for i in range(5)}
+        metadata = {"scan_id": 1, "method": "A"}
+        specs = [Spec("SomeSpec")]
+
+        with record_history() as history:
+            client.write_dataframe(data, metadata=metadata, specs=specs)
+        assert len(history.requests) == 1 + 1
+
+        results = client.search(Key("scan_id") == 1)
+        result = results.values().first()
+        result_dataframe = result.read()
+
+        pandas.testing.assert_frame_equal(result_dataframe, data)
+        assert result.metadata == metadata
+        assert result.specs == specs
+
 def test_write_dataframe_partitioned(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
