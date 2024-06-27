@@ -957,6 +957,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if hasattr(dataframe, "partitions"):
             if isinstance(dataframe, dask.dataframe.DataFrame):
                 ddf = dataframe
+            elif isinstance(dataframe, dict):
+                dataframe = pandas.DataFrame(dataframe)
+       
             else:
                 raise NotImplementedError(
                     f"Unsure how to handle type {type(dataframe)}"
