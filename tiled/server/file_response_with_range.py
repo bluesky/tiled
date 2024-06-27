@@ -1,6 +1,12 @@
-# This is adapted from a closed PR in starlette which was reviewed by
-# a core maintainer but put aside for now in favor of other priorities.
-# https://github.com/encode/starlette/pull/1999
+# This is a variation on starlette's FileRespones that adds support for the
+# 'Range' HTTP header.
+
+# It is adapted from a closed PR in starlette which was reviewed by a core
+# starlette maintainer but put aside for now in favor of other priorities in
+# starlette development. Thus, we implement it here in tiled. If in the future
+# starlette adds support upstream, we should consider refactoring to use that.
+
+# Ref: https://github.com/encode/starlette/pull/1999
 import os
 import stat
 import typing
