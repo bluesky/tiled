@@ -12,6 +12,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 - When authenticated as a Service Principal, display the SP's uuid in
   the client Context repr.
+- The dependency `json-merge-patch`, introduced in v0.1.0b4, was missing from
+  some pip selectors.
 
 ## v0.1.0b4 (2024-06-18)
 
