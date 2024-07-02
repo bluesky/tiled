@@ -197,6 +197,10 @@ class TableAdapter:
             return pyarrow.concat_tables(
                 [partition.read_all() for partition in self._partitions]
             )
+        if isinstance(self._partitions[0], pyarrow.ipc.RecordBatchFileReader):
+            return pyarrow.concat_tables(
+                [partition.read_all() for partition in self._partitions]
+            )
 
         df = pandas.concat(self._partitions, axis=0)
         if fields is not None:
@@ -230,9 +234,12 @@ class TableAdapter:
         if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
         # if isinstance(df, pyarrow.ipc.RecordBatchFileReader):
+        print("HERE In TABLE ADAPTER", df)
         if isinstance(df, pyarrow.ipc.RecordBatchStreamReader):
             batches = [b for b in df]
             return batches[batch]
+        if isinstance(df, pyarrow.ipc.RecordBatchFileReader):
+            return df.get_batch(batch)
         return partition
 
 
