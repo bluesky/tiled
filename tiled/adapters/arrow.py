@@ -5,6 +5,7 @@ import dask.dataframe
 import pandas
 import pyarrow
 import pyarrow.feather as feather
+import pyarrow.fs
 
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
@@ -259,9 +260,20 @@ class ArrowAdapterStream(ArrowAdapter):
 
         """
         uri = self._partition_paths[partition]
-        print("HELL0 URI In APPEND", type(uri))
-        self.stream_writer.write_batch(data)
+        print("HELL0 URI In APPEND", uri)
+        # self.stream_writer.write_batch(data)
         # self.stream_writer.close()
+        # stream_writer = pyarrow.ipc.new_stream(uri, data.schema)
+        # stream_writer.write_batch(data)
+
+        # with pyarrow.OSFile(str(uri), 'ab') as sink:
+        # with pyarrow.RecordBatchStreamWriter(uri, data.schema) as writer:
+        #    writer.write_batch(data)
+        #    writer.close()
+
+        pyarrow.fs.LocalFileSystem().open_append_stream(path=str(uri)).write(
+            data.serialize()
+        )
 
     def write_partition(
         self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
@@ -283,10 +295,18 @@ class ArrowAdapterStream(ArrowAdapter):
             schema = data.schema
 
         uri = self._partition_paths[partition]
-        if not hasattr(self, "stream_writer"):
-            self.stream_writer = pyarrow.ipc.new_stream(uri, schema)
+        # if not hasattr(self, "stream_writer"):
+        #    self.stream_writer = pyarrow.ipc.new_stream(uri, schema)
+        # self.stream_writer.write_batch(data)
 
-        self.stream_writer.write_batch(data)
+        stream_writer = pyarrow.ipc.new_stream(uri, schema)
+        stream_writer.write_batch(data)
+        # stream_writer.close()
+
+        # with pyarrow.OSFile(str(uri), 'wb') as sink:
+        #    with pyarrow.RecordBatchStreamWriter(sink, data.schema) as writer:
+        #        writer.write_batch(data)
+        #        writer.close()
 
     def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
         """
@@ -307,9 +327,18 @@ class ArrowAdapterStream(ArrowAdapter):
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
-        if not hasattr(self, "stream_writer"):
-            self.stream_writer = pyarrow.ipc.new_stream(uri, schema)
-        self.stream_writer.write_batch(data)
+        # if not hasattr(self, "stream_writer"):
+        #    self.stream_writer = pyarrow.ipc.new_stream(uri, schema)
+        # self.stream_writer.write_batch(data)
+
+        stream_writer = pyarrow.ipc.new_stream(uri, schema)
+        stream_writer.write_batch(data)
+        # stream_writer.close()
+
+        # with pyarrow.OSFile(str(uri), 'wb') as sink:
+        #    with pyarrow.RecordBatchStreamWriter(sink, data.schema) as writer:
+        #        writer.write_batch(data)
+        #        writer.close()
 
     def read(
         self, *args: Any, **kwargs: Any
