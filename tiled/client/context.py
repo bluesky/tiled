@@ -238,6 +238,7 @@ class Context:
             )
         self.http_client = httpx.Client(
             verify=verify,
+            transport=Transport(cache=cache),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -246,6 +247,7 @@ class Context:
         )
         self._token_cache = token_cache
         self._cache = cache
+        self._verify = verify
         self.server_info = server_info
 
     @classmethod
