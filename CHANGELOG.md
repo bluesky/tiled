@@ -3,6 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+- A bug in `Context.__getstate__` caused picking to fail if applied twice.
+
 ## v0.1.0b5 (2024-06-27)
 
 ### Added
