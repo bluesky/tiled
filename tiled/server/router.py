@@ -1672,6 +1672,67 @@ async def get_asset_manifest(
         manifest.extend(Path(root, file) for file in files)
     return json_or_msgpack(request, {"manifest": manifest})
 
+@router.get(
+    "/zarr/full/{path:path}", response_model=schemas.Response, name="full array as zarr"
+)
+async def zarr_array_full(
+    request: Request,
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
+    slice=Depends(slice_),
+    expected_shape=Depends(expected_shape),
+    format: Optional[str] = None,
+    filename: Optional[str] = None,
+    serialization_registry=Depends(get_serialization_registry),
+    settings: BaseSettings = Depends(get_settings),
+):
+    """
+    Fetch a slice of array-like data.
+    """
+    structure_family = entry.structure_family
+    # Deferred import because this is not a required dependency of the server
+    # for some use cases.
+    import numpy
+
+    try:
+        with record_timing(request.state.metrics, "read"):
+            array = await ensure_awaitable(entry.read, slice)
+        if structure_family == StructureFamily.array:
+            array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
+    except IndexError:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+        )
+    if (expected_shape is not None) and (expected_shape != array.shape):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+        )
+    if array.nbytes > settings.response_bytesize_limit:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Response would exceed {settings.response_bytesize_limit}. "
+                "Use slicing ('?slice=...') to request smaller chunks."
+            ),
+        )
+    try:
+        with record_timing(request.state.metrics, "pack"):
+            return await construct_data_response(
+                structure_family,
+                serialization_registry,
+                array,
+                entry.metadata(),
+                request,
+                format,
+                specs=getattr(entry, "specs", []),
+                expires=getattr(entry, "content_stale_at", None),
+                filename=filename,
+            )
+    except UnsupportedMediaTypes as err:
+        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 async def validate_metadata(
     metadata: dict,

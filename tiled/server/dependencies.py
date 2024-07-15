@@ -71,6 +71,7 @@ def SecureEntry(scopes, structure_families=None):
 
         session_state is an optional dictionary passed in the session token
         """
+        # breakpoint()
         path_parts = [segment for segment in path.split("/") if segment]
         entry = root_tree
 
