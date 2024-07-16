@@ -10,7 +10,10 @@ from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_availab
 def serialize_arrow(df, metadata, preserve_index=True):
     import pyarrow
 
-    table = pyarrow.Table.from_pandas(df, preserve_index=preserve_index)
+    if isinstance(df, dict):
+        table = pyarrow.Table.from_pydict(df)
+    else:
+        table = pyarrow.Table.from_pandas(df, preserve_index=preserve_index)
     sink = pyarrow.BufferOutputStream()
     with pyarrow.ipc.new_file(sink, table.schema) as writer:
         writer.write_table(table)

@@ -942,6 +942,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         if isinstance(dataframe, dask.dataframe.DataFrame):
             structure = TableStructure.from_dask_dataframe(dataframe)
+        elif isinstance(dataframe, dict):
+            structure = TableStructure.from_pydict(dataframe)
         else:
             structure = TableStructure.from_pandas(dataframe)
         client = self.new(
