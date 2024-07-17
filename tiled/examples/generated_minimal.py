@@ -2,7 +2,7 @@ import numpy
 import xarray
 
 from tiled.adapters.array import ArrayAdapter
-from tiled.adapters.dataframe import DataFrameAdapter
+from tiled.adapters.dataframe import TableAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.adapters.xarray import DatasetAdapter
 
@@ -10,7 +10,7 @@ tree = MapAdapter(
     {
         "A": ArrayAdapter.from_array(numpy.ones((100, 100))),
         "B": ArrayAdapter.from_array(numpy.ones((100, 100, 100))),
-        "C": DataFrameAdapter.from_pydict(
+        "C": TableAdapter.from_pydict(
             {
                 "x": 1 * numpy.ones(100),
                 "y": 2 * numpy.ones(100),
