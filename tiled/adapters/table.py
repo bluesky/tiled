@@ -58,6 +58,38 @@ class TableAdapter:
         )
 
     @classmethod
+    def from_pydict(
+        cls,
+        *args: Any,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        npartitions: int = 1,
+        **kwargs: Any,
+    ) -> "TableAdapter":
+        """
+
+        Parameters
+        ----------
+        args :
+        metadata :
+        specs :
+        access_policy :
+        npartitions :
+        kwargs :
+
+        Returns
+        -------
+
+        """
+        ddf = dask.dataframe.from_dict(*args, npartitions=npartitions, **kwargs)
+        if specs is None:
+            specs = [Spec("dataframe")]
+        return cls.from_dask_dataframe(
+            ddf, metadata=metadata, specs=specs, access_policy=access_policy
+        )
+
+    @classmethod
     def from_dask_dataframe(
         cls,
         ddf: dask.dataframe.DataFrame,
