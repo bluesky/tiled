@@ -217,6 +217,12 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
     app = FastAPI(lifespan=lifespan)
 
+    # Healthcheck for deployment to containerized systems, needs to preempt other responses.
+    # Standardized for Kubernetes, but also used by other systems.
+    @app.get("/healthz", status_code=201)
+    async def healthz():
+        return {"status": "ready"}
+
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
 
