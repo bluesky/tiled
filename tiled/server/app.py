@@ -219,7 +219,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
-    @app.get("/healthz", status_code=201)
+    @app.get("/healthz", status_code=200)
     async def healthz():
         return {"status": "ready"}
 
