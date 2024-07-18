@@ -328,14 +328,8 @@ if modules_available("lz4"):
     ]:
         compression_registry.register(media_type, "lz4", LZ4Buffer)
 
-if modules_available("blosc"):
-    import blosc
-
-    # The choice of settings here is cribbed from distributed.protocol.compression.
-    n = blosc.set_nthreads(2)
-    if hasattr("blosc", "releasegil"):
-        blosc.set_releasegil(True)
-    blosc_settings = {"cname": "lz4", "clevel": 5}
+if modules_available("blosc2"):
+    import blosc2
 
     class BloscBuffer:
         """
@@ -352,13 +346,13 @@ if modules_available("blosc"):
             if hasattr(b, "itemsize"):
                 # This could be memoryview or numpy.ndarray, for example.
                 # Blosc uses item-aware shuffling for improved results.
-                compressed = blosc.compress(b, typesize=b.itemsize, **blosc_settings)
+                compressed = blosc2.compress(b, typesize=b.itemsize)
             else:
-                compressed = blosc.compress(b, **blosc_settings)
+                compressed = blosc2.compress(b)
             self._file.write(compressed)
 
         def close(self):
             pass
 
     for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:
-        compression_registry.register(media_type, "blosc", BloscBuffer)
+        compression_registry.register(media_type, "blosc2", BloscBuffer)

@@ -1,8 +1,12 @@
-import dask.array
+from typing import Any, List, Optional, Tuple
 
-from ..server.object_cache import get_object_cache
+import dask.array
+from numpy.typing import NDArray
+
 from ..structures.array import ArrayStructure
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
+from .protocols import AccessPolicy
+from .type_alliases import JSON, NDSlice
 
 
 class ArrayAdapter:
@@ -24,13 +28,23 @@ class ArrayAdapter:
 
     def __init__(
         self,
-        array,
-        structure,
+        array: NDArray[Any],
+        structure: ArrayStructure,
         *,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+    ) -> None:
+        """
+
+        Parameters
+        ----------
+        array :
+        structure :
+        metadata :
+        specs :
+        access_policy :
+        """
         self._array = array
         self._structure = structure
         self._metadata = metadata or {}
@@ -39,15 +53,31 @@ class ArrayAdapter:
     @classmethod
     def from_array(
         cls,
-        array,
+        array: NDArray[Any],
         *,
-        shape=None,
-        chunks=None,
-        dims=None,
-        metadata=None,
-        specs=None,
-        access_policy=None,
-    ):
+        shape: Optional[Tuple[int, ...]] = None,
+        chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
+        dims: Optional[Tuple[str, ...]] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+    ) -> "ArrayAdapter":
+        """
+
+        Parameters
+        ----------
+        array :
+        shape :
+        chunks :
+        dims :
+        metadata :
+        specs :
+        access_policy :
+
+        Returns
+        -------
+
+        """
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims
         )
@@ -59,48 +89,102 @@ class ArrayAdapter:
             access_policy=access_policy,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """
+
+        Returns
+        -------
+
+        """
         return f"{type(self).__name__}({self._array!r})"
 
     @property
-    def dims(self):
+    def dims(self) -> Optional[Tuple[str, ...]]:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure.dims
 
-    def metadata(self):
+    def metadata(self) -> JSON:
+        """
+
+        Returns
+        -------
+
+        """
         return self._metadata
 
-    def structure(self):
+    def structure(self) -> ArrayStructure:
+        """
+
+        Returns
+        -------
+
+        """
         return self._structure
 
-    def read(self, slice=None):
-        array = self._array
-        if slice is not None:
-            array = array[slice]
-        # Special case for dask to cache computed result in object cache.
+    def read(
+        self,
+        slice: NDSlice = ...,
+    ) -> NDArray[Any]:
+        """
+
+        Parameters
+        ----------
+        slice :
+
+        Returns
+        -------
+
+        """
+        array = self._array[slice]
         if isinstance(self._array, dask.array.Array):
-            # Note: If the cache is set to NO_CACHE, this is a null context.
-            with get_object_cache().dask_context:
-                return array.compute()
+            return array.compute()
         return array
 
-    def read_block(self, block, slice=None):
+    def read_block(
+        self,
+        block: Tuple[int, ...],
+        slice: NDSlice = ...,
+    ) -> NDArray[Any]:
+        """
+
+        Parameters
+        ----------
+        block :
+        slice :
+
+        Returns
+        -------
+
+        """
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         array = self._array[slice_]
         # Slice within the block.
         if slice is not None:
             array = array[slice]
-        # Special case for dask to cache computed result in object cache.
-        if isinstance(array, dask.array.Array):
-            # Note: If the cache is set to NO_CACHE, this is a null context.
-            with get_object_cache().dask_context:
-                return array.compute()
+        if isinstance(self._array, dask.array.Array):
+            return array.compute()
         return array
 
 
-def slice_and_shape_from_block_and_chunks(block, chunks):
+def slice_and_shape_from_block_and_chunks(
+    block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
+) -> Tuple[NDSlice, Tuple[int, ...]]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
+    Parameters
+    ----------
+    block :
+    chunks :
+
+    Returns
+    -------
+
     """
     slice_ = []
     shape = []

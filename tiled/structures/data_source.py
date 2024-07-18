@@ -30,3 +30,9 @@ class DataSource:
     parameters: dict = dataclasses.field(default_factory=dict)
     assets: List[Asset] = dataclasses.field(default_factory=list)
     management: Management = Management.writable
+
+    @classmethod
+    def from_json(cls, d):
+        d = d.copy()
+        assets = [Asset(**a) for a in d.pop("assets")]
+        return cls(assets=assets, **d)

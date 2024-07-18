@@ -1,6 +1,7 @@
 import collections
 import importlib
 import itertools as it
+import logging
 import operator
 import os
 import re
@@ -9,17 +10,33 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
+from typing import Callable, Dict
 from urllib.parse import quote_plus, urlparse
 
 import anyio
 import typesense
 from fastapi import HTTPException
-from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
+from sqlalchemy import (
+    delete,
+    event,
+    false,
+    func,
+    not_,
+    or_,
+    select,
+    text,
+    true,
+    type_coerce,
+    update,
+)
 from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import selectinload
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast
+from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
@@ -62,6 +79,8 @@ from . import orm
 from .core import check_catalog_database, initialize_database
 from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -110,7 +129,7 @@ class RootNode:
 
     def __init__(self, metadata, specs, access_policy):
         self.metadata_ = metadata or {}
-        self.specs = [Spec.parse_obj(spec) for spec in specs or []]
+        self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
         self.key = None
         self.data_sources = None
@@ -280,7 +299,7 @@ class CatalogNodeAdapter:
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
-        self.specs = [Spec.parse_obj(spec) for spec in node.specs]
+        self.specs = [Spec.model_validate(spec) for spec in node.specs]
         self.ancestors = node.ancestors
         self.key = node.key
         self.access_policy = access_policy
@@ -354,12 +373,24 @@ class CatalogNodeAdapter:
             return self.data_sources[0].structure
         return None
 
+    def apply_conditions(self, statement):
+        # IF this is a sqlite database and we are doing a full text MATCH
+        # query, we need a JOIN with the FTS5 virtual table.
+        if (self.context.engine.dialect.name == "sqlite") and any(
+            isinstance(condition.type, MatchType) for condition in self.conditions
+        ):
+            statement = statement.join(
+                orm.metadata_fts5, orm.metadata_fts5.c.rowid == orm.Node.id
+            )
+        for condition in self.conditions:
+            statement = statement.filter(condition)
+        return statement
+
     async def async_len(self):
         statement = select(func.count(orm.Node.key)).filter(
             orm.Node.ancestors == self.segments
         )
-        for condition in self.conditions:
-            statement = statement.filter(condition)
+        statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
@@ -381,17 +412,13 @@ class CatalogNodeAdapter:
             # Search queries and access controls apply only at the top level.
             assert not first_level.conditions
             return await first_level.lookup_adapter(segments[1:])
-        statement = (
-            select(orm.Node)
-            .filter(orm.Node.ancestors == self.segments + ancestors)
-            .options(
-                selectinload(orm.Node.data_sources).selectinload(
-                    orm.DataSource.structure
-                )
-            )
+        statement = select(orm.Node)
+        statement = self.apply_conditions(statement)
+        statement = statement.filter(
+            orm.Node.ancestors == self.segments + ancestors
+        ).options(
+            selectinload(orm.Node.data_sources).selectinload(orm.DataSource.structure)
         )
-        for condition in self.conditions:
-            statement = statement.filter(condition)
         async with self.context.session() as db:
             node = (await db.execute(statement.filter(orm.Node.key == key))).scalar()
         if node is None:
@@ -559,14 +586,8 @@ class CatalogNodeAdapter:
 
         return data
 
-    async def create_node(
-        self,
-        structure_family,
-        metadata,
-        key=None,
-        specs=None,
-        data_sources=None,
-    ):
+    @property
+    def insert(self):
         # The only way to do "insert if does not exist" i.e. ON CONFLICT
         # is to invoke dialect-specific insert.
         if self.context.engine.dialect.name == "sqlite":
@@ -576,14 +597,25 @@ class CatalogNodeAdapter:
         else:
             assert False  # future-proofing
 
+        return insert
+
+    async def create_node(
+        self,
+        structure_family,
+        metadata,
+        key=None,
+        specs=None,
+        data_sources=None,
+    ):
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+
         node = orm.Node(
             key=key,
             ancestors=self.segments,
             metadata_=metadata,
             structure_family=structure_family,
-            specs=[s.dict() for s in specs or []],
+            specs=[s.model_dump() for s in specs or []],
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -633,6 +665,7 @@ class CatalogNodeAdapter:
                                 "is not one that the Tiled server knows how to read."
                             ),
                         )
+
                 if data_source.structure is None:
                     structure_id = None
                 else:
@@ -643,7 +676,7 @@ class CatalogNodeAdapter:
                     )
                     structure_id = compute_structure_id(structure)
                     statement = (
-                        insert(orm.Structure).values(
+                        self.insert(orm.Structure).values(
                             id=structure_id,
                             structure=structure,
                         )
@@ -660,20 +693,7 @@ class CatalogNodeAdapter:
                 node.data_sources.append(data_source_orm)
                 await db.flush()  # Get data_source_orm.id.
                 for asset in data_source.assets:
-                    # Find an asset_id if it exists, otherwise create a new one
-                    statement = select(orm.Asset.id).where(
-                        orm.Asset.data_uri == asset.data_uri
-                    )
-                    result = await db.execute(statement)
-                    if row := result.fetchone():
-                        (asset_id,) = row
-                    else:
-                        statement = insert(orm.Asset).values(
-                            data_uri=asset.data_uri,
-                            is_directory=asset.is_directory,
-                        )
-                        result = await db.execute(statement)
-                        (asset_id,) = result.inserted_primary_key
+                    asset_id = await self._put_asset(db, asset)
                     assoc_orm = orm.DataSourceAssetAssociation(
                         asset_id=asset_id,
                         data_source_id=data_source_orm.id,
@@ -698,6 +718,22 @@ class CatalogNodeAdapter:
                 self.context, refreshed_node, access_policy=self.access_policy
             )
 
+    async def _put_asset(self, db, asset):
+        # Find an asset_id if it exists, otherwise create a new one
+        statement = select(orm.Asset.id).where(orm.Asset.data_uri == asset.data_uri)
+        result = await db.execute(statement)
+        if row := result.fetchone():
+            (asset_id,) = row
+        else:
+            statement = self.insert(orm.Asset).values(
+                data_uri=asset.data_uri,
+                is_directory=asset.is_directory,
+            )
+            result = await db.execute(statement)
+            (asset_id,) = result.inserted_primary_key
+
+        return asset_id
+
     async def put_data_source(self, data_source):
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
@@ -705,16 +741,8 @@ class CatalogNodeAdapter:
             data_source.structure_family, data_source.structure
         )
         structure_id = compute_structure_id(structure)
-        # The only way to do "insert if does not exist" i.e. ON CONFLICT
-        # is to invoke dialect-specific insert.
-        if self.context.engine.dialect.name == "sqlite":
-            from sqlalchemy.dialects.sqlite import insert
-        elif self.context.engine.dialect.name == "postgresql":
-            from sqlalchemy.dialects.postgresql import insert
-        else:
-            assert False  # future-proofing
         statement = (
-            insert(orm.Structure).values(
+            self.insert(orm.Structure).values(
                 id=structure_id,
                 structure=structure,
             )
@@ -738,6 +766,23 @@ class CatalogNodeAdapter:
                     status_code=404,
                     detail=f"No data_source {data_source.id} on this node.",
                 )
+            # Add assets and associate them with the data_source
+            for asset in data_source.assets:
+                asset_id = await self._put_asset(db, asset)
+                statement = select(orm.DataSourceAssetAssociation).where(
+                    (orm.DataSourceAssetAssociation.data_source_id == data_source.id)
+                    & (orm.DataSourceAssetAssociation.asset_id == asset_id)
+                )
+                result = await db.execute(statement)
+                if not result.fetchone():
+                    assoc_orm = orm.DataSourceAssetAssociation(
+                        asset_id=asset_id,
+                        data_source_id=data_source.id,
+                        parameter=asset.parameter,
+                        num=asset.num,
+                    )
+                    db.add(assoc_orm)
+
             await db.commit()
 
     # async def patch_node(datasources=None):
@@ -872,14 +917,14 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def update_metadata(self, metadata=None, specs=None):
+    async def replace_metadata(self, metadata=None, specs=None):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
             # SQLAlchemy reserved word 'metadata'.
             values["metadata_"] = metadata
         if specs is not None:
-            values["specs"] = [s.dict() for s in specs]
+            values["specs"] = [s.model_dump() for s in specs]
         async with self.context.session() as db:
             current = (
                 await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
@@ -918,8 +963,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
         statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
-        for condition in self.conditions:
-            statement = statement.filter(condition)
+        statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (
                 (
@@ -941,8 +985,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
         statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
-        for condition in self.conditions:
-            statement = statement.filter(condition)
+        statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             nodes = (
                 (
@@ -1111,7 +1154,7 @@ def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
         return None
-    return structure.dict()
+    return structure.model_dump()
 
 
 def binary_op(query, tree, operation):
@@ -1152,7 +1195,7 @@ def contains(query, tree):
 def full_text(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
     if dialect_name == "sqlite":
-        raise UnsupportedQueryType("full_text")
+        condition = orm.metadata_fts5.c.metadata.match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
             cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
@@ -1184,22 +1227,40 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
-def in_or_not_in(query, tree, method):
-    dialect_name = tree.engine.url.get_dialect().name
+def in_or_not_in_sqlite(query, tree, method):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
-    if dialect_name == "sqlite":
-        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
-    elif dialect_name == "postgresql":
-        # Engage btree_gin index with @> operator
+    if len(query.value) == 0:
         if method == "in_":
+            # Results cannot possibly be "in" in an empty list,
+            # so put a False condition in the list ensuring that
+            # there are no rows return.
+            condition = false()
+        else:  # method == "not_in"
+            # All results are always "not in" an empty list.
+            condition = true()
+    else:
+        condition = getattr(_get_value(attr, type(query.value[0])), method)(query.value)
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+def in_or_not_in_postgresql(query, tree, method):
+    keys = query.key.split(".")
+    # Engage btree_gin index with @> operator
+    if method == "in_":
+        if len(query.value) == 0:
+            condition = false()
+        else:
             condition = or_(
                 *(
                     orm.Node.metadata_.op("@>")(key_array_to_json(keys, item))
                     for item in query.value
                 )
             )
-        elif method == "not_in":
+    elif method == "not_in":
+        if len(query.value) == 0:
+            condition = true()
+        else:
             condition = not_(
                 or_(
                     *(
@@ -1208,11 +1269,21 @@ def in_or_not_in(query, tree, method):
                     )
                 )
             )
-        else:
-            raise UnsupportedQueryType("NotIn")
-    else:
-        raise UnsupportedQueryType("In/NotIn")
     return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+_IN_OR_NOT_IN_DIALECT_DISPATCH: Dict[str, Callable] = {
+    "sqlite": in_or_not_in_sqlite,
+    "postgresql": in_or_not_in_postgresql,
+}
+
+
+def in_or_not_in(query, tree, method):
+    METHODS = {"in_", "not_in"}
+    if method not in METHODS:
+        raise ValueError(f"method must be one of {METHODS}")
+    dialect_name = tree.engine.url.get_dialect().name
+    return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
 
 
 def keys_filter(query, tree):
@@ -1284,16 +1355,34 @@ def from_uri(
         import subprocess
 
         # TODO Check if catalog exists.
-        subprocess.run(
+        process = subprocess.run(
             [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             check=True,
         )
+        # Capture stdout and stderr from the subprocess and write to logging
+        stdout = process.stdout.decode()
+        stderr = process.stderr.decode()
+        logging.info(f"Subprocess stdout: {stdout}")
+        logging.error(f"Subprocess stderr: {stderr}")
     if not SCHEME_PATTERN.match(uri):
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
 
-    engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
+    parsed_url = make_url(uri)
+    if (parsed_url.get_dialect().name == "sqlite") and (
+        parsed_url.database != ":memory:"
+    ):
+        # For file-backed SQLite databases, connection pooling offers a
+        # significant performance boost. For SQLite databases that exist
+        # only in process memory, pooling is not applicable.
+        poolclass = AsyncAdaptedQueuePool
+    else:
+        poolclass = None  # defer to sqlalchemy default
+    engine = create_async_engine(
+        uri, echo=echo, json_serializer=json_serializer, poolclass=poolclass
+    )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     if typesense_client:

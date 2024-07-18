@@ -415,9 +415,9 @@ async def construct_resource(
         attributes["data_sources"] = entry.data_sources
     if schemas.EntryFields.metadata in fields:
         if select_metadata is not None:
-            attributes["metadata"] = jmespath.compile(select_metadata).search(
-                entry.metadata()
-            )
+            attributes["metadata"] = {
+                "selected": jmespath.compile(select_metadata).search(entry.metadata())
+            }
         else:
             attributes["metadata"] = entry.metadata()
     if schemas.EntryFields.specs in fields:
@@ -429,10 +429,11 @@ async def construct_resource(
             # Convert from dataclass to pydantic.
             # The dataclass implementation of Spec supports dict() method
             # for ease of going between dataclass and pydantic.
-            specs.append(schemas.Spec(**spec.dict()))
+            specs.append(schemas.Spec(**spec.model_dump()))
         attributes["specs"] = specs
     if (entry is not None) and entry.structure_family == StructureFamily.container:
         attributes["structure_family"] = StructureFamily.container
+
         if schemas.EntryFields.structure in fields:
             if (
                 ((max_depth is None) or (depth < max_depth))
@@ -497,6 +498,7 @@ async def construct_resource(
             "id": id_,
             "attributes": schemas.NodeAttributes(**attributes),
         }
+
         if not omit_links:
             d["links"] = links_for_node(
                 entry.structure_family,
@@ -529,6 +531,7 @@ async def construct_resource(
                 attributes["structure_family"] = entry.structure_family
             if schemas.EntryFields.structure in fields:
                 attributes["structure"] = structure
+
         else:
             # We only have entry names, not structure_family, so
             ResourceLinksT = schemas.SelfLinkOnly

@@ -1,5 +1,6 @@
 import collections
 import collections.abc
+import functools
 import importlib
 import itertools
 import time
@@ -7,7 +8,7 @@ import warnings
 from dataclasses import asdict
 
 import entrypoints
-from starlette.status import HTTP_404_NOT_FOUND
+import httpx
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -319,7 +320,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             )
                         ).json()
                     except ClientError as err:
-                        if err.response.status_code == HTTP_404_NOT_FOUND:
+                        if err.response.status_code == httpx.codes.NOT_FOUND:
                             # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
                             err_arg = keys[i:]
                             if len(err_arg) == 1:
@@ -406,6 +407,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     self.context,
                     self.structure_clients,
                     item,
+                    include_data_sources=self._include_data_sources,
                 )
             return
         if direction > 0:
@@ -443,6 +445,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     self.context,
                     self.structure_clients,
                     item,
+                    include_data_sources=self._include_data_sources,
                 )
             next_page_url = content["links"]["next"]
 
@@ -602,6 +605,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if isinstance(spec, str):
                 spec = Spec(spec)
             normalized_specs.append(asdict(spec))
+
         item = {
             "attributes": {
                 "metadata": metadata,
@@ -627,6 +631,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 content=safe_json_dump(body),
             )
         ).json()
+
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
         else:
@@ -646,6 +651,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)
+
+        # Ensure this is a dataclass, not a dict.
+        # When we apply type hints and mypy to the client it should be possible
+        # to dispense with this.
+        if (structure_family != StructureFamily.container) and isinstance(
+            structure, dict
+        ):
+            structure_type = STRUCTURE_TYPES[structure_family]
+            structure = structure_type.from_json(structure)
 
         return client_for_item(
             self.context,
@@ -948,11 +962,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     f"Unsure how to handle type {type(dataframe)}"
                 )
 
-            def write_partition(x, partition_info):
-                client.write_partition(x, partition_info["number"])
-                return x
-
-            ddf.map_partitions(write_partition, meta=dataframe._meta).compute()
+            ddf.map_partitions(
+                functools.partial(_write_partition, client=client), meta=dataframe._meta
+            ).compute()
         else:
             client.write(dataframe)
 
@@ -1012,6 +1024,11 @@ class _Wrap:
 
     def __call__(self):
         return self.obj
+
+
+def _write_partition(x, partition_info, client):
+    client.write_partition(x, partition_info["number"])
+    return x
 
 
 DEFAULT_STRUCTURE_CLIENT_DISPATCH = {

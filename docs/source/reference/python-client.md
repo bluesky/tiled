@@ -137,6 +137,11 @@ Tiled currently includes two clients for each structure family:
    tiled.client.base.BaseClient
    tiled.client.base.BaseClient.formats
    tiled.client.base.BaseClient.metadata
+   tiled.client.base.BaseClient.metadata_copy
+   tiled.client.base.BaseClient.replace_metadata
+   tiled.client.base.BaseClient.update_metadata
+   tiled.client.base.BaseClient.patch_metadata
+   tiled.client.base.BaseClient.build_metadata_patches
    tiled.client.base.BaseClient.uri
    tiled.client.base.BaseClient.structure_family
    tiled.client.base.BaseClient.item
@@ -291,4 +296,14 @@ Tiled currently includes two clients for each structure family:
    tiled.client.cache.Cache.set
    tiled.client.cache.Cache.size
    tiled.client.cache.Cache.write_safe
+```
+
+## Sync
+
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.sync.copy
 ```

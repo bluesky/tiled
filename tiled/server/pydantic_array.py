@@ -18,7 +18,7 @@ import sys
 from typing import List, Optional, Tuple, Union
 
 import numpy
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..structures.array import Endianness, Kind
 
@@ -38,7 +38,7 @@ class BuiltinDtype(BaseModel):
     __endianness_reverse_map = {"big": ">", "little": "<", "not_applicable": "|"}
 
     @classmethod
-    def from_numpy_dtype(cls, dtype):
+    def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
         return cls(
             endianness=cls.__endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
@@ -74,7 +74,7 @@ class BuiltinDtype(BaseModel):
 class Field(BaseModel):
     name: str
     dtype: Union[BuiltinDtype, "StructDtype"]
-    shape: Optional[Tuple[int, ...]]
+    shape: Optional[Tuple[int, ...]] = None
 
     @classmethod
     def from_numpy_descr(cls, field):
@@ -153,7 +153,7 @@ class StructDtype(BaseModel):
         )
 
 
-Field.update_forward_refs()
+Field.model_rebuild()
 
 
 class ArrayStructure(BaseModel):
@@ -162,6 +162,8 @@ class ArrayStructure(BaseModel):
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
+
+    model_config = ConfigDict(extra="forbid")
 
     @classmethod
     def from_json(cls, structure):

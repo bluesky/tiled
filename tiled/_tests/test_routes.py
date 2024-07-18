@@ -5,7 +5,7 @@ from starlette.status import HTTP_200_OK
 from ..server.app import build_app
 
 
-@pytest.mark.parametrize("path", ["/", "/docs"])
+@pytest.mark.parametrize("path", ["/", "/docs", "/healthz"])
 @pytest.mark.asyncio
 async def test_meta_routes(path):
     app = build_app({})

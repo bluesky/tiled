@@ -15,7 +15,7 @@ This created a directory named ``example_files`` with some files and subdirector
 
 ```
 $ ls example_files
-another_table.csv  a.tif  b.tif  c.tif  even_more	more  tables.xlsx
+another_table.csv  a.tif  b.tif  c.tif  more  tables.xlsx
 ```
 
 The full structure looks like
@@ -26,7 +26,11 @@ The full structure looks like
 ├── b.tif
 ├── c.tif
 ├── more
-│   └── d.tif
+│   ├── A0001.tif
+│   ├── A0002.tif
+│   ├── A0003.tif
+│   ├── B0001.tif
+│   ├── B0002.tif
 │   └── even_more
 │       ├── e.tif
 │       └── f.tif
@@ -40,8 +44,8 @@ tiled serve directory --public example_files
 ```
 
 Tiled walks the directory, identifies files that it recognizes and has
-Readers for. It watches the directory for additions, removals, and changes to
-the file.
+Readers for. It can watch the directory for additions, removals, and changes to
+the file with option `--watch`.
 
 In a Python interpreter, connect with the Python client.
 
@@ -56,15 +60,15 @@ disk, and we can slice and access the data.
 
 ```python
 >>> client
-<Container {'more', 'b', 'a', 'c', ...} ~7 entries>
+<Container {'another_table', 'tables', 'c', 'a', 'b', 'more'}>
 
 >>> client['more']
-<Container {'d'}>
+<Container {'A', 'B', 'even_more'}>
 
->>> client['more']['d']
-<ArrayClient>
+>>> client['more']['A']
+<ArrayClient shape=(3, 100, 100) chunks=((1, 1, 1), (100,), (100,)) dtype=float64>
 
->>> client['more']['d'].read()
+>>> client['more']['A'][0]
 array([[1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
        [1., 1., 1., ..., 1., 1., 1.],
@@ -77,7 +81,7 @@ array([[1., 1., 1., ..., 1., 1., 1.],
 <Container {'Sheet 1', 'Sheet 2'}>
 
 >>> client['tables']['Sheet 1']
-<DataFrameClient ['A', 'B']>
+<DataFrameClient>
 
 >>> client['tables']['Sheet 1'].read()
    A  B

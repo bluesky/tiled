@@ -10,7 +10,6 @@ from pathlib import Path
 
 import appdirs
 import httpx
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
@@ -160,6 +159,30 @@ class Context:
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
+    def __repr__(self):
+        auth_info = []
+        if (self.api_key is None) and (self.http_client.auth is None):
+            auth_info.append("(unauthenticated)")
+        else:
+            auth_info.append("authenticated")
+            if self.server_info["authentication"].get("links"):
+                whoami = self.whoami()
+                auth_info.append("as")
+                if whoami["type"] == "service":
+                    auth_info.append(f"service '{whoami['uuid']}'")
+                else:
+                    auth_info.append(
+                        ",".join(
+                            f"'{identity['id']}'" for identity in whoami["identities"]
+                        )
+                    )
+            if self.api_key is not None:
+                auth_info.append(
+                    f"with API key '{self.api_key[:min(len(self.api_key)//2, 8)]}...'"
+                )
+        auth_repr = " ".join(auth_info)
+        return f"<{type(self).__name__} {auth_repr}>"
+
     def __enter__(self):
         return self
 
@@ -215,6 +238,7 @@ class Context:
             )
         self.http_client = httpx.Client(
             verify=verify,
+            transport=Transport(cache=cache),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -223,6 +247,7 @@ class Context:
         )
         self._token_cache = token_cache
         self._cache = cache
+        self._verify = verify
         self.server_info = server_info
 
     @classmethod
@@ -554,7 +579,7 @@ and enter the code:
                     },
                     auth=None,
                 )
-                if (access_response.status_code == HTTP_400_BAD_REQUEST) and (
+                if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
                     access_response.json()["detail"]["error"] == "authorization_pending"
                 ):
                     print(".", end="", flush=True)
@@ -641,7 +666,7 @@ and enter the code:
             csrf_token,
         )
         token_response = self.http_client.send(refresh_request, auth=None)
-        if token_response.status_code == HTTP_401_UNAUTHORIZED:
+        if token_response.status_code == httpx.codes.UNAUTHORIZED:
             raise CannotRefreshAuthentication(
                 "Session cannot be refreshed. Log in again."
             )

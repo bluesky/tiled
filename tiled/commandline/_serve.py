@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from typing import List, Optional
@@ -101,15 +102,8 @@ def serve_directory(
     log_config: Optional[str] = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
-    object_cache_available_bytes: Optional[float] = typer.Option(
-        None,
-        "--data-cache",
-        help=(
-            "Maximum size for the object cache, given as a number of bytes as in "
-            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
-            "0.3. Set to 0 to disable this cache. By default, it will use up to "
-            "0.15 (15%) of RAM."
-        ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
     ),
 ):
     "Serve a Tree instance from a directory of files."
@@ -140,7 +134,7 @@ def serve_directory(
     asyncio.run(initialize_database(engine))
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
-    from ..catalog import from_uri
+    from ..catalog import from_uri as catalog_from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     server_settings = {}
@@ -150,11 +144,6 @@ def serve_directory(
         key_from_filename = identity
     else:
         key_from_filename = None
-    if object_cache_available_bytes is not None:
-        server_settings["object_cache"] = {}
-        server_settings["object_cache"][
-            "available_bytes"
-        ] = object_cache_available_bytes
 
     from logging import StreamHandler
 
@@ -182,15 +171,25 @@ def serve_directory(
             )
         mimetype, obj_ref = match.groups()
         adapters_by_mimetype[mimetype] = obj_ref
-    catalog_adapter = from_uri(
+    catalog_adapter = catalog_from_uri(
         database,
         readable_storage=[directory],
         adapters_by_mimetype=adapters_by_mimetype,
     )
-    typer.echo(f"Indexing '{directory}' ...")
     if verbose:
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
+    # Set the API key manually here, rather than letting the server do it,
+    # so that we can pass it to the client.
+    generated = False
+    if api_key is None:
+        api_key = os.getenv("TILED_SINGLE_USER_API_KEY")
+        if api_key is None:
+            import secrets
+
+            api_key = secrets.token_hex(32)
+            generated = True
+
     web_app = build_app(
         catalog_adapter,
         {
@@ -199,15 +198,48 @@ def serve_directory(
         },
         server_settings,
     )
+    import functools
+
+    import anyio
+    import uvicorn
+
+    from ..client import from_uri as client_from_uri
+
+    print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
+    log_config = _setup_log_config(log_config, log_timestamps)
+    config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
+    server = uvicorn.Server(config)
+
+    async def run_server():
+        await server.serve()
+
+    async def wait_for_server():
+        "Wait for server to start up, or raise TimeoutError."
+        for _ in range(100):
+            await asyncio.sleep(0.1)
+            if server.started:
+                break
+        else:
+            raise TimeoutError("Server did not start in 10 seconds.")
+        host, port = server.servers[0].sockets[0].getsockname()
+        api_url = f"http://{host}:{port}/api/v1/"
+        return api_url
+
     if watch:
 
-        async def walk_and_serve():
-            import anyio
+        async def serve_and_walk():
+            server_task = asyncio.create_task(run_server())
+            api_url = await wait_for_server()
+            # When we add an AsyncClient for Tiled, use that here.
+            client = await anyio.to_thread.run_sync(
+                functools.partial(client_from_uri, api_url, api_key=api_key)
+            )
 
+            typer.echo(f"Server is up. Indexing files in {directory}...")
             event = anyio.Event()
             asyncio.create_task(
                 watch_(
-                    catalog_adapter,
+                    client,
                     directory,
                     initial_walk_complete_event=event,
                     mimetype_detection_hook=mimetype_detection_hook,
@@ -218,20 +250,22 @@ def serve_directory(
                 )
             )
             await event.wait()
-            typer.echo("Initial indexing complete. Starting server...")
-            print_admin_api_key_if_generated(web_app, host=host, port=port)
+            typer.echo("Initial indexing complete. Watching for changes...")
+            await server_task
 
-            import uvicorn
-
-            config = uvicorn.Config(web_app, host=host, port=port)
-            server = uvicorn.Server(config)
-            await server.serve()
-
-        asyncio.run(walk_and_serve())
     else:
-        asyncio.run(
-            register(
-                catalog_adapter,
+
+        async def serve_and_walk():
+            server_task = asyncio.create_task(run_server())
+            api_url = await wait_for_server()
+            # When we add an AsyncClient for Tiled, use that here.
+            client = await anyio.to_thread.run_sync(
+                functools.partial(client_from_uri, api_url, api_key=api_key)
+            )
+
+            typer.echo(f"Server is up. Indexing files in {directory}...")
+            await register(
+                client,
                 directory,
                 mimetype_detection_hook=mimetype_detection_hook,
                 mimetypes_by_file_ext=mimetypes_by_file_ext,
@@ -239,14 +273,10 @@ def serve_directory(
                 walkers=walkers,
                 key_from_filename=key_from_filename,
             )
-        )
+            typer.echo("Indexing complete.")
+            await server_task
 
-        typer.echo("Indexing complete. Starting server...")
-        print_admin_api_key_if_generated(web_app, host=host, port=port)
-
-        import uvicorn
-
-        uvicorn.run(web_app, host=host, port=port, log_config=log_config)
+    asyncio.run(serve_and_walk())
 
 
 def serve_catalog(
@@ -301,22 +331,18 @@ def serve_catalog(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    object_cache_available_bytes: Optional[float] = typer.Option(
-        None,
-        "--data-cache",
-        help=(
-            "Maximum size for the object cache, given as a number of bytes as in "
-            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
-            "0.3. Set to 0 to disable this cache. By default, it will use up to "
-            "0.15 (15%) of RAM."
-        ),
-    ),
     scalable: bool = typer.Option(
         False,
         "--scalable",
         help=(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
+    ),
+    log_config: Optional[str] = typer.Option(
+        None, help="Custom uvicorn logging configuration file"
+    ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
     ),
 ):
     "Serve a catalog."
@@ -398,11 +424,6 @@ or use an existing one:
             err=True,
         )
     server_settings = {}
-    if object_cache_available_bytes is not None:
-        server_settings["object_cache"] = {}
-        server_settings["object_cache"][
-            "available_bytes"
-        ] = object_cache_available_bytes
     tree = from_uri(
         database,
         writable_storage=write,
@@ -422,7 +443,8 @@ or use an existing one:
 
     import uvicorn
 
-    uvicorn.run(web_app, host=host, port=port)
+    log_config = _setup_log_config(log_config, log_timestamps)
+    uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
 serve_app.command("catalog")(serve_catalog)
@@ -459,22 +481,18 @@ def serve_pyobject(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    object_cache_available_bytes: Optional[float] = typer.Option(
-        None,
-        "--data-cache",
-        help=(
-            "Maximum size for the object cache, given as a number of bytes as in "
-            "1_000_000 or as a fraction of system RAM (total physical memory) as in "
-            "0.3. Set to 0 to disable this cache. By default, it will use up to "
-            "0.15 (15%) of RAM."
-        ),
-    ),
     scalable: bool = typer.Option(
         False,
         "--scalable",
         help=(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
+    ),
+    log_config: Optional[str] = typer.Option(
+        None, help="Custom uvicorn logging configuration file"
+    ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
     ),
 ):
     "Serve a Tree instance from a Python module."
@@ -483,11 +501,6 @@ def serve_pyobject(
 
     tree = import_object(object_path)
     server_settings = {}
-    if object_cache_available_bytes is not None:
-        server_settings["object_cache"] = {}
-        server_settings["object_cache"][
-            "available_bytes"
-        ] = object_cache_available_bytes
     web_app = build_app(
         tree,
         {
@@ -501,7 +514,8 @@ def serve_pyobject(
 
     import uvicorn
 
-    uvicorn.run(web_app, host=host, port=port)
+    log_config = _setup_log_config(log_config, log_timestamps)
+    uvicorn.run(web_app, host=host, port=port, log_config=log_config)
 
 
 @serve_app.command("demo")
@@ -575,6 +589,12 @@ def serve_config(
             "This verifies that the configuration is compatible with scaled (multi-process) deployments."
         ),
     ),
+    log_config: Optional[str] = typer.Option(
+        None, help="Custom uvicorn logging configuration file"
+    ),
+    log_timestamps: bool = typer.Option(
+        False, help="Include timestamps in log output."
+    ),
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
@@ -609,9 +629,13 @@ def serve_config(
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
-    # If --host is given, it overrides host in config. Same for --port.
+    # If --host is given, it overrides host in config. Same for --port and --log-config.
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
     uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
+    uvicorn_kwargs["log_config"] = _setup_log_config(
+        log_config or uvicorn_kwargs.get("log_config"),
+        log_timestamps,
+    )
 
     # This config was already validated when it was parsed. Do not re-validate.
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
@@ -631,3 +655,32 @@ def serve_config(
     import uvicorn
 
     uvicorn.run(web_app, **uvicorn_kwargs)
+
+
+def _setup_log_config(log_config, log_timestamps):
+    if log_config is None:
+        from ..server.logging_config import LOGGING_CONFIG
+
+        log_config = LOGGING_CONFIG
+
+    if log_timestamps:
+        import copy
+
+        log_config = copy.deepcopy(log_config)
+        try:
+            log_config["formatters"]["access"]["format"] = (
+                "[%(asctime)s.%(msecs)03dZ] "
+                + log_config["formatters"]["access"]["format"]
+            )
+            log_config["formatters"]["default"]["format"] = (
+                "[%(asctime)s.%(msecs)03dZ] "
+                + log_config["formatters"]["default"]["format"]
+            )
+        except KeyError:
+            typer.echo(
+                "The --log-timestamps option is only applicable with a logging "
+                "configuration that, like the default logging configuration, has "
+                "formatters 'access' and 'default'."
+            )
+            raise typer.Abort()
+    return log_config

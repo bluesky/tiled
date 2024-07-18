@@ -6,7 +6,7 @@ need. We'll also use dask to delay download computation.
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:tree
+tiled serve demo
 ```
 
 Now, in a Python interpreter, connect with the Python client.
@@ -23,7 +23,7 @@ Navigate to an array dataset in the demo tree.
 
 ```python
 >>> client['medium_image']
-<ArrayClient>
+<ArrayClient shape=(1000, 1000) chunks=((1000,), (1000,)) dtype=float64>
 ```
 
 Slice ``[:]`` to read it. (This syntax may be familiar to h5py users.)
@@ -63,11 +63,10 @@ Navigate to a tabular dataset in the demo client.
 
 ```python
 >>> client['short_table']
-<DataFrameClient ['A', 'B', 'C']>
+<DataFrameClient>
 ```
 
-The columns are display in the output. You can also access them
-programmatically by listing them.
+You can access the columns by listing them.
 
 ```python
 list(client['short_table'])
@@ -95,10 +94,11 @@ index
 [100 rows x 3 columns]
 ```
 
-You may select a column or a list of columns.
+You may select a column or a list of columns, and access the column data array directly.
 
 ```python
 >>> client['short_table'].read(['A'])
+              A
 index
 0     0.100145
 1     0.634538
@@ -111,7 +111,7 @@ index
 97    0.620561
 98    0.909704
 99    0.456574
-Name: A, Length: 100, dtype: float64
+[100 rows x 1 columns]
 
 >>> client['short_table'].read(['A', 'B'])
               A         B
@@ -129,6 +129,9 @@ index
 99     0.456574  0.918859
 
 [100 rows x 2 columns]
+
+>>> client['short_table']['A']
+<ArrayClient shape=(100,) chunks=((100,),) dtype=float64>
 ```
 
 ## Dask

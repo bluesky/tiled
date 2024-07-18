@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import httpx
@@ -22,7 +23,7 @@ def test_configurable_timeout():
         assert context.http_client.timeout.read == 17
 
 
-def test_client_version_check():
+def test_client_version_check(caplog):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
 
@@ -31,10 +32,20 @@ def test_client_version_check():
         with fail_with_status_code(HTTP_400_BAD_REQUEST):
             list(client)
 
-        # Gibberish user agent should generate a 400.
+        # Gibberish user agent should generate a warning and log entry.
         context.http_client.headers["user-agent"] = "python-tiled/gibberish"
-        with fail_with_status_code(HTTP_400_BAD_REQUEST):
+        caplog.set_level(logging.WARNING)
+        with pytest.warns(UserWarning, match=r"gibberish"):
             list(client)
+
+        _, LOG_LEVEL, LOG_MESSAGE = range(3)
+        logged_warnings = tuple(
+            entry[LOG_MESSAGE]
+            for entry in caplog.record_tuples
+            if entry[LOG_LEVEL] == logging.WARNING
+        )
+        assert len(logged_warnings) > 0
+        assert any("gibberish" in message for message in logged_warnings)
 
 
 def test_direct(tmpdir):

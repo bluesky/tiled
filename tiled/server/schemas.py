@@ -3,12 +3,12 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
-import pydantic
-import pydantic.dataclasses
-import pydantic.errors
 import pydantic.generics
+from pydantic import ConfigDict, Field, StringConstraints
+from pydantic_core import PydanticCustomError
+from typing_extensions import Annotated, TypedDict
 
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
@@ -17,9 +17,15 @@ from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
 
+if TYPE_CHECKING:
+    import tiled.authn_database.orm
+    import tiled.catalog.orm
+
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
+
+MAX_ALLOWED_SPECS = 20
 
 
 class Error(pydantic.BaseModel):
@@ -27,13 +33,13 @@ class Error(pydantic.BaseModel):
     message: str
 
 
-class Response(pydantic.generics.GenericModel, Generic[DataT, LinksT, MetaT]):
+class Response(pydantic.BaseModel, Generic[DataT, LinksT, MetaT]):
     data: Optional[DataT]
-    error: Optional[Error]
-    links: Optional[LinksT]
-    meta: Optional[MetaT]
+    error: Optional[Error] = None
+    links: Optional[LinksT] = None
+    meta: Optional[MetaT] = None
 
-    @pydantic.validator("error", always=True)
+    @pydantic.field_validator("error")
     def check_consistency(cls, v, values):
         if v is not None and values["data"] is not None:
             raise ValueError("must not provide both data and error")
@@ -62,8 +68,10 @@ class EntryFields(str, enum.Enum):
 
 
 class NodeStructure(pydantic.BaseModel):
-    contents: Optional[Dict[str, Resource[NodeAttributes, ResourceLinksT, EmptyDict]]]
+    contents: Optional[Dict[str, Any]]
     count: int
+
+    model_config = pydantic.ConfigDict(extra="forbid")
 
 
 class SortingDirection(int, enum.Enum):
@@ -76,25 +84,25 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class Spec(pydantic.BaseModel, extra=pydantic.Extra.forbid, frozen=True):
-    name: pydantic.constr(max_length=255)
-    version: Optional[pydantic.constr(max_length=255)]
+class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
+    name: Annotated[str, StringConstraints(max_length=255)]
+    version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
 
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
-# Specs = pydantic.conlist(Spec, max_items=20, unique_items=True)
-Specs = pydantic.conlist(Spec, max_items=20)
+# Specs = pydantic.conlist(Spec, max_length=20, unique_items=True)
+Specs = Annotated[List[Spec], Field(max_length=MAX_ALLOWED_SPECS)]
 
 
 class Asset(pydantic.BaseModel):
     data_uri: str
     is_directory: bool
-    parameter: Optional[str]
+    parameter: Optional[str] = None
     num: Optional[int] = None
     id: Optional[int] = None
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.Asset) -> Asset:
         return cls(
             data_uri=orm.data_uri,
             is_directory=orm.is_directory,
@@ -119,7 +127,7 @@ class Revision(pydantic.BaseModel):
     time_updated: datetime
 
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.Revision) -> Revision:
         # Trailing underscore in 'metadata_' avoids collision with
         # SQLAlchemy reserved word 'metadata'.
         return cls(
@@ -132,13 +140,13 @@ class Revision(pydantic.BaseModel):
 
 class DataSource(pydantic.BaseModel):
     id: Optional[int] = None
-    structure_family: StructureFamily
+    structure_family: Optional[StructureFamily] = None
     structure: Optional[
         Union[
             ArrayStructure,
             AwkwardStructure,
-            NodeStructure,
             SparseStructure,
+            NodeStructure,
             TableStructure,
         ]
     ] = None
@@ -147,8 +155,10 @@ class DataSource(pydantic.BaseModel):
     assets: List[Asset] = []
     management: Management = Management.writable
 
+    model_config = pydantic.ConfigDict(extra="forbid")
+
     @classmethod
-    def from_orm(cls, orm):
+    def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
         return cls(
             id=orm.id,
             structure_family=orm.structure_family,
@@ -162,20 +172,23 @@ class DataSource(pydantic.BaseModel):
 
 class NodeAttributes(pydantic.BaseModel):
     ancestors: List[str]
-    structure_family: Optional[StructureFamily]
-    specs: Optional[Specs]
-    metadata: Optional[Dict]  # free-form, user-specified dict
+    structure_family: Optional[StructureFamily] = None
+    specs: Optional[Specs] = None
+    metadata: Optional[Dict] = None  # free-form, user-specified dict
     structure: Optional[
         Union[
             ArrayStructure,
             AwkwardStructure,
-            NodeStructure,
             SparseStructure,
+            NodeStructure,
             TableStructure,
         ]
-    ]
-    sorting: Optional[List[SortingItem]]
-    data_sources: Optional[List[DataSource]]
+    ] = None
+
+    sorting: Optional[List[SortingItem]] = None
+    data_sources: Optional[List[DataSource]] = None
+
+    model_config = pydantic.ConfigDict(extra="forbid")
 
 
 AttributesT = TypeVar("AttributesT")
@@ -234,14 +247,12 @@ class ContainerMeta(pydantic.BaseModel):
     count: int
 
 
-class Resource(
-    pydantic.generics.GenericModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]
-):
+class Resource(pydantic.BaseModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
     id: Union[str, uuid.UUID]
     attributes: AttributesT
-    links: Optional[ResourceLinksT]
-    meta: Optional[ResourceMetaT]
+    links: Optional[ResourceLinksT] = None
+    meta: Optional[ResourceMetaT] = None
 
 
 class AccessAndRefreshTokens(pydantic.BaseModel):
@@ -270,7 +281,7 @@ class AboutAuthenticationProvider(pydantic.BaseModel):
     provider: str
     mode: AuthenticationMode
     links: Dict[str, str]
-    confirmation_message: Optional[str]
+    confirmation_message: Optional[str] = None
 
 
 class AboutAuthenticationLinks(pydantic.BaseModel):
@@ -284,7 +295,7 @@ class AboutAuthenticationLinks(pydantic.BaseModel):
 class AboutAuthentication(pydantic.BaseModel):
     required: bool
     providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks]
+    links: Optional[AboutAuthenticationLinks] = None
 
 
 class About(pydantic.BaseModel):
@@ -303,31 +314,54 @@ class PrincipalType(str, enum.Enum):
     service = "service"
 
 
-class Identity(pydantic.BaseModel, orm_mode=True):
-    id: pydantic.constr(max_length=255)
-    provider: pydantic.constr(max_length=255)
-    latest_login: Optional[datetime]
+class Identity(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
+    id: Annotated[str, StringConstraints(max_length=255)]
+    provider: Annotated[str, StringConstraints(max_length=255)]
+    latest_login: Optional[datetime] = None
+
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.Identity) -> Identity:
+        return cls(id=orm.id, provider=orm.provider, latest_login=orm.latest_login)
 
 
-class Role(pydantic.BaseModel, orm_mode=True):
+class Role(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
     name: str
     scopes: List[str]
     # principals
 
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.Role) -> Role:
+        return cls(name=orm.name, scopes=orm.scopes)
 
-class APIKey(pydantic.BaseModel, orm_mode=True):
-    first_eight: pydantic.constr(min_length=8, max_length=8)
-    expiration_time: Optional[datetime]
-    note: Optional[pydantic.constr(max_length=255)]
+
+class APIKey(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
+    first_eight: Annotated[str, StringConstraints(min_length=8, max_length=8)]
+    expiration_time: Optional[datetime] = None
+    note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
     scopes: List[str]
     latest_activity: Optional[datetime] = None
+
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.APIKey) -> APIKey:
+        return cls(
+            first_eight=orm.first_eight,
+            expiration_time=orm.expiration_time,
+            note=orm.note,
+            scopes=orm.scopes,
+            latest_activity=orm.latest_activity,
+        )
 
 
 class APIKeyWithSecret(APIKey):
     secret: str  # hex-encoded bytes
 
     @classmethod
-    def from_orm(cls, orm, secret):
+    def from_orm(
+        cls, orm: tiled.authn_database.orm.APIKeyWithSecret, secret: str
+    ) -> APIKeyWithSecret:
         return cls(
             first_eight=orm.first_eight,
             expiration_time=orm.expiration_time,
@@ -338,7 +372,7 @@ class APIKeyWithSecret(APIKey):
         )
 
 
-class Session(pydantic.BaseModel, orm_mode=True):
+class Session(pydantic.BaseModel):
     """
     This related to refresh tokens, which have a session uuid ("sid") claim.
 
@@ -349,15 +383,23 @@ class Session(pydantic.BaseModel, orm_mode=True):
 
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
+    model_config = pydantic.ConfigDict(from_attributes=True)
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
 
+    @classmethod
+    def from_orm(cls, orm: tiled.authn_database.orm.Session) -> Session:
+        return cls(
+            uuid=orm.uuid, expiration_time=orm.expiration_time, revoked=orm.revoked
+        )
 
-class Principal(pydantic.BaseModel, orm_mode=True):
+
+class Principal(pydantic.BaseModel):
     "Represents a User or Service"
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
+    model_config = pydantic.ConfigDict(from_attributes=True)
     uuid: uuid.UUID
     type: PrincipalType
     identities: List[Identity] = []
@@ -367,19 +409,33 @@ class Principal(pydantic.BaseModel, orm_mode=True):
     latest_activity: Optional[datetime] = None
 
     @classmethod
-    def from_orm(cls, orm, latest_activity=None):
-        instance = super().from_orm(orm)
-        instance.latest_activity = latest_activity
-        return instance
+    def from_orm(
+        cls,
+        orm: tiled.authn_database.orm.Principal,
+        latest_activity: Optional[datetime] = None,
+    ) -> Principal:
+        return cls(
+            uuid=orm.uuid,
+            type=orm.type,
+            identities=[Identity.from_orm(id_) for id_ in orm.identities],
+            roles=[Role.from_orm(id_) for id_ in orm.roles],
+            api_keys=[APIKey.from_orm(api_key) for api_key in orm.api_keys],
+            sessions=[Session.from_orm(session) for session in orm.sessions],
+            latest_activity=latest_activity,
+        )
 
 
 class APIKeyRequestParams(pydantic.BaseModel):
     # Provide an example for expires_in. Otherwise, OpenAPI suggests lifetime=0.
     # If the user is not reading carefully, they will be frustrated when they
     # try to use the instantly-expiring API key!
-    expires_in: Optional[int] = pydantic.Field(..., example=600)  # seconds
-    scopes: Optional[List[str]] = pydantic.Field(..., example=["inherit"])
-    note: Optional[str]
+    expires_in: Optional[int] = pydantic.Field(
+        ..., json_schema_extra={"example": 600}
+    )  # seconds
+    scopes: Optional[List[str]] = pydantic.Field(
+        ..., json_schema_extra={"example": ["inherit"]}
+    )
+    note: Optional[str] = None
 
 
 class PostMetadataRequest(pydantic.BaseModel):
@@ -391,13 +447,13 @@ class PostMetadataRequest(pydantic.BaseModel):
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
-    @pydantic.validator("specs", always=True)
+    @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
         for i, value in enumerate(v, start=1):
             if value in v[i:]:
-                raise pydantic.errors.ListUniqueItemsError()
+                raise ValueError
         return v
 
 
@@ -416,36 +472,99 @@ class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
     # May be None if not altered
-    metadata: Optional[Dict]
-    data_sources: Optional[List[DataSource]]
+    metadata: Optional[Dict] = None
+    data_sources: Optional[List[DataSource]] = None
 
 
 class DistinctValueInfo(pydantic.BaseModel):
-    value: Any
-    count: Optional[int]
+    value: Any = None
+    count: Optional[int] = None
 
 
 class GetDistinctResponse(pydantic.BaseModel):
-    metadata: Optional[Dict[str, List[DistinctValueInfo]]]
-    structure_families: Optional[List[DistinctValueInfo]]
-    specs: Optional[List[DistinctValueInfo]]
+    metadata: Optional[Dict[str, List[DistinctValueInfo]]] = None
+    structure_families: Optional[List[DistinctValueInfo]] = None
+    specs: Optional[List[DistinctValueInfo]] = None
 
 
 class PutMetadataRequest(pydantic.BaseModel):
     # These fields are optional because None means "no changes; do not update".
-    metadata: Optional[Dict]
-    specs: Optional[Specs]
+    metadata: Optional[Dict] = None
+    specs: Optional[Specs] = None
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
-    @pydantic.validator("specs", always=True)
+    @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
             return None
         for i, value in enumerate(v, start=1):
             if value in v[i:]:
-                raise pydantic.errors.ListUniqueItemsError()
+                raise ValueError
         return v
 
 
-NodeStructure.update_forward_refs()
+def JSONPatchType(dtype=Any):
+    # we use functional syntax with TypedDict here since "from" is a keyword
+    return TypedDict(
+        "JSONPatchType",
+        {
+            "op": str,
+            "path": str,
+            "from": str,
+            "value": dtype,
+        },
+        total=False,
+    )
+
+
+JSONPatchSpec = JSONPatchType(Spec)
+JSONPatchAny = JSONPatchType(Any)
+
+
+class HyphenizedBaseModel(pydantic.BaseModel):
+    # This model configuration allows aliases like "content-type"
+    model_config = ConfigDict(alias_generator=lambda f: f.replace("_", "-"))
+
+
+class PatchMetadataRequest(HyphenizedBaseModel):
+    content_type: str
+
+    # These fields are optional because None means "no changes; do not update".
+    # Dict for merge-patch:
+    metadata: Optional[Union[List[JSONPatchAny], Dict]] = None
+
+    # Specs for merge-patch. left_to_right mode is used to distinguish between
+    # merge-patch List[asdict(Spec)] and json-patch List[Dict]
+    specs: Optional[Union[Specs, List[JSONPatchSpec]]] = Field(
+        union_mode="left_to_right"
+    )
+
+    @pydantic.field_validator("specs")
+    def specs_uniqueness_validator(cls, v):
+        if v is None:
+            return None
+        if v and isinstance(v[0], Spec):
+            # This is the MERGE_PATCH case
+            if len(v) != len(set(v)):
+                raise PydanticCustomError("specs", "Items must be unique")
+        elif v and isinstance(v[0], dict):
+            # This is the JSON_PATCH case
+            v_new = [v_["value"] for v_ in v if v_["op"] in ["add", "replace"]]
+            # Note: uniqueness should be checked with existing specs included,
+            # however since we use replace_metadata to eventually write to db this
+            # will be caught and an error raised there.
+            if len(v_new) != len(set(v_new)):
+                raise PydanticCustomError("specs", "Items must be unique")
+        return v
+
+
+class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
+    id: str
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    # May be None if not altered
+    metadata: Optional[Dict]
+    data_sources: Optional[List[DataSource]]
+
+
+NodeStructure.model_rebuild()

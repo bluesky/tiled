@@ -28,7 +28,6 @@ how-to/api-keys
 how-to/custom-clients
 how-to/metrics
 how-to/direct-client
-how-to/tune-caches
 how-to/tiled-authn-database
 how-to/register
 ```
@@ -45,6 +44,7 @@ explanations/compression
 explanations/specialized-formats
 explanations/caching
 explanations/access-control
+explanations/catalog
 explanations/faq
 explanations/lineage
 ```

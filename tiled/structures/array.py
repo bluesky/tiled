@@ -4,6 +4,8 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
+import numpy
+
 
 class Endianness(str, enum.Enum):
     """
@@ -85,14 +87,14 @@ class BuiltinDtype:
     __endianness_reverse_map = {"big": ">", "little": "<", "not_applicable": "|"}
 
     @classmethod
-    def from_numpy_dtype(cls, dtype):
+    def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
         return cls(
             endianness=cls.__endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
         )
 
-    def to_numpy_dtype(self):
+    def to_numpy_dtype(self) -> numpy.dtype:
         import numpy
 
         return numpy.dtype(self.to_numpy_str())
@@ -234,7 +236,7 @@ class ArrayStructure:
         )
 
     @classmethod
-    def from_array(cls, array, shape=None, chunks=None, dims=None):
+    def from_array(cls, array, shape=None, chunks=None, dims=None) -> "ArrayStructure":
         from dask.array.core import normalize_chunks
 
         if not hasattr(array, "__array__"):

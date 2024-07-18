@@ -47,11 +47,17 @@ def test_pickle_clients(structure_clients, tmpdir):
             for segment in segements:
                 original = original[segment]
             roundtripped = pickle.loads(pickle.dumps(original))
-            assert roundtripped.uri == original.uri
+            roundtripped_twice = pickle.loads(pickle.dumps(roundtripped))
+            assert roundtripped.uri == roundtripped_twice.uri == original.uri
 
 
 def test_lock_round_trip(tmpdir):
     cache = Cache(tmpdir / "http_response_cache.db")
     cache_round_tripped = pickle.loads(pickle.dumps(cache))
+    cache_round_tripped_twice = pickle.loads(pickle.dumps(cache_round_tripped))
     # implementation detail!
-    assert cache._lock.lock is cache_round_tripped._lock.lock
+    assert (
+        cache._lock.lock
+        is cache_round_tripped._lock.lock
+        is cache_round_tripped_twice._lock.lock
+    )

@@ -23,6 +23,7 @@ def client():
 
 
 def test_zstd(client):
+    pytest.importorskip("zstandard")
     with record_history() as h:
         client["compresses_well"]
     (response,) = h.responses
@@ -31,11 +32,12 @@ def test_zstd(client):
     assert "zstd" in response.headers["Content-Encoding"]
 
 
-def test_blosc(client):
+def test_blosc2(client):
+    pytest.importorskip("blosc2")
     ac = client["compresses_well"]
     with record_history() as h:
         ac[:]
     (response,) = h.responses
     (request,) = h.requests
-    assert "blosc" in request.headers["Accept-Encoding"]
-    assert "blosc" in response.headers["Content-Encoding"]
+    assert "blosc2" in request.headers["Accept-Encoding"]
+    assert "blosc2" in response.headers["Content-Encoding"]

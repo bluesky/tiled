@@ -11,22 +11,14 @@ Tiled has two kinds of caching:
 
 1. **Client-side response cache.** The Tiled Python client implements a standard
    web cache, similar in both concept and implementation to a web browser's cache.
-3. **Service-side object cache.** The _response_ caches operate near the outer
-   edges of the application, stashing and retrieve HTTP response bytes. The
-   _object_ cache is more deeply integrated into the application: it is
-   available for authors of Adapters to use for stashing any objects that may be
-   useful in expediting future work. These objects may serializable, such as chunks
-   of array data, or unserializable, such as file handles. Requests that ask for
-   overlapping but distinct slices of data or requests that ask for the same
-   data but in varied formats will not benefit from the _response_ cache; they
-   will "miss". The _object_ cache, however, can slice and encode its cached
-   resources differently for different requests. The object cache will not provide
-   quite the same speed boost as a response cache, but it has a broader impact.
+2. **Server-side resource cache.** The resource cache is used to cache file
+   handles and related system resources, to avoid rapidly opening, closing,
+   and reopening the same files while handling a burst of requests.
 
 (client-http-response-cache)=
 ## Client-side HTTP Response Cache
 
-The client response cache is an LRU response cache backed by a SQLite file.
+The client response cache is an LRU (Least Recently Used) response cache backed by a SQLite file.
 
 
 ```py
@@ -48,40 +40,43 @@ cache = Cache(
 )
 ```
 
-## Server-side Object Cache
+## Server-side Resource Cache
 
-TO DO
+The "resource cache" is a TLRU (Time-aware Least Recently Used) cache. When
+items are evicted from the cache, a hard reference is dropped, freeing the
+resource to be closed by the garbage collector if there are no other extant
+hard references. Items are evicted if:
 
-###  Connection to Dask
+- They have been in the cache for a _total_ of more than a given time.
+  (Accessing an item does not reset this time.)
+- The cache is at capacity and this item is the least recently used item.
 
-Dask provides an opt-in, experimental
-[opportunistic caching](https://docs.dask.org/en/latest/caching.html) mechanism.
-It caches at the granularity of "tasks", such as chunks of array or partitions
-of dataframes.
+It is not expected that users should need to tune this cache, except in
+debugging scenarios. These environment variables may be set to tune
+the cache parameters:
 
-Tiled's object cache is generic---not exclusive to dask code paths---but it plugs
-into dask in a similar way to make it easy for any Adapters that happen to use
-dask to leverage Tiled's object cache very simply, like this:
-
-```py
-from tiled.server.object_cache import get_object_cache
-
-
-with get_object_cache().dask_context:
-    # Any tasks that happen to already be cached will be looked up
-    # instead of computed here. Anything that _is_ computed here may
-    # be cached, depending on its bytesize and its cost (how long it took to
-    # compute).
-    dask_object.compute()
+```sh
+TILED_RESOURCE_CACHE_MAX_SIZE  # default 1024 items
+TILED_RESOURCE_CACHE_TTU  # default 60. seconds
 ```
 
-Items can be proactively cleared from the cache like so:
+The "size" is measured in cached items; that is, each item in the cache has
+size 1.
 
-```py
-from tiled.server.object_cache import get_object_cache, NO_CACHE
+To disable the resource cache, set:
 
-
-cache = get_object_cache()
-if cache is not NO_CACHE:
-    cache.discard_dask(dask_object.__dask_keys__())
+```sh
+TILED_RESOURCE_CACHE_MAX_SIZE=0
 ```
+
+It is also possible to register a custom cache:
+
+```python
+from cachetools import Cache
+from tiled.adapters.resource_cache import set_resource_cache
+
+cache = Cache(maxsize=1)
+set_resource_cache(cache)
+```
+
+Any object satisfying the `cachetools.Cache` interface is acceptable.

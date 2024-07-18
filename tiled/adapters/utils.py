@@ -1,4 +1,5 @@
 import warnings
+from typing import Any
 
 # for back-compat
 from ..utils import node_repr as tree_repr  # noqa: F401
@@ -16,18 +17,41 @@ class IndexersMixin:
     This is just for back-ward compatiblity.
     """
 
+    keys: Any
+    values: Any
+    items: Any
+    fn: Any
+
     @property
-    def keys_indexer(self):
+    def keys_indexer(self) -> Any:
+        """
+
+        Returns
+        -------
+
+        """
         warnings.warn(_MESSAGE.format(name="keys"), DeprecationWarning)
         return self.keys()
 
     @property
-    def values_indexer(self):
+    def values_indexer(self) -> Any:
+        """
+
+        Returns
+        -------
+
+        """
         warnings.warn(_MESSAGE.format(name="values"), DeprecationWarning)
         return self.values()
 
     @property
-    def items_indexer(self):
+    def items_indexer(self) -> Any:
+        """
+
+        Returns
+        -------
+
+        """
         warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
         return self.items()
 
@@ -50,8 +74,24 @@ class IndexCallable:
 
     __slots__ = ("fn",)
 
-    def __init__(self, fn):
+    def __init__(self, fn: Any) -> None:
+        """
+
+        Parameters
+        ----------
+        fn :
+        """
         self.fn = fn
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Any:
+        """
+
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
         return self.fn(key)

@@ -6,7 +6,7 @@ common formats for use by some external software (i.e. not Python).
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:tree
+tiled serve demo
 ```
 
 Now, in a Python interpreter, connect, with the Python client.
@@ -22,7 +22,7 @@ These are just a couple of the supported formats:
 
 ```python
 # Table
-client["short_talbe"].export("table.xlsx")  # Excel
+client["short_table"].export("table.xlsx")  # Excel
 client["short_table"].export("table.csv")  # CSV
 
 # Array
@@ -39,6 +39,7 @@ client["short_table"].export("table.csv", columns=["A", "B"])
 
 # Export an N-dimensional slice...
 client["medium_image"].export("numbers.csv", slice=[0])  # like arr[0]
+import numpy
 client["medium_image"].export("numbers.csv", slice=numpy.s_[:10, 100:200])  # like arr[:10, 100:200]
 ```
 

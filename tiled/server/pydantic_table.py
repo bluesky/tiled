@@ -2,7 +2,7 @@ import base64
 import io
 from typing import List, Tuple, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..structures.table import B64_ENCODED_PREFIX
 
@@ -20,6 +20,8 @@ class TableStructure(BaseModel):
     npartitions: int
     columns: List[str]
     resizable: Union[bool, Tuple[bool, ...]] = False
+
+    model_config = ConfigDict(extra="forbid")
 
     @classmethod
     def from_dask_dataframe(cls, ddf):

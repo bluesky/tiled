@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Optional
 
-import pydantic
+import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
@@ -16,6 +16,12 @@ from ..validation_registration import validation_registry as default_validation_
 from .authentication import get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
+
+# saving slice() to rescue after using "slice" for FastAPI dependency injection of slice_(slice: str)
+slice_func = slice
+
+DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
+SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
 
 @lru_cache(1)
@@ -54,7 +60,7 @@ def SecureEntry(scopes, structure_families=None):
         path: str,
         request: Request,
         principal: str = Depends(get_current_principal),
-        root_tree: pydantic.BaseSettings = Depends(get_root_tree),
+        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
     ):
         """
@@ -159,20 +165,17 @@ def expected_shape(
     return tuple(map(int, expected_shape.split(",")))
 
 
+def np_style_slicer(indices: tuple):
+    return indices[0] if len(indices) == 1 else slice_func(*indices)
+
+
+def parse_slice_str(dim: str):
+    return np_style_slicer(tuple(int(idx) if idx else None for idx in dim.split(":")))
+
+
 def slice_(
-    slice: str = Query(None, pattern="^[-0-9,:]*$"),
+    slice: Optional[str] = Query(None, pattern=SLICE_REGEX),
 ):
     "Specify and parse a block index parameter."
-    import numpy
 
-    # IMPORTANT We are eval-ing a user-provider string here so we need to be
-    # very careful about locking down what can be in it. The regex above
-    # excludes any letters or operators, so it is not possible to execute
-    # functions or expensive arithmetic.
-    return tuple(
-        [
-            eval(f"numpy.s_[{dim!s}]", {"numpy": numpy})
-            for dim in (slice or "").split(",")
-            if dim
-        ]
-    )
+    return tuple(parse_slice_str(dim) for dim in (slice or "").split(",") if dim)

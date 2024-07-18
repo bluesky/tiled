@@ -118,23 +118,11 @@ Not all Tiled servers are configured to use the Catalog:
 But for most standard applications, including serving a directory of files or
 providing a writable data store, the Catalog is used.
 
+See {doc}`catalog` for an explanation of the database.
+
 [FastAPI]: https://fastapi.tiangolo.com/
 [httpx]: https://www.python-httpx.org/
 [Starlette]: https://www.starlette.io/
 [OpenAPI]: https://www.openapis.org/
 [Pydantic]: https://docs.pydantic.dev/
 [content negotiation]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation
-
-(catalog-database)=
-### Catalog Database
-
-```{mermaid}
-erDiagram
-    nodes ||--o{  data_sources : has
-    data_sources ||--o{  data_source_asset_association : has
-    data_source_asset_association }|--|{  assets : has
-    data_sources }|--||   structure : has
-    nodes ||--o{  revisions : has
-    alembic_version
-
-```

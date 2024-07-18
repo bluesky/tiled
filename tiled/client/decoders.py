@@ -3,9 +3,9 @@ from httpx._decoders import SUPPORTED_DECODERS
 
 from ..utils import modules_available
 
-if modules_available("blosc"):
+if modules_available("blosc2"):
 
-    class BloscDecoder:
+    class Blosc2Decoder:
         def __init__(self):
             # Blosc seems to have no streaming interface.
             # Accumulate response data in a cache here,
@@ -18,15 +18,15 @@ if modules_available("blosc"):
 
         def flush(self) -> bytes:
             # Hide this here to defer the numpy import that it triggers.
-            import blosc
+            import blosc2
 
             if len(self._data) == 1:
                 (data,) = self._data
             else:
                 data = b"".join(self._data)
-            return blosc.decompress(data)
+            return blosc2.decompress(data)
 
-    SUPPORTED_DECODERS["blosc"] = BloscDecoder
+    SUPPORTED_DECODERS["blosc2"] = Blosc2Decoder
 
 
 if modules_available("zstandard"):

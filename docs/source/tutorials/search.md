@@ -5,7 +5,7 @@ In this tutorial we will find a dataset by performing a search over metadata.
 To follow along, start the Tiled server with example data from a Terminal.
 
 ```
-tiled serve pyobject --public tiled.examples.generated:tree
+tiled serve demo
 ```
 
 ## Search Using the Python Client
@@ -44,7 +44,7 @@ anywhere in the metadata.
 >>> from tiled.queries import FullText
 
 >>> client.search(FullText("dog"))
-<Container {'short_table', 'long_table'}>
+<Container {'short_table', 'long_table', 'wide_table'}>
 ```
 
 The result has a subset of the contents of the original.
@@ -52,7 +52,7 @@ Searches may be chained to progressively narrow results:
 
 ```python
 >>> client.search(FullText("dog")).search(FullText("red"))
-<Container {'short_table'}>
+<Container {'short_table', 'wide_table'}>
 ```
 
 If there no matches, the result is an empty Node:
@@ -64,5 +64,5 @@ If there no matches, the result is an empty Node:
 
 ## More Queries
 
-Above, use the `FullText` query. Tiled supports many queries;
+Above examples use the `FullText` query. Tiled supports many queries;
 see {doc}`../reference/queries`.

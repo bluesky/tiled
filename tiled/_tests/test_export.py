@@ -136,3 +136,4 @@ def test_path_as_Path_or_string(client, tmpdir):
 def test_formats(client):
     client.formats
     client["A"].formats
+    client["C"].formats

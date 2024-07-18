@@ -1,10 +1,12 @@
 import asyncio
 import collections
+import contextvars
 import logging
 import os
 import secrets
 import sys
 import urllib.parse
+import warnings
 from contextlib import asynccontextmanager
 from functools import lru_cache, partial
 from pathlib import Path
@@ -37,7 +39,7 @@ from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
-from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import validation_registry as default_validation_registry
 from . import schemas
 from .authentication import get_current_principal
@@ -49,9 +51,6 @@ from .dependencies import (
     get_serialization_registry,
     get_validation_registry,
 )
-from .object_cache import NO_CACHE, ObjectCache
-from .object_cache import logger as object_cache_logger
-from .object_cache import set_object_cache
 from .router import distinct, patch_route_signature, router, search
 from .settings import get_settings
 from .utils import (
@@ -77,6 +76,10 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("%(message)s"))
 logger.addHandler(handler)
+
+
+# This is used to pass the currently-authenticated principal into the logger.
+current_principal = contextvars.ContextVar("current_principal")
 
 
 def custom_openapi(app):
@@ -214,6 +217,12 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
     app = FastAPI(lifespan=lifespan)
 
+    # Healthcheck for deployment to containerized systems, needs to preempt other responses.
+    # Standardized for Kubernetes, but also used by other systems.
+    @app.get("/healthz", status_code=200)
+    async def healthz():
+        return {"status": "ready"}
+
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
 
@@ -327,6 +336,10 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
+        # The current_principal_logging_filter middleware will not have
+        # had a chance to finish running, so set the principal here.
+        principal = getattr(request.state, "principal", None)
+        current_principal.set(principal)
         return await http_exception_handler(
             request,
             HTTPException(
@@ -468,13 +481,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             settings.database_max_overflow = database["max_overflow"]
         if database.get("init_if_not_exists"):
             settings.database_init_if_not_exists = database["init_if_not_exists"]
-        object_cache_available_bytes = server_settings.get("object_cache", {}).get(
-            "available_bytes"
-        )
-        if object_cache_available_bytes is not None:
-            setattr(
-                settings, "object_cache_available_bytes", object_cache_available_bytes
-            )
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in memory. Horizontally scaled deployments
@@ -534,34 +540,6 @@ confusing behavior due to ambiguous encodings.
             app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
-        object_cache_logger.setLevel(settings.object_cache_log_level.upper())
-        object_cache_available_bytes = settings.object_cache_available_bytes
-        import psutil
-
-        TOTAL_PHYSICAL_MEMORY = psutil.virtual_memory().total
-        if object_cache_available_bytes < 0:
-            raise ValueError("Negative object cache size is not interpretable.")
-        if object_cache_available_bytes == 0:
-            cache = NO_CACHE
-            object_cache_logger.info("disabled")
-        else:
-            if 0 < object_cache_available_bytes < 1:
-                # Interpret this as a fraction of system memory.
-
-                object_cache_available_bytes = int(
-                    TOTAL_PHYSICAL_MEMORY * object_cache_available_bytes
-                )
-            else:
-                object_cache_available_bytes = int(object_cache_available_bytes)
-            cache = ObjectCache(object_cache_available_bytes)
-            percentage = round(
-                object_cache_available_bytes / TOTAL_PHYSICAL_MEMORY * 100
-            )
-            object_cache_logger.info(
-                f"Will use up to {object_cache_available_bytes:_} bytes ({percentage:d}% of total physical RAM)"
-            )
-        set_object_cache(cache)
-
         # Expose the root_tree here to make it easier to access it from tests,
         # in usages like:
         # client.context.app.state.root_tree
@@ -753,18 +731,18 @@ Back up the database, and then run:
             agent, _, raw_version = user_agent.partition("/")
             try:
                 parsed_version = packaging.version.parse(raw_version)
-            except Exception:
-                return JSONResponse(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    content={
-                        "detail": (
-                            f"Python Tiled client is version is reported as {raw_version}. "
-                            "This cannot be parsed as a valid version."
-                        ),
-                    },
+            except Exception as caught_exception:
+                invalid_version_message = (
+                    f"Python Tiled client version is reported as {raw_version}. "
+                    "This cannot be parsed as a valid version."
                 )
+                logger.warning(invalid_version_message)
+                if isinstance(caught_exception, packaging.version.InvalidVersion):
+                    warnings.warn(invalid_version_message)
             else:
-                if parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION:
+                if (not parsed_version.is_devrelease) and (
+                    parsed_version < MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION
+                ):
                     return JSONResponse(
                         status_code=HTTP_400_BAD_REQUEST,
                         content={
@@ -902,6 +880,14 @@ Back up the database, and then run:
             # An exception above would have triggered an early exit.
             return response
 
+    @app.middleware("http")
+    async def current_principal_logging_filter(request: Request, call_next):
+        request.state.principal = SpecialUsers.public
+        response = await call_next(request)
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
+        current_principal.set(request.state.principal)
+        return response
+
     app.add_middleware(
         CorrelationIdMiddleware,
         header_name="X-Tiled-Request-ID",
@@ -956,7 +942,10 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
-def print_admin_api_key_if_generated(web_app, host, port):
+def print_admin_api_key_if_generated(
+    web_app: FastAPI, host: str, port: int, force: bool = False
+):
+    "Print message to stderr with API key if server-generated (or force=True)."
     host = host or "127.0.0.1"
     port = port or 8000
     settings = web_app.dependency_overrides.get(get_settings, get_settings)()
@@ -972,7 +961,7 @@ def print_admin_api_key_if_generated(web_app, host, port):
 """,
             file=sys.stderr,
         )
-    if (not authenticators) and settings.single_user_api_key_generated:
+    if (not authenticators) and (force or settings.single_user_api_key_generated):
         print(
             f"""
     Navigate a web browser or connect a Tiled client to:

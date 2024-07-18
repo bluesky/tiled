@@ -77,11 +77,14 @@ def test_password_auth(enter_password, config):
             from_context(context, username="alice")
         # Reuse token from cache.
         client = from_context(context, username="alice")
+        assert "authenticated as 'alice'" in repr(client.context)
         client.logout()
+        assert "unauthenticated" in repr(client.context)
 
         # Log in as Bob.
         with enter_password("secret2"):
             client = from_context(context, username="bob")
+            assert "authenticated as 'bob'" in repr(client.context)
         client.logout()
 
         # Bob's password should not work for Alice.
@@ -312,6 +315,13 @@ def test_admin(enter_password, config):
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             context.admin.show_principal(some_principal_uuid)
 
+    # Start the server a second time. Now alice is already an admin.
+    with Context.from_app(build_app_from_config(config)) as context:
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+        admin_roles = context.whoami()["roles"]
+        assert "admin" in [role["name"] for role in admin_roles]
+
 
 def test_api_key_activity(enter_password, config):
     """
@@ -326,6 +336,10 @@ def test_api_key_activity(enter_password, config):
         context.logout()
         assert key_info["latest_activity"] is None  # never used
         context.api_key = key_info["secret"]
+        assert "authenticated as 'alice'" in repr(context)
+        assert "with API key" in repr(context)
+        assert key_info["secret"][:8] in repr(context)
+        assert key_info["secret"][8:] not in repr(context)
 
         # Use the key for a couple requests and see that latest_activity becomes set and then increases.
         client = from_context(context)
@@ -576,6 +590,9 @@ def test_admin_create_service_principal(enter_password, principals_context):
 
         context.api_key = service_api_key_info["secret"]
         assert context.whoami()["type"] == "service"
+
+        # Test service repr
+        assert f"authenticated as service '{principal_uuid}'" in repr(context)
 
 
 def test_admin_api_key_any_principal_exceeds_scopes(enter_password, principals_context):
