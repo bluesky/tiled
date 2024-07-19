@@ -1,0 +1,21 @@
+authentication:
+  # The default is false. Set to true to enable any HTTP client that can
+  # connect to _read_. An API key is still required to write.
+  allow_anonymous_access: false
+  single_user_api_key: "secret"  # for dev
+trees:
+  - path: /
+    tree: catalog
+    args:
+      uri: "sqlite+aiosqlite:///:memory:"
+      # or, uri: "sqlite+aiosqlite:////catalog.db"
+      # or, "postgresql+asyncpg://..."
+      writable_storage: "tmp/"
+      init_if_not_exists: true
+      typesense_client:
+        api_key: "secret"
+        schemas:
+        nodes:
+          - host: "http://localhost"
+            port: 8108
+            protocol: "http"
