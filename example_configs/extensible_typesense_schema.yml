@@ -1,0 +1,7 @@
+fields:
+  - name: "weight"
+    type: "string"
+    source: "start.sample.weight"
+  - name: "sample_description"
+    type: "string"
+    source: "start.sample.description"

@@ -2,7 +2,7 @@ authentication:
   # The default is false. Set to true to enable any HTTP client that can
   # connect to _read_. An API key is still required to write.
   allow_anonymous_access: false
-  single_user_api_key: "secret"  # for dev
+  single_user_api_key: "secret" # for dev
 trees:
   - path: /
     tree: catalog
@@ -14,8 +14,32 @@ trees:
       init_if_not_exists: true
       typesense_client:
         api_key: "secret"
-        schemas:
         nodes:
           - host: "http://localhost"
             port: 8108
             protocol: "http"
+        # Either a predefined default schema from the Tiled system
+        # Or a Filename of another .yaml file that defines the schema
+        # Finally, the schema can be defined here as fields
+        # Each is idempotent to Typesense Collection Schema
+        # The source refers to the path in the metadata to extract the value
+        # https://typesense.org/docs/26.0/api/collections.html#schema-parameters
+        schemas:
+          - bluesky
+          - extensible_typesense_schema.yml
+          - fields:
+              - name: "name"
+                type: "string"
+                source: "*name"
+              - name: "description"
+                type: "string"
+                source: "start.detectors.description"
+              - name: "location"
+                type: "string"
+                source: "start.detectors.location"
+              - name: "edible"
+                type: "bool"
+                source: "start.sample.can_be_eaten"
+              - name: "number"
+                type: "int32"
+                source: "start.sample.number"
