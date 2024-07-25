@@ -1,8 +1,6 @@
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
-import dask.dataframe
-import pandas
 import pyarrow
 import pyarrow.feather as feather
 import pyarrow.fs
@@ -14,54 +12,6 @@ from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
 from .type_alliases import JSON
-
-
-class ReaderHandle:
-    """Class to provide handle to read the data via ArrowAdapter."""
-
-    def __init__(
-        self,
-        partitions: Union[dask.dataframe.DataFrame, pandas.DataFrame],
-    ) -> None:
-        """
-        Class to create a new instance of read_all function.
-        Parameters
-        ----------
-        partitions : the partitions
-        """
-        self._partitions = list(partitions)
-
-    def read(self) -> pyarrow.table:
-        """
-        The concatenated data from given set of partitions as pyarrow table.
-        Parameters
-        ----------
-        Returns
-        -------
-        Returns the concatenated pyarrow table.
-        """
-        print("Ever in adapters/table read????", len(self._partitions))
-        if any(p is None for p in self._partitions):
-            raise ValueError("Not all partitions have been stored.")
-
-        return pyarrow.concat_tables(
-            [partition.read_all() for partition in self._partitions]
-        )
-
-    def read_partition_with_batch(self, partition: int, batch: int) -> pyarrow.table:
-        """
-        Function to read a batch of data from a given parititon.
-        Parameters
-        ----------
-        partition : the index of the partition to read.
-        batch : the index of the batch to read.
-
-        Returns
-        -------
-        The pyarrow table corresponding to a given partition and batch.
-        """
-        df = self._partitions[partition]
-        return df.get_batch(batch)
 
 
 class ArrowAdapter:
@@ -255,7 +205,7 @@ class ArrowAdapter:
         )
 
     @property
-    def reader_handle(self) -> ReaderHandle:
+    def reader_handle(self) -> List[pyarrow.RecordBatchFileReader]:
         """
         Function to initialize and return the reader hanle.
         Returns
@@ -272,7 +222,7 @@ class ArrowAdapter:
                     # with pyarrow.ipc.open_stream(path) as reader:
                     partition = reader
             partitions.append(partition)
-        return ReaderHandle(partitions)
+        return partitions
 
     def write_partition(
         self,
@@ -290,10 +240,9 @@ class ArrowAdapter:
         -------
 
         """
-        if isinstance(data, list):
-            schema = data[0].schema
-        else:
-            schema = data.schema
+        if not isinstance(data, list):
+            data = list(data)
+        schema = data[0].schema
 
         uri = self._partition_paths[partition]
 
@@ -315,10 +264,9 @@ class ArrowAdapter:
         -------
 
         """
-        if isinstance(data, list):
-            schema = data[0].schema
-        else:
-            schema = data.schema
+        if not isinstance(data, list):
+            data = list(data)
+        schema = data[0].schema
 
         if self.structure().npartitions != 1:
             raise NotImplementedError
@@ -331,28 +279,32 @@ class ArrowAdapter:
 
     def read(self, *args: Any, **kwargs: Any) -> pyarrow.table:
         """
-        Function to read all the partitions of the data.
+        The concatenated data from given set of partitions as pyarrow table.
         Parameters
         ----------
-        args : any extra arguments to be unpacked into the function.
-        kwargs : any extra keyword arguments to be unpacked into the function.
-
         Returns
         -------
-        The whole content of the file as pyarrow table.
+        Returns the concatenated pyarrow table.
         """
-        return self.reader_handle.read(*args, **kwargs)
 
-    def read_partition(self, *args: Any, **kwargs: Any) -> pyarrow.table:
+        if any(p is None for p in self.reader_handle):
+            raise ValueError("Not all partitions have been stored.")
+
+        return pyarrow.concat_tables(
+            [partition.read_all() for partition in self.reader_handle]
+        )
+
+    def read_partition(self, partition: int, batch: int) -> pyarrow.table:
         """
         Function to read a batch of data from a given parititon.
         Parameters
         ----------
-        args : any extra arguments to be unpacked into the function.
-        kwargs : any extra keyword arguments to be unpacked into the function.
+        partition : the index of the partition to read.
+        batch : the index of the batch to read.
 
         Returns
         -------
-        The pyarrow table corresponding to given partition and batch.
+        The pyarrow table corresponding to a given partition and batch.
         """
-        return self.reader_handle.read_partition_with_batch(*args, **kwargs)
+        df = self.reader_handle[partition]
+        return df.get_batch(batch)
