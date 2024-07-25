@@ -40,7 +40,6 @@ class TableStructure:
 
     @classmethod
     def from_pandas(cls, df):
-        print("HEREEEEEE in table structure")
         import pyarrow
 
         schema_bytes = pyarrow.Table.from_pandas(df).schema.serialize()
@@ -50,7 +49,6 @@ class TableStructure:
 
     @classmethod
     def from_arrays(cls, arr, names):
-        print("HEREEEEEE in table structure arrowy")
         import pyarrow
 
         schema_bytes = pyarrow.Table.from_arrays(arr, names).schema.serialize()
@@ -60,7 +58,6 @@ class TableStructure:
 
     @classmethod
     def from_arrow_table(cls, tble) -> "TableStructure":
-        print("HEREEEEEE in table structure arrowy")
         schema_bytes = tble.schema.serialize()
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
