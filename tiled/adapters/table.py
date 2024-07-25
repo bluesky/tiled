@@ -3,7 +3,6 @@ from typing import Any, Iterator, List, Optional, Tuple, Union
 import dask.base
 import dask.dataframe
 import pandas
-import pyarrow
 
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
@@ -224,14 +223,6 @@ class TableAdapter:
                 ddf = dask.dataframe.concat(self._partitions, axis=0)
             return ddf.compute()
 
-        if isinstance(self._partitions[0], pyarrow.ipc.RecordBatchStreamReader):
-            return pyarrow.concat_tables(
-                [partition.read_all() for partition in self._partitions]
-            )
-        if isinstance(self._partitions[0], pyarrow.ipc.RecordBatchFileReader):
-            return pyarrow.concat_tables(
-                [partition.read_all() for partition in self._partitions]
-            )
         df = pandas.concat(self._partitions, axis=0)
         if fields is not None:
             df = df[fields]
@@ -241,7 +232,6 @@ class TableAdapter:
     def read_partition(
         self,
         partition: int,
-        batch: int,
         fields: Optional[str] = None,
     ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
@@ -262,13 +252,6 @@ class TableAdapter:
             df = df[fields]
         if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
-        # if isinstance(df, pyarrow.ipc.RecordBatchFileReader):
-        print("HERE In TABLE ADAPTER", df)
-        if isinstance(df, pyarrow.ipc.RecordBatchStreamReader):
-            batches = [b for b in df]
-            return batches[batch]
-        if isinstance(df, pyarrow.ipc.RecordBatchFileReader):
-            return df.get_batch(batch)
         return partition
 
 

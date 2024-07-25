@@ -12,10 +12,56 @@ from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
-from .dataframe import DataFrameAdapter
 from .protocols import AccessPolicy
-from .table import TableAdapter
 from .type_alliases import JSON
+
+
+class ReaderHandle:
+    """Class to provide handle to read the data via ArrowAdapter."""
+
+    def __init__(
+        self,
+        partitions: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+    ) -> None:
+        """
+        Class to create a new instance of read_all function.
+        Parameters
+        ----------
+        partitions : the partitions
+        """
+        self._partitions = list(partitions)
+
+    def read(self) -> pyarrow.table:
+        """
+        The concatenated data from given set of partitions as pyarrow table.
+        Parameters
+        ----------
+        Returns
+        -------
+        Returns the concatenated pyarrow table.
+        """
+        print("Ever in adapters/table read????", len(self._partitions))
+        if any(p is None for p in self._partitions):
+            raise ValueError("Not all partitions have been stored.")
+
+        return pyarrow.concat_tables(
+            [partition.read_all() for partition in self._partitions]
+        )
+
+    def read_partition_with_batch(self, partition: int, batch: int) -> pyarrow.table:
+        """
+        Function to read a batch of data from a given parititon.
+        Parameters
+        ----------
+        partition : the index of the partition to read.
+        batch : the index of the batch to read.
+
+        Returns
+        -------
+        The pyarrow table corresponding to a given partition and batch.
+        """
+        df = self._partitions[partition]
+        return df.get_batch(batch)
 
 
 class ArrowAdapter:
@@ -35,7 +81,7 @@ class ArrowAdapter:
 
         Parameters
         ----------
-        data_uris :
+        data_uris : list of uris where data sits.
         structure :
         metadata :
         specs :
@@ -65,7 +111,7 @@ class ArrowAdapter:
     @classmethod
     def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
         """
-
+        Class to initialize the list of assets for given uri.
         Parameters
         ----------
         data_uri :
@@ -73,7 +119,7 @@ class ArrowAdapter:
 
         Returns
         -------
-
+        The list of assets.
         """
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
@@ -97,58 +143,59 @@ class ArrowAdapter:
         """
         return self._structure
 
-    # def get(self, key: str) -> Union[ArrayAdapter, None]:
-    #    """
-    #
-    #    Parameters
-    #    ----------
-    #    key :
-    #
-    #    Returns
-    #    -------
-    #
-    #    """
-    #    if key not in self.structure().columns:
-    #        return None
-    #    return ArrayAdapter.from_array(self.read([key])[key].values)
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
+        """
 
-    # def generate_data_sources(
-    #     self,
-    #     mimetype: str,
-    #     dict_or_none: Callable[[TableStructure], Dict[str, str]],
-    #     item: Union[str, Path],
-    #     is_directory: bool,
-    # ) -> List[DataSource]:
-    #     """
-    #
-    #     Parameters
-    #     ----------
-    #     mimetype :
-    #     dict_or_none :
-    #     item :
-    #     is_directory :
-    #
-    #     Returns
-    #     -------
-    #
-    #     """
-    #     return [
-    #         DataSource(
-    #             structure_family=self.dataframe_adapter.structure_family,
-    #             mimetype=mimetype,
-    #             structure=dict_or_none(self.dataframe_adapter.structure()),
-    #             parameters={},
-    #             management=Management.external,
-    #             assets=[
-    #                 Asset(
-    #                     data_uri=ensure_uri(item),
-    #                     is_directory=is_directory,
-    #                     parameter="data_uris",  # <-- PLURAL!
-    #                     num=0,  # <-- denoting that the Adapter expects a list, and this is the first element
-    #                 )
-    #             ],
-    #         )
-    #     ]
+        Parameters
+        ----------
+        key :
+
+        Returns
+        -------
+
+        """
+        if key not in self.structure().columns:
+            return None
+        return ArrayAdapter.from_array(self.read([key])[key].values)
+
+    def generate_data_sources(
+        self,
+        mimetype: str,
+        dict_or_none: Callable[[TableStructure], Dict[str, str]],
+        item: Union[str, Path],
+        is_directory: bool,
+    ) -> List[DataSource]:
+        """
+
+        Parameters
+        ----------
+        mimetype :
+        dict_or_none :
+        item :
+        is_directory :
+
+        Returns
+        -------
+
+        """
+        return [
+            DataSource(
+                structure_family=self.structure_family,
+                mimetype=mimetype,
+                structure=dict_or_none(self.structure()),
+                parameters={},
+                management=Management.external,
+                assets=[
+                    Asset(
+                        data_uri=ensure_uri(item),
+                        is_directory=is_directory,
+                        parameter="data_uris",  # <-- PLURAL!
+                        num=0,  # <-- denoting that the Adapter expects a list, and this is the first element
+                    )
+                ],
+            )
+        ]
+
     #
     @classmethod
     def from_single_file(
@@ -181,220 +228,39 @@ class ArrowAdapter:
             access_policy=access_policy,
         )
 
-    # def __getitem__(self, key: str) -> ArrayAdapter:
-    #    """
-    #
-    #    Parameters
-    #    ----------
-    #    key :
-    #
-    #    Returns
-    #    -------
-    #
-    #    """
-    #    # Must compute to determine shape.
-    #    return ArrayAdapter.from_array(self.read([key])[key].values)
+    def __getitem__(self, key: str) -> ArrayAdapter:
+        """
 
-    # def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
-    #    """
-    #
-    #    Returns
-    #    -------
-    #
-    #    """
-    #    yield from (
-    #        (key, ArrayAdapter.from_array(self.read([key])[key].values))
-    #        for key in self._structure.columns
-    #    )
+        Parameters
+        ----------
+        key :
 
+        Returns
+        -------
 
-class ArrowAdapterStream(ArrowAdapter):
-    def __init__(
-        self,
-        data_uris: List[str],
-        structure: Optional[TableStructure] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
-    ) -> None:
-        super().__init__(
-            data_uris=data_uris,
-            structure=structure,
-            metadata=metadata,
-            specs=specs,
-            access_policy=access_policy,
+        """
+        # Must compute to determine shape.
+        return ArrayAdapter.from_array(self.read([key])[key].values)
+
+    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
+        """
+
+        Returns
+        -------
+
+        """
+        yield from (
+            (key, ArrayAdapter.from_array(self.read([key])[key].values))
+            for key in self._structure.columns
         )
 
     @property
-    def dataframe_adapter(self) -> TableAdapter:
+    def reader_handle(self) -> ReaderHandle:
         """
-
+        Function to initialize and return the reader hanle.
         Returns
         -------
-
-        """
-        partitions = []
-        for path in self._partition_paths:
-            if not Path(path).exists():
-                partition = None
-            else:
-                # partition = dask.dataframe.read_csv(path)
-                # with pyarrow.ipc.open_file(path) as reader:
-                with pyarrow.ipc.open_stream(path) as reader:
-                    partition = reader
-            partitions.append(partition)
-        return DataFrameAdapter(partitions, self._structure)
-
-    def append_partition(
-        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
-    ) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-        partition :
-
-        Returns
-        -------
-
-        """
-        uri = self._partition_paths[partition]
-        print("HELL0 URI In APPEND", uri)
-        # self.stream_writer.write_batch(data)
-        # self.stream_writer.close()
-        # stream_writer = pyarrow.ipc.new_stream(uri, data.schema)
-        # stream_writer.write_batch(data)
-
-        # with pyarrow.OSFile(str(uri), 'ab') as sink:
-        # with pyarrow.RecordBatchStreamWriter(uri, data.schema) as writer:
-        #    writer.write_batch(data)
-        #    writer.close()
-
-        pyarrow.fs.LocalFileSystem().open_append_stream(path=str(uri)).write(
-            data.serialize()
-        )
-
-    def write_partition(
-        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
-    ) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-        partition :
-
-        Returns
-        -------
-
-        """
-        if isinstance(data, list):
-            schema = data[0].schema
-        else:
-            schema = data.schema
-
-        uri = self._partition_paths[partition]
-        # if not hasattr(self, "stream_writer"):
-        #    self.stream_writer = pyarrow.ipc.new_stream(uri, schema)
-        # self.stream_writer.write_batch(data)
-
-        stream_writer = pyarrow.ipc.new_stream(uri, schema)
-        stream_writer.write_batch(data)
-        # stream_writer.close()
-
-        # with pyarrow.OSFile(str(uri), 'wb') as sink:
-        #    with pyarrow.RecordBatchStreamWriter(sink, data.schema) as writer:
-        #        writer.write_batch(data)
-        #        writer.close()
-
-    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-
-        Returns
-        -------
-
-        """
-        if isinstance(data, list):
-            schema = data[0].schema
-        else:
-            schema = data.schema
-
-        if self.structure().npartitions != 1:
-            raise NotImplementedError
-        uri = self._partition_paths[0]
-        # if not hasattr(self, "stream_writer"):
-        #    self.stream_writer = pyarrow.ipc.new_stream(uri, schema)
-        # self.stream_writer.write_batch(data)
-
-        stream_writer = pyarrow.ipc.new_stream(uri, schema)
-        stream_writer.write_batch(data)
-        # stream_writer.close()
-
-        # with pyarrow.OSFile(str(uri), 'wb') as sink:
-        #    with pyarrow.RecordBatchStreamWriter(sink, data.schema) as writer:
-        #        writer.write_batch(data)
-        #        writer.close()
-
-    def read(
-        self, *args: Any, **kwargs: Any
-    ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
-        """
-
-        Parameters
-        ----------
-        args :
-        kwargs :
-
-        Returns
-        -------
-
-        """
-        return self.dataframe_adapter.read(*args, **kwargs)
-
-    def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
-        """
-
-        Parameters
-        ----------
-        args :
-        kwargs :
-
-        Returns
-        -------
-
-        """
-        return self.dataframe_adapter.read_partition(*args, **kwargs)
-
-
-class ArrowAdapterRandomAccess(ArrowAdapter):
-    def __init__(
-        self,
-        data_uris: List[str],
-        structure: Optional[TableStructure] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
-    ) -> None:
-        super().__init__(
-            data_uris=data_uris,
-            structure=structure,
-            metadata=metadata,
-            specs=specs,
-            access_policy=access_policy,
-        )
-
-    @property
-    def dataframe_adapter(self) -> TableAdapter:
-        """
-
-        Returns
-        -------
-
+        The reader handle.
         """
         partitions = []
         for path in self._partition_paths:
@@ -406,29 +272,12 @@ class ArrowAdapterRandomAccess(ArrowAdapter):
                     # with pyarrow.ipc.open_stream(path) as reader:
                     partition = reader
             partitions.append(partition)
-        return DataFrameAdapter(partitions, self._structure)
-
-    def append_partition(
-        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
-    ) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-        partition :
-
-        Returns
-        -------
-
-        """
-        uri = self._partition_paths[partition]
-        print("HELL0 URI In APPEND", type(uri))
-        self.file_writer.write_batch(data)
-        # self.file_writer.close()
+        return ReaderHandle(partitions)
 
     def write_partition(
-        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
+        self,
+        data: Union[List[pyarrow.record_batch], pyarrow.record_batch],
+        partition: int,
     ) -> None:
         """
 
@@ -447,13 +296,15 @@ class ArrowAdapterRandomAccess(ArrowAdapter):
             schema = data.schema
 
         uri = self._partition_paths[partition]
-        if not hasattr(self, "stream_writer"):
-            self.file_writer = pyarrow.ipc.new_file(uri, schema)
 
-        self.file_writer.write_batch(data)
-        # self.file_writer.close()
+        with pyarrow.ipc.new_file(uri, schema) as file_writer:
+            for ibatch in data:
+                file_writer.write_batch(ibatch)
+            file_writer.close()
 
-    def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
+    def write(
+        self, data: Union[List[pyarrow.record_batch], pyarrow.record_batch]
+    ) -> None:
         """
 
         Parameters
@@ -472,39 +323,36 @@ class ArrowAdapterRandomAccess(ArrowAdapter):
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
-        if not hasattr(self, "file_writer"):
-            self.file_writer = pyarrow.ipc.new_file(uri, schema)
-        self.file_writer.write_batch(data)
-        # self.file_writer.close()
 
-    def read(
-        self, *args: Any, **kwargs: Any
-    ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
+        with pyarrow.ipc.new_file(uri, schema) as file_writer:
+            for ibatch in data:
+                file_writer.write_batch(ibatch)
+            file_writer.close()
+
+    def read(self, *args: Any, **kwargs: Any) -> pyarrow.table:
         """
-
+        Function to read all the partitions of the data.
         Parameters
         ----------
-        args :
-        kwargs :
+        args : any extra arguments to be unpacked into the function.
+        kwargs : any extra keyword arguments to be unpacked into the function.
 
         Returns
         -------
-
+        The whole content of the file as pyarrow table.
         """
-        self.file_writer.close()
-        return self.dataframe_adapter.read(*args, **kwargs)
+        return self.reader_handle.read(*args, **kwargs)
 
-    def read_partition(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
+    def read_partition(self, *args: Any, **kwargs: Any) -> pyarrow.table:
         """
-
+        Function to read a batch of data from a given parititon.
         Parameters
         ----------
-        args :
-        kwargs :
+        args : any extra arguments to be unpacked into the function.
+        kwargs : any extra keyword arguments to be unpacked into the function.
 
         Returns
         -------
-
+        The pyarrow table corresponding to given partition and batch.
         """
-        self.file_writer.close()
-        return self.dataframe_adapter.read_partition(*args, **kwargs)
+        return self.reader_handle.read_partition_with_batch(*args, **kwargs)
