@@ -7,6 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter`.
 - Support for `FullText` search on SQLite-backed catalogs
 
 ### Fixed
@@ -37,10 +38,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   avoiding `eval()` altogether is better practice for defense-in-depth against
   potential code injection attacks due to current or future bugs in Tiled or
   its upstream dependencies.
-
-### Added
-
-- Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter` .
 
 ## v0.1.0b3 (2024-06-04)
 

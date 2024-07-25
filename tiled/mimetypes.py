@@ -2,7 +2,7 @@ import copy
 import importlib
 
 from .serialization.table import XLSX_MIME_TYPE
-from .utils import OneShotCachedMap
+from .utils import APACHE_ARROW_FILE_MIME_TYPE, OneShotCachedMap
 
 # This maps MIME types (i.e. file formats) for appropriate Readers.
 # OneShotCachedMap is used to defer imports. We don't want to pay up front
@@ -46,6 +46,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "..adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter.from_directory,
+        APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
+            "..adapters.arrow", __name__
+        ).ArrowAdapter,
     }
 )
 
