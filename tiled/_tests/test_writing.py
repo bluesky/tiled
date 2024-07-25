@@ -30,7 +30,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
-from ..utils import patch_mimetypes
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
@@ -537,7 +537,7 @@ def test_write_with_specified_mimetype(tree):
         df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
         structure = TableStructure.from_pandas(df)
 
-        for mimetype in [PARQUET_MIMETYPE, "text/csv"]:
+        for mimetype in [PARQUET_MIMETYPE, "text/csv", APACHE_ARROW_FILE_MIME_TYPE]:
             x = client.new(
                 "table",
                 [

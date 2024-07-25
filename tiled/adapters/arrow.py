@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
+import pandas
 import pyarrow
 import pyarrow.feather as feather
 import pyarrow.fs
@@ -15,7 +16,7 @@ from .type_alliases import JSON
 
 
 class ArrowAdapter:
-    """ """
+    """ArrowAdapter Class"""
 
     structure_family = StructureFamily.table
 
@@ -207,7 +208,7 @@ class ArrowAdapter:
     @property
     def reader_handle(self) -> List[pyarrow.RecordBatchFileReader]:
         """
-        Function to initialize and return the reader hanle.
+        Function to initialize and return the reader handle.
         Returns
         -------
         The reader handle.
@@ -226,85 +227,100 @@ class ArrowAdapter:
 
     def write_partition(
         self,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch],
+        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
         partition: int,
     ) -> None:
         """
-
+        "Function to write the data into specific partition as arrow format."
         Parameters
         ----------
-        data :
-        partition :
-
+        data : data to write into arrow file. Can be a list of record batch, or pandas dataframe.
+        partition: integer index of partition to be read.
         Returns
         -------
-
         """
-        if not isinstance(data, list):
-            data = list(data)
-        schema = data[0].schema
+        if isinstance(data, pandas.DataFrame):
+            table = pyarrow.Table.from_pandas(data)
+            batches = table.to_batches()
+        else:
+            if not isinstance(data, list):
+                batches = [data]
+            else:
+                batches = data
+
+        schema = batches[0].schema
 
         uri = self._partition_paths[partition]
 
         with pyarrow.ipc.new_file(uri, schema) as file_writer:
-            for ibatch in data:
-                file_writer.write_batch(ibatch)
+            for batch in batches:
+                file_writer.write_batch(batch)
             file_writer.close()
 
     def write(
-        self, data: Union[List[pyarrow.record_batch], pyarrow.record_batch]
+        self,
+        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
     ) -> None:
         """
-
+        "Function to write the data as arrow format."
         Parameters
         ----------
-        data :
-
+        data : data to write into arrow file. Can be a list of record batch, or pandas dataframe.
         Returns
         -------
-
         """
-        if not isinstance(data, list):
-            data = list(data)
-        schema = data[0].schema
+        if isinstance(data, pandas.DataFrame):
+            table = pyarrow.Table.from_pandas(data)
+            batches = table.to_batches()
+        else:
+            if not isinstance(data, list):
+                batches = [data]
+            else:
+                batches = data
+
+        schema = batches[0].schema
 
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._partition_paths[0]
 
         with pyarrow.ipc.new_file(uri, schema) as file_writer:
-            for ibatch in data:
-                file_writer.write_batch(ibatch)
+            for batch in data:
+                file_writer.write_batch(batch)
             file_writer.close()
 
-    def read(self, *args: Any, **kwargs: Any) -> pyarrow.table:
+    def read(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
         ----------
         Returns
         -------
-        Returns the concatenated pyarrow table.
+        Returns the concatenated pyarrow table as pandas dataframe.
         """
-
         if any(p is None for p in self.reader_handle):
             raise ValueError("Not all partitions have been stored.")
 
-        return pyarrow.concat_tables(
+        data = pyarrow.concat_tables(
             [partition.read_all() for partition in self.reader_handle]
         )
+        return data.to_pandas()
 
-    def read_partition(self, partition: int, batch: int) -> pyarrow.table:
+    def read_partition(
+        self,
+        partition: int,
+        fields: Optional[str] = None,
+    ) -> pandas.DataFrame:
         """
-        Function to read a batch of data from a given parititon.
+        Function to read a batch of data from a given partition.
         Parameters
         ----------
         partition : the index of the partition to read.
-        batch : the index of the batch to read.
+        fields : optional fields parameter.
 
         Returns
         -------
-        The pyarrow table corresponding to a given partition and batch.
+        The pyarrow table corresponding to a given partition and batch as pandas dataframe.
         """
         df = self.reader_handle[partition]
-        return df.get_batch(batch)
+        return df.read_all().to_pandas()
