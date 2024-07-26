@@ -10,7 +10,7 @@ tree = MapAdapter(
     {
         "A": ArrayAdapter.from_array(numpy.ones((100, 100))),
         "B": ArrayAdapter.from_array(numpy.ones((100, 100, 100))),
-        "C": TableAdapter.from_pydict(
+        "C": TableAdapter.from_dict(
             {
                 "x": 1 * numpy.ones(100),
                 "y": 2 * numpy.ones(100),

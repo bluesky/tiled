@@ -58,7 +58,7 @@ class TableAdapter:
         )
 
     @classmethod
-    def from_pydict(
+    def from_dict(
         cls,
         *args: Any,
         metadata: Optional[JSON] = None,

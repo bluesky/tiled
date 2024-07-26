@@ -48,7 +48,7 @@ class TableStructure:
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(df.columns))
 
     @classmethod
-    def from_pydict(cls, d):
+    def from_dict(cls, d):
         import pyarrow
 
         schema_bytes = pyarrow.Table.from_pydict(d).schema.serialize()
