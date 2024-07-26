@@ -174,7 +174,6 @@ def test_write_dataframe_partitioned(tree):
         assert result.specs == specs
 
 
-# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 def test_write_dataframe_dict(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
