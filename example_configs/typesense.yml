@@ -25,23 +25,22 @@ trees:
         # The source refers to the path in the metadata to extract the value
         # https://typesense.org/docs/26.0/api/collections.html#schema-parameters
         schemas:
-          - extensible_typesense_schema.yml
-          - fields:
-              - name: "name"
-                type: "string"
-                facet: false
-                source: "*name"
-              - name: "description"
-                type: "string"
-                source: "start.detectors.description"
-              - name: "location"
-                type: "string"
-                source: "start.detectors.location"
-              - name: "edible"
-                type: "bool"
-                facet: true
-                source: "start.sample.can_be_eaten"
-              - name: "number"
-                type: "int32"
-                facet: false
-                source: "start.sample.number"
+          - "example_configs/extensible_typesense_schema.yml"
+          - name: "name"
+            type: "string"
+            facet: false
+            source: "*name"
+          - name: "description"
+            type: "string"
+            source: "start.detectors.description"
+          - name: "location"
+            type: "string"
+            source: "start.detectors.location"
+          - name: "edible"
+            type: "bool"
+            facet: true
+            source: "start.sample.can_be_eaten"
+          - name: "number"
+            type: "int32"
+            facet: false
+            source: "start.sample.number"

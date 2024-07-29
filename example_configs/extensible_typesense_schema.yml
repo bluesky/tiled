@@ -1,4 +1,4 @@
-fields:
+schemas:
   - name: "weight"
     type: "string"
     facet: true
@@ -6,3 +6,4 @@ fields:
   - name: "sample_description"
     type: "string"
     source: "start.sample.description"
+#  - "example_configs/extensible_typesense_schema2.yml"

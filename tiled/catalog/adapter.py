@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 import uuid
+import yaml
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict
@@ -1319,6 +1320,7 @@ def in_memory(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     typesense_client=None,
+    typesense_schema=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1331,6 +1333,7 @@ def in_memory(
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
         typesense_client=typesense_client,
+        typesense_schema=typesense_schema,
     )
 
 
@@ -1346,6 +1349,7 @@ def from_uri(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     typesense_client=None,
+    typesense_schema=None,
 ):
     uri = str(uri)
     if init_if_not_exists:
@@ -1387,7 +1391,8 @@ def from_uri(
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     if typesense_client:
         # Parse the extensible schema into a typesense client compatible format:
-        # ts_schema = build_ts_schema(typesense_client["schema"])
+        typesense_schema = build_ts_schema(typesense_client["schemas"])
+        print(typesense_schema)
         typesense_client = typesense.Client(
             {
                 "api_key": typesense_client["api_key"],
@@ -1477,27 +1482,27 @@ def specs_array_to_json(specs):
 
 
 def build_ts_schema(ts_schema):
+    schema_objects = []
     for item in ts_schema:
         if isinstance(item, str):
             try:
                 with open(item, 'r') as file:
-                    schema_list = file.read()
-                    item = eval(schema_list)
+                    schema_list = yaml.safe_load(file)
+                    if "schemas" in schema_list:
+                        schema_objects.extend(schema_list["schemas"])
+                    else:
+                        continue
             except FileNotFoundError:
                 # Handle file not found error
+                print(f"File {item} not found")
                 continue
             except SyntaxError:
                 # Handle invalid list syntax in file
+                print(f"Syntax error in file {item}")
                 continue
         elif isinstance(item, dict):
-            # Source is for tiled internal use only
-            if "source" in item:
-                del item["source"]
-            # Facet is for typesense use only
-            if "facet" not in item:
-                item["facet"] = False
-            return item
-    return None
+            schema_objects.append(item)
+    return schema_objects
 
 
 STRUCTURES = {
