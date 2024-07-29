@@ -1386,6 +1386,8 @@ def from_uri(
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     if typesense_client:
+        # Parse the extensible schema into a typesense client compatible format:
+        # ts_schema = build_ts_schema(typesense_client["schema"])
         typesense_client = typesense.Client(
             {
                 "api_key": typesense_client["api_key"],
@@ -1472,6 +1474,30 @@ def specs_array_to_json(specs):
     [{"name":"foo"},{"name":"bar"}]
     """
     return [{"name": spec} for spec in specs]
+
+
+def build_ts_schema(ts_schema):
+    for item in ts_schema:
+        if isinstance(item, str):
+            try:
+                with open(item, 'r') as file:
+                    schema_list = file.read()
+                    item = eval(schema_list)
+            except FileNotFoundError:
+                # Handle file not found error
+                continue
+            except SyntaxError:
+                # Handle invalid list syntax in file
+                continue
+        elif isinstance(item, dict):
+            # Source is for tiled internal use only
+            if "source" in item:
+                del item["source"]
+            # Facet is for typesense use only
+            if "facet" not in item:
+                item["facet"] = False
+            return item
+    return None
 
 
 STRUCTURES = {

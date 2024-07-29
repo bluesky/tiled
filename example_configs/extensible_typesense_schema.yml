@@ -1,6 +1,7 @@
 fields:
   - name: "weight"
     type: "string"
+    facet: true
     source: "start.sample.weight"
   - name: "sample_description"
     type: "string"
