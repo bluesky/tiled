@@ -1482,14 +1482,37 @@ def specs_array_to_json(specs):
 
 
 def build_ts_schema(ts_schema):
+    """Builds a valid typescript schema from either a schema defined in the config yaml
+    or from a series of successive yaml files containing the same schema.
+
+    Parameters
+    ----------
+    ts_schema : list
+        A raw ts_schema object containing either schema data or a string that points to a file.
+
+    Returns
+    -------
+    schema_objects : list
+        A list of schema objects that can be used to create a typesense collection or locate properties.
+
+    Examples
+    --------
+    >>> build_ts_schema([{"name":"thing", "type":"string", "source":"start.thing"},"additional_schema.yml"])
+    [
+        {"name":"thing", "type":"string", "source":"start.thing"},
+        {"name":"additional_thing-from-file", "type":"string", "source":"start.additional_thing"}
+    ]
+    """
     schema_objects = []
     for item in ts_schema:
         if isinstance(item, str):
             try:
-                with open(item, 'r') as file:
+                with open(item, "r") as file:
                     schema_list = yaml.safe_load(file)
                     if "schemas" in schema_list:
-                        schema_objects.extend(schema_list["schemas"])
+                        additional_schemas = schema_list["schemas"]
+                        additional_schema_objects = build_ts_schema(additional_schemas)
+                        schema_objects.extend(additional_schema_objects)
                     else:
                         continue
             except FileNotFoundError:
@@ -1502,6 +1525,10 @@ def build_ts_schema(ts_schema):
                 continue
         elif isinstance(item, dict):
             schema_objects.append(item)
+        elif callable(item):
+            result = item()
+            if isinstance(result, dict):
+                schema_objects.append(result)
     return schema_objects
 
 
