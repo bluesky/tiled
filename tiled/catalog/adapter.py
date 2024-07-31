@@ -1504,31 +1504,40 @@ def build_ts_schema(ts_schema):
     ]
     """
     schema_objects = []
-    for item in ts_schema:
-        if isinstance(item, str):
-            try:
-                with open(item, "r") as file:
-                    schema_list = yaml.safe_load(file)
-                    if "schemas" in schema_list:
-                        additional_schemas = schema_list["schemas"]
-                        additional_schema_objects = build_ts_schema(additional_schemas)
-                        schema_objects.extend(additional_schema_objects)
-                    else:
-                        continue
-            except FileNotFoundError:
-                # Handle file not found error
-                print(f"File {item} not found")
-                continue
-            except SyntaxError:
-                # Handle invalid list syntax in file
-                print(f"Syntax error in file {item}")
-                continue
-        elif isinstance(item, dict):
-            schema_objects.append(item)
-        elif callable(item):
-            result = item()
-            if isinstance(result, dict):
-                schema_objects.append(result)
+    # Add more control over iteration using stack var
+    stack = [iter(ts_schema)]
+    opened_files = set()  # Track opened files
+    while stack:
+        try:
+            item = next(stack[-1])
+            if isinstance(item, str):
+                if item in opened_files:
+                    continue  # Skip if file already opened
+                try:
+                    with open(item, "r") as file:
+                        opened_files.add(item)  # Add file name to opened files
+                        schema_list = yaml.safe_load(file)
+                        if "schemas" in schema_list:
+                            additional_schemas = schema_list["schemas"]
+                            stack.append(iter(additional_schemas))
+                        else:
+                            continue
+                except FileNotFoundError:
+                    # Handle file not found error
+                    print(f"File {item} not found")
+                    continue
+                except SyntaxError:
+                    # Handle invalid list syntax in file
+                    print(f"Syntax error in file {item}")
+                    continue
+            elif isinstance(item, dict):
+                schema_objects.append(item)
+            elif callable(item):
+                result = item()
+                if isinstance(result, dict):
+                    schema_objects.append(result)
+        except StopIteration:
+            stack.pop()
     return schema_objects
 
 
