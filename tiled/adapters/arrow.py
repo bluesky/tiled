@@ -42,9 +42,7 @@ class ArrowAdapter:
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         if structure is None:
-            # table = dask.dataframe.read_csv(self._partition_paths)
             table = feather.read_table(self._partition_paths)
-            # structure = TableStructure.from_dask_dataframe(table)
             structure = TableStructure.from_arrow_table(table)
         self._structure = structure
         self.specs = list(specs or [])
@@ -205,6 +203,7 @@ class ArrowAdapter:
             for key in self._structure.columns
         )
 
+
     @property
     def reader_handle(self) -> List[pyarrow.RecordBatchFileReader]:
         """
@@ -218,9 +217,7 @@ class ArrowAdapter:
             if not Path(path).exists():
                 partition = None
             else:
-                # partition = dask.dataframe.read_csv(path)
                 with pyarrow.ipc.open_file(path) as reader:
-                    # with pyarrow.ipc.open_stream(path) as reader:
                     partition = reader
             partitions.append(partition)
         return partitions
