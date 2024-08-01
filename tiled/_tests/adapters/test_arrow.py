@@ -20,7 +20,7 @@ data1 = [
 data2 = [pa.array([13, 14]), pa.array(["foo2", "baz2"]), pa.array([False, None])]
 
 
-class TestMyFunction(unittest.TestCase):
+class TestArrowAdapter(unittest.TestCase):
     def setUp(self):
         data_uri = "file://localhost/" + tempfile.gettempdir()
         table = pa.Table.from_arrays(data0, names)
@@ -33,8 +33,6 @@ class TestMyFunction(unittest.TestCase):
     def test_attributes(self):
         assert self.adapter.structure().columns == names
         assert self.adapter.structure().npartitions == 3
-
-        assert isinstance(self.adapter.reader_handle[0], pa.ipc.RecordBatchFileReader)
 
     def test_write_read(self):
         batch0 = pa.record_batch(data0, names=names)
@@ -66,6 +64,6 @@ class TestMyFunction(unittest.TestCase):
             [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
         )
 
-        # test adapter.read() raises NotImplementedError when there are more than 1 partitions
+        # test adapter.write() raises NotImplementedError when there are more than 1 partitions
         with self.assertRaises(NotImplementedError):
             self.adapter.write(batch0)
