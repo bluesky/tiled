@@ -5,6 +5,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter`.
+
 ### Fixed
 - A bug in `Context.__getstate__` caused picking to fail if applied twice.
 
@@ -63,7 +67,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ## v0.1.0b1 (2024-05-25)
 
 ### Added
-
 - Support for `FullText` search on SQLite-backed catalogs
 
 ### Fixed
