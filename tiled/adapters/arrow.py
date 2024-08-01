@@ -203,7 +203,6 @@ class ArrowAdapter:
             for key in self._structure.columns
         )
 
-
     @property
     def reader_handle(self) -> List[pyarrow.RecordBatchFileReader]:
         """
