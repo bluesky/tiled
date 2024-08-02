@@ -25,7 +25,7 @@ trees:
         # The source refers to the path in the metadata to extract the value
         # https://typesense.org/docs/26.0/api/collections.html#schema-parameters
         schemas:
-          - "example_configs/extensible_typesense_schema.yml"
+          - "example_configs/typesense_schemas/extensible_typesense_schema.yml"
           - name: "name"
             type: "string"
             facet: false

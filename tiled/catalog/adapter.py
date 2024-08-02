@@ -1320,7 +1320,6 @@ def in_memory(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     typesense_client=None,
-    typesense_schema=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1333,7 +1332,6 @@ def in_memory(
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
         typesense_client=typesense_client,
-        typesense_schema=typesense_schema,
     )
 
 
@@ -1349,7 +1347,6 @@ def from_uri(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     typesense_client=None,
-    typesense_schema=None,
 ):
     uri = str(uri)
     if init_if_not_exists:
@@ -1392,13 +1389,15 @@ def from_uri(
     if typesense_client:
         # Parse the extensible schema into a typesense client compatible format:
         typesense_schema = build_ts_schema(typesense_client["schemas"])
-        print(typesense_schema)
-        typesense_client = typesense.Client(
-            {
-                "api_key": typesense_client["api_key"],
-                "nodes": typesense_client["nodes"],
-            }
-        )
+        typesense_client = {
+            "client": typesense.Client(
+                {
+                    "api_key": typesense_client["api_key"],
+                    "nodes": typesense_client["nodes"],
+                }
+            ),
+            "schema": typesense_schema,
+        }
     return CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
         RootNode(metadata, specs, access_policy),
