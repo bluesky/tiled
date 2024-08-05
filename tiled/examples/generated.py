@@ -43,9 +43,21 @@ awkward_arr = awkward.Array(
 print("Done generating example data.", file=sys.stderr)
 
 mapping = {
+    "nested": MapAdapter(
+        {"small_image": ArrayAdapter.from_array(data["small_image"]),
+         "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
+         "inner": MapAdapter(
+        {"small_image": ArrayAdapter.from_array(data["small_image"]),
+         "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
+    },
+        metadata = {"animal": "cat", "color": "green"},
+    ),
+    },
+        metadata = {"animal": "cat", "color": "green"},
+    ),
     "big_image": ArrayAdapter.from_array(data["big_image"]),
     "small_image": ArrayAdapter.from_array(data["small_image"]),
-    "medium_image": ArrayAdapter.from_array(data["medium_image"]),
+    "medium_image": ArrayAdapter.from_array(data["medium_image"], chunks=((250, )*4, (100, )*10)),
     "sparse_image": COOAdapter.from_coo(sparse.COO(sparse_arr)),
     "awkward_array": AwkwardAdapter.from_array(awkward_arr),
     "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
