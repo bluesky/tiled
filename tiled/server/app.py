@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache, partial
 from pathlib import Path
 from typing import List
+import re
 
 import anyio
 import packaging.version
@@ -60,6 +61,7 @@ from .utils import (
     get_root_url,
     record_timing,
 )
+from .zarr import router as zarr_router
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -67,6 +69,7 @@ SENSITIVE_COOKIES = {
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
+ZARR_PREFIX = '/zarr/v2'
 
 MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
 
@@ -350,6 +353,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
 
     app.include_router(router, prefix="/api/v1")
+    app.include_router(zarr_router, prefix=ZARR_PREFIX)
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
@@ -886,6 +890,28 @@ Back up the database, and then run:
         response = await call_next(request)
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         current_principal.set(request.state.principal)
+        return response
+
+    @app.middleware("http")
+    async def resolve_zarr_uris(request: Request, call_next):
+        response = await call_next(request)
+
+        # If a zarr block is requested, e.g. http://zarr.com/array/0.1.2.3, replace the block spec with a properly
+        # formatted query parameter: http://zarr.com/array?block=0,1,2,3 (with ',' encoded)
+        if request.url.path.startswith(ZARR_PREFIX) and response.status_code == 404:
+            # Extract the last bit of the path
+            zarr_path = request.url.path.removeprefix(ZARR_PREFIX).strip('/').split('/')
+            zarr_block = zarr_path[-1] if len(zarr_path) > 0 else ''
+            if re.compile(r'^(?:\d+\.)*\d+$').fullmatch(zarr_block):
+                # Create a query string if the last part is in the zarr block forma, e.g. `m.n.p. ... .q`
+                request.scope['query_string'] = f"block={zarr_block.replace('.', '%2C')}".encode()
+                request.scope['path'] = ZARR_PREFIX + '/' + '/'.join(zarr_path[:-1])
+                response = await call_next(request)
+
+                # TODO: Try compiling a single RE for matching and replacement -- possible speedup?
+                print("In middleware resolve_zarr_uris -- replaced query params")
+
+        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
 
     app.add_middleware(
