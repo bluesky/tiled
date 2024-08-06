@@ -11,6 +11,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Changed
 - Make `tiled.client` accept a Python dictionary when fed to `write_dataframe()`.
 - The `generated_minimal` example no longer requires pandas and instead uses a Python dict.
+- Remove unused pytest-warning ignores from `test_writing.py`.
 
 ### Fixed
 - A bug in `Context.__getstate__` caused picking to fail if applied twice.
