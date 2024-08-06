@@ -460,6 +460,7 @@ async def array_full(
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
+
     try:
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read, slice)
@@ -1670,6 +1671,7 @@ async def get_asset_manifest(
     for root, _directories, files in os.walk(path):
         manifest.extend(Path(root, file) for file in files)
     return json_or_msgpack(request, {"manifest": manifest})
+
 
 async def validate_metadata(
     metadata: dict,
