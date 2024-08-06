@@ -909,7 +909,6 @@ Back up the database, and then run:
                 response = await call_next(request)
 
                 # TODO: Try compiling a single RE for matching and replacement -- possible speedup?
-                print("In middleware resolve_zarr_uris -- replaced query params")
 
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response

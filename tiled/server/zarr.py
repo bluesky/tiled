@@ -65,23 +65,28 @@ from .links import links_for_node
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
-ZARR_BLOCK_SIZE = 10
+ZARR_BLOCK_SIZE = 10000
+ZARR_BYTE_ORDER = 'C'
+ZARR_CODEC_SPEC = {'blocksize': 0,
+                'clevel': 5,
+                'cname': 'lz4',
+                'id': 'blosc',
+                'shuffle': 1}
+
+import numcodecs
+zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
 
 router = APIRouter()
 
-def convert_chunks_for_zarr(chunks: Tuple[Tuple[int]]):
-    """Convert full chunk specification into zarr format
+def convert_chunks_for_zarr(tiled_chunks: Tuple[Tuple[int]]):
+    """Convert full tiled/dask chunk specification into zarr format
     
-    Zarr only accepts chunks of constant size; this function finds a unique representation of (possibly variable-
-    sized chunks) internal to Tiled ArrayAdapter in terms of zarr blocks.
+    Zarr only accepts chunks of constant size along each dimension; this function finds a unique representation of
+    (possibly variable-sized chunks) internal to Tiled ArrayAdapter in terms of zarr blocks.
     """
-    # return [min(ZARR_BLOCK_SIZE, i[0]) for i in chunks]
-    return [ZARR_BLOCK_SIZE for _ in chunks]
+    return [min(ZARR_BLOCK_SIZE, max(c)) for c in tiled_chunks]
 
-def slice_for_zarr_block(chunks: Tuple[Tuple[int]], zblock: Tuple[int]):
-    ...
-
-# @router.get("/.zgroup", name="Root .zgroup metadata")
+@router.get("{path:path}.zgroup", name="Root .zgroup metadata")
 @router.get("/{path:path}/.zgroup", name="Zarr .zgroup metadata")
 async def get_zarr_group_metadata(
     request: Request,
@@ -110,15 +115,11 @@ async def get_zarr_array_metadata(
         metadata = entry.metadata()
         structure = entry.structure()
         zarray_spec = {'chunks': convert_chunks_for_zarr(structure.chunks),
-            'compressor': {'blocksize': 0,
-                'clevel': 5,
-                'cname': 'lz4',
-                'id': 'blosc',
-                'shuffle': 1},
+            'compressor': ZARR_CODEC_SPEC,
             'dtype': structure.data_type.to_numpy_str(),
             'fill_value': 0,
             'filters': None,
-            'order': 'C',
+            'order': ZARR_BYTE_ORDER,
             'shape': list(structure.shape),
             'zarr_format': 2}
     except Exception as err:
@@ -138,7 +139,7 @@ async def get_zarr_array(
     ),
 ):
     if entry.structure_family in {StructureFamily.table, StructureFamily.container}:
-        # List the contents of a simulated zarr directory (excluding .zarray and .zgroup files)
+        # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
         url = str(request.url).split('?')[0].rstrip('/')    # Remove query params and trailing slash
         body = json.dumps([url + '/' + key for key in entry.keys()])
 
@@ -147,34 +148,42 @@ async def get_zarr_array(
     elif entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
         if block is not None:
             import zarr
-            print(f"Here, {block=}")
+            import numpy as np
 
-            block = [int(i) for i in block.split(',')]
-            chunks = entry.structure().chunks
+            block_indx = [int(i) for i in block.split(',')]
+            zarr_chunks = convert_chunks_for_zarr(entry.structure().chunks)
+            block_slice = tuple([slice(i*c, (i+1)*c) for c, i in zip(zarr_chunks, block_indx)])
+            padding_size = [max(0, sl.stop-sh) for sh, sl in zip(entry.structure().shape, block_slice)]
 
-            if block == ():
-                # Handle special case of numpy scalar
+            # if block == ():
+            #     # Handle special case of numpy scalar
+            #     with record_timing(request.state.metrics, "read"):
+            #         array = await ensure_awaitable(entry.read)
+            # else:
+
+            # breakpoint()
+            try:
                 with record_timing(request.state.metrics, "read"):
-                    array = await ensure_awaitable(entry.read)
-            else:
-                try:
-                    with record_timing(request.state.metrics, "read"):
-                        # array = await ensure_awaitable(entry.read_block, block)
-                        array = await ensure_awaitable(entry.read)
-                        x, y = block
-                        array = array[x*ZARR_BLOCK_SIZE:(x+1)*ZARR_BLOCK_SIZE, y*ZARR_BLOCK_SIZE:(y+1)*ZARR_BLOCK_SIZE]
-                except IndexError:
-                    raise HTTPException(
-                        status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
-                    )
-            
-            # TODO: This must be cached!
-            zarray = zarr.array(array)
+                    array = await ensure_awaitable(entry.read, slice=block_slice)
+                    if sum(padding_size) > 0:
+                        array = np.pad(array, [(0, p) for p in padding_size], mode='constant')
+            except IndexError:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+                )
 
-            return Response(zarray.store['0.0'], status_code=200)
+            # buf = zarr.array(array).store['0.0']     # Define a zarr array as a single block
+
+            # breakpoint()
+
+            array = array.astype(array.dtype, order=ZARR_BYTE_ORDER, copy=False)     # ensure array is contiguous
+            buf = zarr_codec.encode(array)
+            if not isinstance(buf, bytes):
+                buf = array.tobytes(order="A")
+
+            return Response(buf, status_code=200)
 
         else:
             # TODO:
             # Entire array (root uri) is requested -- never happens, but need to decide what to return here
             return Response(json.dumps({}), status_code=200)
-
