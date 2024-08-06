@@ -890,8 +890,9 @@ Back up the database, and then run:
     async def resolve_zarr_uris(request: Request, call_next):
         response = await call_next(request)
 
-        # If a zarr block is requested, e.g. http://zarr.com/array/0.1.2.3, replace the block spec with a properly
-        # formatted query parameter: http://zarr.com/array?block=0,1,2,3 (with ',' encoded)
+        # If a zarr block is requested, e.g. http://localhost:8000/zarr/v2/array/0.1.2.3, replace the block spec
+        # with a properly formatted query parameter: http://localhost:8000/zarr/v2/array?block=0,1,2,3 (with ','
+        # safely encoded)
         if request.url.path.startswith(ZARR_PREFIX) and response.status_code == 404:
             # Extract the last bit of the path
             zarr_path = request.url.path.removeprefix(ZARR_PREFIX).strip('/').split('/')
