@@ -1,0 +1,8 @@
+schemas:
+  - name: "weight"
+    type: "string"
+    facet: true
+    source: "start.sample.weight"
+  - name: "sample_description"
+    type: "string"
+    source: "start.sample.description"
