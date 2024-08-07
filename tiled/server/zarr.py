@@ -102,30 +102,48 @@ async def get_zarr_group_metadata(
 async def get_zarr_array_metadata(
     request: Request,
     path: str,
-    entry=SecureEntry(scopes=["read:data", "read:metadata"]),
+    column: str = '',
+    entry=SecureEntry(scopes=["read:data", "read:metadata"],
+                      structure_families={StructureFamily.array, StructureFamily.sparse, StructureFamily.table}),
 ):
-    if entry.structure_family not in {StructureFamily.array, StructureFamily.sparse}:
+    if entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
+        try:
+            metadata = entry.metadata()
+            structure = entry.structure()
+            zarray_spec = {'chunks': convert_chunks_for_zarr(structure.chunks),
+                'compressor': ZARR_CODEC_SPEC,
+                'dtype': structure.data_type.to_numpy_str(),
+                'fill_value': 0,
+                'filters': None,
+                'order': ZARR_BYTE_ORDER,
+                'shape': list(structure.shape),
+                'zarr_format': 2}
+        except Exception as err:
+            print(f"Can not create .zarray metadata, {err}")
+            raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=err.args[0])
+    
+    # elif entry.structure_family == StructureFamily.table:
+    #     try:
+    #         zarray_spec = {}
+    #         metadata = entry.metadata()
+    #         structure = entry.structure()
+    #         # zarray_spec = {'chunks': [100, 1],   #convert_chunks_for_zarr(structure.chunks),
+    #         #     'compressor': ZARR_CODEC_SPEC,
+    #         #     'dtype': entry.structure().meta.dtypes[column].str,
+    #         #     'fill_value': 0,
+    #         #     'filters': None,
+    #         #     'order': ZARR_BYTE_ORDER,
+    #         #     # 'shape': list(structure.shape),
+    #         #     'zarr_format': 2}
+    #     except Exception as err:
+    #         print(f"Can not create .zarray metadata, {err}")
+    #         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=err.args[0])
+
+    else:
         # This is normal behaviour; zarr will try to open .zarray and, if 404 is received, it will move on assuming
         # that the requested resource is a group (`.../path/.zgroup` would be requested next).
-        # TODO: Perhaps, checking this within SecureEntry is sufficient? What happens to tables?
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Requested resource does not have .zarray")
-
-    try:
-        zarray_spec = {}
-        metadata = entry.metadata()
-        structure = entry.structure()
-        zarray_spec = {'chunks': convert_chunks_for_zarr(structure.chunks),
-            'compressor': ZARR_CODEC_SPEC,
-            'dtype': structure.data_type.to_numpy_str(),
-            'fill_value': 0,
-            'filters': None,
-            'order': ZARR_BYTE_ORDER,
-            'shape': list(structure.shape),
-            'zarr_format': 2}
-    except Exception as err:
-        print(f"Can not create .zarray metadata, {err}")
-        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=err.args[0])
-
+    
     return Response(json.dumps(zarray_spec), status_code=200)
 
 
@@ -134,14 +152,24 @@ async def get_zarr_array(
     request: Request,
     block: str | None = None,
     entry=SecureEntry(scopes=["read:data"],
-        # structure_families={StructureFamily.array, StructureFamily.sparse},
-        # structure_families={StructureFamily.table, StructureFamily.container},
+        structure_families={StructureFamily.array, StructureFamily.sparse, StructureFamily.table, StructureFamily.container},
     ),
 ):
-    if entry.structure_family in {StructureFamily.table, StructureFamily.container}:
+    url = str(request.url).split('?')[0].rstrip('/')    # Remove query params and the trailing slash
+
+    # breakpoint()
+    if entry.structure_family == StructureFamily.container:
         # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
-        url = str(request.url).split('?')[0].rstrip('/')    # Remove query params and trailing slash
         body = json.dumps([url + '/' + key for key in entry.keys()])
+
+        return Response(body, status_code=200, media_type='application/json')
+    
+    elif entry.structure_family == StructureFamily.table:
+        url = str(request.url).split('?')[0].rstrip('/')    # Remove query params and the trailing slash
+        # breakpoint()
+        body = json.dumps([url + '/' + key for key in entry.structure().columns])
+
+        # entry.structure().meta.dtypes
 
         return Response(body, status_code=200, media_type='application/json')
 
