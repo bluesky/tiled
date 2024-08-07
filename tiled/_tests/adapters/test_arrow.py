@@ -1,7 +1,8 @@
 import tempfile
-import unittest
 
 import pyarrow as pa
+import pytest
+from pytest_mock import MockFixture
 
 from tiled.adapters.arrow import ArrowAdapter
 from tiled.structures.table import TableStructure
@@ -19,51 +20,51 @@ data1 = [
 ]
 data2 = [pa.array([13, 14]), pa.array(["foo2", "baz2"]), pa.array([False, None])]
 
+batch0 = pa.record_batch(data0, names=names)
+batch1 = pa.record_batch(data1, names=names)
+batch2 = pa.record_batch(data2, names=names)
+data_uri = "file://localhost/" + tempfile.gettempdir()
 
-class TestArrowAdapter(unittest.TestCase):
-    def setUp(self):
-        data_uri = "file://localhost/" + tempfile.gettempdir()
-        table = pa.Table.from_arrays(data0, names)
-        structure = TableStructure.from_arrow_table(table, npartitions=3)
-        assets = ArrowAdapter.init_storage(data_uri, structure=structure)
-        self.adapter = ArrowAdapter(
-            [asset.data_uri for asset in assets], structure=structure
-        )
 
-    def test_attributes(self):
-        assert self.adapter.structure().columns == names
-        assert self.adapter.structure().npartitions == 3
+@pytest.fixture
+def adapter() -> ArrowAdapter:
+    table = pa.Table.from_arrays(data0, names)
+    structure = TableStructure.from_arrow_table(table, npartitions=3)
+    assets = ArrowAdapter.init_storage(data_uri, structure=structure)
+    return ArrowAdapter([asset.data_uri for asset in assets], structure=structure)
 
-    def test_write_read(self):
-        batch0 = pa.record_batch(data0, names=names)
-        batch1 = pa.record_batch(data1, names=names)
-        batch2 = pa.record_batch(data2, names=names)
 
-        # test writing to a partition and reading it
-        self.adapter.write_partition(batch0, 0)
-        assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(
-            self.adapter.read_partition(0)
-        )
+def test_attributes(adapter):
+    assert adapter.structure().columns == names
+    assert adapter.structure().npartitions == 3
 
-        self.adapter.write_partition([batch0, batch1], 1)
-        assert pa.Table.from_batches([batch0, batch1]) == pa.Table.from_pandas(
-            self.adapter.read_partition(1)
-        )
 
-        self.adapter.write_partition([batch0, batch1, batch2], 2)
-        assert pa.Table.from_batches([batch0, batch1, batch2]) == pa.Table.from_pandas(
-            self.adapter.read_partition(2)
-        )
+def test_write_read(adapter, mocker: MockFixture):
+    # test writing to a partition and reading it
+    adapter.write_partition(batch0, 0)
+    assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(
+        adapter.read_partition(0)
+    )
 
-        # test write to all partitions and read all
-        self.adapter.write_partition([batch0, batch1, batch2], 0)
-        self.adapter.write_partition([batch2, batch0, batch1], 1)
-        self.adapter.write_partition([batch1, batch2, batch0], 2)
+    adapter.write_partition([batch0, batch1], 1)
+    assert pa.Table.from_batches([batch0, batch1]) == pa.Table.from_pandas(
+        adapter.read_partition(1)
+    )
 
-        assert pa.Table.from_pandas(self.adapter.read()) == pa.Table.from_batches(
-            [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
-        )
+    adapter.write_partition([batch0, batch1, batch2], 2)
+    assert pa.Table.from_batches([batch0, batch1, batch2]) == pa.Table.from_pandas(
+        adapter.read_partition(2)
+    )
 
-        # test adapter.write() raises NotImplementedError when there are more than 1 partitions
-        with self.assertRaises(NotImplementedError):
-            self.adapter.write(batch0)
+    # test write to all partitions and read all
+    adapter.write_partition([batch0, batch1, batch2], 0)
+    adapter.write_partition([batch2, batch0, batch1], 1)
+    adapter.write_partition([batch1, batch2, batch0], 2)
+
+    assert pa.Table.from_pandas(adapter.read()) == pa.Table.from_batches(
+        [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
+    )
+
+    # test adapter.write() raises NotImplementedError when there are more than 1 partitions
+    with pytest.raises(NotImplementedError):
+        adapter.write(batch0)

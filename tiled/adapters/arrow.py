@@ -203,23 +203,35 @@ class ArrowAdapter:
             for key in self._structure.columns
         )
 
+    def reader_handle_partiton(self, partition: int) -> pyarrow.RecordBatchFileReader:
+        """
+        Function to initialize and return the reader handle.
+        Parameters
+        ----------
+        partition : the integer number corresponding to a specific partition.
+        Returns
+        -------
+        The reader handle for specific partition.
+        """
+        if not Path(self._partition_paths[partition]).exists():
+            raise ValueError(f"partition {partition} has not been stored yet")
+        else:
+            return pyarrow.ipc.open_file(self._partition_paths[partition])
+
     @property
-    def reader_handle(self) -> List[pyarrow.RecordBatchFileReader]:
+    def reader_handle_all(self) -> Iterator[pyarrow.RecordBatchFileReader]:
         """
         Function to initialize and return the reader handle.
         Returns
         -------
         The reader handle.
         """
-        partitions = []
         for path in self._partition_paths:
             if not Path(path).exists():
-                partition = None
+                raise ValueError(f"path {path} has not been stored yet")
             else:
                 with pyarrow.ipc.open_file(path) as reader:
-                    partition = reader
-            partitions.append(partition)
-        return partitions
+                    yield reader
 
     def write_partition(
         self,
@@ -251,7 +263,6 @@ class ArrowAdapter:
         with pyarrow.ipc.new_file(uri, schema) as file_writer:
             for batch in batches:
                 file_writer.write_batch(batch)
-            file_writer.close()
 
     def write(
         self,
@@ -283,7 +294,6 @@ class ArrowAdapter:
         with pyarrow.ipc.new_file(uri, schema) as file_writer:
             for batch in data:
                 file_writer.write_batch(batch)
-            file_writer.close()
 
     def read(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
         """
@@ -294,11 +304,8 @@ class ArrowAdapter:
         -------
         Returns the concatenated pyarrow table as pandas dataframe.
         """
-        if any(p is None for p in self.reader_handle):
-            raise ValueError("Not all partitions have been stored.")
-
         data = pyarrow.concat_tables(
-            [partition.read_all() for partition in self.reader_handle]
+            [partition.read_all() for partition in self.reader_handle_all]
         )
         return data.to_pandas()
 
@@ -318,5 +325,5 @@ class ArrowAdapter:
         -------
         The pyarrow table corresponding to a given partition and batch as pandas dataframe.
         """
-        df = self.reader_handle[partition]
+        df = self.reader_handle_partiton(partition)
         return df.read_all().to_pandas()
