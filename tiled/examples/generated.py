@@ -55,6 +55,45 @@ mapping = {
     },
         metadata = {"animal": "cat", "color": "green"},
     ),
+    "tables": MapAdapter(
+        {
+            "short_table": DataFrameAdapter.from_pandas(
+                pandas.DataFrame(
+                    {
+                        "A": data["short_column"],
+                        "B": 2 * data["short_column"],
+                        "C": 3 * data["short_column"],
+                    },
+                    index=pandas.Index(numpy.arange(len(data["short_column"])), name="index"),
+                ),
+                npartitions=1,
+                metadata={"animal": "dog", "color": "red"},
+            ),
+            "long_table": DataFrameAdapter.from_pandas(
+                pandas.DataFrame(
+                    {
+                        "A": data["long_column"],
+                        "B": 2 * data["long_column"],
+                        "C": 3 * data["long_column"],
+                    },
+                    index=pandas.Index(numpy.arange(len(data["long_column"])), name="index"),
+                ),
+                npartitions=5,
+                metadata={"animal": "dog", "color": "green"},
+            ),
+            "wide_table": DataFrameAdapter.from_pandas(
+                pandas.DataFrame(
+                    {
+                        letter: i * data["tiny_column"]
+                        for i, letter in enumerate(string.ascii_uppercase, start=1)
+                    },
+                    index=pandas.Index(numpy.arange(len(data["tiny_column"])), name="index"),
+                ),
+                npartitions=1,
+                metadata={"animal": "dog", "color": "red"},
+            ),
+        }
+    ), 
     "big_image": ArrayAdapter.from_array(data["big_image"]),
     "small_image": ArrayAdapter.from_array(data["small_image"]),
     "medium_image": ArrayAdapter.from_array(data["medium_image"], chunks=((250, )*4, (100, )*10)),
@@ -63,41 +102,6 @@ mapping = {
     "tiny_image": ArrayAdapter.from_array(data["tiny_image"]),
     "tiny_cube": ArrayAdapter.from_array(data["tiny_cube"]),
     "tiny_hypercube": ArrayAdapter.from_array(data["tiny_hypercube"]),
-    "short_table": DataFrameAdapter.from_pandas(
-        pandas.DataFrame(
-            {
-                "A": data["short_column"],
-                "B": 2 * data["short_column"],
-                "C": 3 * data["short_column"],
-            },
-            index=pandas.Index(numpy.arange(len(data["short_column"])), name="index"),
-        ),
-        npartitions=1,
-        metadata={"animal": "dog", "color": "red"},
-    ),
-    "long_table": DataFrameAdapter.from_pandas(
-        pandas.DataFrame(
-            {
-                "A": data["long_column"],
-                "B": 2 * data["long_column"],
-                "C": 3 * data["long_column"],
-            },
-            index=pandas.Index(numpy.arange(len(data["long_column"])), name="index"),
-        ),
-        npartitions=5,
-        metadata={"animal": "dog", "color": "green"},
-    ),
-    "wide_table": DataFrameAdapter.from_pandas(
-        pandas.DataFrame(
-            {
-                letter: i * data["tiny_column"]
-                for i, letter in enumerate(string.ascii_uppercase, start=1)
-            },
-            index=pandas.Index(numpy.arange(len(data["tiny_column"])), name="index"),
-        ),
-        npartitions=1,
-        metadata={"animal": "dog", "color": "red"},
-    ),
     "structured_data": MapAdapter(
         {
             "pets": ArrayAdapter.from_array(
