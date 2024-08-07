@@ -47,6 +47,15 @@ class TableStructure:
         data_uri = B64_ENCODED_PREFIX + schema_b64
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(df.columns))
 
+    @classmethod
+    def from_dict(cls, d):
+        import pyarrow
+
+        schema_bytes = pyarrow.Table.from_pydict(d).schema.serialize()
+        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
+        data_uri = B64_ENCODED_PREFIX + schema_b64
+        return cls(arrow_schema=data_uri, npartitions=1, columns=list(d.keys()))
+
     @property
     def arrow_schema_decoded(self):
         import pyarrow

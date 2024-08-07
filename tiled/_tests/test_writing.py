@@ -121,7 +121,6 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
-# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 def test_write_dataframe_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -147,7 +146,6 @@ def test_write_dataframe_full(tree):
         assert result.specs == specs
 
 
-# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 def test_write_dataframe_partitioned(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -164,6 +162,31 @@ def test_write_dataframe_partitioned(tree):
             client.write_dataframe(ddf, metadata=metadata, specs=specs)
         # one request for metadata, multiple for data
         assert len(history.requests) == 1 + 3
+
+        results = client.search(Key("scan_id") == 1)
+        result = results.values().first()
+        result_dataframe = result.read()
+
+        pandas.testing.assert_frame_equal(result_dataframe, df)
+        assert result.metadata == metadata
+        assert result.specs == specs
+
+
+def test_write_dataframe_dict(tree):
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+
+        data = {f"Column{i}": (1 + i) * numpy.ones(5) for i in range(5)}
+        df = pandas.DataFrame(data)
+        metadata = {"scan_id": 1, "method": "A"}
+        specs = [Spec("SomeSpec")]
+
+        with record_history() as history:
+            client.write_dataframe(data, metadata=metadata, specs=specs)
+        # one request for metadata, one for data
+        assert len(history.requests) == 1 + 1
 
         results = client.search(Key("scan_id") == 1)
         result = results.values().first()
@@ -446,7 +469,6 @@ async def test_delete_non_empty_node(tree):
         client.delete("a")
 
 
-# @pytest.mark.filterwarnings(f"ignore:{WARNING_PANDAS_BLOCKS}:DeprecationWarning")
 @pytest.mark.asyncio
 async def test_write_in_container(tree):
     "Create a container and write a structure into it."
