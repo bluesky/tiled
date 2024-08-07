@@ -1,5 +1,6 @@
 import contextlib
 import time
+from typing import Literal
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
@@ -39,6 +40,13 @@ def get_base_url(request):
     Base URL for the API
     """
     return f"{get_root_url(request)}/api/v1"
+
+
+def get_zarr_url(request, version: Literal['v2', 'v3'] = 'v2'):
+    """
+    Base URL for the Zarr API
+    """
+    return f"{get_root_url(request)}/zarr/{version}"
 
 
 def get_root_url_low_level(request_headers, scope):
