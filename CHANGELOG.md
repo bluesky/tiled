@@ -12,6 +12,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Make `tiled.client` accept a Python dictionary when fed to `write_dataframe()`.
 - The `generated_minimal` example no longer requires pandas and instead uses a Python dict.
 - Remove unused pytest-warning ignores from `test_writing.py`.
+- Rename argument in `hdf5_lookup` function from `path` to `dataset` to reflect change in `ophyd_async`
 
 ### Fixed
 - A bug in `Context.__getstate__` caused picking to fail if applied twice.
