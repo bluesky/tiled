@@ -1361,7 +1361,7 @@ def from_uri(
         stdout = process.stdout.decode()
         stderr = process.stderr.decode()
         logging.info(f"Subprocess stdout: {stdout}")
-        logging.error(f"Subprocess stderr: {stderr}")
+        logging.info(f"Subprocess stderr: {stderr}")
     if not SCHEME_PATTERN.match(uri):
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
