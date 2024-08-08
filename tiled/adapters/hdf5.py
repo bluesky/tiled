@@ -384,7 +384,7 @@ def hdf5_lookup(
     libver: str = "latest",
     specs: Optional[List[Spec]] = None,
     access_policy: Optional[AccessPolicy] = None,
-    path: Optional[Union[List[Path], List[str]]] = None,
+    dataset: Optional[Union[List[Path], List[str]]] = None,
 ) -> Union[HDF5Adapter, ArrayAdapter]:
     """
 
@@ -397,13 +397,13 @@ def hdf5_lookup(
     libver :
     specs :
     access_policy :
-    path :
+    dataset :
 
     Returns
     -------
 
     """
-    path = path or []
+    dataset = dataset or []
     adapter = HDF5Adapter.from_uri(
         data_uri,
         structure=structure,
@@ -413,7 +413,7 @@ def hdf5_lookup(
         specs=specs,
         access_policy=access_policy,
     )
-    for segment in path:
+    for segment in dataset:
         adapter = adapter.get(segment)  # type: ignore
         if adapter is None:
             raise KeyError(segment)
