@@ -456,6 +456,7 @@ async def array_full(
     """
     Fetch a slice of array-like data.
     """
+    breakpoint()
     structure_family = entry.structure_family
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
