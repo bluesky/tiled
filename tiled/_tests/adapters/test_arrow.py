@@ -2,7 +2,6 @@ import tempfile
 
 import pyarrow as pa
 import pytest
-from pytest_mock import MockFixture
 
 from tiled.adapters.arrow import ArrowAdapter
 from tiled.structures.table import TableStructure
@@ -34,12 +33,12 @@ def adapter() -> ArrowAdapter:
     return ArrowAdapter([asset.data_uri for asset in assets], structure=structure)
 
 
-def test_attributes(adapter):
+def test_attributes(adapter: ArrowAdapter) -> None:
     assert adapter.structure().columns == names
     assert adapter.structure().npartitions == 3
 
 
-def test_write_read(adapter, mocker: MockFixture):
+def test_write_read(adapter: ArrowAdapter) -> None:
     # test writing to a partition and reading it
     adapter.write_partition(batch0, 0)
     assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(

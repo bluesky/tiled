@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import pandas
 import pyarrow
@@ -218,7 +218,6 @@ class ArrowAdapter:
         else:
             return pyarrow.ipc.open_file(self._partition_paths[partition])
 
-    @property
     def reader_handle_all(self) -> Iterator[pyarrow.RecordBatchFileReader]:
         """
         Function to initialize and return the reader handle.
@@ -295,7 +294,7 @@ class ArrowAdapter:
             for batch in data:
                 file_writer.write_batch(batch)
 
-    def read(self, *args: Any, **kwargs: Any) -> pandas.DataFrame:
+    def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
@@ -305,14 +304,17 @@ class ArrowAdapter:
         Returns the concatenated pyarrow table as pandas dataframe.
         """
         data = pyarrow.concat_tables(
-            [partition.read_all() for partition in self.reader_handle_all]
+            [partition.read_all() for partition in self.reader_handle_all()]
         )
-        return data.to_pandas()
+        table = data.to_pandas()
+        if fields is not None:
+            return table[fields]
+        return table
 
     def read_partition(
         self,
         partition: int,
-        fields: Optional[str] = None,
+        fields: Optional[Union[str, List[str]]] = None,
     ) -> pandas.DataFrame:
         """
         Function to read a batch of data from a given partition.
@@ -325,5 +327,8 @@ class ArrowAdapter:
         -------
         The pyarrow table corresponding to a given partition and batch as pandas dataframe.
         """
-        df = self.reader_handle_partiton(partition)
-        return df.read_all().to_pandas()
+        reader = self.reader_handle_partiton(partition)
+        table = reader.read_all().to_pandas()
+        if fields is not None:
+            return table[fields]
+        return table
