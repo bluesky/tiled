@@ -27,7 +27,9 @@ def upgrade():
     )
 
     # Loop over all nodes that have 'parameters' field, choose and update those related to hdf5 files
-    cursor = connection.execute(sa.select(nodes.c.id, nodes.c.metadata).select_from(nodes))
+    cursor = connection.execute(
+        sa.select(nodes.c.id, nodes.c.metadata).select_from(nodes)
+    )
     for _id, _md in cursor:
         if "hdf5" in (_md.get("mimetype", "") + _md.get("spec", "")).lower():
             if isinstance(_md.get("parameters"), dict) and (
