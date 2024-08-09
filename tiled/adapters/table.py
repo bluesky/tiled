@@ -222,11 +222,9 @@ class TableAdapter:
             else:
                 ddf = dask.dataframe.concat(self._partitions, axis=0)
             return ddf.compute()
-
         df = pandas.concat(self._partitions, axis=0)
         if fields is not None:
             df = df[fields]
-
         return df
 
     def read_partition(
