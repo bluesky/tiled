@@ -385,6 +385,7 @@ def hdf5_lookup(
     specs: Optional[List[Spec]] = None,
     access_policy: Optional[AccessPolicy] = None,
     dataset: Optional[Union[List[Path], List[str]]] = None,
+    path: Optional[Union[List[Path], List[str]]] = None,
 ) -> Union[HDF5Adapter, ArrayAdapter]:
     """
 
@@ -398,12 +399,17 @@ def hdf5_lookup(
     specs :
     access_policy :
     dataset :
+    path :
 
     Returns
     -------
 
     """
-    dataset = dataset or []
+
+    if dataset is not None and path is not None:
+        raise ValueError("dataset and path kwargs should not both be set!")
+
+    dataset = dataset or path or []
     adapter = HDF5Adapter.from_uri(
         data_uri,
         structure=structure,
