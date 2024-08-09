@@ -7,6 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 - Add method to `TableAdapter` which accepts a Python dictionary.
+- Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter`.
 
 ### Changed
 - Make `tiled.client` accept a Python dictionary when fed to `write_dataframe()`.
@@ -71,7 +72,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ## v0.1.0b1 (2024-05-25)
 
 ### Added
-
 - Support for `FullText` search on SQLite-backed catalogs
 
 ### Fixed
