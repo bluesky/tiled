@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 - Add method to `TableAdapter` which accepts a Python dictionary.
 - Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter`.
+- Add an alembic catalog migration script to rename `path` parameters of HDF5 nodes to `dataset`.
 
 ### Changed
 - Make `tiled.client` accept a Python dictionary when fed to `write_dataframe()`.
