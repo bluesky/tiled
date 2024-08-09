@@ -31,7 +31,7 @@ def upgrade():
     connection = op.get_bind()
 
     if connection.engine.dialect.name == "postgresql":
-        # This change must be committed befor ethe new 'table' enum value can be used.
+        # This change must be committed before the new 'table' enum value can be used.
         with op.get_context().autocommit_block():
             op.execute(
                 sa.text(
