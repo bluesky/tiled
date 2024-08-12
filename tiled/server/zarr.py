@@ -84,7 +84,11 @@ def convert_chunks_for_zarr(tiled_chunks: Tuple[Tuple[int]]):
     Zarr only accepts chunks of constant size along each dimension; this function finds a unique representation of
     (possibly variable-sized chunks) internal to Tiled ArrayAdapter in terms of zarr blocks.
     """
+<<<<<<< HEAD
     return [min(ZARR_BLOCK_SIZE, max(tc)) for tc in tiled_chunks]
+=======
+    return [min(ZARR_BLOCK_SIZE, max(c)) for c in tiled_chunks]
+>>>>>>> 08f255d687118b1983cf1019b375d7d6f948ce2e
 
 @router.get("{path:path}.zgroup", name="Root .zgroup metadata")
 @router.get("/{path:path}/.zgroup", name="Zarr .zgroup metadata")
@@ -106,7 +110,10 @@ async def get_zarr_array_metadata(
     entry=SecureEntry(scopes=["read:data", "read:metadata"],
                       structure_families={StructureFamily.array, StructureFamily.sparse, StructureFamily.table}),
 ):
+<<<<<<< HEAD
     breakpoint()
+=======
+>>>>>>> 08f255d687118b1983cf1019b375d7d6f948ce2e
     if entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
         try:
             metadata = entry.metadata()
