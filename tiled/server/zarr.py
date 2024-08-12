@@ -1,5 +1,6 @@
 import dataclasses
 import inspect
+import json
 import os
 import re
 import warnings
@@ -7,7 +8,6 @@ from datetime import datetime, timedelta
 from functools import partial, wraps
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
-import json
 
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
@@ -31,9 +31,11 @@ from starlette.status import (
 
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
+from ..structures.array import StructDtype
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
-from . import schemas
+
+# from . import schemas
 from .authentication import Mode, get_authenticators, get_current_principal
 from .core import (
     DEFAULT_PAGE_SIZE,
@@ -66,29 +68,33 @@ from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
 ZARR_BLOCK_SIZE = 10000
-ZARR_BYTE_ORDER = 'C'
-ZARR_CODEC_SPEC = {'blocksize': 0,
-                'clevel': 5,
-                'cname': 'lz4',
-                'id': 'blosc',
-                'shuffle': 1}
+ZARR_BYTE_ORDER = "C"
+ZARR_CODEC_SPEC = {
+    "blocksize": 0,
+    "clevel": 5,
+    "cname": "lz4",
+    "id": "blosc",
+    "shuffle": 1,
+}
+ZARR_DATETIME64_PRECISION = 'ns'
 
 import numcodecs
+
 zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
 
 router = APIRouter()
 
+
 def convert_chunks_for_zarr(tiled_chunks: Tuple[Tuple[int]]):
     """Convert full tiled/dask chunk specification into zarr format
-    
+
     Zarr only accepts chunks of constant size along each dimension; this function finds a unique representation of
     (possibly variable-sized chunks) internal to Tiled ArrayAdapter in terms of zarr blocks.
+
+    Zarr chunks must be at least of size 1 (even for zero-dimensional arrays).
     """
-<<<<<<< HEAD
-    return [min(ZARR_BLOCK_SIZE, max(tc)) for tc in tiled_chunks]
-=======
-    return [min(ZARR_BLOCK_SIZE, max(c)) for c in tiled_chunks]
->>>>>>> 08f255d687118b1983cf1019b375d7d6f948ce2e
+    return [min(ZARR_BLOCK_SIZE, max(*tc, 1)) for tc in tiled_chunks]
+
 
 @router.get("{path:path}.zgroup", name="Root .zgroup metadata")
 @router.get("/{path:path}/.zgroup", name="Zarr .zgroup metadata")
@@ -96,123 +102,137 @@ async def get_zarr_group_metadata(
     request: Request,
     entry=SecureEntry(
         scopes=["read:data", "read:metadata"],
-        structure_families={StructureFamily.table, StructureFamily.container},
+        structure_families={StructureFamily.table, StructureFamily.container, StructureFamily.array},
     ),
 ):
+    # Usual (unstructured) array; should respond to /.zarray instead
+    if entry.structure_family == StructureFamily.array and not isinstance(entry.structure().data_type, StructDtype):
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND)
 
+    # Structured numpy array, Container, or Table
     return Response(json.dumps({"zarr_format": 2}), status_code=200)
 
 @router.get("/{path:path}/.zarray", name="Zarr .zarray metadata")
 async def get_zarr_array_metadata(
     request: Request,
-    path: str,
-    column: str = '',
-    entry=SecureEntry(scopes=["read:data", "read:metadata"],
-                      structure_families={StructureFamily.array, StructureFamily.sparse, StructureFamily.table}),
+    entry=SecureEntry(
+        scopes=["read:data", "read:metadata"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
 ):
-<<<<<<< HEAD
-    breakpoint()
-=======
->>>>>>> 08f255d687118b1983cf1019b375d7d6f948ce2e
-    if entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
-        try:
-            metadata = entry.metadata()
-            structure = entry.structure()
-            zarray_spec = {'chunks': convert_chunks_for_zarr(structure.chunks),
-                'compressor': ZARR_CODEC_SPEC,
-                'dtype': structure.data_type.to_numpy_str(),
-                'fill_value': 0,
-                'filters': None,
-                'order': ZARR_BYTE_ORDER,
-                'shape': list(structure.shape),
-                'zarr_format': 2}
-        except Exception as err:
-            print(f"Can not create .zarray metadata, {err}")
-            raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=err.args[0])
-    
-    # elif entry.structure_family == StructureFamily.table:
-    #     try:
-    #         zarray_spec = {}
-    #         metadata = entry.metadata()
-    #         structure = entry.structure()
-    #         # zarray_spec = {'chunks': [100, 1],   #convert_chunks_for_zarr(structure.chunks),
-    #         #     'compressor': ZARR_CODEC_SPEC,
-    #         #     'dtype': entry.structure().meta.dtypes[column].str,
-    #         #     'fill_value': 0,
-    #         #     'filters': None,
-    #         #     'order': ZARR_BYTE_ORDER,
-    #         #     # 'shape': list(structure.shape),
-    #         #     'zarr_format': 2}
-    #     except Exception as err:
-    #         print(f"Can not create .zarray metadata, {err}")
-    #         raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=err.args[0])
-
-    else:
-        # This is normal behaviour; zarr will try to open .zarray and, if 404 is received, it will move on assuming
-        # that the requested resource is a group (`.../path/.zgroup` would be requested next).
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Requested resource does not have .zarray")
-    
-    return Response(json.dumps(zarray_spec), status_code=200)
+    # Only StructureFamily.array and StructureFamily.sparse can respond to `/.zarray` querries. Zarr will try to
+    # request .zarray on all other nodes in Tiled (not included in SecureEntry above), in which case the server
+    # will return an 404 error; this is the expected behaviour, which will signal zarr to try /.zgroup instead.
+    structure = entry.structure()
+    if isinstance(structure.data_type, StructDtype):
+        # Structured numpy array should be treated as a DataFrame and will respond to /.zgroup instead
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND)
+    try:
+        zarray_spec = {
+            "chunks": convert_chunks_for_zarr(structure.chunks),
+            "compressor": ZARR_CODEC_SPEC,
+            "dtype": structure.data_type.to_numpy_str(),
+            "fill_value": 0,
+            "filters": None,
+            "order": ZARR_BYTE_ORDER,
+            "shape": list(structure.shape),
+            "zarr_format": 2,
+        }
+        return Response(json.dumps(zarray_spec), status_code=200)
+    except Exception as err:
+        print(f"Can not create .zarray metadata, {err}")
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=err.args[0]
+        )
 
 
-@router.get("/{path:path}", name="Zarr .zgroup directory structure or a chunk of a zarr array")
+@router.get(
+    "/{path:path}", name="Zarr group (directory) structure or a chunk of a zarr array"
+)
 async def get_zarr_array(
     request: Request,
     block: str | None = None,
-    entry=SecureEntry(scopes=["read:data"],
-        structure_families={StructureFamily.array, StructureFamily.sparse, StructureFamily.table, StructureFamily.container},
+    entry=SecureEntry(
+        scopes=["read:data"],
+        structure_families={
+            StructureFamily.array,
+            StructureFamily.sparse,
+            StructureFamily.table,
+            StructureFamily.container,
+        },
     ),
 ):
-    url = str(request.url).split('?')[0].rstrip('/')    # Remove query params and the trailing slash
+    # Remove query params and the trailing slash from the url
+    url = str(request.url).split("?")[0].rstrip("/")
 
-    # breakpoint()
     if entry.structure_family == StructureFamily.container:
         # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
-        body = json.dumps([url + '/' + key for key in entry.keys()])
+        if hasattr(entry, "keys_range"):
+            keys = await entry.keys_range(offset=0, limit=None)
+        else:
+            keys = entry.keys()
+        body = json.dumps([url + "/" + key for key in keys])
 
-        return Response(body, status_code=200, media_type='application/json')
-    
+        return Response(body, status_code=200, media_type="application/json")
+
     elif entry.structure_family == StructureFamily.table:
-        url = str(request.url).split('?')[0].rstrip('/')    # Remove query params and the trailing slash
-        # breakpoint()
-        body = json.dumps([url + '/' + key for key in entry.structure().columns])
+        # List the columns of the table -- they will be accessed separately as arrays
+        body = json.dumps([url + "/" + key for key in entry.structure().columns])
 
-        # entry.structure().meta.dtypes
+        return Response(body, status_code=200, media_type="application/json")
+    
+    elif entry.structure_family == StructureFamily.array and isinstance(entry.structure().data_type, StructDtype):
+        # List the column names of the structured array -- they will be accessed separately
+        body = json.dumps([url + "/" + f.name for f in entry.structure().data_type.fields])
 
-        return Response(body, status_code=200, media_type='application/json')
+        return Response(body, status_code=200, media_type="application/json")
 
     elif entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
+        # Return the actual array values for a single block of zarr array
         if block is not None:
-            import zarr
             import numpy as np
+            from sparse import SparseArray
 
-            block_indx = [int(i) for i in block.split(',')]
-            zarr_chunks = convert_chunks_for_zarr(entry.structure().chunks)
-            block_slice = tuple([slice(i*c, (i+1)*c) for c, i in zip(zarr_chunks, block_indx)])
-            padding_size = [max(0, sl.stop-sh) for sh, sl in zip(entry.structure().shape, block_slice)]
-
-            # if block == ():
-            #     # Handle special case of numpy scalar
-            #     with record_timing(request.state.metrics, "read"):
-            #         array = await ensure_awaitable(entry.read)
-            # else:
-
-            # breakpoint()
-            try:
-                with record_timing(request.state.metrics, "read"):
-                    array = await ensure_awaitable(entry.read, slice=block_slice)
-                    if sum(padding_size) > 0:
-                        array = np.pad(array, [(0, p) for p in padding_size], mode='constant')
-            except IndexError:
+            zarr_block_indx = [int(i) for i in block.split(",")]
+            zarr_block_spec = convert_chunks_for_zarr(entry.structure().chunks)
+            if (not (zarr_block_spec == [] and zarr_block_indx == [0])) and (
+                len(zarr_block_spec) != len(zarr_block_indx)
+            ):
+                # Not a scalar and shape doesn't match
                 raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Requested zarr block index {zarr_block_indx} is inconsistent with the shape of array, {entry.structure().shape}.",  # noqa
                 )
 
-            # buf = zarr.array(array).store['0.0']     # Define a zarr array as a single block
+            # Indices of the array slices in each dimension that correspond to the requested zarr block
+            block_slices = tuple(
+                [
+                    slice(i * c, (i + 1) * c)
+                    for i, c in zip(zarr_block_indx, zarr_block_spec)
+                ]
+            )
+            try:
+                with record_timing(request.state.metrics, "read"):
+                    array = await ensure_awaitable(entry.read, slice=block_slices)
+            except IndexError:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Index of zarr block {zarr_block_indx} is out of range.",
+                )
 
-            # breakpoint()
+            if isinstance(array, SparseArray):
+                array = array.todense()
 
-            array = array.astype(array.dtype, order=ZARR_BYTE_ORDER, copy=False)     # ensure array is contiguous
+            # Padd the last slices with zeros if needed to ensure all zarr blocks have same shapes
+            padding_size = [
+                max(0, sl.stop - sh)
+                for sl, sh in zip(block_slices, entry.structure().shape)
+            ]
+            if sum(padding_size) > 0:
+                array = np.pad(array, [(0, p) for p in padding_size], mode="constant")
+
+            # Ensure the array is contiguous and encode it; equivalent to `buf = zarr.array(array).store['0.0']`
+            array = array.astype(array.dtype, order=ZARR_BYTE_ORDER, copy=False)
             buf = zarr_codec.encode(array)
             if not isinstance(buf, bytes):
                 buf = array.tobytes(order="A")

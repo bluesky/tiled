@@ -2,8 +2,8 @@ from typing import Optional, Tuple, Union
 
 import pydantic
 
-from ..structures.sparse import SparseLayout
 from ..structures.array import BuiltinDtype, StructDtype
+from ..structures.sparse import SparseLayout
 
 
 class COOStructure(pydantic.BaseModel):

@@ -42,7 +42,7 @@ def get_base_url(request):
     return f"{get_root_url(request)}/api/v1"
 
 
-def get_zarr_url(request, version: Literal['v2', 'v3'] = 'v2'):
+def get_zarr_url(request, version: Literal["v2", "v3"] = "v2"):
     """
     Base URL for the Zarr API
     """

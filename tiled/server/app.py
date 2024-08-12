@@ -3,15 +3,16 @@ import collections
 import contextvars
 import logging
 import os
+import re
 import secrets
 import sys
 import urllib.parse
+import urllib.parse as urlparse
 import warnings
 from contextlib import asynccontextmanager
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import List
-import re
+from typing import Dict, List
 
 import anyio
 import packaging.version
@@ -69,7 +70,7 @@ SENSITIVE_COOKIES = {
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
-ZARR_PREFIX = '/zarr/v2'
+ZARR_PREFIX = "/zarr/v2"
 
 MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
 
@@ -432,11 +433,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     # opporunity to register custom query types before startup.
     app.get(
         "/api/v1/search/{path:path}",
-        response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-            schemas.PaginationLinks,
-            dict,
-        ],
+        response_model=schemas.SearchResponse,
     )(patch_route_signature(search, query_registry))
     app.get(
         "/api/v1/distinct/{path:path}",
@@ -901,15 +898,16 @@ Back up the database, and then run:
         # safely encoded)
         if request.url.path.startswith(ZARR_PREFIX) and response.status_code == 404:
             # Extract the last bit of the path
-            zarr_path = request.url.path.removeprefix(ZARR_PREFIX).strip('/').split('/')
-            zarr_block = zarr_path[-1] if len(zarr_path) > 0 else ''
-            if re.compile(r'^(?:\d+\.)*\d+$').fullmatch(zarr_block):
-                # Create a query string if the last part is in the zarr block forma, e.g. `m.n.p. ... .q`
-                request.scope['query_string'] = f"block={zarr_block.replace('.', '%2C')}".encode()
-                request.scope['path'] = ZARR_PREFIX + '/' + '/'.join(zarr_path[:-1])
-                response = await call_next(request)
+            zarr_path = request.url.path.removeprefix(ZARR_PREFIX).strip("/").split("/")
+            zarr_block = zarr_path[-1] if len(zarr_path) > 0 else ""
+            if re.compile(r"^(?:\d+\.)*\d+$").fullmatch(zarr_block):
+                # Create a query string if the last part is in the zarr block form, e.g. `m.n.p. ... .q`
+                query = dict(urlparse.parse_qsl(request.url.query))
+                query.update({"block": zarr_block.replace(".", ",")})
+                request.scope["query_string"] = urlparse.urlencode(query).encode()
+                request.scope["path"] = ZARR_PREFIX + "/" + "/".join(zarr_path[:-1])
 
-                # TODO: Try compiling a single RE for matching and replacement -- possible speedup?
+                response = await call_next(request)
 
         response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
