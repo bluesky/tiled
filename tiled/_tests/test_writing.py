@@ -40,7 +40,7 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 @pytest.fixture
 def tree(tmpdir):
-    return in_memory(writable_storage=tmpdir)
+    return in_memory(writable_storage=str(tmpdir))
 
 
 def test_write_array_full(tree):

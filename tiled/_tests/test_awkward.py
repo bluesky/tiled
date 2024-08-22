@@ -15,7 +15,7 @@ from .utils import URL_LIMITS
 
 @pytest.fixture
 def catalog(tmpdir):
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     yield catalog
 
 

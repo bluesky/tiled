@@ -11,6 +11,7 @@ PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"
 ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
+TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
         "image/tiff": lambda: importlib.import_module(
@@ -62,6 +63,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.arrow", __name__
         ).ArrowAdapter,
+        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
+            "..adapters.sql", __name__
+        ).SQLAdapter,
     }
 )
 

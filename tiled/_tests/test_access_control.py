@@ -130,7 +130,7 @@ def context(tmpdir_module):
             {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
             {
                 "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": tmpdir_module / "c"},
+                "args": {"writable_storage": str(tmpdir_module / "c")},
                 "path": "/c",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
@@ -145,7 +145,7 @@ def context(tmpdir_module):
             },
             {
                 "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": tmpdir_module / "d"},
+                "args": {"writable_storage": str(tmpdir_module / "d")},
                 "path": "/d",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
@@ -162,7 +162,7 @@ def context(tmpdir_module):
             },
             {
                 "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": tmpdir_module / "e"},
+                "args": {"writable_storage": str(tmpdir_module / "e")},
                 "path": "/e",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
@@ -185,7 +185,7 @@ def context(tmpdir_module):
             {"tree": ArrayAdapter.from_array(arr), "path": "/f"},
             {
                 "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": tmpdir_module / "g"},
+                "args": {"writable_storage": str(tmpdir_module / "g")},
                 "path": "/g",
                 "access_control": {
                     "access_policy": "tiled.access_policies:SimpleAccessPolicy",
@@ -200,7 +200,7 @@ def context(tmpdir_module):
             },
             {
                 "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": tmpdir_module / "h"},
+                "args": {"writable_storage": str(tmpdir_module / "h")},
                 "path": "/h",
                 "access_control": {
                     "access_policy": "tiled._tests.test_access_control:EntryBasedAccessPolicy",
