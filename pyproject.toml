@@ -226,6 +226,9 @@ minimal-server = [
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
+    "adbc_driver_manager",
+    "adbc_driver_sqlite",
+    "adbc_driver_postgresql",
     "aiofiles",
     "aiosqlite",
     "alembic",
