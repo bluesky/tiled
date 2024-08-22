@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -218,7 +219,6 @@ class SQLAdapter:
     def write(
         self,
         data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
-        table_name: str,
     ) -> None:
         """
         "Function to write the data as arrow format."
@@ -238,18 +238,19 @@ class SQLAdapter:
             else:
                 batches = data
 
-        schema = batches[0].schema
-        recordbatchreader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
+        schema = batches[0].schema  # list of column names can be obtained from schema.names
+        encoded = ("".join(schema.names)).encode(encoding="UTF-8", errors="strict")
+        table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
+        reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
 
-        query = "DROP TABLE IF EXISTS {}".format(table_name)
+        query = "DROP TABLE IF EXISTS [" + table_name + "]"
         self.cur.execute(query)
-        self.cur.adbc_ingest(table_name, recordbatchreader)
+        self.cur.adbc_ingest(table_name, reader)
         self.conn.commit()
 
     def append(
         self,
         data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
-        table_name: str,
     ) -> None:
         """
         "Function to write the data as arrow format."
@@ -269,26 +270,37 @@ class SQLAdapter:
             else:
                 batches = data
 
-        schema = batches[0].schema
-        recordbatchreader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
+        schema = batches[0].schema  # list of column names can be obtained from schema.names
+        encoded = ("".join(schema.names)).encode(encoding="UTF-8", errors="strict")
+        table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
 
-        self.cur.adbc_ingest(table_name, recordbatchreader, mode="append")
+        reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
+
+        self.cur.adbc_ingest(table_name, reader, mode="append")
         self.conn.commit()
 
     def read(
-        self, table_name: str, fields: Optional[Union[str, List[str]]] = None
+        self, table_schema: Union[str, list[str]], fields: Optional[Union[str, List[str]]] = None
     ) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
         ----------
-        table_name: string to indicate the table to be read.
+        table_schema: hashed string or list of strings as column names to be hashed.
+                      for example table_schema = ['f0', 'f1', 'f2'] or '3d51c6b180b64bea848f23e5crd91ea3'
         fields: optional string to return the data in the specified field.
         Returns
         -------
         Returns the concatenated pyarrow table as pandas dataframe.
         """
-        query = "SELECT * FROM {}".format(table_name)
+        if isinstance(table_schema, List):
+            encoded = ("".join(table_schema)).encode(encoding="UTF-8", errors="strict")
+            table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
+        else:
+            table_name = table_schema # we assume it is already hashed in this case
+
+        query = "SELECT * FROM [" + table_name + "]"
+
         self.cur.execute(query)
         data = self.cur.fetch_arrow_table()
         self.conn.commit()
