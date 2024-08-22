@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
+StructureT = TypeVar("StructureT")
+
 
 MAX_ALLOWED_SPECS = 20
 
@@ -138,18 +140,19 @@ class Revision(pydantic.BaseModel):
         )
 
 
-class DataSource(pydantic.BaseModel):
+STRUCTURE_TYPES = {
+    StructureFamily.array: ArrayStructure,
+    StructureFamily.awkward: AwkwardStructure,
+    StructureFamily.table: TableStructure,
+    StructureFamily.sparse: SparseStructure,
+    StructureFamily.container: NodeStructure,
+}
+
+
+class DataSource(pydantic.BaseModel, Generic[StructureT]):
     id: Optional[int] = None
-    structure_family: Optional[StructureFamily] = None
-    structure: Optional[
-        Union[
-            ArrayStructure,
-            AwkwardStructure,
-            SparseStructure,
-            NodeStructure,
-            TableStructure,
-        ]
-    ] = None
+    structure_family: StructureFamily
+    structure: Optional[StructureT]
     mimetype: Optional[str] = None
     parameters: dict = {}
     assets: List[Asset] = []
@@ -159,10 +162,15 @@ class DataSource(pydantic.BaseModel):
 
     @classmethod
     def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
+        if hasattr(orm.structure, "structure"):
+            structure_cls = STRUCTURE_TYPES[orm.structure_family]
+            structure = structure_cls(**orm.structure.structure)
+        else:
+            structure = None
         return cls(
             id=orm.id,
             structure_family=orm.structure_family,
-            structure=getattr(orm.structure, "structure", None),
+            structure=structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
             assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
@@ -418,6 +426,16 @@ class PostMetadataRequest(pydantic.BaseModel):
             if value in v[i:]:
                 raise ValueError
         return v
+
+    @pydantic.model_validator(mode="after")
+    def narrow_strucutre_type(self):
+        "Convert the structure on each data_source from a dict to the appropriate pydantic model."
+        for data_source in self.data_sources:
+            if self.structure_family != StructureFamily.container:
+                structure_cls = STRUCTURE_TYPES[self.structure_family]
+                if data_source.structure is not None:
+                    data_source.structure = structure_cls(**data_source.structure)
+        return self
 
 
 class PutDataSourceRequest(pydantic.BaseModel):

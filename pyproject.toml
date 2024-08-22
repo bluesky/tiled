@@ -55,6 +55,9 @@ tiled = "tiled.commandline.main:main"
 
 # This is the union of all optional dependencies.
 all = [
+    "adbc_driver_manager",
+    "adbc_driver_sqlite",
+    "adbc_driver_postgresql",
     "aiofiles",
     "aiosqlite",
     "alembic",
@@ -196,6 +199,9 @@ minimal-server = [
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
+    "adbc_driver_manager",
+    "adbc_driver_sqlite",
+    "adbc_driver_postgresql",
     "aiofiles",
     "aiosqlite",
     "alembic",
