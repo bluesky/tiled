@@ -1,6 +1,5 @@
 import hashlib
-from pathlib import Path
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Iterator, List, Optional, Tuple, Union
 
 import adbc_driver_postgresql.dbapi
 import adbc_driver_sqlite.dbapi
@@ -9,177 +8,129 @@ import pyarrow
 import pyarrow.fs
 
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Management
+from ..structures.data_source import Asset
 from ..structures.table import TableStructure
-from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
 from .type_alliases import JSON
 
 
 class SQLAdapter:
-    """ArrowAdapter Class"""
+    """SQLAdapter Class"""
 
     structure_family = StructureFamily.table
 
     def __init__(
         self,
         data_uri: str,
-        structure: Optional[TableStructure] = None,
+        structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
-
+        Construct the SQLAdapter object.
         Parameters
         ----------
-        data_uris : list of uris where data sits.
-        structure :
-        metadata :
-        specs :
-        access_policy :
+        data_uri : the uri of the database, starting either with "sqlite://" or "postgresql://"
+        structure : the structure of the data. structure is not optional for sql database
+        metadata : the optional metadata of the data.
+        specs : the specs.
+        access_policy : the access policy of the data.
         """
         # TODO Store data_uris instead and generalize to non-file schemes.
         self.uri = data_uri
 
-        # if self.uri.startswith('sqlite'):
-        #    self.conn = adbc_driver_sqlite.dbapi.connect(self.uri)
-        # else:
-        #    self.conn = adbc_driver_postgresql.dbapi.connect(self.uri)
+        if self.uri.startswith("sqlite"):
+            self.conn = adbc_driver_sqlite.dbapi.connect(
+                self.uri.removeprefix("sqlite://")
+            )
+        elif self.uri.startswith("postgresql"):
+            self.conn = adbc_driver_postgresql.dbapi.connect(self.uri)
+        else:
+            raise ValueError(
+                "The database uri must start with either `sqlite://` or `postgresql://` "
+            )
 
-        self.conn = adbc_driver_sqlite.dbapi.connect(self.uri)
         self.cur = self.conn.cursor()
 
         self._metadata = metadata or {}
-        # if structure is None:
-        #   table = feather.read_table(self.uri)
-        #   structure = TableStructure.from_arrow_table(table)
         self._structure = structure
-        # self.specs = list(specs or [])
-        # self.access_policy = access_policy
+        self.specs = list(specs or [])
+        self.access_policy = access_policy
 
     def metadata(self) -> JSON:
         """
         The metadata representing the actual data.
         Returns
         -------
-
+        The metadata representing the actual data.
         """
         return self._metadata
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
+    def init_storage(cls, data_uri: str, structure: TableStructure) -> Asset:
         """
-        Class to initialize the list of assets for given uri.
+        Class to initialize the list of assets for given uri. In SQL Adapter we hve  single partition.
         Parameters
         ----------
-        data_uri :
-        structure :
+        data_uri : the uri of the data
+        structure : the structure of the data
 
         Returns
         -------
-        The list of assets.
+        The list of assets. In SQL Adapter we have a single asset.
         """
-        directory = path_from_uri(data_uri)
-        directory.mkdir(parents=True, exist_ok=True)
-        assets = [
-            Asset(
-                data_uri=f"{data_uri}/partition-{i}.arrow",
-                is_directory=False,
-                parameter="data_uris",
-                num=i,
-            )
-            for i in range(structure.npartitions)
-        ]
-        return assets
+        if structure.npartitions > 1:
+            raise ValueError("The SQL adapter must have only 1 partition")
+        return Asset(
+            data_uri=data_uri,
+            is_directory=False,
+            parameter="data_uris",
+            num=0,
+        )
 
     def structure(self) -> TableStructure:
         """
-
+        The structure of the actual data.
         Returns
         -------
-
+        The structure of the data.
         """
         return self._structure
 
-    def get(self, vars: tuple[str, str]) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
         """
-
+        Get the data for a specific key
         Parameters
         ----------
-        key :
-
+        key : a string to indicate which column to be retrieved
         Returns
         -------
-
+        The column for the associated key.
         """
-        table_name, key = vars
         if key not in self.structure().columns:
             return None
-        return ArrayAdapter.from_array(self.read(table_name, [key])[key].values)
+        return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def generate_data_sources(
-        self,
-        mimetype: str,
-        dict_or_none: Callable[[TableStructure], Dict[str, str]],
-        item: Union[str, Path],
-        is_directory: bool,
-    ) -> List[DataSource]:
-        """
-
-        Parameters
-        ----------
-        mimetype :
-        dict_or_none :
-        item :
-        is_directory :
-
-        Returns
-        -------
-
-        """
-        return [
-            DataSource(
-                structure_family=self.structure_family,
-                mimetype=mimetype,
-                structure=dict_or_none(self.structure()),
-                parameters={},
-                management=Management.external,
-                assets=[
-                    Asset(
-                        data_uri=ensure_uri(item),
-                        is_directory=is_directory,
-                        parameter="data_uris",  # <-- PLURAL!
-                        num=0,  # <-- denoting that the Adapter expects a list, and this is the first element
-                    )
-                ],
-            )
-        ]
-
-    #
     @classmethod
     def from_single_file(
         cls,
         data_uri: str,
-        structure: Optional[TableStructure] = None,
+        structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[AccessPolicy] = None,
     ) -> "SQLAdapter":
         """
-
+        Construct the SQLAdapter object from `from_single_file` classmethod.
         Parameters
         ----------
-        data_uri :
-        structure :
-        metadata :
-        specs :
-        access_policy :
-
-        Returns
-        -------
-
+        data_uri : the uri of the database, starting either with "sqlite://" or "postgresql://"
+        structure : the structure of the data. structure is not optional for sql database
+        metadata : the optional metadata of the data.
+        specs : the specs.
+        access_policy : the access policy of the data.
         """
         return cls(
             data_uri,
@@ -189,30 +140,28 @@ class SQLAdapter:
             access_policy=access_policy,
         )
 
-    def __getitem__(self, vars: tuple[str, str]) -> ArrayAdapter:
+    def __getitem__(self, key: str) -> ArrayAdapter:
         """
-
+        Get the data for a specific key.
         Parameters
         ----------
-        key :
-
+        key : a string to indicate which column to be retrieved
         Returns
         -------
-
+        The column for the associated key.
         """
-        table_name, key = vars
         # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read(table_name, [key])[key].values)
+        return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def items(self, table_name: str) -> Iterator[Tuple[str, ArrayAdapter]]:
+    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         """
-
+        The function to iterate over the SQLAdapter data.
         Returns
         -------
-
+        An iterator for the data in the associated database.
         """
         yield from (
-            (key, ArrayAdapter.from_array(self.read(table_name, [key])[key].values))
+            (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns
         )
 
@@ -238,12 +187,16 @@ class SQLAdapter:
             else:
                 batches = data
 
-        schema = batches[0].schema  # list of column names can be obtained from schema.names
-        encoded = ("".join(schema.names)).encode(encoding="UTF-8", errors="strict")
+        schema = batches[
+            0
+        ].schema  # list of column names can be obtained from schema.names
+        encoded = schema.serialize()
         table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
+        table_name = "table_" + table_name
+
         reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
 
-        query = "DROP TABLE IF EXISTS [" + table_name + "]"
+        query = "DROP TABLE IF EXISTS {}".format(table_name)
         self.cur.execute(query)
         self.cur.adbc_ingest(table_name, reader)
         self.conn.commit()
@@ -270,18 +223,19 @@ class SQLAdapter:
             else:
                 batches = data
 
-        schema = batches[0].schema  # list of column names can be obtained from schema.names
-        encoded = ("".join(schema.names)).encode(encoding="UTF-8", errors="strict")
+        schema = batches[
+            0
+        ].schema  # list of column names can be obtained from schema.names
+        encoded = schema.serialize()
         table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
+        table_name = "table_" + table_name
 
         reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
 
         self.cur.adbc_ingest(table_name, reader, mode="append")
         self.conn.commit()
 
-    def read(
-        self, table_schema: Union[str, list[str]], fields: Optional[Union[str, List[str]]] = None
-    ) -> pandas.DataFrame:
+    def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
@@ -293,14 +247,11 @@ class SQLAdapter:
         -------
         Returns the concatenated pyarrow table as pandas dataframe.
         """
-        if isinstance(table_schema, List):
-            encoded = ("".join(table_schema)).encode(encoding="UTF-8", errors="strict")
-            table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
-        else:
-            table_name = table_schema # we assume it is already hashed in this case
+        encoded = pyarrow.schema(self._structure.arrow_schema_decoded).serialize()
+        table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
+        table_name = "table_" + table_name
 
-        query = "SELECT * FROM [" + table_name + "]"
-
+        query = "SELECT * FROM {}".format(table_name)
         self.cur.execute(query)
         data = self.cur.fetch_arrow_table()
         self.conn.commit()
