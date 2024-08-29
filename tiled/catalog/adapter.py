@@ -143,9 +143,11 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        typesense_client=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
+        self.typesense_client = typesense_client
         readable_storage = readable_storage or []
         if not isinstance(readable_storage, list):
             raise ValueError("readable_storage should be a list of URIs or paths")
@@ -311,6 +313,7 @@ class CatalogNodeAdapter:
         return self.node.metadata_
 
     async def startup(self):
+        print(dir(self.context.typesense_client))
         if (self.context.engine.dialect.name == "sqlite") and (
             self.context.engine.url.database == ":memory:"
         ):
@@ -1399,7 +1402,7 @@ def from_uri(
             "schema": typesense_schema,
         }
     return CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
+        Context(engine, writable_storage, readable_storage, adapters_by_mimetype, typesense_client),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
     )
