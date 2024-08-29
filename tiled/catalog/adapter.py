@@ -8,12 +8,14 @@ import re
 import shutil
 import sys
 import uuid
+import yaml
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict
 from urllib.parse import quote_plus, urlparse
 
 import anyio
+import typesense
 from fastapi import HTTPException
 from sqlalchemy import (
     delete,
@@ -145,9 +147,11 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        typesense_client=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
+        self.typesense_client = typesense_client
         readable_storage = readable_storage or []
         if not isinstance(readable_storage, list):
             raise ValueError("readable_storage should be a list of URIs or paths")
@@ -313,6 +317,7 @@ class CatalogNodeAdapter:
         return self.node.metadata_
 
     async def startup(self):
+        print(dir(self.context.typesense_client))
         if (self.context.engine.dialect.name == "sqlite") and (
             self.context.engine.url.database == ":memory:"
         ):
@@ -1321,6 +1326,7 @@ def in_memory(
     readable_storage=None,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    typesense_client=None,
 ):
     uri = "sqlite+aiosqlite:///:memory:"
     return from_uri(
@@ -1332,6 +1338,7 @@ def in_memory(
         readable_storage=readable_storage,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
+        typesense_client=typesense_client,
     )
 
 
@@ -1346,6 +1353,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    typesense_client=None,
 ):
     uri = str(uri)
     if init_if_not_exists:
@@ -1385,8 +1393,20 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
+    if typesense_client:
+        # Parse the extensible schema into a typesense client compatible format:
+        typesense_schema = build_ts_schema(typesense_client["schemas"])
+        typesense_client = {
+            "client": typesense.Client(
+                {
+                    "api_key": typesense_client["api_key"],
+                    "nodes": typesense_client["nodes"],
+                }
+            ),
+            "schema": typesense_schema,
+        }
     return CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
+        Context(engine, writable_storage, readable_storage, adapters_by_mimetype, typesense_client),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
     )
@@ -1465,6 +1485,66 @@ def specs_array_to_json(specs):
     [{"name":"foo"},{"name":"bar"}]
     """
     return [{"name": spec} for spec in specs]
+
+
+def build_ts_schema(ts_schema):
+    """Builds a valid typescript schema from either a schema defined in the config yaml
+    or from a series of successive yaml files containing the same schema.
+
+    Parameters
+    ----------
+    ts_schema : list
+        A raw ts_schema object containing either schema data or a string that points to a file.
+
+    Returns
+    -------
+    schema_objects : list
+        A list of schema objects that can be used to create a typesense collection or locate properties.
+
+    Examples
+    --------
+    >>> build_ts_schema([{"name":"thing", "type":"string", "source":"start.thing"},"additional_schema.yml"])
+    [
+        {"name":"thing", "type":"string", "source":"start.thing"},
+        {"name":"additional_thing-from-file", "type":"string", "source":"start.additional_thing"}
+    ]
+    """
+    schema_objects = []
+    # Add more control over iteration using stack var
+    stack = [iter(ts_schema)]
+    opened_files = set()  # Track opened files
+    while stack:
+        try:
+            item = next(stack[-1])
+            if isinstance(item, str):
+                if item in opened_files:
+                    continue  # Skip if file already opened
+                try:
+                    with open(item, "r") as file:
+                        opened_files.add(item)  # Add file name to opened files
+                        schema_list = yaml.safe_load(file)
+                        if "schemas" in schema_list:
+                            additional_schemas = schema_list["schemas"]
+                            stack.append(iter(additional_schemas))
+                        else:
+                            continue
+                except FileNotFoundError:
+                    # Handle file not found error
+                    print(f"File {item} not found")
+                    continue
+                except SyntaxError:
+                    # Handle invalid list syntax in file
+                    print(f"Syntax error in file {item}")
+                    continue
+            elif isinstance(item, dict):
+                schema_objects.append(item)
+            elif callable(item):
+                result = item()
+                if isinstance(result, dict):
+                    schema_objects.append(result)
+        except StopIteration:
+            stack.pop()
+    return schema_objects
 
 
 STRUCTURES = {
