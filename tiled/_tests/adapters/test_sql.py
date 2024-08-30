@@ -1,9 +1,11 @@
 import tempfile
 
+import adbc_driver_postgresql
 import adbc_driver_sqlite
 import pyarrow as pa
 import pytest
 
+from tiled._tests.conftest import TILED_TEST_POSTGRESQL_URI
 from tiled.adapters.sql import SQLAdapter
 from tiled.structures.table import TableStructure
 
@@ -46,7 +48,7 @@ def test_invalid_structure() -> None:
 
 
 @pytest.fixture
-def adapter() -> SQLAdapter:
+def adapter_sql() -> SQLAdapter:
     data_uri = "sqlite://file://localhost" + tempfile.gettempdir() + "/test.db"
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=1)
@@ -54,31 +56,31 @@ def adapter() -> SQLAdapter:
     return SQLAdapter(asset.data_uri, structure=structure)
 
 
-def test_attributes(adapter: SQLAdapter) -> None:
-    assert adapter.structure().columns == names
-    assert adapter.structure().npartitions == 1
-    assert isinstance(adapter.conn, adbc_driver_sqlite.dbapi.AdbcSqliteConnection)
+def test_attributes(adapter_sql: SQLAdapter) -> None:
+    assert adapter_sql.structure().columns == names
+    assert adapter_sql.structure().npartitions == 1
+    assert isinstance(adapter_sql.conn, adbc_driver_sqlite.dbapi.AdbcSqliteConnection)
 
 
-def test_write_read(adapter: SQLAdapter) -> None:
-    # test writing to a partition and reading it
-    adapter.write(batch0)
-    result = adapter.read()
+def test_write_read(adapter_sql: SQLAdapter) -> None:
+    # test writing and reading it
+    adapter_sql.write(batch0)
+    result = adapter_sql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
     result["f2"] = result["f2"].astype("boolean")
 
     assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(result)
 
-    adapter.write([batch0, batch1])
-    result = adapter.read()
+    adapter_sql.write([batch0, batch1])
+    result = adapter_sql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
     result["f2"] = result["f2"].astype("boolean")
     assert pa.Table.from_batches([batch0, batch1]) == pa.Table.from_pandas(result)
 
-    adapter.write([batch0, batch1, batch2])
-    result = adapter.read()
+    adapter_sql.write([batch0, batch1, batch2])
+    result = adapter_sql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
     result["f2"] = result["f2"].astype("boolean")
@@ -86,11 +88,11 @@ def test_write_read(adapter: SQLAdapter) -> None:
         result
     )
 
-    # test write to all partitions and read all
-    adapter.write([batch0, batch1, batch2])
-    adapter.append([batch2, batch0, batch1])
-    adapter.append([batch1, batch2, batch0])
-    result = adapter.read()
+    # test write , append and read all
+    adapter_sql.write([batch0, batch1, batch2])
+    adapter_sql.append([batch2, batch0, batch1])
+    adapter_sql.append([batch1, batch2, batch0])
+    result = adapter_sql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
     result["f2"] = result["f2"].astype("boolean")
@@ -98,3 +100,20 @@ def test_write_read(adapter: SQLAdapter) -> None:
     assert pa.Table.from_batches(
         [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
     ) == pa.Table.from_pandas(result)
+
+
+@pytest.fixture
+def adapter_psql() -> SQLAdapter:
+    data_uri = TILED_TEST_POSTGRESQL_URI
+    table = pa.Table.from_arrays(data0, names)
+    structure = TableStructure.from_arrow_table(table, npartitions=1)
+    asset = SQLAdapter.init_storage(data_uri, structure=structure)
+    return SQLAdapter(asset.data_uri, structure=structure)
+
+
+def test_psql(adapter_psql: SQLAdapter) -> None:
+    assert adapter_psql.structure().columns == names
+    assert adapter_psql.structure().npartitions == 1
+    assert isinstance(
+        adapter_psql.conn, adbc_driver_postgresql.dbapi.AdbcSqliteConnection
+    )
