@@ -9,6 +9,7 @@ on:
       - cron: '00 4 * * *'  # daily at 4AM
 
 jobs:
+  name: Static Code Checks
   pre-commit:
     runs-on: ubuntu-latest
     steps:
@@ -21,6 +22,7 @@ jobs:
 
   linux_checks:
 
+    name: Test on Linux
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -88,6 +90,7 @@ jobs:
         TILED_TEST_LDAP: 1
 
   windows_checks:
+    name: Test on Windows
     runs-on: windows-latest
     strategy:
       matrix:
@@ -118,3 +121,21 @@ jobs:
 
     - name: Test with pytest
       run: pytest -v
+
+  container_canary:
+    name: Build and validate container
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install Container Canary
+      run: |
+        curl -L https://github.com/NVIDIA/container-canary/releases/download/v0.2.1/canary_linux_amd64 > /usr/local/bin/canary
+        chmod +x /usr/local/bin/canary
+
+    - name: Build Container
+      run: docker build -t bluesky/tiled:latest .
+
+    - name: Validate container
+      run: canary validate --debug --file canary-validator.yml bluesky/tiled:latest
