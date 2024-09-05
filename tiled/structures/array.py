@@ -77,7 +77,7 @@ class BuiltinDtype:
     endianness: Endianness
     kind: Kind
     itemsize: int
-    units: str = ''
+    units: str = ""
 
     __endianness_map = {
         ">": "big",
