@@ -79,7 +79,7 @@ class BuiltinDtype(BaseModel):
             kind=Kind(structure["kind"]),
             itemsize=structure["itemsize"],
             endianness=Endianness(structure["endianness"]),
-            units=structure.get('units', 's')
+            units=structure.get("units", "s"),
         )
 
 
