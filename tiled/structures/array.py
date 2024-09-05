@@ -1,9 +1,11 @@
 import enum
 import os
-import sys
 import re
+import sys
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
+
+import numpy
 
 
 class Endianness(str, enum.Enum):
@@ -88,24 +90,21 @@ class BuiltinDtype:
 
     @classmethod
     def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
-
         # Extract datetime units from the dtype string representation,
         # e.g. `'<M8[ns]'` has `units = 's'`.
-        units = ''
-        if dtype.kind in ('m', 'M'):
-            if res := re.search(r'\[(.+)\]$', dtype.str):
+        units = ""
+        if dtype.kind in ("m", "M"):
+            if res := re.search(r"\[(.+)\]$", dtype.str):
                 units = res.group(1)
 
         return cls(
             endianness=cls.__endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
-            units=units
+            units=units,
         )
 
-    def to_numpy_dtype(self):
-        import numpy
-
+    def to_numpy_dtype(self) -> numpy.dtype:
         return numpy.dtype(self.to_numpy_str())
 
     def to_numpy_str(self):
@@ -120,7 +119,7 @@ class BuiltinDtype:
         # so the reported itemsize is 4x the char count.  To get back to the string
         # we need to divide by 4.
         size = self.itemsize if self.kind != Kind.unicode else self.itemsize // 4
-        units = f"[{self.units}]" if self.units else ''
+        units = f"[{self.units}]" if self.units else ""
         return f"{endianness}{self.kind.value}{size}{units}"
 
     @classmethod
@@ -129,7 +128,7 @@ class BuiltinDtype:
             kind=Kind(structure["kind"]),
             itemsize=structure["itemsize"],
             endianness=Endianness(structure["endianness"]),
-            units=structure.get('units', '')
+            units=structure.get("units", ""),
         )
 
 
@@ -141,8 +140,6 @@ class Field:
 
     @classmethod
     def from_numpy_descr(cls, field):
-        import numpy
-
         name, *rest = field
         if name == "":
             raise ValueError(
@@ -200,8 +197,6 @@ class StructDtype:
         )
 
     def to_numpy_dtype(self):
-        import numpy
-
         return numpy.dtype(self.to_numpy_descr())
 
     def to_numpy_descr(self):
@@ -252,8 +247,6 @@ class ArrayStructure:
 
         if not hasattr(array, "__array__"):
             # may be a list of something; convert to array
-            import numpy
-
             array = numpy.asanyarray(array)
 
         # Why would shape ever be different from array.shape, you ask?
