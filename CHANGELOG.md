@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 - Add method to `TableAdapter` which accepts a Python dictionary.
 - Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter`.
+- Added support for explicit units in numpy datetime64 dtypes.
 
 ### Changed
 - Make `tiled.client` accept a Python dictionary when fed to `write_dataframe()`.
