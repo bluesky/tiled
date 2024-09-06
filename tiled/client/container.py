@@ -886,6 +886,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
         >>> x.write_block(coords=[[0, 1]], data=[6.7, 1.2], block=(1,))
         """
+        from ..structures.array import BuiltinDtype
         from ..structures.sparse import COOStructure
 
         structure = COOStructure(
@@ -893,6 +894,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # This method only supports single-chunk COO arrays.
             chunks=tuple((dim,) for dim in shape),
             dims=dims,
+            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
         )
         client = self.new(
             StructureFamily.sparse,
