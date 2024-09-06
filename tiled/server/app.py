@@ -46,7 +46,6 @@ from ..validation_registration import validation_registry as default_validation_
 from . import schemas
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
-from .core import PatchedStreamingResponse
 from .dependencies import (
     get_query_registry,
     get_root_tree,
@@ -715,7 +714,6 @@ Back up the database, and then run:
                 )
 
         response = await call_next(request)
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         if not csrf_cookie:
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
@@ -755,7 +753,6 @@ Back up the database, and then run:
                         },
                     )
         response = await call_next(request)
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
 
     @app.middleware("http")
@@ -764,7 +761,6 @@ Back up the database, and then run:
         # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
         response = await call_next(request)
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         for params in request.state.cookies_to_set:
             params.setdefault("httponly", True)
             params.setdefault("samesite", "lax")
@@ -819,7 +815,6 @@ Back up the database, and then run:
         # Record the overall application time.
         with record_timing(metrics, "app"):
             response = await call_next(request)
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         # Server-Timing specifies times should be in milliseconds.
         # Prometheus specifies times should be in seconds.
         # Therefore, we store as seconds and convert to ms for Server-Timing here.
@@ -874,7 +869,6 @@ Back up the database, and then run:
                 # send an appropriate response to the client.
                 raise
             finally:
-                response.__class__ = PatchedStreamingResponse  # tolerate memoryview
                 metrics.capture_request_metrics(request, response)
 
             # This is a *real* response (i.e., not the 'only_for_metrics' response).
@@ -885,7 +879,6 @@ Back up the database, and then run:
     async def current_principal_logging_filter(request: Request, call_next):
         request.state.principal = SpecialUsers.public
         response = await call_next(request)
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         current_principal.set(request.state.principal)
         return response
 

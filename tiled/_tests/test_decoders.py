@@ -12,8 +12,10 @@ def client():
     metadata = {str(i): {str(j): j for j in range(100)} for i in range(100)}
     tree = MapAdapter(
         {
+            # This example needs to (1) compress well and (2) be large enough
+            # to be worthwhile to compress.
             "compresses_well": ArrayAdapter.from_array(
-                numpy.zeros((100, 100)), metadata=metadata
+                numpy.zeros((1000, 1000)), metadata=metadata
             )
         },
     )
