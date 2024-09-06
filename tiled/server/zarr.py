@@ -30,8 +30,8 @@ from starlette.status import (
 )
 
 from .. import __version__
-from ..structures.core import Spec, StructureFamily
 from ..structures.array import StructDtype
+from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
 
@@ -76,7 +76,7 @@ ZARR_CODEC_SPEC = {
     "id": "blosc",
     "shuffle": 1,
 }
-ZARR_DATETIME64_PRECISION = 'ns'
+ZARR_DATETIME64_PRECISION = "ns"
 
 import numcodecs
 
@@ -102,15 +102,22 @@ async def get_zarr_group_metadata(
     request: Request,
     entry=SecureEntry(
         scopes=["read:data", "read:metadata"],
-        structure_families={StructureFamily.table, StructureFamily.container, StructureFamily.array},
+        structure_families={
+            StructureFamily.table,
+            StructureFamily.container,
+            StructureFamily.array,
+        },
     ),
 ):
     # Usual (unstructured) array; should respond to /.zarray instead
-    if entry.structure_family == StructureFamily.array and not isinstance(entry.structure().data_type, StructDtype):
+    if entry.structure_family == StructureFamily.array and not isinstance(
+        entry.structure().data_type, StructDtype
+    ):
         raise HTTPException(status_code=HTTP_404_NOT_FOUND)
 
     # Structured numpy array, Container, or Table
     return Response(json.dumps({"zarr_format": 2}), status_code=200)
+
 
 @router.get("/{path:path}/.zarray", name="Zarr .zarray metadata")
 async def get_zarr_array_metadata(
@@ -151,7 +158,7 @@ async def get_zarr_array_metadata(
 )
 async def get_zarr_array(
     request: Request,
-    block: str | None = None,
+    block: Optional[str] = None,
     entry=SecureEntry(
         scopes=["read:data"],
         structure_families={
@@ -180,10 +187,14 @@ async def get_zarr_array(
         body = json.dumps([url + "/" + key for key in entry.structure().columns])
 
         return Response(body, status_code=200, media_type="application/json")
-    
-    elif entry.structure_family == StructureFamily.array and isinstance(entry.structure().data_type, StructDtype):
+
+    elif entry.structure_family == StructureFamily.array and isinstance(
+        entry.structure().data_type, StructDtype
+    ):
         # List the column names of the structured array -- they will be accessed separately
-        body = json.dumps([url + "/" + f.name for f in entry.structure().data_type.fields])
+        body = json.dumps(
+            [url + "/" + f.name for f in entry.structure().data_type.fields]
+        )
 
         return Response(body, status_code=200, media_type="application/json")
 
