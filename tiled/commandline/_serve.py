@@ -279,6 +279,7 @@ def serve_directory(
     asyncio.run(serve_and_walk())
 
 
+@serve_app.command("catalog")
 def serve_catalog(
     database: str = typer.Argument(
         None, help="A filepath or database URI, e.g. 'catalog.db'"
@@ -445,9 +446,6 @@ or use an existing one:
 
     log_config = _setup_log_config(log_config, log_timestamps)
     uvicorn.run(web_app, host=host, port=port, log_config=log_config)
-
-
-serve_app.command("catalog")(serve_catalog)
 
 
 @serve_app.command("pyobject")
