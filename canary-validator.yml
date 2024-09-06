@@ -23,7 +23,7 @@ checks:
      httpGet:
        path: /
        port: 8000
-     initialDelaySeconds: 5
+     initialDelaySeconds: 15
      timeoutSeconds: 10
      failureThreshold: 3
  - name: http
@@ -32,7 +32,7 @@ checks:
      httpGet:
        path: /api/v1
        port: 8000
-     initialDelaySeconds: 5
+     initialDelaySeconds: 15
      timeoutSeconds: 10
      failureThreshold: 3
  - name: http
@@ -41,7 +41,7 @@ checks:
      httpGet:
        path: /api/v1
        port: 8000
-     initialDelaySeconds: 5
+     initialDelaySeconds: 15
      timeoutSeconds: 10
      failureThreshold: 3
      httpHeaders:
@@ -53,7 +53,7 @@ checks:
      httpGet:
        path: /ui/browse
        port: 8000
-     initialDelaySeconds: 5
+     initialDelaySeconds: 15
      timeoutSeconds: 10
      failureThreshold: 3
      httpHeaders:
