@@ -91,7 +91,7 @@ class BuiltinDtype:
     @classmethod
     def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
         # Extract datetime units from the dtype string representation,
-        # e.g. `'<M8[ns]'` has `units = 's'`.
+        # e.g. `'<M8[ns]'` has `units = 'ns'`.
         units = ""
         if dtype.kind in ("m", "M"):
             if res := re.search(r"\[(.+)\]$", dtype.str):
