@@ -1,5 +1,4 @@
 import builtins
-import collections.abc
 import os
 import sys
 from typing import Any, Iterator, List, Optional, Tuple, Union
@@ -19,6 +18,11 @@ from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .protocols import AccessPolicy
 from .type_alliases import JSON, NDSlice
 
+if sys.version_info < (3, 9):
+    from typing_extensions import Mapping as MappingType
+else:
+    from collections.abc import Mapping as MappingType
+
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
@@ -27,17 +31,17 @@ def read_zarr(
     structure: Optional[ArrayStructure] = None,
     **kwargs: Any,
 ) -> Union["ZarrGroupAdapter", ArrayAdapter]:
-    """
+    """Create an adapter for zarr Group or Array
 
     Parameters
     ----------
-    data_uri :
-    structure :
-    kwargs :
+    data_uri : location of the zarr resource, e.g. 'file://localhost/data/arr1'
+    structure : specification of the shape, chunks, and data type
+    kwargs : any kwargs accepted by ZarrGroupAdapter or ZarrArrayAdapter
 
     Returns
     -------
-
+    Initialized ZarrGroupAdapter or ZarrArrayAdapter.
     """
     filepath = path_from_uri(data_uri)
     zarr_obj = zarr.open(filepath)  # Group or Array
@@ -91,13 +95,16 @@ class ZarrArrayAdapter(ArrayAdapter):
         ]
 
     def _stencil(self) -> Tuple[slice, ...]:
-        """
-        Trims overflow because Zarr always has equal-sized chunks.
+        """Trims overflow because Zarr always has equal-sized chunks.
+
         Returns
         -------
 
         """
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
+
+    def get(self, key: str):
+        return None
 
     def read(
         self,
@@ -182,16 +189,6 @@ class ZarrArrayAdapter(ArrayAdapter):
             block, self.structure().chunks
         )
         self._array[block_slice] = data
-
-
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
 
 
 class ZarrGroupAdapter(

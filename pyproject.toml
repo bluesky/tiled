@@ -44,6 +44,7 @@ tiled = "tiled.commandline.main:main"
 
 # This is the union of all optional dependencies.
 all = [
+    "aiohttp",
     "aiofiles",
     "aiosqlite",
     "alembic",
@@ -190,6 +191,7 @@ minimal-client = [
 ]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
+    "aiohttp",
     "aiofiles",
     "aiosqlite",
     "alembic",
@@ -225,6 +227,7 @@ minimal-server = [
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
+    "aiohttp",
     "aiofiles",
     "aiosqlite",
     "alembic",
