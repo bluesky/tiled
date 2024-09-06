@@ -1,6 +1,7 @@
 import enum
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
+
 from .array import BuiltinDtype, StructDtype
 
 
