@@ -26,8 +26,8 @@ data = {
     "tiny_cube": rng.random((50, 50, 50)),
     "tiny_hypercube": rng.random((50, 50, 50, 50, 50)),
     "high_entropy": rng.integers(-10, 10, size=(100, 100)),
-    "low_entropy": numpy.ones((100, 100), dtype='int32'),
-    "short_column": rng.integers(10, size=100, dtype=numpy.dtype('uint8')),
+    "low_entropy": numpy.ones((100, 100), dtype="int32"),
+    "short_column": rng.integers(10, size=100, dtype=numpy.dtype("uint8")),
     "tiny_column": rng.random(10),
     "long_column": rng.random(100_000),
 }
@@ -126,7 +126,10 @@ mapping = {
     "structured_data": MapAdapter(
         {
             "pets": ArrayAdapter.from_array(
-                numpy.array([("Rex", 9, 81.0), ("Fido", 3, 27.0)],dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")])
+                numpy.array(
+                    [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
+                    dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
+                )
             ),
             "xarray_dataset": DatasetAdapter.from_dataset(
                 xarray.Dataset(

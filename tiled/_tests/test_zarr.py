@@ -7,9 +7,8 @@ import warnings
 
 import dask.array
 import numpy
-import pytest
-import numpy
 import pandas.testing
+import pytest
 import uvicorn
 import zarr
 from fsspec.implementations.http import HTTPFileSystem
@@ -32,8 +31,13 @@ array_cases = {
     "dtype_c": (numpy.arange(10) * 1j).astype("c"),
     "dtype_S": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="S3"),
     "dtype_U": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="U3"),
-    "dtype_m": numpy.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64') - numpy.datetime64('2008-01-01'),
-    "dtype_M": numpy.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64'),
+    "dtype_m": numpy.array(
+        ["2007-07-13", "2006-01-13", "2010-08-13"], dtype="datetime64"
+    )
+    - numpy.datetime64("2008-01-01"),
+    "dtype_M": numpy.array(
+        ["2007-07-13", "2006-01-13", "2010-08-13"], dtype="datetime64"
+    ),
     "random_2d": rng.random((10, 10)),
 }
 # TODO bitfield "t", void "v", and object "O" (which is not supported by default)
@@ -75,12 +79,12 @@ with warnings.catch_warnings():
         }
     )
 df = pandas.DataFrame(
-                {
-                    "x": rng.random(size=10, dtype='float64'),
-                    "y": rng.integers(10, size=10, dtype='uint'),
-                    "z": rng.integers(-10, 10, size=10, dtype='int64'),
-                }
-            )
+    {
+        "x": rng.random(size=10, dtype="float64"),
+        "y": rng.integers(10, size=10, dtype="uint"),
+        "z": rng.integers(-10, 10, size=10, dtype="int64"),
+    }
+)
 table_tree = MapAdapter(
     {
         # a dataframe divided into three partitions
@@ -102,18 +106,18 @@ tree = MapAdapter(
 )
 
 
-def traverse_tree(tree, parent='', result = None):
+def traverse_tree(tree, parent="", result=None):
     result = result or {}
     for key, val in tree.items():
         if isinstance(val, ArrayAdapter):
-            result.update({f'{parent}/{key}' : 'array'})
+            result.update({f"{parent}/{key}": "array"})
         elif isinstance(val, DataFrameAdapter):
-            result.update({f'{parent}/{key}' : 'group'})
+            result.update({f"{parent}/{key}": "group"})
             for col, _ in val.items():
-                result.update({f'{parent}/{key}/{col}' : 'array'})
+                result.update({f"{parent}/{key}/{col}": "array"})
         else:
-            result.update({f'{parent}/{key}' : 'group'})
-            traverse_tree(val, parent=f'{parent}/{key}', result=result)
+            result.update({f"{parent}/{key}": "group"})
+            traverse_tree(val, parent=f"{parent}/{key}", result=result)
     return result
 
 
@@ -155,7 +159,9 @@ def fs():
     return fs
 
 
-@pytest.mark.parametrize("path", ["/zarr/v2/", "/zarr/v2", "/zarr/v2/nested", "/zarr/v2/table/single"])
+@pytest.mark.parametrize(
+    "path", ["/zarr/v2/", "/zarr/v2", "/zarr/v2/nested", "/zarr/v2/table/single"]
+)
 @pytest.mark.asyncio
 async def test_zarr_group_routes(path, app):
     async with AsyncClient(
@@ -167,14 +173,16 @@ async def test_zarr_group_routes(path, app):
         response = await client.get(path)
         assert response.status_code == HTTP_200_OK
 
-        response = await client.get(path + '/.zarray')
+        response = await client.get(path + "/.zarray")
         assert response.status_code == HTTP_404_NOT_FOUND
 
-        response = await client.get(path + '/.zgroup')
+        response = await client.get(path + "/.zgroup")
         assert response.status_code == HTTP_200_OK
 
 
-@pytest.mark.parametrize("path", ["/zarr/v2/nested/cube/tiny_cube", "/zarr/v2/table/single/x"])
+@pytest.mark.parametrize(
+    "path", ["/zarr/v2/nested/cube/tiny_cube", "/zarr/v2/table/single/x"]
+)
 @pytest.mark.asyncio
 async def test_zarr_array_routes(path, app):
     async with AsyncClient(
@@ -186,16 +194,17 @@ async def test_zarr_array_routes(path, app):
         response = await client.get(path)
         assert response.status_code == HTTP_200_OK
 
-        response = await client.get(path + '/.zgroup')
+        response = await client.get(path + "/.zgroup")
         assert response.status_code == HTTP_404_NOT_FOUND
 
-        response = await client.get(path + '/.zarray')
+        response = await client.get(path + "/.zarray")
         assert response.status_code == HTTP_200_OK
 
-        ndim = len(response.json().get('shape'))
-        indx = '.'.join( ['0']*max(ndim, 0) )
-        response = await client.get(path + f'/{indx}')
+        ndim = len(response.json().get("shape"))
+        indx = ".".join(["0"] * max(ndim, 0))
+        response = await client.get(path + f"/{indx}")
         assert response.status_code == HTTP_200_OK
+
 
 def test_zarr_integration(server, fs):
     url = f"http://localhost:{server.port}/zarr/v2/"
