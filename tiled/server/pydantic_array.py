@@ -14,6 +14,7 @@ that just imports ArrayStructure from tiled.structures.array and then deprecate
 it.
 """
 
+import re
 import sys
 from typing import List, Optional, Tuple, Union
 
@@ -27,6 +28,7 @@ class BuiltinDtype(BaseModel):
     endianness: Endianness
     kind: Kind
     itemsize: int
+    units: str = ""
 
     __endianness_map = {
         ">": "big",
@@ -39,10 +41,18 @@ class BuiltinDtype(BaseModel):
 
     @classmethod
     def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
+        # Extract datetime units from the dtype string representation,
+        # e.g. `'<M8[ns]'` has `units = 'ns'`.
+        units = ""
+        if dtype.kind in ("m", "M"):
+            if res := re.search(r"\[(.+)\]$", dtype.str):
+                units = res.group(1)
+
         return cls(
             endianness=cls.__endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
+            units=units,
         )
 
     def to_numpy_dtype(self):
@@ -60,7 +70,8 @@ class BuiltinDtype(BaseModel):
         # so the reported itemsize is 4x the char count.  To get back to the string
         # we need to divide by 4.
         size = self.itemsize if self.kind != Kind.unicode else self.itemsize // 4
-        return f"{endianness}{self.kind.value}{size}"
+        units = f"[{self.units}]" if self.units else ""
+        return f"{endianness}{self.kind.value}{size}{units}"
 
     @classmethod
     def from_json(cls, structure):
@@ -68,6 +79,7 @@ class BuiltinDtype(BaseModel):
             kind=Kind(structure["kind"]),
             itemsize=structure["itemsize"],
             endianness=Endianness(structure["endianness"]),
+            units=structure.get("units", "s"),
         )
 
 
