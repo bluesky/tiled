@@ -24,7 +24,7 @@ class COOStructure:
     @classmethod
     def from_json(cls, structure):
         data_type = structure.get("data_type", None)
-        if "fields" in data_type:
+        if data_type is not None and "fields" in data_type:
             data_type = StructDtype.from_json(data_type)
         else:
             data_type = BuiltinDtype.from_json(data_type)
