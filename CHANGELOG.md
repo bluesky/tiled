@@ -3,6 +3,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+- Change registration of serve catalog cli command to use decorator like other serve subcommands.
+
 ## v0.1.0b8 (2024-09-06)
 
 ### Fixed
