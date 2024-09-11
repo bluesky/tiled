@@ -13,6 +13,7 @@ from .. import profiles
 from ..catalog import from_uri, in_memory
 from ..client.base import BaseClient
 from ..server.settings import get_settings
+from ..utils import ensure_specified_sql_driver
 from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres
 
@@ -152,7 +153,7 @@ async def postgresql_with_example_data_adapter(request, tmpdir):
     if uri.endswith("/"):
         uri = uri[:-1]
     uri_with_database_name = f"{uri}/{DATABASE_NAME}"
-    engine = create_async_engine(uri_with_database_name)
+    engine = create_async_engine(ensure_specified_sql_driver(uri_with_database_name))
     try:
         async with engine.connect():
             pass

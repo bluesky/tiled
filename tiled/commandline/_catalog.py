@@ -44,14 +44,14 @@ def init(
     from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
-    from ..utils import SCHEME_PATTERN
+    from ..utils import SCHEME_PATTERN, ensure_specified_sql_driver
 
     if not SCHEME_PATTERN.match(database):
         # Interpret URI as filepath.
         database = f"sqlite+aiosqlite:///{database}"
 
     async def do_setup():
-        engine = create_async_engine(database)
+        engine = create_async_engine(ensure_specified_sql_driver(database))
         redacted_url = engine.url._replace(password="[redacted]")
         try:
             await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
@@ -94,9 +94,10 @@ def upgrade_database(
     from ..alembic_utils import get_current_revision, upgrade
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
 
     async def do_setup():
-        engine = create_async_engine(database_uri)
+        engine = create_async_engine(ensure_specified_sql_driver(database_uri))
         redacted_url = engine.url._replace(password="[redacted]")
         current_revision = await get_current_revision(engine, ALL_REVISIONS)
         await engine.dispose()
@@ -127,9 +128,10 @@ def downgrade_database(
     from ..alembic_utils import downgrade, get_current_revision
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
 
     async def do_setup():
-        engine = create_async_engine(database_uri)
+        engine = create_async_engine(ensure_specified_sql_driver(database_uri))
         redacted_url = engine.url._replace(password="[redacted]")
         current_revision = await get_current_revision(engine, ALL_REVISIONS)
         if current_revision is None:
