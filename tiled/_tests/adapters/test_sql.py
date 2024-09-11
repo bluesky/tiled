@@ -101,19 +101,24 @@ def test_write_read(adapter_sql: SQLAdapter) -> None:
     ) == pa.Table.from_pandas(result)
 
 
-TILED_TEST_POSTGRESQL_URI = os.environ["TILED_TEST_POSTGRESQL_URI"]
+@pytest.fixture
+def postgres_uri() -> str:
+    uri = os.getenv("TILED_TEST_POSTGRESQL_URI")
+    if uri is not None:
+        return uri
+    pytest.skip("TILED_TEST_POSTGRESQL_URI is not set")
+    return ""
 
 
 @pytest.fixture
-def adapter_psql() -> SQLAdapter:
-    data_uri = TILED_TEST_POSTGRESQL_URI
+def adapter_psql(postgres_uri: str) -> SQLAdapter:
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=1)
-    asset = SQLAdapter.init_storage(data_uri, structure=structure)
+    asset = SQLAdapter.init_storage(postgres_uri, structure=structure)
     return SQLAdapter(asset.data_uri, structure=structure)
 
 
-def test_psql(adapter_psql: SQLAdapter) -> None:
+def test_psql(postgres_uri: str, adapter_psql: SQLAdapter) -> None:
     assert adapter_psql.structure().columns == names
     assert adapter_psql.structure().npartitions == 1
     # assert isinstance(
