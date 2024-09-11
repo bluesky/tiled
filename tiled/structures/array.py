@@ -77,7 +77,7 @@ class BuiltinDtype:
     endianness: Endianness
     kind: Kind
     itemsize: int
-    units: str = ""
+    units: Optional[str] = None
 
     __endianness_map = {
         ">": "big",
@@ -92,7 +92,7 @@ class BuiltinDtype:
     def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
         # Extract datetime units from the dtype string representation,
         # e.g. `'<M8[ns]'` has `units = 'ns'`.
-        units = ""
+        units = None
         if dtype.kind in ("m", "M"):
             if res := re.search(r"\[(.+)\]$", dtype.str):
                 units = res.group(1)
@@ -128,7 +128,7 @@ class BuiltinDtype:
             kind=Kind(structure["kind"]),
             itemsize=structure["itemsize"],
             endianness=Endianness(structure["endianness"]),
-            units=structure.get("units", ""),
+            units=structure.get("units"),
         )
 
 
