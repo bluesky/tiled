@@ -739,11 +739,9 @@ def ensure_specified_sql_driver(uri: str) -> str:
     'postgresql+asyncpg://...' -> 'postgresql+asynpg://...'
     'postgresql+my_custom_driver://...' -> 'postgresql+my_custom_driver://...'
     """
-    parsed_uri = urlparse(uri)
-    scheme = parsed_uri.scheme
+    scheme, rest = uri.split(":", 1)
     new_scheme = SCHEME_TO_SCHEME_PLUS_DRIVER.get(scheme, scheme)
-    updated_uri = urlunparse(parsed_uri._replace(scheme=new_scheme))
-    return updated_uri
+    return ":".join([new_scheme, rest])
 
 
 class catch_warning_msg(warnings.catch_warnings):
