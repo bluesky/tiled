@@ -1,6 +1,5 @@
 import enum
 import os
-import re
 import sys
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
@@ -77,7 +76,7 @@ class BuiltinDtype:
     endianness: Endianness
     kind: Kind
     itemsize: int
-    units: Optional[str] = None
+    dt_units: Optional[str] = None
 
     __endianness_map = {
         ">": "big",
@@ -91,17 +90,17 @@ class BuiltinDtype:
     @classmethod
     def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
         # Extract datetime units from the dtype string representation,
-        # e.g. `'<M8[ns]'` has `units = 'ns'`.
-        units = None
+        # e.g. `'<M8[ns]'` has `dt_units = '[ns]'`. Count determines the number of base units in a step.
+        dt_units = None
         if dtype.kind in ("m", "M"):
-            if res := re.search(r"\[(.+)\]$", dtype.str):
-                units = res.group(1)
+            unit, count = numpy.datetime_data(dtype)
+            dt_units = f"[{count if count > 1 else ''}{unit}]"
 
         return cls(
             endianness=cls.__endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
-            units=units,
+            dt_units=dt_units,
         )
 
     def to_numpy_dtype(self) -> numpy.dtype:
@@ -119,8 +118,7 @@ class BuiltinDtype:
         # so the reported itemsize is 4x the char count.  To get back to the string
         # we need to divide by 4.
         size = self.itemsize if self.kind != Kind.unicode else self.itemsize // 4
-        units = f"[{self.units}]" if self.units else ""
-        return f"{endianness}{self.kind.value}{size}{units}"
+        return f"{endianness}{self.kind.value}{size}{self.dt_units or ''}"
 
     @classmethod
     def from_json(cls, structure):
@@ -128,7 +126,7 @@ class BuiltinDtype:
             kind=Kind(structure["kind"]),
             itemsize=structure["itemsize"],
             endianness=Endianness(structure["endianness"]),
-            units=structure.get("units"),
+            dt_units=structure.get("dt_units"),
         )
 
 
