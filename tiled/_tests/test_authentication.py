@@ -7,11 +7,7 @@ import time
 
 import numpy
 import pytest
-from starlette.status import (
-    HTTP_400_BAD_REQUEST,
-    HTTP_401_UNAUTHORIZED,
-    HTTP_422_UNPROCESSABLE_ENTITY,
-)
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -93,7 +89,7 @@ def test_password_auth(enter_password, config):
                 from_context(context, username="alice")
 
         # Empty password should not work.
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             with enter_password(""):
                 from_context(context, username="alice")
 
