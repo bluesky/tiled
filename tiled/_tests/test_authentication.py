@@ -7,10 +7,7 @@ import time
 
 import numpy
 import pytest
-from starlette.status import (
-    HTTP_400_BAD_REQUEST,
-    HTTP_401_UNAUTHORIZED,
-)
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
