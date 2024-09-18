@@ -912,6 +912,35 @@ async def principal(
     )
 
 
+@base_authentication_router.delete(
+    "/principal/{uuid}/apikey",
+    response_model=schemas.Principal,
+)
+async def delete_service_principal_apikey(
+    request: Request,
+    uuid: uuid_module.UUID,
+    first_eight: str,
+    principal=Security(get_current_principal, scopes=["admin:apikeys"]),
+    db=Depends(get_database_session),
+):
+    "Allow Tiled Admins to delete any user's apikeys e.g."
+    request.state.endpoint = "auth"
+    api_key_orm = (
+        await db.execute(
+            select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
+        )
+    ).scalar()
+    if (api_key_orm is None) or (api_key_orm.principal.uuid != uuid):
+        raise HTTPException(
+            404,
+            f"The principal {uuid} has no such API key.",
+        )
+    await db.delete(api_key_orm)
+    await db.commit()
+
+    return Response(status_code=HTTP_204_NO_CONTENT)
+
+
 @base_authentication_router.post(
     "/principal/{uuid}/apikey",
     response_model=schemas.APIKeyWithSecret,
