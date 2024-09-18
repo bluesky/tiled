@@ -23,11 +23,9 @@ array_cases = {
     "uint64": numpy.arange(10, dtype="uint64"),
     "f": numpy.arange(10, dtype="f"),
     "c": (numpy.arange(10) * 1j).astype("c"),
-    # "m": (
-    #     numpy.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64') -
-    #     numpy.datetime64('2008-01-01'),
-    # )
-    # "M": numpy.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64'),
+    "m": numpy.array(["2007-07-13", "2006-01-13", "2010-08-13"], dtype="datetime64[D]")
+    - numpy.datetime64("2008-01-01"),
+    "M": numpy.array(["2007-07-13", "2006-01-13", "2010-08-13"], dtype="datetime64[D]"),
     "S": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="S3"),
     "U": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="U3"),
 }

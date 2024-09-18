@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added support for explicit units in numpy datetime64 dtypes.
+
 ## v0.1.0b8 (2024-09-06)
 
 ### Fixed
