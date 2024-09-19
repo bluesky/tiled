@@ -11,6 +11,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Follow-up fix to compatibility with Starlette v0.38.0
 - Adapt to change in dask public API in dask 2024.9.0.
 
 ## v0.1.0b8 (2024-09-06)
