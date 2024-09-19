@@ -110,7 +110,7 @@ class Context:
 
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
-                transport=httpx.ASGITransport(app=app),
+                app=app,
                 raise_server_exceptions=raise_server_exceptions,
             )
             client.timeout = timeout
