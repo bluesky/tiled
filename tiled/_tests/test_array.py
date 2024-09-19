@@ -12,6 +12,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_406_NOT_ACCEPTABLE
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
+from ..serialization.array import as_buffer
 from ..server.app import build_app
 from .utils import fail_with_status_code
 
@@ -163,3 +164,9 @@ def test_array_interface(context):
         # smoke test
         v.chunks
         v.dims
+
+
+@pytest.mark.parametrize("kind", list(array_cases))
+def test_as_buffer(kind):
+    output = as_buffer(array_cases[kind], {})
+    assert len(output) == len(bytes(output))
