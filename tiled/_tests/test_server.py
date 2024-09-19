@@ -74,3 +74,9 @@ def test_500_response(server):
     client = from_uri(server, api_key=API_KEY)
     response = client.context.http_client.get(f"{server}/error")
     assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
+
+
+def test_writing_integration(server):
+    client = from_uri(server, api_key=API_KEY)
+    x = client.write_array([1, 2, 3], key="array")
+    x[:]
