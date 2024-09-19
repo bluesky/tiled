@@ -9,6 +9,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Added support for explicit units in numpy datetime64 dtypes.
 
+### Fixed
+
+- Adapt to change in dask public API in dask 2024.9.0.
+
 ## v0.1.0b8 (2024-09-06)
 
 ### Fixed
