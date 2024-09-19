@@ -65,7 +65,7 @@ def populate_internal(client):
         awkward.Array([1, [2, 3]]), key="d", metadata={"color": "red"}, specs=["alpha"]
     )
     # sparse
-    coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+    coo = sparse.COO(coords=numpy.array([[2, 5]]), data=[1.3, 7.5], shape=(10,))
     client.write_sparse(key="e", coords=coo.coords, data=coo.data, shape=coo.shape)
 
     # nested
