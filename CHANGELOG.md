@@ -12,6 +12,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Adapt to change in dask public API in dask 2024.9.0.
+- Address miscellaneous deprecations in dependencies.
 
 ## v0.1.0b8 (2024-09-06)
 
