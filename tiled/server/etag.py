@@ -1,5 +1,12 @@
-from dask.base import normalize_object, normalize_token
-from dask.base import tokenize as dask_tokenize
+import importlib.util
+
+if importlib.util.find_spec("dask.tokenize"):
+    # moved in dask version 2024.9.0
+    from dask.tokenize import normalize_object, normalize_token
+    from dask.tokenize import tokenize as dask_tokenize
+else:
+    from dask.base import normalize_object, normalize_token
+    from dask.base import tokenize as dask_tokenize
 
 
 def tokenize(obj):
