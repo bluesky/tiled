@@ -2,6 +2,7 @@ import contextlib
 import threading
 import time
 
+import pytest
 import uvicorn
 from fastapi import APIRouter
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
@@ -39,12 +40,26 @@ class Server(uvicorn.Server):
             thread.join()
 
 
+API_KEY = "secret"
+
+
+@pytest.fixture
+def server(tmpdir):
+    catalog = in_memory(writable_storage=tmpdir)
+    app = build_app(catalog, {"single_user_api_key": API_KEY})
+    app.include_router(router)
+    config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
+    server = Server(config)
+    with server.run_in_thread() as url:
+        yield url
+
+
 @router.get("/error")
 def error():
     1 / 0  # error!
 
 
-def test_500_response():
+def test_500_response(server):
     """
     Test that unexpected server error returns 500 response.
 
@@ -56,14 +71,6 @@ def test_500_response():
 
     This can happen when bugs are introduced in the middleware layer.
     """
-    API_KEY = "secret"
-    catalog = in_memory()
-    app = build_app(catalog, {"single_user_api_key": API_KEY})
-    app.include_router(router)
-    config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
-    server = Server(config)
-
-    with server.run_in_thread() as url:
-        client = from_uri(url, api_key=API_KEY)
-        response = client.context.http_client.get(f"{url}/error")
+    client = from_uri(server, api_key=API_KEY)
+    response = client.context.http_client.get(f"{server}/error")
     assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
