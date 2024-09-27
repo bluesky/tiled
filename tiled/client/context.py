@@ -308,7 +308,7 @@ class Context:
             verify=verify,
             token_cache=token_cache,
             app=app,
-            clear_id_on_logout=clear_id_on_logout
+            clear_id_on_logout=clear_id_on_logout,
         )
         return context, node_path_parts
 
