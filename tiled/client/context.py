@@ -40,6 +40,7 @@ class Context:
         token_cache=None,
         app=None,
         raise_server_exceptions=True,
+        clear_id_on_logout=False,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -141,6 +142,7 @@ class Context:
         self._verify = verify
         self._cache = cache
         self._token_cache = Path(token_cache)
+        self._clear_id_on_logout = clear_id_on_logout
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
@@ -262,6 +264,7 @@ class Context:
         verify=True,
         token_cache=None,
         app=None,
+        clear_id_on_logout=False,
     ):
         """
         Accept a URI to a specific node.
@@ -305,6 +308,7 @@ class Context:
             verify=verify,
             token_cache=token_cache,
             app=app,
+            clear_id_on_logout=clear_id_on_logout
         )
         return context, node_path_parts
 
@@ -319,6 +323,7 @@ class Context:
         timeout=None,
         api_key=UNSET,
         raise_server_exceptions=True,
+        clear_id_on_logout=False,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -332,6 +337,7 @@ class Context:
             token_cache=token_cache,
             app=app,
             raise_server_exceptions=raise_server_exceptions,
+            clear_id_on_logout=clear_id_on_logout,
         )
         if (api_key is UNSET) and (
             not context.server_info["authentication"]["providers"]
@@ -714,6 +720,11 @@ and enter the code:
         # Clear in-memory state.
         self.http_client.headers.pop("Authorization", None)
         self.http_client.auth = None
+
+        # If auto-clear of default identity on logout is selected,
+        # clear it here.
+        if self._clear_id_on_logout:
+            clear_default_identity(self.api_uri)
 
     def revoke_session(self, session_id):
         """

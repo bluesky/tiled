@@ -22,6 +22,7 @@ def from_uri(
     headers=None,
     timeout=None,
     include_data_sources=False,
+    clear_id_on_logout=False,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -68,6 +69,7 @@ def from_uri(
         headers=headers,
         timeout=timeout,
         verify=verify,
+        clear_id_on_logout=clear_id_on_logout,
     )
     return from_context(
         context,
