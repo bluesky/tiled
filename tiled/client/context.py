@@ -837,6 +837,25 @@ class Admin:
             )
         ).json()
 
+    def delete_service_principal_apikey(self, uuid, first_eight=None):
+        """
+        Destroy a service principal's API key.
+
+        Parameters
+        ----------
+        uuid : str
+            Identify the principal who's API key will be deleted.
+        first_eight : str
+            Limit the chances of accidental deletion with this confirmation.
+        """
+        return handle_error(
+            self.context.http_client.delete(
+                f"{self.base_url}/auth/principal/{uuid}/apikey",
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"first_eight": first_eight},
+            )
+        )
+
 
 class CannotPrompt(Exception):
     pass

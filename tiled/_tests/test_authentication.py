@@ -653,3 +653,32 @@ def test_api_key_bypass_scopes(enter_password, principals_context):
                     context.http_client.get(
                         resource, params=query_params
                     ).raise_for_status()
+
+
+@pytest.mark.parametrize(
+    "username, scopes, resource",
+    (
+        ("alice", ["read:principals"], "/api/v1/auth/principal"),
+        ("bob", ["read:data"], "/api/v1/array/full/A1"),
+    ),
+)
+def test_admin_delete_principal_apikey(
+    enter_password, principals_context, username, scopes, resource
+):
+    """
+    Admin can delete API keys for any prinicipal, revoking access.
+    """
+    with principals_context["context"] as context:
+        # Log in as Alice
+        with enter_password("secret1"):
+            context.authenticate(username="alice")
+
+        # Create the API Key
+        principal_uuid = principals_context["uuid"][username]
+        api_key_info = context.admin.create_api_key(principal_uuid, scopes=scopes)
+        # Delete the created API Key via service principal
+        context.admin.delete_service_principal_apikey(
+            principal_uuid, api_key_info["first_eight"]
+        )
+
+        # Test passes if there are no HTTP Errors.
