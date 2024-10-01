@@ -49,7 +49,7 @@ def init(
     database = ensure_specified_sql_driver(database)
 
     async def do_setup():
-        engine = create_async_engine(ensure_specified_sql_driver(database))
+        engine = create_async_engine(database)
         redacted_url = engine.url._replace(password="[redacted]")
         try:
             await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
