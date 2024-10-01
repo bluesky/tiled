@@ -160,13 +160,13 @@ class BaseClient:
         """
         self.context.login(username=username, provider=provider)
 
-    def logout(self):
+    def logout(self, clear_default=False):
         """
         Log out.
 
         This method is idempotent: if you are already logged out, it will do nothing.
         """
-        self.context.logout()
+        self.context.logout(clear_default=clear_default)
 
     def __repr__(self):
         return f"<{type(self).__name__}>"

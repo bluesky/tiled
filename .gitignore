@@ -63,3 +63,4 @@ tiled/_version.py
 
 .env
 .asv/
+venv/
