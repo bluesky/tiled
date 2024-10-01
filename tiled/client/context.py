@@ -727,7 +727,7 @@ and enter the code:
 
         # If requested, automatically clear the default identity
         if clear_default:
-            self.clear_default_identity()
+            clear_default_identity(self.api_uri)
 
     def revoke_session(self, session_id):
         """

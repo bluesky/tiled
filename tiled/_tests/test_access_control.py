@@ -160,7 +160,9 @@ def test_top_level_access_control(context, enter_username_password):
     with pytest.raises(KeyError):
         bob_client["b"]
     alice_client.logout()
-    bob_client.logout()
+
+    # Make sure clearing default identity works without raising an error.
+    bob_client.logout(clear_default=True)
 
 
 def test_access_control_with_api_key_auth(context, enter_username_password):
