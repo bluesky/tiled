@@ -916,7 +916,7 @@ async def principal(
     "/principal/{uuid}/apikey",
     response_model=schemas.Principal,
 )
-async def delete_service_principal_apikey(
+async def revoke_apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
     first_eight: str,
