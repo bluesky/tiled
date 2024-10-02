@@ -677,7 +677,7 @@ def test_admin_delete_principal_apikey(
         principal_uuid = principals_context["uuid"][username]
         api_key_info = context.admin.create_api_key(principal_uuid, scopes=scopes)
         # Delete the created API Key via service principal
-        context.admin.delete_service_principal_apikey(
+        context.admin.revoke_api_key(
             principal_uuid, api_key_info["first_eight"]
         )
 

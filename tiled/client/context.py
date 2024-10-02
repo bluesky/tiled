@@ -412,6 +412,14 @@ class Context:
         ).json()
 
     def revoke_api_key(self, first_eight):
+        """
+        Destroy a user's API key
+
+        Parameters
+        ----------
+        first_eight : str
+            Limit the chances of accidental deletion with this confirmation.
+        """
         handle_error(
             self.http_client.delete(
                 self.server_info["authentication"]["links"]["apikey"],
@@ -837,9 +845,9 @@ class Admin:
             )
         ).json()
 
-    def delete_service_principal_apikey(self, uuid, first_eight=None):
+    def revoke_api_key(self, uuid, first_eight=None):
         """
-        Destroy a service principal's API key.
+        Destroy ANY service principal's API key.
 
         Parameters
         ----------
