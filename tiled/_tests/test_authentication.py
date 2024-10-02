@@ -655,30 +655,32 @@ def test_api_key_bypass_scopes(enter_password, principals_context):
                     ).raise_for_status()
 
 
-@pytest.mark.parametrize(
-    "username, scopes, resource",
-    (
-        ("alice", ["read:principals"], "/api/v1/auth/principal"),
-        ("bob", ["read:data"], "/api/v1/array/full/A1"),
-    ),
-)
 def test_admin_delete_principal_apikey(
-    enter_password, principals_context, username, scopes, resource
+    enter_password,
+    principals_context,
 ):
     """
     Admin can delete API keys for any prinicipal, revoking access.
     """
     with principals_context["context"] as context:
-        # Log in as Alice
+        # Log in as Bob (Ordinary user)
+        with enter_password("secret2"):
+            context.authenticate(username="bob")
+
+        # Create an ordinary user API Key
+        principal_uuid = principals_context["uuid"]["bob"]
+        api_key_info = context.create_api_key(scopes=["read:data"])
+        context.logout()
+
+        # Log in as Alice (Admin)
         with enter_password("secret1"):
             context.authenticate(username="alice")
 
-        # Create the API Key
-        principal_uuid = principals_context["uuid"][username]
-        api_key_info = context.admin.create_api_key(principal_uuid, scopes=scopes)
         # Delete the created API Key via service principal
-        context.admin.revoke_api_key(
-            principal_uuid, api_key_info["first_eight"]
-        )
+        context.admin.revoke_api_key(principal_uuid, api_key_info["first_eight"])
+        context.logout()
 
-        # Test passes if there are no HTTP Errors.
+        # Try to use the revoked API Key
+        context.api_key = api_key_info["secret"]
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            context.whoami()
