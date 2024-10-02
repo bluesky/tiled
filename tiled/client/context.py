@@ -23,6 +23,19 @@ API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 PROMPT_FOR_REAUTHENTICATION = None
 
 
+def prompt_for_username(username):
+    """
+    Utility function that displays a username prompt.
+    """
+    if username:
+        username_reprompt = input(f"Username [{username}]: ")
+        if len(username_reprompt.strip()) != 0:
+            username = username_reprompt
+    else:
+        username = input("Username: ")
+    return username
+
+
 class Context:
     """
     Wrap an httpx.Client with an optional cache and authentication functionality.
@@ -526,10 +539,7 @@ credentials in the stdin. Options:
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         if mode == "password":
-            if username:
-                print(f"Username {username}")
-            else:
-                username = input("Username: ")
+            username = prompt_for_username(username)
             password = getpass.getpass()
             form_data = {
                 "grant_type": "password",
@@ -685,7 +695,7 @@ and enter the code:
             )
         ).json()
 
-    def logout(self):
+    def logout(self, clear_default=False):
         """
         Log out of the current session (if any).
 
@@ -714,6 +724,10 @@ and enter the code:
         # Clear in-memory state.
         self.http_client.headers.pop("Authorization", None)
         self.http_client.auth = None
+
+        # If requested, automatically clear the default identity
+        if clear_default:
+            clear_default_identity(self.api_uri)
 
     def revoke_session(self, session_id):
         """
