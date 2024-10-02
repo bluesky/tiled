@@ -5,12 +5,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+- Add kwarg to client logout to auto-clear default identity.
+- Do not automatically enter username if default identity is used.
+
+## v0.1.0b9 (2024-09-19)
+
 ### Added
 
 - Added support for explicit units in numpy datetime64 dtypes.
 
 ### Fixed
 
+- Follow-up fix to compatibility with Starlette v0.38.0
 - Adapt to change in dask public API in dask 2024.9.0.
 
 ## v0.1.0b8 (2024-09-06)
