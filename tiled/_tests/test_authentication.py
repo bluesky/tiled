@@ -658,7 +658,7 @@ def test_api_key_bypass_scopes(enter_username_password, principals_context):
 
 
 def test_admin_delete_principal_apikey(
-    enter_password,
+    enter_username_password,
     principals_context,
 ):
     """
@@ -666,7 +666,7 @@ def test_admin_delete_principal_apikey(
     """
     with principals_context["context"] as context:
         # Log in as Bob (Ordinary user)
-        with enter_password("secret2"):
+        with enter_username_password("bob", "secret2"):
             context.authenticate(username="bob")
 
         # Create an ordinary user API Key
@@ -675,7 +675,7 @@ def test_admin_delete_principal_apikey(
         context.logout()
 
         # Log in as Alice (Admin)
-        with enter_password("secret1"):
+        with enter_username_password("alice", "secret1"):
             context.authenticate(username="alice")
 
         # Delete the created API Key via service principal
