@@ -44,11 +44,8 @@ def init(
     from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
-    from ..utils import SCHEME_PATTERN, ensure_specified_sql_driver
+    from ..utils import ensure_specified_sql_driver
 
-    if not SCHEME_PATTERN.match(database):
-        # Interpret URI as filepath.
-        database = f"sqlite+aiosqlite:///{database}"
     database = ensure_specified_sql_driver(database)
 
     async def do_setup():

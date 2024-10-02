@@ -59,3 +59,13 @@ def test_ensure_specified_sql_driver():
         ensure_specified_sql_driver("sqlite:///test.db")
         == "sqlite+aiosqlite:///test.db"
     )
+    # Filepaths are implicitly SQLite databases.
+    # Relative path
+    assert ensure_specified_sql_driver("test.db") == "sqlite+aiosqlite:///test.db"
+    # Relative path anchored to .
+    assert ensure_specified_sql_driver("./test.db") == "sqlite+aiosqlite:///test.db"
+    # Absolute path
+    assert (
+        ensure_specified_sql_driver("/tmp/test.db")
+        == "sqlite+aiosqlite:////tmp/test.db"
+    )

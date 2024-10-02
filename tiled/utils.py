@@ -738,7 +738,11 @@ def ensure_specified_sql_driver(uri: str) -> str:
     'sqlite://...' -> 'sqlite+aiosqlite://...'
     'postgresql+asyncpg://...' -> 'postgresql+asynpg://...'
     'postgresql+my_custom_driver://...' -> 'postgresql+my_custom_driver://...'
+    '/path/to/file.db' -> 'sqlite+aiosqlite:////path/to/file.db'
     """
+    if not SCHEME_PATTERN.match(uri):
+        # Interpret URI as filepath.
+        uri = f"sqlite+aiosqlite:///{Path(uri)}"
     scheme, rest = uri.split(":", 1)
     new_scheme = SCHEME_TO_SCHEME_PLUS_DRIVER.get(scheme, scheme)
     return ":".join([new_scheme, rest])

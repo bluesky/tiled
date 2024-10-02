@@ -64,7 +64,6 @@ from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
-    SCHEME_PATTERN,
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
@@ -1367,9 +1366,6 @@ def from_uri(
         stderr = process.stderr.decode()
         logging.info(f"Subprocess stdout: {stdout}")
         logging.error(f"Subprocess stderr: {stderr}")
-    if not SCHEME_PATTERN.match(uri):
-        # Interpret URI as filepath.
-        uri = f"sqlite+aiosqlite:///{uri}"
 
     parsed_url = make_url(uri)
     if (parsed_url.get_dialect().name == "sqlite") and (
