@@ -1,5 +1,6 @@
 import itertools
 from typing import Any, List, Optional, Tuple, Union
+from urllib.parse import quote_plus
 
 import dask.base
 import dask.dataframe
@@ -9,7 +10,7 @@ import sparse
 from numpy._typing import NDArray
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
-from ..server.schemas import Asset
+from ..server.schemas import Asset, DataSource, Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from ..type_aliases import JSON, NDSlice
@@ -71,9 +72,10 @@ class SparseBlocksParquetAdapter:
     @classmethod
     def init_storage(
         cls,
-        data_uri: str,
-        structure: COOStructure,
-    ) -> List[Asset]:
+        storage: Storage,
+        data_source: DataSource[COOStructure],
+        path_parts: List[str],
+    ) -> DataSource[COOStructure]:
         """
 
         Parameters
@@ -85,10 +87,14 @@ class SparseBlocksParquetAdapter:
         -------
 
         """
+        data_source = data_source.copy()  # Do not mutate caller input.
+        data_uri = str(storage.filesystem) + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
 
-        num_blocks = (range(len(n)) for n in structure.chunks)
+        num_blocks = (range(len(n)) for n in data_source.structure.chunks)
         assets = [
             Asset(
                 data_uri=f"{data_uri}/block-{'.'.join(map(str, block))}.parquet",
@@ -98,7 +104,8 @@ class SparseBlocksParquetAdapter:
             )
             for i, block in enumerate(itertools.product(*num_blocks))
         ]
-        return assets
+        data_source.assets.extend(assets)
+        return data_source
 
     def metadata(self) -> JSON:
         """
