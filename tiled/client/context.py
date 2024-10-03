@@ -437,7 +437,7 @@ class Context:
             self.http_client.delete(
                 self.server_info["authentication"]["links"]["apikey"],
                 headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-                params={"first_eight": first_eight},
+                params={"first_eight": first_eight[:8]},
             )
         )
 
@@ -874,7 +874,7 @@ class Admin:
             self.context.http_client.delete(
                 f"{self.base_url}/auth/principal/{uuid}/apikey",
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"first_eight": first_eight},
+                params={"first_eight": first_eight[:8]},
             )
         )
 
