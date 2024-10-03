@@ -402,7 +402,10 @@ class Context:
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
-        Generate a new API for the currently-authenticated user.
+        Generate a new API key.
+
+        Users with administrative scopes may use ``Context.admin.revoke_api_key``
+        to create API keys on behalf of other users or services.
 
         Parameters
         ----------
@@ -425,11 +428,24 @@ class Context:
         ).json()
 
     def revoke_api_key(self, first_eight):
+        """
+        Revoke an API key.
+
+        The API key must belong to the currently-authenticated user or service.
+        Users with administrative scopes may use ``Context.admin.revoke_api_key``
+        to revoke API keys belonging to other users.
+
+        Parameters
+        ----------
+        first_eight : str
+            Identify the API key to be deleted by passing its first 8 characters.
+            (Any additional characters passed will be truncated.)
+        """
         handle_error(
             self.http_client.delete(
                 self.server_info["authentication"]["links"]["apikey"],
                 headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-                params={"first_eight": first_eight},
+                params={"first_eight": first_eight[:8]},
             )
         )
 
@@ -850,6 +866,28 @@ class Admin:
                 params={"role": role},
             )
         ).json()
+
+    def revoke_api_key(self, uuid, first_eight=None):
+        """
+        Revoke an API key belonging to any user or service.
+
+        Parameters
+        ----------
+        uuid : str
+            Identify the principal whose API key will be deleted. This is
+            required in order to reduce the chance of accidentally revoking
+            the wrong key.
+        first_eight : str
+            Identify the API key to be deleted by passing its first 8 characters.
+            (Any additional characters passed will be truncated.)
+        """
+        return handle_error(
+            self.context.http_client.delete(
+                f"{self.base_url}/auth/principal/{uuid}/apikey",
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={"first_eight": first_eight[:8]},
+            )
+        )
 
 
 class CannotPrompt(Exception):
