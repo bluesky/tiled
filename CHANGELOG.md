@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Add kwarg to client logout to auto-clear default identity.
 - Do not automatically enter username if default identity is used.
+- Add API route and Python client method enabling admins to
+  reokve API keys belonging to any user or service.
 
 ## v0.1.0b9 (2024-09-19)
 
