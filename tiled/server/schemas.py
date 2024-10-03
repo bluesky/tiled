@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
+StructureT = TypeVar("StructureT")
 
 MAX_ALLOWED_SPECS = 20
 
@@ -138,19 +139,11 @@ class Revision(pydantic.BaseModel):
         )
 
 
-class DataSource(pydantic.BaseModel):
-    id: Optional[int] = None
-    structure_family: Optional[StructureFamily] = None
-    structure: Optional[
-        Union[
-            ArrayStructure,
-            AwkwardStructure,
-            SparseStructure,
-            NodeStructure,
-            TableStructure,
-        ]
-    ] = None
-    mimetype: Optional[str] = None
+class DataSource(pydantic.BaseModel, Generic[StructureT]):
+    id: int
+    structure_family: StructureFamily
+    structure: StructureT
+    mimetype: str
     parameters: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable
@@ -565,6 +558,11 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     # May be None if not altered
     metadata: Optional[Dict]
     data_sources: Optional[List[DataSource]]
+
+
+class Storage(pydantic.BaseModel):
+    filesystem: Optional[str]
+    sql: Optional[str]
 
 
 NodeStructure.model_rebuild()

@@ -12,7 +12,7 @@ import uuid
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import urlparse
 
 import anyio
 from fastapi import HTTPException
@@ -62,7 +62,7 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import Asset, DataSource, Management, Revision, Spec
+from ..server.schemas import Asset, DataSource, Management, Revision, Spec, Storage
 from ..structures.core import StructureFamily
 from ..utils import (
     UNCHANGED,
@@ -160,7 +160,7 @@ class Context:
                 )
             # If it is writable, it is automatically also readable.
             readable_storage.append(writable_storage)
-        self.writable_storage = writable_storage
+        self.writable_storage = Storage(filesystem=writable_storage, sql=None)
         self.readable_storage = [ensure_uri(path) for path in readable_storage]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -328,7 +328,7 @@ class CatalogNodeAdapter:
 
     @property
     def writable(self):
-        return bool(self.context.writable_storage)
+        return any(self.context.writable_storage.values())
 
     def __repr__(self):
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
@@ -644,9 +644,6 @@ class CatalogNodeAdapter:
                             data_source.structure_family
                         ]
                     data_source.parameters = {}
-                    data_uri = str(self.context.writable_storage) + "".join(
-                        f"/{quote_plus(segment)}" for segment in (self.segments + [key])
-                    )
                     if data_source.mimetype not in INIT_STORAGE:
                         raise HTTPException(
                             status_code=415,
@@ -656,10 +653,12 @@ class CatalogNodeAdapter:
                             ),
                         )
                     init_storage = INIT_STORAGE[data_source.mimetype]
-                    assets = await ensure_awaitable(
-                        init_storage, data_uri, data_source.structure
+                    data_source = await ensure_awaitable(
+                        init_storage,
+                        self.context.writable_storage,
+                        data_source,
+                        self.segments + [key],
                     )
-                    data_source.assets.extend(assets)
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
                         raise HTTPException(

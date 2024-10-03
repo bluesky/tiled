@@ -24,6 +24,8 @@ class SQLAdapter:
         self,
         data_uri: str,
         structure: TableStructure,
+        table_name: str,
+        dataset_id: int,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[AccessPolicy] = None,
@@ -112,33 +114,6 @@ class SQLAdapter:
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)
-
-    @classmethod
-    def from_single_file(
-        cls,
-        data_uri: str,
-        structure: TableStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
-    ) -> "SQLAdapter":
-        """
-        Construct the SQLAdapter object from `from_single_file` classmethod.
-        Parameters
-        ----------
-        data_uri : the uri of the database, starting either with "sqlite://" or "postgresql://"
-        structure : the structure of the data. structure is not optional for sql database
-        metadata : the optional metadata of the data.
-        specs : the specs.
-        access_policy : the access policy of the data.
-        """
-        return cls(
-            data_uri,
-            structure=structure,
-            metadata=metadata,
-            specs=specs,
-            access_policy=access_policy,
-        )
 
     def __getitem__(self, key: str) -> ArrayAdapter:
         """
