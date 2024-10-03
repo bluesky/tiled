@@ -1,13 +1,15 @@
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
+from urllib.parse import quote_plus
 
 import pandas
 import pyarrow
 import pyarrow.feather as feather
 import pyarrow.fs
 
+from ..server.schemas import Asset, DataSource, Storage
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Management
+from ..structures.data_source import Management
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
@@ -58,7 +60,12 @@ class ArrowAdapter:
         return self._metadata
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[TableStructure],
+        path_parts: List[str],
+    ) -> DataSource[TableStructure]:
         """
         Class to initialize the list of assets for given uri.
         Parameters
@@ -70,6 +77,10 @@ class ArrowAdapter:
         -------
         The list of assets.
         """
+        data_source = data_source.copy()  # Do not mutate caller input.
+        data_uri = str(storage.filesystem) + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         assets = [
@@ -79,9 +90,10 @@ class ArrowAdapter:
                 parameter="data_uris",
                 num=i,
             )
-            for i in range(structure.npartitions)
+            for i in range(data_source.structure.npartitions)
         ]
-        return assets
+        data_source.assets.extend(assets)
+        return data_source
 
     def structure(self) -> TableStructure:
         """
@@ -113,7 +125,7 @@ class ArrowAdapter:
         dict_or_none: Callable[[TableStructure], Dict[str, str]],
         item: Union[str, Path],
         is_directory: bool,
-    ) -> List[DataSource]:
+    ) -> List[DataSource[TableStructure]]:
         """
 
         Parameters
