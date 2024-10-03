@@ -402,7 +402,10 @@ class Context:
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
-        Generate a new API for the currently-authenticated user.
+        Generate a new API key.
+
+        Users with administrative scopes may use ``Context.admin.revoke_api_key``
+        to create API keys on behalf of other users or services.
 
         Parameters
         ----------
@@ -426,12 +429,17 @@ class Context:
 
     def revoke_api_key(self, first_eight):
         """
-        Destroy a user's API key
+        Revoke an API key.
+
+        The API key must belong to the currently-authenticated user or service.
+        Users with administrative scopes may use ``Context.admin.revoke_api_key``
+        to revoke API keys belonging to other users.
 
         Parameters
         ----------
         first_eight : str
-            Limit the chances of accidental deletion with this confirmation.
+            Identify the API key to be deleted by passing its first 8 characters.
+            (Any additional characters passed will be truncated.)
         """
         handle_error(
             self.http_client.delete(
@@ -861,14 +869,17 @@ class Admin:
 
     def revoke_api_key(self, uuid, first_eight=None):
         """
-        Destroy ANY service principal's API key.
+        Revoke an API key belonging to any user or service.
 
         Parameters
         ----------
         uuid : str
-            Identify the principal who's API key will be deleted.
+            Identify the principal whose API key will be deleted. This is
+            required in order to reduce the chance of accidentally revoking
+            the wrong key.
         first_eight : str
-            Limit the chances of accidental deletion with this confirmation.
+            Identify the API key to be deleted by passing its first 8 characters.
+            (Any additional characters passed will be truncated.)
         """
         return handle_error(
             self.context.http_client.delete(
