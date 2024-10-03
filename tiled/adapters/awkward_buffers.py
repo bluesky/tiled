@@ -1,12 +1,14 @@
 """
 A directory containing awkward buffers, one file per form key.
 """
+
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import quote_plus
 
 import awkward.forms
 
-from ..server.schemas import Asset
+from ..server.schemas import Asset, DataSource, Storage
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
@@ -22,7 +24,12 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
     structure_family = StructureFamily.awkward
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: AwkwardStructure) -> List[Asset]:
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[AwkwardStructure],
+        path_parts: List[str],
+    ) -> DataSource[AwkwardStructure]:
         """
 
         Parameters
@@ -34,9 +41,16 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         -------
 
         """
+        data_source = data_source.copy()  # Do not mutate caller input.
+        data_uri = str(storage.filesystem) + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
         directory: Path = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        return [Asset(data_uri=data_uri, is_directory=True, parameter="data_uri")]
+        data_source.assets.append(
+            Asset(data_uri=data_uri, is_directory=True, parameter="data_uri")
+        )
+        return data_source
 
     @classmethod
     def from_directory(

@@ -3,6 +3,7 @@ import collections.abc
 import os
 import sys
 from typing import Any, Iterator, List, Optional, Tuple, Union
+from urllib.parse import quote_plus
 
 import zarr.core
 import zarr.hierarchy
@@ -11,7 +12,7 @@ from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..server.schemas import Asset
+from ..server.schemas import Asset, DataSource, Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON, NDSlice
@@ -56,7 +57,12 @@ class ZarrArrayAdapter(ArrayAdapter):
     """ """
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: ArrayStructure) -> List[Asset]:
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[ArrayStructure],
+        path_parts: List[str],
+    ) -> DataSource[ArrayStructure]:
         """
 
         Parameters
@@ -68,10 +74,14 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
+        data_source = data_source.copy()  # Do not mutate caller input.
+        data_uri = str(storage.filesystem) + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
-        zarr_chunks = tuple(dim[0] for dim in structure.chunks)
-        shape = tuple(dim[0] * len(dim) for dim in structure.chunks)
+        zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
+        shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         storage = zarr.storage.DirectoryStore(str(directory))
@@ -79,15 +89,16 @@ class ZarrArrayAdapter(ArrayAdapter):
             storage,
             shape=shape,
             chunks=zarr_chunks,
-            dtype=structure.data_type.to_numpy_dtype(),
+            dtype=data_source.structure.data_type.to_numpy_dtype(),
         )
-        return [
+        data_source.assets.append(
             Asset(
                 data_uri=data_uri,
                 is_directory=True,
                 parameter="data_uri",
             )
-        ]
+        )
+        return data_source
 
     def _stencil(self) -> Tuple[slice, ...]:
         """
