@@ -1,5 +1,6 @@
 import builtins
 import collections.abc
+import copy
 import os
 import sys
 from typing import Any, Iterator, List, Optional, Tuple, Union
@@ -12,9 +13,9 @@ from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..server.schemas import Asset, DataSource, Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import Asset, DataSource, Storage
 from ..type_aliases import JSON, NDSlice
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
@@ -74,7 +75,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        data_source = data_source.copy()  # Do not mutate caller input.
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = str(storage.filesystem) + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
