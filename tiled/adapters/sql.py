@@ -1,4 +1,6 @@
+import copy
 import hashlib
+import uuid
 from typing import Iterator, List, Optional, Tuple, Union
 
 import adbc_driver_postgresql.dbapi
@@ -8,7 +10,7 @@ import pyarrow
 import pyarrow.fs
 
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset
+from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.table import TableStructure
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
@@ -71,7 +73,12 @@ class SQLAdapter:
         return self._metadata
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: TableStructure) -> Asset:
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[TableStructure],
+        path_parts: List[str],
+    ) -> DataSource[TableStructure]:
         """
         Class to initialize the list of assets for given uri. In SQL Adapter we hve  single partition.
         Parameters
@@ -81,16 +88,24 @@ class SQLAdapter:
 
         Returns
         -------
-        The list of assets. In SQL Adapter we have a single asset.
+        A modified copy of the data source
         """
-        if structure.npartitions > 1:
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        if data_source.structure.npartitions > 1:
             raise ValueError("The SQL adapter must have only 1 partition")
-        return Asset(
-            data_uri=data_uri,
-            is_directory=False,
-            parameter="data_uris",
-            num=0,
+        default_table_name = ...  # based on hash of Arrow schema
+        data_source.parameters.setdefault("table_name", default_table_name)
+        data_source.parameters["dataset_id"] = uuid.uuid4().int
+        data_uri = storage.sql  # TODO scrub credentials
+        data_source.assets.append(
+            Asset(
+                data_uri=data_uri,
+                is_directory=False,
+                parameter="data_uris",
+                num=0,
+            )
         )
+        return data_source
 
     def structure(self) -> TableStructure:
         """
