@@ -1410,7 +1410,6 @@ def from_uri(
     else:
         poolclass = None  # defer to sqlalchemy default
     engine = create_async_engine(
-        ensure_specified_sql_driver(uri),
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
