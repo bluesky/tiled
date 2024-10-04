@@ -1347,7 +1347,7 @@ def from_uri(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
 ):
-    uri = str(uri)
+    uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
         # The cleanest option available is to start a subprocess
@@ -1378,7 +1378,6 @@ def from_uri(
     else:
         poolclass = None  # defer to sqlalchemy default
     engine = create_async_engine(
-        ensure_specified_sql_driver(uri),
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
