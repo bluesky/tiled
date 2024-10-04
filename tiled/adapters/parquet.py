@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 from typing import Any, List, Optional, Union
 from urllib.parse import quote_plus
@@ -5,8 +6,8 @@ from urllib.parse import quote_plus
 import dask.dataframe
 import pandas
 
-from ..server.schemas import Asset, DataSource, Storage
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -88,7 +89,7 @@ class ParquetDatasetAdapter:
         -------
 
         """
-        data_source = data_source.copy()  # Do not mutate caller input.
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = str(storage.filesystem) + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )

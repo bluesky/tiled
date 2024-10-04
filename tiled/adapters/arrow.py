@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
@@ -7,9 +8,8 @@ import pyarrow
 import pyarrow.feather as feather
 import pyarrow.fs
 
-from ..server.schemas import Asset, DataSource, Storage
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Management
+from ..structures.data_source import Asset, DataSource, Management, Storage
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
@@ -77,7 +77,7 @@ class ArrowAdapter:
         -------
         The list of assets.
         """
-        data_source = data_source.copy()  # Do not mutate caller input.
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = str(storage.filesystem) + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
@@ -143,7 +143,7 @@ class ArrowAdapter:
             DataSource(
                 structure_family=self.structure_family,
                 mimetype=mimetype,
-                structure=dict_or_none(self.structure()),
+                structure=self.structure(),
                 parameters={},
                 management=Management.external,
                 assets=[

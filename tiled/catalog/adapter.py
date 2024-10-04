@@ -1,5 +1,6 @@
 import collections
 import copy
+import dataclasses
 import importlib
 import itertools as it
 import logging
@@ -62,8 +63,9 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import Asset, DataSource, Management, Revision, Spec, Storage
+from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
+from ..structures.data_source import Storage
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -328,7 +330,7 @@ class CatalogNodeAdapter:
 
     @property
     def writable(self):
-        return any(self.context.writable_storage.values())
+        return any(dataclasses.asdict(self.context.writable_storage).values())
 
     def __repr__(self):
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
@@ -1410,6 +1412,7 @@ def from_uri(
     else:
         poolclass = None  # defer to sqlalchemy default
     engine = create_async_engine(
+        uri,
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
