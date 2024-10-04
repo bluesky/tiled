@@ -60,6 +60,7 @@ from ..mimetypes import (
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    TILED_SQL_TABLE_MIMETYPE,
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
@@ -116,6 +117,9 @@ INIT_STORAGE = OneShotCachedMap(
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.arrow", __name__
         ).ArrowAdapter.init_storage,
+        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.sql", __name__
+        ).SQLAdapter.init_storage,
     }
 )
 
