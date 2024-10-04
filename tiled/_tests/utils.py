@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..client import context
 from ..client.base import BaseClient
+from ..utils import ensure_specified_sql_driver
 
 if sys.version_info < (3, 9):
     import importlib_resources as resources
@@ -33,7 +34,7 @@ async def temp_postgres(uri):
     if uri.endswith("/"):
         uri = uri[:-1]
     # Create a fresh database.
-    engine = create_async_engine(uri)
+    engine = create_async_engine(ensure_specified_sql_driver(uri))
     database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
     async with engine.connect() as connection:
         await connection.execute(

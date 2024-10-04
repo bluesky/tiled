@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 import importlib
 import itertools as it
 import logging
@@ -11,7 +12,7 @@ import uuid
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import urlparse
 
 import anyio
 from fastapi import HTTPException
@@ -58,18 +59,20 @@ from ..mimetypes import (
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    TILED_SQL_TABLE_MIMETYPE,
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
+from ..structures.data_source import Storage
 from ..utils import (
-    SCHEME_PATTERN,
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
     UnsupportedQueryType,
     ensure_awaitable,
+    ensure_specified_sql_driver,
     ensure_uri,
     import_object,
     path_from_uri,
@@ -113,6 +116,9 @@ INIT_STORAGE = OneShotCachedMap(
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.arrow", __name__
         ).ArrowAdapter.init_storage,
+        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.sql", __name__
+        ).SQLAdapter.init_storage,
     }
 )
 
@@ -159,7 +165,7 @@ class Context:
                 )
             # If it is writable, it is automatically also readable.
             readable_storage.append(writable_storage)
-        self.writable_storage = writable_storage
+        self.writable_storage = Storage(filesystem=writable_storage, sql=None)
         self.readable_storage = [ensure_uri(path) for path in readable_storage]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -327,7 +333,7 @@ class CatalogNodeAdapter:
 
     @property
     def writable(self):
-        return bool(self.context.writable_storage)
+        return any(dataclasses.asdict(self.context.writable_storage).values())
 
     def __repr__(self):
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
@@ -643,9 +649,6 @@ class CatalogNodeAdapter:
                             data_source.structure_family
                         ]
                     data_source.parameters = {}
-                    data_uri = str(self.context.writable_storage) + "".join(
-                        f"/{quote_plus(segment)}" for segment in (self.segments + [key])
-                    )
                     if data_source.mimetype not in INIT_STORAGE:
                         raise HTTPException(
                             status_code=415,
@@ -655,10 +658,12 @@ class CatalogNodeAdapter:
                             ),
                         )
                     init_storage = INIT_STORAGE[data_source.mimetype]
-                    assets = await ensure_awaitable(
-                        init_storage, data_uri, data_source.structure
+                    data_source = await ensure_awaitable(
+                        init_storage,
+                        self.context.writable_storage,
+                        data_source,
+                        self.segments + [key],
                     )
-                    data_source.assets.extend(assets)
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
                         raise HTTPException(
@@ -1347,7 +1352,7 @@ def from_uri(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
 ):
-    uri = str(uri)
+    uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
         # The cleanest option available is to start a subprocess
@@ -1366,9 +1371,6 @@ def from_uri(
         stderr = process.stderr.decode()
         logging.info(f"Subprocess stdout: {stdout}")
         logging.error(f"Subprocess stderr: {stderr}")
-    if not SCHEME_PATTERN.match(uri):
-        # Interpret URI as filepath.
-        uri = f"sqlite+aiosqlite:///{uri}"
 
     parsed_url = make_url(uri)
     if (parsed_url.get_dialect().name == "sqlite") and (
@@ -1381,7 +1383,10 @@ def from_uri(
     else:
         poolclass = None  # defer to sqlalchemy default
     engine = create_async_engine(
-        uri, echo=echo, json_serializer=json_serializer, poolclass=poolclass
+        uri,
+        echo=echo,
+        json_serializer=json_serializer,
+        poolclass=poolclass,
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
