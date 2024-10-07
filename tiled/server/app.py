@@ -270,9 +270,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             principal=Security(get_current_principal, scopes=[]),
         ):
             return templates.TemplateResponse(
+                request,
                 "index.html",
                 {
-                    "request": request,
                     # This is used to construct the link to the React UI.
                     "root_url": get_root_url(request),
                     # If defined, this adds a Binder link to the page.

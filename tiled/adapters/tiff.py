@@ -242,10 +242,10 @@ class TiffSequenceAdapter:
             return self._seq.asarray()
         if isinstance(slice, int):
             # e.g. read(slice=0) -- return an entire image
-            return tifffile.TiffFile(self._seq.files[slice]).asarray()
+            return tifffile.TiffFile(self._seq[slice]).asarray()
         if isinstance(slice, builtins.slice):
             # e.g. read(slice=(...)) -- return a slice along the image axis
-            return tifffile.TiffSequence(self._seq.files[slice]).asarray()
+            return tifffile.TiffSequence(self._seq[slice]).asarray()
         if isinstance(slice, tuple):
             if len(slice) == 0:
                 return self._seq.asarray()
@@ -255,10 +255,10 @@ class TiffSequenceAdapter:
             # Could be int or slice (0, slice(...)) or (0,....); the_rest is converted to a list
             if isinstance(image_axis, int):
                 # e.g. read(slice=(0, ....))
-                arr = tifffile.TiffFile(self._seq.files[image_axis]).asarray()
+                arr = tifffile.TiffFile(self._seq[image_axis]).asarray()
             elif image_axis is Ellipsis:
                 # Return all images
-                arr = tifffile.TiffSequence(self._seq.files).asarray()
+                arr = tifffile.TiffSequence(self._seq).asarray()
                 the_rest.insert(0, Ellipsis)  # Include any leading dimensions
             elif isinstance(image_axis, builtins.slice):
                 arr = self.read(slice=image_axis)

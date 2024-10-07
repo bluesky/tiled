@@ -1,9 +1,9 @@
+import datetime
 import enum
 import hashlib
 import secrets
 import uuid as uuid_module
 import warnings
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -67,7 +67,7 @@ from .settings import get_settings
 from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
 ALGORITHM = "HS256"
-UNIT_SECOND = timedelta(seconds=1)
+UNIT_SECOND = datetime.timedelta(seconds=1)
 
 # Max API keys and Sessions allowed to Principal.
 # This is here for at least two reasons:
@@ -77,13 +77,13 @@ UNIT_SECOND = timedelta(seconds=1)
 API_KEY_LIMIT = 100
 SESSION_LIMIT = 200
 
-DEVICE_CODE_MAX_AGE = timedelta(minutes=15)
+DEVICE_CODE_MAX_AGE = datetime.timedelta(minutes=15)
 DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
 
 
 def utcnow():
     "UTC now with second resolution"
-    return datetime.utcnow().replace(microsecond=0)
+    return datetime.datetime.now(datetime.UTC).replace(microsecond=0)
 
 
 class Mode(enum.Enum):
@@ -759,7 +759,9 @@ async def generate_apikey(db, principal, apikey_params, request):
             ),
         )
     if apikey_params.expires_in is not None:
-        expiration_time = utcnow() + timedelta(seconds=apikey_params.expires_in)
+        expiration_time = utcnow() + datetime.timedelta(
+            seconds=apikey_params.expires_in
+        )
     else:
         expiration_time = None
     # The standard 32 byes of entropy,
