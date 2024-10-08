@@ -5,6 +5,9 @@ import "@fontsource/roboto/700.css";
 
 import App from "./App";
 import CssBaseline from "@mui/material/CssBaseline";
+import ErrorBoundary from "./components/error-boundary";
+import Login from "./routes/login";
+import Skeleton from "@mui/material/Skeleton";
 import { ThemeProvider } from "@mui/material/styles";
 import { render } from "react-dom";
 import theme from "./theme";
