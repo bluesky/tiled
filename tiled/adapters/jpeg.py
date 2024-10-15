@@ -1,4 +1,5 @@
 import builtins
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
@@ -163,7 +164,7 @@ class JPEGSequenceAdapter:
         -------
 
         """
-        seq = [Image.open(path_from_uri(data_uri)) for data_uri in data_uris]
+        seq = [path_from_uri(data_uri) for data_uri in data_uris]
         return cls(
             seq,
             structure=structure,
@@ -174,7 +175,7 @@ class JPEGSequenceAdapter:
 
     def __init__(
         self,
-        seq: List[Image.Image],
+        seq: List[Path],
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
@@ -238,26 +239,26 @@ class JPEGSequenceAdapter:
         """
 
         if slice is Ellipsis:
-            return [np.asarray(img) for img in self._seq]
+            return np.asarray([np.asarray(Image.open(file)) for file in self._seq])
         if isinstance(slice, int):
             # e.g. read(slice=0) -- return an entire image
-            return np.asarray(Image.open(self._seq.files[slice]))
+            return np.asarray(Image.open(self._seq[slice]))
         if isinstance(slice, builtins.slice):
             # e.g. read(slice=(...)) -- return a slice along the image axis
-            return [np.asarray(Image.open(file)) for file in self._seq.files[slice]]
+            return np.asarray([np.asarray(Image.open(file)) for file in self._seq[slice]])
         if isinstance(slice, tuple):
             if len(slice) == 0:
-                return self._seq.asarray()
+                return np.asarray([np.asarray(Image.open(file)) for file in self._seq])
             if len(slice) == 1:
                 return self.read(slice=slice[0])
             image_axis, *the_rest = slice
             # Could be int or slice (0, slice(...)) or (0,....); the_rest is converted to a list
             if isinstance(image_axis, int):
                 # e.g. read(slice=(0, ....))
-                arr = np.asarray(Image.open(self._seq.files[image_axis]))
+                arr = np.asarray(Image.open(self._seq[image_axis]))
             elif image_axis is Ellipsis:
                 # Return all images
-                arr = [np.asarray(img) for img in self._seq]
+                arr = np.asarray([np.asarray(file) for file in self._seq])
                 the_rest.insert(0, Ellipsis)  # Include any leading dimensions
             elif isinstance(image_axis, builtins.slice):
                 arr = self.read(slice=image_axis)
@@ -281,6 +282,8 @@ class JPEGSequenceAdapter:
         if any(block[1:]):
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
+        print(f"{arr  = }")
+        print(f"{slice = }")
         return arr[slice]
 
     def structure(self) -> ArrayStructure:
