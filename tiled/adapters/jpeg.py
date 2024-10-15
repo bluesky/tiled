@@ -93,10 +93,6 @@ class JPEGAdapter:
         -------
 
         """
-        # TODO Is there support for reading less than the whole array
-        # if we only want a slice? I do not think that is possible with a
-        # single-page TIFF but I'm not sure. Certainly it *is* possible for
-        # multi-page TIFFs.
         arr = np.asarray(self._file)
         if slice is not None:
             arr = arr[slice]
@@ -116,8 +112,6 @@ class JPEGAdapter:
         -------
 
         """
-        # For simplicity, this adapter always treat a single TIFF file as one
-        # chunk. This could be relaxed in the future.
         if sum(block) != 0:
             raise IndexError(block)
 
@@ -221,7 +215,7 @@ class JPEGSequenceAdapter:
     def read(self, slice: Optional[NDSlice] = ...) -> NDArray[Any]:
         """Return a numpy array
 
-        Receives a sequence of values to select from a collection of tiff files
+        Receives a sequence of values to select from a collection of jpeg files
         that were saved in a folder The input order is defined as: files -->
         vertical slice --> horizontal slice --> color slice --> ... read() can
         receive one value or one slice to select all the data from one file or
