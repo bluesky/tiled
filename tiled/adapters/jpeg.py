@@ -282,8 +282,6 @@ class JPEGSequenceAdapter:
         if any(block[1:]):
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
-        print(f"{arr  = }")
-        print(f"{slice = }")
         return arr[slice]
 
     def structure(self) -> ArrayStructure:
