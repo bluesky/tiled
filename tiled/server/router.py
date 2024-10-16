@@ -327,7 +327,8 @@ async def metadata(
     entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
 ):
-    "Fetch the metadata and structure information for one entry."
+    """Fetch the metadata and structure information for one entry
+    """
 
     request.state.endpoint = "metadata"
     base_url = get_base_url(request)
