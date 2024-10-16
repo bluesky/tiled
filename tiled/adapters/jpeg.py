@@ -1,6 +1,6 @@
 import builtins
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 from numpy._typing import NDArray
@@ -54,18 +54,11 @@ class JPEGAdapter:
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
         if structure is None:
-            if self._file.is_shaped:
-                from_file: Tuple[Dict[str, Any], ...] = cast(
-                    Tuple[Dict[str, Any], ...], self._file.shaped_metadata
-                )
-                shape = tuple(from_file[0]["shape"])
-            else:
-                arr = np.asarray(self._file)
-                shape = arr.shape
+            arr = np.asarray(self._file)
             structure = ArrayStructure(
-                shape=shape,
-                chunks=tuple((dim,) for dim in shape),
-                data_type=BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype),
+                shape=arr.shape,
+                chunks=tuple((dim,) for dim in arr.shape),
+                data_type=BuiltinDtype.from_numpy_dtype(arr.dtype),
             )
         self._structure = structure
 
@@ -76,11 +69,7 @@ class JPEGAdapter:
         -------
 
         """
-        # This contains some enums, but Python's built-in JSON serializer
-        # handles them fine (converting  to str or int as appropriate).
-        d = {tag.name: tag.value for tag in self._file.pages[0].tags.values()}
-        d.update(self._provided_metadata)
-        return d
+        return {}
 
     def read(self, slice: Optional[NDSlice] = None) -> NDArray[Any]:
         """
