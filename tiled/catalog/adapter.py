@@ -1330,6 +1330,7 @@ def in_memory(
         access_policy=access_policy,
         writable_storage=writable_storage,
         readable_storage=readable_storage,
+        init_if_not_exists=True,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
     )
