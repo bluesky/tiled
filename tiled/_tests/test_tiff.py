@@ -38,7 +38,11 @@ def client(tmpdir_module):
             ),
             "5d_sequence": TiffSequenceAdapter.from_uris(
                 [ensure_uri(filepath) for filepath in filepaths],
-                structure=ArrayStructure(shape=(3, 1, 5, 7, 4), chunks=((1,1,1), (1,), (5,), (7,), (4,)), data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8"))),
+                structure=ArrayStructure(
+                    shape=(3, 1, 5, 7, 4),
+                    chunks=((1, 1, 1), (1,), (5,), (7,), (4,)),
+                    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+                ),
             ),
         }
     )
