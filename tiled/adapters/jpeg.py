@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 from numpy._typing import NDArray
+from PIL import Image
 
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
@@ -11,7 +12,6 @@ from ..utils import path_from_uri
 from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
 from .type_alliases import JSON, NDSlice
-from PIL import Image
 
 
 class JPEGAdapter:
@@ -239,7 +239,9 @@ class JPEGSequenceAdapter:
             return np.asarray(Image.open(self._seq[slice]))
         if isinstance(slice, builtins.slice):
             # e.g. read(slice=(...)) -- return a slice along the image axis
-            return np.asarray([np.asarray(Image.open(file)) for file in self._seq[slice]])
+            return np.asarray(
+                [np.asarray(Image.open(file)) for file in self._seq[slice]]
+            )
         if isinstance(slice, tuple):
             if len(slice) == 0:
                 return np.asarray([np.asarray(Image.open(file)) for file in self._seq])
