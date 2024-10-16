@@ -313,12 +313,12 @@ class TiffSequenceAdapter:
                     the_rest.insert(0, Ellipsis)  # Include any leading dimensions
                 elif isinstance(left_axis, builtins.slice):
                     arr = self.read(slice=left_axis)
-                arr = force_reshape(arr, self.structure.shape, left_axis)
+                arr = force_reshape(arr, self.structure().shape, left_axis)
                 arr = np.atleast_1d(arr[tuple(the_rest)])
         else:
-            raise RuntimeError(f"Unsupported slice type, {type(clice)} in {slice}")
+            raise RuntimeError(f"Unsupported slice type, {type(slice)} in {slice}")
 
-        return force_reshape(arr, self.structure.shape, slice)
+        return force_reshape(arr, self.structure().shape, slice)
 
     def read_block(
         self, block: Tuple[int, ...], slice: Optional[NDSlice] = ...
