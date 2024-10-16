@@ -183,7 +183,7 @@ def force_reshape(
 
     if math.prod(old_shape) == math.prod(new_shape):
         if len(old_shape) != len(new_shape):
-            # Missing or extra unitary dimensions
+            # Missing or extra singleton dimensions
             warnings.warn(
                 f"Forcefully reshaping {old_shape} to {new_shape}",
                 category=RuntimeWarning,
