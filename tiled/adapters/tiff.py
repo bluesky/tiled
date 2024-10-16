@@ -181,6 +181,7 @@ def force_reshape(arr: np.array, shp: Tuple[int], slc: Optional[NDSlice] = ...):
         else:
             # Some dimensions might be swapped or completely wrong
             # TODO: needs to be treated more carefully
+            pass
 
     warnings.warn(f"Can not reshape array of {old_shape} to match {new_shape}; proceeding without changes", category=RuntimeWarning)
     return arr
