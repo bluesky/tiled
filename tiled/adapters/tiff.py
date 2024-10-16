@@ -1,6 +1,7 @@
 import builtins
-from typing import Any, Dict, List, Optional, Tuple, cast
+import math
 import warnings
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import tifffile
@@ -136,9 +137,8 @@ class TiffAdapter:
         return self._structure
 
 
-def sliced_shape(shp: Tuple[int], slc: Optional[NDSlice] = ...) -> Tuple[int]:
-    """Find the shape specification of an array after applying slicing
-    """
+def sliced_shape(shp: Tuple[int, ...], slc: Optional[NDSlice] = ...) -> Tuple[int, ...]:
+    """Find the shape specification of an array after applying slicing"""
 
     if slc is Ellipsis:
         return shp
@@ -146,17 +146,26 @@ def sliced_shape(shp: Tuple[int], slc: Optional[NDSlice] = ...) -> Tuple[int]:
         return shp[1:]
     if isinstance(slc, builtins.slice):
         start, stop, step = slc.indices(shp[0])
-        return max(0, (stop - start + (step - (1 if step > 0 else -1))) // step), *shp[1:]
+        return (
+            max(0, (stop - start + (step - (1 if step > 0 else -1))) // step),
+            *shp[1:],
+        )
     if isinstance(slc, tuple):
         if len(slc) == 0:
             return shp
         else:
             left_axis, *the_rest = slc
-            if (left_axis is Ellipsis) and (len(the_rest) < len(shp)-1):
+            if (left_axis is Ellipsis) and (len(the_rest) < len(shp) - 1):
                 the_rest.insert(0, Ellipsis)
-            return *sliced_shape(shp[:1], left_axis), *sliced_shape(shp[1:], tuple(the_rest))
+            return *sliced_shape(shp[:1], left_axis), *sliced_shape(
+                shp[1:], tuple(the_rest)
+            )
+    return shp
 
-def force_reshape(arr: np.array, shp: Tuple[int], slc: Optional[NDSlice] = ...):
+
+def force_reshape(
+    arr: np.array, shp: Tuple[int, ...], slc: Optional[NDSlice] = ...
+) -> np.array:
     """Reshape a numpy array to match the desited shape, if possible.
 
     Returns
@@ -171,20 +180,26 @@ def force_reshape(arr: np.array, shp: Tuple[int], slc: Optional[NDSlice] = ...):
     if old_shape == new_shape:
         # Nothing to do here
         return arr
-    
-    if old_shape.prod() == new_shape.prod():
 
-        if (len(old_shape) != len(new_shape)):
+    if math.prod(old_shape) == math.prod(new_shape):
+        if len(old_shape) != len(new_shape):
             # Missing or extra unitary dimensions
-            warnings.warn(f"Forcefully reshaping {old_shape} to {new_shape}", category=RuntimeWarning)
+            warnings.warn(
+                f"Forcefully reshaping {old_shape} to {new_shape}",
+                category=RuntimeWarning,
+            )
             return arr.reshape(new_shape)
         else:
             # Some dimensions might be swapped or completely wrong
             # TODO: needs to be treated more carefully
             pass
 
-    warnings.warn(f"Can not reshape array of {old_shape} to match {new_shape}; proceeding without changes", category=RuntimeWarning)
+    warnings.warn(
+        f"Can not reshape array of {old_shape} to match {new_shape}; proceeding without changes",
+        category=RuntimeWarning,
+    )
     return arr
+
 
 class TiffSequenceAdapter:
     """ """
@@ -249,13 +264,14 @@ class TiffSequenceAdapter:
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
         if structure is None:
-            shape = (len(self._seq), *self.read(slice=0).shape)
+            dat0 = tifffile.TiffFile(self._seq[0]).asarray()
+            shape = (len(self._seq), *dat0.shape)
             structure = ArrayStructure(
                 shape=shape,
                 # one chunk per underlying TIFF file
                 chunks=((1,) * shape[0], *[(i,) for i in shape[1:]]),
                 # Assume all files have the same data type
-                data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
+                data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
         self._structure = structure
 
@@ -292,10 +308,10 @@ class TiffSequenceAdapter:
             arr = self._seq.asarray()
         elif isinstance(slice, int):
             # e.g. read(slice=0) -- return an entire image
-            arr = tifffile.TiffFile(self._seq.files[slice]).asarray()
+            arr = tifffile.TiffFile(self._seq[slice]).asarray()
         elif isinstance(slice, builtins.slice):
             # e.g. read(slice=(...)) -- return a slice along the image axis
-            arr = tifffile.TiffSequence(self._seq.files[slice]).asarray()
+            arr = tifffile.TiffSequence(self._seq[slice]).asarray()
         elif isinstance(slice, tuple):
             if len(slice) == 0:
                 arr = self._seq.asarray()
@@ -306,7 +322,7 @@ class TiffSequenceAdapter:
                 # Could be int or slice (0, slice(...)) or (0,....); the_rest is converted to a list
                 if isinstance(left_axis, int):
                     # e.g. read(slice=(0, ....))
-                    arr = tifffile.TiffFile(self._seq.files[left_axis]).asarray()
+                    arr = tifffile.TiffFile(self._seq[left_axis]).asarray()
                 elif left_axis is Ellipsis:
                     # Return all images
                     arr = self._seq.asarray()
