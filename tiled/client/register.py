@@ -393,7 +393,12 @@ async def group_image_sequences(
 
 
 async def register_image_sequence(node, name, sequence, settings):
-    mimetype = IMG_SEQUENCE_MIMETYPES[Path(sequence[0]).suffixes[0]]
+    suffixes = Path(sequence[0]).suffixes
+    file_ext = suffixes[-1] if len(suffixes) > 0 else None
+    if file_ext and file_ext in IMG_SEQUENCE_MIMETYPES:
+        mimetype = IMG_SEQUENCE_MIMETYPES[file_ext]
+    else:
+        raise RuntimeError(f"Cannot register image sequence {name}.")
     logger.info(
         "    Grouped %d %s images into a sequence '%s'",
         len(sequence),
