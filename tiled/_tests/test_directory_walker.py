@@ -16,10 +16,10 @@ from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.register import (
     Settings,
-    group_tiff_sequences,
+    group_image_sequences,
     identity,
     register,
-    register_tiff_sequence,
+    register_image_sequence,
     skip_all,
     strip_suffixes,
 )
@@ -155,14 +155,14 @@ async def test_skip_all_in_combination(tmpdir):
     # With skip_all, directories and tiff sequence are registered, but individual files are not
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register(client, tmpdir, walkers=[group_tiff_sequences, skip_all])
+        await register(client, tmpdir, walkers=[group_image_sequences, skip_all])
         assert list(client) == ["one"]
         assert "image" in client["one"]
 
 
 @pytest.mark.asyncio
 async def test_tiff_seq_custom_sorting(tmpdir):
-    "Register TIFFs that are not in alphanumeric order."
+    "Register images that are not in alphanumeric order."
     N = 10
     ordering = list(range(N))
     random.Random(0).shuffle(ordering)
@@ -177,7 +177,7 @@ async def test_tiff_seq_custom_sorting(tmpdir):
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register_tiff_sequence(
+        await register_image_sequence(
             client,
             "image",
             files,

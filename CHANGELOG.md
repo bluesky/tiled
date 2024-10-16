@@ -3,6 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+- Add adapters for reading back assets with the image/jpeg and
+  multipart/related;type=image/jpeg mimetypes.
+
 ## v0.1.0b10 (2024-10-11)
 
 - Add kwarg to client logout to auto-clear default identity.

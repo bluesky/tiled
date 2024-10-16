@@ -2,10 +2,10 @@ from pathlib import Path
 
 import numpy
 import pytest
-import tifffile as tf
+from PIL import Image
 
+from ..adapters.jpeg import JPEGAdapter, JPEGSequenceAdapter
 from ..adapters.mapping import MapAdapter
-from ..adapters.tiff import TiffAdapter, TiffSequenceAdapter
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.register import IMG_SEQUENCE_EMPTY_NAME_ROOT, register
@@ -21,18 +21,19 @@ def client(tmpdir_module):
     sequence_directory.mkdir()
     filepaths = []
     for i in range(3):
-        data = numpy.random.random((5, 7, 4))
-        filepath = sequence_directory / f"temp{i:05}.tif"
-        tf.imwrite(filepath, data)
+        # JPEGs can only be 8 bit ints
+        data = numpy.random.randint(0, 255, (5, 7), dtype="uint8")
+        filepath = sequence_directory / f"temp{i:05}.jpeg"
+        Image.fromarray(data).convert("L").save(filepath)
         filepaths.append(filepath)
     color_data = numpy.random.randint(0, 255, COLOR_SHAPE, dtype="uint8")
-    path = Path(tmpdir_module, "color.tif")
-    tf.imwrite(path, color_data)
+    path = Path(tmpdir_module, "color.jpeg")
+    Image.fromarray(color_data).convert("RGB").save(path)
 
     tree = MapAdapter(
         {
-            "color": TiffAdapter(ensure_uri(path)),
-            "sequence": TiffSequenceAdapter.from_uris(
+            "color": JPEGAdapter(ensure_uri(path)),
+            "sequence": JPEGSequenceAdapter.from_uris(
                 [ensure_uri(filepath) for filepath in filepaths]
             ),
         }
@@ -46,41 +47,41 @@ def client(tmpdir_module):
 @pytest.mark.parametrize(
     "slice_input, correct_shape",
     [
-        (None, (3, 5, 7, 4)),
-        (0, (5, 7, 4)),
-        (slice(0, 3, 2), (2, 5, 7, 4)),
-        ((1, slice(0, 3), slice(0, 3)), (3, 3, 4)),
-        ((slice(0, 3), slice(0, 3), slice(0, 3)), (3, 3, 3, 4)),
-        ((..., 0, 0, 0), (3,)),
-        ((0, slice(0, 1), slice(0, 2), ...), (1, 2, 4)),
-        ((0, ..., slice(0, 2)), (5, 7, 2)),
-        ((..., slice(0, 1)), (3, 5, 7, 1)),
+        (None, (3, 5, 7)),
+        (0, (5, 7)),
+        (slice(0, 3, 2), (2, 5, 7)),
+        ((1, slice(0, 3), slice(0, 3)), (3, 3)),
+        ((slice(0, 3), slice(0, 3), slice(0, 3)), (3, 3, 3)),
+        ((..., 0, 0), (3,)),
+        ((0, slice(0, 1), slice(0, 2), ...), (1, 2)),
+        ((0, ..., slice(0, 2)), (5, 2)),
+        ((..., slice(0, 1)), (3, 5, 1)),
     ],
 )
-def test_tiff_sequence(client, slice_input, correct_shape):
+def test_jpeg_sequence(client, slice_input, correct_shape):
     arr = client["sequence"].read(slice=slice_input)
     assert arr.shape == correct_shape
 
 
-@pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0, 0), (1, 5, 7, 4))])
-def test_tiff_sequence_block(client, block_input, correct_shape):
+@pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0), (1, 5, 7))])
+def test_jpeg_sequence_block(client, block_input, correct_shape):
     arr = client["sequence"].read_block(block_input)
     assert arr.shape == correct_shape
 
 
 @pytest.mark.asyncio
-async def test_tiff_sequence_order(tmpdir):
+async def test_jpeg_sequence_order(tmpdir):
     """
     directory/
-      00001.tif
-      00002.tif
+      00001.jpeg
+      00002.jpeg
       ...
-      00010.tif
+      00010.jpeg
     """
     data = numpy.ones((4, 5))
     num_files = 10
     for i in range(num_files):
-        tf.imwrite(Path(tmpdir / f"image{i:05}.tif"), data * i)
+        Image.fromarray(data * i).convert("L").save(Path(tmpdir / f"image{i:05}.jpeg"))
 
     adapter = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(adapter)) as context:
@@ -91,37 +92,41 @@ async def test_tiff_sequence_order(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_tiff_sequence_with_directory_walker(tmpdir):
+async def test_jpeg_sequence_with_directory_walker(tmpdir):
     """
     directory/
-      00001.tif
-      00002.tif
+      00001.jpeg
+      00002.jpeg
       ...
-      00010.tif
-      single_image.tif
-      image00001.tif
-      image00002.tif
+      00010.jpeg
+      single_image.jpeg
+      image00001.jpeg
+      image00002.jpeg
       ...
-      image00010.tif
-      other_image00001.tif
-      other_image00002.tif
+      image00010.jpeg
+      other_image00001.jpeg
+      other_image00002.jpeg
       ...
-      other_image00010.tif
-      other_image2_00001.tif
-      other_image2_00002.tif
+      other_image00010.jpeg
+      other_image2_00001.jpeg
+      other_image2_00002.jpeg
       ...
-      other_image2_00010.tif
+      other_image2_00010.jpeg
       other_file1.csv
       other_file2.csv
       stuff.csv
     """
-    data = numpy.random.random((3, 5))
+    data = numpy.random.randint(0, 255, (3, 5), dtype="uint8")
     for i in range(10):
-        tf.imwrite(Path(tmpdir / f"image{i:05}.tif"), data)
-        tf.imwrite(Path(tmpdir / f"other_image{i:05}.tif"), data)
-        tf.imwrite(Path(tmpdir / f"{i:05}.tif"), data)
-        tf.imwrite(Path(tmpdir / f"other_image2_{i:05}.tif"), data)
-    tf.imwrite(Path(tmpdir / "single_image.tif"), data)
+        Image.fromarray(data).convert("L").save(Path(tmpdir / f"image{i:05}.jpeg"))
+        Image.fromarray(data).convert("L").save(
+            Path(tmpdir / f"other_image{i:05}.jpeg")
+        )
+        Image.fromarray(data).convert("L").save(Path(tmpdir / f"{i:05}.jpeg"))
+        Image.fromarray(data).convert("L").save(
+            Path(tmpdir / f"other_image2_{i:05}.jpeg")
+        )
+    Image.fromarray(data).save(Path(tmpdir / "single_image.jpeg"))
     for target in ["stuff.csv", "other_file1.csv", "other_file2.csv"]:
         with open(Path(tmpdir / target), "w") as file:
             file.write(
@@ -162,12 +167,12 @@ a,b,c
 
 
 def test_rgb(client):
-    "Test an RGB TIFF."
+    "Test an RGB JPEG."
     arr = client["color"].read()
     assert arr.shape == COLOR_SHAPE
 
 
-def test_tiff_sequence_cache(client):
+def test_jpeg_sequence_cache(client):
     from numpy.testing import assert_raises
 
     # The two requests go through the same method in the server (read_block) to
