@@ -6,9 +6,9 @@ from numpy._typing import NDArray
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..utils import path_from_uri
-from .sequence import FileSequenceAdapter
 from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
+from .sequence import FileSequenceAdapter
 from .type_alliases import JSON, NDSlice
 
 
@@ -135,6 +135,5 @@ class TiffAdapter:
 
 
 class TiffSequenceAdapter(FileSequenceAdapter):
-
     def _load_from_files(self, slc: Union[slice, int] = slice(None)) -> NDArray[Any]:
         return tifffile.TiffSequence(self.filepaths[slc]).asarray()

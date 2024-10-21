@@ -1,5 +1,3 @@
-import builtins
-from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
@@ -9,9 +7,9 @@ from PIL import Image
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..utils import path_from_uri
-from .sequence import FileSequenceAdapter
 from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
+from .sequence import FileSequenceAdapter
 from .type_alliases import JSON, NDSlice
 
 
@@ -121,12 +119,12 @@ class JPEGAdapter:
 
 
 class JPEGSequenceAdapter(FileSequenceAdapter):
-
     def _load_from_files(self, slc: Union[slice, int] = slice(None)) -> NDArray[Any]:
-        
         from PIL import Image
-        
+
         if isinstance(slc, int):
             return np.asarray(Image.open(self.filepaths[slc]))[None, ...]
         else:
-            return np.asarray([np.asarray(Image.open(file)) for file in self.filepaths[slc]])
+            return np.asarray(
+                [np.asarray(Image.open(file)) for file in self.filepaths[slc]]
+            )

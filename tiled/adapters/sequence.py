@@ -36,7 +36,7 @@ class FileSequenceAdapter:
 
         Parameters
         ----------
-        data_uris : 
+        data_uris :
         structure :
         metadata :
         specs :
@@ -91,9 +91,11 @@ class FileSequenceAdapter:
             )
         self._structure = structure
 
-    def _load_from_files(self, slc: Union[builtins.slice, int] = slice(None)) -> NDArray[Any]:
+    def _load_from_files(
+        self, slc: Union[builtins.slice, int] = slice(None)
+    ) -> NDArray[Any]:
         """Load the array data from files
-        
+
         Parameters
         ----------
         slc : slice
