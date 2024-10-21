@@ -1,4 +1,5 @@
 import builtins
+from abc import abstractmethod
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 
@@ -91,6 +92,7 @@ class FileSequenceAdapter:
             )
         self._structure = structure
 
+    @abstractmethod
     def _load_from_files(
         self, slc: Union[builtins.slice, int] = slice(None)
     ) -> NDArray[Any]:
@@ -107,7 +109,7 @@ class FileSequenceAdapter:
             A numpy ND array with data from each file stacked along an addional (left-most) dimension.
         """
 
-        raise NotImplementedError()
+        pass
 
     def metadata(self) -> JSON:
         """
