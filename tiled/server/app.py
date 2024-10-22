@@ -890,7 +890,11 @@ Back up the database, and then run:
         # safely encoded)
         if request.url.path.startswith(ZARR_PREFIX) and response.status_code == 404:
             # Extract the last bit of the path
-            zarr_path = request.url.path[len(ZARR_PREFIX):].strip("/").split("/")
+            zarr_path = (
+                request.url.path[len(ZARR_PREFIX) :]  # noqa: #E203
+                .strip("/")
+                .split("/")
+            )
             zarr_block = zarr_path[-1] if len(zarr_path) > 0 else ""
             if re.compile(r"^(?:\d+\.)*\d+$").fullmatch(zarr_block):
                 # Create a query string if the last part is in the zarr block form, e.g. `m.n.p. ... .q`
