@@ -13,7 +13,7 @@ import uvicorn
 import zarr
 from fsspec.implementations.http import HTTPFileSystem
 from httpx import ASGITransport, AsyncClient
-from starlette.status import HTTP_200_OK, HTTP_404_NOT_FOUND
+from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
@@ -204,6 +204,35 @@ async def test_zarr_array_routes(path, app):
         indx = ".".join(["0"] * max(ndim, 0))
         response = await client.get(path + f"/{indx}")
         assert response.status_code == HTTP_200_OK
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/zarr/v2/",
+        "/zarr/v2",
+        "/zarr/v2/nested",
+        "/zarr/v2/table/single",
+        "/zarr/v2/nested/cube/tiny_cube",
+        "/zarr/v2/table/single/x",
+    ],
+)
+@pytest.mark.asyncio
+async def test_authentication(path, app):
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": "Apikey not-secret"},
+        follow_redirects=True,
+    ) as client:
+        response = await client.get(path)
+        assert response.status_code == HTTP_401_UNAUTHORIZED
+
+        response = await client.get(path + "/.zarray")
+        assert response.status_code == HTTP_401_UNAUTHORIZED
+
+        response = await client.get(path + "/.zgroup")
+        assert response.status_code == HTTP_401_UNAUTHORIZED
 
 
 def test_zarr_integration(server, fs):
