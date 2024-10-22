@@ -902,7 +902,6 @@ Back up the database, and then run:
 
                 response = await call_next(request)
 
-        response.__class__ = PatchedStreamingResponse  # tolerate memoryview
         return response
 
     app.add_middleware(
