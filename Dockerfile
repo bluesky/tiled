@@ -13,6 +13,9 @@ FROM python:3.12-slim as builder
 # We need gcc to compile thriftpy2, a secondary dependency.
 RUN apt-get -y update && apt-get install -y git gcc
 
+# We want cURL and httpie so healthchecks can be performed within the container
+RUN apt-get install -y curl httpie
+
 WORKDIR /code
 
 # Ensure logs and error messages do not get stuck in a buffer.

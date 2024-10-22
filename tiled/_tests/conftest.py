@@ -13,7 +13,7 @@ from .. import profiles
 from ..catalog import from_uri, in_memory
 from ..client.base import BaseClient
 from ..server.settings import get_settings
-from .utils import enter_password as utils_enter_password
+from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres
 
 
@@ -75,11 +75,11 @@ def tmp_profiles_dir():
 
 
 @pytest.fixture
-def enter_password():
+def enter_username_password():
     """
     DEPRECATED: Use the normal (non-fixture) context manager in .utils.
     """
-    return utils_enter_password
+    return utils_enter_uname_passwd
 
 
 @pytest.fixture(scope="module")

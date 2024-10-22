@@ -8,7 +8,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..server.app import build_app_from_config
-from .utils import enter_password, fail_with_status_code
+from .utils import enter_username_password, fail_with_status_code
 
 arr = numpy.ones((5, 5))
 arr_ad = ArrayAdapter.from_array(arr)
@@ -132,7 +132,7 @@ def context(tmpdir_module):
     }
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
-        with enter_password("admin"):
+        with enter_username_password("admin", "admin"):
             admin_client = from_context(context, username="admin")
             for k in ["c", "d", "e"]:
                 admin_client[k].write_array(arr, key="A1")
@@ -141,8 +141,8 @@ def context(tmpdir_module):
         yield context
 
 
-def test_top_level_access_control(context, enter_password):
-    with enter_password("secret1"):
+def test_top_level_access_control(context, enter_username_password):
+    with enter_username_password("alice", "secret1"):
         alice_client = from_context(context, username="alice")
     assert "a" in alice_client
     assert "A2" in alice_client["a"]
@@ -152,7 +152,7 @@ def test_top_level_access_control(context, enter_password):
     with pytest.raises(KeyError):
         alice_client["b"]
 
-    with enter_password("secret2"):
+    with enter_username_password("bob", "secret2"):
         bob_client = from_context(context, username="bob")
     assert not list(bob_client)
     with pytest.raises(KeyError):
@@ -160,12 +160,14 @@ def test_top_level_access_control(context, enter_password):
     with pytest.raises(KeyError):
         bob_client["b"]
     alice_client.logout()
-    bob_client.logout()
+
+    # Make sure clearing default identity works without raising an error.
+    bob_client.logout(clear_default=True)
 
 
-def test_access_control_with_api_key_auth(context, enter_password):
+def test_access_control_with_api_key_auth(context, enter_username_password):
     # Log in, create an API key, log out.
-    with enter_password("secret1"):
+    with enter_username_password("alice", "secret1"):
         context.authenticate(username="alice")
     key_info = context.create_api_key()
     context.logout()
@@ -180,9 +182,9 @@ def test_access_control_with_api_key_auth(context, enter_password):
         context.api_key = None
 
 
-def test_node_export(enter_password, context, buffer):
+def test_node_export(enter_username_password, context, buffer):
     "Exporting a node should include only the children we can see."
-    with enter_password("secret1"):
+    with enter_username_password("alice", "secret1"):
         alice_client = from_context(context, username="alice")
     alice_client.export(buffer, format="application/json")
     alice_client.logout()
@@ -195,8 +197,8 @@ def test_node_export(enter_password, context, buffer):
     exported_dict["contents"]["a"]["contents"]["A2"]
 
 
-def test_create_and_update_allowed(enter_password, context):
-    with enter_password("secret1"):
+def test_create_and_update_allowed(enter_username_password, context):
+    with enter_username_password("alice", "secret1"):
         alice_client = from_context(context, username="alice")
 
     # Update
@@ -209,8 +211,8 @@ def test_create_and_update_allowed(enter_password, context):
     alice_client.logout()
 
 
-def test_writing_blocked_by_access_policy(enter_password, context):
-    with enter_password("secret1"):
+def test_writing_blocked_by_access_policy(enter_username_password, context):
+    with enter_username_password("alice", "secret1"):
         alice_client = from_context(context, username="alice")
     alice_client["d"]["x"].metadata
     with fail_with_status_code(HTTP_403_FORBIDDEN):
@@ -218,8 +220,8 @@ def test_writing_blocked_by_access_policy(enter_password, context):
     alice_client.logout()
 
 
-def test_create_blocked_by_access_policy(enter_password, context):
-    with enter_password("secret1"):
+def test_create_blocked_by_access_policy(enter_username_password, context):
+    with enter_username_password("alice", "secret1"):
         alice_client = from_context(context, username="alice")
     with fail_with_status_code(HTTP_403_FORBIDDEN):
         alice_client["e"].write_array([1, 2, 3])
@@ -278,7 +280,7 @@ def test_service_principal_access(tmpdir):
         ],
     }
     with Context.from_app(build_app_from_config(config)) as context:
-        with enter_password("admin"):
+        with enter_username_password("admin", "admin"):
             admin_client = from_context(context, username="admin")
         sp = admin_client.context.admin.create_service_principal("user")
         key_info = admin_client.context.admin.create_api_key(sp["uuid"])
