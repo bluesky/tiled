@@ -17,7 +17,7 @@ def as_buffer(array, metadata):
     # The memoryview path fails for datetime type (and possibly some others?)
     # but it generally works for standard types like int, float, bool, str.
     try:
-        return memoryview(numpy.ascontiguousarray(array))
+        return memoryview(numpy.ascontiguousarray(array)).cast("B")
     except ValueError:
         return numpy.asarray(array).tobytes()
 

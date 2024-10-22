@@ -52,7 +52,7 @@ async def temp_postgres(uri):
 
 
 @contextlib.contextmanager
-def enter_password(password):
+def enter_username_password(username, password):
     """
     Override getpass, used like:
 
@@ -61,12 +61,15 @@ def enter_password(password):
     """
 
     original_prompt = context.PROMPT_FOR_REAUTHENTICATION
+    original_getusername = context.prompt_for_username
     original_getpass = getpass.getpass
     context.PROMPT_FOR_REAUTHENTICATION = True
+    context.prompt_for_username = lambda u: username
     setattr(getpass, "getpass", lambda: password)
     yield
     setattr(getpass, "getpass", original_getpass)
     context.PROMPT_FOR_REAUTHENTICATION = original_prompt
+    context.prompt_for_username = original_getusername
 
 
 class URL_LIMITS(IntEnum):

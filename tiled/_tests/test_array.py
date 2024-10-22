@@ -12,6 +12,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_406_NOT_ACCEPTABLE
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
+from ..serialization.array import as_buffer
 from ..server.app import build_app
 from .utils import fail_with_status_code
 
@@ -23,11 +24,9 @@ array_cases = {
     "uint64": numpy.arange(10, dtype="uint64"),
     "f": numpy.arange(10, dtype="f"),
     "c": (numpy.arange(10) * 1j).astype("c"),
-    # "m": (
-    #     numpy.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64') -
-    #     numpy.datetime64('2008-01-01'),
-    # )
-    # "M": numpy.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64'),
+    "m": numpy.array(["2007-07-13", "2006-01-13", "2010-08-13"], dtype="datetime64[D]")
+    - numpy.datetime64("2008-01-01"),
+    "M": numpy.array(["2007-07-13", "2006-01-13", "2010-08-13"], dtype="datetime64[D]"),
     "S": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="S3"),
     "U": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="U3"),
 }
@@ -165,3 +164,9 @@ def test_array_interface(context):
         # smoke test
         v.chunks
         v.dims
+
+
+@pytest.mark.parametrize("kind", list(array_cases))
+def test_as_buffer(kind):
+    output = as_buffer(array_cases[kind], {})
+    assert len(output) == len(bytes(output))

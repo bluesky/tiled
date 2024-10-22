@@ -3,11 +3,29 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0b9 (Unreleased)
+## Unreleased
 
 ### Added
 
 - `dtype` property for sparse arrays in `COOAdapter` and `COOStructure`.
+
+## v0.1.0b10 (2024-10-11)
+
+- Add kwarg to client logout to auto-clear default identity.
+- Do not automatically enter username if default identity is used.
+- Add API route and Python client method enabling admins to
+  reokve API keys belonging to any user or service.
+
+## v0.1.0b9 (2024-09-19)
+
+### Added
+
+- Added support for explicit units in numpy datetime64 dtypes.
+
+### Fixed
+
+- Follow-up fix to compatibility with Starlette v0.38.0
+- Adapt to change in dask public API in dask 2024.9.0.
 
 ## v0.1.0b8 (2024-09-06)
 
