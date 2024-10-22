@@ -12,7 +12,6 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Dict, List
 
 import anyio
 import packaging.version

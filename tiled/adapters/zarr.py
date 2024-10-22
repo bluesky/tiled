@@ -103,7 +103,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         """
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
-    def get(self, key: str):
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
         return None
 
     def read(

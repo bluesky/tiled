@@ -1,71 +1,20 @@
-import dataclasses
-import inspect
 import json
-import os
-import re
-import warnings
-from datetime import datetime, timedelta
-from functools import partial, wraps
-from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Optional, Tuple
 
-import anyio
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
-from jmespath.exceptions import JMESPathError
-from json_merge_patch import merge as apply_merge_patch
-from jsonpatch import apply_patch as apply_json_patch
-from pydantic_settings import BaseSettings
+import numcodecs
+from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import Response
 from starlette.status import (
-    HTTP_200_OK,
-    HTTP_206_PARTIAL_CONTENT,
     HTTP_400_BAD_REQUEST,
-    HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
-    HTTP_405_METHOD_NOT_ALLOWED,
-    HTTP_406_NOT_ACCEPTABLE,
-    HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-    HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from .. import __version__
 from ..structures.array import StructDtype
-from ..structures.core import Spec, StructureFamily
-from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
-from ..validation_registration import ValidationError
-
-# from . import schemas
-from .authentication import Mode, get_authenticators, get_current_principal
-from .core import (
-    DEFAULT_PAGE_SIZE,
-    DEPTH_LIMIT,
-    MAX_PAGE_SIZE,
-    NoEntry,
-    UnsupportedMediaTypes,
-    WrongTypeForRoute,
-    apply_search,
-    construct_data_response,
-    construct_entries_response,
-    construct_resource,
-    construct_revisions_response,
-    json_or_msgpack,
-    resolve_media_type,
-)
-from .dependencies import (
-    SecureEntry,
-    block,
-    expected_shape,
-    get_deserialization_registry,
-    get_query_registry,
-    get_serialization_registry,
-    get_validation_registry,
-    slice_,
-)
-from .file_response_with_range import FileResponseWithRange
-from .links import links_for_node
-from .settings import get_settings
-from .utils import filter_for_access, get_base_url, record_timing
+from ..structures.core import StructureFamily
+from ..utils import ensure_awaitable
+from .dependencies import SecureEntry
+from .utils import record_timing
 
 ZARR_BLOCK_SIZE = 10000
 ZARR_BYTE_ORDER = "C"
@@ -77,8 +26,6 @@ ZARR_CODEC_SPEC = {
     "shuffle": 1,
 }
 ZARR_DATETIME64_PRECISION = "ns"
-
-import numcodecs
 
 zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
 
