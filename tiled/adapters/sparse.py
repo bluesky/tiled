@@ -6,6 +6,7 @@ import pandas
 import sparse
 from numpy._typing import NDArray
 
+from ..structures.array import BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from .array import slice_and_shape_from_block_and_chunks
@@ -49,6 +50,8 @@ class COOAdapter:
             dims=dims,
             shape=shape,
             chunks=tuple((dim,) for dim in shape),
+            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
             resizable=False,
         )
         return cls(
@@ -133,6 +136,8 @@ class COOAdapter:
             dims=dims,
             shape=shape,
             chunks=chunks,
+            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
             resizable=False,
         )
         return cls(
