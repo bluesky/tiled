@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-from .array import BuiltinDtype, StructDtype
+from .array import BuiltinDtype, StructDtype, Endianness, Kind
 
 
 class SparseLayout(str, enum.Enum):
@@ -16,6 +16,7 @@ class COOStructure:
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     data_type: Optional[Union[BuiltinDtype, StructDtype]] = None
+    indx_data_type: BuiltinDtype = BuiltinDtype(Endianness("little"), Kind("u"), 8)   # numpy 'uint' dtype
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
     layout: SparseLayout = SparseLayout.COO
@@ -28,8 +29,10 @@ class COOStructure:
             data_type = StructDtype.from_json(data_type)
         else:
             data_type = BuiltinDtype.from_json(data_type)
+        indx_data_type = structure.get("indx_data_type", {"endianness":"little", "kind":"u", "itemsize":8})
         return cls(
             data_type=data_type,
+            indx_data_type=BuiltinDtype.from_json(indx_data_type),
             chunks=tuple(map(tuple, structure["chunks"])),
             shape=tuple(structure["shape"]),
             dims=structure["dims"],

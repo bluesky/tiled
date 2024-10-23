@@ -895,6 +895,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             chunks=tuple((dim,) for dim in shape),
             dims=dims,
             data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            indx_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
         )
         client = self.new(
             StructureFamily.sparse,

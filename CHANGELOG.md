@@ -7,7 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- `dtype` property for sparse arrays in `COOAdapter` and `COOStructure`.
+- `data_type` and `indx_data_type` properties for sparse arrays in `COOAdapter` and `COOStructure`.
 
 ## v0.1.0b10 (2024-10-11)
 
