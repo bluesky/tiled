@@ -247,9 +247,13 @@ def test_sparseadapter_protocol(mocker: MockFixture) -> None:
     mock_call4 = mocker.patch.object(CustomSparseAdapter, "specs")
     mock_call5 = mocker.patch.object(CustomSparseAdapter, "metadata")
 
-    structure = COOStructure(shape=(2 * 5,), chunks=((5, 5),))
-
     array = numpy.random.rand(2, 512, 512)
+
+    structure = COOStructure(
+        shape=(2 * 5,),
+        chunks=((5, 5),),
+        data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
+    )
     blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]] = {(1,): (array, (1,))}
     metadata: JSON = {"foo": "bar"}
     anyslice = (1, 1, 1)

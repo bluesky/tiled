@@ -73,7 +73,6 @@ def SecureEntry(scopes, structure_families=None):
         """
         path_parts = [segment for segment in path.split("/") if segment]
         entry = root_tree
-
         # If the entry/adapter can take a session state, pass it in.
         # The entry/adapter may return itself or a different object.
         if hasattr(entry, "with_session_state") and session_state:
