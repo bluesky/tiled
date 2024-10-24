@@ -318,3 +318,14 @@ def test_dataframe_column(key, server, fs):
         actual = arr[...]
         expected = df[col]
         assert numpy.array_equal(actual, expected)
+
+
+def test_writing(server, fs):
+    url = f"http://localhost:{server.port}/zarr/v2/nested/array"
+
+    with pytest.raises(NotImplementedError):
+        grp = zarr.open(fs.get_mapper(url), mode="w")
+
+    with pytest.raises(zarr.errors.ReadOnlyError):
+        grp = zarr.open(fs.get_mapper(url), mode="r")
+        grp["random_2d"][0, 0] = 0.0
