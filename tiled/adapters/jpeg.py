@@ -68,7 +68,7 @@ class JPEGAdapter:
         -------
 
         """
-        return {}
+        return self._provided_metadata.copy()
 
     def read(self, slice: Optional[NDSlice] = None) -> NDArray[Any]:
         """
