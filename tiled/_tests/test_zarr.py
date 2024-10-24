@@ -1,8 +1,5 @@
-import contextlib
 import math
 import string
-import threading
-import time
 import warnings
 
 import dask.array
@@ -19,6 +16,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..server.app import build_app
+from .utils import ThreadedServer
 
 rng = numpy.random.default_rng(seed=42)
 array_cases = {
@@ -125,23 +123,6 @@ def traverse_tree(tree, parent="", result=None):
 def app():
     app = build_app(tree, authentication={"single_user_api_key": "secret"})
     return app
-
-
-class ThreadedServer(uvicorn.Server):
-    @contextlib.contextmanager
-    def run_in_thread(self):
-        thread = threading.Thread(target=self.run)
-        thread.start()
-        try:
-            while not self.started:
-                time.sleep(1e-3)
-            self.port = (
-                self.servers[0].sockets[0].getsockname()[1]
-            )  # Actual port number
-            yield
-        finally:
-            self.should_exit = True
-            thread.join()
 
 
 @pytest.fixture(scope="module")
