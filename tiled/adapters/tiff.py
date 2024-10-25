@@ -11,6 +11,7 @@ from ..utils import path_from_uri
 from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
 from .type_alliases import JSON, NDSlice
+from .utils import force_reshape
 
 
 class TiffAdapter:
@@ -198,13 +199,14 @@ class TiffSequenceAdapter:
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
         if structure is None:
-            shape = (len(self._seq), *self.read(slice=0).shape)
+            dat0 = tifffile.TiffFile(self._seq[0]).asarray()
+            shape = (len(self._seq), *dat0.shape)
             structure = ArrayStructure(
                 shape=shape,
-                # one chunks per underlying TIFF file
+                # one chunk per underlying TIFF file
                 chunks=((1,) * shape[0], *[(i,) for i in shape[1:]]),
                 # Assume all files have the same data type
-                data_type=BuiltinDtype.from_numpy_dtype(self.read(slice=0).dtype),
+                data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
         self._structure = structure
 
@@ -230,40 +232,44 @@ class TiffSequenceAdapter:
 
         Parameters
         ----------
-        slice :
+        slice : NDSlice, optional
+            Specification of slicing to be applied to the data array
 
         Returns
         -------
-                Return a numpy array
-
+            Return a numpy array
         """
-
         if slice is Ellipsis:
-            return self._seq.asarray()
-        if isinstance(slice, int):
+            arr = self._seq.asarray()
+        elif isinstance(slice, int):
             # e.g. read(slice=0) -- return an entire image
-            return tifffile.TiffFile(self._seq.files[slice]).asarray()
-        if isinstance(slice, builtins.slice):
+            arr = tifffile.TiffFile(self._seq[slice]).asarray()
+        elif isinstance(slice, builtins.slice):
             # e.g. read(slice=(...)) -- return a slice along the image axis
-            return tifffile.TiffSequence(self._seq.files[slice]).asarray()
-        if isinstance(slice, tuple):
+            arr = tifffile.TiffSequence(self._seq[slice]).asarray()
+        elif isinstance(slice, tuple):
             if len(slice) == 0:
-                return self._seq.asarray()
-            if len(slice) == 1:
-                return self.read(slice=slice[0])
-            image_axis, *the_rest = slice
-            # Could be int or slice (0, slice(...)) or (0,....); the_rest is converted to a list
-            if isinstance(image_axis, int):
-                # e.g. read(slice=(0, ....))
-                arr = tifffile.TiffFile(self._seq.files[image_axis]).asarray()
-            elif image_axis is Ellipsis:
-                # Return all images
-                arr = tifffile.TiffSequence(self._seq.files).asarray()
-                the_rest.insert(0, Ellipsis)  # Include any leading dimensions
-            elif isinstance(image_axis, builtins.slice):
-                arr = self.read(slice=image_axis)
-            arr = np.atleast_1d(arr[tuple(the_rest)])
-            return arr
+                arr = self._seq.asarray()
+            elif len(slice) == 1:
+                arr = self.read(slice=slice[0])
+            else:
+                left_axis, *the_rest = slice
+                # Could be int or slice (0, slice(...)) or (0,....); the_rest is converted to a list
+                if isinstance(left_axis, int):
+                    # e.g. read(slice=(0, ....))
+                    arr = tifffile.TiffFile(self._seq[left_axis]).asarray()
+                elif left_axis is Ellipsis:
+                    # Return all images
+                    arr = self._seq.asarray()
+                    the_rest.insert(0, Ellipsis)  # Include any leading dimensions
+                elif isinstance(left_axis, builtins.slice):
+                    arr = self.read(slice=left_axis)
+                arr = force_reshape(arr, self.structure().shape, left_axis)
+                arr = np.atleast_1d(arr[tuple(the_rest)])
+        else:
+            raise RuntimeError(f"Unsupported slice type, {type(slice)} in {slice}")
+
+        return force_reshape(arr, self.structure().shape, slice)
 
     def read_block(
         self, block: Tuple[int, ...], slice: Optional[NDSlice] = ...

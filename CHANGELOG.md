@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Automatic reshaping of tiff data by the adapter to account for
+  extra/missing singleton dimensions
+
 ## v0.1.0b10 (2024-10-11)
 
 - Add kwarg to client logout to auto-clear default identity.
