@@ -30,10 +30,12 @@ if modules_available("pandas", "pyarrow"):
         deserialize_arrow,
         serialize_arrow,
         serialize_csv,
-        serialize_excel,
         serialize_html,
         serialize_parquet,
     )
+
+    if modules_available("openpyxl"):
+        from .table import serialize_excel
 
     # Support DataFrame formats by first converting to DataFrame.
     # naming columns like dim0, dim1, ..., dimN, data.
