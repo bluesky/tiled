@@ -356,7 +356,7 @@ def serve_catalog(
     "Serve a catalog."
     import urllib.parse
 
-    from ..catalog import catalog_from_uri
+    from ..catalog import from_uri as catalog_from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     parsed_database = urllib.parse.urlparse(database)
