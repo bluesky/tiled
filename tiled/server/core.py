@@ -17,7 +17,7 @@ import dateutil.tz
 import jmespath
 import msgpack
 from fastapi import HTTPException, Response
-from starlette.responses import JSONResponse, Send, StreamingResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
 # Some are not directly used, but they register things on import.
@@ -386,9 +386,9 @@ async def construct_data_response(
             f"This type is supported in general but there was an error packing this specific data: {err.args[0]}",
         )
     if isinstance(content, types.GeneratorType):
-        response_class = PatchedStreamingResponse
+        response_class = StreamingResponse
     else:
-        response_class = PatchedResponse
+        response_class = Response
     return response_class(
         content,
         media_type=media_type,
@@ -545,36 +545,6 @@ async def construct_resource(
             schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict
         ](**d)
     return resource
-
-
-class PatchedResponse(Response):
-    "Patch the render method to accept memoryview."
-
-    def render(self, content: Any) -> bytes:
-        if isinstance(content, memoryview):
-            return content.cast("B")
-        return super().render(content)
-
-
-class PatchedStreamingResponse(StreamingResponse):
-    "Patch the stream_response method to accept memoryview."
-
-    async def stream_response(self, send: Send) -> None:
-        await send(
-            {
-                "type": "http.response.start",
-                "status": self.status_code,
-                "headers": self.raw_headers,
-            }
-        )
-        async for chunk in self.body_iterator:
-            # BEGIN ALTERATION
-            if not isinstance(chunk, (bytes, memoryview)):
-                # END ALTERATION
-                chunk = chunk.encode(self.charset)
-            await send({"type": "http.response.body", "body": chunk, "more_body": True})
-
-        await send({"type": "http.response.body", "body": b"", "more_body": False})
 
 
 class NumpySafeJSONResponse(JSONResponse):

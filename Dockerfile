@@ -5,13 +5,16 @@ RUN npm install && npm run build
 
 # We cannot upgrade to Python 3.11 until numba supports it.
 # The `sparse` library relies on numba.
-FROM python:3.11-slim as builder
+FROM python:3.12-slim as builder
 
 # We need git at build time in order for versioneer to work, which in turn is
 # needed for the server to correctly report the library_version in the /api/v1/
 # route.
 # We need gcc to compile thriftpy2, a secondary dependency.
 RUN apt-get -y update && apt-get install -y git gcc
+
+# We want cURL and httpie so healthchecks can be performed within the container
+RUN apt-get install -y curl httpie
 
 WORKDIR /code
 
@@ -26,7 +29,8 @@ RUN python3 -m venv $VIRTUAL_ENV
 # in ENTRYPOINT or CMD.
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN pip install --upgrade --no-cache-dir "cython<3" pip wheel
+# Install build dependencies.
+RUN pip install --no-cache-dir cython
 
 COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
@@ -40,7 +44,7 @@ RUN TILED_BUILD_SKIP_UI=1 pip install '.[server]'
 # RUN pip install '.[client,dev]'
 # RUN pytest -v
 
-FROM python:3.11-slim as runner
+FROM python:3.12-slim as runner
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"

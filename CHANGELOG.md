@@ -3,17 +3,52 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.1.0b10 (2024-10-11)
+
+- Add kwarg to client logout to auto-clear default identity.
+- Do not automatically enter username if default identity is used.
+- Add API route and Python client method enabling admins to
+  reokve API keys belonging to any user or service.
+
+## v0.1.0b9 (2024-09-19)
 
 ### Added
+
+- Added support for explicit units in numpy datetime64 dtypes.
+
+### Fixed
+
+- Follow-up fix to compatibility with Starlette v0.38.0
+- Adapt to change in dask public API in dask 2024.9.0.
+
+## v0.1.0b8 (2024-09-06)
+
+### Fixed
+
+- Compatibility with a change in Starlette v0.38.0
+
+## v0.1.0b7 (2024-08-20)
+
+### Added
+
 - Add method to `TableAdapter` which accepts a Python dictionary.
+- Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter`.
 
 ### Changed
+
 - Make `tiled.client` accept a Python dictionary when fed to `write_dataframe()`.
 - The `generated_minimal` example no longer requires pandas and instead uses a Python dict.
 - Remove unused pytest-warning ignores from `test_writing.py`.
+- Rename argument in `hdf5_lookup` function from `path` to `dataset` to reflect change in `ophyd_async`
+
+## v0.1.0b6 (2024-07-17)
+
+### Added
+
+- A `/healthz` endpoint, for use by orchestration infrastructure
 
 ### Fixed
+
 - A bug in `Context.__getstate__` caused picking to fail if applied twice.
 
 ## v0.1.0b5 (2024-06-27)
@@ -71,7 +106,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ## v0.1.0b1 (2024-05-25)
 
 ### Added
-
 - Support for `FullText` search on SQLite-backed catalogs
 
 ### Fixed

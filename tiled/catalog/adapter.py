@@ -55,6 +55,7 @@ from tiled.queries import (
 )
 
 from ..mimetypes import (
+    APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
@@ -111,6 +112,9 @@ INIT_STORAGE = OneShotCachedMap(
         SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
         ).SparseBlocksParquetAdapter.init_storage,
+        APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
+            "...adapters.arrow", __name__
+        ).ArrowAdapter.init_storage,
     }
 )
 
