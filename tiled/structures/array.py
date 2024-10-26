@@ -221,7 +221,7 @@ class ArrayStructure:
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
-
+    max_shape: Tuple[int, ...] = None
     @classmethod
     def from_json(cls, structure):
         if "fields" in structure["data_type"]:
@@ -231,16 +231,19 @@ class ArrayStructure:
         dims = structure["dims"]
         if dims is not None:
             dims = tuple(dims)
+        if max_shape is not None:
+            max_shape = tuple(max_shape)
         return cls(
             data_type=data_type,
             chunks=tuple(map(tuple, structure["chunks"])),
             shape=tuple(structure["shape"]),
             dims=dims,
             resizable=structure.get("resizable", False),
+            max_shape=max_shape,
         )
 
     @classmethod
-    def from_array(cls, array, shape=None, chunks=None, dims=None) -> "ArrayStructure":
+    def from_array(cls, array, shape=None, chunks=None, dims=None, max_shape=None) -> "ArrayStructure":
         from dask.array.core import normalize_chunks
 
         if not hasattr(array, "__array__"):

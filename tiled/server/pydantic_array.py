@@ -172,7 +172,7 @@ class ArrayStructure(BaseModel):
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
-
+    max_shape: Optional[Tuple[int, ...]] = None
     model_config = ConfigDict(extra="forbid")
 
     @classmethod
@@ -190,4 +190,5 @@ class ArrayStructure(BaseModel):
             shape=tuple(structure["shape"]),
             dims=dims,
             resizable=structure.get("resizable", False),
+            max_shape=tuple(structure["max_shape"]) if "max_shape" in structure else None,
         )

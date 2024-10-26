@@ -176,6 +176,15 @@ class _DaskArrayClient(BaseClient):
             )
         )
 
+    def append_block(self, array, block):
+        handle_error(
+            self.context.http_client.patch(
+                self.item["links"]["block"].format(*block),
+                content=array.tobytes(),
+                headers={"Content-Type": "application/octet-stream"},
+            )
+        )
+
     def __getitem__(self, slice):
         return self.read(slice)
 

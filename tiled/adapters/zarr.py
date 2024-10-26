@@ -74,14 +74,23 @@ class ZarrArrayAdapter(ArrayAdapter):
         shape = tuple(dim[0] * len(dim) for dim in structure.chunks)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        storage = zarr.storage.DirectoryStore(str(directory))
-
-        zarr.storage.init_array(
-            storage,
+        storage = zarr.storage.DirectoryStore(str(directory)) 
+        zarr.open(
+            store=storage,
+            mode="w",
             shape=shape,
             chunks=zarr_chunks,
             dtype=structure.data_type.to_numpy_dtype(),
+            maxshape=structure.max_shape,
         )
+
+        # zarr.storage.init_array(
+        #     storage,
+        #     shape=shape,
+        #     chunks=zarr_chunks,
+        #     dtype=structure.data_type.to_numpy_dtype(),
+        #     maxshape=structure.max_shape,
+        # )
         return [
             Asset(
                 data_uri=data_uri,

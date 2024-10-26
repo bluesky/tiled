@@ -1290,6 +1290,41 @@ async def put_array_block(
     return json_or_msgpack(request, None)
 
 
+@router.patch("/array/block/{path:path}")
+async def patch_array_block(
+    request: Request,
+    entry=SecureEntry(
+        scopes=["write:data"],
+        structure_families={StructureFamily.array, StructureFamily.sparse},
+    ),
+    deserialization_registry=Depends(get_deserialization_registry),
+    block=Depends(block),
+):
+    if not hasattr(entry, "write_block"):
+        raise HTTPException(
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node cannot accept array data.",
+        )
+    from tiled.adapters.array import slice_and_shape_from_block_and_chunks
+
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    if entry.structure_family == "array":
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        _, shape = slice_and_shape_from_block_and_chunks(
+            block, entry.structure().chunks
+        )
+        deserializer = deserialization_registry.dispatch("array", media_type)
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
+    elif entry.structure_family == "sparse":
+        deserializer = deserialization_registry.dispatch("sparse", media_type)
+        data = await ensure_awaitable(deserializer, body)
+    else:
+        raise NotImplementedError(entry.structure_family)
+    await ensure_awaitable(entry.write_block, data, block)
+    return json_or_msgpack(request, None)
+
+
 @router.put("/table/full/{path:path}")
 @router.put("/node/full/{path:path}", deprecated=True)
 async def put_node_full(
