@@ -273,5 +273,5 @@ class ArrayStructure:
         else:
             data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
         return ArrayStructure(
-            data_type=data_type, shape=shape, chunks=normalized_chunks, dims=dims
+            data_type=data_type, shape=shape, chunks=normalized_chunks, dims=dims, max_shape=max_shape
         )
