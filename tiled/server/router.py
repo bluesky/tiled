@@ -1316,12 +1316,11 @@ async def patch_array_block(
         )
         deserializer = deserialization_registry.dispatch("array", media_type)
         data = await ensure_awaitable(deserializer, body, dtype, shape)
-    elif entry.structure_family == "sparse":
-        deserializer = deserialization_registry.dispatch("sparse", media_type)
-        data = await ensure_awaitable(deserializer, body)
+    elif entry.structure_family == "sparse":  #  TODO: Handle sparse
+        raise NotImplementedError(entry.structure_family)
     else:
         raise NotImplementedError(entry.structure_family)
-    await ensure_awaitable(entry.write_block, data, block)
+    await ensure_awaitable(entry.append_block, data, block)
     return json_or_msgpack(request, None)
 
 

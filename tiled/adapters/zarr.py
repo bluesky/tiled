@@ -182,6 +182,29 @@ class ZarrArrayAdapter(ArrayAdapter):
         )
         self._array[block_slice] = data
 
+    async def append_block(
+        self,
+        data: NDArray[Any],
+        block: Tuple[int, ...],
+        slice: Optional[NDSlice] = ...,
+    ) -> None:
+        """
+
+        Parameters
+        ----------
+        data :
+        block :
+        slice :
+
+        Returns
+        -------
+
+        """
+        if slice is not ...:
+            raise NotImplementedError
+        block_slice, shape = slice_and_shape_from_block_and_chunks(
+            block, self.structure().chunks
+        )
 
 if sys.version_info < (3, 9):
     from typing_extensions import Mapping

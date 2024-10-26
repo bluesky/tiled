@@ -50,7 +50,7 @@ deserialization_registry.register(
     "array",
     "application/octet-stream",
     lambda buffer, dtype, shape: numpy.frombuffer(buffer, dtype=dtype).reshape(shape),
-)
+)   
 if modules_available("PIL"):
 
     def save_to_buffer_PIL(array, format):
