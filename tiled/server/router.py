@@ -1290,7 +1290,7 @@ async def put_array_block(
     return json_or_msgpack(request, None)
 
 
-@router.patch("/array/block/{path:path}")
+@router.patch("/array/append/{path:path}")
 async def patch_array_block(
     request: Request,
     entry=SecureEntry(
