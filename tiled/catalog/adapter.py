@@ -1040,6 +1040,10 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, *args, **kwargs
         )
 
+    async def append_block(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).write_block, *args, **kwargs
+        )
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
