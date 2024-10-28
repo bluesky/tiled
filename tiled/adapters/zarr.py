@@ -160,7 +160,6 @@ class ZarrArrayAdapter(ArrayAdapter):
     async def write_block(
         self,
         data: NDArray[Any],
-        block: Tuple[int, ...],
         axis=0,
     ) -> None:
         """
