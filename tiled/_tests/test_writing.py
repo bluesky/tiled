@@ -128,19 +128,26 @@ def test_write_array_append(tree):
         client = from_context(context)
 
         a = numpy.ones((1, 5, 5))
-
+        new_chunk = numpy.ones((1, 5, 5)) * 2
+        full_array = numpy.concatenate((a, new_chunk), axis=0)
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
+
         with record_history() as history:
-            client.write_array(a, metadata=metadata, specs=specs)
+            new_arr = client.write_array(a, metadata=metadata, specs=specs)
+            new_arr.append_block(new_chunk, 0)
         # one request for metadata, one for data
-        assert len(history.requests) == 1 + 1
-        # new_chunk = numpy.ones((1, 5, 5)) * 2
+        assert len(history.requests) == 1 + 1 + 1
+        
+
         results = client.search(Key("scan_id") == 1)
         result = results.values().first()
         result_array = result.read()
+        assert result.shape == (2, 5, 5) # does the database have the right shape?
+        assert result_array.shape == (2, 5, 5) # does the array over the wire have the right shape?
+        
 
-        numpy.testing.assert_equal(result_array, a)
+        numpy.testing.assert_equal(result_array, full_array)
         assert result.metadata == metadata
         assert result.specs == specs
 

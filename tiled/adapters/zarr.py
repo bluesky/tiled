@@ -207,8 +207,8 @@ class ZarrArrayAdapter(ArrayAdapter):
         self._array.resize(tuple(new_shape))
 
         # Append the new data to the resized array
-        self._array[-data.shape[0] :] = data  # Slicing to place data at the end
-        return new_shape
+        # Slicing to place data at the end
+        self._array[-data.shape[0] :] = data  # noqa: E203
 
 
 if sys.version_info < (3, 9):
