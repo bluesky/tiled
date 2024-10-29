@@ -113,17 +113,6 @@ class CSVAdapter:
     def metadata(self) -> JSON:
         return self._metadata
 
-    @property
-    def dataframe_adapter(self) -> TableAdapter:
-        partitions = []
-        for path in self._partition_paths:
-            if not Path(path).exists():
-                partition = None
-            else:
-                partition = dask.dataframe.read_csv(path)
-            partitions.append(partition)
-        return DataFrameAdapter(partitions, self._structure)
-
     @classmethod
     def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
         """Initialize partitioned csv storage
@@ -282,9 +271,9 @@ class CSVAdapter:
         """
         return [
             DataSource(
-                structure_family=self.dataframe_adapter.structure_family,
+                structure_family=StructureFamily.table,
                 mimetype=mimetype,
-                structure=dict_or_none(self.dataframe_adapter.structure()),
+                structure=dict_or_none(self.structure()),
                 parameters={},
                 management=Management.external,
                 assets=[
