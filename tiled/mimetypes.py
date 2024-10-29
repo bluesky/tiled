@@ -19,12 +19,12 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
         ).TiffSequenceAdapter.from_uris,
+        "multipart/related;type=text/csv": lambda: importlib.import_module(
+            "..adapters.csv", __name__
+        ).CSVAdapter,
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
-        # "text/csv": lambda: importlib.import_module(
-        #    "..adapters.csv", __name__
-        # ).CSVAdapter.from_single_file,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.excel", __name__
         ).ExcelAdapter.from_uri,
@@ -56,9 +56,7 @@ DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE = copy.deepcopy(DEFAULT_ADAPTERS_BY_M
 
 DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE.set(
     "text/csv",
-    lambda: importlib.import_module(
-        "..adapters.csv", __name__
-    ).CSVAdapter.from_single_file,
+    lambda: importlib.import_module("..adapters.csv", __name__).CSVAdapter,
 )
 
 
