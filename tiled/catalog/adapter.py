@@ -1041,8 +1041,9 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def append_block(self, *args, **kwargs):
+        # update shape in database by call self.e
         return await ensure_awaitable(
-            (await self.get_adapter()).write_block, *args, **kwargs
+            (await self.get_adapter()).append_block, *args, **kwargs
         )
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):

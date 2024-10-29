@@ -1294,6 +1294,7 @@ async def put_array_block(
 async def patch_array_block(
     request: Request,
     shape: str,
+    axis: int,
     entry=SecureEntry(
         scopes=["write:data"],
         structure_families={StructureFamily.array, StructureFamily.sparse},
@@ -1321,7 +1322,7 @@ async def patch_array_block(
         raise NotImplementedError(entry.structure_family)
     else:
         raise NotImplementedError(entry.structure_family)
-    await ensure_awaitable(entry.append_block, data, block)
+    await ensure_awaitable(entry.append_block, data, axis)
     return json_or_msgpack(request, None)
 
 

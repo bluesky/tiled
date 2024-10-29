@@ -196,11 +196,19 @@ class ZarrArrayAdapter(ArrayAdapter):
         block :
         slice :
 
-        Returns
+        Returns 
         -------
 
         """
-        print(self.entry)
+        old_shape = self._array.shape
+        new_shape = list(old_shape)
+        new_shape[axis] += list(self._array.shape)[axis]  # Extend along axis
+
+        # Resize the Zarr array to accommodate new data
+        data.resize(tuple(new_shape))
+
+        # Append the new data to the resized array
+        data[-data.shape[0]:] = data  # Slicing to place data at the end
 
 if sys.version_info < (3, 9):
     from typing_extensions import Mapping
