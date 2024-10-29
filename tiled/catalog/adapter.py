@@ -1,4 +1,5 @@
 import collections
+import copy
 import importlib
 import itertools as it
 import logging
@@ -1041,10 +1042,31 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def append_block(self, *args, **kwargs):
-        # update shape in database by call self.e
-        return await ensure_awaitable(
-            (await self.get_adapter()).append_block, *args, **kwargs
-        )
+        # assumes a single DataSource (currently only supporting zarr)
+        async with self.context.session() as db:
+            try:
+                new_shape = await ensure_awaitable(
+                    (await self.get_adapter()).append_block, *args, **kwargs
+                )
+                node = await db.get(orm.Node, self.node.id)
+                data_source = node.data_sources[0]
+                structure_row = await db.get(orm.Structure, data_source.structure_id)
+                # Get the current structure row, update the shape, and write it back
+                structure_dict = copy.deepcopy(structure_row.structure)
+                structure_dict["shape"] = new_shape
+                structure_id = compute_structure_id(structure_dict)
+                statement = (
+                    self.insert(orm.Structure).values(
+                        id=structure_id,
+                        structure=structure_dict,
+                    )
+                ).on_conflict_do_nothing(index_elements=["id"])
+                await db.execute(statement)
+                data_source.structure_id = structure_id
+                await db.commit()
+            except Exception as e:
+                raise RuntimeError(f"Could not retrieve node: {e}")
+
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):

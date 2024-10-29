@@ -209,6 +209,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
         # Append the new data to the resized array
         self._array[-data.shape[0]:] = data  # Slicing to place data at the end
+        return new_shape
 
 if sys.version_info < (3, 9):
     from typing_extensions import Mapping
