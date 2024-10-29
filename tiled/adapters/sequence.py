@@ -144,7 +144,7 @@ class FileSequenceAdapter:
             arr = self._load_from_files()
         elif isinstance(slice, int):
             # e.g. read(slice=0) -- return an entire image (drop 0th dimension of the stack)
-            arr = self._load_from_files(slice)[-1]
+            arr = np.squeeze(self._load_from_files(slice), 0)
         elif isinstance(slice, builtins.slice):
             # e.g. read(slice=(...)) -- return a slice along the image axis
             arr = self._load_from_files(slice)
