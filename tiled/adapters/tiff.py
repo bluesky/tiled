@@ -1,3 +1,4 @@
+import builtins
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import tifffile
@@ -135,5 +136,7 @@ class TiffAdapter:
 
 
 class TiffSequenceAdapter(FileSequenceAdapter):
-    def _load_from_files(self, slc: Union[slice, int] = slice(None)) -> NDArray[Any]:
-        return tifffile.TiffSequence(self.filepaths[slc]).asarray()
+    def _load_from_files(
+        self, slice: Union[builtins.slice, int] = slice(None)
+    ) -> NDArray[Any]:
+        return tifffile.TiffSequence(self.filepaths[slice]).asarray()

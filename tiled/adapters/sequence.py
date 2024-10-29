@@ -94,13 +94,13 @@ class FileSequenceAdapter:
 
     @abstractmethod
     def _load_from_files(
-        self, slc: Union[builtins.slice, int] = slice(None)
+        self, slice: Union[builtins.slice, int] = slice(None)
     ) -> NDArray[Any]:
         """Load the array data from files
 
         Parameters
         ----------
-        slc : slice
+        slice : slice
             an optional slice along the left-most dimension in the resulting array; effectively selects a subset of
             files to be loaded
 
@@ -158,7 +158,7 @@ class FileSequenceAdapter:
                 # Could be int or slice (i, ...) or (slice(...), ...); the_rest is converted to a list
                 if isinstance(left_axis, int):
                     # e.g. read(slice=(0, ....))
-                    arr = np.squeeze(self._load_from_files(slice), 0)
+                    arr = np.squeeze(self._load_from_files(left_axis), 0)
                 elif left_axis is Ellipsis:
                     # Return all images
                     arr = self._load_from_files()

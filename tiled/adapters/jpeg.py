@@ -1,3 +1,4 @@
+import builtins
 from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
@@ -87,7 +88,7 @@ class JPEGAdapter:
         return arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[slice] = None
+        self, block: Tuple[int, ...], slice: Optional[builtins.slice] = None
     ) -> NDArray[Any]:
         """
 
@@ -119,12 +120,14 @@ class JPEGAdapter:
 
 
 class JPEGSequenceAdapter(FileSequenceAdapter):
-    def _load_from_files(self, slc: Union[slice, int] = slice(None)) -> NDArray[Any]:
+    def _load_from_files(
+        self, slice: Union[builtins.slice, int] = slice(None)
+    ) -> NDArray[Any]:
         from PIL import Image
 
-        if isinstance(slc, int):
-            return np.asarray(Image.open(self.filepaths[slc]))[None, ...]
+        if isinstance(slice, int):
+            return np.asarray(Image.open(self.filepaths[slice]))[None, ...]
         else:
             return np.asarray(
-                [np.asarray(Image.open(file)) for file in self.filepaths[slc]]
+                [np.asarray(Image.open(file)) for file in self.filepaths[slice]]
             )
