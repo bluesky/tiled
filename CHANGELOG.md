@@ -3,6 +3,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+- Refactor CSVAdapter to allow pd.read_csv kwargs
+
 ## v0.1.0b10 (2024-10-11)
 
 - Add kwarg to client logout to auto-clear default identity.
