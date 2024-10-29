@@ -9,6 +9,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Automatic reshaping of tiff data by the adapter to account for
   extra/missing singleton dimensions
+- Refactor CSVAdapter to allow pd.read_csv kwargs
 
 ## v0.1.0b10 (2024-10-11)
 
