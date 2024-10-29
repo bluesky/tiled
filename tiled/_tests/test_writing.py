@@ -537,7 +537,11 @@ def test_write_with_specified_mimetype(tree):
         df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
         structure = TableStructure.from_pandas(df)
 
-        for mimetype in [PARQUET_MIMETYPE, "text/csv", APACHE_ARROW_FILE_MIME_TYPE]:
+        for mimetype in [
+            PARQUET_MIMETYPE,
+            "text/csv",
+            APACHE_ARROW_FILE_MIME_TYPE,
+        ]:
             x = client.new(
                 "table",
                 [
