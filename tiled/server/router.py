@@ -1306,7 +1306,7 @@ async def patch_array_block(
             status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node cannot accept array data.",
         )
-    from tiled.adapters.array import slice_and_shape_from_block_and_chunks
+
     dtype = entry.structure().data_type.to_numpy_dtype()
     shape_tuple: Tuple[int, ...] = tuple(map(int, shape.split(",")))
     body = await request.body()
@@ -1318,7 +1318,7 @@ async def patch_array_block(
         # )
         deserializer = deserialization_registry.dispatch("array", media_type)
         data = await ensure_awaitable(deserializer, body, dtype, shape_tuple)
-    elif entry.structure_family == "sparse":  #  TODO: Handle sparse
+    elif entry.structure_family == "sparse":  # TODO: Handle sparse
         raise NotImplementedError(entry.structure_family)
     else:
         raise NotImplementedError(entry.structure_family)

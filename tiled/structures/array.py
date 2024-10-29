@@ -221,6 +221,7 @@ class ArrayStructure:
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
+
     @classmethod
     def from_json(cls, structure):
         if "fields" in structure["data_type"]:
@@ -269,5 +270,8 @@ class ArrayStructure:
         else:
             data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
         return ArrayStructure(
-            data_type=data_type, shape=shape, chunks=normalized_chunks, dims=dims,
+            data_type=data_type,
+            shape=shape,
+            chunks=normalized_chunks,
+            dims=dims,
         )

@@ -121,6 +121,30 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
+def test_write_array_append(tree):
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+
+        a = numpy.ones((1, 5, 5))
+
+        metadata = {"scan_id": 1, "method": "A"}
+        specs = [Spec("SomeSpec")]
+        with record_history() as history:
+            client.write_array(a, metadata=metadata, specs=specs)
+        # one request for metadata, one for data
+        assert len(history.requests) == 1 + 1
+        # new_chunk = numpy.ones((1, 5, 5)) * 2
+        results = client.search(Key("scan_id") == 1)
+        result = results.values().first()
+        result_array = result.read()
+
+        numpy.testing.assert_equal(result_array, a)
+        assert result.metadata == metadata
+        assert result.specs == specs
+
+
 def test_write_dataframe_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)

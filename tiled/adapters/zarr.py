@@ -74,7 +74,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         shape = tuple(dim[0] * len(dim) for dim in structure.chunks)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        storage = zarr.storage.DirectoryStore(str(directory)) 
+        storage = zarr.storage.DirectoryStore(str(directory))
         zarr.storage.init_array(
             storage,
             shape=shape,
@@ -157,7 +157,6 @@ class ZarrArrayAdapter(ArrayAdapter):
             raise NotImplementedError
         self._array[self._stencil()] = data
 
-  
     async def write_block(
         self,
         data: NDArray[Any],
@@ -196,7 +195,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         block :
         slice :
 
-        Returns 
+        Returns
         -------
 
         """
@@ -208,8 +207,9 @@ class ZarrArrayAdapter(ArrayAdapter):
         self._array.resize(tuple(new_shape))
 
         # Append the new data to the resized array
-        self._array[-data.shape[0]:] = data  # Slicing to place data at the end
+        self._array[-data.shape[0] :] = data  # Slicing to place data at the end
         return new_shape
+
 
 if sys.version_info < (3, 9):
     from typing_extensions import Mapping
