@@ -158,7 +158,7 @@ class FileSequenceAdapter:
                 # Could be int or slice (i, ...) or (slice(...), ...); the_rest is converted to a list
                 if isinstance(left_axis, int):
                     # e.g. read(slice=(0, ....))
-                    arr = self._load_from_files(left_axis)[-1]
+                    arr = np.squeeze(self._load_from_files(slice), 0)
                 elif left_axis is Ellipsis:
                     # Return all images
                     arr = self._load_from_files()
