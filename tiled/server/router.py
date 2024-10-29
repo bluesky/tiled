@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
@@ -1293,29 +1293,30 @@ async def put_array_block(
 @router.patch("/array/append/{path:path}")
 async def patch_array_block(
     request: Request,
+    shape: str,
     entry=SecureEntry(
         scopes=["write:data"],
         structure_families={StructureFamily.array, StructureFamily.sparse},
     ),
     deserialization_registry=Depends(get_deserialization_registry),
-    block=Depends(block),
 ):
-    if not hasattr(entry, "write_block"):
+    if not hasattr(entry, "append_block"):
         raise HTTPException(
             status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node cannot accept array data.",
         )
     from tiled.adapters.array import slice_and_shape_from_block_and_chunks
-
+    dtype = entry.structure().data_type.to_numpy_dtype()
+    shape_tuple: Tuple[int, ...] = tuple(map(int, shape.split(",")))
     body = await request.body()
     media_type = request.headers["content-type"]
     if entry.structure_family == "array":
-        dtype = entry.structure().data_type.to_numpy_dtype()
-        _, shape = slice_and_shape_from_block_and_chunks(
-            block, entry.structure().chunks
-        )
+        # dtype = entry.structure().data_type.to_numpy_dtype()
+        # _, shape = slice_and_shape_from_block_and_chunks(
+        #     block, entry.structure().chunks
+        # )
         deserializer = deserialization_registry.dispatch("array", media_type)
-        data = await ensure_awaitable(deserializer, body, dtype, shape)
+        data = await ensure_awaitable(deserializer, body, dtype, shape_tuple)
     elif entry.structure_family == "sparse":  #  TODO: Handle sparse
         raise NotImplementedError(entry.structure_family)
     else:

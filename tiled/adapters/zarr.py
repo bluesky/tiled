@@ -157,60 +157,8 @@ class ZarrArrayAdapter(ArrayAdapter):
             raise NotImplementedError
         self._array[self._stencil()] = data
 
+  
     async def write_block(
-        self,
-        data: NDArray[Any],
-        axis=0,
-    ) -> None:
-        """
-        Appends new_data to the zarr_array along a specified axis, resizing the Zarr array appropriately.
-
-        Parameters:
-            zarr_array (zarr.Array): The target Zarr array to append to.
-            new_data (np.ndarray): The new data to append, must match the shape of zarr_array along all axes except the specified axis.
-            axis (int): The axis along which to append the new data. Default is 0 (first axis).
-
-        Raises:
-            ValueError: If new_data shape is incompatible with zarr_array along non-appended axes,
-                        or if the specified axis is not chunked (chunk size is 1).
-        """
-
-        if slice is not ...:
-            raise NotImplementedError
-        block_slice, shape = slice_and_shape_from_block_and_chunks(
-            block, self.structure().chunks
-        )
-   
-        
-        # Ensure the axis is within bounds
-        if axis < 0 or axis >= zarr_array.ndim:
-            raise ValueError(f"Axis {axis} is out of bounds for zarr_array with {zarr_array.ndim} dimensions.")
-        
-        # Check if the axis to append along has a chunk size > 1
-        if zarr_array.chunks[axis] == 1:
-            raise ValueError(f"Appending along axis {axis} may be inefficient because it is not chunked (chunk size is 1). "
-                            "Consider appending along an axis with a larger chunk size.")
-        
-        # Check if new_data has compatible shape with zarr_array along all axes except the specified axis
-        for ax in range(zarr_array.ndim):
-            if ax != axis and zarr_array.shape[ax] != new_data.shape[ax]:
-                raise ValueError(f"Shape mismatch! new_data shape {new_data.shape} is incompatible with zarr_array shape {zarr_array.shape} along axis {ax}.")
-        
-        # Calculate the new size along the specified axis
-        new_size = list(zarr_array.shape)
-        new_size[axis] += new_data.shape[axis]
-        
-        # Resize the Zarr array along the specified axis
-        zarr_array.resize(tuple(new_size))
-        
-        # Define the slice to target the newly added space along the specified axis
-        slices = [slice(None)] * zarr_array.ndim  # Create a list of slices for each dimension
-        slices[axis] = slice(zarr_array.shape[axis] - new_data.shape[axis], zarr_array.shape[axis])  # Set the slice for the specified axis
-        
-        # Append new data at the target location in the Zarr array
-        zarr_array[tuple(slices)] = new_data
-
-    async def append_block(
         self,
         data: NDArray[Any],
         block: Tuple[int, ...],
@@ -233,6 +181,26 @@ class ZarrArrayAdapter(ArrayAdapter):
         block_slice, shape = slice_and_shape_from_block_and_chunks(
             block, self.structure().chunks
         )
+        self._array[block_slice] = data
+
+    async def append_block(
+        self,
+        data: NDArray[Any],
+        axis: int,
+    ) -> None:
+        """
+
+        Parameters
+        ----------
+        data :
+        block :
+        slice :
+
+        Returns
+        -------
+
+        """
+        print(self.entry)
 
 if sys.version_info < (3, 9):
     from typing_extensions import Mapping

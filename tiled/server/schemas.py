@@ -210,6 +210,7 @@ class ArrayLinks(pydantic.BaseModel):
     self: str
     full: str
     block: str
+    append: str
 
 
 class AwkwardLinks(pydantic.BaseModel):

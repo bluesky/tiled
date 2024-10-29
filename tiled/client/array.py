@@ -177,9 +177,10 @@ class _DaskArrayClient(BaseClient):
         )
 
     def append_block(self, array, axis):
+        formatted_shape = ",".join(f"{value}" for value in array.shape)
         handle_error(
             self.context.http_client.patch(
-                self.item["links"]["append"].format(axis),
+                self.item["links"]["append"].format(formatted_shape, axis),
                 content=array.tobytes(),
                 headers={"Content-Type": "application/octet-stream"},
             )
