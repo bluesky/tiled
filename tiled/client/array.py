@@ -176,7 +176,25 @@ class _DaskArrayClient(BaseClient):
             )
         )
 
-    def append_block(self, array, axis):
+    def append_block(self, array: numpy.nd, axis):
+        """
+        Append a block to the array along the given axis. The block must have
+        the same shape as the existing blocks along that axis.
+        This method differs from `write_block` as it increases the size
+        of the array along the given axis, while `write_block` overwrites
+        the data in the block at the given index. This is useful for
+        cases where you do not know ahead of time how many blocks you will
+        eventually receive.
+
+        Parameters
+        ----------
+        array : array-like
+            The block to append.
+        axis : int
+            The axis along which to append the block.
+
+
+        """
         formatted_shape = ",".join(f"{value}" for value in array.shape)
         handle_error(
             self.context.http_client.patch(
