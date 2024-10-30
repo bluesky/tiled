@@ -138,14 +138,16 @@ def test_write_array_append(tree):
             new_arr.append_block(new_chunk, 0)
         # one request for metadata, one for data
         assert len(history.requests) == 1 + 1 + 1
-        
 
         results = client.search(Key("scan_id") == 1)
         result = results.values().first()
         result_array = result.read()
-        assert result.shape == (2, 5, 5) # does the database have the right shape?
-        assert result_array.shape == (2, 5, 5) # does the array over the wire have the right shape?
-        
+        assert result.shape == (2, 5, 5)  # does the database have the right shape?
+        assert result_array.shape == (
+            2,
+            5,
+            5,
+        )  # does the array over the wire have the right shape?
 
         numpy.testing.assert_equal(result_array, full_array)
         assert result.metadata == metadata

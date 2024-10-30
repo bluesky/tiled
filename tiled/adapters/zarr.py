@@ -186,7 +186,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         data: NDArray[Any],
         axis: int,
-    ) -> None:
+    ) -> List[int]:
         """
 
         Parameters
@@ -209,6 +209,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         # Append the new data to the resized array
         # Slicing to place data at the end
         self._array[-data.shape[0] :] = data  # noqa: E203
+        return new_shape
 
 
 if sys.version_info < (3, 9):

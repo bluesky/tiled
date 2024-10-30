@@ -1048,6 +1048,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
                 new_shape = await ensure_awaitable(
                     (await self.get_adapter()).append_block, *args, **kwargs
                 )
+                if new_shape is None:
+                    raise ValueError("No new shape returned from append_block.")
                 node = await db.get(orm.Node, self.node.id)
                 data_source = node.data_sources[0]
                 structure_row = await db.get(orm.Structure, data_source.structure_id)
@@ -1055,14 +1057,14 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
                 structure_dict = copy.deepcopy(structure_row.structure)
                 structure_dict["shape"] = new_shape
                 structure_id = compute_structure_id(structure_dict)
-                statement = (
-                    self.insert(orm.Structure).values(
-                        id=structure_id,
-                        structure=structure_dict,
-                    )
-                ).on_conflict_do_nothing(index_elements=["id"])
+                statement = self.insert(orm.Structure).values(
+                    id=structure_id,
+                    structure=structure_dict,
+                )
                 await db.execute(statement)
-                data_source.structure_id = structure_id
+                new_structure = await db.get(orm.Structure, structure_id)
+                data_source.structure = new_structure
+                db.add(data_source)
                 await db.commit()
             except Exception as e:
                 raise RuntimeError(f"Could not retrieve node: {e}")
