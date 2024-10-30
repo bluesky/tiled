@@ -2,8 +2,8 @@ import builtins
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
-from ndindex import ndindex
 import tifffile
+from ndindex import ndindex
 from numpy._typing import NDArray
 
 from ..structures.array import ArrayStructure, BuiltinDtype

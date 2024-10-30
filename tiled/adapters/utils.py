@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import Any, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Tuple
 
 if TYPE_CHECKING:
     import numpy as np
