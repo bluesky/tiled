@@ -147,12 +147,6 @@ class TableAdapter:
         self.access_policy = access_policy
 
     def __repr__(self) -> str:
-        """
-
-        Returns
-        -------
-
-        """
         return f"{type(self).__name__}({self._structure.columns!r})"
 
     def __getitem__(self, key: str) -> ArrayAdapter:
@@ -170,11 +164,11 @@ class TableAdapter:
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
-        """
+        """Iterator over table columns
 
         Returns
         -------
-
+        Tuples of column names and corresponding ArrayAdapters
         """
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
@@ -230,7 +224,7 @@ class TableAdapter:
     def read_partition(
         self,
         partition: int,
-        fields: Optional[str] = None,
+        fields: Optional[List[str]] = None,
     ) -> Union[pandas.DataFrame, dask.dataframe.DataFrame]:
         """
 
@@ -245,7 +239,7 @@ class TableAdapter:
         """
         df = self._partitions[partition]
         if df is None:
-            raise RuntimeError(f"partition {partition} has not be stored yet")
+            raise RuntimeError(f"Partition {partition} has not been stored yet.")
         if fields is not None:
             df = df[fields]
         if isinstance(df, dask.dataframe.DataFrame):

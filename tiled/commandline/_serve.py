@@ -322,6 +322,14 @@ def serve_catalog(
             "By default, a random key is generated at startup and printed."
         ),
     ),
+    adapters: List[str] = typer.Option(
+        None,
+        "--adapter",
+        help=(
+            "ADVANCED: Custom Tiled Adapter for reading a given format"
+            "Specify here as 'mimetype=package.module:function'"
+        ),
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -348,7 +356,7 @@ def serve_catalog(
     "Serve a catalog."
     import urllib.parse
 
-    from ..catalog import from_uri
+    from ..catalog import from_uri as catalog_from_uri
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     parsed_database = urllib.parse.urlparse(database)
@@ -423,13 +431,24 @@ or use an existing one:
             "To make it writable, specify a writable directory with --write.",
             err=True,
         )
-    server_settings = {}
-    tree = from_uri(
+    adapters_by_mimetype = {}
+    ADAPTER_PATTERN = re.compile(r"(.*) *= *(.*)")
+    for item in adapters or []:
+        match = ADAPTER_PATTERN.match(item)
+        if match is None:
+            raise ValueError(
+                f"Failed parsing --adapter option {item}, expected format 'mimetype=package.module:obj'"
+            )
+        mimetype, obj_ref = match.groups()
+        adapters_by_mimetype[mimetype] = obj_ref
+    tree = catalog_from_uri(
         database,
         writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
+        adapters_by_mimetype=adapters_by_mimetype,
     )
+    server_settings = {}
     web_app = build_app(
         tree,
         {
