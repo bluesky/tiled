@@ -7,12 +7,14 @@ import pandas
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
+from ..structures.array import ArrayStructure, StructDtype, BuiltinDtype
 from ..utils import ensure_uri, path_from_uri
-from .array import ArrayAdapter
+from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .dataframe import DataFrameAdapter
 from .protocols import AccessPolicy
 from .table import TableAdapter
-from .type_alliases import JSON
+from .type_alliases import JSON, NDSlice
+from numpy.typing import NDArray
 
 
 def read_csv(
@@ -348,3 +350,82 @@ class CSVAdapter:
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns
         )
+
+
+class CSVArrayAdapter:
+    """Adapter for array-type data stored as partitioned text (csv) files"""
+
+    structure_family = StructureFamily.array
+
+    def __init__(
+        self,
+        data_uris: Union[str, List[str]],
+        structure: Optional[ArrayStructure] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> None:
+        """Adapter for partitioned array data stored as a sequence of text (csv) files
+
+        Parameters
+        ----------
+        data_uris : list of uris to csv files
+        structure :
+        metadata :
+        specs :
+        access_policy :
+        kwargs : dict
+            any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
+        """
+        if isinstance(data_uris, str):
+            data_uris = [data_uris]
+        self._partition_paths = [path_from_uri(uri) for uri in data_uris]
+        self._metadata = metadata or {}
+        self._read_csv_kwargs = kwargs
+        if structure is None:
+            ddf = dask.dataframe.read_csv(self._partition_paths, **self._read_csv_kwargs)
+            if len(set(ddf.dtypes)) == 1:
+                arr = ddf.to_dask_array().compute()
+            else:
+                arr = ddf.to_records(index=False).compute()
+            structure = ArrayStructure.from_array(arr)
+        self._structure = structure
+        self.specs = list(specs or [])
+        self.access_policy = access_policy
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._array!r})"
+
+    def metadata(self) -> JSON:
+        return self._metadata
+
+    def read(self, slice: NDSlice = ...) -> NDArray[Any]:
+        ddf = dask.dataframe.read_csv(self._partition_paths, **self._read_csv_kwargs)
+        if isinstance(self.structure.data_type, StructDtype):
+            pass
+        data_type = self._read_csv_kwargs.get('dtype')
+
+        array = self._array[slice]
+        if isinstance(self._array, dask.array.Array):
+            return array.compute()
+        return array
+
+    def read_block(
+        self,
+        block: Tuple[int, ...],
+        slice: NDSlice = ...,
+    ) -> NDArray[Any]:
+
+        # Slice the whole array to get this block.
+        slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
+        array = self._array[slice_]
+        # Slice within the block.
+        if slice is not None:
+            array = array[slice]
+        if isinstance(self._array, dask.array.Array):
+            return array.compute()
+        return array
+
+    def structure(self) -> TableStructure:
+        return self._structure
