@@ -22,6 +22,12 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "multipart/related;type=text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
+        "image/jpeg": lambda: importlib.import_module(
+            "..adapters.jpeg", __name__
+        ).JPEGAdapter,
+        "multipart/related;type=image/jpeg": lambda: importlib.import_module(
+            "..adapters.jpeg", __name__
+        ).JPEGSequenceAdapter.from_uris,
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
