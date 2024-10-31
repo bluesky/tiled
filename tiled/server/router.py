@@ -1316,8 +1316,8 @@ async def patch_array_full(
     media_type = request.headers["content-type"]
     deserializer = deserialization_registry.dispatch("array", media_type)
     data = await ensure_awaitable(deserializer, body, dtype, shape)
-    await ensure_awaitable(entry.patch, data, slice, extend)
-    return json_or_msgpack(request, None)
+    structure = await ensure_awaitable(entry.patch, data, slice, extend)
+    return json_or_msgpack(request, structure)
 
 
 @router.put("/table/full/{path:path}")

@@ -2,9 +2,11 @@ import itertools
 
 import dask
 import dask.array
+import httpx
 import numpy
 from numpy.typing import NDArray
 
+from ..structures.core import STRUCTURE_TYPES
 from ..type_aliases import NDSlice
 from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice
@@ -196,14 +198,23 @@ class _DaskArrayClient(BaseClient):
         params = params_from_slice(slice)
         params["shape"] = ",".join(map(str, array_.shape))
         params["extend"] = bool(extend)
-        handle_error(
-            self.context.http_client.patch(
-                self.item["links"]["full"],
-                content=array_.tobytes(),
-                headers={"Content-Type": "application/octet-stream"},
-                params=params,
-            )
+        response = self.context.http_client.patch(
+            self.item["links"]["full"],
+            content=array_.tobytes(),
+            headers={"Content-Type": "application/octet-stream"},
+            params=params,
         )
+        if response.status_code == httpx.codes.CONFLICT:
+            raise ValueError(
+                f"Slice {slice} does not fit within current array shape. "
+                "Pass keyword argument extend=True to extend the array "
+                "dimensions to fit."
+            )
+        handle_error(response)
+        # Update cached structure.
+        new_structure = response.json()
+        structure_type = STRUCTURE_TYPES[self.structure_family]
+        self._structure = structure_type.from_json(new_structure)
 
     def __getitem__(self, slice):
         return self.read(slice)

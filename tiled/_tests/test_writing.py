@@ -121,37 +121,33 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
-def test_write_array_append(tree):
+def test_extend_array(tree):
+    "Extend an array with additional data, expanding its shape."
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
         client = from_context(context)
 
-        a = numpy.ones((1, 5, 5))
-        new_chunk = numpy.ones((1, 5, 5)) * 2
-        full_array = numpy.concatenate((a, new_chunk), axis=0)
-        metadata = {"scan_id": 1, "method": "A"}
-        specs = [Spec("SomeSpec")]
+        a = numpy.ones((3, 2, 2))
+        new_data = numpy.ones((1, 2, 2)) * 2
+        full_array = numpy.concatenate((a, new_data), axis=0)
 
-        with record_history() as history:
-            new_arr = client.write_array(a, metadata=metadata, specs=specs)
-            new_arr.append_block(new_chunk, 0)
-        # one request for metadata, one for data
-        assert len(history.requests) == 1 + 1 + 1
+        # Upload a (3, 2, 2) array.
+        ac = client.write_array(a)
+        assert ac.shape == a.shape
 
-        results = client.search(Key("scan_id") == 1)
-        result = results.values().first()
-        result_array = result.read()
-        assert result.shape == (2, 5, 5)  # does the database have the right shape?
-        assert result_array.shape == (
-            2,
-            5,
-            5,
-        )  # does the array over the wire have the right shape?
-
-        numpy.testing.assert_equal(result_array, full_array)
-        assert result.metadata == metadata
-        assert result.specs == specs
+        # Patching data into a region beyond the current extent of the array
+        # raises a ValueError (catching a 409 from the server).
+        with pytest.raises(ValueError):
+            ac.patch(new_data, slice=slice(3, 4))
+        # With extend=True, the array is expanded.
+        ac.patch(new_data, slice=slice(3, 4), extend=True)
+        # The local cache of the structure is updated.
+        assert ac.shape == full_array.shape
+        actual = ac.read()
+        # The array has the expected shape and data.
+        assert actual.shape == full_array.shape
+        numpy.testing.assert_equal(actual, full_array)
 
 
 def test_write_dataframe_full(tree):

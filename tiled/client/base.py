@@ -184,9 +184,10 @@ class BaseClient:
             )
         ).json()
         self._item = content["data"]
-        attributes = self._item["attributes"]
-        structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
-        self._structure = structure_type.from_json(attributes["structure"])
+        structure_type = STRUCTURE_TYPES[self.structure_family]
+        self._structure = structure_type.from_json(
+            self._item["attributes"]["structure"]
+        )
         return self
 
     @property

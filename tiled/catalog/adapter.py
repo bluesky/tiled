@@ -1070,6 +1070,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             data_source.structure_id = new_structure_id
             db.add(data_source)
             await db.commit()
+            return structure_dict
 
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):

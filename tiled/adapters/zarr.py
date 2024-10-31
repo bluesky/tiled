@@ -15,7 +15,7 @@ from ..server.schemas import Asset
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON, NDSlice
-from ..utils import node_repr, path_from_uri
+from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .protocols import AccessPolicy
 
@@ -221,7 +221,10 @@ class ZarrArrayAdapter(ArrayAdapter):
                 # Resize the Zarr array to accommodate new data
                 self._array.resize(new_shape_tuple)
             else:
-                raise ValueError(f"Slice does not fit into array shape {current_shape}")
+                raise Conflicts(
+                    f"Slice {slice} does not fit into array shape {current_shape}. "
+                    f"Use ?extend=true to extend array dimension to fit."
+                )
         self._array[slice] = data
         new_chunks = []
         # Zarr has regularly-sized chunks, so no user input is required to
