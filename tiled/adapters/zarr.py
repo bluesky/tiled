@@ -182,9 +182,9 @@ class ZarrArrayAdapter(ArrayAdapter):
     async def patch(
         self,
         data: NDArray[Any],
-        slice: NDSlice,
+        slice: Tuple[slice | int, ...],
         grow: bool = False,
-    ) -> Tuple[int, ...]:
+    ) -> Tuple[Tuple[int, ...], Tuple[Tuple[int, ...], ...]]:
         """
         Write data into a slice of the array, maybe growing it.
 
@@ -207,7 +207,16 @@ class ZarrArrayAdapter(ArrayAdapter):
             else:
                 raise ValueError(f"Slice does not fit into array shape {current_shape}")
         self._array[slice] = data
-        return new_shape_tuple
+        new_chunks = []
+        # Zarr has regularly-sized chunks, so no user input is required to
+        # simply extend the existing pattern.
+        for chunk_size, size in zip(self._array.chunks, new_shape_tuple):
+            dim = [chunk_size] * (size // chunk_size)
+            if size % chunk_size:
+                dim.append(size % chunk_size)
+            new_chunks.append(tuple(dim))
+        new_chunks_tuple = tuple(new_chunks)
+        return new_shape_tuple, new_chunks_tuple
 
 
 if sys.version_info < (3, 9):

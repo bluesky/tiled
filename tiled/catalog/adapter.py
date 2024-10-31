@@ -1044,28 +1044,30 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def patch(self, *args, **kwargs):
         # assumes a single DataSource (currently only supporting zarr)
         async with self.context.session() as db:
-            try:
-                new_shape = await ensure_awaitable(
-                    (await self.get_adapter()).patch, *args, **kwargs
-                )
-                node = await db.get(orm.Node, self.node.id)
-                data_source = node.data_sources[0]
-                structure_row = await db.get(orm.Structure, data_source.structure_id)
-                # Get the current structure row, update the shape, and write it back
-                structure_dict = copy.deepcopy(structure_row.structure)
-                structure_dict["shape"] = new_shape
-                structure_id = compute_structure_id(structure_dict)
-                statement = self.insert(orm.Structure).values(
-                    id=structure_id,
+            new_shape_and_chunks = await ensure_awaitable(
+                (await self.get_adapter()).patch, *args, **kwargs
+            )
+            node = await db.get(orm.Node, self.node.id)
+            data_source = node.data_sources[0]
+            structure_row = await db.get(orm.Structure, data_source.structure_id)
+            # Get the current structure row, update the shape, and write it back
+            structure_dict = copy.deepcopy(structure_row.structure)
+            structure_dict["shape"], structure_dict["chunks"] = new_shape_and_chunks
+            new_structure_id = compute_structure_id(structure_dict)
+            statement = (
+                self.insert(orm.Structure)
+                .values(
+                    id=new_structure_id,
                     structure=structure_dict,
                 )
-                await db.execute(statement)
-                new_structure = await db.get(orm.Structure, structure_id)
-                data_source.structure = new_structure
-                db.add(data_source)
-                await db.commit()
-            except Exception as e:
-                raise RuntimeError(f"Could not retrieve node: {e}")
+                .on_conflict_do_nothing(index_elements=["id"])
+            )
+            await db.execute(statement)
+            new_structure = await db.get(orm.Structure, new_structure_id)
+            data_source.structure = new_structure
+            data_source.structure_id = new_structure_id
+            db.add(data_source)
+            await db.commit()
 
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):
