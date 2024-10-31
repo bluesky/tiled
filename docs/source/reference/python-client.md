@@ -165,6 +165,7 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.DaskArrayClient.export
    tiled.client.array.DaskArrayClient.write
    tiled.client.array.DaskArrayClient.write_block
+   tiled.client.array.DaskArrayClient.patch
 ```
 
 ```{eval-rst}
