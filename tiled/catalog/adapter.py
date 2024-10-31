@@ -1048,6 +1048,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
                 (await self.get_adapter()).patch, *args, **kwargs
             )
             node = await db.get(orm.Node, self.node.id)
+            if len(node.data_sources) != 1:
+                raise NotImplementedError("Only handles one data source")
             data_source = node.data_sources[0]
             structure_row = await db.get(orm.Structure, data_source.structure_id)
             # Get the current structure row, update the shape, and write it back

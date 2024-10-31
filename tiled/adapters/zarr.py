@@ -213,6 +213,8 @@ class ZarrArrayAdapter(ArrayAdapter):
                 new_shape[i] = max(new_shape[i], s)
             elif isinstance(s, builtins.slice) and isinstance(s.stop, int):
                 new_shape[i] = max(new_shape[i], s.stop)
+            else:
+                raise TypeError(f"Unexpected slice parameter: {slice}")
         new_shape_tuple = tuple(new_shape)
         if new_shape_tuple != current_shape:
             if extend:
