@@ -174,41 +174,40 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        if slice is not ...:
-            raise NotImplementedError
         block_slice, shape = slice_and_shape_from_block_and_chunks(
             block, self.structure().chunks
         )
         self._array[block_slice] = data
 
-    async def append_block(
+    async def patch(
         self,
         data: NDArray[Any],
-        axis: int,
-    ) -> List[int]:
+        slice: NDSlice,
+        grow: bool = False,
+    ) -> Tuple[int, ...]:
         """
+        Write data into a slice of the array, maybe growing it.
 
-        Parameters
-        ----------
-        data :
-        block :
-        slice :
-
-        Returns
-        -------
-
+        If the specified slice does not fit into the array, and grow=True, the
+        array will be resize (grown, never shrunk) to fit it. The new shape is
+        returned.
         """
-
-        new_shape = list(self._array.shape)
-        new_shape[axis] += list(data.shape)[axis]  # Extend along axis
-
-        # Resize the Zarr array to accommodate new data
-        self._array.resize(tuple(new_shape))
-
-        # Append the new data to the resized array
-        # Slicing to place data at the end
-        self._array[-data.shape[0] :] = data  # noqa: E203
-        return new_shape
+        current_shape = self._array.shape
+        new_shape = list(current_shape)
+        for i, (s, dim) in enumerate(zip(slice, current_shape)):
+            if isinstance(s, int):
+                new_shape[i] = max(new_shape[i], s)
+            elif isinstance(s, builtins.slice) and isinstance(s.stop, int):
+                new_shape[i] = max(new_shape[i], s.stop)
+        new_shape_tuple = tuple(new_shape)
+        if new_shape_tuple != current_shape:
+            if grow:
+                # Resize the Zarr array to accommodate new data
+                self._array.resize(new_shape_tuple)
+            else:
+                raise ValueError(f"Slice does not fit into array shape {current_shape}")
+        self._array[slice] = data
+        return new_shape_tuple
 
 
 if sys.version_info < (3, 9):

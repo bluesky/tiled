@@ -3,7 +3,9 @@ import itertools
 import dask
 import dask.array
 import numpy
+from numpy.typing import NDArray
 
+from ..type_aliases import NDSlice
 from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice
 
@@ -167,40 +169,39 @@ class _DaskArrayClient(BaseClient):
             )
         )
 
-    def write_block(self, array, block):
+    def write_block(self, array, block, slice=...):
         handle_error(
             self.context.http_client.put(
                 self.item["links"]["block"].format(*block),
                 content=array.tobytes(),
                 headers={"Content-Type": "application/octet-stream"},
+                params=params_from_slice(slice),
             )
         )
 
-    def append_block(self, array: numpy.nd, axis):
+    def patch(self, array: NDArray, slice: NDSlice, grow=False):
         """
-        Append a block to the array along the given axis. The block must have
-        the same shape as the existing blocks along that axis.
-        This method differs from `write_block` as it increases the size
-        of the array along the given axis, while `write_block` overwrites
-        the data in the block at the given index. This is useful for
-        cases where you do not know ahead of time how many blocks you will
-        eventually receive.
+        Write data
 
         Parameters
         ----------
         array : array-like
-            The block to append.
-        axis : int
-            The axis along which to append the block.
-
-
+            The data to write
+        slice : NDSlice
+            Where to place this data in the array
+        grow : bool
+            Grow the array shape to fit the new slice, if necessary
         """
-        formatted_shape = ",".join(f"{value}" for value in array.shape)
+        array_ = numpy.ascontiguousarray(array)
+        params = params_from_slice(slice)
+        params["shape"] = ",".join(map(str, array_.shape))
+        params["grow"] = bool(grow)
         handle_error(
             self.context.http_client.patch(
-                self.item["links"]["append"].format(formatted_shape, axis),
-                content=array.tobytes(),
+                self.item["links"]["full"],
+                content=array_.tobytes(),
                 headers={"Content-Type": "application/octet-stream"},
+                params=params,
             )
         )
 

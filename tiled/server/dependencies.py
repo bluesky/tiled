@@ -165,6 +165,13 @@ def expected_shape(
     return tuple(map(int, expected_shape.split(",")))
 
 
+def shape_param(
+    shape: str = Query(..., min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"),
+):
+    "Specify and parse a shape parameter."
+    return tuple(map(int, shape.split(",")))
+
+
 def np_style_slicer(indices: tuple):
     return indices[0] if len(indices) == 1 else slice_func(*indices)
 

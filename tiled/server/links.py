@@ -20,7 +20,6 @@ def links_for_array(structure_family, structure, base_url, path_str):
     block_template = ",".join(f"{{{index}}}" for index in range(len(structure.shape)))
     links["block"] = f"{base_url}/array/block/{path_str}?block={block_template}"
     links["full"] = f"{base_url}/array/full/{path_str}"
-    links["append"] = f"{base_url}/array/append/{path_str}?shape={{0}}&axis={{1}}"
     return links
 
 

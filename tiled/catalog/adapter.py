@@ -1041,15 +1041,13 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, *args, **kwargs
         )
 
-    async def append_block(self, *args, **kwargs):
+    async def patch(self, *args, **kwargs):
         # assumes a single DataSource (currently only supporting zarr)
         async with self.context.session() as db:
             try:
                 new_shape = await ensure_awaitable(
-                    (await self.get_adapter()).append_block, *args, **kwargs
+                    (await self.get_adapter()).patch, *args, **kwargs
                 )
-                if new_shape is None:
-                    raise ValueError("No new shape returned from append_block.")
                 node = await db.get(orm.Node, self.node.id)
                 data_source = node.data_sources[0]
                 structure_row = await db.get(orm.Structure, data_source.structure_id)

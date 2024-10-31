@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional
 
 import anyio
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
@@ -55,6 +55,7 @@ from .dependencies import (
     get_query_registry,
     get_serialization_registry,
     get_validation_registry,
+    shape_param,
     slice_,
 )
 from .file_response_with_range import FileResponseWithRange
@@ -1290,39 +1291,32 @@ async def put_array_block(
     return json_or_msgpack(request, None)
 
 
-@router.patch("/array/append/{path:path}")
-async def patch_array_block(
+@router.patch("/array/full/{path:path}")
+async def patch_array_full(
     request: Request,
-    shape: str,
-    axis: int,
+    slice=Depends(slice_),
+    shape=Depends(shape_param),
+    grow: bool = False,
     entry=SecureEntry(
         scopes=["write:data"],
-        structure_families={StructureFamily.array, StructureFamily.sparse},
+        structure_families={StructureFamily.array},
     ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
-    if not hasattr(entry, "append_block"):
+    if slice is None:
+        slice = ...
+    if not hasattr(entry, "patch"):
         raise HTTPException(
             status_code=HTTP_405_METHOD_NOT_ALLOWED,
             detail="This node cannot accept array data.",
         )
 
     dtype = entry.structure().data_type.to_numpy_dtype()
-    shape_tuple: Tuple[int, ...] = tuple(map(int, shape.split(",")))
     body = await request.body()
     media_type = request.headers["content-type"]
-    if entry.structure_family == "array":
-        # dtype = entry.structure().data_type.to_numpy_dtype()
-        # _, shape = slice_and_shape_from_block_and_chunks(
-        #     block, entry.structure().chunks
-        # )
-        deserializer = deserialization_registry.dispatch("array", media_type)
-        data = await ensure_awaitable(deserializer, body, dtype, shape_tuple)
-    elif entry.structure_family == "sparse":  # TODO: Handle sparse
-        raise NotImplementedError(entry.structure_family)
-    else:
-        raise NotImplementedError(entry.structure_family)
-    await ensure_awaitable(entry.append_block, data, axis)
+    deserializer = deserialization_registry.dispatch("array", media_type)
+    data = await ensure_awaitable(deserializer, body, dtype, shape)
+    await ensure_awaitable(entry.patch, data, slice, grow)
     return json_or_msgpack(request, None)
 
 
