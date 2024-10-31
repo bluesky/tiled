@@ -1296,7 +1296,7 @@ async def patch_array_full(
     request: Request,
     slice=Depends(slice_),
     shape=Depends(shape_param),
-    grow: bool = False,
+    extend: bool = False,
     entry=SecureEntry(
         scopes=["write:data"],
         structure_families={StructureFamily.array},
@@ -1316,7 +1316,7 @@ async def patch_array_full(
     media_type = request.headers["content-type"]
     deserializer = deserialization_registry.dispatch("array", media_type)
     data = await ensure_awaitable(deserializer, body, dtype, shape)
-    await ensure_awaitable(entry.patch, data, slice, grow)
+    await ensure_awaitable(entry.patch, data, slice, extend)
     return json_or_msgpack(request, None)
 
 

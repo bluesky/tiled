@@ -183,14 +183,28 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         data: NDArray[Any],
         slice: Tuple[slice | int, ...],
-        grow: bool = False,
+        extend: bool = False,
     ) -> Tuple[Tuple[int, ...], Tuple[Tuple[int, ...], ...]]:
         """
-        Write data into a slice of the array, maybe growing it.
+        Write data into a slice of the array, maybe extending it.
 
-        If the specified slice does not fit into the array, and grow=True, the
-        array will be resize (grown, never shrunk) to fit it. The new shape is
-        returned.
+        If the specified slice does not fit into the array, and extend=True, the
+        array will be resized (expanded, never shrunk) to fit it.
+
+        Parameters
+        ----------
+        data : array-like
+        slice :
+            Where to place the new data
+        extend : bool
+            If slice does not fit wholly within the shape of the existing array,
+            reshape (expand) it to fit if this is True.
+
+        Raises
+        ------
+        ValueError :
+            If slice does not fit wholly with the shape of the existing array
+            and expand is False
         """
         current_shape = self._array.shape
         new_shape = list(current_shape)
@@ -201,7 +215,7 @@ class ZarrArrayAdapter(ArrayAdapter):
                 new_shape[i] = max(new_shape[i], s.stop)
         new_shape_tuple = tuple(new_shape)
         if new_shape_tuple != current_shape:
-            if grow:
+            if extend:
                 # Resize the Zarr array to accommodate new data
                 self._array.resize(new_shape_tuple)
             else:

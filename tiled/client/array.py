@@ -179,7 +179,7 @@ class _DaskArrayClient(BaseClient):
             )
         )
 
-    def patch(self, array: NDArray, slice: NDSlice, grow=False):
+    def patch(self, array: NDArray, slice: NDSlice, extend=False):
         """
         Write data
 
@@ -189,13 +189,13 @@ class _DaskArrayClient(BaseClient):
             The data to write
         slice : NDSlice
             Where to place this data in the array
-        grow : bool
-            Grow the array shape to fit the new slice, if necessary
+        extend : bool
+            Extend the array shape to fit the new slice, if necessary
         """
         array_ = numpy.ascontiguousarray(array)
         params = params_from_slice(slice)
         params["shape"] = ",".join(map(str, array_.shape))
-        params["grow"] = bool(grow)
+        params["extend"] = bool(extend)
         handle_error(
             self.context.http_client.patch(
                 self.item["links"]["full"],
