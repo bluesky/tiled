@@ -6,9 +6,9 @@ import pandas
 
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
-from .type_alliases import JSON
 
 
 class TableAdapter:

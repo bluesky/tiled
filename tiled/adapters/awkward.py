@@ -6,9 +6,9 @@ from numpy.typing import NDArray
 
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import JSON
 from .awkward_directory_container import DirectoryContainer
 from .protocols import AccessPolicy
-from .type_alliases import JSON
 
 
 class AwkwardAdapter:

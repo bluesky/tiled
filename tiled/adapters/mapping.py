@@ -38,9 +38,9 @@ from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import SortingItem
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from ..utils import UNCHANGED, Sentinel
 from .protocols import AccessPolicy, AnyAdapter
-from .type_alliases import JSON
 from .utils import IndexersMixin
 
 if sys.version_info < (3, 9):

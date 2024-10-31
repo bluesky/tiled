@@ -14,10 +14,10 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..server.schemas import Asset
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import JSON, NDSlice
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -161,7 +161,6 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         data: NDArray[Any],
         block: Tuple[int, ...],
-        slice: Optional[NDSlice] = ...,
     ) -> None:
         """
 
