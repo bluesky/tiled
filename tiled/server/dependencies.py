@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
@@ -182,7 +182,7 @@ def parse_slice_str(dim: str):
 
 def slice_(
     slice: Optional[str] = Query(None, pattern=SLICE_REGEX),
-) -> Tuple[slice | int, ...]:
+) -> Tuple[Union[slice, int], ...]:
     "Specify and parse a block index parameter."
 
     return tuple(parse_slice_str(dim) for dim in (slice or "").split(",") if dim)

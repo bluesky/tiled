@@ -182,7 +182,7 @@ class ZarrArrayAdapter(ArrayAdapter):
     async def patch(
         self,
         data: NDArray[Any],
-        slice: Tuple[slice | int, ...],
+        slice: Tuple[Union[slice, int], ...],
         extend: bool = False,
     ) -> Tuple[Tuple[int, ...], Tuple[Tuple[int, ...], ...]]:
         """
