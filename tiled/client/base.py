@@ -184,10 +184,11 @@ class BaseClient:
             )
         ).json()
         self._item = content["data"]
-        structure_type = STRUCTURE_TYPES[self.structure_family]
-        self._structure = structure_type.from_json(
-            self._item["attributes"]["structure"]
-        )
+        if self.structure_family != StructureFamily.container:
+            structure_type = STRUCTURE_TYPES[self.structure_family]
+            self._structure = structure_type.from_json(
+                self._item["attributes"]["structure"]
+            )
         return self
 
     @property
