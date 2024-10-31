@@ -169,7 +169,6 @@ def test_extend_array(tree):
         ac.patch(ones * 8, offset=8, extend=True)
         numpy.testing.assert_equal(ac[8:9], ones * 8)
 
-
 def test_write_dataframe_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
