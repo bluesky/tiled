@@ -149,6 +149,22 @@ def test_extend_array(tree):
         assert actual.shape == full_array.shape
         numpy.testing.assert_equal(actual, full_array)
 
+        # Overwrite data (do not extend).
+        revised_data = numpy.ones((1, 2, 2)) * 3
+        revised_array = full_array.copy()
+        revised_array[3, :, :] = 3
+        ac.patch(revised_data, slice=slice(3, 4))
+        numpy.testing.assert_equal(ac.read(), revised_array)
+
+        # Extend out of order.
+        ones = numpy.ones((1, 2, 2))
+        ac.patch(ones * 7, slice=slice(7, 8), extend=True)
+        ac.patch(ones * 5, slice=slice(5, 6), extend=True)
+        ac.patch(ones * 6, slice=slice(6, 7), extend=True)
+        numpy.testing.assert_equal(ac[5:6], ones * 5)
+        numpy.testing.assert_equal(ac[6:7], ones * 6)
+        numpy.testing.assert_equal(ac[7:8], ones * 7)
+
 
 def test_write_dataframe_full(tree):
     with Context.from_app(
