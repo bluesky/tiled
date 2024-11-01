@@ -183,7 +183,7 @@ class _DaskArrayClient(BaseClient):
 
     def patch(self, array: NDArray, slice: NDSlice, extend=False):
         """
-        Write data
+        Write data into a slice of an array, maybe extending the shape.
 
         Parameters
         ----------
@@ -193,6 +193,45 @@ class _DaskArrayClient(BaseClient):
             Where to place this data in the array
         extend : bool
             Extend the array shape to fit the new slice, if necessary
+
+        Examples
+        --------
+
+        Create a (3, 2, 2) array of ones.
+
+        >>> ac = c.write_array(numpy.ones((3, 2, 2)), key='y')
+        >>> ac
+        <ArrayClient shape=(3, 2, 2) chunks=((3,), (2,), (2,)) dtype=float64>
+
+        Read it.
+
+        >>> ac.read()
+        array([[[1., 1.],
+                [1., 1.]],
+
+               [[1., 1.],
+                [1., 1.]],
+
+               [[1., 1.],
+                [1., 1.]]])
+
+        Extend the array by concatenating a (1, 2, 2) array of zeros.
+
+        >>> ac.patch(numpy.zeros((1, 2, 2)), slice=slice(3, 4), extend=True)
+
+        Read it.
+
+        >>> array([[[1., 1.],
+                    [1., 1.]],
+
+                   [[1., 1.],
+                    [1., 1.]],
+
+                   [[1., 1.],
+                    [1., 1.]],
+
+                   [[0., 0.],
+                    [0., 0.]]])
         """
         array_ = numpy.ascontiguousarray(array)
         params = params_from_slice(slice)
