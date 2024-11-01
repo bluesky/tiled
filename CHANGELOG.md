@@ -7,7 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Add adapters for reading back assets with the image/jpeg and
   multipart/related;type=image/jpeg mimetypes.
-- Add a check for the `openpyxcl` module when importing excel serializer. 
+- Add a check for the `openpyxcl` module when importing excel serializer.
 
 ## v0.1.0b10 (2024-10-11)
 
