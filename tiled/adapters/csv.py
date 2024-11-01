@@ -353,20 +353,20 @@ class CSVAdapter:
 
 
 class CSVArrayAdapter:
-    """Adapter for array-type data stored as partitioned text (csv) files"""
+    """Adapter for array-type data stored as partitioned csv files"""
 
     structure_family = StructureFamily.array
 
     def __init__(
         self,
-        data_uris: Union[str, List[str]],
-        structure: Optional[ArrayStructure] = None,
+        data_uris: List[str],
+        structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> None:
-        """Adapter for partitioned array data stored as a sequence of text (csv) files
+        """Adapter for partitioned array data stored as a sequence of csv files
 
         Parameters
         ----------
@@ -378,21 +378,46 @@ class CSVArrayAdapter:
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
-        if isinstance(data_uris, str):
-            data_uris = [data_uris]
-        self._partition_paths = [path_from_uri(uri) for uri in data_uris]
+        self._file_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
-        self._read_csv_kwargs = kwargs
-        if structure is None:
-            ddf = dask.dataframe.read_csv(self._partition_paths, **self._read_csv_kwargs)
-            if len(set(ddf.dtypes)) == 1:
-                arr = ddf.to_dask_array().compute()
-            else:
-                arr = ddf.to_records(index=False).compute()
-            structure = ArrayStructure.from_array(arr)
+        self._reading_kwargs = kwargs
         self._structure = structure
         self.specs = list(specs or [])
         self.access_policy = access_policy
+
+    @classmethod
+    def from_catalog(cls,
+        data_uris: Union[str, List[str]],
+        structure: ArrayStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]]
+        ):
+        if isinstance(data_uris, str):
+            data_uris = [data_uris]
+
+        return cls(data_uris, structure, metadata, specs, access_policy, **kwargs)
+
+    @classmethod
+    def from_storage(cls,
+        file_paths: Union[str, List[str]],
+        structure: Optional[ArrayStructure] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]]
+        ):
+        # if structure is None:
+        #     ddf = dask.dataframe.read_csv(file_paths, **kwargs)
+        #     if len(set(ddf.dtypes)) == 1:
+        #         arr = ddf.to_dask_array().compute()
+        #     else:
+        #         arr = ddf.to_records(index=False).compute()
+        #     structure = ArrayStructure.from_array(arr)
+        
+        # return cls(file_paths, structure, metadata, specs, access_policy, **kwargs)
+        pass
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._array!r})"
@@ -401,10 +426,10 @@ class CSVArrayAdapter:
         return self._metadata
 
     def read(self, slice: NDSlice = ...) -> NDArray[Any]:
-        ddf = dask.dataframe.read_csv(self._partition_paths, **self._read_csv_kwargs)
+        ddf = dask.dataframe.read_csv(self._file_paths, **self._reading_kwargs)
         if isinstance(self.structure.data_type, StructDtype):
             pass
-        data_type = self._read_csv_kwargs.get('dtype')
+        data_type = self._reading_kwargs.get('dtype')
 
         array = self._array[slice]
         if isinstance(self._array, dask.array.Array):
