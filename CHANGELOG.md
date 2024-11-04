@@ -10,7 +10,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add adapters for reading back assets with the image/jpeg and
   multipart/related;type=image/jpeg mimetypes.
 - Automatic reshaping of tiff data by the adapter to account for
-  extra/missing singleton dimensions
+  extra/missing singleton dimension
+ - Add a check for the `openpyxcl` module when importing excel serializer.
 
 ### Changed
 
