@@ -27,9 +27,10 @@ def initialize_database(database_uri: str):
         REQUIRED_REVISION,
         initialize_database,
     )
+    from ..utils import ensure_specified_sql_driver
 
     async def do_setup():
-        engine = create_async_engine(database_uri)
+        engine = create_async_engine(ensure_specified_sql_driver(database_uri))
         redacted_url = engine.url._replace(password="[redacted]")
         try:
             await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
@@ -71,9 +72,10 @@ def upgrade_database(
         ALEMBIC_INI_TEMPLATE_PATH,
     )
     from ..authn_database.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
 
     async def do_setup():
-        engine = create_async_engine(database_uri)
+        engine = create_async_engine(ensure_specified_sql_driver(database_uri))
         redacted_url = engine.url._replace(password="[redacted]")
         current_revision = await get_current_revision(engine, ALL_REVISIONS)
         await engine.dispose()
@@ -107,9 +109,10 @@ def downgrade_database(
         ALEMBIC_INI_TEMPLATE_PATH,
     )
     from ..authn_database.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
 
     async def do_setup():
-        engine = create_async_engine(database_uri)
+        engine = create_async_engine(ensure_specified_sql_driver(database_uri))
         redacted_url = engine.url._replace(password="[redacted]")
         current_revision = await get_current_revision(engine, ALL_REVISIONS)
         if current_revision is None:

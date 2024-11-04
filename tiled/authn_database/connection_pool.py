@@ -2,6 +2,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from ..server.settings import get_settings
+from ..utils import ensure_specified_sql_driver
 
 # A given process probably only has one of these at a time, but we
 # key on database_settings just case in some testing context or something
@@ -16,7 +17,9 @@ def open_database_connection_pool(database_settings):
     # kwargs["pool_pre_ping"] = database_settings.pool_pre_ping
     # kwargs["max_overflow"] = database_settings.max_overflow
     engine = create_async_engine(
-        database_settings.uri, connect_args=connect_args, **kwargs
+        ensure_specified_sql_driver(database_settings.uri),
+        connect_args=connect_args,
+        **kwargs,
     )
     _connection_pools[database_settings] = engine
     return engine

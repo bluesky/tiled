@@ -129,8 +129,9 @@ def serve_directory(
     from ..alembic_utils import stamp_head
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import initialize_database
+    from ..utils import ensure_specified_sql_driver
 
-    engine = create_async_engine(database)
+    engine = create_async_engine(ensure_specified_sql_driver(database))
     asyncio.run(initialize_database(engine))
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
@@ -389,8 +390,9 @@ def serve_catalog(
         from ..alembic_utils import stamp_head
         from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
         from ..catalog.core import initialize_database
+        from ..utils import ensure_specified_sql_driver
 
-        engine = create_async_engine(database)
+        engine = create_async_engine(ensure_specified_sql_driver(database))
         asyncio.run(initialize_database(engine))
         stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
