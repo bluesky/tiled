@@ -7,10 +7,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- Automatic reshaping of tiff data by the adapter to account for
-  extra/missing singleton dimensions
 - Add adapters for reading back assets with the image/jpeg and
   multipart/related;type=image/jpeg mimetypes.
+- Automatic reshaping of tiff data by the adapter to account for
+  extra/missing singleton dimensions
+
+### Changed
+
+- Drop support for Python 3.8, which is reached end of life
+  upstream on 7 October 2024.
 
 ## v0.1.0b10 (2024-10-11)
 
