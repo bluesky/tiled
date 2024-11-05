@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from ..utils import ensure_specified_sql_driver
 
 
@@ -62,6 +64,8 @@ def test_ensure_specified_sql_driver():
     # Filepaths are implicitly SQLite databases.
     # Relative path
     assert ensure_specified_sql_driver("test.db") == "sqlite+aiosqlite:///test.db"
+    # Path object
+    assert ensure_specified_sql_driver(Path("test.db")) == "sqlite+aiosqlite:///test.db"
     # Relative path anchored to .
     assert ensure_specified_sql_driver("./test.db") == "sqlite+aiosqlite:///test.db"
     # Absolute path
