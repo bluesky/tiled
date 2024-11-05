@@ -70,6 +70,6 @@ def test_ensure_specified_sql_driver():
     assert ensure_specified_sql_driver("./test.db") == "sqlite+aiosqlite:///test.db"
     # Absolute path
     assert (
-        ensure_specified_sql_driver("/tmp/test.db")
-        == "sqlite+aiosqlite:////tmp/test.db"
+        ensure_specified_sql_driver(Path("/tmp/test.db"))
+        == f"sqlite+aiosqlite:///{Path('/tmp/test.db')}"
     )
