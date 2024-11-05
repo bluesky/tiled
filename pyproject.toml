@@ -149,7 +149,7 @@ dev = [
     "ipython",
     "ldap3",
     "matplotlib",
-    "mistune <2.0.0",  # temporary while sphinx sorts this out,
+    "mistune",
     "myst-parser",
     "numpydoc",
     "pre-commit",
