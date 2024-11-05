@@ -64,12 +64,12 @@ from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
-    SCHEME_PATTERN,
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
     UnsupportedQueryType,
     ensure_awaitable,
+    ensure_specified_sql_driver,
     ensure_uri,
     import_object,
     path_from_uri,
@@ -1347,7 +1347,7 @@ def from_uri(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
 ):
-    uri = str(uri)
+    uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
         # The cleanest option available is to start a subprocess
@@ -1366,9 +1366,6 @@ def from_uri(
         stderr = process.stderr.decode()
         logging.info(f"Subprocess stdout: {stdout}")
         logging.error(f"Subprocess stderr: {stderr}")
-    if not SCHEME_PATTERN.match(uri):
-        # Interpret URI as filepath.
-        uri = f"sqlite+aiosqlite:///{uri}"
 
     parsed_url = make_url(uri)
     if (parsed_url.get_dialect().name == "sqlite") and (
@@ -1381,7 +1378,10 @@ def from_uri(
     else:
         poolclass = None  # defer to sqlalchemy default
     engine = create_async_engine(
-        uri, echo=echo, json_serializer=json_serializer, poolclass=poolclass
+        uri,
+        echo=echo,
+        json_serializer=json_serializer,
+        poolclass=poolclass,
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)

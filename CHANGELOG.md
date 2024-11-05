@@ -17,6 +17,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Drop support for Python 3.8, which is reached end of life
   upstream on 7 October 2024.
+- Do not require SQL database URIs to specify a "driver" (Python
+  library to be used for connecting).
 
 ## v0.1.0b10 (2024-10-11)
 
