@@ -55,6 +55,7 @@ from .dependencies import (
     get_query_registry,
     get_serialization_registry,
     get_validation_registry,
+    offset_param,
     shape_param,
     slice_,
 )
@@ -1294,7 +1295,7 @@ async def put_array_block(
 @router.patch("/array/full/{path:path}")
 async def patch_array_full(
     request: Request,
-    slice=Depends(slice_),
+    offset=Depends(offset_param),
     shape=Depends(shape_param),
     extend: bool = False,
     entry=SecureEntry(
@@ -1303,8 +1304,6 @@ async def patch_array_full(
     ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
-    if slice is None:
-        slice = ...
     if not hasattr(entry, "patch"):
         raise HTTPException(
             status_code=HTTP_405_METHOD_NOT_ALLOWED,
@@ -1316,7 +1315,7 @@ async def patch_array_full(
     media_type = request.headers["content-type"]
     deserializer = deserialization_registry.dispatch("array", media_type)
     data = await ensure_awaitable(deserializer, body, dtype, shape)
-    structure = await ensure_awaitable(entry.patch, data, slice, extend)
+    structure = await ensure_awaitable(entry.patch, data, offset, extend)
     return json_or_msgpack(request, structure)
 
 

@@ -1,4 +1,5 @@
 import itertools
+from typing import Union
 
 import dask
 import dask.array
@@ -7,7 +8,6 @@ import numpy
 from numpy.typing import NDArray
 
 from ..structures.core import STRUCTURE_TYPES
-from ..type_aliases import NDSlice
 from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice
 
@@ -181,7 +181,7 @@ class _DaskArrayClient(BaseClient):
             )
         )
 
-    def patch(self, array: NDArray, slice: NDSlice, extend=False):
+    def patch(self, array: NDArray, offset: Union[int, tuple[int, ...]], extend=False):
         """
         Write data into a slice of an array, maybe extending the shape.
 
@@ -189,7 +189,7 @@ class _DaskArrayClient(BaseClient):
         ----------
         array : array-like
             The data to write
-        slice : NDSlice
+        offset : tuple[int, ...]
             Where to place this data in the array
         extend : bool
             Extend the array shape to fit the new slice, if necessary
@@ -217,7 +217,7 @@ class _DaskArrayClient(BaseClient):
 
         Extend the array by concatenating a (1, 2, 2) array of zeros.
 
-        >>> ac.patch(numpy.zeros((1, 2, 2)), slice=slice(3, 4), extend=True)
+        >>> ac.patch(numpy.zeros((1, 2, 2)), offset=(3,), extend=True)
 
         Read it.
 
@@ -234,9 +234,13 @@ class _DaskArrayClient(BaseClient):
                     [0., 0.]]])
         """
         array_ = numpy.ascontiguousarray(array)
-        params = params_from_slice(slice)
-        params["shape"] = ",".join(map(str, array_.shape))
-        params["extend"] = bool(extend)
+        if isinstance(offset, int):
+            offset = (offset,)
+        params = {
+            "offset": ",".join(map(str, offset)),
+            "shape": ",".join(map(str, array_.shape)),
+            "extend": bool(extend),
+        }
         response = self.context.http_client.patch(
             self.item["links"]["full"],
             content=array_.tobytes(),

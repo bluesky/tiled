@@ -172,6 +172,13 @@ def shape_param(
     return tuple(map(int, shape.split(",")))
 
 
+def offset_param(
+    offset: str = Query(..., min_length=1, pattern="^[0-9]+(,[0-9]+)*$"),
+):
+    "Specify and parse an offset parameter."
+    return tuple(map(int, offset.split(",")))
+
+
 def np_style_slicer(indices: tuple):
     return indices[0] if len(indices) == 1 else slice_func(*indices)
 

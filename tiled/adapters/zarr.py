@@ -182,7 +182,7 @@ class ZarrArrayAdapter(ArrayAdapter):
     async def patch(
         self,
         data: NDArray[Any],
-        slice: Tuple[Union[slice, int], ...],
+        offset: Tuple[int, ...],
         extend: bool = False,
     ) -> Tuple[Tuple[int, ...], Tuple[Tuple[int, ...], ...]]:
         """
@@ -194,7 +194,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         Parameters
         ----------
         data : array-like
-        slice :
+        offset : tuple[int]
             Where to place the new data
         extend : bool
             If slice does not fit wholly within the shape of the existing array,
@@ -207,14 +207,15 @@ class ZarrArrayAdapter(ArrayAdapter):
             and expand is False
         """
         current_shape = self._array.shape
-        new_shape = list(current_shape)
-        for i, (s, dim) in enumerate(zip(slice, current_shape)):
-            if isinstance(s, int):
-                new_shape[i] = max(new_shape[i], s)
-            elif isinstance(s, builtins.slice) and isinstance(s.stop, int):
-                new_shape[i] = max(new_shape[i], s.stop)
-            else:
-                raise TypeError(f"Unexpected slice parameter: {slice}")
+        normalized_offset = [0] * len(current_shape)
+        normalized_offset[: len(offset)] = list(offset)
+        new_shape = []
+        slice_ = []
+        for data_dim, offset_dim, current_dim in zip(
+            data.shape, normalized_offset, current_shape
+        ):
+            new_shape.append(max(current_dim, data_dim + offset_dim))
+            slice_.append(slice(offset_dim, offset_dim + data_dim))
         new_shape_tuple = tuple(new_shape)
         if new_shape_tuple != current_shape:
             if extend:
@@ -223,9 +224,9 @@ class ZarrArrayAdapter(ArrayAdapter):
             else:
                 raise Conflicts(
                     f"Slice {slice} does not fit into array shape {current_shape}. "
-                    f"Use ?extend=true to extend array dimension to fit."
+                    "Use ?extend=true to extend array dimension to fit."
                 )
-        self._array[slice] = data
+        self._array[tuple(slice_)] = data
         new_chunks = []
         # Zarr has regularly-sized chunks, so no user input is required to
         # simply extend the existing pattern.
