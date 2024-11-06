@@ -28,9 +28,16 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
-        # "text/csv": lambda: importlib.import_module(
-        #    "..adapters.csv", __name__
-        # ).CSVAdapter.from_single_file,
+        "text/csv": lambda: importlib.import_module(
+           "..adapters.csv", __name__
+        ).CSVAdapter.from_single_file,
+        # https://www.rfc-editor.org/rfc/rfc4180#section-3
+        "text/csv;header=present": lambda: importlib.import_module(
+            "..adapters.csv", __name__
+        ).CSVAdapter,
+        "text/csv;header=absent": lambda: importlib.import_module(
+            "..adapters.csv", __name__
+        ).CSVArrayAdapter,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.excel", __name__
         ).ExcelAdapter.from_uri,
