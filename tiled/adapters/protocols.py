@@ -19,6 +19,11 @@ from .type_alliases import JSON, Filters, NDSlice, Scopes
 
 
 class BaseAdapter(Protocol):
+    # @abstractmethod
+    # @classmethod
+    # def from_assets(cls, assets, kwargs) -> "BaseAdapter":
+    #     pass
+
     @abstractmethod
     def metadata(self) -> JSON:
         pass

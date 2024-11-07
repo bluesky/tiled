@@ -48,6 +48,19 @@ class ArrowAdapter:
         self.specs = list(specs or [])
         self.access_policy = access_policy
 
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: TableStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "ArrowAdapter":
+        data_uris = [a.data_uri for a in assets]
+        return cls(data_uris, structure, metadata, specs, access_policy)
+
     def metadata(self) -> JSON:
         """
 

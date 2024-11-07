@@ -13,18 +13,18 @@ ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
-        "image/tiff": lambda: importlib.import_module(
-            "..adapters.tiff", __name__
-        ).TiffAdapter,
+        # "image/tiff": lambda: importlib.import_module(
+        #     "..adapters.tiff", __name__
+        # ).TiffAdapter,
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
-        ).TiffSequenceAdapter.from_uris,
+        ).TiffSequenceAdapter,
         "image/jpeg": lambda: importlib.import_module(
             "..adapters.jpeg", __name__
         ).JPEGAdapter,
         "multipart/related;type=image/jpeg": lambda: importlib.import_module(
             "..adapters.jpeg", __name__
-        ).JPEGSequenceAdapter.from_uris,
+        ).JPEGSequenceAdapter,
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
@@ -40,13 +40,13 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).CSVArrayAdapter,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.excel", __name__
-        ).ExcelAdapter.from_uri,
+        ).ExcelAdapter,
         "application/x-hdf5": lambda: importlib.import_module(
             "..adapters.hdf5", __name__
-        ).hdf5_lookup,
+        ).HDF5Adapter,
         "application/x-netcdf": lambda: importlib.import_module(
             "..adapters.netcdf", __name__
-        ).read_netcdf,
+        ).NetCDFAdapter,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "..adapters.parquet", __name__
         ).ParquetDatasetAdapter,
@@ -55,10 +55,10 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).SparseBlocksParquetAdapter,
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "..adapters.zarr", __name__
-        ).read_zarr,
+        ).ZarrAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "..adapters.awkward_buffers", __name__
-        ).AwkwardBuffersAdapter.from_directory,
+        ).AwkwardBuffersAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.arrow", __name__
         ).ArrowAdapter,

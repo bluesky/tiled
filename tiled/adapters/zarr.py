@@ -2,7 +2,7 @@ import builtins
 import collections.abc
 import os
 import sys
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import zarr.core
 import zarr.hierarchy
@@ -27,18 +27,6 @@ def read_zarr(
     structure: Optional[ArrayStructure] = None,
     **kwargs: Any,
 ) -> Union["ZarrGroupAdapter", ArrayAdapter]:
-    """
-
-    Parameters
-    ----------
-    data_uri :
-    structure :
-    kwargs :
-
-    Returns
-    -------
-
-    """
     filepath = path_from_uri(data_uri)
     zarr_obj = zarr.open(filepath)  # Group or Array
     adapter: Union[ZarrGroupAdapter, ArrayAdapter]
@@ -409,3 +397,35 @@ class ZarrGroupAdapter(
 
         """
         return depth <= INLINED_DEPTH
+
+
+class ZarrAdapter:
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: ArrayStructure,  # NOTE: possibly need to be a Union of Array and Mapping structures
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
+        zarr_obj = zarr.open(path_from_uri(assets[0].data_uri))  # Group or Array
+        if isinstance(zarr_obj, zarr.hierarchy.Group):
+            return ZarrGroupAdapter(
+                zarr_obj,
+                structure=structure,
+                metadata=metadata,
+                specs=specs,
+                access_policy=access_policy,
+                **kwargs,
+            )
+        else:
+            return ZarrArrayAdapter(
+                zarr_obj,
+                structure=structure,
+                metadata=metadata,
+                specs=specs,
+                access_policy=access_policy,
+                **kwargs,
+            )

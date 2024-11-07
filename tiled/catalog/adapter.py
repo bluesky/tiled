@@ -449,12 +449,11 @@ class CatalogNodeAdapter:
     async def get_adapter(self):
         (data_source,) = self.data_sources
         try:
-            adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
+            adapter_class = self.context.adapters_by_mimetype[data_source.mimetype]
         except KeyError:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
-        parameters = collections.defaultdict(list)
         for asset in data_source.assets:
             if asset.parameter is None:
                 continue
@@ -464,8 +463,7 @@ class CatalogNodeAdapter:
                     f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
                 )
             if scheme == "file":
-                # Protect against misbehaving clients reading from unintended
-                # parts of the filesystem.
+                # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
                 for readable_storage in self.context.readable_storage:
                     if Path(
@@ -479,18 +477,16 @@ class CatalogNodeAdapter:
                         f"Refusing to serve {asset.data_uri} because it is outside "
                         "the readable storage area for this server."
                     )
-            if asset.num is None:
-                parameters[asset.parameter] = asset.data_uri
-            else:
-                parameters[asset.parameter].append(asset.data_uri)
-        adapter_kwargs = dict(parameters)
-        adapter_kwargs.update(data_source.parameters)
-        adapter_kwargs["specs"] = self.node.specs
-        adapter_kwargs["metadata"] = self.node.metadata_
-        adapter_kwargs["structure"] = data_source.structure
-        adapter_kwargs["access_policy"] = self.access_policy
         adapter = await anyio.to_thread.run_sync(
-            partial(adapter_factory, **adapter_kwargs)
+            partial(
+                adapter_class.from_assets,
+                data_source.assets,
+                structure=data_source.structure,
+                specs=self.node.specs,
+                metadata=self.node.metadata_,
+                access_policy=self.access_policy,
+                **data_source.parameters,
+            ),
         )
         for query in self.queries:
             adapter = adapter.search(query)

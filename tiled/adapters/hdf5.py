@@ -3,7 +3,7 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import h5py
 import numpy
@@ -13,6 +13,7 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import Asset
 from ..structures.table import TableStructure
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
@@ -102,6 +103,28 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         super().__init__()
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: ArrayStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "HDF5Adapter":
+        return hdf5_lookup(
+            data_uri=assets[0].data_uri,
+            structure=structure,
+            metadata=metadata,
+            specs=specs,
+            access_policy=access_policy,
+            swmr=kwargs.get("swmr", SWMR_DEFAULT),  # type: ignore
+            libver=kwargs.get("libver", "latest"),  # type: ignore
+            dataset=kwargs.get("dataset"),  # type: ignore
+            path=kwargs.get("path"),  # type: ignore
+        )
 
     @classmethod
     def from_file(

@@ -1,5 +1,5 @@
 import itertools
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import dask.base
 import dask.dataframe
@@ -67,6 +67,19 @@ class SparseBlocksParquetAdapter:
         self._metadata = metadata or {}
         self.specs = list(specs or [])
         self.access_policy = access_policy
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: COOStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "SparseBlocksParquetAdapter":
+        data_uris = [a.data_uri for a in assets]
+        return cls(data_uris, structure, metadata, specs, access_policy)
 
     @classmethod
     def init_storage(

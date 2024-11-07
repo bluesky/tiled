@@ -6,6 +6,7 @@ from numpy._typing import NDArray
 
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import Asset
 from ..utils import path_from_uri
 from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
@@ -67,6 +68,24 @@ class TiffAdapter:
                 data_type=BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype),
             )
         self._structure = structure
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: ArrayStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "TiffAdapter":
+        return cls(
+            assets[0].data_uri,
+            structure=structure,
+            metadata=metadata,
+            specs=specs,
+            access_policy=access_policy,
+        )
 
     def metadata(self) -> JSON:
         """
