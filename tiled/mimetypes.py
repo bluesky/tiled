@@ -28,9 +28,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
-        "text/csv": lambda: importlib.import_module(
-           "..adapters.csv", __name__
-        ).CSVAdapter.from_single_file,
+        "multipart/related;type=text/csv": lambda: importlib.import_module(
+            "..adapters.csv", __name__
+        ).CSVAdapter,
         # https://www.rfc-editor.org/rfc/rfc4180#section-3
         "text/csv;header=present": lambda: importlib.import_module(
             "..adapters.csv", __name__
@@ -69,9 +69,7 @@ DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE = copy.deepcopy(DEFAULT_ADAPTERS_BY_M
 
 DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE.set(
     "text/csv",
-    lambda: importlib.import_module(
-        "..adapters.csv", __name__
-    ).CSVAdapter.from_single_file,
+    lambda: importlib.import_module("..adapters.csv", __name__).CSVAdapter,
 )
 
 
