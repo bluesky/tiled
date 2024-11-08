@@ -373,19 +373,31 @@ class CSVArrayAdapter(ArrayAdapter):
         # Load the array lazily with Dask
         file_paths = [path_from_uri(ast.data_uri) for ast in assets]
         dtype_numpy = structure.data_type.to_numpy_dtype()
+        nrows = kwargs.pop("nrows", None)   # dask doesn't accept nrows
         ddf = dask.dataframe.read_csv(file_paths, dtype=dtype_numpy, **kwargs)
+        chunks_0: tuple[int, ...] = structure.chunks[0]
 
         if not dtype_numpy.isbuiltin:
             # Structural np dtype (0) -- return a records array
             # NOTE: dask.DataFrame.to_records() allows one to pass `index=False` to drop the index column, but as
             #       of desk ver. 2024.2.1 it seems broken and doesn't do anything. Instead, we set an index to any
             #       (first) column in the df to prevent it from creating an extra one.
-            array = ddf.set_index(ddf.columns[0]).to_records(
-                lengths=structure.chunks[0]
-            )
+            array = ddf.set_index(ddf.columns[0]).to_records(lengths=chunks_0)
         else:
             # Simple np dtype (1 or 2) -- all fields have the same type -- return a usual array
-            array = ddf.to_dask_array(lengths=structure.chunks[0])
+            array = ddf.to_dask_array(lengths=chunks_0)
+
+        # Possibly extend or cut the table according the nrows parameter
+        if nrows is not None:
+            # TODO: this pulls all the data and can take long to compute. Instead, we can open the files and
+            #       iterate over the rows directly, which is about 4-5 times faster for 50K rows.
+            #       Can also just .compute() and return a np array instead
+            nrows_actual = len(ddf)
+            if nrows > nrows_actual:
+                padding = dask.array.zeros_like(array, shape=(nrows-nrows_actual, *array.shape[1:]))
+                array = dask.array.append(array[:nrows_actual, ...], padding, axis=0)
+            else:
+                array = array[:nrows, ...]
 
         return cls(
             array,
