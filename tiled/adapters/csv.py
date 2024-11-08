@@ -372,21 +372,20 @@ class CSVArrayAdapter(ArrayAdapter):
 
         # Load the array lazily with Dask
         file_paths = [path_from_uri(ast.data_uri) for ast in assets]
-        ddf = dask.dataframe.read_csv(file_paths, dtype=structure.data_type.to_numpy_dtype(), **kwargs)
+        dtype_numpy = structure.data_type.to_numpy_dtype()
+        ddf = dask.dataframe.read_csv(file_paths, dtype=dtype_numpy, **kwargs)
 
-        if isinstance(structure.data_type, StructDtype):
-            # Expecting a records array
+        if not dtype_numpy.isbuiltin:
+            # Structural np dtype (0) -- return a records array
             # NOTE: dask.DataFrame.to_records() allows one to pass `index=False` to drop the index column, but as
             #       of desk ver. 2024.2.1 it seems broken and doesn't do anything. Instead, we set an index to any
             #       (first) column in the df to prevent it from creating an extra one.
             array = ddf.set_index(ddf.columns[0]).to_records(
                 lengths=structure.chunks[0]
             )
-        elif isinstance(structure.data_type, BuiltinDtype):
-            # All fields have the same type -- return a usual array
-            array = ddf.to_dask_array(lengths=structure.chunks[0])
         else:
-            raise ValueError(f"Unsupported data_type, {structure.data_type}")
+            # Simple np dtype (1 or 2) -- all fields have the same type -- return a usual array
+            array = ddf.to_dask_array(lengths=structure.chunks[0])
 
         return cls(
             array,
