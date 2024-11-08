@@ -65,14 +65,13 @@ Write array and tabular data.
 >>> new_array
 <ArrayClient shape=(3,) chunks=((3,),) dtype=int64>
 
-# Extend the array. This array has only one dimension, here we extend by one 
+# Extend the array. This array has only one dimension, here we extend by one
 # along that dimension.
 >>> new_array.patch([4], offset=(3,), extend=True)
 >>> new_array
 <ArrayClient shape=(4,) chunks=((3, 1),) dtype=int64>
 >>> new_array.read()
 array([1, 2, 3, 4])
->>> 
 
 # Write a table (DataFrame).
 >>> import pandas
