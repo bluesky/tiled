@@ -372,7 +372,7 @@ class CSVArrayAdapter(ArrayAdapter):
 
         # Load the array lazily with Dask
         file_paths = [path_from_uri(ast.data_uri) for ast in assets]
-        ddf = dask.dataframe.read_csv(file_paths, **kwargs)
+        ddf = dask.dataframe.read_csv(file_paths, dtype=structure.data_type.to_numpy_dtype(), **kwargs)
 
         if isinstance(structure.data_type, StructDtype):
             # Expecting a records array
