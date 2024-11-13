@@ -375,7 +375,7 @@ class CSVArrayAdapter(ArrayAdapter):
         dtype_numpy = structure.data_type.to_numpy_dtype()
         nrows = kwargs.pop("nrows", None)   # dask doesn't accept nrows
         ddf = dask.dataframe.read_csv(file_paths, dtype=dtype_numpy, **kwargs)
-        chunks_0: tuple[int, ...] = structure.chunks[0]
+        chunks_0: tuple[int, ...] = structure.chunks[0]  # chunking along the rows dimension (when not stackable)
 
         if not dtype_numpy.isbuiltin:
             # Structural np dtype (0) -- return a records array
@@ -398,6 +398,8 @@ class CSVArrayAdapter(ArrayAdapter):
                 array = dask.array.append(array[:nrows_actual, ...], padding, axis=0)
             else:
                 array = array[:nrows, ...]
+
+            array = array.reshape(structure.shape).rechunk(structure.chunks)
 
         return cls(
             array,
