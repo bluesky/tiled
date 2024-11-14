@@ -37,7 +37,10 @@ COPY . .
 
 # Skip building the UI here because we already did it in the stage
 # above using a node container.
-RUN TILED_BUILD_SKIP_UI=1 pip install '.[server]'
+# Include server and client depedencies here because this container may be used
+# for `tiled register ...` and `tiled server directory ...` which invokes
+# client-side code.
+RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
 
 # FROM base as test
 #
