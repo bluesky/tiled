@@ -20,6 +20,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Do not require SQL database URIs to specify a "driver" (Python
   library to be used for connecting).
 
+### Fixed
+
+- A regression in the container broke support for `tiled register ...` and
+  `tiled serve directory ...`. When these became client-side operations, the
+  container needed to add the client-side dependencies to support them.
+
 ## v0.1.0b10 (2024-10-11)
 
 - Add kwarg to client logout to auto-clear default identity.
