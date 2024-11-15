@@ -721,6 +721,33 @@ def ensure_uri(uri_or_path) -> str:
     return str(uri_str)
 
 
+SCHEME_TO_SCHEME_PLUS_DRIVER = {
+    "postgresql": "postgresql+asyncpg",
+    "sqlite": "sqlite+aiosqlite",
+}
+
+
+def ensure_specified_sql_driver(uri: str) -> str:
+    """
+    Given a URI without a driver in the scheme, add Tiled's preferred driver.
+
+    If a driver is already specified, the specified one will be used; it
+    will NOT be overriden by this function.
+
+    'postgresql://...' -> 'postgresql+asynpg://...'
+    'sqlite://...' -> 'sqlite+aiosqlite://...'
+    'postgresql+asyncpg://...' -> 'postgresql+asynpg://...'
+    'postgresql+my_custom_driver://...' -> 'postgresql+my_custom_driver://...'
+    '/path/to/file.db' -> 'sqlite+aiosqlite:////path/to/file.db'
+    """
+    if not SCHEME_PATTERN.match(str(uri)):
+        # Interpret URI as filepath.
+        uri = f"sqlite+aiosqlite:///{Path(uri)}"
+    scheme, rest = uri.split(":", 1)
+    new_scheme = SCHEME_TO_SCHEME_PLUS_DRIVER.get(scheme, scheme)
+    return ":".join([new_scheme, rest])
+
+
 class catch_warning_msg(warnings.catch_warnings):
     """Backward compatible version of catch_warnings for python <3.11.
 

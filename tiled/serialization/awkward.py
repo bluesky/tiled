@@ -1,21 +1,11 @@
 import io
-import sys
+import zipfile
 
 import awkward
 
-from ..structures.core import StructureFamily
-from ..utils import modules_available
-
-if sys.version_info < (3, 9):
-    # Python 3.8 has a bug in zipfile that is not easily matched. Import
-    # zipfile from a copy of the Python 3.9.17 version, vendored in the tiled
-    # source.
-    from . import _zipfile_py39 as zipfile
-else:
-    import zipfile
-
 from ..media_type_registration import deserialization_registry, serialization_registry
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE
+from ..structures.core import StructureFamily
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
 
 
 @serialization_registry.register(StructureFamily.awkward, "application/zip")

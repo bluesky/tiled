@@ -30,10 +30,20 @@ if modules_available("pandas", "pyarrow"):
         deserialize_arrow,
         serialize_arrow,
         serialize_csv,
-        serialize_excel,
         serialize_html,
         serialize_parquet,
     )
+
+    if modules_available("openpyxl"):
+        from .table import serialize_excel
+
+        serialization_registry.register(
+            "sparse",
+            XLSX_MIME_TYPE,
+            lambda sparse_arr, metadata: serialize_excel(
+                to_dataframe(sparse_arr), metadata, preserve_index=False
+            ),
+        )
 
     # Support DataFrame formats by first converting to DataFrame.
     # naming columns like dim0, dim1, ..., dimN, data.
@@ -77,13 +87,6 @@ if modules_available("pandas", "pyarrow"):
         "sparse",
         "text/html",
         lambda sparse_arr, metadata: serialize_html(
-            to_dataframe(sparse_arr), metadata, preserve_index=False
-        ),
-    )
-    serialization_registry.register(
-        "sparse",
-        XLSX_MIME_TYPE,
-        lambda sparse_arr, metadata: serialize_excel(
             to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )

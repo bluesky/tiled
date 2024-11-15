@@ -3,6 +3,29 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0b11 (2024-11-14)
+
+### Added
+
+- Add adapters for reading back assets with the image/jpeg and
+  multipart/related;type=image/jpeg mimetypes.
+- Automatic reshaping of tiff data by the adapter to account for
+  extra/missing singleton dimension
+ - Add a check for the `openpyxcl` module when importing excel serializer.
+
+### Changed
+
+- Drop support for Python 3.8, which is reached end of life
+  upstream on 7 October 2024.
+- Do not require SQL database URIs to specify a "driver" (Python
+  library to be used for connecting).
+
+### Fixed
+
+- A regression in the container broke support for `tiled register ...` and
+  `tiled serve directory ...`. When these became client-side operations, the
+  container needed to add the client-side dependencies to support them.
+
 ## v0.1.0b10 (2024-10-11)
 
 - Add kwarg to client logout to auto-clear default identity.
