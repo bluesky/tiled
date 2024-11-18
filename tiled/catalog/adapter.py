@@ -1,4 +1,5 @@
 import collections
+import copy
 import importlib
 import itertools as it
 import logging
@@ -1040,6 +1041,37 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, *args, **kwargs
         )
 
+    async def patch(self, *args, **kwargs):
+        # assumes a single DataSource (currently only supporting zarr)
+        async with self.context.session() as db:
+            new_shape_and_chunks = await ensure_awaitable(
+                (await self.get_adapter()).patch, *args, **kwargs
+            )
+            node = await db.get(orm.Node, self.node.id)
+            if len(node.data_sources) != 1:
+                raise NotImplementedError("Only handles one data source")
+            data_source = node.data_sources[0]
+            structure_row = await db.get(orm.Structure, data_source.structure_id)
+            # Get the current structure row, update the shape, and write it back
+            structure_dict = copy.deepcopy(structure_row.structure)
+            structure_dict["shape"], structure_dict["chunks"] = new_shape_and_chunks
+            new_structure_id = compute_structure_id(structure_dict)
+            statement = (
+                self.insert(orm.Structure)
+                .values(
+                    id=new_structure_id,
+                    structure=structure_dict,
+                )
+                .on_conflict_do_nothing(index_elements=["id"])
+            )
+            await db.execute(statement)
+            new_structure = await db.get(orm.Structure, new_structure_id)
+            data_source.structure = new_structure
+            data_source.structure_id = new_structure_id
+            db.add(data_source)
+            await db.commit()
+            return structure_dict
+
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
@@ -1330,6 +1362,7 @@ def in_memory(
         access_policy=access_policy,
         writable_storage=writable_storage,
         readable_storage=readable_storage,
+        init_if_not_exists=True,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
     )

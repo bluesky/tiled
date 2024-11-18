@@ -121,6 +121,59 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
+def test_extend_array(tree):
+    "Extend an array with additional data, expanding its shape."
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+
+        a = numpy.ones((3, 2, 2))
+        new_data = numpy.ones((1, 2, 2)) * 2
+        full_array = numpy.concatenate((a, new_data), axis=0)
+
+        # Upload a (3, 2, 2) array.
+        ac = client.write_array(a)
+        assert ac.shape == a.shape
+
+        # Patching data into a region beyond the current extent of the array
+        # raises a ValueError (catching a 409 from the server).
+        with pytest.raises(ValueError):
+            ac.patch(new_data, offset=(3,))
+        # With extend=True, the array is expanded.
+        ac.patch(new_data, offset=(3,), extend=True)
+        # The local cache of the structure is updated.
+        assert ac.shape == full_array.shape
+        actual = ac.read()
+        # The array has the expected shape and data.
+        assert actual.shape == full_array.shape
+        numpy.testing.assert_equal(actual, full_array)
+
+        # Overwrite data (do not extend).
+        revised_data = numpy.ones((1, 2, 2)) * 3
+        revised_array = full_array.copy()
+        revised_array[3, :, :] = 3
+        ac.patch(revised_data, offset=(3,))
+        numpy.testing.assert_equal(ac.read(), revised_array)
+
+        # Extend out of order.
+        ones = numpy.ones((1, 2, 2))
+        ac.patch(ones * 7, offset=(7,), extend=True)
+        ac.patch(ones * 5, offset=(5,), extend=True)
+        ac.patch(ones * 6, offset=(6,), extend=True)
+        numpy.testing.assert_equal(ac[5:6], ones * 5)
+        numpy.testing.assert_equal(ac[6:7], ones * 6)
+        numpy.testing.assert_equal(ac[7:8], ones * 7)
+
+        # Offset given as an int is acceptable.
+        ac.patch(ones * 8, offset=8, extend=True)
+        numpy.testing.assert_equal(ac[8:9], ones * 8)
+
+        # Data type must match.
+        with pytest.raises(ValueError):
+            ac.patch(ones.astype("uint8"), offset=9, extend=True)
+
+
 def test_write_dataframe_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)

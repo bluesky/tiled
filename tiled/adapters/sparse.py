@@ -8,9 +8,9 @@ from numpy._typing import NDArray
 
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
+from ..type_aliases import JSON, NDSlice
 from .array import slice_and_shape_from_block_and_chunks
 from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
 
 
 class COOAdapter:

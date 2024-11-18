@@ -12,9 +12,9 @@ from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
+from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
 from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
 
 
 def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
@@ -113,18 +113,13 @@ class SparseBlocksParquetAdapter:
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
+        slice: NDSlice = ...,
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-        block :
-
-        Returns
-        -------
-
-        """
+        if slice != ...:
+            raise NotImplementedError(
+                "Writing into a slice of a sparse block is not yet supported."
+            )
+        "Write into a block of the array."
         uri = self.blocks[block]
         data.to_parquet(path_from_uri(uri))
 

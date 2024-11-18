@@ -11,9 +11,9 @@ from numpy._typing import NDArray
 
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec
+from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
 from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
 
 
 def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:

@@ -14,10 +14,10 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..server.schemas import Asset
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from ..utils import node_repr, path_from_uri
+from ..type_aliases import JSON, NDSlice
+from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -75,7 +75,6 @@ class ZarrArrayAdapter(ArrayAdapter):
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         storage = zarr.storage.DirectoryStore(str(directory))
-
         zarr.storage.init_array(
             storage,
             shape=shape,
@@ -162,7 +161,6 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         data: NDArray[Any],
         block: Tuple[int, ...],
-        slice: Optional[NDSlice] = ...,
     ) -> None:
         """
 
@@ -176,12 +174,69 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        if slice is not ...:
-            raise NotImplementedError
         block_slice, shape = slice_and_shape_from_block_and_chunks(
             block, self.structure().chunks
         )
         self._array[block_slice] = data
+
+    async def patch(
+        self,
+        data: NDArray[Any],
+        offset: Tuple[int, ...],
+        extend: bool = False,
+    ) -> Tuple[Tuple[int, ...], Tuple[Tuple[int, ...], ...]]:
+        """
+        Write data into a slice of the array, maybe extending it.
+
+        If the specified slice does not fit into the array, and extend=True, the
+        array will be resized (expanded, never shrunk) to fit it.
+
+        Parameters
+        ----------
+        data : array-like
+        offset : tuple[int]
+            Where to place the new data
+        extend : bool
+            If slice does not fit wholly within the shape of the existing array,
+            reshape (expand) it to fit if this is True.
+
+        Raises
+        ------
+        ValueError :
+            If slice does not fit wholly with the shape of the existing array
+            and expand is False
+        """
+        current_shape = self._array.shape
+        normalized_offset = [0] * len(current_shape)
+        normalized_offset[: len(offset)] = list(offset)
+        new_shape = []
+        slice_ = []
+        for data_dim, offset_dim, current_dim in zip(
+            data.shape, normalized_offset, current_shape
+        ):
+            new_shape.append(max(current_dim, data_dim + offset_dim))
+            slice_.append(slice(offset_dim, offset_dim + data_dim))
+        new_shape_tuple = tuple(new_shape)
+        if new_shape_tuple != current_shape:
+            if extend:
+                # Resize the Zarr array to accommodate new data
+                self._array.resize(new_shape_tuple)
+            else:
+                raise Conflicts(
+                    f"Slice {slice} does not fit into array shape {current_shape}. "
+                    "Use ?extend=true to extend array dimension to fit."
+                )
+        self._array[tuple(slice_)] = data
+        new_chunks = []
+        # Zarr has regularly-sized chunks, so no user input is required to
+        # simply extend the existing pattern.
+        for chunk_size, size in zip(self._array.chunks, new_shape_tuple):
+            dim = [chunk_size] * (size // chunk_size)
+            if size % chunk_size:
+                dim.append(size % chunk_size)
+            new_chunks.append(tuple(dim))
+        new_chunks_tuple = tuple(new_chunks)
+        return new_shape_tuple, new_chunks_tuple
 
 
 if sys.version_info < (3, 9):
