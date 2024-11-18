@@ -3,6 +3,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add HTTP endpoint `PATCH /array/full/{path}` to enable updating and
+  optionally _extending_ an existing array.
+- Add associated Python client method `ArrayClient.patch`.
+
 ## v0.1.0b11 (2024-11-14)
 
 ### Added
