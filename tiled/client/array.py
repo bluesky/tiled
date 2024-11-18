@@ -233,6 +233,11 @@ class _DaskArrayClient(BaseClient):
                    [[0., 0.],
                     [0., 0.]]])
         """
+        if array.dtype != self.dtype:
+            raise ValueError(
+                f"Data given to patch has dtype {array.dtype} which does not "
+                f"match the dtype of this array {self.dtype}."
+            )
         array_ = numpy.ascontiguousarray(array)
         if isinstance(offset, int):
             offset = (offset,)

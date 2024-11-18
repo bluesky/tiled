@@ -169,6 +169,10 @@ def test_extend_array(tree):
         ac.patch(ones * 8, offset=8, extend=True)
         numpy.testing.assert_equal(ac[8:9], ones * 8)
 
+        # Data type must match.
+        with pytest.raises(ValueError):
+            ac.patch(ones.astype("uint8"), offset=9, extend=True)
+
 
 def test_write_dataframe_full(tree):
     with Context.from_app(
