@@ -188,7 +188,7 @@ Finally, the `--note` option can be used to label an API key as a reminder of
 where or how it is being used.
 
 ```
-$ tiled api_key create --note="Data validation pipeline" --scopes read:metadata read:data
+$ tiled api_key create --note="Data validation pipeline" --scopes read:metadata --scopes read:data
 573928c62e53096321fb874847bcc6a90ea636eebd8acbd7c5e9d18d2859847b3bfb4f19
 $ tiled api_key list
 First 8   Expires at (UTC)     Latest activity      Note                      Scopes

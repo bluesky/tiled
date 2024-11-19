@@ -10,6 +10,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add HTTP endpoint `PATCH /array/full/{path}` to enable updating and
   optionally _extending_ an existing array.
 - Add associated Python client method `ArrayClient.patch`.
+- Minor fix to api key docs to reflect correct CLI usage.
 
 ## v0.1.0b11 (2024-11-14)
 
