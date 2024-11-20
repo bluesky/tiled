@@ -13,7 +13,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.auth import CannotRefreshAuthentication
-from ..client.context import clear_default_identity, get_default_identity
+from ..client.context import CannotPrompt, clear_default_identity, get_default_identity
 from ..server import authentication
 from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
@@ -92,6 +92,41 @@ def test_password_auth(enter_username_password, config):
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             with enter_username_password("alice", ""):
                 from_context(context, username="alice")
+
+
+def test_password_auth_hook(config):
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Passing prompt_for_reauthentication=False should riase an
+        with pytest.raises(CannotPrompt):
+            context.authenticate(
+                username="alice", password="secret1", prompt_for_reauthentication=False
+            )
+
+        # Log in as Alice.
+        context.authenticate(
+            username="alice", password="secret1", prompt_for_reauthentication=True
+        )
+        assert "authenticated as 'alice'" in repr(context)
+        context.logout()
+
+        # Log in as Bob.
+        context.authenticate(
+            username="bob", password="secret2", prompt_for_reauthentication=True
+        )
+        assert "authenticated as 'bob'" in repr(context)
+        context.logout()
+
+        # Bob's password should not work for Alice.
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            context.authenticate(
+                username="alice", password="secret2", prompt_for_reauthentication=True
+            )
+
+        # Empty password should not work.
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            context.authenticate(
+                username="alice", password="", prompt_for_reauthentication=True
+            )
 
 
 def test_logout(enter_username_password, config, tmpdir):

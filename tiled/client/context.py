@@ -27,7 +27,7 @@ def prompt_for_credentials(username, password):
     """
     Utility function that displays a username prompt.
     """
-    if username and password:
+    if username is not None and password is not None:
         # If both are provided, return them as-is, without prompting.
         return username, password
     elif username:
@@ -539,7 +539,7 @@ class Context:
             except CannotRefreshAuthentication:
                 # Continue below, where we will prompt for log in.
                 self.http_client.auth = None
-                if not prompt_for_reauthentication:
+                if not prompt_for_reauthentication and not password:
                     raise
             else:
                 # We have a live session for the specified provider and username already.
@@ -556,7 +556,7 @@ credentials in the stdin. Options:
   to force it to prompt.
 - Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
 - Catch the CannotPrompt exception and handle it in your application if providing both
-  username and password programmatically.
+  username and password programmatically with prompt_for_reauthentication=True.
 """
             )
         self.http_client.auth = None
