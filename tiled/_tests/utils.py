@@ -55,21 +55,18 @@ async def temp_postgres(uri):
 @contextlib.contextmanager
 def enter_username_password(username, password):
     """
-    Override getpass, or prompt_for_credentials with username only
+    Override getpass, when prompt_for_credentials with username only
     used like:
 
-    >>> with enter_password(...):
-    ...     # Run code that calls getpass.getpass().
+    >>> with enter_username_password(...):
+    ...     # Run code that calls prompt_for_credentials and subsequently getpass.getpass().
     """
 
     original_prompt = context.PROMPT_FOR_REAUTHENTICATION
     original_credentials = context.prompt_for_credentials
-    original_getpass = getpass.getpass
     context.PROMPT_FOR_REAUTHENTICATION = True
-    context.prompt_for_credentials = lambda u: username, password
-    setattr(getpass, "getpass", lambda: password)
+    context.prompt_for_credentials = lambda u, p: (username, password)
     yield
-    setattr(getpass, "getpass", original_getpass)
     context.PROMPT_FOR_REAUTHENTICATION = original_prompt
     context.prompt_for_credentials = original_credentials
 
