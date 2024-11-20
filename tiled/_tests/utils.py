@@ -1,5 +1,4 @@
 import contextlib
-import getpass
 import sqlite3
 import sys
 import tempfile
