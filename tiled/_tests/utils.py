@@ -61,13 +61,15 @@ def enter_username_password(username, password):
     ...     # Run code that calls prompt_for_credentials and subsequently getpass.getpass().
     """
 
-    original_prompt = context.PROMPT_FOR_REAUTHENTICATION
-    original_credentials = context.prompt_for_credentials
-    context.PROMPT_FOR_REAUTHENTICATION = True
-    context.prompt_for_credentials = lambda u, p: (username, password)
-    yield
-    context.PROMPT_FOR_REAUTHENTICATION = original_prompt
-    context.prompt_for_credentials = original_credentials
+    try:
+        original_prompt = context.PROMPT_FOR_REAUTHENTICATION
+        original_credentials = context.prompt_for_credentials
+        context.PROMPT_FOR_REAUTHENTICATION = True
+        context.prompt_for_credentials = lambda u, p: (username, password)
+        yield
+    finally:
+        context.PROMPT_FOR_REAUTHENTICATION = original_prompt
+        context.prompt_for_credentials = original_credentials
 
 
 class URL_LIMITS(IntEnum):
