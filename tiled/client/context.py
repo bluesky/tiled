@@ -7,6 +7,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
+from typing import Callable, Optional, Union
 
 import appdirs
 import httpx
@@ -485,7 +486,7 @@ class Context:
         self,
         username=UNSET,
         provider=UNSET,
-        prompt_for_reauthentication=UNSET,
+        prompt_for_reauthentication: Optional[Union[bool, Callable]] = UNSET,
         set_default=True,
         *,
         password=UNSET,
@@ -539,14 +540,12 @@ class Context:
             except CannotRefreshAuthentication:
                 # Continue below, where we will prompt for log in.
                 self.http_client.auth = None
-                if not prompt_for_reauthentication and not password:
-                    raise
             else:
                 # We have a live session for the specified provider and username already.
                 # No need to log in again.
                 return
 
-        if not prompt_for_reauthentication:
+        if not prompt_for_reauthentication and password is UNSET:
             raise CannotPrompt(
                 """Authentication is needed but Tiled has detected that it is running
 in a 'headless' context where it cannot prompt the user to provide
@@ -555,15 +554,18 @@ credentials in the stdin. Options:
 - If Tiled has detected this wrongly, pass prompt_for_reauthentication=True
   to force it to prompt.
 - Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
-- Catch the CannotPrompt exception and handle it in your application if providing both
-  username and password programmatically with prompt_for_reauthentication=True.
+- Pass prompt_for_reauthentication=Callable, to generate the reauthentication via your application hook.
 """
             )
         self.http_client.auth = None
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         if mode == "password":
-            username, password = prompt_for_credentials(username, password)
+            username, password = (
+                prompt_for_reauthentication(username, password)
+                if isinstance(prompt_for_reauthentication, Callable)
+                else prompt_for_credentials(username, password)
+            )
             form_data = {
                 "grant_type": "password",
                 "username": username,
