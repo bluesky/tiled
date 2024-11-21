@@ -14,7 +14,7 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 
-import appdirs
+import platformdirs
 import jsonschema
 
 from .utils import parse
@@ -49,7 +49,7 @@ _all_paths = [
     ),  # hard-coded system path
     Path(
         os.getenv(
-            "TILED_SITE_PROFILES", Path(appdirs.site_config_dir("tiled"), "profiles")
+            "TILED_SITE_PROFILES", Path(platformdirs.site_config_dir("tiled"), "profiles")
         )
     ),  # XDG-compliant system path
     Path(sys.prefix, "etc", "tiled", "profiles"),  # environment
@@ -57,7 +57,7 @@ _all_paths = [
         os.getenv("TILED_PROFILES", Path.home() / ".config/tiled/profiles")
     ),  # hard-coded user path
     Path(
-        os.getenv("TILED_PROFILES", Path(appdirs.user_config_dir("tiled"), "profiles"))
+        os.getenv("TILED_PROFILES", Path(platformdirs.user_config_dir("tiled"), "profiles"))
     ),  # system-dependent user path
 ]
 # Remove duplicates (i.e. if XDG and hard-coded are the same on this system).

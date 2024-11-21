@@ -46,7 +46,7 @@ all = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
+    "platformdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
@@ -102,7 +102,7 @@ array = [
 ]
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
-    "appdirs",
+    "platformdirs",
     "awkward >=2.4.3",
     "blosc2; python_version >= '3.10'",
     "dask[array]",
@@ -173,7 +173,7 @@ formats = [
 ]
 # These are the requirements needed for basic client functionality.
 minimal-client = [
-    "appdirs",
+    "platformdirs",
     "entrypoints",
     "httpx >=0.20.0,!=0.23.1",
     "json-merge-patch",
@@ -192,7 +192,7 @@ minimal-server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
+    "platformdirs",
     "asgi-correlation-id",
     "cachetools",
     "canonicaljson",
@@ -227,7 +227,7 @@ server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
+    "platformdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
