@@ -8,8 +8,8 @@ import urllib.parse
 import warnings
 from pathlib import Path
 
-import appdirs
 import httpx
+import platformdirs
 
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
@@ -65,7 +65,7 @@ class Context:
         # Resolve this here, not at module scope, because the test suite
         # injects TILED_CACHE_DIR env var to use a temporary directory.
         TILED_CACHE_DIR = Path(
-            os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+            os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
         )
         headers.setdefault("accept-encoding", ACCEPT_ENCODING)
         # Set the User Agent to help the server fail informatively if the client
@@ -915,7 +915,7 @@ def _default_identity_filepath(api_uri):
     # Resolve this here, not at module scope, because the test suite
     # injects TILED_CACHE_DIR env var to use a temporary directory.
     TILED_CACHE_DIR = Path(
-        os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+        os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
     )
     return Path(
         TILED_CACHE_DIR, "default_identities", urllib.parse.quote_plus(str(api_uri))

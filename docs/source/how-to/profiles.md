@@ -67,7 +67,7 @@ including:
 
 Tiled will also look for profiles in locations specific to the
 operating system and the software environment,
-[in accordance](https://pypi.org/project/appdirs/) with
+[in accordance](https://pypi.org/project/platformdirs/) with
 [standards](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html).
 To see the full list on your system:
 
