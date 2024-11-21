@@ -9,8 +9,8 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-import platformdirs
 import httpx
+import platformdirs
 
 from .utils import SerializableLock, TiledResponse
 

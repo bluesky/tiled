@@ -15,8 +15,8 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 
-import platformdirs
 import jsonschema
+import platformdirs
 
 from .utils import parse
 

@@ -8,8 +8,8 @@ import urllib.parse
 import warnings
 from pathlib import Path
 
-import platformdirs
 import httpx
+import platformdirs
 
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
