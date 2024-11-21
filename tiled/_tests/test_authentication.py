@@ -96,7 +96,7 @@ def test_password_auth(enter_username_password, config):
 
 def test_password_auth_hook(config):
     with Context.from_app(build_app_from_config(config)) as context:
-        # Passing prompt_for_reauthentication=False should riase an
+        # Passing prompt_for_reauthentication=False should raise
         with pytest.raises(CannotPrompt):
             context.authenticate(
                 username="alice", password="secret1", prompt_for_reauthentication=False
