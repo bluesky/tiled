@@ -46,7 +46,6 @@ all = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "platformdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
@@ -75,6 +74,7 @@ all = [
     "packaging",
     "pandas",
     "pillow",
+    "platformdirs",
     "prometheus_client",
     "pyarrow",
     "pydantic >=2, <3",
@@ -102,7 +102,6 @@ array = [
 ]
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
-    "platformdirs",
     "awkward >=2.4.3",
     "blosc2; python_version >= '3.10'",
     "dask[array]",
@@ -118,6 +117,7 @@ client = [
     "numpy",
     "orjson",
     "pandas",
+    "platformdirs",
     "pyarrow",
     "pyyaml",
     "rich",
@@ -173,7 +173,6 @@ formats = [
 ]
 # These are the requirements needed for basic client functionality.
 minimal-client = [
-    "platformdirs",
     "entrypoints",
     "httpx >=0.20.0,!=0.23.1",
     "json-merge-patch",
@@ -181,6 +180,7 @@ minimal-client = [
     "jsonschema",
     "msgpack >=1.0.0",
     "orjson",
+    "platformdirs",
     "pyyaml",
     "rich",
     "typer",
@@ -192,7 +192,6 @@ minimal-server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "platformdirs",
     "asgi-correlation-id",
     "cachetools",
     "canonicaljson",
@@ -207,6 +206,7 @@ minimal-server = [
     "msgpack >=1.0.0",
     "orjson",
     "packaging",
+    "platformdirs",
     "prometheus_client",
     "pydantic >=2, <3",
     "pydantic-settings >=2, <3",
@@ -227,7 +227,6 @@ server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "platformdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
@@ -255,6 +254,7 @@ server = [
     "packaging",
     "pandas",
     "pillow",
+    "platformdirs",
     "prometheus_client",
     "pyarrow",
     "pydantic >=2, <3",
