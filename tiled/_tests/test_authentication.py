@@ -104,7 +104,7 @@ def test_password_auth_hook(config):
         with pytest.raises(CannotPrompt):
             context.http_client.auth.sync_clear_token("refresh_token")
             context.http_client.auth.sync_clear_token("access_token")
-            context.authenticate(username="alice")
+            context.authenticate(username="alice", prompt_for_reauthentication=False)
 
         # Log in as Bob.
         context.authenticate(username="bob", password="secret2")
