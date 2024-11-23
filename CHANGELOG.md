@@ -5,6 +5,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+- Fix curl and httpie installation in docker image.
+
 ### Added
 
 - Add HTTP endpoint `PATCH /array/full/{path}` to enable updating and
