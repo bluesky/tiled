@@ -30,6 +30,7 @@ def prompt_for_credentials(username, password):
     """
     if username is not None and password is not None:
         # If both are provided, return them as-is, without prompting.
+        # This is particularly useful for GUI clients without a TTY Console.
         return username, password
     elif username:
         username_reprompt = input(f"Username [{username}]: ")
