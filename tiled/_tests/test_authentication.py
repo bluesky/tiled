@@ -95,6 +95,7 @@ def test_password_auth(enter_username_password, config):
 
 
 def test_password_auth_hook(config):
+    """Verify behavior with user-defined 'prompt_for_reauthentication' hook."""
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as Alice.
         context.authenticate(username="alice", password="secret1")
