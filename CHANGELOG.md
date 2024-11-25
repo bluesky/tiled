@@ -253,6 +253,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - A new method `DataFrameClient.append_partition`.
 - Support for registering Groups and Datasets _within_ an HDF5 file
 - Tiled version is logged by server at startup.
+- Hook to authentication prompt to make password login available without TTY.
 
 ### Fixed
 

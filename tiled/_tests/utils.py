@@ -1,5 +1,4 @@
 import contextlib
-import getpass
 import sqlite3
 import sys
 import tempfile
@@ -55,22 +54,23 @@ async def temp_postgres(uri):
 @contextlib.contextmanager
 def enter_username_password(username, password):
     """
-    Override getpass, used like:
+    Override getpass, when prompt_for_credentials with username only
+    used like:
 
-    >>> with enter_password(...):
-    ...     # Run code that calls getpass.getpass().
+    >>> with enter_username_password(...):
+    ...     # Run code that calls prompt_for_credentials and subsequently getpass.getpass().
     """
 
     original_prompt = context.PROMPT_FOR_REAUTHENTICATION
-    original_getusername = context.prompt_for_username
-    original_getpass = getpass.getpass
+    original_credentials = context.prompt_for_credentials
     context.PROMPT_FOR_REAUTHENTICATION = True
-    context.prompt_for_username = lambda u: username
-    setattr(getpass, "getpass", lambda: password)
-    yield
-    setattr(getpass, "getpass", original_getpass)
-    context.PROMPT_FOR_REAUTHENTICATION = original_prompt
-    context.prompt_for_username = original_getusername
+    context.prompt_for_credentials = lambda u, p: (username, password)
+    try:
+        # Ensures that raise in calling routine does not prevent context from being exited.
+        yield
+    finally:
+        context.PROMPT_FOR_REAUTHENTICATION = original_prompt
+        context.prompt_for_credentials = original_credentials
 
 
 class URL_LIMITS(IntEnum):

@@ -13,7 +13,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.auth import CannotRefreshAuthentication
-from ..client.context import clear_default_identity, get_default_identity
+from ..client.context import CannotPrompt, clear_default_identity, get_default_identity
 from ..server import authentication
 from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
@@ -92,6 +92,44 @@ def test_password_auth(enter_username_password, config):
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
             with enter_username_password("alice", ""):
                 from_context(context, username="alice")
+
+
+def test_password_auth_hook(config):
+    """Verify behavior with user-defined 'prompt_for_reauthentication' hook."""
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Log in as Alice.
+        context.authenticate(username="alice", password="secret1")
+        assert "authenticated as 'alice'" in repr(context)
+
+        # Attempting to reauth without a prompt hook should raise.
+        with pytest.raises(CannotPrompt):
+            context.http_client.auth.sync_clear_token("refresh_token")
+            context.http_client.auth.sync_clear_token("access_token")
+            context.authenticate(username="alice", prompt_for_reauthentication=False)
+
+        # Log in as Bob.
+        context.authenticate(username="bob", password="secret2")
+        assert "authenticated as 'bob'" in repr(context)
+        context.logout()
+
+        # Bob's password should not work for Alice.
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            context.authenticate(username="alice", password="secret2")
+
+        # Empty password should not work.
+        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+            context.authenticate(username="alice", password="")
+
+        # Hook for reauthenticating as Alice should succeeed
+        context.authenticate(username="alice", password="secret1")
+        assert "authenticated as 'alice'" in repr(context)
+        context.http_client.auth.sync_clear_token("refresh_token")
+        context.http_client.auth.sync_clear_token("access_token")
+        context.authenticate(
+            username="alice",
+            prompt_for_reauthentication=lambda u, p: ("alice", "secret1"),
+        )
+        assert "authenticated as 'alice'" in repr(context)
 
 
 def test_logout(enter_username_password, config, tmpdir):

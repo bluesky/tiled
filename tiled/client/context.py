@@ -7,6 +7,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
+from typing import Callable, Optional, Union
 
 import httpx
 import platformdirs
@@ -23,17 +24,22 @@ API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 PROMPT_FOR_REAUTHENTICATION = None
 
 
-def prompt_for_username(username):
+def prompt_for_credentials(username, password):
     """
     Utility function that displays a username prompt.
     """
-    if username:
+    if username is not None and password is not None:
+        # If both are provided, return them as-is, without prompting.
+        # This is particularly useful for GUI clients without a TTY Console.
+        return username, password
+    elif username:
         username_reprompt = input(f"Username [{username}]: ")
         if len(username_reprompt.strip()) != 0:
             username = username_reprompt
     else:
         username = input("Username: ")
-    return username
+    password = getpass.getpass()
+    return username, password
 
 
 class Context:
@@ -481,8 +487,10 @@ class Context:
         self,
         username=UNSET,
         provider=UNSET,
-        prompt_for_reauthentication=UNSET,
+        prompt_for_reauthentication: Optional[Union[bool, Callable]] = UNSET,
         set_default=True,
+        *,
+        password=UNSET,
     ):
         """
         See login. This is for programmatic use.
@@ -533,14 +541,12 @@ class Context:
             except CannotRefreshAuthentication:
                 # Continue below, where we will prompt for log in.
                 self.http_client.auth = None
-                if not prompt_for_reauthentication:
-                    raise
             else:
                 # We have a live session for the specified provider and username already.
                 # No need to log in again.
                 return
 
-        if not prompt_for_reauthentication:
+        if not prompt_for_reauthentication and password is UNSET:
             raise CannotPrompt(
                 """Authentication is needed but Tiled has detected that it is running
 in a 'headless' context where it cannot prompt the user to provide
@@ -549,14 +555,18 @@ credentials in the stdin. Options:
 - If Tiled has detected this wrongly, pass prompt_for_reauthentication=True
   to force it to prompt.
 - Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
+- Pass prompt_for_reauthentication=Callable, to generate the reauthentication via your application hook.
 """
             )
         self.http_client.auth = None
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         if mode == "password":
-            username = prompt_for_username(username)
-            password = getpass.getpass()
+            username, password = (
+                prompt_for_reauthentication(username, password)
+                if isinstance(prompt_for_reauthentication, Callable)
+                else prompt_for_credentials(username, password)
+            )
             form_data = {
                 "grant_type": "password",
                 "username": username,
