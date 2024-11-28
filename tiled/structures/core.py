@@ -18,6 +18,7 @@ class StructureFamily(str, enum.Enum):
     container = "container"
     sparse = "sparse"
     table = "table"
+    bytes = "bytes"
 
 
 @dataclass(frozen=True)
