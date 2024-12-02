@@ -13,6 +13,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   optionally _extending_ an existing array.
 - Add associated Python client method `ArrayClient.patch`.
 - Minor fix to api key docs to reflect correct CLI usage.
+- Hook to authentication prompt to make password login available without TTY.
+- Expanded auth routes to manually reduce refresh token lifetime.
 
 ## v0.1.0b11 (2024-11-14)
 
@@ -253,7 +255,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - A new method `DataFrameClient.append_partition`.
 - Support for registering Groups and Datasets _within_ an HDF5 file
 - Tiled version is logged by server at startup.
-- Hook to authentication prompt to make password login available without TTY.
 
 ### Fixed
 
