@@ -491,6 +491,7 @@ class Context:
         set_default=True,
         *,
         password=UNSET,
+        refresh_token_max_age: Optional[int] = None,
     ):
         """
         See login. This is for programmatic use.
@@ -572,6 +573,8 @@ credentials in the stdin. Options:
                 "username": username,
                 "password": password,
             }
+            if refresh_token_max_age is not None:
+                form_data["refresh_token_max_age"] = refresh_token_max_age
             token_response = self.http_client.post(
                 auth_endpoint, data=form_data, auth=None
             )
