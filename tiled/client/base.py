@@ -70,19 +70,17 @@ class MetadataRevisions:
             if offset is None:
                 offset = 0
             if item_.stop is None:
-                params = {"page[offset]": offset}
+                params = f"?page[offset]={offset}"
             else:
                 limit = item_.stop - offset
-                params = {"page[offset]": offset, "page[limit]": limit}
+                params = f"?page[offset]={offset}&page[limit]={limit}"
 
-            next_page_url = self._link
+            next_page_url = self._link + params
             result = []
             while next_page_url is not None:
                 content = handle_error(
                     self.context.http_client.get(
-                        next_page_url,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                        params={**parse_qs(urlparse(next_page_url).query), **params},
+                        next_page_url, headers={"Accept": MSGPACK_MIME_TYPE}
                     )
                 ).json()
                 if len(result) == 0:
