@@ -173,11 +173,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if now < deadline:
                 # Used the cached value and do not make any request.
                 return length
+        link = self.item["links"]["search"]
         content = handle_error(
             self.context.http_client.get(
-                self.item["links"]["search"],
+                link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
                 params={
+                    **parse_qs(urlparse(link).query),
                     "fields": "",
                     **self._queries_as_params,
                     **self._sorting_params,
@@ -212,6 +214,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
                     params={
+                        **parse_qs(urlparse(next_page_url).query),
                         "fields": "",
                         **self._queries_as_params,
                         **self._sorting_params,
@@ -259,11 +262,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             }
             if self._include_data_sources:
                 params["include_data_sources"] = True
+            link = self.item["links"]["search"]
             content = handle_error(
                 self.context.http_client.get(
-                    self.item["links"]["search"],
+                    link,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params=params,
+                    params={**parse_qs(urlparse(link).query),**params},
                 )
             ).json()
             self._cached_len = (
@@ -313,11 +317,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         params = {}
                         if self._include_data_sources:
                             params["include_data_sources"] = True
+                        link = self_link + "".join(f"/{key}" for key in keys[i:])
                         content = handle_error(
                             self.context.http_client.get(
-                                self_link + "".join(f"/{key}" for key in keys[i:]),
+                                link,
                                 headers={"Accept": MSGPACK_MIME_TYPE},
-                                params=params,
+                                params={**parse_qs(urlparse(link).query), **params},
                             )
                         ).json()
                     except ClientError as err:
@@ -365,8 +370,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             sorting_params = self._reversed_sorting_params
         assert start >= 0
         assert (stop is None) or (stop >= 0)
-        next_page_url = f"{self.item['links']['search']}"
-        pagination_params = {"page[offset]": start}
+        next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
             content = handle_error(
@@ -374,8 +378,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
                     params={
+                        **parse_qs(urlparse(next_page_url).query),
                         "fields": "",
-                        **pagination_params,
                         **self._queries_as_params,
                         **sorting_params,
                     },
@@ -390,10 +394,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     return
                 yield item["id"]
             next_page_url = content["links"]["next"]
-            if next_page_url:
-                parsed_url = urlparse(next_page_url)
-                pagination_params = parse_qs(parsed_url.query)
-                next_page_url = parsed_url._replace(query="").geturl()
 
     def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
         # If the contents of this node was provided in-line, and we don't need
@@ -423,12 +423,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             sorting_params = self._reversed_sorting_params
         assert start >= 0
         assert (stop is None) or (stop >= 0)
-        next_page_url = f"{self.item['links']['search']}"
-        pagination_params = {"page[offset]": start}
+        next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
             params = {
-                **pagination_params,
+                **parse_qs(urlparse(next_page_url).query),
                 **self._queries_as_params,
                 **sorting_params,
             }
@@ -456,10 +455,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     include_data_sources=self._include_data_sources,
                 )
             next_page_url = content["links"]["next"]
-            if next_page_url:
-                parsed_url = urlparse(next_page_url)
-                pagination_params = parse_qs(parsed_url.query)
-                next_page_url = parsed_url._replace(query="").geturl()
 
     def keys(self):
         return KeysView(lambda: len(self), self._keys_slice)
@@ -507,6 +502,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
                 params={
+                    **parse_qs(urlparse(link).query),
                     "metadata": metadata_keys,
                     "structure_families": structure_families,
                     "specs": specs,

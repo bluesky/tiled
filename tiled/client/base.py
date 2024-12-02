@@ -55,7 +55,7 @@ class MetadataRevisions:
                 self.context.http_client.get(
                     self._link,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={"page[offset]": offset, "page[limit]": limit},
+                    params={**parse_qs(urlparse(self._link).query), "page[offset]": offset, "page[limit]": limit},
                 )
             ).json()
             (result,) = content["data"]
@@ -78,7 +78,7 @@ class MetadataRevisions:
                     self.context.http_client.get(
                         next_page_url,
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        params=params,
+                        params={**parse_qs(urlparse(next_page_url).query), **params},
                     )
                 ).json()
                 if len(result) == 0:
@@ -86,10 +86,6 @@ class MetadataRevisions:
                 else:
                     result["data"].append(content["data"])
                 next_page_url = content["links"]["next"]
-                if next_page_url:
-                    parsed_url = urlparse(next_page_url)
-                    params = parse_qs(parsed_url.query)
-                    next_page_url = parsed_url._replace(query="").geturl()
 
             return result["data"]
 
