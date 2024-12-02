@@ -7,7 +7,6 @@ import time
 
 import numpy
 import pytest
-from click import prompt
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
 from ..adapters.array import ArrayAdapter
