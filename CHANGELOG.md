@@ -6,6 +6,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ## Unreleased
 
 - Fix curl and httpie installation in docker image.
+- Fix the construction of urls by passing query parameters as kwargs.
 
 ### Added
 
