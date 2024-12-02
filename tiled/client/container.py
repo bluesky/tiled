@@ -267,7 +267,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 self.context.http_client.get(
                     link,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={**parse_qs(urlparse(link).query),**params},
+                    params={**parse_qs(urlparse(link).query), **params},
                 )
             ).json()
             self._cached_len = (

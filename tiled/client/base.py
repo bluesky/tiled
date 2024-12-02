@@ -55,7 +55,11 @@ class MetadataRevisions:
                 self.context.http_client.get(
                     self._link,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={**parse_qs(urlparse(self._link).query), "page[offset]": offset, "page[limit]": limit},
+                    params={
+                        **parse_qs(urlparse(self._link).query),
+                        "page[offset]": offset,
+                        "page[limit]": limit,
+                    },
                 )
             ).json()
             (result,) = content["data"]
