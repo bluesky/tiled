@@ -434,7 +434,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             }
             if self._include_data_sources:
                 params["include_data_sources"] = True
-            print(f"{next_page_url=}, {MSGPACK_MIME_TYPE=}, {params=}")
             content = handle_error(
                 self.context.http_client.get(
                     next_page_url,
