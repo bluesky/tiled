@@ -6,6 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
+from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
@@ -172,11 +173,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if now < deadline:
                 # Used the cached value and do not make any request.
                 return length
+        link = self.item["links"]["search"]
         content = handle_error(
             self.context.http_client.get(
-                self.item["links"]["search"],
+                link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
                 params={
+                    **parse_qs(urlparse(link).query),
                     "fields": "",
                     **self._queries_as_params,
                     **self._sorting_params,
@@ -211,6 +214,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
                     params={
+                        **parse_qs(urlparse(next_page_url).query),
                         "fields": "",
                         **self._queries_as_params,
                         **self._sorting_params,
@@ -258,11 +262,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             }
             if self._include_data_sources:
                 params["include_data_sources"] = True
+            link = self.item["links"]["search"]
             content = handle_error(
                 self.context.http_client.get(
-                    self.item["links"]["search"],
+                    link,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params=params,
+                    params={**parse_qs(urlparse(link).query), **params},
                 )
             ).json()
             self._cached_len = (
@@ -312,11 +317,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         params = {}
                         if self._include_data_sources:
                             params["include_data_sources"] = True
+                        link = self_link + "".join(f"/{key}" for key in keys[i:])
                         content = handle_error(
                             self.context.http_client.get(
-                                self_link + "".join(f"/{key}" for key in keys[i:]),
+                                link,
                                 headers={"Accept": MSGPACK_MIME_TYPE},
-                                params=params,
+                                params={**parse_qs(urlparse(link).query), **params},
                             )
                         ).json()
                     except ClientError as err:
@@ -372,6 +378,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     next_page_url,
                     headers={"Accept": MSGPACK_MIME_TYPE},
                     params={
+                        **parse_qs(urlparse(next_page_url).query),
                         "fields": "",
                         **self._queries_as_params,
                         **sorting_params,
@@ -420,6 +427,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         item_counter = itertools.count(start)
         while next_page_url is not None:
             params = {
+                **parse_qs(urlparse(next_page_url).query),
                 **self._queries_as_params,
                 **sorting_params,
             }
@@ -436,7 +444,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
             )
-
             for item in content["data"]:
                 if stop is not None and next(item_counter) == stop:
                     return
@@ -495,6 +502,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
                 params={
+                    **parse_qs(urlparse(link).query),
                     "metadata": metadata_keys,
                     "structure_families": structure_families,
                     "specs": specs,
