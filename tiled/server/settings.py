@@ -78,6 +78,9 @@ class Settings(BaseSettings):
             max_overflow=self.database_max_overflow,
         )
 
+    def get_refresh_token_max_age(self, requested_max_age: timedelta) -> timedelta:
+        return min(requested_max_age, self.refresh_token_max_age)
+
 
 @lru_cache()
 def get_settings():
