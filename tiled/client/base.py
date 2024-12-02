@@ -3,6 +3,7 @@ import warnings
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
 import jsonpatch
@@ -65,25 +66,30 @@ class MetadataRevisions:
             if offset is None:
                 offset = 0
             if item_.stop is None:
-                params = f"?page[offset]={offset}"
+                params = {"page[offset]": offset}
             else:
                 limit = item_.stop - offset
-                params = f"?page[offset]={offset}&page[limit]={limit}"
+                params = {"page[offset]": offset, "page[limit]": limit}
 
-            next_page = self._link + params
+            next_page_url = self._link
             result = []
-            while next_page is not None:
+            while next_page_url is not None:
                 content = handle_error(
                     self.context.http_client.get(
-                        next_page,
+                        next_page_url,
                         headers={"Accept": MSGPACK_MIME_TYPE},
+                        params=params,
                     )
                 ).json()
                 if len(result) == 0:
                     result = content.copy()
                 else:
                     result["data"].append(content["data"])
-                next_page = content["links"]["next"]
+                next_page_url = content["links"]["next"]
+                if next_page_url:
+                    parsed_url = urlparse(next_page_url)
+                    params = parse_qs(parsed_url.query)
+                    next_page_url = parsed_url._replace(query="").geturl()
 
             return result["data"]
 
