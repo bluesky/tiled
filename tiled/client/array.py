@@ -176,7 +176,7 @@ class _DaskArrayClient(BaseClient):
 
     def write_block(self, array, block, slice=...):
         url_path = self.item["links"]["block"].format(*block)
-        query_params = {
+        params = {
             **parse_qs(urlparse(url_path).query),
             **params_from_slice(slice),
         }
@@ -185,7 +185,7 @@ class _DaskArrayClient(BaseClient):
                 url_path,
                 content=array.tobytes(),
                 headers={"Content-Type": "application/octet-stream"},
-                params=query_params,
+                params=params,
             )
         )
 
