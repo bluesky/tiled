@@ -3,6 +3,7 @@ import warnings
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
 import jsonpatch
@@ -36,7 +37,11 @@ class MetadataRevisions:
             self.context.http_client.get(
                 self._link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"page[offset]": 0, "page[limit]": 0},
+                params={
+                    **parse_qs(urlparse(self._link).query),
+                    "page[offset]": 0,
+                    "page[limit]": 0,
+                },
             )
         ).json()
         length = content["meta"]["count"]
@@ -54,7 +59,11 @@ class MetadataRevisions:
                 self.context.http_client.get(
                     self._link,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={"page[offset]": offset, "page[limit]": limit},
+                    params={
+                        **parse_qs(urlparse(self._link).query),
+                        "page[offset]": offset,
+                        "page[limit]": limit,
+                    },
                 )
             ).json()
             (result,) = content["data"]
@@ -70,25 +79,28 @@ class MetadataRevisions:
                 limit = item_.stop - offset
                 params = f"?page[offset]={offset}&page[limit]={limit}"
 
-            next_page = self._link + params
+            next_page_url = self._link + params
             result = []
-            while next_page is not None:
+            while next_page_url is not None:
                 content = handle_error(
                     self.context.http_client.get(
-                        next_page,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        next_page_url, headers={"Accept": MSGPACK_MIME_TYPE}
                     )
                 ).json()
                 if len(result) == 0:
                     result = content.copy()
                 else:
                     result["data"].append(content["data"])
-                next_page = content["links"]["next"]
+                next_page_url = content["links"]["next"]
 
             return result["data"]
 
     def delete_revision(self, n):
-        handle_error(self.context.http_client.delete(self._link, params={"number": n}))
+        handle_error(
+            self.context.http_client.delete(
+                self._link, params={**parse_qs(urlparse(self._link).query), "number": n}
+            )
+        )
 
 
 class BaseClient:
@@ -180,7 +192,10 @@ class BaseClient:
             self.context.http_client.get(
                 self.uri,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"include_data_sources": self._include_data_sources},
+                params={
+                    **parse_qs(urlparse(self.uri).query),
+                    "include_data_sources": self._include_data_sources,
+                },
             )
         ).json()
         self._item = content["data"]
@@ -299,7 +314,11 @@ client or pass the optional parameter `include_data_sources=True` to
                 if asset.is_directory:
                     manifest = handle_error(
                         self.context.http_client.get(
-                            manifest_link, params={"id": asset.id}
+                            manifest_link,
+                            params={
+                                **parse_qs(urlparse(manifest_link).query),
+                                "id": asset.id,
+                            },
                         )
                     ).json()["manifest"]
                 else:
@@ -360,6 +379,7 @@ client or pass the optional parameter `include_data_sources=True` to
                             URL(
                                 bytes_link,
                                 params={
+                                    **parse_qs(urlparse(bytes_link).query),
                                     "id": asset.id,
                                     "relative_path": relative_path,
                                 },
@@ -374,7 +394,15 @@ client or pass the optional parameter `include_data_sources=True` to
                         ]
                     )
                 else:
-                    urls.append(URL(bytes_link, params={"id": asset.id}))
+                    urls.append(
+                        URL(
+                            bytes_link,
+                            params={
+                                **parse_qs(urlparse(bytes_link).query),
+                                "id": asset.id,
+                            },
+                        )
+                    )
                     paths.append(Path(base_path, ATTACHMENT_FILENAME_PLACEHOLDER))
         return download(self.context.http_client, urls, paths, max_workers=max_workers)
 

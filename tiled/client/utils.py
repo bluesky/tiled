@@ -3,6 +3,7 @@ import uuid
 from collections.abc import Hashable
 from pathlib import Path
 from threading import Lock
+from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
 import httpx
@@ -139,7 +140,12 @@ def export_util(file, format, get, link, params):
             format = ".".join(
                 suffix[1:] for suffix in Path(file).suffixes
             )  # e.g. "csv"
-        content = handle_error(get(link, params={"format": format, **params})).read()
+        content = handle_error(
+            get(
+                link,
+                params={**parse_qs(urlparse(link).query), "format": format, **params},
+            )
+        ).read()
         with open(file, "wb") as buffer:
             buffer.write(content)
     else:
@@ -147,7 +153,12 @@ def export_util(file, format, get, link, params):
         if format is None:
             # We have no filepath to infer to format from.
             raise ValueError("format must be specified when file is writeable buffer")
-        content = handle_error(get(link, params={"format": format, **params})).read()
+        content = handle_error(
+            get(
+                link,
+                params={**parse_qs(urlparse(link).query), "format": format, **params},
+            )
+        ).read()
         file.write(content)
 
 

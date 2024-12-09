@@ -8,6 +8,7 @@ import urllib.parse
 import warnings
 from pathlib import Path
 from typing import Callable, Optional, Union
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import platformdirs
@@ -447,11 +448,15 @@ class Context:
             Identify the API key to be deleted by passing its first 8 characters.
             (Any additional characters passed will be truncated.)
         """
+        url_path = self.server_info["authentication"]["links"]["apikey"]
         handle_error(
             self.http_client.delete(
-                self.server_info["authentication"]["links"]["apikey"],
+                url_path,
                 headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-                params={"first_eight": first_eight[:8]},
+                params={
+                    **parse_qs(urlparse(url_path).query),
+                    "first_eight": first_eight[:8],
+                },
             )
         )
 
@@ -818,11 +823,14 @@ class Admin:
 
     def list_principals(self, offset=0, limit=100):
         "List Principals (users and services) in the authenticaiton database."
-        params = dict(offset=offset, limit=limit)
+        url_path = f"{self.base_url}/auth/principal"
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            "offset": offset,
+            "limit": limit,
+        }
         return handle_error(
-            self.context.http_client.get(
-                f"{self.base_url}/auth/principal", params=params
-            )
+            self.context.http_client.get(url_path, params=params)
         ).json()
 
     def show_principal(self, uuid):
@@ -869,11 +877,12 @@ class Admin:
         role : str
             Specify the role (e.g. user or admin)
         """
+        url_path = f"{self.base_url}/auth/principal"
         return handle_error(
             self.context.http_client.post(
-                f"{self.base_url}/auth/principal",
+                url_path,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"role": role},
+                params={**parse_qs(urlparse(url_path).query), "role": role},
             )
         ).json()
 
@@ -891,11 +900,15 @@ class Admin:
             Identify the API key to be deleted by passing its first 8 characters.
             (Any additional characters passed will be truncated.)
         """
+        url_path = f"{self.base_url}/auth/principal/{uuid}/apikey"
         return handle_error(
             self.context.http_client.delete(
-                f"{self.base_url}/auth/principal/{uuid}/apikey",
+                url_path,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"first_eight": first_eight[:8]},
+                params={
+                    **parse_qs(urlparse(url_path).query),
+                    "first_eight": first_eight[:8],
+                },
             )
         )
 

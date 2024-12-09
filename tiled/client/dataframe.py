@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import dask
 import dask.dataframe.core
 import httpx
@@ -42,7 +44,10 @@ class _DaskDataFrameClient(BaseClient):
                     self.context.http_client.get(
                         self.uri,
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        params={"fields": "structure"},
+                        params={
+                            **parse_qs(urlparse(self.uri).query),
+                            "fields": "structure",
+                        },
                         timeout=TIMEOUT,
                     )
                 ).json()
@@ -79,7 +84,10 @@ class _DaskDataFrameClient(BaseClient):
                 self.context.http_client.get(
                     self.uri,
                     headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={"fields": "structure"},
+                    params={
+                        **parse_qs(urlparse(self.uri).query),
+                        "fields": "structure",
+                    },
                 )
             ).json()
             columns = content["data"]["attributes"]["structure"]["columns"]
@@ -98,8 +106,8 @@ class _DaskDataFrameClient(BaseClient):
 
         See read_partition for a public version of this.
         """
-        params = {"partition": partition}
         URL_PATH = self.item["links"]["partition"]
+        params = {**parse_qs(urlparse(URL_PATH).query), "partition": partition}
         url_length_for_get_request = len(URL_PATH) + sum(
             _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
         )
