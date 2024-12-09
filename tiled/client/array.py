@@ -1,5 +1,6 @@
 import itertools
 from typing import Union
+from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
@@ -92,11 +93,13 @@ class _DaskArrayClient(BaseClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
+        url_path = self.item["links"]["block"]
         content = handle_error(
             self.context.http_client.get(
-                self.item["links"]["block"],
+                url_path,
                 headers={"Accept": media_type},
                 params={
+                    **parse_qs(urlparse(url_path).query),
                     "block": ",".join(map(str, block)),
                     "expected_shape": expected_shape,
                 },
@@ -172,12 +175,17 @@ class _DaskArrayClient(BaseClient):
         )
 
     def write_block(self, array, block, slice=...):
+        url_path = self.item["links"]["block"].format(*block)
+        query_params = {
+            **parse_qs(urlparse(url_path).query),
+            **params_from_slice(slice),
+        }
         handle_error(
             self.context.http_client.put(
-                self.item["links"]["block"].format(*block),
+                url_path,
                 content=array.tobytes(),
                 headers={"Content-Type": "application/octet-stream"},
-                params=params_from_slice(slice),
+                params=query_params,
             )
         )
 
@@ -241,13 +249,15 @@ class _DaskArrayClient(BaseClient):
         array_ = numpy.ascontiguousarray(array)
         if isinstance(offset, int):
             offset = (offset,)
+        url_path = self.item["links"]["full"]
         params = {
+            **parse_qs(urlparse(url_path).query),
             "offset": ",".join(map(str, offset)),
             "shape": ",".join(map(str, array_.shape)),
             "extend": bool(extend),
         }
         response = self.context.http_client.patch(
-            self.item["links"]["full"],
+            url_path,
             content=array_.tobytes(),
             headers={"Content-Type": "application/octet-stream"},
             params=params,

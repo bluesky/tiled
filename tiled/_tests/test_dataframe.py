@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import numpy
 import pandas.testing
 import pytest
@@ -150,6 +152,7 @@ def test_http_fetch_columns(context, http_method, link):
     original_df = tree["wide"].read()
     columns = list(original_df.columns)[::2]  # Pick a subset of columns
     params = {
+        **parse_qs(urlparse(url_path).query),
         "partition": 0,  # Used by /table/partition; ignored by /table/full
         "column": columns,
     }
@@ -176,6 +179,7 @@ def test_deprecated_query_parameter(context):
     client = from_context(context)
     url_path = client["basic"].item["links"]["partition"]
     params = {
+        **parse_qs(urlparse(url_path).query),
         "partition": 0,
         "field": "x",
     }
@@ -189,6 +193,7 @@ def test_redundant_query_parameters(context):
     client = from_context(context)
     url_path = client["basic"].item["links"]["partition"]
     original_params = {
+        **parse_qs(urlparse(url_path).query),
         "partition": 0,
         "field": "x",
         "column": "y",
