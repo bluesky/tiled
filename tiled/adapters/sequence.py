@@ -3,14 +3,15 @@ import math
 import warnings
 from abc import abstractmethod
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from ndindex import ndindex
 from numpy._typing import NDArray
 
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import Asset
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
 from .protocols import AccessPolicy
@@ -66,7 +67,7 @@ class FileSequenceAdapter:
     When subclassing, define the `_load_from_files` method specific for a particular file type.
     """
 
-    structure_family = "array"
+    structure_family = StructureFamily.array
 
     @classmethod
     def from_uris(
@@ -77,23 +78,26 @@ class FileSequenceAdapter:
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[AccessPolicy] = None,
     ) -> "FileSequenceAdapter":
-        """
-
-        Parameters
-        ----------
-        data_uris :
-        structure :
-        metadata :
-        specs :
-        access_policy :
-
-        Returns
-        -------
-
-        """
-
         return cls(
             filepaths=[path_from_uri(data_uri) for data_uri in data_uris],
+            structure=structure,
+            specs=specs,
+            metadata=metadata,
+            access_policy=access_policy,
+        )
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: ArrayStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "FileSequenceAdapter":
+        return cls(
+            filepaths=[path_from_uri(a.data_uri) for a in assets],
             structure=structure,
             specs=specs,
             metadata=metadata,

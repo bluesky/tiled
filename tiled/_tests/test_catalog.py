@@ -13,7 +13,7 @@ import sqlalchemy.exc
 import tifffile
 import xarray
 
-from ..adapters.csv import read_csv
+from ..adapters.csv import CSVAdapter
 from ..adapters.dataframe import ArrayAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
@@ -236,7 +236,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
     filepath = str(tmpdir / "file.csv")
     data_uri = ensure_uri(filepath)
     df.to_csv(filepath, index=False)
-    dfa = read_csv(data_uri)
+    dfa = CSVAdapter.from_uris(data_uri)
     structure = asdict(dfa.structure())
     await a.create_node(
         key="x",

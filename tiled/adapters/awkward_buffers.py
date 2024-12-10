@@ -2,7 +2,7 @@
 A directory containing awkward buffers, one file per form key.
 """
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 
 import awkward.forms
 
@@ -72,4 +72,18 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
             metadata=metadata,
             specs=specs,
             access_policy=access_policy,
+        )
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: AwkwardStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "AwkwardBuffersAdapter":
+        return cls.from_directory(
+            assets[0].data_uri, structure, metadata, specs, access_policy
         )

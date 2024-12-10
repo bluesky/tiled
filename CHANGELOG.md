@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Refactor CSVAdapter to allow pd.read_csv kwargs
+
 ## 2024-12-09
 
 ### Added

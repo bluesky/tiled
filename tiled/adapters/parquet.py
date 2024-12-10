@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import dask.dataframe
 import pandas
@@ -42,6 +42,20 @@ class ParquetDatasetAdapter:
         self._structure = structure
         self.specs = list(specs or [])
         self.access_policy = access_policy
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: TableStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "ParquetDatasetAdapter":
+        return cls(
+            [ast.data_uri for ast in assets], structure, metadata, specs, access_policy
+        )
 
     def metadata(self) -> JSON:
         """
