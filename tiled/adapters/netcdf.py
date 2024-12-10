@@ -6,9 +6,9 @@ import xarray
 from ..server.schemas import Asset
 from ..structures.core import Spec
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .protocols import AccessPolicy
-from .type_alliases import JSON
 from .xarray import DatasetAdapter
 
 

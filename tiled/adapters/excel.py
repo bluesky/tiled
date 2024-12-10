@@ -3,13 +3,13 @@ from typing import Any, Dict, List, Optional, Union
 import dask.dataframe
 import pandas
 
-from ..adapters.mapping import MapAdapter
 from ..structures.core import Spec
 from ..structures.data_source import Asset
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from .dataframe import DataFrameAdapter
+from .mapping import MapAdapter
 from .protocols import AccessPolicy
-from .type_alliases import JSON
 
 
 class ExcelAdapter(MapAdapter):

@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import dask.dataframe
 import pandas
 
-from ..structures.array import ArrayStructure, BuiltinDtype, StructDtype
+from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
@@ -355,7 +355,7 @@ class CSVArrayAdapter(ArrayAdapter):
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         access_policy: Optional[AccessPolicy] = None,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         """Adapter for partitioned array data stored as a sequence of csv files
 
@@ -373,9 +373,11 @@ class CSVArrayAdapter(ArrayAdapter):
         # Load the array lazily with Dask
         file_paths = [path_from_uri(ast.data_uri) for ast in assets]
         dtype_numpy = structure.data_type.to_numpy_dtype()
-        nrows = kwargs.pop("nrows", None)   # dask doesn't accept nrows
+        nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
         ddf = dask.dataframe.read_csv(file_paths, dtype=dtype_numpy, **kwargs)
-        chunks_0: tuple[int, ...] = structure.chunks[0]  # chunking along the rows dimension (when not stackable)
+        chunks_0: tuple[int, ...] = structure.chunks[
+            0
+        ]  # chunking along the rows dimension (when not stackable)
 
         if not dtype_numpy.isbuiltin:
             # Structural np dtype (0) -- return a records array
@@ -394,7 +396,9 @@ class CSVArrayAdapter(ArrayAdapter):
             #       Can also just .compute() and return a np array instead
             nrows_actual = len(ddf)
             if nrows > nrows_actual:
-                padding = dask.array.zeros_like(array, shape=(nrows-nrows_actual, *array.shape[1:]))
+                padding = dask.array.zeros_like(
+                    array, shape=(nrows - nrows_actual, *array.shape[1:])
+                )
                 array = dask.array.append(array[:nrows_actual, ...], padding, axis=0)
             else:
                 array = array[:nrows, ...]
