@@ -10,9 +10,11 @@ from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.register import IMG_SEQUENCE_EMPTY_NAME_ROOT, register
 from ..server.app import build_app
+from ..structures.array import ArrayStructure, BuiltinDtype
 from ..utils import ensure_uri
 
 COLOR_SHAPE = (11, 17, 3)
+rng = numpy.random.default_rng(12345)
 
 
 @pytest.fixture(scope="module")
@@ -21,19 +23,26 @@ def client(tmpdir_module):
     sequence_directory.mkdir()
     filepaths = []
     for i in range(3):
-        data = numpy.random.random((5, 7, 4))
+        data = rng.integers(0, 255, size=(5, 7, 4), dtype="uint8")
         filepath = sequence_directory / f"temp{i:05}.tif"
         tf.imwrite(filepath, data)
         filepaths.append(filepath)
-    color_data = numpy.random.randint(0, 255, COLOR_SHAPE, dtype="uint8")
+    color_data = rng.integers(0, 255, size=COLOR_SHAPE, dtype="uint8")
     path = Path(tmpdir_module, "color.tif")
     tf.imwrite(path, color_data)
-
     tree = MapAdapter(
         {
             "color": TiffAdapter(ensure_uri(path)),
             "sequence": TiffSequenceAdapter.from_uris(
                 [ensure_uri(filepath) for filepath in filepaths]
+            ),
+            "5d_sequence": TiffSequenceAdapter.from_uris(
+                [ensure_uri(filepath) for filepath in filepaths],
+                structure=ArrayStructure(
+                    shape=(3, 1, 5, 7, 4),
+                    chunks=((1, 1, 1), (1,), (5,), (7,), (4,)),
+                    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+                ),
             ),
         }
     )
@@ -59,6 +68,27 @@ def client(tmpdir_module):
 )
 def test_tiff_sequence(client, slice_input, correct_shape):
     arr = client["sequence"].read(slice=slice_input)
+    assert arr.shape == correct_shape
+
+
+@pytest.mark.parametrize(
+    "slice_input, correct_shape",
+    [
+        (None, (3, 1, 5, 7, 4)),
+        (..., (3, 1, 5, 7, 4)),
+        ((), (3, 1, 5, 7, 4)),
+        (0, (1, 5, 7, 4)),
+        (slice(0, 3, 2), (2, 1, 5, 7, 4)),
+        ((1, slice(0, 10), slice(0, 3), slice(0, 3)), (1, 3, 3, 4)),
+        ((slice(0, 3), 0, slice(0, 3), slice(0, 3)), (3, 3, 3, 4)),
+        ((..., 0, 0, 0, 0), (3,)),
+        ((0, slice(0, 1), slice(0, 1), slice(0, 2), ...), (1, 1, 2, 4)),
+        ((0, ..., slice(0, 2)), (1, 5, 7, 2)),
+        ((..., slice(0, 1)), (3, 1, 5, 7, 1)),
+    ],
+)
+def test_forced_reshaping(client, slice_input, correct_shape):
+    arr = client["5d_sequence"].read(slice=slice_input)
     assert arr.shape == correct_shape
 
 

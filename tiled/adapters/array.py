@@ -5,8 +5,8 @@ from numpy.typing import NDArray
 
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import JSON, NDSlice
 from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
 
 
 class ArrayAdapter:

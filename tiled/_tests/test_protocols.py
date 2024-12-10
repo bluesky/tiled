@@ -18,13 +18,13 @@ from tiled.adapters.protocols import (
     SparseAdapter,
     TableAdapter,
 )
-from tiled.adapters.type_alliases import JSON, Filters, NDSlice, Scopes
 from tiled.server.schemas import Principal, PrincipalType
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.sparse import COOStructure
 from tiled.structures.table import TableStructure
+from tiled.type_aliases import JSON, Filters, NDSlice, Scopes
 
 
 class CustomArrayAdapter:

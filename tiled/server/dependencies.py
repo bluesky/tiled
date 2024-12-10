@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
@@ -165,6 +165,20 @@ def expected_shape(
     return tuple(map(int, expected_shape.split(",")))
 
 
+def shape_param(
+    shape: str = Query(..., min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"),
+):
+    "Specify and parse a shape parameter."
+    return tuple(map(int, shape.split(",")))
+
+
+def offset_param(
+    offset: str = Query(..., min_length=1, pattern="^[0-9]+(,[0-9]+)*$"),
+):
+    "Specify and parse an offset parameter."
+    return tuple(map(int, offset.split(",")))
+
+
 def np_style_slicer(indices: tuple):
     return indices[0] if len(indices) == 1 else slice_func(*indices)
 
@@ -175,7 +189,7 @@ def parse_slice_str(dim: str):
 
 def slice_(
     slice: Optional[str] = Query(None, pattern=SLICE_REGEX),
-):
+) -> Tuple[Union[slice, int], ...]:
     "Specify and parse a block index parameter."
 
     return tuple(parse_slice_str(dim) for dim in (slice or "").split(",") if dim)

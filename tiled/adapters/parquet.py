@@ -7,10 +7,10 @@ import pandas
 from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
 from .protocols import AccessPolicy
-from .type_alliases import JSON
 
 
 class ParquetDatasetAdapter:

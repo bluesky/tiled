@@ -1,5 +1,6 @@
 import collections
 import collections.abc
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -140,7 +141,10 @@ Set an api_key as in:
             context.http_client.get(
                 item_uri,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"include_data_sources": include_data_sources},
+                params={
+                    **parse_qs(urlparse(item_uri).query),
+                    "include_data_sources": include_data_sources,
+                },
             )
         ).json()
     except ClientError as err:
@@ -150,7 +154,7 @@ Set an api_key as in:
             and (context.http_client.auth is None)
         ):
             context.authenticate()
-            params = {}
+            params = (parse_qs(urlparse(item_uri).query),)
             if include_data_sources:
                 params["include_data_sources"] = True
             content = handle_error(

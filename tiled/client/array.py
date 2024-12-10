@@ -1,9 +1,14 @@
 import itertools
+from typing import Union
+from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
+import httpx
 import numpy
+from numpy.typing import NDArray
 
+from ..structures.core import STRUCTURE_TYPES
 from .base import BaseClient
 from .utils import export_util, handle_error, params_from_slice
 
@@ -88,11 +93,13 @@ class _DaskArrayClient(BaseClient):
             expected_shape = ",".join(map(str, shape))
         else:
             expected_shape = "scalar"
+        url_path = self.item["links"]["block"]
         content = handle_error(
             self.context.http_client.get(
-                self.item["links"]["block"],
+                url_path,
                 headers={"Accept": media_type},
                 params={
+                    **parse_qs(urlparse(url_path).query),
                     "block": ",".join(map(str, block)),
                     "expected_shape": expected_shape,
                 },
@@ -167,14 +174,105 @@ class _DaskArrayClient(BaseClient):
             )
         )
 
-    def write_block(self, array, block):
+    def write_block(self, array, block, slice=...):
+        url_path = self.item["links"]["block"].format(*block)
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            **params_from_slice(slice),
+        }
         handle_error(
             self.context.http_client.put(
-                self.item["links"]["block"].format(*block),
+                url_path,
                 content=array.tobytes(),
                 headers={"Content-Type": "application/octet-stream"},
+                params=params,
             )
         )
+
+    def patch(self, array: NDArray, offset: Union[int, tuple[int, ...]], extend=False):
+        """
+        Write data into a slice of an array, maybe extending the shape.
+
+        Parameters
+        ----------
+        array : array-like
+            The data to write
+        offset : tuple[int, ...]
+            Where to place this data in the array
+        extend : bool
+            Extend the array shape to fit the new slice, if necessary
+
+        Examples
+        --------
+
+        Create a (3, 2, 2) array of ones.
+
+        >>> ac = c.write_array(numpy.ones((3, 2, 2)), key='y')
+        >>> ac
+        <ArrayClient shape=(3, 2, 2) chunks=((3,), (2,), (2,)) dtype=float64>
+
+        Read it.
+
+        >>> ac.read()
+        array([[[1., 1.],
+                [1., 1.]],
+
+               [[1., 1.],
+                [1., 1.]],
+
+               [[1., 1.],
+                [1., 1.]]])
+
+        Extend the array by concatenating a (1, 2, 2) array of zeros.
+
+        >>> ac.patch(numpy.zeros((1, 2, 2)), offset=(3,), extend=True)
+
+        Read it.
+
+        >>> array([[[1., 1.],
+                    [1., 1.]],
+
+                   [[1., 1.],
+                    [1., 1.]],
+
+                   [[1., 1.],
+                    [1., 1.]],
+
+                   [[0., 0.],
+                    [0., 0.]]])
+        """
+        if array.dtype != self.dtype:
+            raise ValueError(
+                f"Data given to patch has dtype {array.dtype} which does not "
+                f"match the dtype of this array {self.dtype}."
+            )
+        array_ = numpy.ascontiguousarray(array)
+        if isinstance(offset, int):
+            offset = (offset,)
+        url_path = self.item["links"]["full"]
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            "offset": ",".join(map(str, offset)),
+            "shape": ",".join(map(str, array_.shape)),
+            "extend": bool(extend),
+        }
+        response = self.context.http_client.patch(
+            url_path,
+            content=array_.tobytes(),
+            headers={"Content-Type": "application/octet-stream"},
+            params=params,
+        )
+        if response.status_code == httpx.codes.CONFLICT:
+            raise ValueError(
+                f"Slice {slice} does not fit within current array shape. "
+                "Pass keyword argument extend=True to extend the array "
+                "dimensions to fit."
+            )
+        handle_error(response)
+        # Update cached structure.
+        new_structure = response.json()
+        structure_type = STRUCTURE_TYPES[self.structure_family]
+        self._structure = structure_type.from_json(new_structure)
 
     def __getitem__(self, slice):
         return self.read(slice)

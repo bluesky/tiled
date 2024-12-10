@@ -14,8 +14,8 @@ from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
+from ..type_aliases import JSON, Filters, NDSlice, Scopes
 from .awkward_directory_container import DirectoryContainer
-from .type_alliases import JSON, Filters, NDSlice, Scopes
 
 
 class BaseAdapter(Protocol):

@@ -55,6 +55,8 @@ from .dependencies import (
     get_query_registry,
     get_serialization_registry,
     get_validation_registry,
+    offset_param,
+    shape_param,
     slice_,
 )
 from .file_response_with_range import FileResponseWithRange
@@ -327,7 +329,7 @@ async def metadata(
     entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
 ):
-    "Fetch the metadata and structure information for one entry."
+    """Fetch the metadata and structure information for one entry"""
 
     request.state.endpoint = "metadata"
     base_url = get_base_url(request)
@@ -1288,6 +1290,33 @@ async def put_array_block(
         raise NotImplementedError(entry.structure_family)
     await ensure_awaitable(entry.write_block, data, block)
     return json_or_msgpack(request, None)
+
+
+@router.patch("/array/full/{path:path}")
+async def patch_array_full(
+    request: Request,
+    offset=Depends(offset_param),
+    shape=Depends(shape_param),
+    extend: bool = False,
+    entry=SecureEntry(
+        scopes=["write:data"],
+        structure_families={StructureFamily.array},
+    ),
+    deserialization_registry=Depends(get_deserialization_registry),
+):
+    if not hasattr(entry, "patch"):
+        raise HTTPException(
+            status_code=HTTP_405_METHOD_NOT_ALLOWED,
+            detail="This node cannot accept array data.",
+        )
+
+    dtype = entry.structure().data_type.to_numpy_dtype()
+    body = await request.body()
+    media_type = request.headers["content-type"]
+    deserializer = deserialization_registry.dispatch("array", media_type)
+    data = await ensure_awaitable(deserializer, body, dtype, shape)
+    structure = await ensure_awaitable(entry.patch, data, offset, extend)
+    return json_or_msgpack(request, structure)
 
 
 @router.put("/table/full/{path:path}")

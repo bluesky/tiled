@@ -15,11 +15,11 @@ from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
-from .type_alliases import JSON
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))

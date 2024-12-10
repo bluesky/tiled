@@ -7,9 +7,11 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
+from typing import Callable, Optional, Union
+from urllib.parse import parse_qs, urlparse
 
-import appdirs
 import httpx
+import platformdirs
 
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView
@@ -23,17 +25,22 @@ API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 PROMPT_FOR_REAUTHENTICATION = None
 
 
-def prompt_for_username(username):
+def prompt_for_credentials(username, password):
     """
     Utility function that displays a username prompt.
     """
-    if username:
+    if username is not None and password is not None:
+        # If both are provided, return them as-is, without prompting.
+        # This is particularly useful for GUI clients without a TTY Console.
+        return username, password
+    elif username:
         username_reprompt = input(f"Username [{username}]: ")
         if len(username_reprompt.strip()) != 0:
             username = username_reprompt
     else:
         username = input("Username: ")
-    return username
+    password = getpass.getpass()
+    return username, password
 
 
 class Context:
@@ -65,7 +72,7 @@ class Context:
         # Resolve this here, not at module scope, because the test suite
         # injects TILED_CACHE_DIR env var to use a temporary directory.
         TILED_CACHE_DIR = Path(
-            os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+            os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
         )
         headers.setdefault("accept-encoding", ACCEPT_ENCODING)
         # Set the User Agent to help the server fail informatively if the client
@@ -441,11 +448,15 @@ class Context:
             Identify the API key to be deleted by passing its first 8 characters.
             (Any additional characters passed will be truncated.)
         """
+        url_path = self.server_info["authentication"]["links"]["apikey"]
         handle_error(
             self.http_client.delete(
-                self.server_info["authentication"]["links"]["apikey"],
+                url_path,
                 headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-                params={"first_eight": first_eight[:8]},
+                params={
+                    **parse_qs(urlparse(url_path).query),
+                    "first_eight": first_eight[:8],
+                },
             )
         )
 
@@ -481,8 +492,10 @@ class Context:
         self,
         username=UNSET,
         provider=UNSET,
-        prompt_for_reauthentication=UNSET,
+        prompt_for_reauthentication: Optional[Union[bool, Callable]] = UNSET,
         set_default=True,
+        *,
+        password=UNSET,
     ):
         """
         See login. This is for programmatic use.
@@ -533,14 +546,12 @@ class Context:
             except CannotRefreshAuthentication:
                 # Continue below, where we will prompt for log in.
                 self.http_client.auth = None
-                if not prompt_for_reauthentication:
-                    raise
             else:
                 # We have a live session for the specified provider and username already.
                 # No need to log in again.
                 return
 
-        if not prompt_for_reauthentication:
+        if not prompt_for_reauthentication and password is UNSET:
             raise CannotPrompt(
                 """Authentication is needed but Tiled has detected that it is running
 in a 'headless' context where it cannot prompt the user to provide
@@ -549,14 +560,18 @@ credentials in the stdin. Options:
 - If Tiled has detected this wrongly, pass prompt_for_reauthentication=True
   to force it to prompt.
 - Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
+- Pass prompt_for_reauthentication=Callable, to generate the reauthentication via your application hook.
 """
             )
         self.http_client.auth = None
         mode = spec["mode"]
         auth_endpoint = spec["links"]["auth_endpoint"]
         if mode == "password":
-            username = prompt_for_username(username)
-            password = getpass.getpass()
+            username, password = (
+                prompt_for_reauthentication(username, password)
+                if isinstance(prompt_for_reauthentication, Callable)
+                else prompt_for_credentials(username, password)
+            )
             form_data = {
                 "grant_type": "password",
                 "username": username,
@@ -808,11 +823,14 @@ class Admin:
 
     def list_principals(self, offset=0, limit=100):
         "List Principals (users and services) in the authenticaiton database."
-        params = dict(offset=offset, limit=limit)
+        url_path = f"{self.base_url}/auth/principal"
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            "offset": offset,
+            "limit": limit,
+        }
         return handle_error(
-            self.context.http_client.get(
-                f"{self.base_url}/auth/principal", params=params
-            )
+            self.context.http_client.get(url_path, params=params)
         ).json()
 
     def show_principal(self, uuid):
@@ -859,11 +877,12 @@ class Admin:
         role : str
             Specify the role (e.g. user or admin)
         """
+        url_path = f"{self.base_url}/auth/principal"
         return handle_error(
             self.context.http_client.post(
-                f"{self.base_url}/auth/principal",
+                url_path,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"role": role},
+                params={**parse_qs(urlparse(url_path).query), "role": role},
             )
         ).json()
 
@@ -881,11 +900,15 @@ class Admin:
             Identify the API key to be deleted by passing its first 8 characters.
             (Any additional characters passed will be truncated.)
         """
+        url_path = f"{self.base_url}/auth/principal/{uuid}/apikey"
         return handle_error(
             self.context.http_client.delete(
-                f"{self.base_url}/auth/principal/{uuid}/apikey",
+                url_path,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"first_eight": first_eight[:8]},
+                params={
+                    **parse_qs(urlparse(url_path).query),
+                    "first_eight": first_eight[:8],
+                },
             )
         )
 
@@ -915,7 +938,7 @@ def _default_identity_filepath(api_uri):
     # Resolve this here, not at module scope, because the test suite
     # injects TILED_CACHE_DIR env var to use a temporary directory.
     TILED_CACHE_DIR = Path(
-        os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+        os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
     )
     return Path(
         TILED_CACHE_DIR, "default_identities", urllib.parse.quote_plus(str(api_uri))

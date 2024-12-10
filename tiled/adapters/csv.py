@@ -8,12 +8,12 @@ from ..structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 from .protocols import AccessPolicy
 from .table import TableAdapter
-from .type_alliases import JSON
 
 
 def read_csv(

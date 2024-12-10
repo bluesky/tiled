@@ -12,7 +12,7 @@ authors = [
 maintainers = [
   { name = "Brookhaven National Laboratory", email = "dallan@bnl.gov" },
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
 # All dependencies are optional; it depends on whether you are running
 # a client or server (or both) and what data structures you care about.
@@ -23,8 +23,6 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -48,7 +46,6 @@ all = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
@@ -77,6 +74,7 @@ all = [
     "packaging",
     "pandas",
     "pillow",
+    "platformdirs",
     "prometheus_client",
     "pyarrow",
     "pydantic >=2, <3",
@@ -104,7 +102,6 @@ array = [
 ]
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
-    "appdirs",
     "awkward >=2.4.3",
     "blosc2; python_version >= '3.10'",
     "dask[array]",
@@ -120,6 +117,7 @@ client = [
     "numpy",
     "orjson",
     "pandas",
+    "platformdirs",
     "pyarrow",
     "pyyaml",
     "rich",
@@ -151,7 +149,7 @@ dev = [
     "ipython",
     "ldap3",
     "matplotlib",
-    "mistune <2.0.0",  # temporary while sphinx sorts this out,
+    "mistune",
     "myst-parser",
     "numpydoc",
     "pre-commit",
@@ -175,7 +173,6 @@ formats = [
 ]
 # These are the requirements needed for basic client functionality.
 minimal-client = [
-    "appdirs",
     "entrypoints",
     "httpx >=0.20.0,!=0.23.1",
     "json-merge-patch",
@@ -183,6 +180,7 @@ minimal-client = [
     "jsonschema",
     "msgpack >=1.0.0",
     "orjson",
+    "platformdirs",
     "pyyaml",
     "rich",
     "typer",
@@ -194,7 +192,6 @@ minimal-server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
     "asgi-correlation-id",
     "cachetools",
     "canonicaljson",
@@ -209,6 +206,7 @@ minimal-server = [
     "msgpack >=1.0.0",
     "orjson",
     "packaging",
+    "platformdirs",
     "prometheus_client",
     "pydantic >=2, <3",
     "pydantic-settings >=2, <3",
@@ -229,7 +227,6 @@ server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
@@ -257,6 +254,7 @@ server = [
     "packaging",
     "pandas",
     "pillow",
+    "platformdirs",
     "prometheus_client",
     "pyarrow",
     "pydantic >=2, <3",

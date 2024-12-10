@@ -8,11 +8,11 @@ from PIL import Image
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset
+from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
 from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
-from .type_alliases import JSON, NDSlice
 
 
 class JPEGAdapter:

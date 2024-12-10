@@ -9,10 +9,10 @@ import pyarrow.fs
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
+from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
-from .type_alliases import JSON
 
 
 class ArrowAdapter:

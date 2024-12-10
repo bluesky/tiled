@@ -13,9 +13,6 @@ FROM python:3.12-slim as builder
 # We need gcc to compile thriftpy2, a secondary dependency.
 RUN apt-get -y update && apt-get install -y git gcc
 
-# We want cURL and httpie so healthchecks can be performed within the container
-RUN apt-get install -y curl httpie
-
 WORKDIR /code
 
 # Ensure logs and error messages do not get stuck in a buffer.
@@ -37,7 +34,10 @@ COPY . .
 
 # Skip building the UI here because we already did it in the stage
 # above using a node container.
-RUN TILED_BUILD_SKIP_UI=1 pip install '.[server]'
+# Include server and client depedencies here because this container may be used
+# for `tiled register ...` and `tiled server directory ...` which invokes
+# client-side code.
+RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
 
 # FROM base as test
 #
@@ -49,6 +49,8 @@ FROM python:3.12-slim as runner
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
+# We want cURL and httpie so healthchecks can be performed within the container
+RUN apt-get update && apt-get install -y curl httpie
 
 WORKDIR /deploy
 RUN mkdir /deploy/config

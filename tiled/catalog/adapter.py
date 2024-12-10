@@ -1,4 +1,5 @@
 import collections
+import copy
 import importlib
 import itertools as it
 import logging
@@ -64,12 +65,12 @@ from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
-    SCHEME_PATTERN,
     UNCHANGED,
     Conflicts,
     OneShotCachedMap,
     UnsupportedQueryType,
     ensure_awaitable,
+    ensure_specified_sql_driver,
     ensure_uri,
     import_object,
     path_from_uri,
@@ -1036,6 +1037,37 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, *args, **kwargs
         )
 
+    async def patch(self, *args, **kwargs):
+        # assumes a single DataSource (currently only supporting zarr)
+        async with self.context.session() as db:
+            new_shape_and_chunks = await ensure_awaitable(
+                (await self.get_adapter()).patch, *args, **kwargs
+            )
+            node = await db.get(orm.Node, self.node.id)
+            if len(node.data_sources) != 1:
+                raise NotImplementedError("Only handles one data source")
+            data_source = node.data_sources[0]
+            structure_row = await db.get(orm.Structure, data_source.structure_id)
+            # Get the current structure row, update the shape, and write it back
+            structure_dict = copy.deepcopy(structure_row.structure)
+            structure_dict["shape"], structure_dict["chunks"] = new_shape_and_chunks
+            new_structure_id = compute_structure_id(structure_dict)
+            statement = (
+                self.insert(orm.Structure)
+                .values(
+                    id=new_structure_id,
+                    structure=structure_dict,
+                )
+                .on_conflict_do_nothing(index_elements=["id"])
+            )
+            await db.execute(statement)
+            new_structure = await db.get(orm.Structure, new_structure_id)
+            data_source.structure = new_structure
+            data_source.structure_id = new_structure_id
+            db.add(data_source)
+            await db.commit()
+            return structure_dict
+
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
@@ -1326,6 +1358,7 @@ def in_memory(
         access_policy=access_policy,
         writable_storage=writable_storage,
         readable_storage=readable_storage,
+        init_if_not_exists=True,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
     )
@@ -1343,7 +1376,7 @@ def from_uri(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
 ):
-    uri = str(uri)
+    uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
         # The cleanest option available is to start a subprocess
@@ -1362,9 +1395,6 @@ def from_uri(
         stderr = process.stderr.decode()
         logging.info(f"Subprocess stdout: {stdout}")
         logging.error(f"Subprocess stderr: {stderr}")
-    if not SCHEME_PATTERN.match(uri):
-        # Interpret URI as filepath.
-        uri = f"sqlite+aiosqlite:///{uri}"
 
     parsed_url = make_url(uri)
     if (parsed_url.get_dialect().name == "sqlite") and (
@@ -1377,7 +1407,10 @@ def from_uri(
     else:
         poolclass = None  # defer to sqlalchemy default
     engine = create_async_engine(
-        uri, echo=echo, json_serializer=json_serializer, poolclass=poolclass
+        uri,
+        echo=echo,
+        json_serializer=json_serializer,
+        poolclass=poolclass,
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)

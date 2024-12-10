@@ -9,11 +9,11 @@ import awkward.forms
 from ..server.schemas import Asset
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .awkward import AwkwardAdapter
 from .awkward_directory_container import DirectoryContainer
 from .protocols import AccessPolicy
-from .type_alliases import JSON
 
 
 class AwkwardBuffersAdapter(AwkwardAdapter):
