@@ -49,6 +49,7 @@ class ArrayAdapter:
         self._structure = structure
         self._metadata = metadata or {}
         self.specs = specs or []
+        self.access_policy = access_policy
 
     @classmethod
     def from_array(
@@ -100,30 +101,12 @@ class ArrayAdapter:
 
     @property
     def dims(self) -> Optional[Tuple[str, ...]]:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure.dims
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         return self._metadata
 
     def structure(self) -> ArrayStructure:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure
 
     def read(

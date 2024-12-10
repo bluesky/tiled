@@ -1,10 +1,15 @@
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 import dask.dataframe
 import pandas
 
 from ..adapters.mapping import MapAdapter
+from ..structures.core import Spec
+from ..structures.data_source import Asset
+from ..structures.table import TableStructure
 from .dataframe import DataFrameAdapter
+from .protocols import AccessPolicy
+from .type_alliases import JSON
 
 
 class ExcelAdapter(MapAdapter):
@@ -81,3 +86,23 @@ class ExcelAdapter(MapAdapter):
         """
         file = pandas.ExcelFile(data_uri)
         return cls.from_file(file)
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: TableStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "ExcelAdapter":
+        data_uri = assets[0].data_uri
+        return cls.from_uri(
+            data_uri,
+            structure=structure,
+            metadata=metadata,
+            specs=specs,
+            access_policy=access_policy,
+            **kwargs,
+        )
