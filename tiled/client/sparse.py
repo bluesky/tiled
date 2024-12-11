@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import numpy
 import sparse
 from ndindex import ndindex
@@ -47,11 +49,12 @@ class SparseClient(BaseClient):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
-        params = params_from_slice(slice)
+        url_path = self.item["links"]["block"]
+        params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
         params["block"] = ",".join(map(str, block))
         content = handle_error(
             self.context.http_client.get(
-                self.item["links"]["block"],
+                url_path,
                 headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
                 params=params,
             )
@@ -74,10 +77,11 @@ class SparseClient(BaseClient):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
-        params = params_from_slice(slice)
+        url_path = self.item["links"]["full"]
+        params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
         content = handle_error(
             self.context.http_client.get(
-                self.item["links"]["full"],
+                url_path,
                 headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
                 params=params,
             )

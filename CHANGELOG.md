@@ -3,18 +3,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
-
-- Fix curl and httpie installation in docker image.
+## 2024-12-09
 
 ### Added
 
 - Add HTTP endpoint `PATCH /array/full/{path}` to enable updating and
   optionally _extending_ an existing array.
 - Add associated Python client method `ArrayClient.patch`.
-- Minor fix to api key docs to reflect correct CLI usage.
 - Hook to authentication prompt to make password login available without TTY.
 - Expanded auth routes to manually reduce refresh token lifetime.
+
+### Fixed
+
+- Fix curl and httpie installation in docker image.
+- Minor fix to api key docs to reflect correct CLI usage.
+- Fix the construction of urls by passing query parameters as kwargs,
+  adapting to a behavior change in httpx v0.28.0.
+
+### Changed
+
+- Switch from appdirs to platformdirs.
 
 ## v0.1.0b11 (2024-11-14)
 
@@ -24,7 +32,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   multipart/related;type=image/jpeg mimetypes.
 - Automatic reshaping of tiff data by the adapter to account for
   extra/missing singleton dimension
- - Add a check for the `openpyxcl` module when importing excel serializer.
+- Add a check for the `openpyxcl` module when importing excel serializer.
 
 ### Changed
 
