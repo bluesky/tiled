@@ -126,18 +126,13 @@ class BaseClient:
         self._metadata_revisions = None
         self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
-        structure_family = attributes["structure_family"]
-
         if structure is not None:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family == StructureFamily.container:
-            self._structure = None
         else:
-            structure_type = STRUCTURE_TYPES[structure_family]
+            structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
             self._structure = structure_type.from_json(attributes["structure"])
-
         super().__init__()
 
     def structure(self):
