@@ -164,7 +164,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, there is an
         # implication that the contents are not expected to be dynamic. Used the
         # count provided in the structure.
-        if self.structure() and self.structure().count is not None:
+        if self.structure() and (self.structure().count is not None):
             return self.structure().count
         now = time.monotonic()
         if self._cached_len is not None:
