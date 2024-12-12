@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+
 ## 2024-12-09
 
 ### Added
