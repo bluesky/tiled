@@ -1410,7 +1410,7 @@ async def patch_table_partition(
     partition: int,
     request: Request,
     entry=SecureEntry(
-        scopes=["write:data"], structure_families={StructureFamily.awkward}
+        scopes=["write:data"], structure_families={StructureFamily.table}
     ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
