@@ -1158,6 +1158,12 @@ async def _create_node(
     )
     metadata_modified = False
     if structure_family == StructureFamily.union:
+        all_keys = []
+        for data_source in body.data_sources:
+            if data_source.structure_family == StructureFamily.table:
+                all_keys.extend(data_source.structure.columns)
+            else:
+                all_keys.append(data_source.name)
         structure = UnionStructure(
             parts=[
                 UnionStructurePart(
@@ -1168,7 +1174,7 @@ async def _create_node(
                 )
                 for data_source in body.data_sources
             ],
-            all_keys=[],  # TODO
+            all_keys=all_keys,
         )
     elif body.data_sources:
         assert len(body.data_sources) == 1  # more not yet implemented
