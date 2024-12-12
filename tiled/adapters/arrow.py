@@ -129,7 +129,7 @@ class ArrowAdapter:
         """
         return [
             DataSource(
-                structure_family=self.structure_family,
+                structure_family=StructureFamily.table,
                 mimetype=mimetype,
                 structure=dict_or_none(self.structure()),
                 parameters={},

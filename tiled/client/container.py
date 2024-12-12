@@ -1084,7 +1084,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
-            "consolidated": _LazyLoad(("..consolidated", Container.__module__), "ConsolidatedClient"),
+            "consolidated": _LazyLoad(
+                ("..consolidated", Container.__module__), "ConsolidatedClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DatasetClient"
             ),
@@ -1103,7 +1105,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
             ),
-            "consolidated": _LazyLoad(("..consolidated", Container.__module__), "ConsolidatedClient"),
+            "consolidated": _LazyLoad(
+                ("..consolidated", Container.__module__), "ConsolidatedClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DaskDatasetClient"
             ),

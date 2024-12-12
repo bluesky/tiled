@@ -3,7 +3,7 @@ import dataclasses
 import enum
 from typing import Any, List, Optional
 
-from ..structures.core import BaseStructureFamily, StructureFamily
+from ..structures.core import StructureFamily
 
 
 class Management(str, enum.Enum):
@@ -24,7 +24,7 @@ class Asset:
 
 @dataclasses.dataclass
 class DataSource:
-    structure_family: BaseStructureFamily
+    structure_family: StructureFamily
     structure: Any
     id: Optional[int] = None
     mimetype: Optional[str] = None
@@ -32,6 +32,12 @@ class DataSource:
     assets: List[Asset] = dataclasses.field(default_factory=list)
     management: Management = Management.writable
     name: Optional[str] = None
+
+    def __post_init__(self):
+        if self.structure_family == StructureFamily.consolidated:
+            raise ValueError(
+                "DataSource can not be intialized with Consolidated StructureFamliy"
+            )
 
     @classmethod
     def from_json(cls, d):

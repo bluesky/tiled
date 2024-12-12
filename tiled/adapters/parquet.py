@@ -9,6 +9,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
+from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 from .protocols import AccessPolicy
 
@@ -165,5 +166,5 @@ class ParquetDatasetAdapter:
         """
         return self._structure
 
-    def get(self, key):
+    def get(self, key: str) -> ArrayAdapter | None:
         return self.dataframe_adapter.get(key)

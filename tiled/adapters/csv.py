@@ -276,7 +276,7 @@ class CSVAdapter:
         """
         return [
             DataSource(
-                structure_family=self.dataframe_adapter.structure_family,
+                structure_family=StructureFamily.table,
                 mimetype=mimetype,
                 structure=dict_or_none(self.dataframe_adapter.structure()),
                 parameters={},

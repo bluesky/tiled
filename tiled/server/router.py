@@ -27,7 +27,6 @@ from starlette.status import (
 )
 
 from .. import __version__
-from .pydantic_consolidated import ConsolidatedStructure, ConsolidatedStructurePart
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
@@ -62,6 +61,7 @@ from .dependencies import (
 )
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
+from .pydantic_consolidated import ConsolidatedStructure, ConsolidatedStructurePart
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 

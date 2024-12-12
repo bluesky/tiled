@@ -62,8 +62,11 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..server.pydantic_consolidated import (
+    ConsolidatedStructure,
+    ConsolidatedStructurePart,
+)
 from ..server.pydantic_container import ContainerStructure
-from ..server.pydantic_consolidated import ConsolidatedStructure, ConsolidatedStructurePart
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
@@ -461,9 +464,9 @@ class CatalogNodeAdapter:
 
             for i in range(len(segments)):
                 catalog_adapter = await self.lookup_adapter(segments[:i])
-                if (catalog_adapter.structure_family == StructureFamily.consolidated) and len(
-                    segments[i:]
-                ) == 1:
+                if (
+                    catalog_adapter.structure_family == StructureFamily.consolidated
+                ) and len(segments[i:]) == 1:
                     # All the segments but the final segment, segments[-1], resolve
                     # to a consolidated structure. Dispatch to the consolidated Adapter
                     # to get the inner Adapter for whatever type of structure it is.

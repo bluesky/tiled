@@ -14,9 +14,9 @@ from ..structures.core import StructureFamily
 from ..structures.data_source import Management, validate_data_sources
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
+from .pydantic_consolidated import ConsolidatedStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
-from .pydantic_consolidated import ConsolidatedStructure
 
 if TYPE_CHECKING:
     import tiled.authn_database.orm
@@ -237,7 +237,7 @@ class SparseLinks(pydantic.BaseModel):
 
 class ConsolidatedLinks(pydantic.BaseModel):
     self: str
-    contents: List[
+    parts: List[
         Union[ArrayLinks, AwkwardLinks, ContainerLinks, DataFrameLinks, SparseLinks]
     ]
 

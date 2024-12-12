@@ -12,22 +12,13 @@ from typing import Dict, Optional
 from ..utils import OneShotCachedMap
 
 
-class BaseStructureFamily(str, enum.Enum):
-    array = "array"
-    awkward = "awkward"
-    container = "container"
-    sparse = "sparse"
-    table = "table"
-    # excludes consolidated, which DataSources cannot have
-
-
 class StructureFamily(str, enum.Enum):
     array = "array"
     awkward = "awkward"
     container = "container"
     sparse = "sparse"
     table = "table"
-    consolidated = "consolidated"
+    consolidated = "consolidated"  # can not be used in DataSources
 
 
 @dataclass(frozen=True)
