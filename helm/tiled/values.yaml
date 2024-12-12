@@ -2,6 +2,8 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+config: {}
+
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 
@@ -54,7 +56,7 @@ service:
   # This sets the service type more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
   type: ClusterIP
   # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
-  port: 80
+  port: 8000
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:
@@ -104,20 +106,33 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 # Additional volumes on the output Deployment definition.
-volumes: []
-# - name: foo
-#   secret:
-#     secretName: mysecret
-#     optional: false
+volumes:
+  - name: config
+    projected:
+      sources:
+        - configMap:
+          name: {{ include "tiled.fullname" . }}-config
 
 # Additional volumeMounts on the output Deployment definition.
-volumeMounts: []
-# - name: foo
-#   mountPath: "/etc/foo"
-#   readOnly: true
+volumeMounts:
+  - name: config
+    mountPath: "/config"
+    readOnly: true
 
 nodeSelector: {}
 
 tolerations: []
 
 affinity: {}
+
+
+# Additional envVars to mount to the pod
+extraEnvVars: []
+# - name: TILED_SINGLE_USER_API_KEY
+#   value: "7d0adb8a-4263-4d14-ae21-3c6a5b422e84"
+# # Recommended: Mount as a SealedSecret: https://github.com/bitnami-labs/sealed-secrets
+# - name: TILED_SINGLE_USER_API_KEY
+#   valueFrom:
+#     secretKeyRef:
+#       name: tiled_secrets
+#       key: api_key
