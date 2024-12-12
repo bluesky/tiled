@@ -1155,7 +1155,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
-class CatalogUnionAdapter(CatalogNodeAdapter):
+class CatalogConsolidatedAdapter(CatalogNodeAdapter):
     async def get(self, key):
         if key not in self.structure().all_keys:
             return None
@@ -1573,5 +1573,5 @@ STRUCTURES = {
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
-    StructureFamily.consolidated: CatalogUnionAdapter,
+    StructureFamily.consolidated: CatalogConsolidatedAdapter,
 }

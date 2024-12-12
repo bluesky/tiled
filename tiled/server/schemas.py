@@ -235,7 +235,7 @@ class SparseLinks(pydantic.BaseModel):
     block: str
 
 
-class UnionLinks(pydantic.BaseModel):
+class ConsolidatedLinks(pydantic.BaseModel):
     self: str
     contents: List[
         Union[ArrayLinks, AwkwardLinks, ContainerLinks, DataFrameLinks, SparseLinks]
@@ -248,7 +248,7 @@ resource_links_type_by_structure_family = {
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
-    StructureFamily.consolidated: UnionLinks,
+    StructureFamily.consolidated: ConsolidatedLinks,
 }
 
 
@@ -480,7 +480,7 @@ class PutDataSourceRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, UnionLinks]
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, ConsolidatedLinks]
     structure: Union[
         ArrayStructure,
         AwkwardStructure,
