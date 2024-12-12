@@ -686,7 +686,7 @@ def test_append_partition(
         assert_frame_equal(x.read(), df3, check_dtype=False)
 
 
-def test_union_one_table(tree):
+def test_consolidated_one_table(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
@@ -696,17 +696,17 @@ def test_union_one_table(tree):
             structure=structure,
             name="table",
         )
-        client.create_union([data_source], key="x")
+        client.create_consolidated([data_source], key="x")
 
 
-def test_union_two_tables(tree):
+def test_consolidated_two_tables(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
         structure1 = TableStructure.from_pandas(df1)
         structure2 = TableStructure.from_pandas(df2)
-        x = client.create_union(
+        x = client.create_consolidated(
             [
                 DataSource(
                     structure_family=StructureFamily.table,
@@ -727,7 +727,7 @@ def test_union_two_tables(tree):
         x.parts["table2"].read()
 
 
-def test_union_two_tables_colliding_names(tree):
+def test_consolidated_two_tables_colliding_names(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
@@ -735,7 +735,7 @@ def test_union_two_tables_colliding_names(tree):
         structure1 = TableStructure.from_pandas(df1)
         structure2 = TableStructure.from_pandas(df2)
         with fail_with_status_code(422):
-            client.create_union(
+            client.create_consolidated(
                 [
                     DataSource(
                         structure_family=StructureFamily.table,
@@ -752,7 +752,7 @@ def test_union_two_tables_colliding_names(tree):
             )
 
 
-def test_union_two_tables_colliding_keys(tree):
+def test_consolidated_two_tables_colliding_keys(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
@@ -760,7 +760,7 @@ def test_union_two_tables_colliding_keys(tree):
         structure1 = TableStructure.from_pandas(df1)
         structure2 = TableStructure.from_pandas(df2)
         with fail_with_status_code(422):
-            client.create_union(
+            client.create_consolidated(
                 [
                     DataSource(
                         structure_family=StructureFamily.table,
@@ -777,7 +777,7 @@ def test_union_two_tables_colliding_keys(tree):
             )
 
 
-def test_union_two_tables_two_arrays(tree):
+def test_consolidated_two_tables_two_arrays(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
@@ -788,7 +788,7 @@ def test_union_two_tables_two_arrays(tree):
         structure2 = TableStructure.from_pandas(df2)
         structure3 = ArrayStructure.from_array(arr1)
         structure4 = ArrayStructure.from_array(arr2)
-        x = client.create_union(
+        x = client.create_consolidated(
             [
                 DataSource(
                     structure_family=StructureFamily.table,
@@ -830,7 +830,7 @@ def test_union_two_tables_two_arrays(tree):
             x[column].read()
 
 
-def test_union_table_column_array_key_collision(tree):
+def test_consolidated_table_column_array_key_collision(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
@@ -838,7 +838,7 @@ def test_union_table_column_array_key_collision(tree):
         structure1 = TableStructure.from_pandas(df)
         structure2 = ArrayStructure.from_array(arr)
         with fail_with_status_code(422):
-            client.create_union(
+            client.create_consolidated(
                 [
                     DataSource(
                         structure_family=StructureFamily.table,

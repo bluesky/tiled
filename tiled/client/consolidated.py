@@ -5,7 +5,7 @@ from .base import STRUCTURE_TYPES, BaseClient
 from .utils import MSGPACK_MIME_TYPE, ClientError, client_for_item, handle_error
 
 
-class UnionClient(BaseClient):
+class ConsolidatedClient(BaseClient):
     def __repr__(self):
         return (
             f"<{type(self).__name__} {{"
@@ -15,7 +15,7 @@ class UnionClient(BaseClient):
 
     @property
     def parts(self):
-        return UnionContents(self)
+        return ConsolidatedContents(self)
 
     def __getitem__(self, key):
         if key not in self.structure().all_keys:
@@ -48,7 +48,7 @@ class UnionClient(BaseClient):
         )
 
 
-class UnionContents:
+class ConsolidatedContents:
     def __init__(self, node):
         self.node = node
 
@@ -60,10 +60,10 @@ class UnionContents:
         )
 
     def __getitem__(self, name):
-        for index, union_item in enumerate(self.node.structure().parts):
-            if union_item.name == name:
-                structure_family = union_item.structure_family
-                structure_dict = union_item.structure
+        for index, item in enumerate(self.node.structure().parts):
+            if item.name == name:
+                structure_family = item.structure_family
+                structure_dict = item.structure
                 break
         else:
             raise KeyError(name)

@@ -27,7 +27,7 @@ from starlette.status import (
 )
 
 from .. import __version__
-from ..server.pydantic_union import UnionStructure, UnionStructurePart
+from .pydantic_consolidated import ConsolidatedStructure, ConsolidatedStructurePart
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
@@ -420,7 +420,7 @@ async def array_block(
                 "Use slicing ('?slice=...') to request smaller chunks."
             ),
         )
-    if entry.structure_family == StructureFamily.union:
+    if entry.structure_family == StructureFamily.consolidated:
         structure_family = entry.data_source.structure_family
     else:
         structure_family = entry.structure_family
@@ -461,7 +461,7 @@ async def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if entry.structure_family == StructureFamily.union:
+    if entry.structure_family == StructureFamily.consolidated:
         structure_family = entry.data_source.structure_family
     else:
         structure_family = entry.structure_family
@@ -726,7 +726,7 @@ async def table_full(
                 "request a smaller chunks."
             ),
         )
-    if entry.structure_family == StructureFamily.union:
+    if entry.structure_family == StructureFamily.consolidated:
         structure_family = entry.data_source.structure_family
     else:
         structure_family = entry.structure_family
@@ -1157,16 +1157,16 @@ async def _create_node(
         body.specs,
     )
     metadata_modified = False
-    if structure_family == StructureFamily.union:
+    if structure_family == StructureFamily.consolidated:
         all_keys = []
         for data_source in body.data_sources:
             if data_source.structure_family == StructureFamily.table:
                 all_keys.extend(data_source.structure.columns)
             else:
                 all_keys.append(data_source.name)
-        structure = UnionStructure(
+        structure = ConsolidatedStructure(
             parts=[
-                UnionStructurePart(
+                ConsolidatedStructurePart(
                     data_source_id=data_source.id,
                     structure=data_source.structure,
                     structure_family=data_source.structure_family,

@@ -37,7 +37,7 @@ def links_for_awkward(structure_family, structure, base_url, path_str, part=None
 
 
 def links_for_container(structure_family, structure, base_url, path_str):
-    # Cannot be used inside union, so there is no part parameter.
+    # Cannot be used inside consolidated, so there is no part parameter.
     links = {}
     links["full"] = f"{base_url}/container/full/{path_str}"
     links["search"] = f"{base_url}/search/{path_str}"
@@ -54,7 +54,7 @@ def links_for_table(structure_family, structure, base_url, path_str, part=None):
     return links
 
 
-def links_for_union(structure_family, structure, base_url, path_str):
+def links_for_consolidated(structure_family, structure, base_url, path_str):
     links = {}
     # This contains the links for each structure.
     links["parts"] = []
@@ -77,5 +77,5 @@ LINKS_BY_STRUCTURE_FAMILY = {
     StructureFamily.container: links_for_container,
     StructureFamily.sparse: links_for_array,  # sparse and array are the same
     StructureFamily.table: links_for_table,
-    StructureFamily.union: links_for_union,
+    StructureFamily.consolidated: links_for_consolidated,
 }

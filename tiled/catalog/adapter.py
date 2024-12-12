@@ -63,7 +63,7 @@ from ..mimetypes import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.pydantic_container import ContainerStructure
-from ..server.pydantic_union import UnionStructure, UnionStructurePart
+from ..server.pydantic_consolidated import ConsolidatedStructure, ConsolidatedStructurePart
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..utils import (
@@ -381,12 +381,12 @@ class CatalogNodeAdapter:
         if self.structure_family == StructureFamily.container:
             # Give no inlined contents.
             return ContainerStructure(contents=None, count=None)
-        if self.structure_family == StructureFamily.union:
+        if self.structure_family == StructureFamily.consolidated:
             parts = []
             all_keys = []
             for data_source in self.data_sources:
                 parts.append(
-                    UnionStructurePart(
+                    ConsolidatedStructurePart(
                         structure=data_source.structure,
                         structure_family=data_source.structure_family,
                         name=data_source.name,
@@ -396,7 +396,7 @@ class CatalogNodeAdapter:
                     all_keys.extend(data_source.structure.columns)
                 else:
                     all_keys.append(data_source.name)
-            return UnionStructure(parts=parts, all_keys=all_keys)
+            return ConsolidatedStructure(parts=parts, all_keys=all_keys)
         if self.data_sources:
             assert len(self.data_sources) == 1  # more not yet implemented
             return self.data_sources[0].structure
@@ -461,11 +461,11 @@ class CatalogNodeAdapter:
 
             for i in range(len(segments)):
                 catalog_adapter = await self.lookup_adapter(segments[:i])
-                if (catalog_adapter.structure_family == StructureFamily.union) and len(
+                if (catalog_adapter.structure_family == StructureFamily.consolidated) and len(
                     segments[i:]
                 ) == 1:
-                    # All the segments but the final segment, segments[-1], resolves
-                    # resolve to a union structure. Dispatch to the union Adapter
+                    # All the segments but the final segment, segments[-1], resolve
+                    # to a consolidated structure. Dispatch to the consolidated Adapter
                     # to get the inner Adapter for whatever type of structure it is.
                     return await ensure_awaitable(catalog_adapter.get, segments[-1])
                 if catalog_adapter.data_sources:
@@ -680,7 +680,7 @@ class CatalogNodeAdapter:
                         ]
                     data_source.parameters = {}
                     data_uri_path_parts = self.segments + [key]
-                    if structure_family == StructureFamily.union:
+                    if structure_family == StructureFamily.consolidated:
                         data_uri_path_parts.append(data_source.name)
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in data_uri_path_parts
@@ -1573,5 +1573,5 @@ STRUCTURES = {
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
-    StructureFamily.union: CatalogUnionAdapter,
+    StructureFamily.consolidated: CatalogUnionAdapter,
 }

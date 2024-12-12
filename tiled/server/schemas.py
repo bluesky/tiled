@@ -16,7 +16,7 @@ from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
-from .pydantic_union import UnionStructure
+from .pydantic_consolidated import ConsolidatedStructure
 
 if TYPE_CHECKING:
     import tiled.authn_database.orm
@@ -149,7 +149,7 @@ class DataSource(pydantic.BaseModel):
             NodeStructure,
             SparseStructure,
             TableStructure,
-            UnionStructure,
+            ConsolidatedStructure,
         ]
     ] = None
     mimetype: Optional[str] = None
@@ -186,7 +186,7 @@ class NodeAttributes(pydantic.BaseModel):
             NodeStructure,
             SparseStructure,
             TableStructure,
-            UnionStructure,
+            ConsolidatedStructure,
         ]
     ] = None
 
@@ -248,7 +248,7 @@ resource_links_type_by_structure_family = {
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
-    StructureFamily.union: UnionLinks,
+    StructureFamily.consolidated: UnionLinks,
 }
 
 
@@ -487,7 +487,7 @@ class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
         NodeStructure,
         SparseStructure,
         TableStructure,
-        UnionStructure,
+        ConsolidatedStructure,
     ]
     metadata: Dict
     data_sources: List[DataSource]

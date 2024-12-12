@@ -643,7 +643,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
-        elif structure_family == StructureFamily.union:
+        elif structure_family == StructureFamily.consolidated:
             structure = None
             # To be filled in below, by server response.
             # We need the server to tell us data_source_ids.
@@ -711,9 +711,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             specs=specs,
         )
 
-    def create_union(self, data_sources, key=None, *, metadata=None, specs=None):
+    def create_consolidated(self, data_sources, key=None, *, metadata=None, specs=None):
         """
-        EXPERIMENTAL: Create a new union backed by data sources.
+        EXPERIMENTAL: Create a new consolidated node backed by data sources.
 
         Parameters
         ----------
@@ -729,7 +729,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         """
         return self.new(
-            StructureFamily.union,
+            StructureFamily.consolidated,
             data_sources,
             key=key,
             metadata=metadata,
@@ -1084,7 +1084,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
-            "union": _LazyLoad(("..union", Container.__module__), "UnionClient"),
+            "consolidated": _LazyLoad(("..consolidated", Container.__module__), "ConsolidatedClient"),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DatasetClient"
             ),
@@ -1103,7 +1103,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
             ),
-            "union": _LazyLoad(("..union", Container.__module__), "UnionClient"),
+            "consolidated": _LazyLoad(("..consolidated", Container.__module__), "ConsolidatedClient"),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DaskDatasetClient"
             ),

@@ -54,14 +54,14 @@ def validate_container_data_sources(node_structure_family, data_sources):
     return data_sources
 
 
-def validate_union_data_sources(node_structure_family, data_sources):
+def validate_consolidated_data_sources(node_structure_family, data_sources):
     "Check that column names and keys of others (e.g. arrays) do not collide."
     keys = set()
     names = set()
     for data_source in data_sources:
         if data_source.name is None:
             raise ValueError(
-                "Data sources backing a union structure_family must "
+                "Data sources backing a consolidated structure_family must "
                 "all have non-NULL names."
             )
         if data_source.name in names:
@@ -95,4 +95,4 @@ def validate_other_data_sources(node_structure_family, data_sources):
 
 validators = collections.defaultdict(lambda: validate_other_data_sources)
 validators[StructureFamily.container] = validate_container_data_sources
-validators[StructureFamily.union] = validate_union_data_sources
+validators[StructureFamily.consolidated] = validate_consolidated_data_sources

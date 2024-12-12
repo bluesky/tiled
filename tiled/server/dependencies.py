@@ -159,14 +159,14 @@ def SecureEntry(scopes, structure_families=None):
             entry.structure_family in structure_families
         ):
             return entry
-        # Handle union structure_family
-        if entry.structure_family == StructureFamily.union:
+        # Handle consolidated structure_family
+        if entry.structure_family == StructureFamily.consolidated:
             if not part:
                 raise HTTPException(
                     status_code=HTTP_404_NOT_FOUND,
                     detail=(
                         "A part query parameter is required on this endpoint "
-                        "when addressing a 'union' structure."
+                        "when addressing a 'consolidated' structure."
                     ),
                 )
             entry_for_part = entry.for_part(part)

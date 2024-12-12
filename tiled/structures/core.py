@@ -18,7 +18,7 @@ class BaseStructureFamily(str, enum.Enum):
     container = "container"
     sparse = "sparse"
     table = "table"
-    # excludes union, which DataSources cannot have
+    # excludes consolidated, which DataSources cannot have
 
 
 class StructureFamily(str, enum.Enum):
@@ -27,7 +27,7 @@ class StructureFamily(str, enum.Enum):
     container = "container"
     sparse = "sparse"
     table = "table"
-    union = "union"
+    consolidated = "consolidated"
 
 
 @dataclass(frozen=True)
@@ -73,8 +73,8 @@ STRUCTURE_TYPES = OneShotCachedMap(
         StructureFamily.sparse: lambda: importlib.import_module(
             "...structures.sparse", StructureFamily.__module__
         ).SparseStructure,
-        StructureFamily.union: lambda: importlib.import_module(
-            "...structures.union", StructureFamily.__module__
-        ).UnionStructure,
+        StructureFamily.consolidated: lambda: importlib.import_module(
+            "...structures.consolidated", StructureFamily.__module__
+        ).ConsolidatedStructure,
     }
 )
