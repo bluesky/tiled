@@ -2,7 +2,16 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-config: {}
+config:
+  authentication:
+    allow_anonymous_access: false
+  trees:
+    - path: /
+      tree: catalog
+      args:
+        uri: "sqlite+aiosqlite:////storage/catalog.db"
+        writable_storage: "/storage/data"
+        init_if_not_exists: true
 
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
@@ -54,7 +63,7 @@ securityContext: {}
 # This is for setting up a service more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/
 service:
   # This sets the service type more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
-  type: ClusterIP
+  type: LoadBalancer
   # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
   port: 8000
 
@@ -106,17 +115,13 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 # Additional volumes on the output Deployment definition.
-volumes:
-  - name: config
-    projected:
-      sources:
-        - configMap:
-          name: {{ include "tiled.fullname" . }}-config
+volumes: []
+
 
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts:
   - name: config
-    mountPath: "/config"
+    mountPath: "/deploy/config"
     readOnly: true
 
 nodeSelector: {}
@@ -127,9 +132,9 @@ affinity: {}
 
 
 # Additional envVars to mount to the pod
-extraEnvVars: []
-# - name: TILED_SINGLE_USER_API_KEY
-#   value: "7d0adb8a-4263-4d14-ae21-3c6a5b422e84"
+extraEnvVars:
+- name: TILED_SINGLE_USER_API_KEY
+  value: "7d0adb8a42634d14ae213c6a5b422e84"
 # # Recommended: Mount as a SealedSecret: https://github.com/bitnami-labs/sealed-secrets
 # - name: TILED_SINGLE_USER_API_KEY
 #   valueFrom:

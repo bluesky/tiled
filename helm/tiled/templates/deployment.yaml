@@ -46,14 +46,21 @@ spec:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- with .Values.volumeMounts }}
           volumeMounts:
+          {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
-          env:
-            {{- toYaml .Values.extraEnvVars | nindent 12 }}
           {{- end }}
-      {{- with .Values.volumes }}
+          {{- with .Values.extraEnvVars }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       volumes:
+        - name: config
+          projected:
+            sources:
+              - configMap:
+                  name: {{ include "tiled.fullname" . }}-config
+      {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.nodeSelector }}
