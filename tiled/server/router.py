@@ -1167,7 +1167,8 @@ async def _create_node(
                     name=data_source.name,
                 )
                 for data_source in body.data_sources
-            ]
+            ],
+            all_keys=[],  # TODO
         )
     elif body.data_sources:
         assert len(body.data_sources) == 1  # more not yet implemented
