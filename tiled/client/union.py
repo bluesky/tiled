@@ -1,4 +1,5 @@
 import copy
+from urllib.parse import parse_qs, urlparse
 
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import MSGPACK_MIME_TYPE, ClientError, client_for_item, handle_error
@@ -23,12 +24,13 @@ class UnionClient(BaseClient):
             self_link = self.item["links"]["self"]
             if self_link.endswith("/"):
                 self_link = self_link[:-1]
-            params = {}
+            url_path = f"{self_link}/{key}"
+            params = parse_qs(urlparse(url_path).query)
             if self._include_data_sources:
                 params["include_data_sources"] = True
             content = handle_error(
                 self.context.http_client.get(
-                    f"{self_link}/{key}",
+                    url_path,
                     headers={"Accept": MSGPACK_MIME_TYPE},
                     params=params,
                 )
