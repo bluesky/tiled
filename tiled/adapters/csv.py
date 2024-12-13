@@ -145,7 +145,7 @@ class CSVAdapter:
 
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = str(storage.filesystem) + "".join(
+        data_uri = str(storage.get("filesystem")) + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
         directory = path_from_uri(data_uri)
