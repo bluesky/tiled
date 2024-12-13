@@ -166,7 +166,9 @@ class Context:
                 )
             # If it is writable, it is automatically also readable.
             readable_storage.append(writable_storage)
-        self.writable_storage = Storage(filesystem=writable_storage, sql=None)
+        self.writable_storage = Storage(
+            filesystem=writable_storage, sql="sqlite:////tmp/test.sqlite"
+        )
         self.readable_storage = [ensure_uri(path) for path in readable_storage]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -466,10 +468,6 @@ class CatalogNodeAdapter:
             if asset.parameter is None:
                 continue
             scheme = urlparse(asset.data_uri).scheme
-            if scheme != "file":
-                raise NotImplementedError(
-                    f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
-                )
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended
                 # parts of the filesystem.
