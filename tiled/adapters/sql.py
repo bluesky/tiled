@@ -81,6 +81,7 @@ class SQLAdapter:
     ) -> DataSource[TableStructure]:
         """
         Class to initialize the list of assets for given uri. In SQL Adapter we hve  single partition.
+
         Parameters
         ----------
         data_uri : the uri of the data
@@ -96,7 +97,7 @@ class SQLAdapter:
         default_table_name = ...  # based on hash of Arrow schema
         data_source.parameters.setdefault("table_name", default_table_name)
         data_source.parameters["dataset_id"] = uuid.uuid4().int
-        data_uri = storage.sql  # TODO scrub credentials
+        data_uri = storage.get("sql")  # TODO scrub credentials
         data_source.assets.append(
             Asset(
                 data_uri=data_uri,
