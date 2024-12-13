@@ -61,7 +61,7 @@ from .dependencies import (
 )
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
-from .pydantic_consolidated import ConsolidatedStructure, ConsolidatedStructurePart
+from .pydantic_consolidated import ConsolidatedStructure
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 

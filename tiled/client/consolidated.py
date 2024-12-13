@@ -46,7 +46,7 @@ class ConsolidatedClient(BaseClient):
             item,
             include_data_sources=self._include_data_sources,
         )
-    
+
     def __iter__(self):
         yield from self.structure().all_keys
 

@@ -62,10 +62,7 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.pydantic_consolidated import (
-    ConsolidatedStructure,
-    ConsolidatedStructurePart,
-)
+from ..server.pydantic_consolidated import ConsolidatedStructure
 from ..server.pydantic_container import ContainerStructure
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily

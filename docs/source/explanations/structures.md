@@ -576,7 +576,7 @@ response.
   "count": 5
 }
 ```
- 
+
 ### Consolidated
 
 This is a specialized container-like structure designed to link together multiple tables and arrays that store
