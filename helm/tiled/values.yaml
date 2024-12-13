@@ -134,10 +134,7 @@ affinity: {}
 # Additional envVars to mount to the pod
 extraEnvVars:
 - name: TILED_SINGLE_USER_API_KEY
-  value: "7d0adb8a42634d14ae213c6a5b422e84"
-# # Recommended: Mount as a SealedSecret: https://github.com/bitnami-labs/sealed-secrets
-# - name: TILED_SINGLE_USER_API_KEY
-#   valueFrom:
-#     secretKeyRef:
-#       name: tiled_secrets
-#       key: api_key
+  valueFrom:
+    secretKeyRef:
+      name: tiled_secrets
+      key: TILED_SINGLE_USER_API_KEY
