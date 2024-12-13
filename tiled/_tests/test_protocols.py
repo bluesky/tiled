@@ -376,13 +376,15 @@ class CustomAccessPolicy:
     def _get_id(self, principal: Principal) -> None:
         return None
 
-    def allowed_scopes(self, node: BaseAdapter, principal: Principal) -> Scopes:
+    def allowed_scopes(
+        self, node: BaseAdapter, principal: Principal, path_parts: list
+    ) -> Scopes:
         allowed = self.scopes
         somemetadata = node.metadata()  # noqa: 841
         return allowed
 
     def filters(
-        self, node: BaseAdapter, principal: Principal, scopes: Scopes
+        self, node: BaseAdapter, principal: Principal, scopes: Scopes, path_parts: list
     ) -> Filters:
         queries: Filters = []
         somespecs = node.specs()  # noqa: 841
@@ -390,10 +392,14 @@ class CustomAccessPolicy:
 
 
 def accesspolicy_protocol_functions(
-    policy: AccessPolicy, node: BaseAdapter, principal: Principal, scopes: Scopes
+    policy: AccessPolicy,
+    node: BaseAdapter,
+    principal: Principal,
+    scopes: Scopes,
+    path_parts: list,
 ) -> None:
-    policy.allowed_scopes(node, principal)
-    policy.filters(node, principal, scopes)
+    policy.allowed_scopes(node, principal, path_parts)
+    policy.filters(node, principal, scopes, path_parts)
 
 
 def test_accesspolicy_protocol(mocker: MockFixture) -> None:
@@ -410,11 +416,12 @@ def test_accesspolicy_protocol(mocker: MockFixture) -> None:
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
     scopes = {"abc"}
+    path_parts = ["wx", "yz"]
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
 
     accesspolicy_protocol_functions(
-        anyaccesspolicy, anyawkwardadapter, principal, scopes
+        anyaccesspolicy, anyawkwardadapter, principal, scopes, path_parts
     )
     mock_call.assert_called_once()
     mock_call2.assert_called_once()
