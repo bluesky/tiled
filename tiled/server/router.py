@@ -176,9 +176,6 @@ async def search(
     request.state.endpoint = "search"
     if entry.structure_family != StructureFamily.container:
         raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
-    entry = filter_for_access(
-        entry, principal, ["read:metadata"], request.state.metrics
-    )
     try:
         resource, metadata_stale_at, must_revalidate = await construct_entries_response(
             query_registry,
