@@ -72,7 +72,10 @@ Sometimes it is necessary to take more manual control of this registration
 process, such as if you want to take advantage of particular knowledge
 about the files to specify particular `metadata` or `specs`.
 
-Use the Python client, as in this example.
+#### Registering external data
+
+To register data from external files in Tiled, one can use the Python client and
+construct Data Source object explicitly passing the list of assets, as in the following example.
 
 ```py
 import numpy
@@ -111,4 +114,37 @@ client.new(
     metadata={},
     specs=[],
 )
+```
+
+#### Writing a consolidated structure
+
+Similarly, to create a consolidated container structure, one needs to specify
+its constituents as separate Data Sources. For example, to consolidate a table
+and an array, consider the following example
+
+```python
+import pandas
+
+rng = numpy.random.default_rng(12345)
+arr = rng.random(size=(3, 5), dtype="float64")
+df = pandas.DataFrame({"A": ["one", "two", "three"], "B": [1, 2, 3]})
+
+node = client.create_consolidated(
+    [
+        DataSource(
+            structure_family=StructureFamily.table,
+            structure=TableStructure.from_pandas(df),
+            name="table1",
+        ),
+        DataSource(
+            structure_family=StructureFamily.array,
+            structure=ArrayStructure.from_array(arr),
+            name="C",
+        )
+    ]
+)
+
+# Write the data
+node.parts["table1"].write(df)
+node.parts["C"].write_block(arr, (0, 0))
 ```

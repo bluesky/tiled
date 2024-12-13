@@ -104,6 +104,8 @@ See {doc}`../explanations/structures` for more context.
    tiled.structures.array.BuiltinDtype
    tiled.structures.array.Endianness
    tiled.structures.array.Kind
+   tiled.structures.consolidated.ConsolidatedStructure
+   tiled.structures.consolidated.ConsolidatedStructurePart
    tiled.structures.core.Spec
    tiled.structures.core.StructureFamily
    tiled.structures.table.TableStructure
