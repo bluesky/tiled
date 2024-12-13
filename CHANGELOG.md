@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+- Fix bug where access policies were not applied to child nodes during request
 
 ## 2024-12-09
 
