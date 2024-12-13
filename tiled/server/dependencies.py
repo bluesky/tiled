@@ -66,49 +66,86 @@ def SecureEntry(scopes, structure_families=None):
         """
         Obtain a node in the tree from its path.
 
-        Walk down the path from the root tree, filtering each intermediate node by
-        'read:metadata' and finally filtering by the specified scope.
+        Walk down the path from the root tree, discover the access policy
+        to be used for access to the destination node, and finally filter
+        access by the specified scope.
+
+        The access policy used for access to the destination node will be
+        the last one found while walking the tree or, in the case of a catalog adapter,
+        the access policy of the catalog adapter node.
 
         session_state is an optional dictionary passed in the session token
         """
         path_parts = [segment for segment in path.split("/") if segment]
+        path_parts_relative = path_parts
         entry = root_tree
+        entry_with_access_policy = (
+            entry if getattr(root_tree, "access_policy", None) is not None else None
+        )
 
         # If the entry/adapter can take a session state, pass it in.
         # The entry/adapter may return itself or a different object.
         if hasattr(entry, "with_session_state") and session_state:
             entry = entry.with_session_state(session_state)
+        # start at the root
+        # filter and keep only what we are allowed to see from here
+        entry = filter_for_access(
+            entry,
+            principal,
+            ["read:metadata"],
+            request.state.metrics,
+            path_parts_relative,
+        )
         try:
-            # Traverse into sub-tree(s). This requires only 'read:metadata' scope.
             for i, segment in enumerate(path_parts):
-                # add session state to entry
-                entry = filter_for_access(
-                    entry, principal, ["read:metadata"], request.state.metrics
-                )
-                # The new catalog adapter only has access control at top level for now.
-                # It can jump directly to the node of interest.
-
                 if hasattr(entry, "lookup_adapter"):
-                    entry = await entry.lookup_adapter(path_parts[i:])
+                    # New catalog adapter - only has access control at the top level
+                    # Top level means the basename of the path as defined in the config
+                    # This adapter can jump directly to the node of interest
+                    path_parts_relative = path_parts[i:]
+                    entry_with_access_policy = entry
+                    # filter and keep only what we are allowed to see from here
+                    entry = filter_for_access(
+                        entry,
+                        principal,
+                        ["read:metadata"],
+                        request.state.metrics,
+                        path_parts_relative,
+                    )
+                    entry = await entry.lookup_adapter(path_parts_relative)
                     if entry is None:
                         raise NoEntry(path_parts)
                     break
-                # Old-style dict-like interface
                 else:
+                    # Old-style dict-like interface
+                    # Traverse into sub-tree(s) to reach the desired entry, and
+                    # to discover the access policy to use for the request
                     try:
                         entry = entry[segment]
                     except (KeyError, TypeError):
                         raise NoEntry(path_parts)
-            # Now check that we have the requested scope on the final node.
-            access_policy = getattr(entry, "access_policy", None)
+                    if getattr(entry, "access_policy", None) is not None:
+                        path_parts_relative = path_parts[i:]
+                        entry_with_access_policy = entry
+                        # filter and keep only what we are allowed to see from here
+                        entry = filter_for_access(
+                            entry,
+                            principal,
+                            ["read:metadata"],
+                            request.state.metrics,
+                            path_parts_relative,
+                        )
+
+            # Now check that we have the requested scope according to the discovered access policy
+            access_policy = getattr(entry_with_access_policy, "access_policy", None)
             if access_policy is not None:
                 with record_timing(request.state.metrics, "acl"):
-                    allowed_scopes = entry.access_policy.allowed_scopes(
-                        entry, principal
+                    allowed_scopes = access_policy.allowed_scopes(
+                        entry_with_access_policy, principal, path_parts_relative
                     )
                     if not set(scopes).issubset(allowed_scopes):
                         if "read:metadata" not in allowed_scopes:
-                            # If you can't read metadata, it does not exit for you.
+                            # If you can't read metadata, it does not exist for you.
                             raise NoEntry(path_parts)
                         else:
                             # You can see this, but you cannot perform the requested

@@ -11,10 +11,10 @@ NO_ACCESS = Sentinel("NO_ACCESS")
 class DummyAccessPolicy:
     "Impose no access restrictions."
 
-    def allowed_scopes(self, node, principal):
+    def allowed_scopes(self, node, principal, path_parts):
         return ALL_SCOPES
 
-    def filters(self, node, principal, scopes):
+    def filters(self, node, principal, scopes, path_parts):
         return []
 
 
@@ -61,7 +61,7 @@ class SimpleAccessPolicy:
             )
         return id
 
-    def allowed_scopes(self, node, principal):
+    def allowed_scopes(self, node, principal, path_parts):
         # If this is being called, filter_access has let us get this far.
         if principal is SpecialUsers.public:
             allowed = PUBLIC_SCOPES
@@ -76,7 +76,7 @@ class SimpleAccessPolicy:
             allowed = self.scopes
         return allowed
 
-    def filters(self, node, principal, scopes):
+    def filters(self, node, principal, scopes, path_parts):
         queries = []
         if principal is SpecialUsers.public:
             queries.append(KeysFilter(self.public))
