@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## 2024-12-13
+
+### Added
+
+- Added a Helm chart with deployable default configuration
+
 ## 2024-12-09
 
 ### Added
