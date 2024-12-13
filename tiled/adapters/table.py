@@ -169,7 +169,7 @@ class TableAdapter:
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
-    def get(self, key: str) -> ArrayAdapter | None:
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)

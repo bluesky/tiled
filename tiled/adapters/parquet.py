@@ -166,5 +166,5 @@ class ParquetDatasetAdapter:
         """
         return self._structure
 
-    def get(self, key: str) -> ArrayAdapter | None:
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
         return self.dataframe_adapter.get(key)
