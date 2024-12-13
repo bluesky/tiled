@@ -45,3 +45,9 @@ class DataSource(Generic[StructureT]):
 class Storage:
     filesystem: Optional[str]
     sql: Optional[str]
+
+    def get(self, storage: str) -> str:
+        uri = getattr(self, storage)
+        if isinstance(uri, str):
+            return uri
+        raise TypeError(f"{storage} is not set")
