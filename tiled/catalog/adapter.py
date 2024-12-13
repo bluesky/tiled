@@ -385,21 +385,7 @@ class CatalogNodeAdapter:
             # Give no inlined contents.
             return ContainerStructure(contents=None, count=None)
         if self.structure_family == StructureFamily.consolidated:
-            parts = []
-            all_keys = []
-            for data_source in self.data_sources:
-                parts.append(
-                    ConsolidatedStructurePart(
-                        structure=data_source.structure,
-                        structure_family=data_source.structure_family,
-                        name=data_source.name,
-                    )
-                )
-                if data_source.structure_family == StructureFamily.table:
-                    all_keys.extend(data_source.structure.columns)
-                else:
-                    all_keys.append(data_source.name)
-            return ConsolidatedStructure(parts=parts, all_keys=all_keys)
+            return ConsolidatedStructure.from_data_sources(self.data_sources)
         if self.data_sources:
             assert len(self.data_sources) == 1  # more not yet implemented
             return self.data_sources[0].structure

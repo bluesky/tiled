@@ -1158,24 +1158,7 @@ async def _create_node(
     )
     metadata_modified = False
     if structure_family == StructureFamily.consolidated:
-        all_keys = []
-        for data_source in body.data_sources:
-            if data_source.structure_family == StructureFamily.table:
-                all_keys.extend(data_source.structure.columns)
-            else:
-                all_keys.append(data_source.name)
-        structure = ConsolidatedStructure(
-            parts=[
-                ConsolidatedStructurePart(
-                    data_source_id=data_source.id,
-                    structure=data_source.structure,
-                    structure_family=data_source.structure_family,
-                    name=data_source.name,
-                )
-                for data_source in body.data_sources
-            ],
-            all_keys=all_keys,
-        )
+        structure = ConsolidatedStructure.from_data_sources(body.data_sources)
     elif body.data_sources:
         assert len(body.data_sources) == 1  # more not yet implemented
         structure = body.data_sources[0].structure
