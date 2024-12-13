@@ -97,19 +97,21 @@ class SQLAdapter:
         if data_source.structure.npartitions > 1:
             raise ValueError("The SQL adapter must have only 1 partition")
 
-        schema = data_source.structure.arrow_schema_decoded  # based on hash of Arrow schema
+        schema = (
+            data_source.structure.arrow_schema_decoded
+        )  # based on hash of Arrow schema
         encoded = schema.serialize()
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         data_source.parameters.setdefault("table_name", default_table_name)
 
-        data_source.parameters["dataset_id"] = uuid.uuid4().int
+        data_source.parameters["dataset_id"] = uuid.uuid4().hex
         data_uri = storage.get("sql")  # TODO scrub credentials
         data_source.assets.append(
             Asset(
                 data_uri=data_uri,
                 is_directory=False,
-                parameter="data_uris",
-                num=0,
+                parameter="data_uri",
+                num=None,
             )
         )
         return data_source
@@ -195,12 +197,14 @@ class SQLAdapter:
         self.cur.adbc_ingest(self.table_name, reader)
         self.conn.commit()
 
-    def append(
+    def append_partition(
         self,
         data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
+        partition: int,
     ) -> None:
         """
         "Function to write the data as arrow format."
+
         Parameters
         ----------
         data : data to append into the database. Can be a list of record batch, or pandas dataframe.
@@ -208,6 +212,8 @@ class SQLAdapter:
         Returns
         -------
         """
+        if partition != 0:
+            raise NotImplementedError
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
             batches = table.to_batches()

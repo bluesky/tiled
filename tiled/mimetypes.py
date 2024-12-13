@@ -57,8 +57,8 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
             "..adapters.arrow", __name__
         ).ArrowAdapter,
         TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.sql", __name__
-        ).SQLAdapter.init_storage,
+            "..adapters.sql", __name__
+        ).SQLAdapter,
     }
 )
 
