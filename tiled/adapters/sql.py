@@ -12,7 +12,7 @@ import pyarrow.fs
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.table import TableStructure
-from ..type_alliases import JSON
+from ..type_aliases import JSON
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
 
@@ -62,6 +62,8 @@ class SQLAdapter:
         self._structure = structure
         self.specs = list(specs or [])
         self.access_policy = access_policy
+        self.table_name = table_name
+        self.dataset_id = dataset_id
 
     def metadata(self) -> JSON:
         """
@@ -94,8 +96,12 @@ class SQLAdapter:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         if data_source.structure.npartitions > 1:
             raise ValueError("The SQL adapter must have only 1 partition")
-        default_table_name = ...  # based on hash of Arrow schema
+
+        schema = data_source.structure.arrow_schema_decoded  # based on hash of Arrow schema
+        encoded = schema.serialize()
+        default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         data_source.parameters.setdefault("table_name", default_table_name)
+
         data_source.parameters["dataset_id"] = uuid.uuid4().int
         data_uri = storage.get("sql")  # TODO scrub credentials
         data_source.assets.append(
@@ -181,15 +187,12 @@ class SQLAdapter:
         schema = batches[
             0
         ].schema  # list of column names can be obtained from schema.names
-        encoded = schema.serialize()
-        table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
-        table_name = "table_" + table_name
 
         reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
 
-        query = "DROP TABLE IF EXISTS {}".format(table_name)
+        query = "DROP TABLE IF EXISTS {}".format(self.table_name)
         self.cur.execute(query)
-        self.cur.adbc_ingest(table_name, reader)
+        self.cur.adbc_ingest(self.table_name, reader)
         self.conn.commit()
 
     def append(
@@ -217,13 +220,10 @@ class SQLAdapter:
         schema = batches[
             0
         ].schema  # list of column names can be obtained from schema.names
-        encoded = schema.serialize()
-        table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
-        table_name = "table_" + table_name
 
         reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
 
-        self.cur.adbc_ingest(table_name, reader, mode="append")
+        self.cur.adbc_ingest(self.table_name, reader, mode="append")
         self.conn.commit()
 
     def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
@@ -238,11 +238,8 @@ class SQLAdapter:
         -------
         Returns the concatenated pyarrow table as pandas dataframe.
         """
-        encoded = pyarrow.schema(self._structure.arrow_schema_decoded).serialize()
-        table_name = hashlib.md5(encoded, usedforsecurity=True).hexdigest()
-        table_name = "table_" + table_name
 
-        query = "SELECT * FROM {}".format(table_name)
+        query = "SELECT * FROM {}".format(self.table_name)
         self.cur.execute(query)
         data = self.cur.fetch_arrow_table()
         self.conn.commit()
