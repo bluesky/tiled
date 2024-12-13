@@ -178,6 +178,10 @@ def serve_directory(
         adapters_by_mimetype=adapters_by_mimetype,
     )
     if verbose:
+        from tiled.catalog.adapter import logger as catalog_logger
+
+        catalog_logger.addHandler(StreamHandler())
+        catalog_logger.setLevel("INFO")
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
     # Set the API key manually here, rather than letting the server do it,
@@ -345,6 +349,12 @@ def serve_catalog(
     log_timestamps: bool = typer.Option(
         False, help="Include timestamps in log output."
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=("Log details of catalog creation."),
+    ),
 ):
     "Serve a catalog."
     import urllib.parse
@@ -401,6 +411,13 @@ def serve_catalog(
             write.mkdir()
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
     elif database is None:
+        if verbose:
+            from logging import StreamHandler
+
+            from tiled.catalog.adapter import logger as catalog_logger
+
+            catalog_logger.addHandler(StreamHandler())
+            catalog_logger.setLevel("INFO")
         typer.echo(
             """A catalog must be specified. Either use a temporary catalog:
 
