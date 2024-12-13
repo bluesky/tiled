@@ -411,13 +411,6 @@ def serve_catalog(
             write.mkdir()
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
     elif database is None:
-        if verbose:
-            from logging import StreamHandler
-
-            from tiled.catalog.adapter import logger as catalog_logger
-
-            catalog_logger.addHandler(StreamHandler())
-            catalog_logger.setLevel("INFO")
         typer.echo(
             """A catalog must be specified. Either use a temporary catalog:
 
@@ -435,6 +428,13 @@ or use an existing one:
             err=True,
         )
         raise typer.Abort()
+    elif verbose:
+        from logging import StreamHandler
+
+        from tiled.catalog.adapter import logger as catalog_logger
+
+        catalog_logger.addHandler(StreamHandler())
+        catalog_logger.setLevel("INFO")
 
     if write is None:
         typer.echo(
