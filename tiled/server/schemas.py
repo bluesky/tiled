@@ -14,9 +14,9 @@ from ..structures.core import StructureFamily
 from ..structures.data_source import Management, validate_data_sources
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
+from .pydantic_consolidated import ConsolidatedStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
-from .pydantic_union import UnionStructure
 
 if TYPE_CHECKING:
     import tiled.authn_database.orm
@@ -149,7 +149,7 @@ class DataSource(pydantic.BaseModel):
             NodeStructure,
             SparseStructure,
             TableStructure,
-            UnionStructure,
+            ConsolidatedStructure,
         ]
     ] = None
     mimetype: Optional[str] = None
@@ -186,7 +186,7 @@ class NodeAttributes(pydantic.BaseModel):
             NodeStructure,
             SparseStructure,
             TableStructure,
-            UnionStructure,
+            ConsolidatedStructure,
         ]
     ] = None
 
@@ -235,9 +235,9 @@ class SparseLinks(pydantic.BaseModel):
     block: str
 
 
-class UnionLinks(pydantic.BaseModel):
+class ConsolidatedLinks(pydantic.BaseModel):
     self: str
-    contents: List[
+    parts: List[
         Union[ArrayLinks, AwkwardLinks, ContainerLinks, DataFrameLinks, SparseLinks]
     ]
 
@@ -248,7 +248,7 @@ resource_links_type_by_structure_family = {
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
-    StructureFamily.union: UnionLinks,
+    StructureFamily.consolidated: ConsolidatedLinks,
 }
 
 
@@ -480,14 +480,14 @@ class PutDataSourceRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, UnionLinks]
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, ConsolidatedLinks]
     structure: Union[
         ArrayStructure,
         AwkwardStructure,
         NodeStructure,
         SparseStructure,
         TableStructure,
-        UnionStructure,
+        ConsolidatedStructure,
     ]
     metadata: Dict
     data_sources: List[DataSource]

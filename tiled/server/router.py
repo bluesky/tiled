@@ -27,7 +27,6 @@ from starlette.status import (
 )
 
 from .. import __version__
-from ..server.pydantic_union import UnionStructure, UnionStructurePart
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
@@ -62,6 +61,7 @@ from .dependencies import (
 )
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
+from .pydantic_consolidated import ConsolidatedStructure
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
@@ -423,7 +423,7 @@ async def array_block(
                 "Use slicing ('?slice=...') to request smaller chunks."
             ),
         )
-    if entry.structure_family == StructureFamily.union:
+    if entry.structure_family == StructureFamily.consolidated:
         structure_family = entry.data_source.structure_family
     else:
         structure_family = entry.structure_family
@@ -464,7 +464,7 @@ async def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if entry.structure_family == StructureFamily.union:
+    if entry.structure_family == StructureFamily.consolidated:
         structure_family = entry.data_source.structure_family
     else:
         structure_family = entry.structure_family
@@ -729,7 +729,7 @@ async def table_full(
                 "request a smaller chunks."
             ),
         )
-    if entry.structure_family == StructureFamily.union:
+    if entry.structure_family == StructureFamily.consolidated:
         structure_family = entry.data_source.structure_family
     else:
         structure_family = entry.structure_family
@@ -1160,25 +1160,8 @@ async def _create_node(
         body.specs,
     )
     metadata_modified = False
-    if structure_family == StructureFamily.union:
-        all_keys = []
-        for data_source in body.data_sources:
-            if data_source.structure_family == StructureFamily.table:
-                all_keys.extend(data_source.structure.columns)
-            else:
-                all_keys.append(data_source.name)
-        structure = UnionStructure(
-            parts=[
-                UnionStructurePart(
-                    data_source_id=data_source.id,
-                    structure=data_source.structure,
-                    structure_family=data_source.structure_family,
-                    name=data_source.name,
-                )
-                for data_source in body.data_sources
-            ],
-            all_keys=all_keys,
-        )
+    if structure_family == StructureFamily.consolidated:
+        structure = ConsolidatedStructure.from_data_sources(body.data_sources)
     elif body.data_sources:
         assert len(body.data_sources) == 1  # more not yet implemented
         structure = body.data_sources[0].structure

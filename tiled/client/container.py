@@ -643,7 +643,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
-        elif structure_family == StructureFamily.union:
+        elif structure_family == StructureFamily.consolidated:
             structure = None
             # To be filled in below, by server response.
             # We need the server to tell us data_source_ids.
@@ -685,7 +685,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_container(self, key=None, *, metadata=None, dims=None, specs=None):
+    def create_container(self, key=None, *, metadata=None, specs=None):
         """
         EXPERIMENTAL: Create a new, empty container.
 
@@ -696,8 +696,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        dims : List[str], optional
-            A label for each dimension of the array.
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
@@ -711,25 +709,25 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             specs=specs,
         )
 
-    def create_union(self, data_sources, key=None, *, metadata=None, specs=None):
+    def create_consolidated(self, data_sources, key=None, *, metadata=None, specs=None):
         """
-        EXPERIMENTAL: Create a new union backed by data sources.
+        EXPERIMENTAL: Create a new consolidated node backed by data sources.
 
         Parameters
         ----------
         data_sources : List[DataSources]
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        dims : List[str], optional
-            A label for each dimension of the array.
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
 
         """
         return self.new(
-            StructureFamily.union,
+            StructureFamily.consolidated,
             data_sources,
             key=key,
             metadata=metadata,
@@ -1083,7 +1081,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
-            "union": _LazyLoad(("..union", Container.__module__), "UnionClient"),
+            "consolidated": _LazyLoad(
+                ("..consolidated", Container.__module__), "ConsolidatedClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DatasetClient"
             ),
@@ -1102,7 +1102,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
             ),
-            "union": _LazyLoad(("..union", Container.__module__), "UnionClient"),
+            "consolidated": _LazyLoad(
+                ("..consolidated", Container.__module__), "ConsolidatedClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DaskDatasetClient"
             ),
