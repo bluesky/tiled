@@ -156,29 +156,25 @@ class TableAdapter:
         return f"{type(self).__name__}({self._structure.columns!r})"
 
     def __getitem__(self, key: str) -> ArrayAdapter:
-        """
+        # Must compute to determine shape
+        array = self.read([key])[key].values
 
-        Parameters
-        ----------
-        key :
+        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+        if isinstance(array.dtype, pandas.StringDtype):
+            import numpy
 
-        Returns
-        -------
+            max_size = max((len(i) for i in array.ravel()))
+            array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
 
-        """
-        # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        return ArrayAdapter.from_array(array)
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         if key not in self.structure().columns:
             return None
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        return self[key]
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
-        yield from (
-            (key, ArrayAdapter.from_array(self.read([key])[key].values))
-            for key in self._structure.columns
-        )
+        yield from ((key, self[key]) for key in self._structure.columns)
 
     def metadata(self) -> JSON:
         """

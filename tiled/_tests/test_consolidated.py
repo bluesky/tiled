@@ -79,10 +79,8 @@ def test_iterate_parts(context):
 def test_iterate_columns(context):
     client = from_context(context)
     for col in client["x"]:
-        if col not in ("A", "C"):
-            # TODO: reading string columns raises TypeError: Cannot interpret 'string[pyarrow]' as a data type
-            client["x"][col].read()
-            client[f"x/{col}"].read()
+        client["x"][col].read()
+        client[f"x/{col}"].read()
 
 
 def test_metadata(context):
