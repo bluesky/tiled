@@ -400,7 +400,7 @@ def accesspolicy_protocol_functions(
     node: BaseAdapter,
     principal: Principal,
     scopes: Scopes,
-    path_parts: list,
+    path_parts: List[Any],
 ) -> None:
     policy.allowed_scopes(node, principal, path_parts)
     policy.filters(node, principal, scopes, path_parts)
