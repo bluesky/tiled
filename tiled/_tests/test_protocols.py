@@ -377,14 +377,18 @@ class CustomAccessPolicy:
         return None
 
     def allowed_scopes(
-        self, node: BaseAdapter, principal: Principal, path_parts: list
+        self, node: BaseAdapter, principal: Principal, path_parts: List[Any]
     ) -> Scopes:
         allowed = self.scopes
         somemetadata = node.metadata()  # noqa: 841
         return allowed
 
     def filters(
-        self, node: BaseAdapter, principal: Principal, scopes: Scopes, path_parts: list
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        scopes: Scopes,
+        path_parts: List[Any],
     ) -> Filters:
         queries: Filters = []
         somespecs = node.specs()  # noqa: 841
