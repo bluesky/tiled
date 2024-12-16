@@ -86,9 +86,9 @@ class SQLAdapter:
 
         Parameters
         ----------
-        data_uri : the uri of the data
-        structure : the structure of the data
-
+        storage: the storage kind
+        data_source : data source describing the data
+        path_parts: ?
         Returns
         -------
         A modified copy of the data source
@@ -214,6 +214,38 @@ class SQLAdapter:
         """
         if partition != 0:
             raise NotImplementedError
+        if isinstance(data, pandas.DataFrame):
+            table = pyarrow.Table.from_pandas(data)
+            batches = table.to_batches()
+        else:
+            if not isinstance(data, list):
+                batches = [data]
+            else:
+                batches = data
+
+        schema = batches[
+            0
+        ].schema  # list of column names can be obtained from schema.names
+
+        reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
+
+        self.cur.adbc_ingest(self.table_name, reader, mode="append")
+        self.conn.commit()
+
+    def append(
+        self,
+        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
+    ) -> None:
+        """
+        "Function to write the data as arrow format."
+
+        Parameters
+        ----------
+        data : data to append into the database. Can be a list of record batch, or pandas dataframe.
+        table_name: string indicating the name of the table to ingest data in the database.
+        Returns
+        -------
+        """
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
             batches = table.to_batches()
