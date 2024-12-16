@@ -29,7 +29,7 @@ data_uri = "file://localhost/" + tempfile.gettempdir()
 def adapter() -> ArrowAdapter:
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=3)
-    assets = ArrowAdapter.init_storage(data_uri, structure=structure)
+    assets = ArrowAdapter.init_storage(data_uri, structure=structure, path_parts=[])
     return ArrowAdapter([asset.data_uri for asset in assets], structure=structure)
 
 
