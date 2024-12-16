@@ -16,7 +16,7 @@ helm install tiled oci://ghcr.io/bluesky/charts/tiled
 ```
 
 This Helm chart additionally refers to, but does not create, a Secret that contains
-the value to use as the API key. It is highly recommended to use a 
+the value to use as the API key. It is highly recommended to use a
 [SealedSecret](https://github.com/bitnami-labs/sealed-secrets#readme) if kubeseal is
 available on the cluster you are installing into.
 
