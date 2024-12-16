@@ -3,11 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## 2024-12-13
+## Unreleased
 
 ### Added
 
-- Added a Helm chart with deployable default configuration
+- `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+- Added Helm chart with deployable default configuration
 
 ## 2024-12-09
 
