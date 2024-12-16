@@ -24,7 +24,7 @@ See the [Docker documentation](./docker.md) for instructions on creating a secur
 
 ```sh
 # This will only decrypt in your namespace, in your cluster, and is safe to commit
-$ echo -n TILED_SINGLE_USER_API_KEY=<key> | kubeseal --raw --namespace <your namespace> --name tiled-secrets
+$ echo -n <key> | kubeseal --raw --namespace <your namespace> --name tiled-secrets
 AgCC...
 ```
 
@@ -36,8 +36,8 @@ kind: SealedSecret
 metadata:
   name: tiled-secrets
 spec:
-  encryptedData:
-    tiled-secrets: AgCC...
+  encryptedData: 
+    TILED_SINGLE_USER_API_KEY: AgCC...
 ```
 
 Apply the SealedSecret to the cluster with kubernetes:
