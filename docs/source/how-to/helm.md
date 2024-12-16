@@ -36,7 +36,7 @@ kind: SealedSecret
 metadata:
   name: tiled-secrets
 spec:
-  encryptedData: 
+  encryptedData:
     TILED_SINGLE_USER_API_KEY: AgCC...
 ```
 
