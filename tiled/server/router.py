@@ -1204,11 +1204,11 @@ async def _create_node(
     )
     structure = node.structure()
     if structure is not None:
-        structure = structure.dict()
+        structure = structure.model_dump()
     response_data = {
         "id": key,
         "links": links,
-        "data_sources": [ds.dict() for ds in node.data_sources],
+        "data_sources": [ds.model_dump() for ds in node.data_sources],
         "structure": structure,
     }
     if metadata_modified:

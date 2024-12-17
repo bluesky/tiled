@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
-from pydantic import ConfigDict, Field, StringConstraints
+from pydantic import ConfigDict, Field, StringConstraints, ValidationInfo
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
@@ -469,9 +469,9 @@ class PostMetadataRequest(pydantic.BaseModel):
                 raise ValueError
         return v
 
-    @pydantic.validator("data_sources", always=True)
-    def check_consistency(cls, v, values):
-        return validate_data_sources(values["structure_family"], v)
+    @pydantic.field_validator("data_sources")
+    def check_consistency(cls, v, info: ValidationInfo):
+        return validate_data_sources(info.data["structure_family"], v)
 
 
 class PutDataSourceRequest(pydantic.BaseModel):
