@@ -273,6 +273,7 @@ client or pass the optional parameter `include_data_sources=True` to
         self,
         structure_clients=UNCHANGED,
         include_data_sources=UNCHANGED,
+        structure=UNCHANGED,
         **kwargs,
     ):
         """
@@ -282,9 +283,12 @@ client or pass the optional parameter `include_data_sources=True` to
             structure_clients = self.structure_clients
         if include_data_sources is UNCHANGED:
             include_data_sources = self._include_data_sources
+        if structure is UNCHANGED:
+            structure = self._structure
         return type(self)(
             self.context,
             item=self._item,
+            structure=structure,
             structure_clients=structure_clients,
             include_data_sources=include_data_sources,
             **kwargs,
