@@ -2,6 +2,8 @@ import numpy
 import pandas
 import pandas.testing
 import pytest
+import awkward
+import sparse
 
 from ..catalog import in_memory
 from ..client import Context, from_context
@@ -10,6 +12,8 @@ from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.table import TableStructure
+from ..structures.awkward import AwkwardStructure
+from ..structures.sparse import COOStructure
 
 rng = numpy.random.default_rng(12345)
 
@@ -23,8 +27,24 @@ df2 = pandas.DataFrame(
 )
 arr1 = rng.random(size=(3, 5), dtype="float64")
 arr2 = rng.integers(0, 255, size=(5, 7, 3), dtype="uint8")
-md = {"md_key1": "md_val1", "md_key2": 2}
 
+# An awkward array
+awk_arr = awkward.Array(
+    [
+        [{"x": 1.1, "y": [1]}, {"x": 2.2, "y": [1, 2]}],
+        [],
+        [{"x": 3.3, "y": [1, 2, 3]}],
+    ]
+)
+awk_packed = awkward.to_packed(awk_arr)
+awk_form, awk_length, awk_container = awkward.to_buffers(awk_packed)
+
+# A sparse array
+arr = rng.random(size=(10, 20, 30), dtype="float64")
+arr[arr < 0.95] = 0  # Fill half of the array with zeros.
+sps_arr = sparse.COO(arr)
+
+md = {"md_key1": "md_val1", "md_key2": 2}
 
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
@@ -50,12 +70,26 @@ def context(tree):
                 DataSource(
                     structure_family=StructureFamily.array,
                     structure=ArrayStructure.from_array(arr1),
-                    name="F",
+                    name="A1",
                 ),
                 DataSource(
                     structure_family=StructureFamily.array,
                     structure=ArrayStructure.from_array(arr2),
-                    name="G",
+                    name="A2",
+                ),
+                DataSource(
+                    structure_family=StructureFamily.awkward,
+                    structure=AwkwardStructure(
+                                length=awk_length,
+                                form=awk_form.to_dict(),
+                            ),
+                    name="AWK",
+                ),
+                DataSource(
+                    structure_family=StructureFamily.sparse,
+                    structure=COOStructure(shape=sps_arr.shape,
+                                        chunks=tuple((dim,) for dim in sps_arr.shape)),
+                    name="SPS",
                 ),
             ],
             key="x",
@@ -64,10 +98,33 @@ def context(tree):
         # Write by data source.
         x.parts["table1"].write(df1)
         x.parts["table2"].write(df2)
-        x.parts["F"].write_block(arr1, (0, 0))
-        x.parts["G"].write_block(arr2, (0, 0, 0))
+        x.parts["A1"].write_block(arr1, (0, 0))
+        x.parts["A2"].write_block(arr2, (0, 0, 0))
+        x.parts["AWK"].write(awk_container)
+        x.parts["SPS"].write(coords=sps_arr.coords, data=sps_arr.data)
 
         yield context
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("A", df1["A"]),
+        ("B", df1["B"]),
+        ("C", df2["C"]),
+        ("D", df2["D"]),
+        ("E", df2["E"]),
+        ("A1", arr1),
+        ("A2", arr2),
+        ("AWK", awk_arr),
+        ("SPS", sps_arr.todense()),
+    ],
+)
+def test_reading(context, name, expected):
+    client = from_context(context)
+    actual = client["x"][name].read()
+    if name == "SPS":
+        actual = actual.todense()
+    assert numpy.array_equal(actual, expected)
 
 
 def test_iterate_parts(context):
@@ -86,3 +143,4 @@ def test_iterate_columns(context):
 def test_metadata(context):
     client = from_context(context)
     assert client["x"].metadata == md
+

@@ -31,8 +31,8 @@ def links_for_awkward(structure_family, structure, base_url, path_str, part=None
     links["buffers"] = f"{base_url}/awkward/buffers/{path_str}"
     links["full"] = f"{base_url}/awkward/full/{path_str}"
     if part:
-        links["buffers"] += "?part={part}"
-        links["full"] += "?part={part}"
+        links["buffers"] += f"?part={part}"
+        links["full"] += f"?part={part}"
     return links
 
 

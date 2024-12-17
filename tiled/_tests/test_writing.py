@@ -752,6 +752,23 @@ def test_consolidated_two_tables_colliding_names(tree):
             )
 
 
+def test_consolidated_noname(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        structure1 = TableStructure.from_pandas(df1)
+        with fail_with_status_code(422):
+            client.create_consolidated(
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=structure1,
+                    ),
+                ],
+                key="x",
+            )
+
+
 def test_consolidated_two_tables_colliding_keys(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
