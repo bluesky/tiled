@@ -285,6 +285,7 @@ client or pass the optional parameter `include_data_sources=True` to
         return type(self)(
             self.context,
             item=self._item,
+            structure=self._structure,
             structure_clients=structure_clients,
             include_data_sources=include_data_sources,
             **kwargs,
