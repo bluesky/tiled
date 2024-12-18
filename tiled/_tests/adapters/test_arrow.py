@@ -4,7 +4,9 @@ import pyarrow as pa
 import pytest
 
 from tiled.adapters.arrow import ArrowAdapter
+from tiled.structures.core import StructureFamily
 from tiled.structures.table import TableStructure
+from tiled.structures.data_source import DataSource, Management, Storage
 
 names = ["f0", "f1", "f2"]
 data0 = [
@@ -26,11 +28,30 @@ data_uri = "file://localhost/" + tempfile.gettempdir()
 
 
 @pytest.fixture
-def adapter() -> ArrowAdapter:
+def data_source_from_init_storage() -> DataSource:
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=3)
-    assets = ArrowAdapter.init_storage(data_uri, structure=structure)
-    return ArrowAdapter([asset.data_uri for asset in assets], structure=structure)
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/vnd.apache.arrow.file",
+        structure_family=StructureFamily.table,
+        structure=structure,
+        assets=[],
+    )
+    storage = Storage(filesystem=data_uri, sql=None)
+    return ArrowAdapter.init_storage(
+        data_source=data_source, storage=storage, path_parts=[]
+    )
+
+
+@pytest.fixture
+def adapter(data_source_from_init_storage: DataSource) -> ArrowAdapter:
+    data_source = data_source_from_init_storage
+    return ArrowAdapter(
+        [asset.data_uri for asset in data_source.assets],
+        data_source.structure,
+    )
+
 
 
 def test_attributes(adapter: ArrowAdapter) -> None:

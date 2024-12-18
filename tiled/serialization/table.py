@@ -7,7 +7,7 @@ from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_availab
 
 
 @serialization_registry.register(StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE)
-def serialize_arrow(df, metadata, preserve_index=True):
+def serialize_arrow(df, metadata, preserve_index=False):
     import pyarrow
 
     if isinstance(df, dict):
@@ -30,7 +30,7 @@ def deserialize_arrow(buffer):
 # There seems to be no official Parquet MIME type.
 # https://issues.apache.org/jira/browse/PARQUET-1889
 @serialization_registry.register(StructureFamily.table, "application/x-parquet")
-def serialize_parquet(df, metadata, preserve_index=True):
+def serialize_parquet(df, metadata, preserve_index=False):
     import pyarrow.parquet
 
     table = pyarrow.Table.from_pandas(df, preserve_index=preserve_index)
