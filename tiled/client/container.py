@@ -25,6 +25,7 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
+    normalize_specs
 )
 
 
@@ -586,6 +587,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
+
     def new(
         self,
         structure_family,
@@ -608,18 +610,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         self._cached_len = None
         metadata = metadata or {}
-        specs = specs or []
-        normalized_specs = []
-        for spec in specs:
-            if isinstance(spec, str):
-                spec = Spec(spec)
-            normalized_specs.append(asdict(spec))
 
         item = {
             "attributes": {
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
-                "specs": normalized_specs,
+                "specs": normalize_specs(specs or []),
                 "data_sources": [asdict(data_source) for data_source in data_sources],
             }
         }

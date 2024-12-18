@@ -5,11 +5,14 @@ from pathlib import Path
 from threading import Lock
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
+from dataclasses import asdict
+from typing import Union
 
 import httpx
 import msgpack
 
 from ..utils import path_from_uri
+from ..structures.core import Spec
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -206,6 +209,18 @@ DEFAULT_TIMEOUT_PARAMS = {
     "write": 30.0,
     "pool": 5.0,
 }
+
+
+def normalize_specs(specs : Union[list[str, Spec], None]) -> list[dict]:
+    if specs is None:
+        return None
+
+    result = []
+    for spec in specs:
+        if isinstance(spec, str):
+            spec = Spec(spec)
+        result.append(asdict(spec))
+    return result
 
 
 def params_from_slice(slice):
