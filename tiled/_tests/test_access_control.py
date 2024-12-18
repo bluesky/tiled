@@ -48,10 +48,10 @@ def context(tmpdir_module):
         "access_control": {
             "access_policy": "tiled.access_policies:SimpleAccessPolicy",
             "args": {
-                "access_lists": {"alice": ["a", "c", "d", "e"]},
+                "access_lists": {"alice": ["a", "c", "d", "e", "g"]},
                 "provider": "toy",
                 "admins": ["admin"],
-                "public": ["f"],
+                "public": ["f", "g"],
             },
         },
         "trees": [
@@ -128,6 +128,21 @@ def context(tmpdir_module):
                 },
             },
             {"tree": ArrayAdapter.from_array(arr), "path": "/f"},
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {"writable_storage": tmpdir_module / "g"},
+                "path": "/g",
+                "access_control": {
+                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+                    "args": {
+                        "provider": "toy",
+                        "key": "project",
+                        "access_lists": {"alice": ["projectA"], "bob": ["projectB"]},
+                        "admins": ["admin"],
+                        "public": ["projectC"],
+                    },
+                },
+            },
         ],
     }
     app = build_app_from_config(config)
@@ -138,6 +153,15 @@ def context(tmpdir_module):
                 admin_client[k].write_array(arr, key="A1")
                 admin_client[k].write_array(arr, key="A2")
                 admin_client[k].write_array(arr, key="x")
+            admin_client["g"].write_array(
+                arr, key="A3", metadata={"project": "projectA"}
+            )
+            admin_client["g"].write_array(
+                arr, key="A4", metadata={"project": "projectB"}
+            )
+            admin_client["g"].write_array(
+                arr, key="r", metadata={"project": "projectC"}
+            )
         yield context
 
 
@@ -148,9 +172,15 @@ def test_top_level_access_control(context, enter_username_password):
     assert "A2" in alice_client["a"]
     assert "A1" not in alice_client["a"]
     assert "b" not in alice_client
+    assert "g" in alice_client
+    assert "A3" in alice_client["g"]
+    assert "A4" not in alice_client["g"]
     alice_client["a"]["A2"]
+    alice_client["g"]["A3"]
     with pytest.raises(KeyError):
         alice_client["b"]
+    with pytest.raises(KeyError):
+        alice_client["g"]["A4"]
 
     with enter_username_password("bob", "secret2"):
         bob_client = from_context(context, username="bob")
@@ -159,6 +189,8 @@ def test_top_level_access_control(context, enter_username_password):
         bob_client["a"]
     with pytest.raises(KeyError):
         bob_client["b"]
+    with pytest.raises(KeyError):
+        bob_client["g"]["A3"]
     alice_client.logout()
 
     # Make sure clearing default identity works without raising an error.
@@ -177,6 +209,7 @@ def test_access_control_with_api_key_auth(context, enter_username_password):
         context.api_key = key_info["secret"]
         client = from_context(context)
         client["a"]["A2"]
+        client["g"]["A3"]
     finally:
         # Clean up Context, which is a module-scopae fixture shared with other tests.
         context.api_key = None
@@ -194,7 +227,11 @@ def test_node_export(enter_username_password, context, buffer):
     assert "A2" in exported_dict["contents"]["a"]["contents"]
     assert "A1" not in exported_dict["contents"]["a"]["contents"]
     assert "b" not in exported_dict
+    assert "g" in exported_dict["contents"]
+    assert "A3" in exported_dict["contents"]["g"]["contents"]
+    assert "A4" not in exported_dict["contents"]["g"]["contents"]
     exported_dict["contents"]["a"]["contents"]["A2"]
+    exported_dict["contents"]["g"]["contents"]["A3"]
 
 
 def test_create_and_update_allowed(enter_username_password, context):
@@ -206,8 +243,13 @@ def test_create_and_update_allowed(enter_username_password, context):
     alice_client["c"]["x"].update_metadata(metadata={"added_key": 3})
     assert alice_client["c"]["x"].metadata["added_key"] == 3
 
+    alice_client["g"]["A3"].metadata
+    alice_client["g"]["A3"].update_metadata(metadata={"added_key": 9})
+    assert alice_client["g"]["A3"].metadata["added_key"] == 9
+
     # Create
     alice_client["c"].write_array([1, 2, 3])
+    alice_client["g"].write_array([4, 5, 6], metadata={"project": "projectA"})
     alice_client.logout()
 
 
@@ -233,8 +275,11 @@ def test_public_access(context):
     for key in ["a", "b", "c", "d", "e"]:
         assert key not in public_client
     public_client["f"].read()
+    public_client["g"]["r"].read()
     with pytest.raises(KeyError):
         public_client["a", "A1"]
+    with pytest.raises(KeyError):
+        public_client["g", "A3"]
 
 
 def test_service_principal_access(tmpdir):
