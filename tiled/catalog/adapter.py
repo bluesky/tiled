@@ -1192,6 +1192,10 @@ def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
         return None
+    if isinstance(structure, dict):
+        return structure
+    if dataclasses.is_dataclass(structure):
+        return dataclasses.asdict(structure)
     return structure.model_dump()
 
 

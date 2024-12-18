@@ -70,9 +70,9 @@ class ArrowAdapter:
         Class to initialize the list of assets for given uri.
         Parameters
         ----------
-        data_uri :
-        structure :
-
+        storage : the storage option for .arrow files
+        data_source : data source representing the adapter
+        path_parts: the list of partitions
         Returns
         -------
         The list of assets.
@@ -81,6 +81,7 @@ class ArrowAdapter:
         data_uri = str(storage.get("filesystem")) + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
+        print('uri', data_uri)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         assets = [
