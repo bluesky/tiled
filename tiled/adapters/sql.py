@@ -88,7 +88,7 @@ class SQLAdapter:
         ----------
         storage: the storage kind
         data_source : data source describing the data
-        path_parts: ?
+        path_parts: the list of partitions.
         Returns
         -------
         A modified copy of the data source
