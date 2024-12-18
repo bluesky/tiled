@@ -149,10 +149,10 @@ class Revision(pydantic.BaseModel):
 
 
 class DataSource(pydantic.BaseModel, Generic[StructureT]):
-    id: Optional[int]
+    id: Optional[int] = None
     structure_family: StructureFamily
     structure: Optional[StructureT]
-    mimetype: Optional[str]
+    mimetype: Optional[str] = None
     parameters: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable

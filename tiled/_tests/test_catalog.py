@@ -268,7 +268,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 async def test_write_array_internal_direct(a, tmpdir):
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter.from_array(arr)
-    structure = asdict(ad.structure())
+    structure = ad.structure()
     await a.create_node(
         key="x",
         structure_family="array",
@@ -523,7 +523,7 @@ async def test_constraints_on_parameter_and_num(a, assets):
                 DataSource(
                     structure_family=arr_adapter.structure_family,
                     mimetype="text/csv",
-                    structure=asdict(arr_adapter.structure()),
+                    structure=arr_adapter.structure(),
                     parameters={},
                     management=Management.external,
                     assets=assets,
