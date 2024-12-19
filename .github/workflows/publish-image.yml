@@ -31,7 +31,7 @@ jobs:
       - name: Validate SemVer2 version compliance
         if: startsWith(github.ref, 'refs/tags/')
         env:
-          SEMVER_REGEX: ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
+          SEMVER_REGEX: ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
 
         run: |
           ref="${{ github.ref_name }}"
@@ -91,7 +91,6 @@ jobs:
 
       - name: package chart and push it
         run: |
-          sed -i "$ a appVersion: ${GITHUB_REF##*/}" helm/tiled/Chart.yaml
           helm dependencies update helm/tiled
-          helm package helm/tiled --version ${GITHUB_REF##*/} -d /tmp/
-          helm push /tmp/tiled-${GITHUB_REF##*/}.tgz oci://ghcr.io/bluesky/charts
+          helm package helm/tiled --version ${GITHUB_REF##*/?(v)} --app-version ${GITHUB_REF##*/} -d /tmp/
+          helm push /tmp/tiled-${GITHUB_REF##*/?(v)}.tgz oci://ghcr.io/bluesky/charts
