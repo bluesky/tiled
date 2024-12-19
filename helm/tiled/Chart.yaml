@@ -13,6 +13,7 @@ description: Tiled is a data access service for data-aware portals and data scie
 type: application
 
 # Chart version, automatically incremented by CI during release
-version: 0.1.0
+version: 0.0.1
 
-# appVersion automatically inserted by CI during release
+# Container version, automatically incremented by CI during release
+appVersion: v0.1.0b12
