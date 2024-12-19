@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tiled.fullname" . }}-config
+data:
+  config.yaml: |-
+    {{- toYaml .Values.config | nindent 4 }}

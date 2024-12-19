@@ -21,6 +21,7 @@ tutorials/plotly-integration
 how-to/profiles
 how-to/client-logger
 how-to/docker
+how-to/helm
 how-to/configuration
 how-to/read-custom-formats
 how-to/custom-export-formats

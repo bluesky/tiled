@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+- Added Helm chart with deployable default configuration
 
 ### Fixed
 
