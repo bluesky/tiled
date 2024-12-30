@@ -1,18 +1,18 @@
 import builtins
 import uuid
 from collections.abc import Hashable
+from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
+from typing import Union
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
-from dataclasses import asdict
-from typing import Union
 
 import httpx
 import msgpack
 
-from ..utils import path_from_uri
 from ..structures.core import Spec
+from ..utils import path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -211,7 +211,7 @@ DEFAULT_TIMEOUT_PARAMS = {
 }
 
 
-def normalize_specs(specs : Union[list[str, Spec], None]) -> list[dict]:
+def normalize_specs(specs: Union[list[str, Spec], None]) -> list[dict]:
     if specs is None:
         return None
 
