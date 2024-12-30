@@ -60,6 +60,12 @@ def validate_container_data_sources(node_structure_family, data_sources):
     return data_sources
 
 
+def validate_composite_data_sources(node_structure_family, data_sources):
+    if len(data_sources) != 0:
+        raise ValueError("A composite node can not be backed by a data source directly")
+    return data_sources
+
+
 def validate_consolidated_data_sources(node_structure_family, data_sources):
     "Check that column names and keys of others (e.g. arrays) do not collide."
     keys = set()
@@ -101,4 +107,5 @@ def validate_other_data_sources(node_structure_family, data_sources):
 
 validators = collections.defaultdict(lambda: validate_other_data_sources)
 validators[StructureFamily.container] = validate_container_data_sources
+validators[StructureFamily.composite] = validate_composite_data_sources
 validators[StructureFamily.consolidated] = validate_consolidated_data_sources
