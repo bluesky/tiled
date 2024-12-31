@@ -25,7 +25,7 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
-    normalize_specs
+    normalize_specs,
 )
 
 
@@ -37,16 +37,16 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # This is populated when the first instance is created.
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
-    @classmethod
-    def _discover_entrypoints(cls, entrypoint_name):
-        return OneShotCachedMap(
-            {
-                name: entrypoint.load
-                for name, entrypoint in entrypoints.get_group_named(
-                    entrypoint_name
-                ).items()
-            }
-        )
+    # @classmethod
+    # def _discover_entrypoints(cls, entrypoint_name):
+    #     return OneShotCachedMap(
+    #         {
+    #             name: entrypoint.load
+    #             for name, entrypoint in entrypoints.get_group_named(
+    #                 entrypoint_name
+    #             ).items()
+    #         }
+    #     )
 
     @classmethod
     def discover_clients_from_entrypoints(cls):
@@ -148,8 +148,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         if isinstance(structure_clients, str):
             structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
-        if structure_clients is UNCHANGED:
-            structure_clients = self.structure_clients
+        # if structure_clients is UNCHANGED:
+        #     structure_clients = self.structure_clients
         if queries is UNCHANGED:
             queries = self._queries
         if sorting is UNCHANGED:
@@ -587,7 +587,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
-
     def new(
         self,
         structure_family,
@@ -623,7 +622,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if key is not None:
             body["id"] = key
 
-        # if check:
+        # Register existing (external) assets
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
@@ -639,11 +638,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
+        elif structure_family == StructureFamily.composite:
+            structure = {"contents": None, "count": None}
         elif structure_family == StructureFamily.consolidated:
             structure = None
             # To be filled in below, by server response.
             # We need the server to tell us data_source_ids.
         else:
+            # We assume that each node is backed by only _one_ data_source
             (data_source,) = data_sources
             structure = data_source.structure
         item["attributes"]["structure"] = structure
@@ -661,8 +663,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         item.update(document)
 
         # Ensure this is a dataclass, not a dict.
-        # When we apply type hints and mypy to the client it should be possible
-        # to dispense with this.
+        # TODO: When we apply type hints and mypy to the client it should be possible to dispense with this.
         if (structure_family != StructureFamily.container) and isinstance(
             structure, dict
         ):
@@ -699,6 +700,29 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new(
             StructureFamily.container,
+            [],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+
+    def create_composite(self, key=None, *, metadata=None, specs=None):
+        """Create a new, empty composite.
+
+        Parameters
+        ----------
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+        return self.new(
+            StructureFamily.composite,
             [],
             key=key,
             metadata=metadata,
@@ -1081,6 +1105,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "consolidated": _LazyLoad(
                 ("..consolidated", Container.__module__), "ConsolidatedClient"
             ),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DatasetClient"
             ),
@@ -1101,6 +1128,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             ),
             "consolidated": _LazyLoad(
                 ("..consolidated", Container.__module__), "ConsolidatedClient"
+            ),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
             ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DaskDatasetClient"
