@@ -36,6 +36,8 @@ from ..utils import (
 from . import schemas
 from .etag import tokenize
 from .links import links_for_node
+from .pydantic_composite import CompositeStructure
+from .pydantic_container import ContainerStructure
 from .utils import record_timing
 
 del queries
@@ -431,8 +433,20 @@ async def construct_resource(
             # for ease of going between dataclass and pydantic.
             specs.append(schemas.Spec(**spec.model_dump()))
         attributes["specs"] = specs
-    if (entry is not None) and entry.structure_family == StructureFamily.container:
-        attributes["structure_family"] = StructureFamily.container
+
+    if (entry is not None) and entry.structure_family in (
+        StructureFamily.container,
+        StructureFamily.composite,
+    ):
+        attributes["structure_family"] = entry.structure_family
+
+        # Define strucutre and links types
+        if entry.structure_family == StructureFamily.container:
+            StructureT = ContainerStructure
+            ResourceLinksT = schemas.ContainerLinks
+        else:
+            StructureT = CompositeStructure
+            ResourceLinksT = schemas.CompositeLinks
 
         if schemas.EntryFields.structure in fields:
             if (
@@ -453,7 +467,7 @@ async def construct_resource(
                     # The size may change as we are walking the entry.
                     # Keep a *true* count separately from est_count.
                     count = 0
-                    for key, adapter in entry.items():
+                    for key, adapter in await ensure_awaitable(entry.items):
                         count += 1
                         if count > INLINED_CONTENTS_LIMIT:
                             # The est_count was inaccurate or else the entry has grown
@@ -461,6 +475,7 @@ async def construct_resource(
                             count = await len_or_approx(entry)
                             contents = None
                             break
+
                         contents[key] = await construct_resource(
                             base_url,
                             path_parts + [key],
@@ -476,11 +491,9 @@ async def construct_resource(
             else:
                 count = await len_or_approx(entry)
                 contents = None
-            structure = schemas.NodeStructure(
-                count=count,
-                contents=contents,
-            )
+            structure = StructureT(count=count, contents=contents)
             attributes["structure"] = structure
+
         if schemas.EntryFields.sorting in fields:
             if hasattr(entry, "sorting"):
                 # HUGE HACK
@@ -494,6 +507,7 @@ async def construct_resource(
                         {"key": key, "direction": direction}
                         for key, direction in entry.sorting
                     ]
+
         d = {
             "id": id_,
             "attributes": schemas.NodeAttributes(**attributes),
@@ -508,8 +522,9 @@ async def construct_resource(
             )
 
         resource = schemas.Resource[
-            schemas.NodeAttributes, schemas.ContainerLinks, schemas.ContainerMeta
+            schemas.NodeAttributes, ResourceLinksT, schemas.ContainerMeta
         ](**d)
+
     else:
         links = {"self": f"{base_url}/metadata/{path_str}"}
         if entry is not None:
@@ -544,6 +559,7 @@ async def construct_resource(
         resource = schemas.Resource[
             schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict
         ](**d)
+
     return resource
 
 

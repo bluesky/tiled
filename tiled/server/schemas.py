@@ -14,7 +14,9 @@ from ..structures.core import StructureFamily
 from ..structures.data_source import Management, validate_data_sources
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
+from .pydantic_composite import CompositeStructure
 from .pydantic_consolidated import ConsolidatedStructure
+from .pydantic_container import ContainerStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
 
@@ -149,7 +151,9 @@ class DataSource(pydantic.BaseModel):
             NodeStructure,
             SparseStructure,
             TableStructure,
+            CompositeStructure,
             ConsolidatedStructure,
+            ContainerStructure,
         ]
     ] = None
     mimetype: Optional[str] = None
@@ -186,7 +190,9 @@ class NodeAttributes(pydantic.BaseModel):
             NodeStructure,
             SparseStructure,
             TableStructure,
+            CompositeStructure,
             ConsolidatedStructure,
+            ContainerStructure,
         ]
     ] = None
 
@@ -242,9 +248,16 @@ class ConsolidatedLinks(pydantic.BaseModel):
     ]
 
 
+class CompositeLinks(pydantic.BaseModel):
+    self: str
+    full: str
+    parts: List[Union[ArrayLinks, AwkwardLinks, DataFrameLinks, SparseLinks]]
+
+
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
+    StructureFamily.composite: CompositeLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
@@ -480,14 +493,18 @@ class PutDataSourceRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, ConsolidatedLinks]
+    links: Union[
+        ArrayLinks, DataFrameLinks, SparseLinks, CompositeLinks, ConsolidatedLinks
+    ]
     structure: Union[
         ArrayStructure,
         AwkwardStructure,
         NodeStructure,
         SparseStructure,
         TableStructure,
+        CompositeStructure,
         ConsolidatedStructure,
+        ContainerStructure,
     ]
     metadata: Dict
     data_sources: List[DataSource]
@@ -495,7 +512,7 @@ class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
 
 class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, CompositeLinks]
     # May be None if not altered
     metadata: Optional[Dict] = None
     data_sources: Optional[List[DataSource]] = None
