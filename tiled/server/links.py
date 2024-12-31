@@ -44,6 +44,26 @@ def links_for_container(structure_family, structure, base_url, path_str):
     return links
 
 
+def links_for_composite(structure_family, structure, base_url, path_str):
+    links = {}
+    links["full"] = f"{base_url}/container/full/{path_str}"
+
+    # This contains the links for each (sub-)structure
+    links["parts"] = []
+    if structure.contents is not None:
+        for key, item in structure.contents:
+            item_links = LINKS_BY_STRUCTURE_FAMILY[item.structure_family](
+                item.structure_family,
+                item.structure,
+                base_url,
+                path_str,
+                part=item.name,
+            )
+            item_links["self"] = f"{base_url}/metadata/{path_str}"
+            links["parts"].append(item_links)
+    return links
+
+
 def links_for_table(structure_family, structure, base_url, path_str, part=None):
     links = {}
     links["partition"] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
@@ -74,6 +94,7 @@ def links_for_consolidated(structure_family, structure, base_url, path_str):
 LINKS_BY_STRUCTURE_FAMILY = {
     StructureFamily.array: links_for_array,
     StructureFamily.awkward: links_for_awkward,
+    StructureFamily.composite: links_for_composite,
     StructureFamily.container: links_for_container,
     StructureFamily.sparse: links_for_array,  # sparse and array are the same
     StructureFamily.table: links_for_table,
