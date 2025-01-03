@@ -134,13 +134,13 @@ AnyAdapter = Union[
 
 class AccessPolicy(Protocol):
     @abstractmethod
-    def allowed_scopes(
+    async def allowed_scopes(
         self, node: BaseAdapter, principal: Principal, path_parts: List[Any]
     ) -> Scopes:
         pass
 
     @abstractmethod
-    def filters(
+    async def filters(
         self,
         node: BaseAdapter,
         principal: Principal,

@@ -115,7 +115,7 @@ def SecureEntry(scopes, structure_families=None):
                     except (KeyError, TypeError):
                         raise NoEntry(path_parts)
                     if getattr(entry, "access_policy", None) is not None:
-                        path_parts_relative = path_parts[i + 1 :]
+                        path_parts_relative = path_parts[i + 1 :]  # noqa: E203
                         entry_with_access_policy = entry
                         # filter and keep only what we are allowed to see from here
                         entry = await filter_for_access(
