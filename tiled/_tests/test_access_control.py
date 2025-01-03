@@ -7,10 +7,10 @@ from fastapi import HTTPException
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from ..access_policies import (
+    ALL_SCOPES,
+    PUBLIC_SCOPES,
     SimpleAccessPolicy,
     SpecialUsers,
-    PUBLIC_SCOPES,
-    ALL_SCOPES,
 )
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter

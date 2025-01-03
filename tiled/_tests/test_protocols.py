@@ -368,7 +368,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
     mock_call6.assert_called_once_with("abc")
 
 
-class CustomAccessPolicy:
+class CustomAccessPolicy(AccessPolicy):
     ALL = ALL_ACCESS
 
     def __init__(self, scopes: Optional[Scopes] = None) -> None:
@@ -407,7 +407,7 @@ async def accesspolicy_protocol_functions(
     await policy.filters(node, principal, scopes, path_parts)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio  # type: ignore
 async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     mock_call = mocker.patch.object(CustomAwkwardAdapter, "metadata")
     mock_call2 = mocker.patch.object(CustomAwkwardAdapter, "specs")
