@@ -11,6 +11,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - In client, support specifying API key expiration time as string with
   units, like ``"7d"` or `"10m"`.
 - Fix bug where access policies were not applied to child nodes during request
+- Add metadata-based access control to SimpleAccessPolicy
+- Add example test of metadata-based allowed_scopes which requires the path to the target node
 
 ### Fixed
 

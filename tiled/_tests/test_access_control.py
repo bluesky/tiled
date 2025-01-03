@@ -1,17 +1,66 @@
+import copy
 import json
 
 import numpy
 import pytest
-from starlette.status import HTTP_403_FORBIDDEN
+from fastapi import HTTPException
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
+from ..access_policies import (
+    SimpleAccessPolicy,
+    SpecialUsers,
+    PUBLIC_SCOPES,
+    ALL_SCOPES,
+)
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
+from ..client.utils import ClientError
 from ..server.app import build_app_from_config
+from ..server.core import NoEntry
 from .utils import enter_username_password, fail_with_status_code
 
 arr = numpy.ones((5, 5))
+arr_zeros = numpy.zeros((5, 5))
 arr_ad = ArrayAdapter.from_array(arr)
+
+
+class EntryBasedAccessPolicy(SimpleAccessPolicy):
+    async def allowed_scopes(self, node, principal, path_parts):
+        # If this is being called, filter_access has let us get this far.
+        if principal is SpecialUsers.public:
+            allowed = PUBLIC_SCOPES
+        elif principal.type == "service":
+            allowed = self.scopes
+        else:
+            allowed = self.scopes
+
+        if self._get_id(principal) in self.admins:
+            allowed = ALL_SCOPES
+        else:
+            # Allowed scopes will be filtered based on some metadata of the target entry
+            try:
+                for i, segment in enumerate(path_parts):
+                    if hasattr(node, "lookup_adapter"):
+                        node = await node.lookup_adapter(path_parts[i:])
+                        if node is None:
+                            raise NoEntry(path_parts)
+                        break
+                    else:
+                        try:
+                            node = node[segment]
+                        except (KeyError, TypeError):
+                            raise NoEntry(path_parts)
+            except NoEntry:
+                raise HTTPException(
+                    status_code=HTTP_404_NOT_FOUND,
+                    detail=f"No such entry: {path_parts}",
+                )
+            remove_scope = node.metadata().get("remove_scope", None)
+            if remove_scope in allowed:
+                allowed = copy.copy(allowed)
+                allowed.remove(remove_scope)
+        return allowed
 
 
 def tree_a(access_policy=None):
@@ -48,7 +97,7 @@ def context(tmpdir_module):
         "access_control": {
             "access_policy": "tiled.access_policies:SimpleAccessPolicy",
             "args": {
-                "access_lists": {"alice": ["a", "c", "d", "e", "g"]},
+                "access_lists": {"alice": ["a", "c", "d", "e", "g", "h"]},
                 "provider": "toy",
                 "admins": ["admin"],
                 "public": ["f", "g"],
@@ -143,6 +192,19 @@ def context(tmpdir_module):
                     },
                 },
             },
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {"writable_storage": tmpdir_module / "h"},
+                "path": "/h",
+                "access_control": {
+                    "access_policy": "tiled._tests.test_access_control:EntryBasedAccessPolicy",
+                    "args": {
+                        "provider": "toy",
+                        "access_lists": {"alice": ["x", "y"]},
+                        "admins": ["admin"],
+                    },
+                },
+            },
         ],
     }
     app = build_app_from_config(config)
@@ -153,16 +215,19 @@ def context(tmpdir_module):
                 admin_client[k].write_array(arr, key="A1")
                 admin_client[k].write_array(arr, key="A2")
                 admin_client[k].write_array(arr, key="x")
-            admin_client["g"].write_array(
-                arr, key="A3", metadata={"project": "projectA"}
-            )
-            admin_client["g"].write_array(
-                arr, key="A4", metadata={"project": "projectB"}
-            )
-            admin_client["g"].write_array(
-                arr, key="r", metadata={"project": "projectC"}
-            )
+            for k, v in {"A3": "projectA", "A4": "projectB", "r": "projectC"}.items():
+                admin_client["g"].write_array(arr, key=k, metadata={"project": v})
+            for k, v in {"x": "write:data", "y": None}.items():
+                admin_client["h"].write_array(arr, key=k, metadata={"remove_scope": v})
         yield context
+
+
+def test_entry_based_scopes(context, enter_username_password):
+    with enter_username_password("alice", "secret1"):
+        alice_client = from_context(context, username="alice")
+    with pytest.raises(ClientError, match="Not enough permissions"):
+        alice_client["h"]["x"].write(arr_zeros)
+    alice_client["h"]["y"].write(arr_zeros)
 
 
 def test_top_level_access_control(context, enter_username_password):
