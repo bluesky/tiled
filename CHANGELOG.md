@@ -18,6 +18,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Bug in Python client resulted in error when accessing data sources on a
   just-created object.
+- Fix bug where access policies were not applied to child nodes during request
+
+### Changed
+
+- Change access policy API to be async for filters and allowed_scopes
 
 ## 2024-12-09
 
