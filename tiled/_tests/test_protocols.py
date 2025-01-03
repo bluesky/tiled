@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import dask.dataframe
 import numpy
 import pandas
+import pytest
 import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
@@ -376,14 +377,14 @@ class CustomAccessPolicy:
     def _get_id(self, principal: Principal) -> None:
         return None
 
-    def allowed_scopes(
+    async def allowed_scopes(
         self, node: BaseAdapter, principal: Principal, path_parts: List[Any]
     ) -> Scopes:
         allowed = self.scopes
         somemetadata = node.metadata()  # noqa: 841
         return allowed
 
-    def filters(
+    async def filters(
         self,
         node: BaseAdapter,
         principal: Principal,
@@ -395,18 +396,19 @@ class CustomAccessPolicy:
         return queries
 
 
-def accesspolicy_protocol_functions(
+async def accesspolicy_protocol_functions(
     policy: AccessPolicy,
     node: BaseAdapter,
     principal: Principal,
     scopes: Scopes,
     path_parts: List[Any],
 ) -> None:
-    policy.allowed_scopes(node, principal, path_parts)
-    policy.filters(node, principal, scopes, path_parts)
+    await policy.allowed_scopes(node, principal, path_parts)
+    await policy.filters(node, principal, scopes, path_parts)
 
 
-def test_accesspolicy_protocol(mocker: MockFixture) -> None:
+@pytest.mark.asyncio
+async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     mock_call = mocker.patch.object(CustomAwkwardAdapter, "metadata")
     mock_call2 = mocker.patch.object(CustomAwkwardAdapter, "specs")
 
@@ -424,7 +426,7 @@ def test_accesspolicy_protocol(mocker: MockFixture) -> None:
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
 
-    accesspolicy_protocol_functions(
+    await accesspolicy_protocol_functions(
         anyaccesspolicy, anyawkwardadapter, principal, scopes, path_parts
     )
     mock_call.assert_called_once()

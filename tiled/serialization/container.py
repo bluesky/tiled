@@ -25,13 +25,13 @@ async def walk(node, filter_for_access, pre=None):
     pre = pre[:] if pre else []
     if node.structure_family != StructureFamily.array:
         if hasattr(node, "items_range"):
-            for key, value in await filter_for_access(node, path_parts=[]).items_range(
-                0, None
-            ):
+            for key, value in await (
+                await filter_for_access(node, path_parts=[])
+            ).items_range(0, None):
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
         else:
-            for key, value in filter_for_access(node, path_parts=[]).items():
+            for key, value in (await filter_for_access(node, path_parts=[])).items():
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
     else:

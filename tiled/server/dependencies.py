@@ -89,7 +89,7 @@ def SecureEntry(scopes, structure_families=None):
             entry = entry.with_session_state(session_state)
         # start at the root
         # filter and keep only what we are allowed to see from here
-        entry = filter_for_access(
+        entry = await filter_for_access(
             entry,
             principal,
             ["read:metadata"],
@@ -102,17 +102,7 @@ def SecureEntry(scopes, structure_families=None):
                     # New catalog adapter - only has access control at the top level
                     # Top level means the basename of the path as defined in the config
                     # This adapter can jump directly to the node of interest
-                    path_parts_relative = path_parts[i:]
-                    entry_with_access_policy = entry
-                    # filter and keep only what we are allowed to see from here
-                    entry = filter_for_access(
-                        entry,
-                        principal,
-                        ["read:metadata"],
-                        request.state.metrics,
-                        path_parts_relative,
-                    )
-                    entry = await entry.lookup_adapter(path_parts_relative)
+                    entry = await entry.lookup_adapter(path_parts[i:])
                     if entry is None:
                         raise NoEntry(path_parts)
                     break
@@ -125,10 +115,10 @@ def SecureEntry(scopes, structure_families=None):
                     except (KeyError, TypeError):
                         raise NoEntry(path_parts)
                     if getattr(entry, "access_policy", None) is not None:
-                        path_parts_relative = path_parts[i:]
+                        path_parts_relative = path_parts[i + 1 :]
                         entry_with_access_policy = entry
                         # filter and keep only what we are allowed to see from here
-                        entry = filter_for_access(
+                        entry = await filter_for_access(
                             entry,
                             principal,
                             ["read:metadata"],
@@ -140,7 +130,7 @@ def SecureEntry(scopes, structure_families=None):
             access_policy = getattr(entry_with_access_policy, "access_policy", None)
             if access_policy is not None:
                 with record_timing(request.state.metrics, "acl"):
-                    allowed_scopes = access_policy.allowed_scopes(
+                    allowed_scopes = await access_policy.allowed_scopes(
                         entry_with_access_policy, principal, path_parts_relative
                     )
                     if not set(scopes).issubset(allowed_scopes):
