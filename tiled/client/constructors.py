@@ -1,5 +1,6 @@
 import collections
 import collections.abc
+import warnings
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -7,7 +8,7 @@ import httpx
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
-from .utils import MSGPACK_MIME_TYPE, ClientError, client_for_item, handle_error
+from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error
 
 
 def from_uri(
@@ -15,11 +16,12 @@ def from_uri(
     structure_clients="numpy",
     *,
     cache=UNSET,
-    username=UNSET,
-    auth_provider=UNSET,
+    remember_me=True,
+    username=None,
+    auth_provider=None,
     api_key=None,
     verify=True,
-    prompt_for_reauthentication=UNSET,
+    prompt_for_reauthentication=None,
     headers=None,
     timeout=None,
     include_data_sources=False,
@@ -37,23 +39,19 @@ def from_uri(
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
     cache : Cache, optional
+    remember_me : bool
+        Next time, try to automatically authenticate using this session.
     username : str, optional
-        Username for authenticated access. If UNSET, use default if available
-        (typically, the most recently used).
+        DEPRECATED. Ignored, and issues a warning if passed.
     auth_provider : str, optional
-        Name of an authentication provider. IF UNSET, use default if available
-        (typically, the most recently used). If None and the server supports
-        multiple provides, the user will be interactively prompted to
-        choose from a list.
+        DEPRECATED. Ignored, and issues a warning if passed.
     api_key : str, optional
-        API key based authentication. Cannot mix with username/auth_provider.
+        API key based authentication.
     verify : bool, optional
         Verify SSL certifications. True by default. False is insecure,
         intended for development and testing only.
     prompt_for_reauthentication : bool, optional
-        If True, prompt interactively for credentials if needed. If False,
-        raise an error. By default, attempt to detect whether terminal is
-        interactive (is a TTY).
+        DEPRECATED. Ignored, and issue a warning if passed.
     headers : dict, optional
         Extra HTTP headers.
     timeout : httpx.Timeout, optional
@@ -62,6 +60,24 @@ def from_uri(
     include_data_sources : bool, optional
         Default False. If True, fetch information about underlying data sources.
     """
+    EXPLAIN_LOGIN = """
+
+The user will be prompted for credentials if login is required.
+Or, call login() to manually login.
+
+For non-interactive authentication, use an API key.
+"""
+    if username is not None:
+        warnings.warn("Tiled no longer accepts 'username' parameter. " + EXPLAIN_LOGIN)
+    if auth_provider is not None:
+        warnings.warn(
+            "Tiled no longer accepts 'auth_provider' parameter. " + EXPLAIN_LOGIN
+        )
+    if auth_provider is not None:
+        warnings.warn(
+            "Tiled no longer accepts 'prompt_for_reauthentication' parameter. "
+            + EXPLAIN_LOGIN
+        )
     context, node_path_parts = Context.from_any_uri(
         uri,
         api_key=api_key,
@@ -73,22 +89,18 @@ def from_uri(
     return from_context(
         context,
         structure_clients=structure_clients,
-        prompt_for_reauthentication=prompt_for_reauthentication,
-        username=username,
-        auth_provider=auth_provider,
         node_path_parts=node_path_parts,
         include_data_sources=include_data_sources,
+        remember_me=remember_me,
     )
 
 
 def from_context(
     context,
     structure_clients="numpy",
-    prompt_for_reauthentication=UNSET,
-    username=UNSET,
-    auth_provider=UNSET,
     node_path_parts=None,
     include_data_sources=False,
+    remember_me=True,
 ):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -101,14 +113,7 @@ def from_context(
         in-memory structures (e.g. normal numpy arrays, pandas
         DataFrames). For advanced use, provide dict mapping a
         structure_family or a spec to a client object.
-    prompt_for_reauthentication : bool, optional
-        If True, prompt interactively for credentials if needed. If False,
-        raise an error. By default, attempt to detect whether terminal is
-        interactive (is a TTY).
     """
-    if (username is not UNSET) or (auth_provider is not UNSET):
-        if context.api_key is not None:
-            raise ValueError("Use api_key or username/auth_provider, not both.")
     node_path_parts = node_path_parts or []
     # Do entrypoint discovery if it hasn't yet been done.
     if Container.STRUCTURE_CLIENTS_FROM_ENTRYPOINTS is None:
@@ -116,56 +121,38 @@ def from_context(
     # Interpret structure_clients="numpy" and structure_clients="dask" shortcuts.
     if isinstance(structure_clients, str):
         structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
-    if (
-        (context.api_key is None)
-        and context.server_info["authentication"]["required"]
-        and (not context.server_info["authentication"]["providers"])
-    ):
-        raise RuntimeError(
-            """This server requires API key authentication.
-Set an api_key as in:
+    # To construct a user-facing client object, we may be required to authenticate.
+    # 1. If any API key set, we are already authenticated and there is nothing to do.
+    # 2. If there are cached valid credentials for this server, use them.
+    # 3. If not, and the server requires authentication, prompt for authentication.
+    if context.api_key is None:
+        if context.server_info["authentication"]["required"] and (
+            not context.server_info["authentication"]["providers"]
+        ):
+            raise RuntimeError(
+                """This server requires API key authentication.
+    Set an api_key as in:
 
->>> c = from_uri("...", api_key="...")
-"""
-        )
-    if username is not UNSET:
-        context.authenticate(
-            username=username,
-            provider=auth_provider,
-            prompt_for_reauthentication=prompt_for_reauthentication,
-        )
+    >>> c = from_uri("...", api_key="...")
+    """
+            )
+        found_valid_tokens = context.use_cached_tokens()
+        if (not found_valid_tokens) and context.server_info["authentication"][
+            "required"
+        ]:
+            context.authenticate(remember_me=remember_me)
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
-    try:
-        content = handle_error(
-            context.http_client.get(
-                item_uri,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **parse_qs(urlparse(item_uri).query),
-                    "include_data_sources": include_data_sources,
-                },
-            )
-        ).json()
-    except ClientError as err:
-        if (
-            (err.response.status_code == httpx.codes.UNAUTHORIZED)
-            and (context.api_key is None)
-            and (context.http_client.auth is None)
-        ):
-            context.authenticate()
-            params = (parse_qs(urlparse(item_uri).query),)
-            if include_data_sources:
-                params["include_data_sources"] = True
-            content = handle_error(
-                context.http_client.get(
-                    item_uri,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params=params,
-                )
-            ).json()
-        else:
-            raise
+    content = handle_error(
+        context.http_client.get(
+            item_uri,
+            headers={"Accept": MSGPACK_MIME_TYPE},
+            params={
+                **parse_qs(urlparse(item_uri).query),
+                "include_data_sources": include_data_sources,
+            },
+        )
+    ).json()
     item = content["data"]
     return client_for_item(
         context, structure_clients, item, include_data_sources=include_data_sources

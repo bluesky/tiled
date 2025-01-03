@@ -14,18 +14,19 @@ class TiledAuth(httpx.Auth):
     def __init__(self, refresh_url, csrf_token, token_directory):
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
-        self.token_directory = Path(token_directory)
-        self.token_directory.mkdir(exist_ok=True, parents=True)
+        if token_directory is not None:
+            token_directory = Path(token_directory)
+            token_directory.mkdir(exist_ok=True, parents=True)
+            self._check_writable_token_directory(token_directory)
+        self.token_directory = token_directory
         self._sync_lock = SerializableLock()
         # self._async_lock = asyncio.Lock()
         self.tokens = {}
-        self._check_writable_token_directory()
 
-    def _check_writable_token_directory(self):
-        if not os.access(self.token_directory, os.W_OK | os.X_OK):
-            raise ValueError(
-                f"The token_directory {self.token_directory} is not writable."
-            )
+    @staticmethod
+    def _check_writable_token_directory(token_directory):
+        if not os.access(token_directory, os.W_OK | os.X_OK):
+            raise ValueError(f"The token_directory {token_directory} is not writable.")
 
     def __getstate__(self):
         return (
@@ -44,9 +45,10 @@ class TiledAuth(httpx.Auth):
         (refresh_url, csrf_token, token_directory, sync_lock) = state
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
+        if token_directory is not None:
+            self._check_writable_token_directory(token_directory)
         self.token_directory = token_directory
         self._sync_lock = sync_lock
-        self._check_writable_token_directory()
 
     def sync_get_token(self, key, reload_from_disk=False):
         if not reload_from_disk:
@@ -54,7 +56,8 @@ class TiledAuth(httpx.Auth):
             try:
                 return self.tokens[key]
             except Exception:
-                pass
+                if self.token_directory is None:
+                    return None
         with self._sync_lock:
             filepath = self.token_directory / key
             try:
@@ -69,17 +72,19 @@ class TiledAuth(httpx.Auth):
         with self._sync_lock:
             if not isinstance(value, str):
                 raise ValueError("Expected string value, got {value!r}")
-            filepath = self.token_directory / key
-            filepath.touch(mode=0o600)  # Set permissions.
-            with open(filepath, "w") as file:
-                file.write(value)
+            if self.token_directory is not None:
+                filepath = self.token_directory / key
+                filepath.touch(mode=0o600)  # Set permissions.
+                with open(filepath, "w") as file:
+                    file.write(value)
             self.tokens[key] = value  # Update cached value.
 
     def sync_clear_token(self, key):
         with self._sync_lock:
-            self.tokens.pop(key, None)
-            filepath = self.token_directory / key
-            filepath.unlink(missing_ok=False)
+            if self.token_directory is not None:
+                self.tokens.pop(key, None)
+                filepath = self.token_directory / key
+                filepath.unlink(missing_ok=False)
             self.tokens.pop(key, None)  # Clear cached value.
 
     def sync_auth_flow(self, request, attempt=0):
