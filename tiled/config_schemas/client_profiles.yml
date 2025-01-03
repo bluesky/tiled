@@ -35,12 +35,15 @@ properties:
   username:
     type: string
     description: |
-      For authenticated Trees. Optional unless the Tree requires authentication.
+      DEPRECATED. Any value given here is ignored. Instead, credentials should
+      be provided interactively when needed. Or, any API key may be used for
+      noninteractive applications.
   auth_provider:
     type: string
     description: |
-      Authentication provider. If unspecified and there are multiple providers
-      supported by the server, the client will prompt the user to choose one.
+      DEPRECATED. Any value given here is ignored. Instead, credentials should
+      be provided interactively when needed. Or, any API key may be used for
+      noninteractive applications.
   headers:
     type: object
     additionalProperties: true

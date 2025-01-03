@@ -10,6 +10,7 @@ but the user-facing functionality is striaghtforward.
 import collections
 import collections.abc
 import os
+import shutil
 import sys
 import warnings
 from functools import lru_cache
@@ -20,6 +21,9 @@ import platformdirs
 
 from .utils import parse
 
+TILED_CACHE_DIR = Path(
+    os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
+)
 __all__ = [
     "list_profiles",
     "load_profiles",
@@ -320,6 +324,10 @@ def set_default_profile_name(name):
         raise ProfileNotFound(name)
     with open(filepath, "w") as file:
         file.write(name)
+    # Clean up cruft from older versions of Tiled.
+    UNUSED_DIR = TILED_CACHE_DIR / "default_identities"
+    if UNUSED_DIR.is_dir():
+        shutil.rmtree(UNUSED_DIR)
 
 
 class ProfileNotFound(KeyError):
