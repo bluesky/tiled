@@ -8,6 +8,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+- Add metadata-based access control to SimpleAccessPolicy
+- Add example test of metadata-based allowed_scopes which requires the path to the target node
+
+### Fixed
+
+- Fix bug where access policies were not applied to child nodes during request
+
+### Changed
+
+- Change access policy API to be async for filters and allowed_scopes
 
 ### Fixed
 

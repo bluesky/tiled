@@ -1,4 +1,6 @@
-from .queries import KeysFilter
+from functools import partial
+
+from .queries import In, KeysFilter
 from .scopes import SCOPES
 from .utils import Sentinel, SpecialUsers, import_object
 
@@ -11,10 +13,10 @@ NO_ACCESS = Sentinel("NO_ACCESS")
 class DummyAccessPolicy:
     "Impose no access restrictions."
 
-    def allowed_scopes(self, node, principal):
+    async def allowed_scopes(self, node, principal, path_parts):
         return ALL_SCOPES
 
-    def filters(self, node, principal, scopes):
+    async def filters(self, node, principal, scopes, path_parts):
         return []
 
 
@@ -35,10 +37,11 @@ class SimpleAccessPolicy:
     ALL = ALL_ACCESS
 
     def __init__(
-        self, access_lists, *, provider, scopes=None, public=None, admins=None
+        self, access_lists, *, provider, key=None, scopes=None, public=None, admins=None
     ):
         self.access_lists = {}
         self.provider = provider
+        self.key = key
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         self.public = set(public or [])
         self.admins = set(admins or [])
@@ -61,7 +64,7 @@ class SimpleAccessPolicy:
             )
         return id
 
-    def allowed_scopes(self, node, principal):
+    async def allowed_scopes(self, node, principal, path_parts):
         # If this is being called, filter_access has let us get this far.
         if principal is SpecialUsers.public:
             allowed = PUBLIC_SCOPES
@@ -76,10 +79,11 @@ class SimpleAccessPolicy:
             allowed = self.scopes
         return allowed
 
-    def filters(self, node, principal, scopes):
+    async def filters(self, node, principal, scopes, path_parts):
         queries = []
+        query_filter = KeysFilter if not self.key else partial(In, self.key)
         if principal is SpecialUsers.public:
-            queries.append(KeysFilter(self.public))
+            queries.append(query_filter(self.public))
         else:
             # Services have no identities; just use the uuid.
             if principal.type == "service":
@@ -101,5 +105,5 @@ class SimpleAccessPolicy:
                         f"Unexpected access_list {access_list} of type {type(access_list)}. "
                         f"Expected iterable or {self.ALL}, instance of {type(self.ALL)}."
                     )
-                queries.append(KeysFilter(allowed))
+                queries.append(query_filter(allowed))
         return queries
