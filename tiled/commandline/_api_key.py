@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import typer
 
@@ -12,12 +12,13 @@ def create_api_key(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-    expires_in: Optional[int] = typer.Option(
+    expires_in: Optional[Union[int, str]] = typer.Option(
         None,
         help=(
-            "Number of seconds until API key expires. If None, "
-            "it will never expire or it will have the maximum lifetime "
-            "allowed by the server."
+            "Number of seconds until API key expires, given as integer seconds "
+            "or a string like: '3y' (years), '3d' (days), '5m' (minutes), '1h' "
+            "(hours), '30s' (seconds). If None, it will never expire or it will "
+            "have the maximum lifetime allowed by the server. "
         ),
     ),
     scopes: Optional[List[str]] = typer.Option(
