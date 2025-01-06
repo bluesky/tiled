@@ -1,4 +1,3 @@
-import copy
 import json
 
 import numpy
@@ -58,7 +57,7 @@ class EntryBasedAccessPolicy(SimpleAccessPolicy):
                 )
             remove_scope = node.metadata().get("remove_scope", None)
             if remove_scope in allowed:
-                allowed = copy.copy(allowed)
+                allowed = allowed.copy()
                 allowed.remove(remove_scope)
         return allowed
 
