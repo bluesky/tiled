@@ -81,7 +81,7 @@ using an API key. These can be created from the CLI:
 
 ```sh
 $ tiled login
-$ tiled api_key create
+$ tiled api_key create --expires-in 7d --note "for this week's experiment"
 ```
 
 or from an interactive Python session:
@@ -89,7 +89,13 @@ or from an interactive Python session:
 ```py
 >>> client = from_uri("https://...")
 >>> client.login()
->>> client.create_api_key()  # {"secret": ...}
+>>> client.create_api_key(expires_in="7d", note="for this week's experiment")
+{"secret": ...}
+ ```
+
+The expiration and note are optional, but recommended. Expiration can be given
+in units of years `y`, days `d`, hours `h`, minutes `m`, or seconds `s`.
+
 ```
 
 The best way to provide an API key is to set the environment variable
