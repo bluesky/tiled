@@ -116,11 +116,12 @@ client.new(
 )
 ```
 
-#### Writing a consolidated structure
+#### Writing a composite structure
 
-Similarly, to create a consolidated container structure, one needs to specify
-its constituents as separate Data Sources. For example, to consolidate a table
-and an array, consider the following example
+A Composite structure allows the user to acess the columns of contained tables in
+a flat name space along with other arrays. Writing new data to a Composite container
+is analoguous to the usual containers, however exceptions will be raised if there are
+any name collisions.
 
 ```python
 import pandas
@@ -129,22 +130,10 @@ rng = numpy.random.default_rng(12345)
 arr = rng.random(size=(3, 5), dtype="float64")
 df = pandas.DataFrame({"A": ["one", "two", "three"], "B": [1, 2, 3]})
 
-node = client.create_consolidated(
-    [
-        DataSource(
-            structure_family=StructureFamily.table,
-            structure=TableStructure.from_pandas(df),
-            name="table1",
-        ),
-        DataSource(
-            structure_family=StructureFamily.array,
-            structure=ArrayStructure.from_array(arr),
-            name="C",
-        )
-    ]
-)
+# Create a Composite node
+node = client.create_composite(key="x")
 
 # Write the data
-node.parts["table1"].write(df)
-node.parts["C"].write_block(arr, (0, 0))
+node.write_array(arr, key="C")
+node.write_dataframe(df, key="table1")
 ```
