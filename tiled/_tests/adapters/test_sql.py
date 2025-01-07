@@ -29,7 +29,7 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage() -> DataSource:
+def data_source_from_init_storage() -> DataSource[TableStructure]:
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=1)
     data_source = DataSource(
@@ -46,7 +46,9 @@ def data_source_from_init_storage() -> DataSource:
 
 
 @pytest.fixture
-def adapter_sql(data_source_from_init_storage: DataSource) -> SQLAdapter:
+def adapter_sql(
+    data_source_from_init_storage: DataSource[TableStructure],
+) -> SQLAdapter:
     data_uri = "sqlite://file://localhost" + tempfile.gettempdir() + "/test.db"
     data_source = data_source_from_init_storage
     return SQLAdapter(
@@ -114,7 +116,7 @@ def postgres_uri() -> str:
 
 @pytest.fixture
 def adapter_psql(
-    data_source_from_init_storage: DataSource, postgres_uri: str
+    data_source_from_init_storage: DataSource[TableStructure], postgres_uri: str
 ) -> SQLAdapter:
     data_source = data_source_from_init_storage
     return SQLAdapter(

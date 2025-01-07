@@ -65,6 +65,7 @@ class DaskDatasetClient(Container):
             array_structure = array_structures[name]
             shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
+            print("spec_names", spec_names)
             if optimize_wide_table and (
                 (not shape)  # empty
                 or (
@@ -73,6 +74,7 @@ class DaskDatasetClient(Container):
                 )
             ):
                 if "xarray_coord" in spec_names:
+                    print("hello 1")
                     coords[name] = (
                         array_client.dims,
                         coords_fetcher.register(name, array_client, array_structure),
@@ -91,6 +93,7 @@ class DaskDatasetClient(Container):
                     )
             else:
                 if "xarray_coord" in spec_names:
+                    print("hello 2")
                     coords[name] = (
                         array_client.dims,
                         array_client.read(),
@@ -111,6 +114,8 @@ class DaskDatasetClient(Container):
 
     def read(self, variables=None, *, optimize_wide_table=True):
         data_vars, coords = self._build_arrays(variables, optimize_wide_table)
+        print("corrds", coords)
+        print("datavars", data_vars)
         return xarray.Dataset(
             data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
         )

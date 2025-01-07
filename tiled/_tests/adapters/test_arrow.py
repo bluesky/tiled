@@ -5,8 +5,8 @@ import pytest
 
 from tiled.adapters.arrow import ArrowAdapter
 from tiled.structures.core import StructureFamily
-from tiled.structures.table import TableStructure
 from tiled.structures.data_source import DataSource, Management, Storage
+from tiled.structures.table import TableStructure
 
 names = ["f0", "f1", "f2"]
 data0 = [
@@ -28,7 +28,7 @@ data_uri = "file://localhost/" + tempfile.gettempdir()
 
 
 @pytest.fixture
-def data_source_from_init_storage() -> DataSource:
+def data_source_from_init_storage() -> DataSource[TableStructure]:
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=3)
     data_source = DataSource(
@@ -45,13 +45,12 @@ def data_source_from_init_storage() -> DataSource:
 
 
 @pytest.fixture
-def adapter(data_source_from_init_storage: DataSource) -> ArrowAdapter:
+def adapter(data_source_from_init_storage: DataSource[TableStructure]) -> ArrowAdapter:
     data_source = data_source_from_init_storage
     return ArrowAdapter(
         [asset.data_uri for asset in data_source.assets],
         data_source.structure,
     )
-
 
 
 def test_attributes(adapter: ArrowAdapter) -> None:

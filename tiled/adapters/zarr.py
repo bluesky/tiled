@@ -13,10 +13,9 @@ from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..server.schemas import DataSource
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, Storage
+from ..structures.data_source import Asset, DataSource, Storage
 from ..type_aliases import JSON, NDSlice
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
