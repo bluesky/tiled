@@ -30,14 +30,6 @@ StructureT = TypeVar("StructureT")
 MAX_ALLOWED_SPECS = 20
 
 
-STRUCTURE_TYPES = {
-    StructureFamily.array: ArrayStructure,
-    StructureFamily.awkward: AwkwardStructure,
-    StructureFamily.table: TableStructure,
-    StructureFamily.sparse: SparseStructure,
-}
-
-
 class Error(pydantic.BaseModel):
     code: int
     message: str
@@ -146,6 +138,15 @@ class Revision(pydantic.BaseModel):
             specs=orm.specs,
             time_updated=orm.time_updated,
         )
+
+
+STRUCTURE_TYPES = {
+    StructureFamily.array: ArrayStructure,
+    StructureFamily.awkward: AwkwardStructure,
+    StructureFamily.table: TableStructure,
+    StructureFamily.sparse: SparseStructure,
+    StructureFamily.container: NodeStructure,
+}
 
 
 class DataSource(pydantic.BaseModel, Generic[StructureT]):
@@ -467,8 +468,10 @@ class PostMetadataRequest(pydantic.BaseModel):
     def narrow_strucutre_type(self):
         "Convert the structure on each data_source from a dict to the appropriate pydantic model."
         for data_source in self.data_sources:
-            structure_cls = STRUCTURE_TYPES[self.structure_family]
-            data_source.structure = structure_cls(**data_source.structure)
+            if self.structure_family != StructureFamily.container:
+                structure_cls = STRUCTURE_TYPES[self.structure_family]
+                if data_source.structure is not None:
+                    data_source.structure = structure_cls(**data_source.structure)
         return self
 
 
