@@ -151,6 +151,15 @@ def test_metadata(context):
         assert client["x"].parts[part].metadata["md_key"] == f"md_for_{part}"
 
 
+def test_parts_not_direclty_accessible(context):
+    client = from_context(context)
+    client['x'].parts['df1'].read()
+    client['x'].parts['df1']['A'].read()
+    client['x']['A'].read()
+    with pytest.raises(KeyError):
+        client['x']['df1'].read()
+
+
 def test_external_assets(context, tiff_sequence, csv_file):
     client = from_context(context)
     tiff_assets = [
