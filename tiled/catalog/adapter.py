@@ -53,7 +53,6 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
-from ..iterviews import ItemsView, KeysView, ValuesView
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -64,7 +63,6 @@ from ..mimetypes import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.pydantic_composite import CompositeStructure
-from ..server.pydantic_consolidated import ConsolidatedStructure
 from ..server.pydantic_container import ContainerStructure
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
@@ -382,8 +380,6 @@ class CatalogNodeAdapter:
         if self.structure_family == StructureFamily.container:
             # Give no inlined contents.
             return ContainerStructure(contents=None, count=None)
-        if self.structure_family == StructureFamily.consolidated:
-            return ConsolidatedStructure.from_data_sources(self.data_sources)
         if self.structure_family == StructureFamily.composite:
             return CompositeStructure(contents=None, count=None)
         if self.data_sources:
@@ -451,13 +447,6 @@ class CatalogNodeAdapter:
 
             for i in range(len(segments)):
                 catalog_adapter = await self.lookup_adapter(segments[:i])
-                if (
-                    catalog_adapter.structure_family == StructureFamily.consolidated
-                ) and len(segments[i:]) == 1:
-                    # All the segments but the final segment, segments[-1], resolve
-                    # to a consolidated structure. Dispatch to the consolidated Adapter
-                    # to get the inner Adapter for whatever type of structure it is.
-                    return await ensure_awaitable(catalog_adapter.get, segments[-1])
                 if catalog_adapter.structure_family == StructureFamily.composite:
                     # Dispatch to the Composite to get the inner Adapter for whatever type of structure it is.
                     return await ensure_awaitable(catalog_adapter.get, segments[-1])
@@ -673,8 +662,6 @@ class CatalogNodeAdapter:
                         ]
                     data_source.parameters = {}
                     data_uri_path_parts = self.segments + [key]
-                    if structure_family == StructureFamily.consolidated:
-                        data_uri_path_parts.append(data_source.name)
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in data_uri_path_parts
                     )
@@ -1061,57 +1048,47 @@ class CatalogCompositeAdapter(CatalogNodeAdapter):
     #     return super().structure()
 
     async def create_node(
-            self,
-            structure_family,
-            metadata,
-            key=None,
-            specs=None,
-            data_sources=None,
-        ):
+        self,
+        structure_family,
+        metadata,
+        key=None,
+        specs=None,
+        data_sources=None,
+    ):
         # Check the uniqueness of the column names
+        existing_keys = []
+        for name, node in await self.items():
+            if isinstance(node, CatalogTableAdapter):
+                existing_keys.extend(node.structure().columns)
+            else:
+                existing_keys.append(name)
+        if key in existing_keys:
+            raise Collision(f"Key {key} already exists in the flat namespace")
         if structure_family == StructureFamily.table:
             new_keys = []
             for ds in data_sources:
                 new_keys.extend(ds.structure.columns)
             if len(new_keys) > len(set(new_keys)):
-                raise Collision(f"Duplicated keys in data sources are not allowed: {new_keys}")
-            old_keys = []
-            for (name, node) in await self.items():
-                if isinstance(node, CatalogTableAdapter):
-                    old_keys.extend(node.structure().columns)
-            colliding_keys = set(old_keys).intersection(new_keys)
+                raise Collision(
+                    f"Duplicated keys in data sources are not allowed: {new_keys}"
+                )
+            colliding_keys = set(existing_keys).intersection(new_keys)
             if colliding_keys:
-                raise Collision(f"Colliding column names {colliding_keys} in Composite structure")
+                raise Collision(
+                    f"Colliding column names {colliding_keys} in Composite structure"
+                )
 
-        return await super().create_node(structure_family, metadata, key=key, specs=specs, data_sources=data_sources)
+        return await super().create_node(
+            structure_family, metadata, key=key, specs=specs, data_sources=data_sources
+        )
 
     async def get(self, key):
-        for (name, node) in await self.parts():
-            if isinstance(node, CatalogTableAdapter) and (key in node.structure().columns):
+        for name, node in await self.parts():
+            if isinstance(node, CatalogTableAdapter) and (
+                key in node.structure().columns
+            ):
                 return await node.get(key)
         raise KeyError(key)
-
-    # async def get_part(self, key):
-    #     for name, node in await self.parts():
-    #         if name == key:
-    #             return node
-    #     raise KeyError(key)
-
-    # async def keys_range(self, offset, limit):
-    #     statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
-    #     statement = self.apply_conditions(statement)
-    #     async with self.context.session() as db:
-    #         return (
-    #             (
-    #                 await db.execute(
-    #                     statement.order_by(*self.order_by_clauses)
-    #                     .offset(offset)
-    #                     .limit(limit)
-    #                 )
-    #             )
-    #             .scalars()
-    #             .all()
-    #         )
 
     async def items(self):
         return await self.parts()
@@ -1232,34 +1209,6 @@ class CatalogTableAdapter(CatalogNodeAdapter):
     async def append_partition(self, *args, **kwargs):
         return await ensure_awaitable(
             (await self.get_adapter()).append_partition, *args, **kwargs
-        )
-
-
-class CatalogConsolidatedAdapter(CatalogNodeAdapter):
-    async def get(self, key):
-        if key not in self.structure().all_keys:
-            return None
-        for data_source in self.data_sources:
-            if data_source.structure_family == StructureFamily.table:
-                if key in data_source.structure.columns:
-                    return await ensure_awaitable(
-                        self.for_part(data_source.name).get, key
-                    )
-            if key == data_source.name:
-                return self.for_part(data_source.name)
-
-    def for_part(self, name):
-        for data_source in self.data_sources:
-            if name == data_source.name:
-                break
-        else:
-            raise ValueError(f"No DataSource named {name} on this node")
-        return STRUCTURES[data_source.structure_family](
-            self.context,
-            self.node,
-            access_policy=self.access_policy,
-            structure_family=data_source.structure_family,
-            data_sources=[data_source],
         )
 
 
@@ -1654,5 +1603,4 @@ STRUCTURES = {
     StructureFamily.composite: CatalogCompositeAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
-    StructureFamily.consolidated: CatalogConsolidatedAdapter,
 }

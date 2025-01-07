@@ -369,7 +369,7 @@ class DataSource(Timestamped, Base):
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
     structure_family = Column(Enum(StructureFamily), nullable=False)
-    # This is used by `consolidated` structures to address arrays.
+    # This is used by `composite` structures to address arrays.
     # It may have additional uses in the future.
     name = Column(Unicode(1023), nullable=True)
 

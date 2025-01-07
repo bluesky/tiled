@@ -62,7 +62,6 @@ from .dependencies import (
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
 from .pydantic_composite import CompositeStructure
-from .pydantic_consolidated import ConsolidatedStructure
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
@@ -424,8 +423,6 @@ async def array_block(
                 "Use slicing ('?slice=...') to request smaller chunks."
             ),
         )
-    if entry.structure_family == StructureFamily.consolidated:
-        structure_family = entry.data_source.structure_family
     else:
         structure_family = entry.structure_family
     try:
@@ -465,10 +462,6 @@ async def array_full(
     """
     Fetch a slice of array-like data.
     """
-    if entry.structure_family == StructureFamily.consolidated:
-        structure_family = entry.data_source.structure_family
-    else:
-        structure_family = entry.structure_family
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -476,7 +469,7 @@ async def array_full(
     try:
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read, slice)
-        if structure_family == StructureFamily.array:
+        if entry.structure_family == StructureFamily.array:
             array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(
@@ -498,7 +491,7 @@ async def array_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return await construct_data_response(
-                structure_family,
+                entry.structure_family,
                 serialization_registry,
                 array,
                 entry.metadata(),
@@ -730,14 +723,10 @@ async def table_full(
                 "request a smaller chunks."
             ),
         )
-    if entry.structure_family == StructureFamily.consolidated:
-        structure_family = entry.data_source.structure_family
-    else:
-        structure_family = entry.structure_family
     try:
         with record_timing(request.state.metrics, "pack"):
             return await construct_data_response(
-                structure_family,
+                entry.structure_family,
                 serialization_registry,
                 data,
                 entry.metadata(),
@@ -1161,8 +1150,6 @@ async def _create_node(
         body.specs,
     )
     metadata_modified = False
-    if structure_family == StructureFamily.consolidated:
-        structure = ConsolidatedStructure.from_data_sources(body.data_sources)
     if structure_family == StructureFamily.composite:
         structure = CompositeStructure(contents=None, count=None)
     elif body.data_sources:

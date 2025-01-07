@@ -1,4 +1,4 @@
-"""Add 'consolidated' to structure_family enum.
+"""Add 'composite' to structure_family enum.
 
 Revision ID: 0dc110294112
 Revises: 7c8130c40b8f
@@ -22,7 +22,7 @@ def upgrade():
         with op.get_context().autocommit_block():
             op.execute(
                 sa.text(
-                    "ALTER TYPE structurefamily ADD VALUE IF NOT EXISTS 'consolidated' AFTER 'table'"
+                    "ALTER TYPE structurefamily ADD VALUE IF NOT EXISTS 'composite' AFTER 'table'"
                 )
             )
 

@@ -1,37 +1,24 @@
-from .container import Container
-
 import collections
 import collections.abc
-import functools
-import importlib
-import itertools
-import time
-import warnings
-from dataclasses import asdict
-from urllib.parse import parse_qs, urlparse
 import copy
+import warnings
+from urllib.parse import parse_qs, urlparse, urlunparse
 
 import entrypoints
-import httpx
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..queries import KeyLookup
-from ..query_registration import query_registry
-from ..structures.core import Spec, StructureFamily
-from ..structures.table import TableStructure
-from ..structures.data_source import DataSource
-from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
-from .base import STRUCTURE_TYPES, BaseClient
+from ..structures.core import StructureFamily
+from ..utils import OneShotCachedMap, node_repr
+from .base import BaseClient
+from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .utils import (
     MSGPACK_MIME_TYPE,
     ClientError,
     client_for_item,
     export_util,
     handle_error,
-    normalize_specs
 )
-from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, _write_partition
 
 LENGTH_CACHE_TTL = 1  # second
 
@@ -81,9 +68,10 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         and the second entry indicates ASCENDING (or 1) or DESCENDING (or -1).
         """
         return list(self._sorting)
-    
+
     @property
     def parts(self):
+        self.refresh()
         structure = self.structure()
         if structure and structure.contents:
             return CompositeContents(self)
@@ -105,16 +93,18 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
-        structure = self.structure()
-        if structure and structure.contents:
-            return (yield from structure.contents)
+
+        # structure = self.structure()
+        # if structure and structure.contents:
+        #     return (yield from structure.contents)
+        return (yield from self._items_slice(start=0, stop=None, direction=1))
 
     def __getitem__(self, key):
         if key not in self.structure().flat_keys:
             # Only allow getting from flat_keys, not parts
             raise KeyError(key)
         try:
-            self_link = self.item["links"]["self"].rstrip('/')
+            self_link = self.item["links"]["self"].rstrip("/")
             url_path = f"{self_link}/{key}"
             params = parse_qs(urlparse(url_path).query)
             if self._include_data_sources:
@@ -151,8 +141,8 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         if contents is not None:
             keys = []
             for key, item in contents.items():
-                if item["attributes"]['structure_family'] == StructureFamily.table:
-                    keys.extend(item["attributes"]['structure']['columns'])
+                if item["attributes"]["structure_family"] == StructureFamily.table:
+                    keys.extend(item["attributes"]["structure"]["columns"])
                 else:
                     keys.append(key)
             if direction < 0:
@@ -167,16 +157,27 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         if contents is not None:
             lazy_items = []
             for key, item in contents.items():
-                if item["attributes"]['structure_family'] == StructureFamily.table:
-                    for col in item["attributes"]['structure']['columns']:
-                        lazy_items.append((col, lambda : self[col]))
+                if item["attributes"]["structure_family"] == StructureFamily.table:
+                    for col in item["attributes"]["structure"]["columns"]:
+                        lazy_items.append((col, lambda c: self[c]))
                 else:
-                    lazy_items.append(( key, lambda : client_for_item(self.context, self.structure_clients, item, include_data_sources=self._include_data_sources) ))
+                    lazy_items.append(
+                        (
+                            key,
+                            lambda c: client_for_item(
+                                self.context,
+                                self.structure_clients,
+                                contents[c],
+                                include_data_sources=self._include_data_sources,
+                            ),
+                        )
+                    )
 
             if direction < 0:
                 lazy_items = list(reversed(lazy_items))
+            # breakpoint()
             for key, lazy_item in lazy_items[start:stop]:
-                yield key, lazy_item()
+                yield key, lazy_item(key)
             return
 
     def keys(self):
@@ -243,8 +244,7 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
             # Do not print messy traceback from thread. Just fail silently.
             return []
 
-
-    #TODO: The following methods can be subclassed from client.Container
+    # TODO: The following methods can be subclassed from client.Container
 
     # When (re)chunking arrays for upload, we use this limit
     # to attempt to avoid bumping into size limits.
@@ -259,10 +259,19 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
     ):
-        return Container.new(self, structure_family, data_sources, key=key, metadata=metadata, specs=specs)
+        return Container.new(
+            self,
+            structure_family,
+            data_sources,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
 
     def write_array(self, array, *, key=None, metadata=None, dims=None, specs=None):
-        return Container.write_array(self, array, key=key, metadata=metadata, dims=dims, specs=specs)
+        return Container.write_array(
+            self, array, key=key, metadata=metadata, dims=dims, specs=specs
+        )
 
     def write_awkward(
         self,
@@ -273,7 +282,9 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         dims=None,
         specs=None,
     ):
-        return Container.write_awkward(self, array, key=key, metadata=metadata, dims=dims, specs=specs)
+        return Container.write_awkward(
+            self, array, key=key, metadata=metadata, dims=dims, specs=specs
+        )
 
     def write_sparse(
         self,
@@ -286,7 +297,16 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         dims=None,
         specs=None,
     ):
-        return Container.write_sparse(self, coords, data, shape, key=key, metadata=metadata, dims=dims, specs=specs)
+        return Container.write_sparse(
+            self,
+            coords,
+            data,
+            shape,
+            key=key,
+            metadata=metadata,
+            dims=dims,
+            specs=specs,
+        )
 
     def write_dataframe(
         self,
@@ -296,13 +316,15 @@ class CompositeClient(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
     ):
-        return Container.write_dataframe(self, dataframe, key=key, metadata=metadata, specs=specs)
+        return Container.write_dataframe(
+            self, dataframe, key=key, metadata=metadata, specs=specs
+        )
 
 
 class CompositeContents:
     def __init__(self, node):
         self.contents = node.structure().contents
-        self.links = node.item['links']
+        self.links = node.item["links"]
         self.context = node.context
         self.structure_clients = node.structure_clients
         self._include_data_sources = node._include_data_sources
@@ -319,7 +341,7 @@ class CompositeContents:
             raise KeyError(key)
         try:
             item = self.contents[key]
-            url_path = self.links['self']
+            url_path = self.links["self"]
             params = parse_qs(urlparse(url_path).query)
             params["part"] = key
             if self._include_data_sources:
@@ -336,6 +358,14 @@ class CompositeContents:
                 raise KeyError(key)
             raise
         item = content["data"]
+
+        # Make the key part of the links
+        for link_key, link_url in copy.copy(item["links"]).items():
+            parsed_url = urlparse(link_url)
+            item["links"][link_key] = urlunparse(
+                parsed_url._replace(path=parsed_url.path.strip("/") + "/" + key)
+            )
+
         return client_for_item(
             self.context,
             self.structure_clients,
@@ -346,3 +376,6 @@ class CompositeContents:
     def __iter__(self):
         for key in self.contents:
             yield key
+
+    def __len__(self) -> int:
+        return len(self.contents)

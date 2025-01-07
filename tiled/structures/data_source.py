@@ -33,12 +33,6 @@ class DataSource:
     management: Management = Management.writable
     name: Optional[str] = None
 
-    def __post_init__(self):
-        if self.structure_family == StructureFamily.consolidated:
-            raise ValueError(
-                "DataSource can not be intialized with Consolidated StructureFamliy"
-            )
-
     @classmethod
     def from_json(cls, d):
         d = d.copy()
@@ -66,37 +60,6 @@ def validate_composite_data_sources(node_structure_family, data_sources):
     return data_sources
 
 
-def validate_consolidated_data_sources(node_structure_family, data_sources):
-    "Check that column names and keys of others (e.g. arrays) do not collide."
-    keys = set()
-    names = set()
-    for data_source in data_sources:
-        if data_source.name is None:
-            raise ValueError(
-                "Data sources backing a consolidated structure_family must "
-                "all have non-NULL names."
-            )
-        if data_source.name in names:
-            raise ValueError(
-                "Data sources must have unique names. "
-                f"This name is used one more than one: {data_source.name}"
-            )
-        names.add(data_source.name)
-        if data_source.structure_family == StructureFamily.table:
-            columns = data_source.structure.columns
-            if keys.intersection(columns):
-                raise ValueError(
-                    f"Data sources provide colliding keys: {keys.intersection(columns)}"
-                )
-            keys.update(columns)
-        else:
-            key = data_source.name
-            if key in keys:
-                raise ValueError(f"Data sources provide colliding keys: {key}")
-            keys.add(key)
-    return data_sources
-
-
 def validate_other_data_sources(node_structure_family, data_sources):
     if len(data_sources) != 1:
         raise ValueError(
@@ -108,4 +71,3 @@ def validate_other_data_sources(node_structure_family, data_sources):
 validators = collections.defaultdict(lambda: validate_other_data_sources)
 validators[StructureFamily.container] = validate_container_data_sources
 validators[StructureFamily.composite] = validate_composite_data_sources
-validators[StructureFamily.consolidated] = validate_consolidated_data_sources

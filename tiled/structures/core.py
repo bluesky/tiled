@@ -19,7 +19,6 @@ class StructureFamily(str, enum.Enum):
     sparse = "sparse"
     table = "table"
     composite = "composite"
-    consolidated = "consolidated"  # can not be used in DataSources
 
 
 @dataclass(frozen=True)
@@ -65,9 +64,6 @@ STRUCTURE_TYPES = OneShotCachedMap(
         StructureFamily.sparse: lambda: importlib.import_module(
             "...structures.sparse", StructureFamily.__module__
         ).SparseStructure,
-        StructureFamily.consolidated: lambda: importlib.import_module(
-            "...structures.consolidated", StructureFamily.__module__
-        ).ConsolidatedStructure,
         StructureFamily.composite: lambda: importlib.import_module(
             "...structures.composite", StructureFamily.__module__
         ).CompositeStructure,

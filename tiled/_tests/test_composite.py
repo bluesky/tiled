@@ -11,10 +11,8 @@ from ..catalog import in_memory
 from ..client import Context, from_context
 from ..server.app import build_app
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.awkward import AwkwardStructure
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
-from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
 
 rng = numpy.random.default_rng(12345)
@@ -65,13 +63,19 @@ def tree(tmp_path_factory):
 def context(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
-        x = client.create_composite(key = 'x', metadata = md)
-        x.write_array(arr1, key='arr1')
-        x.write_array(arr2, key='arr2')
-        x.write_dataframe(df1, key='df1')
-        x.write_dataframe(df2, key='df2')
-        x.write_awkward(awk_arr, key='awk')
-        x.write_sparse(coords=sps_arr.coords, data=sps_arr.data, shape=sps_arr.shape, key='sps')
+        x = client.create_composite(key="x", metadata=md)
+        x.write_array(arr1, key="arr1", metadata={"md_key": "md_for_arr1"})
+        x.write_array(arr2, key="arr2", metadata={"md_key": "md_for_arr2"})
+        x.write_dataframe(df1, key="df1", metadata={"md_key": "md_for_df1"})
+        x.write_dataframe(df2, key="df2", metadata={"md_key": "md_for_df2"})
+        x.write_awkward(awk_arr, key="awk", metadata={"md_key": "md_for_awk"})
+        x.write_sparse(
+            coords=sps_arr.coords,
+            data=sps_arr.data,
+            shape=sps_arr.shape,
+            key="sps",
+            metadata={"md_key": "md_for_sps"},
+        )
 
         yield context
 
@@ -96,12 +100,6 @@ def csv_file(tmpdir):
 
     yield fpath
 
-def test_all(context):
-    client = c = from_context(context)
-    print(client['x'])
-    print(f"{client['x'].structure()=}")
-    assert True
-
 
 @pytest.mark.parametrize(
     "name, expected",
@@ -125,70 +123,90 @@ def test_reading(context, name, expected):
     assert numpy.array_equal(actual, expected)
 
 
-# def test_iterate_parts(context):
-#     client = from_context(context)
-#     for part in client["x"].parts:
-#         client["x"].parts[part].read()
+def test_iterate_parts(context):
+    client = from_context(context)
+    for part in client["x"].parts:
+        client["x"].parts[part].read()
 
 
 def test_iterate_columns(context):
     client = from_context(context)
-    for col in client["x"]:
-        client["x"][col].read()
-        client[f"x/{col}"].read()
+    for col, _client in client["x"]:
+        read_from_client = _client.read()
+        read_from_column = client["x"][col].read()
+        read_from_full_path = client[f"x/{col}"].read()
+        if col == "sps":
+            read_from_client = read_from_client.todense()
+            read_from_column = read_from_column.todense()
+            read_from_full_path = read_from_full_path.todense()
+        assert numpy.array_equal(read_from_client, read_from_column)
+        assert numpy.array_equal(read_from_client, read_from_full_path)
+        assert numpy.array_equal(read_from_full_path, read_from_column)
 
 
 def test_metadata(context):
     client = from_context(context)
     assert client["x"].metadata == md
+    for part in client["x"].parts:
+        assert client["x"].parts[part].metadata["md_key"] == f"md_for_{part}"
 
 
-# def test_external_assets(context, tiff_sequence, csv_file):
-#     client = from_context(context)
-#     tiff_assets = [
-#         Asset(
-#             data_uri=f"file://localhost{fpath}",
-#             is_directory=False,
-#             parameter="data_uris",
-#             num=i + 1,
-#         )
-#         for i, fpath in enumerate(tiff_sequence)
-#     ]
-#     tiff_structure_0 = ArrayStructure(
-#         data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
-#         shape=(5, 13, 17, 3),
-#         chunks=((1, 1, 1, 1, 1), (13,), (17,), (3,)),
-#     )
-#     tiff_data_source = DataSource(
-#         mimetype="multipart/related;type=image/tiff",
-#         assets=tiff_assets,
-#         structure_family=StructureFamily.array,
-#         structure=tiff_structure_0,
-#         management=Management.external,
-#         name="image",
-#     )
+def test_external_assets(context, tiff_sequence, csv_file):
+    client = from_context(context)
+    tiff_assets = [
+        Asset(
+            data_uri=f"file://localhost{fpath}",
+            is_directory=False,
+            parameter="data_uris",
+            num=i + 1,
+        )
+        for i, fpath in enumerate(tiff_sequence)
+    ]
+    tiff_structure_0 = ArrayStructure(
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+        shape=(5, 13, 17, 3),
+        chunks=((1, 1, 1, 1, 1), (13,), (17,), (3,)),
+    )
+    tiff_data_source = DataSource(
+        mimetype="multipart/related;type=image/tiff",
+        assets=tiff_assets,
+        structure_family=StructureFamily.array,
+        structure=tiff_structure_0,
+        management=Management.external,
+        name="image",
+    )
 
-#     csv_assets = [
-#         Asset(
-#             data_uri=f"file://localhost{csv_file}",
-#             is_directory=False,
-#             parameter="data_uris",
-#         )
-#     ]
-#     csv_data_source = DataSource(
-#         mimetype="text/csv",
-#         assets=csv_assets,
-#         structure_family=StructureFamily.table,
-#         structure=TableStructure.from_pandas(df3),
-#         management=Management.external,
-#         name="table",
-#     )
+    csv_assets = [
+        Asset(
+            data_uri=f"file://localhost{csv_file}",
+            is_directory=False,
+            parameter="data_uris",
+        )
+    ]
+    csv_data_source = DataSource(
+        mimetype="text/csv",
+        assets=csv_assets,
+        structure_family=StructureFamily.table,
+        structure=TableStructure.from_pandas(df3),
+        management=Management.external,
+        name="table",
+    )
 
-#     y = client.create_consolidated([tiff_data_source, csv_data_source], key="y")
+    y = client.create_composite(key="y")
+    y.new(
+        structure_family=StructureFamily.array,
+        data_sources=[tiff_data_source],
+        key="image",
+    )
+    y.new(
+        structure_family=StructureFamily.table,
+        data_sources=[csv_data_source],
+        key="table",
+    )
 
-#     arr = y.parts["image"].read()
-#     assert numpy.array_equal(arr, img_data)
+    arr = y.parts["image"].read()
+    assert numpy.array_equal(arr, img_data)
 
-#     df = y.parts["table"].read()
-#     for col in df.columns:
-#         assert numpy.array_equal(df[col], df3[col])
+    df = y.parts["table"].read()
+    for col in df.columns:
+        assert numpy.array_equal(df[col], df3[col])

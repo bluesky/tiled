@@ -15,7 +15,6 @@ from ..structures.data_source import Management, validate_data_sources
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
 from .pydantic_composite import CompositeStructure
-from .pydantic_consolidated import ConsolidatedStructure
 from .pydantic_container import ContainerStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
@@ -152,7 +151,6 @@ class DataSource(pydantic.BaseModel):
             SparseStructure,
             TableStructure,
             CompositeStructure,
-            ConsolidatedStructure,
             ContainerStructure,
         ]
     ] = None
@@ -191,7 +189,6 @@ class NodeAttributes(pydantic.BaseModel):
             SparseStructure,
             TableStructure,
             CompositeStructure,
-            ConsolidatedStructure,
             ContainerStructure,
         ]
     ] = None
@@ -241,13 +238,6 @@ class SparseLinks(pydantic.BaseModel):
     block: str
 
 
-class ConsolidatedLinks(pydantic.BaseModel):
-    self: str
-    parts: List[
-        Union[ArrayLinks, AwkwardLinks, ContainerLinks, DataFrameLinks, SparseLinks]
-    ]
-
-
 class CompositeLinks(pydantic.BaseModel):
     self: str
     full: str
@@ -261,7 +251,6 @@ resource_links_type_by_structure_family = {
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
-    StructureFamily.consolidated: ConsolidatedLinks,
 }
 
 
@@ -493,9 +482,7 @@ class PutDataSourceRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[
-        ArrayLinks, DataFrameLinks, SparseLinks, CompositeLinks, ConsolidatedLinks
-    ]
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, CompositeLinks]
     structure: Union[
         ArrayStructure,
         AwkwardStructure,
@@ -503,7 +490,6 @@ class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
         SparseStructure,
         TableStructure,
         CompositeStructure,
-        ConsolidatedStructure,
         ContainerStructure,
     ]
     metadata: Dict

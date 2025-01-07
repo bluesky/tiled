@@ -26,7 +26,6 @@ from ..client import Context, from_context, record_history
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
-from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
@@ -686,155 +685,63 @@ def test_append_partition(
         assert_frame_equal(x.read(), df3, check_dtype=False)
 
 
-def test_consolidated_one_table(tree):
+def test_composite_one_table(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
-        structure = TableStructure.from_pandas(df)
-        data_source = DataSource(
-            structure_family=StructureFamily.table,
-            structure=structure,
-            name="table",
-        )
-        client.create_consolidated([data_source], key="x")
+        client.create_composite(key="x")
+        client["x"].write_dataframe(df)
+        assert len(client["x"].parts) == 1
 
 
-def test_consolidated_two_tables(tree):
+def test_composite_two_tables(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        structure1 = TableStructure.from_pandas(df1)
-        structure2 = TableStructure.from_pandas(df2)
-        x = client.create_consolidated(
-            [
-                DataSource(
-                    structure_family=StructureFamily.table,
-                    structure=structure1,
-                    name="table1",
-                ),
-                DataSource(
-                    structure_family=StructureFamily.table,
-                    structure=structure2,
-                    name="table2",
-                ),
-            ],
-            key="x",
-        )
-        x.parts["table1"].write(df1)
-        x.parts["table2"].write(df2)
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
         x.parts["table1"].read()
         x.parts["table2"].read()
 
 
-def test_consolidated_two_tables_colliding_names(tree):
+def test_composite_two_tables_colliding_names(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        structure1 = TableStructure.from_pandas(df1)
-        structure2 = TableStructure.from_pandas(df2)
-        with fail_with_status_code(422):
-            client.create_consolidated(
-                [
-                    DataSource(
-                        structure_family=StructureFamily.table,
-                        structure=structure1,
-                        name="table1",
-                    ),
-                    DataSource(
-                        structure_family=StructureFamily.table,
-                        structure=structure2,
-                        name="table1",  # collision
-                    ),
-                ],
-                key="x",
-            )
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(409):
+            x.write_dataframe(df2, key="table1")
 
 
-def test_consolidated_noname(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        df1 = pandas.DataFrame({"A": [], "B": []})
-        structure1 = TableStructure.from_pandas(df1)
-        with fail_with_status_code(422):
-            client.create_consolidated(
-                [
-                    DataSource(
-                        structure_family=StructureFamily.table,
-                        structure=structure1,
-                    ),
-                ],
-                key="x",
-            )
-
-
-def test_consolidated_two_tables_colliding_keys(tree):
+def test_composite_two_tables_colliding_keys(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
-        structure1 = TableStructure.from_pandas(df1)
-        structure2 = TableStructure.from_pandas(df2)
-        with fail_with_status_code(422):
-            client.create_consolidated(
-                [
-                    DataSource(
-                        structure_family=StructureFamily.table,
-                        structure=structure1,
-                        name="table1",
-                    ),
-                    DataSource(
-                        structure_family=StructureFamily.table,
-                        structure=structure2,
-                        name="table2",
-                    ),
-                ],
-                key="x",
-            )
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(409):
+            x.write_dataframe(df2, key="table2")
 
 
-def test_consolidated_two_tables_two_arrays(tree):
+def test_composite_two_tables_two_arrays(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
         arr1 = numpy.ones((5, 5), dtype=numpy.float64)
         arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
-        structure1 = TableStructure.from_pandas(df1)
-        structure2 = TableStructure.from_pandas(df2)
-        structure3 = ArrayStructure.from_array(arr1)
-        structure4 = ArrayStructure.from_array(arr2)
-        x = client.create_consolidated(
-            [
-                DataSource(
-                    structure_family=StructureFamily.table,
-                    structure=structure1,
-                    name="table1",
-                ),
-                DataSource(
-                    structure_family=StructureFamily.table,
-                    structure=structure2,
-                    name="table2",
-                ),
-                DataSource(
-                    structure_family=StructureFamily.array,
-                    structure=structure3,
-                    name="F",
-                ),
-                DataSource(
-                    structure_family=StructureFamily.array,
-                    structure=structure4,
-                    name="G",
-                ),
-            ],
-            key="x",
-        )
+        x = client.create_composite(key="x")
+
         # Write by data source.
-        x.parts["table1"].write(df1)
-        x.parts["table2"].write(df2)
-        x.parts["F"].write_block(arr1, (0, 0))
-        x.parts["G"].write_block(arr2, (0, 0))
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
+        x.write_array(arr1, key="F")
+        x.write_array(arr2, key="G")
 
         # Read by data source.
         x.parts["table1"].read()
@@ -847,26 +754,18 @@ def test_consolidated_two_tables_two_arrays(tree):
             x[column].read()
 
 
-def test_consolidated_table_column_array_key_collision(tree):
+def test_composite_table_column_array_key_collision(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
-        arr = numpy.array([], dtype=numpy.float64)
-        structure1 = TableStructure.from_pandas(df)
-        structure2 = ArrayStructure.from_array(arr)
-        with fail_with_status_code(422):
-            client.create_consolidated(
-                [
-                    DataSource(
-                        structure_family=StructureFamily.table,
-                        structure=structure1,
-                        name="table",
-                    ),
-                    DataSource(
-                        structure_family=StructureFamily.array,
-                        structure=structure2,
-                        name="B",
-                    ),
-                ],
-                key="x",
-            )
+        arr = numpy.array([1, 2, 3], dtype=numpy.float64)
+
+        x = client.create_composite(key="x")
+        x.write_dataframe(df, key="table1")
+        with fail_with_status_code(409):
+            x.write_array(arr, key="A")
+
+        y = client.create_composite(key="y")
+        y.write_array(arr, key="A")
+        with fail_with_status_code(409):
+            y.write_dataframe(df, key="table1")

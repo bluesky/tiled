@@ -160,29 +160,6 @@ def SecureEntry(scopes, structure_families=None):
             entry.structure_family in structure_families
         ):
             return entry
-
-        # Handle consolidated structure_family
-        if entry.structure_family == StructureFamily.consolidated:
-            if not part:
-                raise HTTPException(
-                    status_code=HTTP_404_NOT_FOUND,
-                    detail=(
-                        "A part query parameter is required on this endpoint "
-                        "when addressing a 'consolidated' structure."
-                    ),
-                )
-            entry_for_part = entry.for_part(part)
-            if entry_for_part.structure_family in structure_families:
-                return entry_for_part
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=(
-                    f"The data source named {part} backing the node "
-                    f"at {path} has structure family {entry_for_part.structure_family} "
-                    "and this endpoint is compatible only with structure families "
-                    f"{structure_families}"
-                ),
-            )
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail=(

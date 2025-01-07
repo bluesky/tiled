@@ -15,7 +15,7 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
@@ -640,10 +640,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure = {"contents": None, "count": None}
         elif structure_family == StructureFamily.composite:
             structure = {"contents": None, "count": None}
-        elif structure_family == StructureFamily.consolidated:
-            structure = None
-            # To be filled in below, by server response.
-            # We need the server to tell us data_source_ids.
         else:
             # We assume that each node is backed by only _one_ data_source
             (data_source,) = data_sources
@@ -724,31 +720,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return self.new(
             StructureFamily.composite,
             [],
-            key=key,
-            metadata=metadata,
-            specs=specs,
-        )
-
-    def create_consolidated(self, data_sources, key=None, *, metadata=None, specs=None):
-        """
-        EXPERIMENTAL: Create a new consolidated node backed by data sources.
-
-        Parameters
-        ----------
-        data_sources : List[DataSources]
-        key : str, optional
-            Key (name) for this new node. If None, the server will provide a unique key.
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        specs : List[Spec], optional
-            List of names that are used to label that the data and/or metadata
-            conform to some named standard specification.
-
-        """
-        return self.new(
-            StructureFamily.consolidated,
-            data_sources,
             key=key,
             metadata=metadata,
             specs=specs,
@@ -1102,9 +1073,6 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
-            "consolidated": _LazyLoad(
-                ("..consolidated", Container.__module__), "ConsolidatedClient"
-            ),
             "composite": _LazyLoad(
                 ("..composite", Container.__module__), "CompositeClient"
             ),
@@ -1125,9 +1093,6 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "sparse": _LazyLoad(("..sparse", Container.__module__), "SparseClient"),
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
-            ),
-            "consolidated": _LazyLoad(
-                ("..consolidated", Container.__module__), "ConsolidatedClient"
             ),
             "composite": _LazyLoad(
                 ("..composite", Container.__module__), "CompositeClient"
