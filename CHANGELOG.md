@@ -8,7 +8,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+- In client, support specifying API key expiration time as string with
+  units, like ``"7d"` or `"10m"`.
 - Added Helm chart with deployable default configuration
+
+### Fixed
+
+- Bug in Python client resulted in error when accessing data sources on a
+  just-created object.
 
 ## 2024-12-09
 

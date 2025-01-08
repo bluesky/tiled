@@ -14,7 +14,7 @@ import httpx
 import platformdirs
 
 from .._version import __version__ as tiled_version
-from ..utils import UNSET, DictView
+from ..utils import UNSET, DictView, parse_time_string
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
 from .decoders import SUPPORTED_DECODERS
 from .transport import Transport
@@ -419,13 +419,16 @@ class Context:
         scopes : Optional[List[str]]
             Restrict the access available to the API key by listing specific scopes.
             By default, this will have the same access as the user.
-        expires_in : Optional[int]
-            Number of seconds until API key expires. If None,
-            it will never expire or it will have the maximum lifetime
-            allowed by the server.
+        expires_in : Optional[Union[int, str]]
+            Number of seconds until API key expires, given as integer seconds
+            or a string like: '3y' (years), '3d' (days), '5m' (minutes), '1h'
+            (hours), '30s' (seconds). If None, it will never expire or it will
+            have the maximum lifetime allowed by the server.
         note : Optional[str]
             Description (for humans).
         """
+        if isinstance(expires_in, str):
+            expires_in = parse_time_string(expires_in)
         return handle_error(
             self.http_client.post(
                 self.server_info["authentication"]["links"]["apikey"],
