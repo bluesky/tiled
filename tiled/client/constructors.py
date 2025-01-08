@@ -126,9 +126,9 @@ def from_context(
     # 2. If there are cached valid credentials for this server, use them.
     # 3. If not, and the server requires authentication, prompt for authentication.
     if context.api_key is None:
-        if context.server_info["authentication"]["required"] and (
-            not context.server_info["authentication"]["providers"]
-        ):
+        auth_is_required = context.server_info["authentication"]["required"]
+        has_providers = len(context.server_info["authentication"]["providers"]) > 0
+        if auth_is_required and not has_providers:
             raise RuntimeError(
                 """This server requires API key authentication.
     Set an api_key as in:
@@ -137,9 +137,7 @@ def from_context(
     """
             )
         found_valid_tokens = context.use_cached_tokens()
-        if (not found_valid_tokens) and context.server_info["authentication"][
-            "required"
-        ]:
+        if (not found_valid_tokens) and auth_is_required:
             context.authenticate(remember_me=remember_me)
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"

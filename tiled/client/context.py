@@ -48,7 +48,7 @@ def identity_provider_input(providers, provider=None):
         for i, spec in enumerate(providers, start=1):
             print(f"{i} - {spec['provider']}")
         raw_choice = input(
-            "Choose an authentication provider (or press Enter to escape): "
+            "Choose an authentication provider (or press Enter to cancel): "
         )
         if not raw_choice:
             print("No authentication provider chosen. Failed.")
@@ -108,7 +108,7 @@ def prompt_for_credentials(http_client, providers):
             except httpx.HTTPStatusError as err:
                 if err.response.status_code == httpx.codes.UNAUTHORIZED:
                     print(
-                        "Username or password not recognized. Retry, or press Enter to escape."
+                        "Username or password not recognized. Retry, or press Enter to cancel."
                     )
                     continue
                 raise
@@ -593,7 +593,7 @@ class Context:
         or prompt you to open a link in a web browser to login with a third party:
 
         >>> c.login()
-        You have ... minutes visit this URL
+        You have ... minutes to visit this URL
 
         https://...
 
@@ -609,7 +609,7 @@ class Context:
         tokens = prompt_for_credentials(self.http_client, providers)
         self.configure_auth(tokens, remember_me=remember_me)
 
-    # This is a convenience alias.
+    # These two methods are aliased for convenience.
     login = authenticate
 
     def configure_auth(self, tokens, remember_me=True):
@@ -624,7 +624,7 @@ class Context:
         self.http_client.auth = None
         if self.api_key is not None:
             raise RuntimeError(
-                "An API key is set. Cannot use both API key OAuth2 authenticaiton."
+                "An API key is set. Cannot use both API key and OAuth2 authentication."
             )
         # Configure an httpx.Auth instance on the http_client, which
         # will manage refreshing the tokens as needed.
@@ -912,7 +912,7 @@ def device_code_grant(http_client, auth_endpoint):
     authorization_uri = verification["authorization_uri"]
     print(
         f"""
-You have {int(verification['expires_in']) // 60} minutes visit this URL
+You have {int(verification['expires_in']) // 60} minutes to visit this URL
 
 {authorization_uri}
 
