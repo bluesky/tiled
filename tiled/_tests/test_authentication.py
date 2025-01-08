@@ -77,6 +77,20 @@ def test_password_auth(enter_username_password, config):
         client.logout()
         assert "unauthenticated" in repr(client.context)
 
+        # Log in as Alice.
+        with enter_username_password("alice", "secret1"):
+            from_context(context)
+        # Log in again, but set remember_me=False to opt out of cache.
+        client = from_context(context, remember_me=False)
+        # Cached tokens are cleaered, not used.
+        assert "unauthenticated" in repr(client.context)
+        with enter_username_password("alice", "secret1"):
+            client.login()
+        assert "authenticated as 'alice'" in repr(client.context)
+        # Tokens were not cached.
+        client = from_context(context)
+        assert "unauthenticated" in repr(client.context)
+
         # Log in as Bob.
         with enter_username_password("bob", "secret2"):
             client = from_context(context)
