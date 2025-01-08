@@ -13,7 +13,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.auth import CannotRefreshAuthentication
-from ..client.context import CannotPrompt, clear_default_identity, get_default_identity
+from ..client.context import PasswordRejected
 from ..server import authentication
 from ..server.app import build_app_from_config
 from .utils import fail_with_status_code
@@ -70,66 +70,28 @@ def test_password_auth(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as Alice.
         with enter_username_password("alice", "secret1"):
-            from_context(context, username="alice")
+            from_context(context)
         # Reuse token from cache.
-        client = from_context(context, username="alice")
+        client = from_context(context)
         assert "authenticated as 'alice'" in repr(client.context)
         client.logout()
         assert "unauthenticated" in repr(client.context)
 
         # Log in as Bob.
         with enter_username_password("bob", "secret2"):
-            client = from_context(context, username="bob")
+            client = from_context(context)
             assert "authenticated as 'bob'" in repr(client.context)
         client.logout()
 
         # Bob's password should not work for Alice.
-        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+        with pytest.raises(PasswordRejected):
             with enter_username_password("alice", "secret2"):
-                from_context(context, username="alice")
+                from_context(context)
 
         # Empty password should not work.
-        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
+        with pytest.raises(PasswordRejected):
             with enter_username_password("alice", ""):
-                from_context(context, username="alice")
-
-
-def test_password_auth_hook(config):
-    """Verify behavior with user-defined 'prompt_for_reauthentication' hook."""
-    with Context.from_app(build_app_from_config(config)) as context:
-        # Log in as Alice.
-        context.authenticate(username="alice", password="secret1")
-        assert "authenticated as 'alice'" in repr(context)
-
-        # Attempting to reauth without a prompt hook should raise.
-        with pytest.raises(CannotPrompt):
-            context.http_client.auth.sync_clear_token("refresh_token")
-            context.http_client.auth.sync_clear_token("access_token")
-            context.authenticate(username="alice", prompt_for_reauthentication=False)
-
-        # Log in as Bob.
-        context.authenticate(username="bob", password="secret2")
-        assert "authenticated as 'bob'" in repr(context)
-        context.logout()
-
-        # Bob's password should not work for Alice.
-        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
-            context.authenticate(username="alice", password="secret2")
-
-        # Empty password should not work.
-        with fail_with_status_code(HTTP_401_UNAUTHORIZED):
-            context.authenticate(username="alice", password="")
-
-        # Hook for reauthenticating as Alice should succeeed
-        context.authenticate(username="alice", password="secret1")
-        assert "authenticated as 'alice'" in repr(context)
-        context.http_client.auth.sync_clear_token("refresh_token")
-        context.http_client.auth.sync_clear_token("access_token")
-        context.authenticate(
-            username="alice",
-            prompt_for_reauthentication=lambda u, p: ("alice", "secret1"),
-        )
-        assert "authenticated as 'alice'" in repr(context)
+                from_context(context)
 
 
 def test_logout(enter_username_password, config, tmpdir):
@@ -139,9 +101,9 @@ def test_logout(enter_username_password, config, tmpdir):
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as Alice.
         with enter_username_password("alice", "secret1"):
-            from_context(context, username="alice")
+            from_context(context)
         # Reuse token from cache.
-        client = from_context(context, username="alice")
+        client = from_context(context)
         # This was set to a unique (temporary) dir by an autouse fixture in conftest.py.
         tiled_cache_dir = os.environ["TILED_CACHE_DIR"]
         # Make a backup copy of the cache directory, which contains the auth tokens.
@@ -159,7 +121,7 @@ def test_logout(enter_username_password, config, tmpdir):
         # There is no way to revoke a JWT access token. It expires after a
         # short time window (minutes) but it will still work here, as it has
         # not been that long.
-        client = from_context(context, username="alice")
+        client = from_context(context)
         # The refresh token refers to a revoked session, so refreshing the
         # session to generate a *new* access and refresh token will fail.
         with pytest.raises(CannotRefreshAuthentication):
@@ -175,9 +137,9 @@ def test_key_rotation(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         # Obtain refresh token.
         with enter_username_password("alice", "secret1"):
-            from_context(context, username="alice")
+            from_context(context)
         # Use refresh token (no prompt to reauthenticate).
-        client = from_context(context, username="alice")
+        client = from_context(context)
 
     # Rotate in a new key.
     config["authentication"]["secret_keys"].insert(0, "NEW_SECRET")
@@ -185,7 +147,7 @@ def test_key_rotation(enter_username_password, config):
 
     with Context.from_app(build_app_from_config(config)) as context:
         # The refresh token from the old key is still valid. No login prompt here.
-        client = from_context(context, username="alice")
+        client = from_context(context)
         # We reauthenticate and receive a refresh token for the new key.
         # (This would happen on its own with the passage of time, but we force it
         # for the sake of a quick test.)
@@ -197,7 +159,7 @@ def test_key_rotation(enter_username_password, config):
 
     with Context.from_app(build_app_from_config(config)) as context:
         # New refresh token works with the new key
-        from_context(context, username="alice")
+        from_context(context)
 
 
 def test_refresh_forced(enter_username_password, config):
@@ -205,7 +167,7 @@ def test_refresh_forced(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         # Normal default configuration: a refresh is not immediately required.
         with enter_username_password("alice", "secret1"):
-            client = from_context(context, username="alice")
+            client = from_context(context)
         tokens1 = dict(client.context.tokens)
         # Wait for a moment or we will get a new token that happens to be identical
         # to the old token. This advances the expiration time to make a distinct token.
@@ -222,7 +184,7 @@ def test_refresh_transparent(enter_username_password, config):
     config["authentication"]["access_token_max_age"] = 1
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
-            client = from_context(context, username="alice")
+            client = from_context(context)
         tokens1 = dict(client.context.tokens)
         time.sleep(2)
         # A refresh should happen automatically now.
@@ -236,7 +198,7 @@ def test_expired_session(enter_username_password, config):
     config["authentication"]["session_max_age"] = 1
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
-            client = from_context(context, username="alice")
+            client = from_context(context)
         time.sleep(2)
         # Refresh should fail because the session is too old.
         with pytest.raises(CannotRefreshAuthentication):
@@ -246,7 +208,7 @@ def test_expired_session(enter_username_password, config):
 def test_revoke_session(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
-            client = from_context(context, username="alice")
+            client = from_context(context)
         # Get the current session ID.
         info = client.context.whoami()
         (session,) = info["sessions"]
@@ -288,13 +250,13 @@ def test_multiple_providers(enter_username_password, config, monkeypatch):
     with Context.from_app(build_app_from_config(config)) as context:
         monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))
         with enter_username_password("alice", "secret1"):
-            from_context(context, username="alice")
+            from_context(context)
         monkeypatch.setattr("sys.stdin", io.StringIO("2\n"))
         with enter_username_password("cara", "secret3"):
-            from_context(context, username="cara")
+            from_context(context)
         monkeypatch.setattr("sys.stdin", io.StringIO("3\n"))
         with enter_username_password("cara", "secret5"):
-            from_context(context, username="cara")
+            from_context(context)
 
 
 def test_multiple_providers_name_collision(config):
@@ -329,7 +291,7 @@ def test_admin(enter_username_password, config):
 
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
         admin_roles = context.whoami()["roles"]
         assert "admin" in [role["name"] for role in admin_roles]
 
@@ -339,7 +301,7 @@ def test_admin(enter_username_password, config):
         context.admin.show_principal(some_principal_uuid)
 
         with enter_username_password("bob", "secret2"):
-            context.authenticate(username="bob")
+            context.authenticate()
         user_roles = context.whoami()["roles"]
         assert [role["name"] for role in user_roles] == ["user"]
 
@@ -352,7 +314,7 @@ def test_admin(enter_username_password, config):
     # Start the server a second time. Now alice is already an admin.
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
         admin_roles = context.whoami()["roles"]
         assert "admin" in [role["name"] for role in admin_roles]
 
@@ -364,7 +326,7 @@ def test_api_key_activity(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as user.
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
         # Make and use an API key. Check that latest_activity is not set.
         key_info = context.create_api_key()
         context.logout()
@@ -406,7 +368,7 @@ def test_api_key_scopes(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as admin.
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
         # Request a key with reduced scope that cannot read metadata.
         metrics_key_info = context.create_api_key(scopes=["metrics"])
         context.logout()
@@ -417,7 +379,7 @@ def test_api_key_scopes(enter_username_password, config):
 
         # Log in as ordinary user.
         with enter_username_password("bob", "secret2"):
-            context.authenticate(username="bob")
+            context.authenticate()
         # Try to request a key with more scopes that the user has.
         with fail_with_status_code(HTTP_400_BAD_REQUEST):
             context.create_api_key(scopes=["admin:apikeys"])
@@ -435,7 +397,7 @@ def test_api_key_scopes(enter_username_password, config):
 def test_api_key_revoked(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
 
         # Create a key with a note.
         NOTE = "will revoke soon"
@@ -453,7 +415,7 @@ def test_api_key_revoked(enter_username_password, config):
 
         # Revoke the new key.
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
         context.revoke_api_key(key_info["first_eight"])
         assert len(context.whoami()["api_keys"]) == 0
         context.logout()
@@ -465,7 +427,7 @@ def test_api_key_revoked(enter_username_password, config):
 def test_api_key_expiration(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
         # Create a key with a very short lifetime.
         key_info = context.create_api_key(
             note="will expire very soon", expires_in=1
@@ -484,7 +446,7 @@ def test_api_key_limit(enter_username_password, config):
     try:
         with Context.from_app(build_app_from_config(config)) as context:
             with enter_username_password("bob", "secret2"):
-                context.authenticate(username="bob")
+                context.authenticate()
             for i in range(authentication.API_KEY_LIMIT):
                 context.create_api_key(note=f"key {i}")
             # Hit API key limit.
@@ -503,41 +465,13 @@ def test_session_limit(enter_username_password, config):
         with Context.from_app(build_app_from_config(config)) as context:
             with enter_username_password("alice", "secret1"):
                 for i in range(authentication.SESSION_LIMIT):
-                    context.authenticate(username="alice")
+                    context.authenticate()
                     context.logout()
                 # Hit Session limit.
                 with fail_with_status_code(HTTP_400_BAD_REQUEST):
-                    context.authenticate(username="alice")
+                    context.authenticate()
     finally:
         authentication.SESSION_LIMIT = original_limit
-
-
-def test_sticky_identity(enter_username_password, config):
-    # Log in as Alice.
-    with Context.from_app(build_app_from_config(config)) as context:
-        assert get_default_identity(context.api_uri) is None
-        with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
-        assert context.whoami()["identities"][0]["id"] == "alice"
-    # The default identity is now set. The login was "sticky".
-    with Context.from_app(build_app_from_config(config)) as context:
-        assert get_default_identity(context.api_uri) is not None
-        context.authenticate()
-        assert context.whoami()["identities"][0]["id"] == "alice"
-    # Opt out of the stickiness (set_default=False).
-    with Context.from_app(build_app_from_config(config)) as context:
-        assert get_default_identity(context.api_uri) is not None
-        with enter_username_password("bob", "secret2"):
-            context.authenticate(username="bob", set_default=False)
-        assert context.whoami()["identities"][0]["id"] == "bob"
-    # The default is still Alice.
-    with Context.from_app(build_app_from_config(config)) as context:
-        assert get_default_identity(context.api_uri) is not None
-        context.authenticate()
-        assert context.whoami()["identities"][0]["id"] == "alice"
-    # Clear the default.
-    clear_default_identity(context.api_uri)
-    assert get_default_identity(context.api_uri) is None
 
 
 @pytest.fixture
@@ -551,7 +485,7 @@ def principals_context(enter_username_password, config):
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as Alice and retrieve admin UUID for later use
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
 
         principal = context.whoami()
         assert "admin" in (role["name"] for role in principal["roles"])
@@ -560,7 +494,7 @@ def principals_context(enter_username_password, config):
 
         # Log in as Bob and retrieve Bob's UUID for later use
         with enter_username_password("bob", "secret2"):
-            context.authenticate(username="bob")
+            context.authenticate()
 
         principal = context.whoami()
         assert "admin" not in (role["name"] for role in principal["roles"])
@@ -589,7 +523,7 @@ def test_admin_api_key_any_principal(
     with principals_context["context"] as context:
         # Log in as Alice, create and use API key after logout
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
 
         principal_uuid = principals_context["uuid"][username]
         api_key_info = context.admin.create_api_key(principal_uuid, scopes=scopes)
@@ -612,7 +546,7 @@ def test_admin_create_service_principal(enter_username_password, principals_cont
     with principals_context["context"] as context:
         # Log in as Alice, create and use API key after logout
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
 
         assert context.whoami()["type"] == "user"
 
@@ -638,7 +572,7 @@ def test_admin_api_key_any_principal_exceeds_scopes(
     with principals_context["context"] as context:
         # Log in as Alice, create and use API key after logout
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
 
         principal_uuid = principals_context["uuid"]["bob"]
         with fail_with_status_code(HTTP_400_BAD_REQUEST) as fail_info:
@@ -656,7 +590,7 @@ def test_api_key_any_principal(enter_username_password, principals_context, user
     with principals_context["context"] as context:
         # Log in as Bob, this API endpoint is unauthorized
         with enter_username_password("bob", "secret2"):
-            context.authenticate(username="bob")
+            context.authenticate()
 
         principal_uuid = principals_context["uuid"][username]
         with fail_with_status_code(HTTP_401_UNAUTHORIZED):
@@ -670,7 +604,7 @@ def test_api_key_bypass_scopes(enter_username_password, principals_context):
     with principals_context["context"] as context:
         # Log in as Bob, create API key with empty scopes
         with enter_username_password("bob", "secret2"):
-            context.authenticate(username="bob")
+            context.authenticate()
 
         response = context.http_client.post(
             "/api/v1/auth/apikey", json={"expires_in": None, "scopes": []}
@@ -705,7 +639,7 @@ def test_admin_delete_principal_apikey(
     with principals_context["context"] as context:
         # Log in as Bob (Ordinary user)
         with enter_username_password("bob", "secret2"):
-            context.authenticate(username="bob")
+            context.authenticate()
 
         # Create an ordinary user API Key
         principal_uuid = principals_context["uuid"]["bob"]
@@ -714,7 +648,7 @@ def test_admin_delete_principal_apikey(
 
         # Log in as Alice (Admin)
         with enter_username_password("alice", "secret1"):
-            context.authenticate(username="alice")
+            context.authenticate()
 
         # Delete the created API Key via service principal
         context.admin.revoke_api_key(principal_uuid, api_key_info["first_eight"])

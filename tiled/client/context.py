@@ -22,39 +22,7 @@ USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 
 
-def _choose_identity_provider(providers, provider=None):
-    if len(providers) == 1:
-        # There is only one choice, so no need to prompt the user.
-        (spec,) = providers
-    else:
-        while True:
-            print("Authenticaiton providers:")
-            for i, spec in enumerate(providers, start=1):
-                print(f"{i} - {spec['provider']}")
-            raw_choice = input(
-                "Choose an authentication provider (or press Enter to escape): "
-            )
-            if not raw_choice:
-                print("No authentication provider chosen. Failed.")
-                break
-            try:
-                choice = int(raw_choice)
-            except TypeError:
-                print("Choice must be a number.")
-                continue
-            try:
-                spec = providers[choice - 1]
-            except IndexError:
-                print(f"Choice must be a number 1 through {len(providers)}.")
-                continue
-            break
-    return spec
-
-
-def prompt_for_credentials(http_client, providers):
-    """
-    Prompt for credentials or third-party login at an interactive terminal.
-    """
+def raise_if_cannot_prompt():
     if not _can_prompt() and not bool(int(os.environ.get("TILED_FORCE_PROMPT", "0"))):
         raise CannotPrompt(
             """
@@ -72,16 +40,67 @@ prompt the user to provide credentials in the stdin. Options:
   and/or device_code_grant, and pass them like Context.authenticate(tokens=token).
 """
         )
-    spec = _choose_identity_provider(providers)
+
+
+def identity_provider_input(providers, provider=None):
+    while True:
+        print("Authenticaiton providers:")
+        for i, spec in enumerate(providers, start=1):
+            print(f"{i} - {spec['provider']}")
+        raw_choice = input(
+            "Choose an authentication provider (or press Enter to escape): "
+        )
+        if not raw_choice:
+            print("No authentication provider chosen. Failed.")
+            break
+        try:
+            choice = int(raw_choice)
+        except TypeError:
+            print("Choice must be a number.")
+            continue
+        try:
+            spec = providers[choice - 1]
+        except IndexError:
+            print(f"Choice must be a number 1 through {len(providers)}.")
+            continue
+        break
+    return spec
+
+
+def username_input():
+    raise_if_cannot_prompt()
+    return input("Username")
+
+
+def password_input():
+    raise_if_cannot_prompt()
+    return getpass.getpass()
+
+
+class PasswordRejected(RuntimeError):
+    pass
+
+
+def prompt_for_credentials(http_client, providers):
+    """
+    Prompt for credentials or third-party login at an interactive terminal.
+    """
+    if len(providers) == 1:
+        # There is only one choice, so no need to prompt the user.
+        (spec,) = providers
+    else:
+        spec = identity_provider_input(providers)
     auth_endpoint = spec["links"]["auth_endpoint"]
     provider = spec["provider"]
     mode = spec["mode"]
     if mode == "password":
         # Prompt for username, password at terminal.
-        username = input("Username: ")
+        username = username_input()
         PASSWORD_ATTEMPTS = 3
         for _attempt in range(PASSWORD_ATTEMPTS):
-            password = getpass.getpass()
+            password = password_input()
+            if not password:
+                raise PasswordRejected("Password empty.")
             try:
                 tokens = password_grant(
                     http_client, auth_endpoint, provider, username, password
@@ -92,12 +111,13 @@ prompt the user to provide credentials in the stdin. Options:
                         "Username or password not recognized. Retry, or press Enter to escape."
                     )
                     continue
+                raise
             else:
                 # Sucess! We have tokens.
                 break
         else:
             # All attempts failed.
-            raise RuntimeError("Password attempts failed.")
+            raise PasswordRejected
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
