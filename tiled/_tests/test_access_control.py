@@ -230,8 +230,9 @@ def context(tmpdir_module):
 
 
 def test_entry_based_scopes(context, enter_username_password):
+    alice_client = from_context(context)
     with enter_username_password("alice", "secret1"):
-        alice_client = from_context(context, username="alice")
+        alice_client.login()
     with pytest.raises(ClientError, match="Not enough permissions"):
         alice_client["h"]["x"].write(arr_zeros)
     alice_client["h"]["y"].write(arr_zeros)
