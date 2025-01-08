@@ -25,6 +25,13 @@ arr_ad = ArrayAdapter.from_array(arr)
 
 
 class EntryBasedAccessPolicy(SimpleAccessPolicy):
+    """
+    This example access policy demonstrates how the metadata on some nested child node
+    can be efficiently consulted and incorporated in logic that determines access scopes.
+    In this test example, the metadata on the node quite literally lists some scopes that
+    it should not allow. In realistic examples it could be incorporated in site-specific logic.
+    """
+
     async def allowed_scopes(self, node, principal, path_parts):
         # If this is being called, filter_access has let us get this far.
         if principal is SpecialUsers.public:
