@@ -153,7 +153,7 @@ class BaseClient:
             )
         return self._structure
 
-    def login(self, username=None, provider=None):
+    def login(self):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -170,7 +170,7 @@ class BaseClient:
 
         and enter the code: XXXX-XXXX
         """
-        self.context.login(username=username, provider=provider)
+        self.context.login()
 
     def logout(self):
         """
