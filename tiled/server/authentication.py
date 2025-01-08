@@ -463,7 +463,9 @@ async def create_session(
     return fully_loaded_session
 
 
-async def create_tokens_from_session(settings, db, session, provider):
+async def create_tokens_from_session(
+    settings, db, session, provider, refresh_token_max_age: Optional[timedelta] = None
+):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -483,9 +485,12 @@ async def create_tokens_from_session(settings, db, session, provider):
         expires_delta=settings.access_token_max_age,
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
+    refresh_token_max_age = settings.get_refresh_token_max_age(
+        refresh_token_max_age or settings.refresh_token_max_age
+    )
     refresh_token = create_refresh_token(
         session_id=session.uuid.hex,
-        expires_delta=settings.refresh_token_max_age,
+        expires_delta=refresh_token_max_age,
         secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
     )
     # Include the identity. This is not stored as part of the session.
@@ -503,7 +508,7 @@ async def create_tokens_from_session(settings, db, session, provider):
         "access_token": access_token,
         "expires_in": settings.access_token_max_age / UNIT_SECOND,
         "refresh_token": refresh_token,
-        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+        "refresh_token_expires_in": refresh_token_max_age / UNIT_SECOND,
         "token_type": "bearer",
         "identity": {"id": identity.id, "provider": provider},
         "principal": principal.uuid.hex,
@@ -517,6 +522,7 @@ def build_auth_code_route(authenticator, provider):
         request: Request,
         settings: BaseSettings = Depends(get_settings),
         db=Depends(get_database_session),
+        refresh_token_max_age: Optional[int] = Form[None],
     ):
         request.state.endpoint = "auth"
         user_session_state = await authenticator.authenticate(request)
@@ -531,7 +537,13 @@ def build_auth_code_route(authenticator, provider):
             user_session_state.user_name,
             user_session_state.state,
         )
-        tokens = await create_tokens_from_session(settings, db, session, provider)
+        tokens = await create_tokens_from_session(
+            settings,
+            db,
+            session,
+            provider,
+            timedelta(seconds=refresh_token_max_age) if refresh_token_max_age else None,
+        )
         return tokens
 
     return route
@@ -678,6 +690,7 @@ def build_device_code_token_route(authenticator, provider):
         body: schemas.DeviceCode,
         settings: BaseSettings = Depends(get_settings),
         db=Depends(get_database_session),
+        refresh_token_max_age: Optional[int] = Form[None],
     ):
         request.state.endpoint = "auth"
         device_code_hex = body.device_code
@@ -704,7 +717,13 @@ def build_device_code_token_route(authenticator, provider):
         # The pending session can only be used once.
         await db.delete(pending_session)
         await db.commit()
-        tokens = await create_tokens_from_session(settings, db, session, provider)
+        tokens = await create_tokens_from_session(
+            settings,
+            db,
+            session,
+            provider,
+            timedelta(seconds=refresh_token_max_age) if refresh_token_max_age else None,
+        )
         return tokens
 
     return route
@@ -720,6 +739,7 @@ def build_handle_credentials_route(
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: BaseSettings = Depends(get_settings),
         db=Depends(get_database_session),
+        refresh_token_max_age: Optional[int] = Form(None),
     ):
         request.state.endpoint = "auth"
         user_session_state = await authenticator.authenticate(
@@ -738,7 +758,13 @@ def build_handle_credentials_route(
             user_session_state.user_name,
             state=user_session_state.state,
         )
-        tokens = await create_tokens_from_session(settings, db, session, provider)
+        tokens = await create_tokens_from_session(
+            settings,
+            db,
+            session,
+            provider,
+            timedelta(seconds=refresh_token_max_age) if refresh_token_max_age else None,
+        )
         return tokens
 
     return route

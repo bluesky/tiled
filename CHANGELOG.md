@@ -24,6 +24,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   optionally _extending_ an existing array.
 - Add associated Python client method `ArrayClient.patch`.
 - Hook to authentication prompt to make password login available without TTY.
+- Expanded auth routes to manually reduce refresh token lifetime.
 
 ### Fixed
 

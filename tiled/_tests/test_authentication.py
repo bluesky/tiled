@@ -132,6 +132,21 @@ def test_password_auth_hook(config):
         assert "authenticated as 'alice'" in repr(context)
 
 
+def test_refresh_expiration(config):
+    """Ensure we can force an early expiration of refresh tokens"""
+
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Log in as Alice with a 1 sec refresh token expiration
+        spec, username = context.authenticate(
+            username="alice", password="secret1", refresh_token_max_age=1
+        )
+        assert "authenticated as 'alice'" in repr(context)
+        time.sleep(1.5)
+        # Attempt to refresh the token should fail
+        with pytest.raises(CannotRefreshAuthentication):
+            context.force_auth_refresh()
+
+
 def test_logout(enter_username_password, config, tmpdir):
     """
     Logging out revokes the session, such that it cannot be refreshed.
