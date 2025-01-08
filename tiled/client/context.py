@@ -69,7 +69,7 @@ def identity_provider_input(providers, provider=None):
 
 def username_input():
     raise_if_cannot_prompt()
-    return input("Username")
+    return input("Username: ")
 
 
 def password_input():
