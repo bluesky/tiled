@@ -442,7 +442,7 @@ class Context:
 
             settings = app.dependency_overrides[get_settings]()
             api_key = settings.single_user_api_key or None
-            context.api_key = api_key
+        context.api_key = api_key
         return context
 
     @property
