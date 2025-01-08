@@ -6,7 +6,6 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import Callable, Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -56,6 +55,23 @@ def prompt_for_credentials(http_client, providers):
     """
     Prompt for credentials or third-party login at an interactive terminal.
     """
+    if not _can_prompt() and not bool(int(os.environ.get("TILED_FORCE_PROMPT", "0"))):
+        raise CannotPrompt(
+            """
+Tiled has detected that it is running in a 'headless' context where it cannot
+prompt the user to provide credentials in the stdin. Options:
+
+- Provide an API key in the environment variable TILED_API_KEY for Tiled to
+  use.
+
+- If Tiled has detected wrongly, set the environment variable
+  TILED_FORCE_PROMPT=1 to override and force an interactive prompt.
+
+- If you are developing an application that is wraping Tiled,
+  obtain tokens using functions tiled.client.context.password_grant
+  and/or device_code_grant, and pass them like Context.authenticate(tokens=token).
+"""
+        )
     spec = _choose_identity_provider(providers)
     auth_endpoint = spec["links"]["auth_endpoint"]
     provider = spec["provider"]
@@ -540,7 +556,6 @@ class Context:
         self,
         *,
         remember_me=True,
-        prompt_for_reauthentication: Optional[Callable] = None,
     ):
         """
         Log in to a Tiled server.
@@ -562,43 +577,40 @@ class Context:
 
         Parameters
         ----------
-        prompt_for_reuathentication : optional callable
-            Advanced customization hook for applications wrapping Tiled.
-            See prompt_for_credentials for an example (and the default).
         remember_me : bool
             Next time, try to automatically authenticate using this session.
         """
+        # Obtain tokens via OAuth2 unless the caller has passed them.
+        providers = self.server_info["authentication"]["providers"]
+        tokens = prompt_for_credentials(self.http_client, providers)
+        self.configure_auth(tokens, remember_me=remember_me)
+
+    # This is a convenience alias.
+    login = authenticate
+
+    def configure_auth(self, tokens, remember_me=True):
+        """
+        Configure Tiled client with tokens for refresh flow.
+
+        Parameters
+        ----------
+        tokens : dict, optional
+            Must include keys 'access_token' and 'refresh_token'
+        """
+        self.http_client.auth = None
         if self.api_key is not None:
             raise RuntimeError(
                 "An API key is set. Cannot use both API key OAuth2 authenticaiton."
             )
-        if prompt_for_reauthentication is None:
-            if not _can_prompt():
-                raise CannotPrompt(
-                    """Tiled has detected that it is running
-in a 'headless' context where it cannot prompt the user to provide
-credentials in the stdin. Options:
-
-- If Tiled has detected this wrongly, pass prompt_for_reauthentication=True
-  to force it to prompt.
-- Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
-- Pass prompt_for_reauthentication=Callable, to generate the reauthentication via your application hook.
-"""
-                )
-            prompt_for_reauthentication = prompt_for_credentials
-
+        # Configure an httpx.Auth instance on the http_client, which
+        # will manage refreshing the tokens as needed.
         refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
         csrf_token = self.http_client.cookies["tiled_csrf"]
-        self.http_client.auth = None
-        providers = self.server_info["authentication"]["providers"]
-        tokens = prompt_for_reauthentication(self.http_client, providers)
         token_directory = self._token_directory() if remember_me else None
         auth = TiledAuth(refresh_url, csrf_token, token_directory)
         auth.sync_set_token("access_token", tokens["access_token"])
         auth.sync_set_token("refresh_token", tokens["refresh_token"])
         self.http_client.auth = auth
-
-    login = authenticate
 
     def _token_directory(self):
         # e.g. ~/.config/tiled/tokens/{host:port}

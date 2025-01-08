@@ -127,29 +127,32 @@ as it is easy to accidentally share or leak.
 
 ## Custom Applications
 
-Custom applications, such as a graphical interfaces that wrap Tiled,
-may not be able to use Tiled commandline-based prompts. They may
-provide their own mechanism for collection credentials
-(for password grants) or launching a browser and waiting for the
-user to authorize a session (for device code grants).
+Custom applications, such as a graphical interfaces that wrap Tiled, may not be
+able to use Tiled commandline-based prompts. They should avoid using the
+convenience functions `tiled.client.construtors.from_uri` and
+`tiled.client.construtors.from_profile`.
 
-Custom applications should avoid using the convenience functions
-`tiled.client.construtors.from_uri` and
-`tiled.client.construtors.from_profile`. Instead, follow this pattern:
+They may implement their own interfaces for collecting credentials (for
+password grants) or launching a browser and waiting for the user to authorize a
+session (for device code grants). The functions
+`tiled.client.context.password_grant` and
+`tiled.client.context.device_code_grant` may be useful building blocks. The
+tokens obtained from this process may then be passed directly in to the Tiled
+client like so.
+
 
 ```py
 from tiled.client import Context
 
-def my_prompt(http_client, providers):
-    ...
-    return tokens
-
-
 URI = "https://..."
 context, node_path_parts = Context.from_any_uri(URI)
-context.authenticate(prompt_for_reauthentication=my_prompt)
+tokens, remember_me = launch_custom_interface()
+context.configure_auth(tokens, remember_me=remember_me)
 client = from_context(context, node_path_parts=node_path_parts)
 ```
 
-Note that `my_prompt` will be called immediately _and may also be called again
-later_ if the active sessions expires or is revoked.
+The client will transparently handle OAuth2 refresh flow. If the session is
+revoked or expires, and an attempt at refreshing the tokens is thus rejected
+by the server, the exception `tiled.client.auth.CannotRefreshAuthentication`
+will be raised. The application should be prepared to catch that exception
+and reinitiate authentication.
