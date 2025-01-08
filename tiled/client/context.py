@@ -434,14 +434,18 @@ class Context:
             app=app,
             raise_server_exceptions=raise_server_exceptions,
         )
-        if (api_key is UNSET) and (
-            not context.server_info["authentication"]["providers"]
-        ):
-            # Extract the API key from the app and set it.
-            from ..server.settings import get_settings
+        if api_key is UNSET:
+            if not context.server_info["authentication"]["providers"]:
+                # This is a single-user server.
+                # Extract the API key from the app and set it.
+                from ..server.settings import get_settings
 
-            settings = app.dependency_overrides[get_settings]()
-            api_key = settings.single_user_api_key or None
+                settings = app.dependency_overrides[get_settings]()
+                api_key = settings.single_user_api_key or None
+            else:
+                # This is a multi-user server but no API key was passed,
+                # so we will leave it as None on the Context.
+                api_key = None
         context.api_key = api_key
         return context
 
