@@ -428,7 +428,7 @@ class Context:
         context = cls(
             uri="http://local-tiled-app/api/v1",
             headers=headers,
-            api_key=api_key,
+            api_key=None,
             cache=cache,
             timeout=timeout,
             app=app,
@@ -676,6 +676,7 @@ class Context:
             self.whoami()
             return True
         except CannotRefreshAuthentication:
+            self.http_client.auth = None
             return False
 
     def force_auth_refresh(self):
