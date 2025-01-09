@@ -630,7 +630,15 @@ class Context:
         # will manage refreshing the tokens as needed.
         refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
         csrf_token = self.http_client.cookies["tiled_csrf"]
-        token_directory = self._token_directory() if remember_me else None
+        if remember_me:
+            token_directory = self._token_directory()
+        else:
+            # Clear any existing tokens.
+            temp_auth = TiledAuth(refresh_url, csrf_token, self._token_directory())
+            temp_auth.sync_clear_token("access_token")
+            temp_auth.sync_clear_token("refresh_token")
+            # Store tokens in memory only, with no syncing to disk.
+            token_directory = None
         auth = TiledAuth(refresh_url, csrf_token, token_directory)
         auth.sync_set_token("access_token", tokens["access_token"])
         auth.sync_set_token("refresh_token", tokens["refresh_token"])

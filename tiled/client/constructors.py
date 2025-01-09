@@ -136,7 +136,7 @@ def from_context(
     >>> c = from_uri("...", api_key="...")
     """
             )
-        found_valid_tokens = context.use_cached_tokens()
+        found_valid_tokens = remember_me and context.use_cached_tokens()
         if (not found_valid_tokens) and auth_is_required:
             context.authenticate(remember_me=remember_me)
     # Context ensures that context.api_uri has a trailing slash.

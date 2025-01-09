@@ -77,20 +77,6 @@ def test_password_auth(enter_username_password, config):
         client.logout()
         assert "unauthenticated" in repr(client.context)
 
-        # Log in as Alice.
-        with enter_username_password("alice", "secret1"):
-            from_context(context)
-        # Log in again, but set remember_me=False to opt out of cache.
-        client = from_context(context, remember_me=False)
-        # Cached tokens are cleaered, not used.
-        assert "unauthenticated" in repr(client.context)
-        with enter_username_password("alice", "secret1"):
-            client.login()
-        assert "authenticated as 'alice'" in repr(client.context)
-        # Tokens were not cached.
-        client = from_context(context)
-        assert "unauthenticated" in repr(client.context)
-
         # Log in as Bob.
         with enter_username_password("bob", "secret2"):
             client = from_context(context)
@@ -106,6 +92,26 @@ def test_password_auth(enter_username_password, config):
         with pytest.raises(PasswordRejected):
             with enter_username_password("alice", ""):
                 from_context(context)
+
+
+def test_remember_me(enter_username_password, config):
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Log in as Alice.
+        with enter_username_password("alice", "secret1"):
+            from_context(context)  # default: remember_me=True
+    with Context.from_app(build_app_from_config(config)) as context:
+        from_context(context)
+        # Cached tokens are used, with no prompt.
+        assert "authenticated as 'alice'" in repr(context)
+
+    with Context.from_app(build_app_from_config(config)) as context:
+        # Log in again, but set remember_me=False to opt out of cache.
+        with enter_username_password("alice", "secret1"):
+            from_context(context, remember_me=False)
+        assert "authenticated as 'alice'" in repr(context)
+    with Context.from_app(build_app_from_config(config)) as context:
+        # No tokens are cached.
+        assert not context.use_cached_tokens()
 
 
 def test_logout(enter_username_password, config, tmpdir):
