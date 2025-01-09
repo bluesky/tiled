@@ -11,6 +11,8 @@ repos:
     -   id: check-merge-conflict
     -   id: check-symlinks
     -   id: check-yaml
+        # These yaml files output valid yaml only after templating
+        exclude: ^helm/tiled/templates/
     -   id: debug-statements
 
 -   repo: https://github.com/pycqa/flake8
