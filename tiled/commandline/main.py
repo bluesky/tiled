@@ -78,6 +78,28 @@ def login(
         typer.echo(json.dumps(dict(context.tokens), indent=4))
 
 
+@cli_app.command("whoami")
+def whoami(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+):
+    """
+    Show logged in identity.
+    """
+    from ..client.context import Context
+
+    profile_name, profile_content = get_profile(profile)
+    options = {"verify": profile_content.get("verify", True)}
+    context, _ = Context.from_any_uri(profile_content["uri"], **options)
+    context.use_cached_tokens()
+    whoami = context.whoami()
+    if whoami is None:
+        typer.echo("Not authenticated.")
+    else:
+        typer.echo(",".join(identity["id"] for identity in whoami["identities"]))
+
+
 @cli_app.command("logout")
 def logout(
     profile: Optional[str] = typer.Option(
