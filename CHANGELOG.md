@@ -10,12 +10,20 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
 - In client, support specifying API key expiration time as string with
   units, like ``"7d"` or `"10m"`.
+- Fix bug where access policies were not applied to child nodes during request
+- Add metadata-based access control to SimpleAccessPolicy
+- Add example test of metadata-based allowed_scopes which requires the path to the target node
 - Added Helm chart with deployable default configuration
 
 ### Fixed
 
 - Bug in Python client resulted in error when accessing data sources on a
   just-created object.
+- Fix bug where access policies were not applied to child nodes during request
+
+### Changed
+
+- Change access policy API to be async for filters and allowed_scopes
 
 ## 2024-12-09
 

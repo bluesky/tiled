@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import dask.dataframe
 import numpy
 import pandas
+import pytest
 import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
@@ -367,7 +368,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
     mock_call6.assert_called_once_with("abc")
 
 
-class CustomAccessPolicy:
+class CustomAccessPolicy(AccessPolicy):
     ALL = ALL_ACCESS
 
     def __init__(self, scopes: Optional[Scopes] = None) -> None:
@@ -376,27 +377,38 @@ class CustomAccessPolicy:
     def _get_id(self, principal: Principal) -> None:
         return None
 
-    def allowed_scopes(self, node: BaseAdapter, principal: Principal) -> Scopes:
+    async def allowed_scopes(
+        self, node: BaseAdapter, principal: Principal, path_parts: List[Any]
+    ) -> Scopes:
         allowed = self.scopes
         somemetadata = node.metadata()  # noqa: 841
         return allowed
 
-    def filters(
-        self, node: BaseAdapter, principal: Principal, scopes: Scopes
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        scopes: Scopes,
+        path_parts: List[Any],
     ) -> Filters:
         queries: Filters = []
         somespecs = node.specs()  # noqa: 841
         return queries
 
 
-def accesspolicy_protocol_functions(
-    policy: AccessPolicy, node: BaseAdapter, principal: Principal, scopes: Scopes
+async def accesspolicy_protocol_functions(
+    policy: AccessPolicy,
+    node: BaseAdapter,
+    principal: Principal,
+    scopes: Scopes,
+    path_parts: List[Any],
 ) -> None:
-    policy.allowed_scopes(node, principal)
-    policy.filters(node, principal, scopes)
+    await policy.allowed_scopes(node, principal, path_parts)
+    await policy.filters(node, principal, scopes, path_parts)
 
 
-def test_accesspolicy_protocol(mocker: MockFixture) -> None:
+@pytest.mark.asyncio  # type: ignore
+async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     mock_call = mocker.patch.object(CustomAwkwardAdapter, "metadata")
     mock_call2 = mocker.patch.object(CustomAwkwardAdapter, "specs")
 
@@ -410,11 +422,12 @@ def test_accesspolicy_protocol(mocker: MockFixture) -> None:
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
     scopes = {"abc"}
+    path_parts = ["wx", "yz"]
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
 
-    accesspolicy_protocol_functions(
-        anyaccesspolicy, anyawkwardadapter, principal, scopes
+    await accesspolicy_protocol_functions(
+        anyaccesspolicy, anyawkwardadapter, principal, scopes, path_parts
     )
     mock_call.assert_called_once()
     mock_call2.assert_called_once()
