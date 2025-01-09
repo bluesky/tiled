@@ -417,14 +417,16 @@ async def test_access_control(tmpdir):
 
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
+        admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
-            admin_client = from_context(context, username="admin")
+            admin_client.login()
             for key in ["outer_x", "outer_y", "outer_z"]:
                 container = admin_client.create_container(key)
                 container.write_array([1, 2, 3], key="inner")
             admin_client.logout()
+        alice_client = from_context(context)
         with enter_username_password("alice", "secret1"):
-            alice_client = from_context(context, username="alice")
+            alice_client.login()
             alice_client["outer_x"]["inner"].read()
             with pytest.raises(KeyError):
                 alice_client["outer_y"]

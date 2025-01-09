@@ -18,6 +18,7 @@ tutorials/plotly-integration
 ```{toctree}
 :caption: How To Guides
 
+how-to/authentication
 how-to/profiles
 how-to/client-logger
 how-to/docker

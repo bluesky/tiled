@@ -23,6 +23,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Changed
 
 - Change access policy API to be async for filters and allowed_scopes
+- Pinned zarr to `<3` because Zarr 3 is still working on adding support for
+  certain features that we rely on from Zarr 2.
 
 ## 2024-12-09
 
