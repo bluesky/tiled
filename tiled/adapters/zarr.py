@@ -1,11 +1,13 @@
 import builtins
 import collections.abc
+import importlib
 import os
 import sys
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
+import packaging
+import zarr
 import zarr.core
-import zarr.hierarchy
 import zarr.storage
 from numpy._typing import NDArray
 
@@ -18,6 +20,12 @@ from ..type_aliases import JSON, NDSlice
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 from .protocols import AccessPolicy
+
+_zarr_version = packaging.version.Version(importlib.metadata.version("zarr"))
+if _zarr_version < packaging.version.Version("3.0.0"):
+    from zarr.hierarchy import Group
+else:
+    from zarr import Group
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -42,7 +50,7 @@ def read_zarr(
     filepath = path_from_uri(data_uri)
     zarr_obj = zarr.open(filepath)  # Group or Array
     adapter: Union[ZarrGroupAdapter, ArrayAdapter]
-    if isinstance(zarr_obj, zarr.hierarchy.Group):
+    if isinstance(zarr_obj, Group):
         adapter = ZarrGroupAdapter(zarr_obj, **kwargs)
     else:
         if structure is None:
@@ -344,7 +352,7 @@ class ZarrGroupAdapter(
 
         """
         value = self._node[key]
-        if isinstance(value, zarr.hierarchy.Group):
+        if isinstance(value, Group):
             return ZarrGroupAdapter(value)
         else:
             return ZarrArrayAdapter.from_array(value)
