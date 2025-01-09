@@ -92,7 +92,7 @@ all = [
     "uvicorn[standard]",
     "watchfiles",
     "xarray",
-    "zarr",
+    "zarr <3",
     "zstandard",
 ]
 # These are needed by the client and server to transmit/receive arrays.
@@ -219,7 +219,7 @@ minimal-server = [
     "starlette",
     "typer",
     "uvicorn[standard]",
-    "zarr",
+    "zarr <3",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
@@ -270,7 +270,7 @@ server = [
     "typer",
     "uvicorn[standard]",
     "xarray",
-    "zarr",
+    "zarr <3",
     "zstandard",
 ]
 # These are needed by the client and server to transmit/receive sparse arrays.
