@@ -1646,7 +1646,6 @@ async def get_asset(
     return FileResponseWithRange(
         full_path,
         stat_result=stat_result,
-        method="GET",
         status_code=status_code,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         range=range,

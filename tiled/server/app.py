@@ -251,7 +251,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             return FileResponse(
                 full_path,
                 stat_result=stat_result,
-                method="GET",
                 status_code=HTTP_200_OK,
             )
 
