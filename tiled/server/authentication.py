@@ -3,7 +3,7 @@ import hashlib
 import secrets
 import uuid as uuid_module
 import warnings
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -83,7 +83,7 @@ DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
 
 def utcnow():
     "UTC now with second resolution"
-    return datetime.utcnow().replace(microsecond=0)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 class Mode(enum.Enum):
@@ -1038,7 +1038,11 @@ async def slide_session(refresh_token, settings, db):
     now = utcnow()
     # This token is *signed* so we know that the information came from us.
     # If the Session is forgotten or revoked or expired, do not allow refresh.
-    if (session is None) or session.revoked or (session.expiration_time < now):
+    if (
+        (session is None)
+        or session.revoked
+        or (session.expiration_time.replace(tzinfo=UTC) < now)
+    ):
         # Do not leak (to a potential attacker) whether this has been *revoked*
         # specifically. Give the same error as if it had expired.
         raise HTTPException(
