@@ -20,8 +20,8 @@ tree = MapAdapter(
     {
         "dataset": DatasetAdapter.from_dataset(
             xarray.Dataset(
-                data_vars={"temperature": ("time", [100, 99, 98])},
-                coords={"time": [1, 2, 3]},
+                data_vars={"temperature": ("time", numpy.array([100, 99, 98]))},
+                coords={"time": numpy.array([1, 2, 3])},
             )
         ),
     },

@@ -8,7 +8,7 @@ import sys
 import types
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hashlib import md5
 from typing import Any
 
@@ -225,7 +225,7 @@ async def construct_entries_response(
             keys = tree.keys()[offset : offset + limit]  # noqa: E203
         items = [(key, None) for key in keys]
     # This value will not leak out. It just used to seed comparisons.
-    metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
+    metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
         resource = await construct_resource(
