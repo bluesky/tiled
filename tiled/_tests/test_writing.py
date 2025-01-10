@@ -17,6 +17,7 @@ from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
@@ -617,7 +618,7 @@ def test_write_with_specified_mimetype(tree):
             assert x.data_sources()[0].mimetype == mimetype
 
         # Specifying unsupported mimetype raises expected error.
-        with fail_with_status_code(415):
+        with fail_with_status_code(HTTP_415_UNSUPPORTED_MEDIA_TYPE):
             client.new(
                 "table",
                 [
@@ -713,7 +714,7 @@ def test_composite_two_tables_colliding_names(tree):
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
         x = client.create_composite(key="x")
         x.write_dataframe(df1, key="table1")
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             x.write_dataframe(df2, key="table1")
 
 
@@ -724,7 +725,7 @@ def test_composite_two_tables_colliding_keys(tree):
         df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
         x = client.create_composite(key="x")
         x.write_dataframe(df1, key="table1")
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             x.write_dataframe(df2, key="table2")
 
 
@@ -762,10 +763,10 @@ def test_composite_table_column_array_key_collision(tree):
 
         x = client.create_composite(key="x")
         x.write_dataframe(df, key="table1")
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             x.write_array(arr, key="A")
 
         y = client.create_composite(key="y")
         y.write_array(arr, key="A")
-        with fail_with_status_code(409):
+        with fail_with_status_code(HTTP_409_CONFLICT):
             y.write_dataframe(df, key="table1")
