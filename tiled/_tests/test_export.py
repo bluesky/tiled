@@ -53,7 +53,9 @@ tree = MapAdapter(
                         coords={
                             "lon": (["x", "y"], lon),
                             "lat": (["x", "y"], lat),
-                            "time": [1, 2, 3],  # using ints here so HDF5 can export
+                            "time": numpy.array(
+                                [1, 2, 3]
+                            ),  # using ints here so HDF5 can export
                         },
                     )
                 ),

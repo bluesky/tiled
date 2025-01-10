@@ -312,8 +312,8 @@ def test_write_dataframe_internal_via_client(client):
 
 def test_write_xarray_dataset(client):
     ds = xarray.Dataset(
-        {"temp": (["time"], [101, 102, 103])},
-        coords={"time": (["time"], [1, 2, 3])},
+        {"temp": (["time"], numpy.array([101, 102, 103]))},
+        coords={"time": (["time"], numpy.array([1, 2, 3]))},
     )
     dsc = write_xarray_dataset(client, ds, key="test_xarray_dataset")
     assert set(dsc) == {"temp", "time"}

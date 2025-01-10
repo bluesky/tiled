@@ -879,7 +879,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         Write a sparse.COO array.
 
         >>> import sparse
-        >>> coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+        >>> from numpy import array
+        >>> coo = sparse.COO(coords=array([[2, 5]]), data=array([1.3, 7.5]), shape=(10,))
         >>> c.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape)
 
         This only supports a single chunk. For chunked upload, use lower-level methods.
@@ -891,8 +892,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> x = c.new("sparse", [data_source])
         # Upload the data in each chunk.
         # Coords are given with in the reference frame of each chunk.
-        >>> x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
-        >>> x.write_block(coords=[[0, 1]], data=[6.7, 1.2], block=(1,))
+        >>> x.write_block(coords=array([[2, 4]]), data=array([3.1, 2.8]), block=(0,))
+        >>> x.write_block(coords=array([[0, 1]]), data=array([6.7, 1.2]), block=(1,))
         """
         from ..structures.sparse import COOStructure
 

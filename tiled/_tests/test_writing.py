@@ -253,8 +253,14 @@ def test_write_dataframe_dict(tree):
 @pytest.mark.parametrize(
     "coo",
     [
-        sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,)),
-        sparse.COO(coords=[[0, 1], [2, 3]], data=[3.8, 4.0], shape=(4, 4)),
+        sparse.COO(
+            coords=numpy.array([[2, 5]]), data=numpy.array([1.3, 7.5]), shape=(10,)
+        ),
+        sparse.COO(
+            coords=numpy.array([[0, 1], [2, 3]]),
+            data=numpy.array([3.8, 4.0]),
+            shape=(4, 4),
+        ),
     ],
 )
 def test_write_sparse_full(tree, coo):
@@ -317,7 +323,9 @@ def test_write_sparse_chunked(tree):
         assert numpy.array_equal(
             result_array.todense(),
             sparse.COO(
-                coords=[[2, 4, N + 0, N + 1]], data=[3.1, 2.8, 6.7, 1.2], shape=(10,)
+                coords=numpy.array([[2, 4, N + 0, N + 1]]),
+                data=numpy.array([3.1, 2.8, 6.7, 1.2]),
+                shape=(10,),
             ).todense(),
         )
 
@@ -543,7 +551,9 @@ async def test_write_in_container(tree):
         client.delete("a")
 
         a = client.create_container("a")
-        coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+        coo = sparse.COO(
+            coords=numpy.array([[2, 5]]), data=numpy.array([1.3, 7.5]), shape=(10,)
+        )
         b = a.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape, key="b")
         b.read()
         a.delete("b")
