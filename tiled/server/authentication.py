@@ -587,9 +587,9 @@ def build_device_code_user_code_form_route(authentication, provider):
             f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
         )
         return templates.TemplateResponse(
+            request,
             "device_code_form.html",
             {
-                "request": request,
                 "code": code,
                 "action": action,
             },
@@ -627,9 +627,9 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         if pending_session is None:
             message = "Invalid user code. It may have been mistyped, or the pending request may have expired."
             return templates.TemplateResponse(
+                request,
                 "device_code_form.html",
                 {
-                    "request": request,
                     "code": code,
                     "action": action,
                     "message": message,
@@ -639,9 +639,9 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         user_session_state = await authenticator.authenticate(request)
         if not user_session_state:
             return templates.TemplateResponse(
+                request,
                 "device_code_failure.html",
                 {
-                    "request": request,
                     "message": (
                         "User code was correct but authentication with third party failed. "
                         "Ask administrator to see logs for details."
@@ -660,9 +660,9 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         db.add(pending_session)
         await db.commit()
         return templates.TemplateResponse(
+            request,
             "device_code_success.html",
             {
-                "request": request,
                 "interval": DEVICE_CODE_POLLING_INTERVAL,
             },
         )
