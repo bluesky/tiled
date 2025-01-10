@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Maintenance
+
+- Addressed DeprecationWarnings from Python and dependencies
+
 ## v0.1.0-b13 (2024-01-09)
 
 ### Added
