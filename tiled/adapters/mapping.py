@@ -4,7 +4,7 @@ import itertools
 import operator
 import sys
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -286,7 +286,7 @@ class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
         """
         if self.metadata_stale_after is None:
             return None
-        return self.metadata_stale_after + datetime.now(UTC)
+        return self.metadata_stale_after + datetime.now(timezone.utc)
 
     @property
     def entries_stale_at(self) -> Optional[datetime]:
@@ -298,7 +298,7 @@ class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
         """
         if self.entries_stale_after is None:
             return None
-        return self.entries_stale_after + datetime.now(UTC)
+        return self.entries_stale_after + datetime.now(timezone.utc)
 
     def new_variation(
         self,

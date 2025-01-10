@@ -3,7 +3,7 @@ import inspect
 import os
 import re
 import warnings
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any, List, Optional
@@ -151,7 +151,7 @@ async def about(
             },
             meta={"root_path": request.scope.get("root_path") or "" + "/api"},
         ).model_dump(),
-        expires=datetime.now(UTC) + timedelta(seconds=600),
+        expires=datetime.now(timezone.utc) + timedelta(seconds=600),
     )
 
 
