@@ -153,11 +153,11 @@ def test_metadata(context):
 
 def test_parts_not_direclty_accessible(context):
     client = from_context(context)
-    client['x'].parts['df1'].read()
-    client['x'].parts['df1']['A'].read()
-    client['x']['A'].read()
+    client["x"].parts["df1"].read()
+    client["x"].parts["df1"]["A"].read()
+    client["x"]["A"].read()
     with pytest.raises(KeyError):
-        client['x']['df1'].read()
+        client["x"]["df1"].read()
 
 
 def test_external_assets(context, tiff_sequence, csv_file):
