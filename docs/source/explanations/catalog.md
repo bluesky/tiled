@@ -54,7 +54,8 @@ and `assets`, describes the format,  structure, and location of the data.
   to the Adapter
 - `management` --- enum indicating whether the data is registered `"external"` data
   or `"writable"` data managed by Tiled
-- `structure_family` --- enum of structure types (`"container"`, `"array"`, `"table"`, ...)
+- `structure_family` --- enum of structure types (`"container"`, `"array"`, `"table"`,
+  etc. -- except for `consolidated`, which can not be assigned to a Data Source)
 - `structure_id` --- a foreign key to the `structures` table
 - `node_id` --- foreign key to `nodes`
 - `id` --- integer primary key
