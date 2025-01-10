@@ -170,7 +170,7 @@ class BaseClient:
 
         and enter the code: XXXX-XXXX
         """
-        self.context.login()
+        self.context.authenticate()
 
     def logout(self):
         """
