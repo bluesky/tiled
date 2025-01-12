@@ -322,6 +322,7 @@ def patch_route_signature(route, query_registry):
 async def metadata(
     request: Request,
     path: str,
+    part=None,
     fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
@@ -346,6 +347,7 @@ async def metadata(
             include_data_sources,
             media_type=resolve_media_type(request),
             max_depth=max_depth,
+            is_composite_part=(part is not None),
         )
     except JMESPathError as err:
         raise HTTPException(
@@ -361,6 +363,11 @@ async def metadata(
     )
 
 
+@router.get(
+    "/composite/array/block/{path:path}",
+    response_model=schemas.Response,
+    name="Composite array block",
+)
 @router.get(
     "/array/block/{path:path}", response_model=schemas.Response, name="array block"
 )
@@ -444,6 +451,11 @@ async def array_block(
 
 
 @router.get(
+    "/composite/array/full/{path:path}",
+    response_model=schemas.Response,
+    name="Composite full array",
+)
+@router.get(
     "/array/full/{path:path}", response_model=schemas.Response, name="full array"
 )
 async def array_full(
@@ -506,6 +518,11 @@ async def array_full(
 
 
 @router.get(
+    "/composite/table/partition/{path:path}",
+    response_model=schemas.Response,
+    name="composite table partition",
+)
+@router.get(
     "/table/partition/{path:path}",
     response_model=schemas.Response,
     name="table partition",
@@ -555,6 +572,11 @@ async def get_table_partition(
     )
 
 
+@router.post(
+    "/composite/table/partition/{path:path}",
+    response_model=schemas.Response,
+    name="composite table partition",
+)
 @router.post(
     "/table/partition/{path:path}",
     response_model=schemas.Response,
@@ -639,6 +661,11 @@ async def table_partition(
 
 
 @router.get(
+    "/composite/table/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'table' data",
+)
+@router.get(
     "/table/full/{path:path}",
     response_model=schemas.Response,
     name="full 'table' data",
@@ -666,6 +693,11 @@ async def get_table_full(
     )
 
 
+@router.post(
+    "/composite/table/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'table' data",
+)
 @router.post(
     "/table/full/{path:path}",
     response_model=schemas.Response,
@@ -916,6 +948,11 @@ async def node_full(
 
 
 @router.get(
+    "/composite/awkward/buffers/{path:path}",
+    response_model=schemas.Response,
+    name="Composite AwkwardArray buffers",
+)
+@router.get(
     "/awkward/buffers/{path:path}",
     response_model=schemas.Response,
     name="AwkwardArray buffers",
@@ -952,6 +989,11 @@ async def get_awkward_buffers(
     )
 
 
+@router.post(
+    "/composite/awkward/buffers/{path:path}",
+    response_model=schemas.Response,
+    name="Composite AwkwardArray buffers",
+)
 @router.post(
     "/awkward/buffers/{path:path}",
     response_model=schemas.Response,
@@ -1033,6 +1075,11 @@ async def _awkward_buffers(
         raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
+@router.get(
+    "/composite/awkward/full/{path:path}",
+    response_model=schemas.Response,
+    name="Composite Full AwkwardArray",
+)
 @router.get(
     "/awkward/full/{path:path}",
     response_model=schemas.Response,
@@ -1192,8 +1239,13 @@ async def _create_node(
         specs=body.specs,
         data_sources=body.data_sources,
     )
+    is_composite_part = entry.structure_family == StructureFamily.composite
     links = links_for_node(
-        structure_family, structure, get_base_url(request), path + f"/{key}"
+        structure_family,
+        structure,
+        get_base_url(request),
+        path + f"/{key}",
+        is_composite_part=is_composite_part,
     )
     structure = node.structure()
     if structure is not None:
@@ -1254,6 +1306,7 @@ async def bulk_delete(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/array/full/{path:path}")
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
@@ -1284,6 +1337,7 @@ async def put_array_full(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/array/full/{path:path}")
 @router.put("/array/block/{path:path}")
 async def put_array_block(
     request: Request,
@@ -1319,6 +1373,7 @@ async def put_array_block(
     return json_or_msgpack(request, None)
 
 
+@router.patch("/composite/array/full/{path:path}")
 @router.patch("/array/full/{path:path}")
 async def patch_array_full(
     request: Request,
@@ -1346,6 +1401,7 @@ async def patch_array_full(
     return json_or_msgpack(request, structure)
 
 
+@router.put("/composite/table/full/{path:path}")
 @router.put("/table/full/{path:path}")
 @router.put("/node/full/{path:path}", deprecated=True)
 async def put_node_full(
@@ -1368,6 +1424,7 @@ async def put_node_full(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/table/partition/{path:path}")
 @router.put("/table/partition/{path:path}")
 async def put_table_partition(
     partition: int,
@@ -1388,6 +1445,7 @@ async def put_table_partition(
     return json_or_msgpack(request, None)
 
 
+@router.patch("/composite/table/partition/{path:path}")
 @router.patch("/table/partition/{path:path}")
 async def patch_table_partition(
     partition: int,
@@ -1410,6 +1468,7 @@ async def patch_table_partition(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/awkward/full/{path:path}")
 @router.put("/awkward/full/{path:path}")
 async def put_awkward_full(
     request: Request,

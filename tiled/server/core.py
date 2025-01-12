@@ -409,6 +409,7 @@ async def construct_resource(
     media_type,
     max_depth,
     depth=0,
+    is_composite_part=False,
 ):
     path_str = "/".join(path_parts)
     id_ = path_parts[-1] if path_parts else ""
@@ -487,6 +488,9 @@ async def construct_resource(
                             media_type,
                             max_depth,
                             depth=1 + depth,
+                            is_composite_part=(
+                                entry.structure_family == StructureFamily.composite
+                            ),
                         )
             else:
                 count = await len_or_approx(entry)
@@ -519,6 +523,7 @@ async def construct_resource(
                 entry.structure(),
                 base_url,
                 path_str,
+                is_composite_part=is_composite_part,
             )
 
         resource = schemas.Resource[
@@ -539,6 +544,7 @@ async def construct_resource(
                     entry.structure(),
                     base_url,
                     path_str,
+                    is_composite_part=is_composite_part,
                 )
             )
             structure = asdict(entry.structure())
