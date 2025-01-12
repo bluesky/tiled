@@ -169,17 +169,15 @@ async def search(
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
     include_data_sources: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    entry: Any = SecureEntry(
+        scopes=["read:metadata"],
+        structure_families={StructureFamily.container, StructureFamily.composite},
+    ),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
     **filters,
 ):
     request.state.endpoint = "search"
-    if entry.structure_family not in (
-        StructureFamily.container,
-        StructureFamily.composite,
-    ):
-        raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
     try:
         resource, metadata_stale_at, must_revalidate = await construct_entries_response(
             query_registry,
