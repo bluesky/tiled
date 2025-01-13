@@ -54,20 +54,6 @@ def links_for_container(structure_family, structure, base_url, path_str, **kwarg
 def links_for_composite(structure_family, structure, base_url, path_str, **kwargs):
     links = {}
     links["full"] = f"{base_url}/container/full/{path_str}"
-
-    # This contains the links for each (sub-)structure
-    links["parts"] = []
-    if structure.contents is not None:
-        for key, item in structure.contents:
-            item_links = LINKS_BY_STRUCTURE_FAMILY[item.structure_family](
-                item.structure_family,
-                item.structure,
-                base_url,
-                path_str,
-                part=item.name,
-            )
-            item_links["self"] = f"{base_url}/metadata/{path_str}"
-            links["parts"].append(item_links)
     return links
 
 

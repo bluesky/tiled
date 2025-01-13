@@ -241,7 +241,6 @@ class SparseLinks(pydantic.BaseModel):
 class CompositeLinks(pydantic.BaseModel):
     self: str
     full: str
-    parts: List[Union[ArrayLinks, AwkwardLinks, DataFrameLinks, SparseLinks]]
 
 
 resource_links_type_by_structure_family = {
