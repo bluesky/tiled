@@ -9,6 +9,46 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Refactor CSVAdapter to allow pd.read_csv kwargs
 
+### Maintenance
+
+- Addressed DeprecationWarnings from Python and dependencies
+
+## v0.1.0-b13 (2024-01-09)
+
+### Added
+
+- `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+- In client, support specifying API key expiration time as string with
+  units, like ``"7d"` or `"10m"`.
+- Fix bug where access policies were not applied to child nodes during request
+- Add metadata-based access control to SimpleAccessPolicy
+- Add example test of metadata-based allowed_scopes which requires the path to the target node
+- Added Helm chart with deployable default configuration
+
+### Fixed
+
+- Bug in Python client resulted in error when accessing data sources on a
+  just-created object.
+- Fix bug where access policies were not applied to child nodes during request
+
+### Changed
+
+- The argument `prompt_for_reauthentication` is now ignored and warns.
+  Tiled will never prompt for reauthentication after the client is constructed;
+  if a session expires or is revoked, it will raise `CannotRefreshAuthentication`.
+- The arguments `username` and `password` have been removed from the client
+  constructor functions. Tiled will always prompt for these interactively.
+  See the Authentication How-to Guide for more information, including on
+  how applications built on Tiled can customize this.
+- The argument `remember_me` has been added to the client constructor
+  functions and to `Context.authenticate` and its alias `Context.login`.
+  This can be used to clear and avoid storing any tokens related to
+  the session.
+- Change access policy API to be async for filters and allowed_scopes
+- Pinned zarr to `<3` because Zarr 3 is still working on adding support for
+  certain features that we rely on from Zarr 2.
+
+
 ## 2024-12-09
 
 ### Added

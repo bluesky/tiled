@@ -659,6 +659,34 @@ def bytesize_repr(num):
         num /= 1024.0
 
 
+TIME_STRING_PATTERN = re.compile(r"(\d+)(s|m|h|d|y)")
+TIME_STRING_UNITS = {
+    "s": 1,
+    "m": 60,
+    "h": 60 * 60,
+    "d": 60 * 60 * 24,
+    "y": 60 * 60 * 24 * 365,
+}
+
+
+def parse_time_string(s):
+    """
+    Accept strings like '1y', '1d', '24h'; return int seconds.
+
+    Accepted Units:
+    'y' = year
+    'd' = day
+    'h' = hour
+    'm' = minutes
+    's' = seconds
+    """
+    matched = TIME_STRING_PATTERN.match(s)
+    if matched is None:
+        raise ValueError(f"Could not parse {s} as a number and a unit like '5m'")
+    number, unit = matched.groups()
+    return int(number) * TIME_STRING_UNITS[unit]
+
+
 def is_coroutine_callable(call: Callable[..., Any]) -> bool:
     if inspect.isroutine(call):
         return inspect.iscoroutinefunction(call)

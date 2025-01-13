@@ -1,12 +1,18 @@
 version: "3.2"
 services:
   tiled:
-    image: ghcr.io/bluesky/tiled:v0.1.0b12
+    image: ghcr.io/bluesky/tiled:v0.1.0-b13
     environment:
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
     ports:
       - 8000:8000
     restart: unless-stopped
+    healthcheck:
+      test: curl --fail http://localhost:8000/healthz || exit 1
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Below we additionally configure monitoring with Prometheus and Grafana.
   # This is optional; it is not required for Tiled to function.

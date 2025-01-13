@@ -26,7 +26,6 @@ which installs *everything* you might want. For other options, see:
 """
     ) from err
 
-from ..utils import UNSET
 
 cli_app = typer.Typer()
 
@@ -60,9 +59,6 @@ def login(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-    set_default: bool = typer.Option(
-        True, help="Use this identity as the default for this API."
-    ),
     show_secret_tokens: bool = typer.Option(
         False, "--show-secret-tokens", help="Show secret tokens after successful login."
     ),
@@ -75,13 +71,33 @@ def login(
     profile_name, profile_content = get_profile(profile)
     options = {"verify": profile_content.get("verify", True)}
     context, _ = Context.from_any_uri(profile_content["uri"], **options)
-    # Override sticky 'default_identity'.
-    # Always prompt user to specify who they want to log in as.
-    context.authenticate(username=None, provider=None, set_default=True)
+    context.authenticate()
     if show_secret_tokens:
         import json
 
         typer.echo(json.dumps(dict(context.tokens), indent=4))
+
+
+@cli_app.command("whoami")
+def whoami(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+):
+    """
+    Show logged in identity.
+    """
+    from ..client.context import Context
+
+    profile_name, profile_content = get_profile(profile)
+    options = {"verify": profile_content.get("verify", True)}
+    context, _ = Context.from_any_uri(profile_content["uri"], **options)
+    context.use_cached_tokens()
+    whoami = context.whoami()
+    if whoami is None:
+        typer.echo("Not authenticated.")
+    else:
+        typer.echo(",".join(identity["id"] for identity in whoami["identities"]))
 
 
 @cli_app.command("logout")
@@ -89,8 +105,6 @@ def logout(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-    username: Optional[str] = typer.Option(None),
-    provider: Optional[str] = typer.Option(None),
 ):
     """
     Log out.
@@ -101,12 +115,8 @@ def logout(
     context, _ = Context.from_any_uri(
         profile_content["uri"], verify=profile_content.get("verify", True)
     )
-    if username is None:
-        username = UNSET
-    if provider is None:
-        provider = UNSET
-    context.authenticate(username=username, provider=provider, set_default=False)
-    context.logout()
+    if context.use_cached_tokens():
+        context.logout()
 
 
 @cli_app.command("tree")

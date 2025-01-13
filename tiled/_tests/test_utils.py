@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from ..utils import ensure_specified_sql_driver
+import pytest
+
+from ..utils import ensure_specified_sql_driver, parse_time_string
 
 
 def test_ensure_specified_sql_driver():
@@ -73,3 +75,31 @@ def test_ensure_specified_sql_driver():
         ensure_specified_sql_driver(Path("/tmp/test.db"))
         == f"sqlite+aiosqlite:///{Path('/tmp/test.db')}"
     )
+
+
+@pytest.mark.parametrize(
+    "string_input,expected",
+    [
+        ("3s", 3),
+        ("7m", 7 * 60),
+        ("5h", 5 * 60 * 60),
+        ("1d", 1 * 24 * 60 * 60),
+        ("2y", 2 * 365 * 24 * 60 * 60),
+    ],
+)
+def test_parse_time_string_valid(string_input, expected):
+    assert parse_time_string(string_input) == expected
+
+
+@pytest.mark.parametrize(
+    "string_input",
+    [
+        "3z",  # unrecognized units
+        "3M",  # unrecognized units
+        "-3m",  # invalid character '-'
+        "3 m",  # invalid character '-'
+    ],
+)
+def test_parse_time_string_invalid(string_input):
+    with pytest.raises(ValueError):
+        parse_time_string(string_input)

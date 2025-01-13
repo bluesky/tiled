@@ -153,7 +153,7 @@ class BaseClient:
             )
         return self._structure
 
-    def login(self, username=None, provider=None):
+    def login(self):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -170,15 +170,15 @@ class BaseClient:
 
         and enter the code: XXXX-XXXX
         """
-        self.context.login(username=username, provider=provider)
+        self.context.authenticate()
 
-    def logout(self, clear_default=False):
+    def logout(self):
         """
         Log out.
 
         This method is idempotent: if you are already logged out, it will do nothing.
         """
-        self.context.logout(clear_default=clear_default)
+        self.context.logout()
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -273,6 +273,7 @@ client or pass the optional parameter `include_data_sources=True` to
         self,
         structure_clients=UNCHANGED,
         include_data_sources=UNCHANGED,
+        structure=UNCHANGED,
         **kwargs,
     ):
         """
@@ -282,9 +283,12 @@ client or pass the optional parameter `include_data_sources=True` to
             structure_clients = self.structure_clients
         if include_data_sources is UNCHANGED:
             include_data_sources = self._include_data_sources
+        if structure is UNCHANGED:
+            structure = self._structure
         return type(self)(
             self.context,
             item=self._item,
+            structure=structure,
             structure_clients=structure_clients,
             include_data_sources=include_data_sources,
             **kwargs,

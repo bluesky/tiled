@@ -312,8 +312,8 @@ def test_write_dataframe_internal_via_client(client):
 
 def test_write_xarray_dataset(client):
     ds = xarray.Dataset(
-        {"temp": (["time"], [101, 102, 103])},
-        coords={"time": (["time"], [1, 2, 3])},
+        {"temp": (["time"], numpy.array([101, 102, 103]))},
+        coords={"time": (["time"], numpy.array([1, 2, 3]))},
     )
     dsc = write_xarray_dataset(client, ds, key="test_xarray_dataset")
     assert set(dsc) == {"temp", "time"}
@@ -417,14 +417,16 @@ async def test_access_control(tmpdir):
 
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
+        admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
-            admin_client = from_context(context, username="admin")
+            admin_client.login()
             for key in ["outer_x", "outer_y", "outer_z"]:
                 container = admin_client.create_container(key)
                 container.write_array([1, 2, 3], key="inner")
             admin_client.logout()
+        alice_client = from_context(context)
         with enter_username_password("alice", "secret1"):
-            alice_client = from_context(context, username="alice")
+            alice_client.login()
             alice_client["outer_x"]["inner"].read()
             with pytest.raises(KeyError):
                 alice_client["outer_y"]
@@ -528,3 +530,34 @@ async def test_constraints_on_parameter_and_num(a, assets):
                 )
             ],
         )
+
+
+@pytest.mark.asyncio
+async def test_init_db_logging(tmpdir, caplog):
+    config = {
+        "database": {
+            "uri": "sqlite+aiosqlite://",  # in-memory
+        },
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "writable_storage": str(tmpdir / "data"),
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+    }
+    # Issue 721 notes that the logging of the subprocess that creates
+    # a database logs normal things to error. This test looks at the log
+    # and fails if an error log happens. This could catch anything that is
+    # an error during the app build.
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        app = build_app_from_config(config)
+        for record in caplog.records:
+            assert record.levelname != "ERROR", f"Error found creating app {record.msg}"
+        assert app

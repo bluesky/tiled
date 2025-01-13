@@ -1,6 +1,6 @@
 import hashlib
 import uuid as uuid_module
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -77,12 +77,12 @@ async def purge_expired(db, cls):
     """
     Remove expired entries.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     num_expired = 0
     statement = (
         select(cls)
         .filter(cls.expiration_time.is_not(None))
-        .filter(cls.expiration_time < now)
+        .filter(cls.expiration_time.replace(tzinfo=timezone.utc) < now)
     )
     result = await db.execute(statement)
     for obj in result.scalars():
@@ -144,10 +144,9 @@ async def lookup_valid_session(db, session_id):
     ).scalar()
     if session is None:
         return None
-    if (
-        session.expiration_time is not None
-        and session.expiration_time < datetime.utcnow()
-    ):
+    if session.expiration_time is not None and session.expiration_time.replace(
+        tzinfo=timezone.utc
+    ) < datetime.now(timezone.utc):
         await db.delete(session)
         await db.commit()
         return None
@@ -171,7 +170,8 @@ async def lookup_valid_pending_session_by_device_code(db, device_code):
         return None
     if (
         pending_session.expiration_time is not None
-        and pending_session.expiration_time < datetime.utcnow()
+        and pending_session.expiration_time.replace(tzinfo=timezone.utc)
+        < datetime.now(timezone.utc)
     ):
         await db.delete(pending_session)
         await db.commit()
@@ -189,7 +189,8 @@ async def lookup_valid_pending_session_by_user_code(db, user_code):
         return None
     if (
         pending_session.expiration_time is not None
-        and pending_session.expiration_time < datetime.utcnow()
+        and pending_session.expiration_time.replace(tzinfo=timezone.utc)
+        < datetime.now(timezone.utc)
     ):
         await db.delete(pending_session)
         await db.commit()
@@ -228,7 +229,7 @@ async def lookup_valid_api_key(db, secret):
     Look up an API key. Ensure that it is valid.
     """
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     hashed_secret = hashlib.sha256(secret).digest()
     api_key = (
         await db.execute(
@@ -244,7 +245,9 @@ async def lookup_valid_api_key(db, secret):
     if api_key is None:
         # No match
         validated_api_key = None
-    elif (api_key.expiration_time is not None) and (api_key.expiration_time < now):
+    elif (api_key.expiration_time is not None) and (
+        api_key.expiration_time.replace(tzinfo=timezone.utc) < now
+    ):
         # Match is expired. Delete it.
         await db.delete(api_key)
         await db.commit()

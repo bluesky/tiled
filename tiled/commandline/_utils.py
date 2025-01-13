@@ -79,6 +79,4 @@ def get_context(profile):
     context, _ = Context.from_any_uri(
         profile_content["uri"], verify=profile_content.get("verify", True)
     )
-    if context.server_info["authentication"]["required"]:
-        context.authenticate()
     return context

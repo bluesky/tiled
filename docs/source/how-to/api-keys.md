@@ -167,13 +167,16 @@ as the user who is for. If an API key will be used for a specific task, it is
 good security hygiene to give it only the privileges it needs for that task.  It
 is also recommended to set a limited lifetimes so that if the key is
 unknowingly leaked it will not continue to work forever. For example, this
-command creates an API key that will expire in 10 minutes (600 seconds) and can
+command creates an API key that will expire in 10 minutes and can
 search/list metadata but cannot download array data.
 
 ```
-$ tiled api_key create --expires-in 600 --scopes read:metadata
+$ tiled api_key create --expires-in 10m --scopes read:metadata
 ba9af604023a829ab22edb786168d6e1b97cef68c54c6d95d7fad5e3e6347fa131263581
 ```
+
+Expiration can be given in units of years `y`, days `d`, hours `h`, minutes
+`m`, or seconds `s`.
 
 See {doc}`../reference/scopes` for the full list of scopes and their capabilities.
 

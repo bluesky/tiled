@@ -80,7 +80,7 @@ def read_xdi(data_uri, structure=None, metadata=None, specs=None, access_policy=
 
         # TODO validate
 
-        df = pd.read_table(file, delim_whitespace=True, names=col_labels)
+        df = pd.read_table(file, sep=r"\s+", names=col_labels)
 
     return DataFrameAdapter.from_pandas(
         df,
