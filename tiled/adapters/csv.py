@@ -11,59 +11,7 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
-from .dataframe import DataFrameAdapter
 from .protocols import AccessPolicy
-from .table import TableAdapter
-
-
-def read_csv(
-    data_uri: str,
-    structure: Optional[TableStructure] = None,
-    metadata: Optional[JSON] = None,
-    specs: Optional[List[Spec]] = None,
-    access_policy: Optional[AccessPolicy] = None,
-    **kwargs: Any,
-) -> TableAdapter:
-    """
-    Read a CSV.
-
-    Internally, this uses dask.dataframe.read_csv.
-    It forward all parameters to that function. See
-    https://docs.dask.org/en/latest/dataframe-api.html#dask.dataframe.read_csv
-
-    Examples
-    --------
-
-    >>> read_csv("myfiles.*.csv")
-    >>> read_csv("s3://bucket/myfiles.*.csv")
-
-    Parameters
-    ----------
-    data_uri :
-    structure :
-    metadata :
-    specs :
-    access_policy :
-    kwargs :
-
-    Returns
-    -------
-    """
-    filepath = path_from_uri(data_uri)
-    ddf = dask.dataframe.read_csv(filepath, **kwargs)
-    # TODO Pass structure through rather than just re-creating it
-    # in from_dask_dataframe.
-    return DataFrameAdapter.from_dask_dataframe(
-        ddf, metadata=metadata, specs=specs, access_policy=access_policy
-    )
-
-
-read_csv.__doc__ = """
-This wraps dask.dataframe.read_csv. Original docstring:
-
-""" + (
-    dask.dataframe.read_csv.__doc__ or ""
-)
 
 
 class CSVAdapter:
@@ -374,11 +322,12 @@ class CSVArrayAdapter(ArrayAdapter):
         file_paths = [path_from_uri(ast.data_uri) for ast in assets]
         dtype_numpy = structure.data_type.to_numpy_dtype()
         nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
-        ddf = dask.dataframe.read_csv(file_paths, dtype=dtype_numpy, **kwargs)
+        _kwargs = {"dtype": dtype_numpy, "header": None}
+        _kwargs.update(kwargs)
+        ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
         chunks_0: tuple[int, ...] = structure.chunks[
             0
         ]  # chunking along the rows dimension (when not stackable)
-
         if not dtype_numpy.isbuiltin:
             # Structural np dtype (0) -- return a records array
             # NOTE: dask.DataFrame.to_records() allows one to pass `index=False` to drop the index column, but as
