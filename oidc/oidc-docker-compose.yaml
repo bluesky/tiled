@@ -1,0 +1,69 @@
+services:
+  oidc-server-mock:
+    container_name: oidc-server-mock
+    image: ghcr.io/soluto/oidc-server-mock:latest
+    ports:
+      - 8080:80
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      # ASPNETCORE_Kestrel__Certificates__Default__Password: <password for pfx file>
+      # ASPNETCORE_Kestrel__Certificates__Default__Path: /path/to/pfx/file
+      SERVER_OPTIONS_INLINE: |
+        {
+          "AccessTokenJwtType": "JWT",
+          "Discovery": {
+            "ShowKeySet": true
+          },
+          "Authentication": {
+            "CookieSameSiteMode": "Lax",
+            "CheckSessionCookieSameSiteMode": "Lax"
+          }
+        }
+      LOGIN_OPTIONS_INLINE: |
+        {
+          "AllowRememberLogin": false,
+          "AllowOfflineAccess": true
+        }
+      LOGOUT_OPTIONS_INLINE: |
+        {
+          "AutomaticRedirectAfterSignOut": true
+        }
+      API_SCOPES_INLINE: |
+        - Name: blueapi
+        - Name: tiled
+      API_RESOURCES_INLINE: |
+        - Name: app
+          Scopes:
+            - blueapi
+            - tiled
+      USERS_CONFIGURATION_INLINE: |
+        [
+          {
+            "SubjectId":"1",
+            "Username":"user",
+            "Password":"password",
+            "Claims": [
+              {
+                "Type": "name",
+                "Value": "Joe Bloggs",
+                "ValueType": "string"
+              },
+              {
+                "Type": "email",
+                "Value": "joe.bloggs@diamond.ac.uk",
+                "ValueType": "string"
+              }
+            ]
+          }
+        ]
+      CLIENTS_CONFIGURATION_PATH: /tmp/config/clients-config.json
+      ASPNET_SERVICES_OPTIONS_INLINE: |
+        {
+          "BasePath": "/foo",
+          "ForwardedHeadersOptions": {
+            "ForwardedHeaders" : "All"
+          }
+        }
+    volumes:
+      - .:/tmp/config:ro

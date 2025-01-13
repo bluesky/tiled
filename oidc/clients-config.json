@@ -1,0 +1,28 @@
+[
+    {
+      "ClientId": "tiled",
+      "ClientSecrets": ["secret"],
+      "Description": "Tiled web interface login",
+      "AllowedGrantTypes": ["implicit"],
+      "AllowedScopes": ["tiled", "openid", "profile", "email"],
+      "RedirectUris": ["localhost:4000/*"],
+      "AllowAccessTokensViaBrowser": true,
+      "AccessTokenLifetime": 3600,
+      "IdentityTokenLifetime": 3600
+    },
+    {
+      "ClientId": "blueapi",
+      "ClientSecrets": ["secret"],
+      "Description": "Blueapi CLI login",
+      "AllowedGrantTypes": ["urn:ietf:params:oauth:grant-type:device_code"],
+      "AllowedScopes": ["blueapi", "openid", "profile", "email", "offline_access"],
+      "AccessTokenLifetime": 3600,
+      "IdentityTokenLifetime": 3600,
+      "AllowOfflineAccess": true,
+      "Claims": [{
+        "Type": "aud",
+        "Value": "blueapi",
+        "ValueType": "string"
+      }]
+    }
+  ]

@@ -81,7 +81,7 @@ logger.addHandler(handler)
 current_principal = contextvars.ContextVar("current_principal")
 
 
-def custom_openapi(app):
+def custom_openapi(app: FastAPI):
     """
     The app's openapi method will be monkey-patched with this.
 

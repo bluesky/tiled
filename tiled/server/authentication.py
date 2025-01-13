@@ -27,7 +27,6 @@ from fastapi.security import (
 from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
-from pydantic_settings import BaseSettings
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
@@ -63,7 +62,7 @@ from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
 from .protocols import UsernamePasswordAuthenticator, UserSessionState
-from .settings import get_settings
+from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
 ALGORITHM = "HS256"
@@ -167,7 +166,7 @@ def create_refresh_token(session_id, secret_key, expires_delta):
     return encoded_jwt
 
 
-def decode_token(token, secret_keys):
+def decode_token(token: str, secret_keys: list[str]):
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -220,8 +219,9 @@ async def get_decoded_access_token(
     request: Request,
     security_scopes: SecurityScopes,
     access_token: str = Depends(oauth2_scheme),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
+    print("Got access_token")
     if not access_token:
         return None
     try:
@@ -245,7 +245,7 @@ async def get_current_principal(
     security_scopes: SecurityScopes,
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
     db=Depends(get_database_session),
 ):
@@ -404,7 +404,7 @@ async def create_pending_session(db):
 
 
 async def create_session(
-    settings, db, identity_provider, id, state: UserSessionState = None
+    settings: Settings, db, identity_provider, id, state: UserSessionState = None
 ):
     # Have we seen this Identity before?
     identity = (
@@ -463,7 +463,7 @@ async def create_session(
     return fully_loaded_session
 
 
-async def create_tokens_from_session(settings, db, session, provider):
+async def create_tokens_from_session(settings: Settings, db, session, provider):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -515,7 +515,7 @@ def build_auth_code_route(authenticator, provider):
 
     async def route(
         request: Request,
-        settings: BaseSettings = Depends(get_settings),
+        settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
@@ -613,7 +613,7 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         code: str = Form(),
         user_code: str = Form(),
         state: Optional[str] = None,
-        settings: BaseSettings = Depends(get_settings),
+        settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
@@ -676,7 +676,7 @@ def build_device_code_token_route(authenticator, provider):
     async def route(
         request: Request,
         body: schemas.DeviceCode,
-        settings: BaseSettings = Depends(get_settings),
+        settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
@@ -718,7 +718,7 @@ def build_handle_credentials_route(
     async def route(
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
-        settings: BaseSettings = Depends(get_settings),
+        settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
@@ -970,7 +970,7 @@ async def apikey_for_principal(
 async def refresh_session(
     request: Request,
     refresh_token: schemas.RefreshToken,
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     db=Depends(get_database_session),
 ):
     "Obtain a new access token and refresh token."
@@ -983,7 +983,7 @@ async def refresh_session(
 async def revoke_session(
     request: Request,
     refresh_token: schemas.RefreshToken,
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     db=Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
@@ -1025,7 +1025,7 @@ async def revoke_session_by_id(
     return Response(status_code=HTTP_204_NO_CONTENT)
 
 
-async def slide_session(refresh_token, settings, db):
+async def slide_session(refresh_token, settings: Settings, db):
     try:
         payload = decode_token(refresh_token, settings.secret_keys)
     except ExpiredSignatureError:
