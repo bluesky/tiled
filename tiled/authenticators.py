@@ -5,30 +5,28 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
+from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Request
-from jose import JWTError, jwk, jwt
+from jose import JWTError, jwt
+from pydantic import Secret
 from starlette.responses import RedirectResponse
 
-from .server.authentication import Mode
-from .server.protocols import UserSessionState
+from .server.protocols import ExternalAuthenticator, UserSessionState, PasswordAuthenticator
 from .server.utils import get_root_url
 from .utils import modules_available
 
 logger = logging.getLogger(__name__)
 
 
-class DummyAuthenticator:
+class DummyAuthenticator(PasswordAuthenticator):
     """
     For test and demo purposes only!
 
     Accept any username and any password.
 
     """
-
-    mode = Mode.password
-
     def __init__(self, confirmation_message=""):
         self.confirmation_message = confirmation_message
 
@@ -36,14 +34,12 @@ class DummyAuthenticator:
         return UserSessionState(username, {})
 
 
-class DictionaryAuthenticator:
+class DictionaryAuthenticator(PasswordAuthenticator):
     """
     For test and demo purposes only!
 
     Check passwords from a dictionary of usernames mapped to passwords.
     """
-
-    mode = Mode.password
     configuration_schema = """
 $schema": http://json-schema.org/draft-07/schema#
 type: object
@@ -72,8 +68,7 @@ properties:
             return UserSessionState(username, {})
 
 
-class PAMAuthenticator:
-    mode = Mode.password
+class PAMAuthenticator(PasswordAuthenticator):
     configuration_schema = """
 $schema": http://json-schema.org/draft-07/schema#
 type: object
@@ -108,74 +103,71 @@ properties:
             return UserSessionState(username, {})
 
 
-class OIDCAuthenticator:
-    mode = Mode.external
+class OIDCAuthenticator(ExternalAuthenticator):
     configuration_schema = """
 $schema": http://json-schema.org/draft-07/schema#
 type: object
 additionalProperties: false
 properties:
+  audience:
+    type: string
   client_id:
     type: string
   client_secret:
     type: string
-  token_uri:
+  well_known_uri:
     type: string
-  authorization_endpoint:
-    type: string
-  public_keys:
-    type: array
-    item:
-      type: object
-      properties:
-        - alg:
-            type: string
-        - e
-            type: string
-        - kid
-            type: string
-        - kty
-            type: string
-        - n
-            type: string
-        - use
-            type: string
-      required:
-        - alg
-        - e
-        - kid
-        - kty
-        - n
-        - use
-  confirmation_message:
-    type: string
-    description: May be displayed by client after successful login.
 """
 
     def __init__(
         self,
-        client_id,
-        client_secret,
-        public_keys,
-        token_uri,
-        authorization_endpoint,
-        confirmation_message,
+        audience: str,
+        client_id: str,
+        client_secret: str,
+        well_known_uri: str,
     ):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.confirmation_message = confirmation_message
-        self.public_keys = public_keys
-        self.token_uri = token_uri
-        self.authorization_endpoint = httpx.URL(authorization_endpoint)
+        self._audience = audience
+        self._client_id = client_id
+        self._client_secret = Secret(client_secret)
+        self._well_known_url = well_known_uri
 
-    async def authenticate(self, request) -> UserSessionState:
+    @functools.cached_property
+    def _config_from_oidc_url(self) -> dict[str, Any]:
+        response: httpx.Response = httpx.get(self._well_known_url)
+        response.raise_for_status()
+        return response.json()
+
+    @functools.cached_property
+    def id_token_signing_alg_values_supported(self) -> list[str]:
+        return cast(
+            list[str],
+            self._config_from_oidc_url.get("id_token_signing_alg_values_supported"),
+        )
+
+    @functools.cached_property
+    def issuer(self) -> str:
+        return cast(str, self._config_from_oidc_url.get("issuer"))
+
+    @functools.cached_property
+    def jwks_uri(self) -> str:
+        return cast(str, self._config_from_oidc_url.get("jwks_uri"))
+
+    @functools.cached_property
+    def token_endpoint(self) -> str:
+        return cast(str, self._config_from_oidc_url.get("token_endpoint"))
+
+    async def authenticate(self, request: Request) -> UserSessionState | None:
         code = request.query_params["code"]
         # A proxy in the middle may make the request into something like
         # 'http://localhost:8000/...' so we fix the first part but keep
         # the original URI path.
         redirect_uri = f"{get_root_url(request)}{request.url.path}"
         response = await exchange_code(
-            self.token_uri, code, self.client_id, self.client_secret, redirect_uri
+            self.token_endpoint,
+            code,
+            self._client_id,
+            self._client_secret.get_secret_value(),
+            redirect_uri,
         )
         response_body = response.json()
         if response.is_error:
@@ -184,11 +176,14 @@ properties:
         response_body = response.json()
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
-        # Match the kid in id_token to a key in the list of public_keys.
-        key = find_key(id_token, self.public_keys)
+        keys = httpx.get(self.jwks_uri)
         try:
             verified_body = jwt.decode(
-                id_token, key, access_token=access_token, audience=self.client_id
+                token=id_token,
+                key=keys,
+                algorithms=self.id_token_signing_alg_values_supported,
+                audience=self._audience,
+                access_token=access_token,
             )
         except JWTError:
             logger.exception(
@@ -202,37 +197,6 @@ properties:
 class KeyNotFoundError(Exception):
     pass
 
-
-def find_key(token, keys):
-    """
-    Find a key from the configured keys based on the kid claim of the token
-
-    Parameters
-    ----------
-    token : token to search for the kid from
-    keys:  list of keys
-
-    Raises
-    ------
-    KeyNotFoundError:
-        returned if the token does not have a kid claim
-
-    Returns
-    ------
-    key: found key object
-    """
-
-    unverified = jwt.get_unverified_header(token)
-    kid = unverified.get("kid")
-    if not kid:
-        raise KeyNotFoundError("No 'kid' in token")
-
-    for key in keys:
-        if key["kid"] == kid:
-            return jwk.construct(key)
-    return KeyNotFoundError(
-        f"Token specifies {kid} but we have {[k['kid'] for k in keys]}"
-    )
 
 
 async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect_uri):
@@ -256,8 +220,7 @@ async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect
     return response
 
 
-class SAMLAuthenticator:
-    mode = Mode.external
+class SAMLAuthenticator(ExternalAuthenticator):
 
     def __init__(
         self,
@@ -299,7 +262,7 @@ class SAMLAuthenticator:
 
         self.include_routers = [router]
 
-    async def authenticate(self, request) -> UserSessionState:
+    async def authenticate(self, request) -> UserSessionState | None:
         if not modules_available("onelogin"):
             raise ModuleNotFoundError(
                 "This SAMLAuthenticator requires the module 'oneline' to be installed."
@@ -351,7 +314,7 @@ async def prepare_saml_from_fastapi_request(request, debug=False):
     return rv
 
 
-class LDAPAuthenticator:
+class LDAPAuthenticator(PasswordAuthenticator):
     """
     The authenticator code is based on https://github.com/jupyterhub/ldapauthenticator
     The parameter ``use_tls`` was added for convenience of testing.
@@ -533,8 +496,6 @@ class LDAPAuthenticator:
                 - provider: ldap_local
                 id: user02
     """
-
-    mode = Mode.password
 
     def __init__(
         self,

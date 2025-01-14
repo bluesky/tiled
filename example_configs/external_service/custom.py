@@ -1,25 +1,16 @@
 import numpy
+from pydantic import Secret
 
 from tiled.adapters.array import ArrayAdapter
-from tiled.authenticators import Mode, UserSessionState
 from tiled.structures.core import StructureFamily
 
 
-class Authenticator:
-    "This accepts any password and stashes it in session state as 'token'."
-    mode = Mode.password
-
-    async def authenticate(self, username: str, password: str) -> UserSessionState:
-        return UserSessionState(username, {"token": password})
-
-
-# This stands in for a secret token issued by the external service.
-SERVICE_ISSUED_TOKEN = "secret"
-
-
 class MockClient:
-    def __init__(self, base_url):
-        self.base_url = base_url
+    
+    def __init__(self, base_url: str, example_token: str = "secret"):
+        self._base_url = base_url
+        # This stands in for a secret token issued by the external service.
+        self._example_token = Secret(example_token)
 
     # This API (get_contents, get_metadata, get_data) is just made up and not important.
     # Could be anything.
@@ -27,19 +18,19 @@ class MockClient:
     async def get_metadata(self, url, token):
         # This assert stands in for the mocked service
         # authenticating a request.
-        assert token == SERVICE_ISSUED_TOKEN
+        assert token == self._example_token.get_secret_value()
         return {"metadata": str(url)}
 
     async def get_contents(self, url, token):
         # This assert stands in for the mocked service
         # authenticating a request.
-        assert token == SERVICE_ISSUED_TOKEN
+        assert token == self._example_token.get_secret_value()
         return ["a", "b", "c"]
 
     async def get_data(self, url, token):
         # This assert stands in for the mocked service
         # authenticating a request.
-        assert token == SERVICE_ISSUED_TOKEN
+        assert token == self._example_token.get_secret_value()
         return numpy.ones((3, 3))
 
 

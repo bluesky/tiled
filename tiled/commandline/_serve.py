@@ -98,7 +98,7 @@ def serve_directory(
             "example: --host `'::'`."
         ),
     ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    port: int = typer.Option(4000, help="Bind to a socket with this port."),
     log_config: Optional[str] = typer.Option(
         None, help="Custom uvicorn logging configuration file"
     ),
@@ -335,7 +335,7 @@ def serve_catalog(
             "example: --host `'::'`."
         ),
     ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    port: int = typer.Option(4000, help="Bind to a socket with this port."),
     scalable: bool = typer.Option(
         False,
         "--scalable",
@@ -499,7 +499,7 @@ def serve_pyobject(
             "example: --host `'::'`."
         ),
     ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    port: int = typer.Option(4000, help="Bind to a socket with this port."),
     scalable: bool = typer.Option(
         False,
         "--scalable",
@@ -547,7 +547,7 @@ def serve_demo(
             "example: --host `'::'`."
         ),
     ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
+    port: int = typer.Option(4000, help="Bind to a socket with this port."),
 ):
     "Start a public server with example data."
     from ..server.app import build_app, print_admin_api_key_if_generated
@@ -650,7 +650,7 @@ def serve_config(
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
     # If --host is given, it overrides host in config. Same for --port and --log-config.
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
-    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
+    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 4000)
     uvicorn_kwargs["log_config"] = _setup_log_config(
         log_config or uvicorn_kwargs.get("log_config"),
         log_timestamps,

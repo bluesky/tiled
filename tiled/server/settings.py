@@ -2,10 +2,12 @@ import collections
 import os
 import secrets
 from datetime import timedelta
-from functools import lru_cache
+from functools import cache
 from typing import Any, List, Optional
 
 from pydantic_settings import BaseSettings
+
+from tiled.server.protocols import Authenticator
 
 DatabaseSettings = collections.namedtuple(
     "DatabaseSettings", "uri pool_size pool_pre_ping max_overflow"
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     allow_origins: List[str] = [
         item for item in os.getenv("TILED_ALLOW_ORIGINS", "").split() if item
     ]
-    authenticator: Any = None
+    authenticator: Authenticator | None = None
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key: str = os.getenv(
         "TILED_SINGLE_USER_API_KEY", secrets.token_hex(32)
@@ -79,6 +81,6 @@ class Settings(BaseSettings):
         )
 
 
-@lru_cache()
-def get_settings():
+@cache
+def get_settings() -> Settings:
     return Settings()

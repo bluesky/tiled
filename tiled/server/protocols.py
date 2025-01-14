@@ -1,5 +1,6 @@
+from abc import abstractmethod, ABC
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from fastapi import Request
 
@@ -10,13 +11,20 @@ class UserSessionState:
 
     user_name: str
     state: dict = None
+    
+ 
+@runtime_checkable  # Required to be a field on a BaseSettings
+class Authenticator(Protocol):
+    ...
 
 
-class UsernamePasswordAuthenticator(Protocol):
-    def authenticate(self, username: str, password: str) -> UserSessionState:
+class PasswordAuthenticator(Authenticator, ABC):
+    @abstractmethod
+    def authenticate(self, username: str, password: str) -> UserSessionState | None:
         pass
 
 
-class Authenticator(Protocol):
-    def authenticate(self, request: Request) -> UserSessionState:
+class ExternalAuthenticator(Authenticator, ABC):
+    @abstractmethod
+    def authenticate(self, request: Request) -> UserSessionState | None:
         pass
