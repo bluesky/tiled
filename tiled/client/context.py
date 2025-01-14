@@ -8,6 +8,7 @@ import warnings
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from fastapi import FastAPI
 import httpx
 import platformdirs
 
@@ -414,7 +415,7 @@ class Context:
     @classmethod
     def from_app(
         cls,
-        app,
+        app: FastAPI,
         *,
         cache=UNSET,
         headers=None,
@@ -438,9 +439,9 @@ class Context:
             if not context.server_info["authentication"]["providers"]:
                 # This is a single-user server.
                 # Extract the API key from the app and set it.
-                from ..server.settings import get_settings
+                from ..server.settings import get_settings, Settings
 
-                settings = app.dependency_overrides[get_settings]()
+                settings: Settings = app.dependency_overrides[get_settings]()
                 api_key = settings.single_user_api_key or None
             else:
                 # This is a multi-user server but no API key was passed,

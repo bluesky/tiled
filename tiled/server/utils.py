@@ -1,5 +1,8 @@
 import contextlib
 import time
+from typing import Dict
+
+from tiled.server.protocols import Authenticator
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
@@ -10,7 +13,7 @@ API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
 
-def get_authenticators():
+def get_authenticators() -> Dict[str, Authenticator]:
     raise NotImplementedError(
         "This should be overridden via dependency_overrides. "
         "See tiled.server.app.build_app()."

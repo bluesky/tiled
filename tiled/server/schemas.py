@@ -272,14 +272,8 @@ class DeviceCode(pydantic.BaseModel):
     grant_type: str
 
 
-class AuthenticationMode(str, enum.Enum):
-    password = "password"
-    external = "external"
-
-
 class AboutAuthenticationProvider(pydantic.BaseModel):
     provider: str
-    mode: AuthenticationMode
     links: Dict[str, str]
     confirmation_message: Optional[str] = None
 

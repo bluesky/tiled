@@ -1,12 +1,12 @@
-import enum
 import hashlib
 import secrets
 import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, cast
 
+import httpx
 import sqlalchemy.exc
 from fastapi import (
     APIRouter,
@@ -38,6 +38,8 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
+from tiled.authenticators import OIDCAuthenticator
+
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
 #     int_from_bytes is deprecated, use int.from_bytes instead
@@ -61,7 +63,7 @@ from ..authn_database.core import (
 from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
-from .protocols import UsernamePasswordAuthenticator, UserSessionState
+from .protocols import Authenticator, ExternalAuthenticator, PasswordAuthenticator, UserSessionState
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
@@ -83,11 +85,6 @@ DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
 def utcnow():
     "UTC now with second resolution"
     return datetime.utcnow().replace(microsecond=0)
-
-
-class Mode(enum.Enum):
-    password = "password"
-    external = "external"
 
 
 class Token(BaseModel):
@@ -166,6 +163,10 @@ def create_refresh_token(session_id, secret_key, expires_delta):
     return encoded_jwt
 
 
+def decode_oidc_token(token: str, authentictor: OIDCAuthenticator):
+    return jwt.decode(token, httpx.get(authentictor.jwks_uri), algorithms=[ALGORITHM])
+    
+
 def decode_token(token: str, secret_keys: list[str]):
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
@@ -177,12 +178,15 @@ def decode_token(token: str, secret_keys: list[str]):
     # fail. They supports key rotation.
     for secret_key in secret_keys:
         try:
+            """ DO NOT MERGE! """
+            print(secret_key)  # Remove this!!!!!!
             payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
             break
         except ExpiredSignatureError:
             # Do not let this be caught below with the other JWTError types.
             raise
-        except JWTError:
+        except JWTError as e:
+            print(e)
             # Try the next key in the key rotation.
             continue
     else:
@@ -221,11 +225,15 @@ async def get_decoded_access_token(
     access_token: str = Depends(oauth2_scheme),
     settings: Settings = Depends(get_settings),
 ):
-    print("Got access_token")
     if not access_token:
         return None
     try:
-        payload = decode_token(access_token, settings.secret_keys)
+        print(settings.authenticator)
+        if isinstance(settings.authenticator, OIDCAuthenticator):
+            payload = decode_oidc_token(access_token, settings.authenticator)
+            print("proof of concept!")
+        else:
+            payload = decode_token(access_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
@@ -246,7 +254,7 @@ async def get_current_principal(
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
-    authenticators=Depends(get_authenticators),
+    authenticators: Dict[str, Authenticator]  = Depends(get_authenticators),
     db=Depends(get_database_session),
 ):
     """
@@ -510,7 +518,7 @@ async def create_tokens_from_session(settings: Settings, db, session, provider):
     }
 
 
-def build_auth_code_route(authenticator, provider):
+def build_auth_code_route(authenticator: ExternalAuthenticator, provider):
     "Build an auth_code route function for this Authenticator."
 
     async def route(
@@ -524,6 +532,7 @@ def build_auth_code_route(authenticator, provider):
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
             )
+        user_session_state = cast(UserSessionState, user_session_state)
         session = await create_session(
             settings,
             db,
@@ -537,7 +546,7 @@ def build_auth_code_route(authenticator, provider):
     return route
 
 
-def build_device_code_authorize_route(authenticator, provider):
+def build_device_code_authorize_route(authenticator: ExternalAuthenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
     async def route(
@@ -571,7 +580,7 @@ def build_device_code_authorize_route(authenticator, provider):
     return route
 
 
-def build_device_code_user_code_form_route(authentication, provider):
+def build_device_code_user_code_form_route(authentication: ExternalAuthenticator, provider):
     if not SHARE_TILED_PATH:
         raise Exception(
             "Static assets could not be found and are required for "
@@ -598,7 +607,7 @@ def build_device_code_user_code_form_route(authentication, provider):
     return route
 
 
-def build_device_code_user_code_submit_route(authenticator, provider):
+def build_device_code_user_code_submit_route(authenticator: ExternalAuthenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
     if not SHARE_TILED_PATH:
@@ -670,7 +679,7 @@ def build_device_code_user_code_submit_route(authenticator, provider):
     return route
 
 
-def build_device_code_token_route(authenticator, provider):
+def build_device_code_token_route(authenticator: ExternalAuthenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
     async def route(
@@ -711,7 +720,7 @@ def build_device_code_token_route(authenticator, provider):
 
 
 def build_handle_credentials_route(
-    authenticator: UsernamePasswordAuthenticator, provider
+    authenticator: PasswordAuthenticator, provider
 ):
     "Register a handle_credentials route function for this Authenticator."
 
@@ -988,7 +997,11 @@ async def revoke_session(
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
-    payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
+    if isinstance(settings.authenticator, OIDCAuthenticator):
+        payload = decode_oidc_token(refresh_token.refresh_token, settings.authenticator)
+        print("proof of concept!")
+    else:
+        payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
     session_id = payload["sid"]
     # Find this session in the database.
     session = await lookup_valid_session(db, session_id)
@@ -1027,7 +1040,11 @@ async def revoke_session_by_id(
 
 async def slide_session(refresh_token, settings: Settings, db):
     try:
-        payload = decode_token(refresh_token, settings.secret_keys)
+        if isinstance(settings.authenticator, OIDCAuthenticator):
+            payload = decode_oidc_token(refresh_token, settings.authenticator)
+            print("proof of concept!")
+        else:
+            payload = decode_token(refresh_token, settings.secret_keys)
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,

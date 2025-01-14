@@ -9,7 +9,9 @@ authentication:
       client_secret: secret
       well_known_uri: http://localhost:8080/.well-known/openid-configuration
 trees:
- # Just some arbitrary example data...
- # The point of this example is the authenticaiton above.
- - tree: tiled.examples.generated_minimal:tree
-   path: /
+  - path: /
+    tree: catalog
+    args:
+      uri: "sqlite+aiosqlite:///:memory:"
+      writable_storage: "/tmp/data"
+      init_if_not_exists: true

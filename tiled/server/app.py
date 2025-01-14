@@ -8,9 +8,9 @@ import sys
 import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
-from functools import lru_cache, partial
+from functools import cache, partial
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 import anyio
 import packaging.version
@@ -34,7 +34,8 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from ..authenticators import Mode
+from tiled.server.protocols import Authenticator, ExternalAuthenticator, PasswordAuthenticator
+
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
@@ -51,7 +52,7 @@ from .dependencies import (
     get_validation_registry,
 )
 from .router import distinct, patch_route_signature, router, search
-from .settings import get_settings
+from .settings import Settings, get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
@@ -81,7 +82,7 @@ logger.addHandler(handler)
 current_principal = contextvars.ContextVar("current_principal")
 
 
-def custom_openapi(app: FastAPI):
+def custom_openapi(app: FastAPI) -> Dict[str, Any]:
     """
     The app's openapi method will be monkey-patched with this.
 
@@ -118,7 +119,7 @@ def build_app(
     validation_registry=None,
     tasks=None,
     scalable=False,
-):
+) -> FastAPI:
     """
     Serve a Tree
 
@@ -133,7 +134,7 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = {
+    authenticators: Dict[str, Authenticator]  = {
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }
@@ -385,12 +386,11 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
-            mode = authenticator.mode
-            if mode == Mode.password:
+            if isinstance(authenticator, PasswordAuthenticator):
                 authentication_router.post(f"/provider/{provider}/token")(
                     build_handle_credentials_route(authenticator, provider)
                 )
-            elif mode == Mode.external:
+            elif isinstance(authenticator, ExternalAuthenticator):
                 # Client starts here to create a PendingSession.
                 authentication_router.post(f"/provider/{provider}/authorize")(
                     build_device_code_authorize_route(authenticator, provider)
@@ -415,7 +415,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 #     build_auth_code_route(authenticator, provider)
                 # )
             else:
-                raise ValueError(f"unknown authentication mode {mode}")
+                raise ValueError(f"Unexpected authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(
                     custom_router, prefix=f"/provider/{provider}"
@@ -438,15 +438,16 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         response_model=schemas.GetDistinctResponse,
     )(patch_route_signature(distinct, query_registry))
 
-    @lru_cache(1)
-    def override_get_authenticators():
+    @cache
+    def override_get_authenticators() -> Dict[str, Authenticator]:
+        print(authenticators)
         return authenticators
 
-    @lru_cache(1)
+    @cache
     def override_get_root_tree():
         return tree
 
-    @lru_cache(1)
+    @cache
     def override_get_settings():
         settings = get_settings()
         for item in [
@@ -492,7 +493,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
         logger.info(f"Tiled version {__version__}")
         # Validate the single-user API key.
-        settings = app.dependency_overrides[get_settings]()
+        settings: Settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
         API_KEY_MSG = """
 Here are two ways to generate a good API key:
@@ -772,14 +773,14 @@ Back up the database, and then run:
     app.dependency_overrides[get_settings] = override_get_settings
     if query_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_query_registry():
             return query_registry
 
         app.dependency_overrides[get_query_registry] = override_get_query_registry
     if serialization_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_serialization_registry():
             return serialization_registry
 
@@ -789,7 +790,7 @@ Back up the database, and then run:
 
     if validation_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_validation_registry():
             return validation_registry
 
@@ -936,13 +937,14 @@ def __getattr__(name):
 
 
 def print_admin_api_key_if_generated(
-    web_app: FastAPI, host: str, port: int, force: bool = False
+    web_app: FastAPI,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    force: bool = False
 ):
     "Print message to stderr with API key if server-generated (or force=True)."
-    host = host or "127.0.0.1"
-    port = port or 8000
-    settings = web_app.dependency_overrides.get(get_settings, get_settings)()
-    authenticators = web_app.dependency_overrides.get(
+    settings: Settings = web_app.dependency_overrides.get(get_settings, get_settings)()
+    authenticators: Dict[str, Authenticator]  = web_app.dependency_overrides.get(
         get_authenticators, get_authenticators
     )()
     if settings.allow_anonymous_access:
