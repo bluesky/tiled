@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Request
-from jose import JWTError, jwk, jwt
+from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
 
@@ -204,7 +204,6 @@ properties:
 
 class KeyNotFoundError(Exception):
     pass
-
 
 
 async def exchange_code(token_uri, auth_code, client_id, client_secret, redirect_uri):
