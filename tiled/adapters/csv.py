@@ -365,9 +365,16 @@ class CSVArrayAdapter(ArrayAdapter):
     @classmethod
     def from_uris(
         cls,
-        file_paths: Union[str, List[str]],
+        data_uris: Union[str, List[str]],
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "CSVArrayAdapter":
-        # TODO!!!
-        array = dask.dataframe.read_csv(file_paths, **kwargs).to_dask_array()
-        return cls.from_array(array)  # type: ignore
+        if isinstance(data_uris, str):
+            data_uris = [data_uris]
+        file_paths = [path_from_uri(uri) for uri in data_uris]
+
+        array = dask.dataframe.read_csv(
+            file_paths, header=None, **kwargs
+        ).to_dask_array()
+        structure = ArrayStructure.from_array(array)
+
+        return cls(array, structure)
