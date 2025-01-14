@@ -4,14 +4,14 @@ import numpy
 import pandas
 import pytest
 
-from ...adapters.csv import CSVArrayAdapter
-from ...catalog import in_memory
-from ...client import Context, from_context
-from ...server.app import build_app
-from ...structures.array import ArrayStructure
-from ...structures.core import StructureFamily
-from ...structures.data_source import Asset, DataSource, Management
-from ...structures.table import TableStructure
+from ..adapters.csv import CSVArrayAdapter
+from ..catalog import in_memory
+from ..client import Context, from_context
+from ..server.app import build_app
+from ..structures.array import ArrayStructure
+from ..structures.core import StructureFamily
+from ..structures.data_source import Asset, DataSource, Management
+from ..structures.table import TableStructure
 
 rng = numpy.random.default_rng(12345)
 
