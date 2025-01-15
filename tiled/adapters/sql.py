@@ -42,7 +42,6 @@ class SQLAdapter:
         specs : the specs.
         access_policy : the access policy of the data.
         """
-        # TODO Store data_uris instead and generalize to non-file schemes.
         self.uri = data_uri
 
         if self.uri.startswith("sqlite"):
