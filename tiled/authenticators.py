@@ -145,7 +145,7 @@ properties:
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
-        response: httpx.Response = httpx.get(self._well_known_url)
+        response: httpx.Response = httpx.get(self._well_known_url).raise_for_status()
         response.raise_for_status()
         return response.json()
 
@@ -198,7 +198,7 @@ properties:
         response_body = response.json()
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
-        keys = httpx.get(self.jwks_uri)
+        keys = httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
         try:
             verified_body = jwt.decode(
                 token=id_token,
