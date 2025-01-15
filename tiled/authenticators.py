@@ -125,6 +125,8 @@ properties:
     type: string
   well_known_uri:
     type: string
+  confirmation_message:
+    type: string
 """
 
     def __init__(
@@ -133,11 +135,13 @@ properties:
         client_id: str,
         client_secret: str,
         well_known_uri: str,
+        confirmation_message: str = "",
     ):
         self._audience = audience
         self._client_id = client_id
         self._client_secret = Secret(client_secret)
         self._well_known_url = well_known_uri
+        self.confirmation_message = confirmation_message
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
