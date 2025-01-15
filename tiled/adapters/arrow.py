@@ -81,7 +81,7 @@ class ArrowAdapter:
         data_uri = str(storage.get("filesystem")) + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
-        print("uri", data_uri)
+
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         assets = [
