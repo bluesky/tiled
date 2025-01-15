@@ -9,7 +9,7 @@ authentication:
   - provider: simple_oidc
     authenticator: tiled.authenticators:OIDCAuthenticator
     args:
-      audience: tiled
+      audience: ${OIDC_CLIENT_ID}
       client_id: ${OIDC_CLIENT_ID}
       client_secret: ${OIDC_CLIENT_SECRET}
       well_known_uri: "${OIDC_BASE_URL}/.well-known/openid-configuration"
