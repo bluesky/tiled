@@ -172,7 +172,6 @@ class SQLAdapter:
         Parameters
         ----------
         data : data to write into arrow file. Can be a list of record batch, or pandas dataframe.
-        table_name: string indicating the name of the table to ingest data in the database.
         Returns
         -------
         """
@@ -205,8 +204,8 @@ class SQLAdapter:
         "Function to write the data as arrow format."
         Parameters
         ----------
+        partition : the partition index to write.
         data : data to write into arrow file. Can be a list of record batch, or pandas dataframe.
-        table_name: string indicating the name of the table to ingest data in the database.
         Returns
         -------
         """
@@ -244,7 +243,7 @@ class SQLAdapter:
         Parameters
         ----------
         data : data to append into the database. Can be a list of record batch, or pandas dataframe.
-        table_name: string indicating the name of the table to ingest data in the database.
+        partition : the partition index to write.
         Returns
         -------
         """
@@ -273,12 +272,11 @@ class SQLAdapter:
         data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
     ) -> None:
         """
-        "Function to write the data as arrow format."
+        "Function to append the data as arrow format."
 
         Parameters
         ----------
         data : data to append into the database. Can be a list of record batch, or pandas dataframe.
-        table_name: string indicating the name of the table to ingest data in the database.
         Returns
         -------
         """
@@ -305,8 +303,6 @@ class SQLAdapter:
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
         ----------
-        table_schema: hashed string or list of strings as column names to be hashed.
-                      for example table_schema = ['f0', 'f1', 'f2'] or '3d51c6b180b64bea848f23e5crd91ea3'
         fields: optional string to return the data in the specified field.
         Returns
         -------
@@ -328,8 +324,7 @@ class SQLAdapter:
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
         ----------
-        table_schema: hashed string or list of strings as column names to be hashed.
-                      for example table_schema = ['f0', 'f1', 'f2'] or '3d51c6b180b64bea848f23e5crd91ea3'
+        partition : the partition index to write.
         fields: optional string to return the data in the specified field.
         Returns
         -------
