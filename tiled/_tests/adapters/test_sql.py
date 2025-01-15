@@ -1,5 +1,6 @@
 import os
 import tempfile
+from typing import Generator
 
 import adbc_driver_sqlite
 import pyarrow as pa
@@ -48,15 +49,16 @@ def data_source_from_init_storage() -> DataSource[TableStructure]:
 @pytest.fixture
 def adapter_sql(
     data_source_from_init_storage: DataSource[TableStructure],
-) -> SQLAdapter:
-    data_uri = "sqlite://file://localhost" + tempfile.gettempdir() + "/test.db"
-    data_source = data_source_from_init_storage
-    return SQLAdapter(
-        data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
+) -> Generator[SQLAdapter, None, None]:
+    with tempfile.TemporaryDirectory() as td:
+        data_uri = f"sqlite://{td}/test.db"
+        data_source = data_source_from_init_storage
+        yield SQLAdapter(
+            data_uri,
+            data_source.structure,
+            data_source.parameters["table_name"],
+            data_source.parameters["dataset_id"],
+        )
 
 
 def test_attributes(adapter_sql: SQLAdapter) -> None:
