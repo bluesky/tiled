@@ -150,6 +150,10 @@ properties:
         return response.json()
 
     @functools.cached_property
+    def client_id(self) -> str:
+        return self._client_id
+
+    @functools.cached_property
     def id_token_signing_alg_values_supported(self) -> list[str]:
         return cast(
             list[str],
@@ -167,6 +171,12 @@ properties:
     @functools.cached_property
     def token_endpoint(self) -> str:
         return cast(str, self._config_from_oidc_url.get("token_endpoint"))
+
+    @functools.cached_property
+    def authorization_endpoint(self) -> httpx.URL:
+        return httpx.URL(
+            cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
+        )
 
     async def authenticate(self, request: Request) -> UserSessionState:
         code = request.query_params["code"]
