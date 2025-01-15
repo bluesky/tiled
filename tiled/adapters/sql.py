@@ -1,6 +1,8 @@
 import copy
 import hashlib
+import os
 import uuid
+from pathlib import Path
 from typing import Iterator, List, Optional, Tuple, Union
 
 import adbc_driver_postgresql.dbapi
@@ -45,14 +47,26 @@ class SQLAdapter:
         """
         self.uri = data_uri
 
-        if self.uri.startswith("sqlite"):
+        if self.uri.startswith("sqlite:"):
+            # Ensure this path is writable to avoid a confusing error message
+            # from abdc_driver_sqlite.
             filepath = path_from_uri(self.uri)
+            directory = Path(filepath).parent
+            if directory.exists():
+                if not os.access(directory, os.X_OK | os.W_OK):
+                    raise ValueError(
+                        f"The directory {directory} exists but is not writable and executable."
+                    )
+                if Path(filepath).is_file() and (not os.access(filepath, os.W_OK)):
+                    raise ValueError(f"The path {filepath} exists but is not writable.")
+            else:
+                raise ValueError(f"The directory {directory} does not exist.")
             self.conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
-        elif self.uri.startswith("postgresql"):
+        elif self.uri.startswith("postgresql:"):
             self.conn = adbc_driver_postgresql.dbapi.connect(self.uri)
         else:
             raise ValueError(
-                "The database uri must start with either `sqlite://` or `postgresql://` "
+                "The database uri must start with either `sqlite:` or `postgresql:` "
             )
 
         self.cur = self.conn.cursor()
@@ -319,7 +333,9 @@ class SQLAdapter:
             return table[fields]
         return table
 
-    def read_partition(self, partition: int, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
+    def read_partition(
+        self, partition: int, fields: Optional[Union[str, List[str]]] = None
+    ) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters

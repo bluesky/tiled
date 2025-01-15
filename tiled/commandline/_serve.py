@@ -294,11 +294,11 @@ def serve_catalog(
         "-r",
         help="Locations that the server may read from",
     ),
-    write: str = typer.Option(
+    write: List[str] = typer.Option(
         None,
         "--write",
         "-w",
-        help="Location that the server may write to",
+        help="Locations that the server may write to",
     ),
     temp: bool = typer.Option(
         False,
@@ -360,6 +360,7 @@ def serve_catalog(
     import urllib.parse
 
     from ..catalog import from_uri
+    from ..catalog.utils import classify_writable_storage
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     parsed_database = urllib.parse.urlparse(database)
@@ -406,9 +407,10 @@ def serve_catalog(
         asyncio.run(initialize_database(engine))
         stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
-        if write is None:
-            write = directory / DATA_SUBDIRECTORY
-            write.mkdir()
+        if not write:
+            writable_dir = directory / DATA_SUBDIRECTORY
+            writable_dir.mkdir()
+            write.append(writable_dir)
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
     elif database is None:
         typer.echo(
@@ -436,16 +438,17 @@ or use an existing one:
         catalog_logger.addHandler(StreamHandler())
         catalog_logger.setLevel("INFO")
 
-    if write is None:
+    if not write:
         typer.echo(
             "This catalog will be served as read-only. "
             "To make it writable, specify a writable directory with --write.",
             err=True,
         )
+
     server_settings = {}
     tree = from_uri(
         database,
-        writable_storage=write,
+        writable_storage=classify_writable_storage(write),
         readable_storage=read,
         init_if_not_exists=init,
     )

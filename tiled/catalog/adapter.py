@@ -159,16 +159,30 @@ class Context:
         if not isinstance(readable_storage, list):
             raise ValueError("readable_storage should be a list of URIs or paths")
         if writable_storage:
-            writable_storage = ensure_uri(str(writable_storage))
-            if not urlparse(writable_storage).scheme == "file":
-                raise NotImplementedError(
-                    "Only file://... writable storage is currently supported."
-                )
-            # If it is writable, it is automatically also readable.
-            readable_storage.append(writable_storage)
+            if isinstance(writable_storage, (str, Path)):
+                # Interpret input a filesystem path or 'file:' URI.
+                filesystem_storage = ensure_uri(str(writable_storage))
+                if not urlparse(filesystem_storage).scheme == "file":
+                    raise ValueError(
+                        "Expecting either a filepath, a URI with file: scheme, "
+                        "or a dict that may include keys 'filesystem' and 'sql'."
+                    )
+                writable_storage = {"filesystem": filesystem_storage}
         self.writable_storage = Storage(
-            filesystem=writable_storage, sql="sqlite:////tmp/test.sqlite"
+            filesystem=writable_storage.get("filesystem"),
+            sql=writable_storage.get("sql"),
         )
+        # If it is writable, it is automatically also readable.
+        if (
+            self.writable_storage.filesystem
+            and self.writable_storage.filesystem not in readable_storage
+        ):
+            readable_storage.append(self.writable_storage.filesystem)
+        if (
+            self.writable_storage.sql
+            and self.writable_storage.sql not in readable_storage
+        ):
+            readable_storage.append(self.writable_storage.sql)
         self.readable_storage = [ensure_uri(path) for path in readable_storage]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
