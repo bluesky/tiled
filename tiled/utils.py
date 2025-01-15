@@ -717,8 +717,6 @@ def path_from_uri(uri) -> Path:
     'C:/a/b/c'
     """
     parsed = urlparse(uri)
-    if parsed.scheme != "file":
-        raise ValueError(f"Only 'file' URIs are supported. URI: {uri}")
     if platform.system() == "Windows":
         # We slice because we need "C:/..." not "/C:/...".
         path = Path(parsed.path[1:])

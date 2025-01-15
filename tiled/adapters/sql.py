@@ -13,6 +13,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
+from ..utils import path_from_uri
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
 
@@ -45,9 +46,8 @@ class SQLAdapter:
         self.uri = data_uri
 
         if self.uri.startswith("sqlite"):
-            self.conn = adbc_driver_sqlite.dbapi.connect(
-                self.uri.removeprefix("sqlite://")
-            )
+            filepath = path_from_uri(self.uri)
+            self.conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
         elif self.uri.startswith("postgresql"):
             self.conn = adbc_driver_postgresql.dbapi.connect(self.uri)
         else:
