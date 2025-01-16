@@ -168,21 +168,21 @@ class Context:
                         "or a dict that may include keys 'filesystem' and 'sql'."
                     )
                 writable_storage = {"filesystem": filesystem_storage}
-        self.writable_storage = Storage(
-            filesystem=writable_storage.get("filesystem"),
-            sql=writable_storage.get("sql"),
-        )
-        # If it is writable, it is automatically also readable.
-        if (
-            self.writable_storage.filesystem
-            and self.writable_storage.filesystem not in readable_storage
-        ):
-            readable_storage.append(self.writable_storage.filesystem)
-        if (
-            self.writable_storage.sql
-            and self.writable_storage.sql not in readable_storage
-        ):
-            readable_storage.append(self.writable_storage.sql)
+            self.writable_storage = Storage(
+                filesystem=writable_storage.get("filesystem"),
+                sql=writable_storage.get("sql"),
+            )
+            # If it is writable, it is automatically also readable.
+            if (
+                self.writable_storage.filesystem
+                and self.writable_storage.filesystem not in readable_storage
+            ):
+                readable_storage.append(self.writable_storage.filesystem)
+            if (
+                self.writable_storage.sql
+                and self.writable_storage.sql not in readable_storage
+            ):
+                readable_storage.append(self.writable_storage.sql)
         self.readable_storage = [ensure_uri(path) for path in readable_storage]
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}

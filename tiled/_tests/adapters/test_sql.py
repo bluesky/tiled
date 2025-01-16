@@ -51,7 +51,7 @@ def adapter_sql(
     data_source_from_init_storage: DataSource[TableStructure],
 ) -> Generator[SQLAdapter, None, None]:
     with tempfile.TemporaryDirectory() as td:
-        data_uri = f"sqlite://{td}/test.db"
+        data_uri = f"sqlite:///{td}/test.db"
         data_source = data_source_from_init_storage
         yield SQLAdapter(
             data_uri,

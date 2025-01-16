@@ -367,6 +367,7 @@ def serve_catalog(
     if parsed_database.scheme in ("", "file"):
         database = f"sqlite+aiosqlite:///{parsed_database.path}"
 
+    write = write or []
     if temp:
         if database is not None:
             typer.echo(

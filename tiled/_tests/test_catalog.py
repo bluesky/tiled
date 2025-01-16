@@ -328,7 +328,7 @@ async def test_delete_tree(tmpdir):
     # Do not use client fixture here.
     # The Context must be opened inside the test or we run into
     # event loop crossing issues with the Postgres test.
-    tree = in_memory(writable_storage=tmpdir)
+    tree = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
 
