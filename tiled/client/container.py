@@ -6,6 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -959,6 +960,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        table_name: Optional[str] = None,
     ):
         """
         Write a DataFrame and store it such that rows can be appended to a partition.
@@ -974,6 +976,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        table_name : str, optional
+            Optionally provide a name for the table this should be stored in.
+            By default a name unique to the schema will be chosen.
 
         See Also
         --------
@@ -985,6 +990,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            table_name=table_name,
         )
 
     def _write_dataframe(
@@ -995,6 +1001,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        table_name=None,
     ):
         """
         This is called by write_dataframe and write_appendable_dataframe.
@@ -1013,6 +1020,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
         """
+        parameters = {}
+        if table_name is not None:
+            if mimetype != "application/x-tiled-sql-table":
+                raise ValueError(
+                    "table_name parameter cannot be set for non-SQL tables"
+                )
+            parameters["table_name"] = table_name
+
         import dask.dataframe
 
         from ..structures.table import TableStructure
@@ -1034,6 +1049,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     structure=structure,
                     structure_family=StructureFamily.table,
                     mimetype=mimetype,
+                    parameters=parameters,
                 )
             ],
             key=key,

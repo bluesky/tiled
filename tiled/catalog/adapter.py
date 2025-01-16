@@ -661,7 +661,6 @@ class CatalogNodeAdapter:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
                             data_source.structure_family
                         ]
-                    data_source.parameters = {}
                     if data_source.mimetype not in INIT_STORAGE:
                         raise HTTPException(
                             status_code=415,

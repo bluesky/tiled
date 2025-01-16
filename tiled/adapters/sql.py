@@ -1,12 +1,13 @@
 import copy
 import hashlib
 import os
-import uuid
+import secrets
 from pathlib import Path
 from typing import Iterator, List, Optional, Tuple, Union
 
 import adbc_driver_postgresql.dbapi
 import adbc_driver_sqlite.dbapi
+import numpy
 import pandas
 import pyarrow
 import pyarrow.fs
@@ -116,8 +117,7 @@ class SQLAdapter:
         encoded = schema.serialize()
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         data_source.parameters.setdefault("table_name", default_table_name)
-
-        data_source.parameters["dataset_id"] = uuid.uuid4().hex
+        data_source.parameters["dataset_id"] = secrets.randbits(63)
         data_uri = storage.get("sql")  # TODO scrub credentials
         data_source.assets.append(
             Asset(
@@ -191,22 +191,20 @@ class SQLAdapter:
         """
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
-            batches = table.to_batches()
         else:
-            if not isinstance(data, list):
+            if isinstance(data, list):
                 batches = [data]
             else:
                 batches = data
+            table = pyarrow.Table.from_batches(batches)
+        table_with_dataset_id = add_dataset_column(table, self.dataset_id)
 
-        schema = batches[
-            0
-        ].schema  # list of column names can be obtained from schema.names
-
-        reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
-
-        query = "DROP TABLE IF EXISTS {}".format(self.table_name)
-        self.cur.execute(query)
-        self.cur.adbc_ingest(self.table_name, reader)
+        # Delete any existing rows from this table for this dataset_id.
+        # query = f"DELETE FROM {self.table_name} WHERE dataset_id={self.dataset_id}"
+        # self.cur.execute(query)
+        self.cur.adbc_ingest(
+            self.table_name, table_with_dataset_id, mode="create_append"
+        )
         self.conn.commit()
 
     def write_partition(
@@ -225,26 +223,7 @@ class SQLAdapter:
         """
         if partition != 0:
             raise NotImplementedError
-
-        if isinstance(data, pandas.DataFrame):
-            table = pyarrow.Table.from_pandas(data)
-            batches = table.to_batches()
-        else:
-            if not isinstance(data, list):
-                batches = [data]
-            else:
-                batches = data
-
-        schema = batches[
-            0
-        ].schema  # list of column names can be obtained from schema.names
-
-        reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
-
-        query = "DROP TABLE IF EXISTS {}".format(self.table_name)
-        self.cur.execute(query)
-        self.cur.adbc_ingest(self.table_name, reader)
-        self.conn.commit()
+        return self.write(data)
 
     def append_partition(
         self,
@@ -261,55 +240,17 @@ class SQLAdapter:
         Returns
         -------
         """
-        if partition != 0:
-            raise NotImplementedError
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
-            batches = table.to_batches()
         else:
-            if not isinstance(data, list):
+            if isinstance(data, list):
                 batches = [data]
             else:
                 batches = data
+            table = pyarrow.Table.from_batches(batches)
+        table_with_dataset_id = add_dataset_column(table, self.dataset_id)
 
-        schema = batches[
-            0
-        ].schema  # list of column names can be obtained from schema.names
-
-        reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
-
-        self.cur.adbc_ingest(self.table_name, reader, mode="append")
-        self.conn.commit()
-
-    def append(
-        self,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
-    ) -> None:
-        """
-        "Function to append the data as arrow format."
-
-        Parameters
-        ----------
-        data : data to append into the database. Can be a list of record batch, or pandas dataframe.
-        Returns
-        -------
-        """
-        if isinstance(data, pandas.DataFrame):
-            table = pyarrow.Table.from_pandas(data)
-            batches = table.to_batches()
-        else:
-            if not isinstance(data, list):
-                batches = [data]
-            else:
-                batches = data
-
-        schema = batches[
-            0
-        ].schema  # list of column names can be obtained from schema.names
-
-        reader = pyarrow.ipc.RecordBatchReader.from_batches(schema, batches)
-
-        self.cur.adbc_ingest(self.table_name, reader, mode="append")
+        self.cur.adbc_ingest(self.table_name, table_with_dataset_id, mode="append")
         self.conn.commit()
 
     def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
@@ -323,7 +264,7 @@ class SQLAdapter:
         Returns the concatenated pyarrow table as pandas dataframe.
         """
 
-        query = "SELECT * FROM {}".format(self.table_name)
+        query = f"SELECT * FROM {self.table_name} WHERE dataset_id={self.dataset_id}"
         self.cur.execute(query)
         data = self.cur.fetch_arrow_table()
         self.conn.commit()
@@ -331,7 +272,7 @@ class SQLAdapter:
         table = data.to_pandas()
         if fields is not None:
             return table[fields]
-        return table
+        return table.drop("dataset_id", axis=1)
 
     def read_partition(
         self, partition: int, fields: Optional[Union[str, List[str]]] = None
@@ -348,13 +289,9 @@ class SQLAdapter:
         """
         if partition != 0:
             raise NotImplementedError
+        return self.read(fields)
 
-        query = "SELECT * FROM {}".format(self.table_name)
-        self.cur.execute(query)
-        data = self.cur.fetch_arrow_table()
-        self.conn.commit()
 
-        table = data.to_pandas()
-        if fields is not None:
-            return table[fields]
-        return table
+def add_dataset_column(table: pyarrow.Table, dataset_id: int) -> pyarrow.Table:
+    column = dataset_id * numpy.ones(len(table), dtype=numpy.int64)
+    return table.add_column(0, pyarrow.field("dataset_id", pyarrow.int64()), [column])
