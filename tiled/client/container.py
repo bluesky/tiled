@@ -949,7 +949,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             None,  # default format, not appendable
             key=key,
             metadata=metadata,
-            specs=metadata,
+            specs=specs,
         )
 
     def write_appendable_dataframe(
@@ -984,7 +984,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             "application/x-tiled-sql-table",
             key=key,
             metadata=metadata,
-            specs=metadata,
+            specs=specs,
         )
 
     def _write_dataframe(
