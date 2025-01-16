@@ -718,20 +718,19 @@ def path_from_uri(uri) -> Path:
     """
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        path = parsed.path
+        if platform.system() == "Windows":
+            # We slice because we need "C:/..." not "/C:/...".
+            path = Path(parsed.path[1:])
+        else:
+            path = Path(parsed.path)
     elif parsed.scheme == "sqlite":
         # The path begins after the third slash.
-        path = parsed.path[1:]
+        path = Path(parsed.path[1:])
     else:
         raise ValueError(
             "Supported schemes are 'file' and 'sqlite'. "
             f"Did not recognize scheme {parsed.scheme!r}"
         )
-    if platform.system() == "Windows":
-        # We slice because we need "C:/..." not "/C:/...".
-        path = Path(path[1:])
-    else:
-        path = Path(path)
     return path
 
 
