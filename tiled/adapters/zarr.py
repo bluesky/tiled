@@ -17,7 +17,6 @@ from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON, NDSlice
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
-from .protocols import AccessPolicy
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -252,7 +251,6 @@ class ZarrGroupAdapter(
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -262,14 +260,12 @@ class ZarrGroupAdapter(
         structure :
         metadata :
         specs :
-        access_policy :
         """
         if structure is not None:
             raise ValueError(
                 f"structure is expected to be None for containers, not {structure}"
             )
         self._node = node
-        self._access_policy = access_policy
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         super().__init__()
@@ -282,16 +278,6 @@ class ZarrGroupAdapter(
 
         """
         return node_repr(self, list(self))
-
-    @property
-    def access_policy(self) -> Optional[AccessPolicy]:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._access_policy
 
     def metadata(self) -> Any:
         """
@@ -462,7 +448,6 @@ class ZarrAdapter:
         structure: ArrayStructure,  # NOTE: possibly need to be a Union of Array and Mapping structures
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
         zarr_obj = zarr.open(path_from_uri(assets[0].data_uri))  # Group or Array
@@ -472,7 +457,6 @@ class ZarrAdapter:
                 structure=structure,
                 metadata=metadata,
                 specs=specs,
-                access_policy=access_policy,
                 **kwargs,
             )
         else:
@@ -481,6 +465,5 @@ class ZarrAdapter:
                 structure=structure,
                 metadata=metadata,
                 specs=specs,
-                access_policy=access_policy,
                 **kwargs,
             )

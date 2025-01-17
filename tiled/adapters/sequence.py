@@ -14,7 +14,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
-from .protocols import AccessPolicy
 
 
 def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
@@ -76,14 +75,12 @@ class FileSequenceAdapter:
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "FileSequenceAdapter":
         return cls(
             filepaths=[path_from_uri(data_uri) for data_uri in data_uris],
             structure=structure,
             specs=specs,
             metadata=metadata,
-            access_policy=access_policy,
         )
 
     @classmethod
@@ -93,7 +90,6 @@ class FileSequenceAdapter:
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "FileSequenceAdapter":
         return cls(
@@ -101,7 +97,6 @@ class FileSequenceAdapter:
             structure=structure,
             specs=specs,
             metadata=metadata,
-            access_policy=access_policy,
         )
 
     def __init__(
@@ -111,7 +106,6 @@ class FileSequenceAdapter:
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -121,13 +115,11 @@ class FileSequenceAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self.filepaths = filepaths
         # TODO Check shape, chunks against reality.
         self.specs = specs or []
         self._provided_metadata = metadata or {}
-        self.access_policy = access_policy
         if structure is None:
             dat0 = self._load_from_files(0)
             shape = (len(self.filepaths), *dat0.shape[1:])

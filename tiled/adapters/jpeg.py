@@ -10,7 +10,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
-from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
 
@@ -34,7 +33,6 @@ class JPEGAdapter:
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -44,14 +42,12 @@ class JPEGAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         filepath = path_from_uri(data_uri)
         cache_key = (Image.open, filepath)
         self._file = with_resource_cache(cache_key, Image.open, filepath)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
-        self.access_policy = access_policy
         self._structure = structure
 
     @classmethod
@@ -61,7 +57,6 @@ class JPEGAdapter:
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "JPEGAdapter":
         return cls(
@@ -69,7 +64,6 @@ class JPEGAdapter:
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     @classmethod
@@ -79,7 +73,6 @@ class JPEGAdapter:
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "JPEGAdapter":
         if not isinstance(data_uris, str):
@@ -102,7 +95,6 @@ class JPEGAdapter:
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def metadata(self) -> JSON:

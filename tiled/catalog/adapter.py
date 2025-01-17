@@ -443,9 +443,7 @@ class CatalogNodeAdapter:
                             break
                     return adapter
             return None
-        return STRUCTURES[node.structure_family](
-            self.context, node, access_policy=self.access_policy
-        )
+        return STRUCTURES[node.structure_family](self.context, node)
 
     async def get_adapter(self):
         (data_source,) = self.data_sources
@@ -485,7 +483,6 @@ class CatalogNodeAdapter:
                 structure=data_source.structure,
                 specs=self.node.specs,
                 metadata=self.node.metadata_,
-                access_policy=self.access_policy,
                 **data_source.parameters,
             ),
         )

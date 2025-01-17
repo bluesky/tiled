@@ -13,7 +13,6 @@ from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .awkward import AwkwardAdapter
 from .awkward_directory_container import DirectoryContainer
-from .protocols import AccessPolicy
 
 
 class AwkwardBuffersAdapter(AwkwardAdapter):
@@ -45,7 +44,6 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "AwkwardBuffersAdapter":
         """
 
@@ -55,7 +53,6 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         structure :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -71,7 +68,6 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     @classmethod
@@ -81,9 +77,8 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "AwkwardBuffersAdapter":
         return cls.from_directory(
-            assets[0].data_uri, structure, metadata, specs, access_policy
+            assets[0].data_uri, structure, metadata, specs
         )

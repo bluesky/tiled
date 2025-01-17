@@ -9,7 +9,6 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .dataframe import DataFrameAdapter
 from .mapping import MapAdapter
-from .protocols import AccessPolicy
 
 
 class ExcelAdapter(MapAdapter):
@@ -94,7 +93,6 @@ class ExcelAdapter(MapAdapter):
         structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "ExcelAdapter":
         data_uri = assets[0].data_uri
@@ -103,6 +101,5 @@ class ExcelAdapter(MapAdapter):
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
             **kwargs,
         )

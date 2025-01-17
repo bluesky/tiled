@@ -8,7 +8,6 @@ from ..structures.core import Spec
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
-from .protocols import AccessPolicy
 from .xarray import DatasetAdapter
 
 
@@ -37,7 +36,6 @@ class NetCDFAdapter:
         ] = None,  # NOTE: ContainerStructure? ArrayStructure?
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "NetCDFAdapter":
         filepath = path_from_uri(assets[0].data_uri)

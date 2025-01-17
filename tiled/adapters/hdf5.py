@@ -18,7 +18,6 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
-from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -86,7 +85,6 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -96,10 +94,8 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self._node = node
-        self._access_policy = access_policy
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         super().__init__()
@@ -111,7 +107,6 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "HDF5Adapter":
         return hdf5_lookup(
@@ -119,7 +114,6 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
             swmr=kwargs.get("swmr", SWMR_DEFAULT),  # type: ignore
             libver=kwargs.get("libver", "latest"),  # type: ignore
             dataset=kwargs.get("dataset"),  # type: ignore
@@ -127,37 +121,7 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         )
 
     @classmethod
-    def from_file(
-        cls,
-        file: Any,
-        *,
-        structure: Optional[TableStructure] = None,
-        metadata: Optional[JSON] = None,
-        swmr: bool = SWMR_DEFAULT,
-        libver: str = "latest",
-        specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
-    ) -> "HDF5Adapter":
-        """
-
-        Parameters
-        ----------
-        file :
-        structure :
-        metadata :
-        swmr :
-        libver :
-        specs :
-        access_policy :
-
-        Returns
-        -------
-
-        """
-        return cls(file, metadata=metadata, specs=specs, access_policy=access_policy)
-
-    @classmethod
-    def from_uri(
+    def from_uris(
         cls,
         data_uri: str,
         *,
@@ -166,7 +130,6 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "HDF5Adapter":
         """
 
@@ -178,7 +141,6 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         swmr :
         libver :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -189,7 +151,7 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         file = with_resource_cache(
             cache_key, h5py.File, filepath, "r", swmr=swmr, libver=libver
         )
-        return cls.from_file(file)
+        return cls(file, metadata=metadata, specs=specs)
 
     def __repr__(self) -> str:
         """
@@ -199,16 +161,6 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
 
         """
         return node_repr(self, list(self))
-
-    @property
-    def access_policy(self) -> Optional[AccessPolicy]:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._access_policy
 
     def structure(self) -> None:
         """
@@ -406,7 +358,6 @@ def hdf5_lookup(
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
     specs: Optional[List[Spec]] = None,
-    access_policy: Optional[AccessPolicy] = None,
     dataset: Optional[Union[List[Path], List[str]]] = None,
     path: Optional[Union[List[Path], List[str]]] = None,
 ) -> Union[HDF5Adapter, ArrayAdapter]:
@@ -420,7 +371,6 @@ def hdf5_lookup(
     swmr :
     libver :
     specs :
-    access_policy :
     dataset :
     path :
 
@@ -440,7 +390,6 @@ def hdf5_lookup(
         swmr=swmr,
         libver=libver,
         specs=specs,
-        access_policy=access_policy,
     )
     for segment in dataset:
         adapter = adapter.get(segment)  # type: ignore

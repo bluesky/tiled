@@ -8,7 +8,6 @@ from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
 from .awkward_directory_container import DirectoryContainer
-from .protocols import AccessPolicy
 
 
 class AwkwardAdapter:
@@ -20,7 +19,6 @@ class AwkwardAdapter:
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -30,13 +28,11 @@ class AwkwardAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self.container = container
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
-        self.access_policy = access_policy
 
     @classmethod
     def from_array(
@@ -44,7 +40,6 @@ class AwkwardAdapter:
         array: NDArray[Any],
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "AwkwardAdapter":
         """
 
@@ -53,7 +48,6 @@ class AwkwardAdapter:
         array :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -66,7 +60,6 @@ class AwkwardAdapter:
             structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def metadata(self) -> JSON:

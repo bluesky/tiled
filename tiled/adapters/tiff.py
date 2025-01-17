@@ -9,7 +9,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
-from .protocols import AccessPolicy
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
 
@@ -33,7 +32,6 @@ class TiffAdapter:
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -43,7 +41,6 @@ class TiffAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         if not isinstance(data_uri, str):
             raise Exception
@@ -52,7 +49,6 @@ class TiffAdapter:
         self._file = with_resource_cache(cache_key, tifffile.TiffFile, filepath)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
-        self.access_policy = access_policy
         if structure is None:
             if self._file.is_shaped:
                 from_file: Tuple[Dict[str, Any], ...] = cast(
@@ -76,7 +72,6 @@ class TiffAdapter:
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "TiffAdapter":
         return cls(
@@ -84,7 +79,6 @@ class TiffAdapter:
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def metadata(self) -> JSON:

@@ -8,7 +8,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
-from .protocols import AccessPolicy
 
 
 class TableAdapter:
@@ -31,7 +30,6 @@ class TableAdapter:
         *args: Any,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         npartitions: int = 1,
         **kwargs: Any,
     ) -> "TableAdapter":
@@ -42,7 +40,6 @@ class TableAdapter:
         args :
         metadata :
         specs :
-        access_policy :
         npartitions :
         kwargs :
 
@@ -54,7 +51,7 @@ class TableAdapter:
         if specs is None:
             specs = [Spec("dataframe")]
         return cls.from_dask_dataframe(
-            ddf, metadata=metadata, specs=specs, access_policy=access_policy
+            ddf, metadata=metadata, specs=specs
         )
 
     @classmethod
@@ -63,7 +60,6 @@ class TableAdapter:
         *args: Any,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         npartitions: int = 1,
         **kwargs: Any,
     ) -> "TableAdapter":
@@ -74,7 +70,6 @@ class TableAdapter:
         args :
         metadata :
         specs :
-        access_policy :
         npartitions :
         kwargs :
 
@@ -86,7 +81,7 @@ class TableAdapter:
         if specs is None:
             specs = [Spec("dataframe")]
         return cls.from_dask_dataframe(
-            ddf, metadata=metadata, specs=specs, access_policy=access_policy
+            ddf, metadata=metadata, specs=specs
         )
 
     @classmethod
@@ -95,7 +90,6 @@ class TableAdapter:
         ddf: dask.dataframe.DataFrame,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "TableAdapter":
         """
 
@@ -104,7 +98,6 @@ class TableAdapter:
         ddf :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -118,7 +111,6 @@ class TableAdapter:
             structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def __init__(
@@ -128,7 +120,6 @@ class TableAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -138,13 +129,11 @@ class TableAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self._metadata = metadata or {}
         self._partitions = list(partitions)
         self._structure = structure
         self.specs = specs or []
-        self.access_policy = access_policy
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure.columns!r})"

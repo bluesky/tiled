@@ -11,7 +11,6 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
-from .protocols import AccessPolicy
 
 
 class CSVAdapter:
@@ -25,7 +24,6 @@ class CSVAdapter:
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> None:
         """Adapter for partitioned tabular data stored as a sequence of text (csv) files
@@ -36,7 +34,6 @@ class CSVAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
@@ -51,7 +48,6 @@ class CSVAdapter:
             structure.npartitions = len(self._file_paths)
         self._structure = structure
         self.specs = list(specs or [])
-        self.access_policy = access_policy
 
     @classmethod
     def from_assets(
@@ -60,7 +56,6 @@ class CSVAdapter:
         structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "CSVAdapter":
         return cls(
@@ -68,7 +63,6 @@ class CSVAdapter:
             structure,
             metadata,
             specs,
-            access_policy,
             **kwargs,
         )
 
@@ -76,16 +70,12 @@ class CSVAdapter:
     def from_uris(
         cls,
         data_uris: Union[str, List[str]],
-        structure: Optional[TableStructure] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "CSVAdapter":
         if isinstance(data_uris, str):
             data_uris = [data_uris]
 
-        return cls(data_uris, structure, metadata, specs, access_policy, **kwargs)
+        return cls(data_uris, **kwargs)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure.columns!r})"
@@ -302,7 +292,6 @@ class CSVArrayAdapter(ArrayAdapter):
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         """Adapter for partitioned array data stored as a sequence of csv files
@@ -313,7 +302,6 @@ class CSVArrayAdapter(ArrayAdapter):
         structure :
         metadata :
         specs :
-        access_policy :
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
@@ -359,7 +347,6 @@ class CSVArrayAdapter(ArrayAdapter):
             structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     @classmethod

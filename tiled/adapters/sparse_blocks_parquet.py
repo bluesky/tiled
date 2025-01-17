@@ -14,7 +14,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
-from .protocols import AccessPolicy
 
 
 def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
@@ -47,7 +46,6 @@ class SparseBlocksParquetAdapter:
         structure: COOStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -57,7 +55,6 @@ class SparseBlocksParquetAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         num_blocks = (range(len(n)) for n in structure.chunks)
         self.blocks = {}
@@ -66,7 +63,6 @@ class SparseBlocksParquetAdapter:
         self._structure = structure
         self._metadata = metadata or {}
         self.specs = list(specs or [])
-        self.access_policy = access_policy
 
     @classmethod
     def from_assets(
@@ -75,11 +71,10 @@ class SparseBlocksParquetAdapter:
         structure: COOStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "SparseBlocksParquetAdapter":
         data_uris = [a.data_uri for a in assets]
-        return cls(data_uris, structure, metadata, specs, access_policy)
+        return cls(data_uris, structure, metadata, specs)
 
     @classmethod
     def init_storage(

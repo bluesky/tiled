@@ -10,7 +10,6 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
-from .protocols import AccessPolicy
 
 
 class ParquetDatasetAdapter:
@@ -24,7 +23,6 @@ class ParquetDatasetAdapter:
         structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -34,14 +32,12 @@ class ParquetDatasetAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
-        self.access_policy = access_policy
 
     @classmethod
     def from_assets(
@@ -50,11 +46,10 @@ class ParquetDatasetAdapter:
         structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "ParquetDatasetAdapter":
         return cls(
-            [ast.data_uri for ast in assets], structure, metadata, specs, access_policy
+            [ast.data_uri for ast in assets], structure, metadata, specs
         )
 
     def metadata(self) -> JSON:
