@@ -2,6 +2,7 @@ from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.dataframe.core
+import dask.highlevelgraph
 import httpx
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
@@ -160,6 +161,10 @@ class _DaskDataFrameClient(BaseClient):
         The result will be internally partitioned with dask.
         """
         structure = self.structure()
+        meta = structure.meta
+        if columns is not None:
+            meta = meta[columns]
+
         # Build a client-side dask dataframe whose partitions pull from a
         # server-side dask array.
         name = f"remote-dask-dataframe-{self.item['links']['self']}"
@@ -167,15 +172,11 @@ class _DaskDataFrameClient(BaseClient):
             (name, partition): (self._get_partition, partition, columns)
             for partition in range(structure.npartitions)
         }
-        meta = structure.meta
-
-        if columns is not None:
-            meta = meta[columns]
-        ddf = dask.dataframe.core.DataFrame(
-            dask_tasks,
-            name=name,
-            meta=meta,
-            divisions=(None,) * (1 + structure.npartitions),
+        hlg = dask.highlevelgrapdask.HighLevelGraph.from_collections(
+            name, dask_tasks, dependencies=[]
+        )
+        ddf = dask.dataframe.core.new_dd_object(
+            hlg, name, meta, divisions=(None,) * (1 + structure.npartitions)
         )
         if columns is not None:
             ddf = ddf[columns]
