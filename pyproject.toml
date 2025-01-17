@@ -55,6 +55,7 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
+    "dask_expr",
     "entrypoints",
     "fastapi",
     "h5netcdf",
@@ -106,6 +107,7 @@ client = [
     "blosc2; python_version >= '3.10'",
     "dask[array]",
     "dask[dataframe]",
+    "dask_expr",
     "entrypoints",
     "httpx >=0.20.0,!=0.23.1",
     "json-merge-patch",
@@ -137,6 +139,7 @@ compression = [
 # These are needed by the client and server to transmit/receive dataframes.
 dataframe = [
     "dask[dataframe]",
+    "dask_expr",
     "pandas",
     "pyarrow",
 ]
@@ -234,6 +237,7 @@ server = [
     "cachetools",
     "canonicaljson",
     "dask",
+    "dask_expr",
     "dask[array]",
     "dask[dataframe]",
     "fastapi",

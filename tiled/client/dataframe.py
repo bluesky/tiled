@@ -1,8 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 
 import dask
-import dask.dataframe.core
-import dask.highlevelgraph
+import dask_expr
 import httpx
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
@@ -148,7 +147,7 @@ class _DaskDataFrameClient(BaseClient):
         meta = structure.meta
         if columns is not None:
             meta = meta[columns]
-        return dask.dataframe.from_delayed(
+        return dask_expr.DataFrame.from_delayed(
             [dask.delayed(self._get_partition)(partition, columns)],
             meta=meta,
             divisions=(None,) * (1 + npartitions),
@@ -172,11 +171,8 @@ class _DaskDataFrameClient(BaseClient):
             (name, partition): (self._get_partition, partition, columns)
             for partition in range(structure.npartitions)
         }
-        hlg = dask.highlevelgrapdask.HighLevelGraph.from_collections(
-            name, dask_tasks, dependencies=[]
-        )
-        ddf = dask.dataframe.core.new_dd_object(
-            hlg, name, meta, divisions=(None,) * (1 + structure.npartitions)
+        ddf = dask_expr.DataFrame.from_map(
+            dask_tasks, meta=meta, divisions=(None,) * (1 + structure.npartitions)
         )
         if columns is not None:
             ddf = ddf[columns]
