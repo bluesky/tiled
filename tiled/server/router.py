@@ -1374,7 +1374,7 @@ async def patch_table_partition(
     media_type = request.headers["content-type"]
     deserializer = deserialization_registry.dispatch(StructureFamily.table, media_type)
     data = await ensure_awaitable(deserializer, body)
-    await ensure_awaitable(entry.append_partition, data, partition)
+    await ensure_awaitable(entry.append_partition, partition, data)
     return json_or_msgpack(request, None)
 
 
