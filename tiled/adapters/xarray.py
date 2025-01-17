@@ -63,9 +63,7 @@ class DatasetAdapter(MapAdapter):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
             )
-        super().__init__(
-            mapping, *args, specs=specs, **kwargs
-        )
+        super().__init__(mapping, *args, specs=specs, **kwargs)
 
     def inlined_contents_enabled(self, depth: int) -> bool:
         """

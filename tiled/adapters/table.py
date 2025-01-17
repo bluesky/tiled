@@ -50,9 +50,7 @@ class TableAdapter:
         ddf = dask.dataframe.from_pandas(*args, npartitions=npartitions, **kwargs)
         if specs is None:
             specs = [Spec("dataframe")]
-        return cls.from_dask_dataframe(
-            ddf, metadata=metadata, specs=specs
-        )
+        return cls.from_dask_dataframe(ddf, metadata=metadata, specs=specs)
 
     @classmethod
     def from_dict(
@@ -80,9 +78,7 @@ class TableAdapter:
         ddf = dask.dataframe.from_dict(*args, npartitions=npartitions, **kwargs)
         if specs is None:
             specs = [Spec("dataframe")]
-        return cls.from_dask_dataframe(
-            ddf, metadata=metadata, specs=specs
-        )
+        return cls.from_dask_dataframe(ddf, metadata=metadata, specs=specs)
 
     @classmethod
     def from_dask_dataframe(

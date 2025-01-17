@@ -203,17 +203,35 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
     with open(metadata_filepath, "w") as file:
         yaml.dump(metadata, file)
 
-    def read_tiff_with_yaml_metadata(image_uri, metadata_uri, metadata=None, **kwargs):
-        with open(path_from_uri(metadata_uri)) as file:
-            metadata = yaml.safe_load(file)
-        return TiffAdapter(image_uri, metadata=metadata, **kwargs)
+    class TiffAdapterWithSidecar(TiffAdapter):
+        def __init__(self, image_uri, metadata_uri, metadata=None, **kwargs):
+            with open(path_from_uri(metadata_uri)) as file:
+                metadata = yaml.safe_load(file)
+
+            super().__init__(image_uri, metadata=metadata, **kwargs)
+
+        @classmethod
+        def from_assets(
+            cls,
+            assets: list[Asset],
+            structure: ArrayStructure,
+            metadata=None,
+            specs=None,
+            **kwargs,
+        ):
+            for ast in assets:
+                if ast.parameter == "image_uri":
+                    image_uri = ast.data_uri
+                if ast.parameter == "metadata_uri":
+                    metadata_uri = ast.data_uri
+            return cls(image_uri, metadata_uri, structure=structure, specs=specs)
 
     catalog = in_memory(
         writable_storage=tmpdir,
-        adapters_by_mimetype={MIMETYPE: read_tiff_with_yaml_metadata},
+        adapters_by_mimetype={MIMETYPE: TiffAdapterWithSidecar},
     )
     with Context.from_app(build_app(catalog)) as context:
-        adapter = read_tiff_with_yaml_metadata(
+        adapter = TiffAdapterWithSidecar(
             ensure_uri(image_filepath), ensure_uri(metadata_filepath)
         )
         client = from_context(context)
@@ -295,7 +313,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
     )
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
-        adapter = HDF5Adapter.from_uri(ensure_uri(filepath))
+        adapter = HDF5Adapter.from_uris(ensure_uri(filepath))
         client = from_context(context)
         client.new(
             key="VDS",

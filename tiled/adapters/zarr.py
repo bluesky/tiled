@@ -467,3 +467,16 @@ class ZarrAdapter:
                 specs=specs,
                 **kwargs,
             )
+
+    @classmethod
+    def from_uris(
+        cls, data_uri: Union[str, list[str]], **kwargs: Optional[Any]
+    ) -> Union[ZarrArrayAdapter, ZarrGroupAdapter]:
+        if isinstance(data_uri, list):
+            data_uri = data_uri[0]
+        zarr_obj = zarr.open(path_from_uri(data_uri))  # Group or Array
+        if isinstance(zarr_obj, zarr.hierarchy.Group):
+            return ZarrGroupAdapter(zarr_obj, **kwargs)
+        else:
+            structure = ArrayStructure.from_array(zarr_obj)
+            return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)

@@ -70,7 +70,7 @@ class CSVAdapter:
     def from_uris(
         cls,
         data_uris: Union[str, List[str]],
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        **kwargs: Optional[Any],
     ) -> "CSVAdapter":
         if isinstance(data_uris, str):
             data_uris = [data_uris]

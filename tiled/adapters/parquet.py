@@ -48,9 +48,7 @@ class ParquetDatasetAdapter:
         specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "ParquetDatasetAdapter":
-        return cls(
-            [ast.data_uri for ast in assets], structure, metadata, specs
-        )
+        return cls([ast.data_uri for ast in assets], structure, metadata, specs)
 
     def metadata(self) -> JSON:
         """

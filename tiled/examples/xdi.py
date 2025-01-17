@@ -8,12 +8,134 @@ import collections
 import io
 import pathlib
 import re
+from typing import Any, Dict, List, Optional, Union
 
+import dask.dataframe
 import pandas as pd
 
 from tiled.adapters.dataframe import DataFrameAdapter
-from tiled.structures.core import Spec
+from tiled.adapters.table import TableAdapter
+from tiled.structures.core import Spec, StructureFamily
+from tiled.structures.data_source import Asset
+from tiled.structures.table import TableStructure
+from tiled.type_aliases import JSON
 from tiled.utils import path_from_uri
+
+
+class XDIAdapter(TableAdapter):
+    structure_family = StructureFamily.table
+
+    def __init__(
+        self,
+        data_uri: str,
+        structure: Optional[TableStructure] = None,
+        metadata: Optional[JSON] = None,
+        specs: Optional[list[Spec]] = None,
+        **kwargs: Optional[Any],
+    ) -> None:
+        """Adapter for XDI data"""
+
+        filepath = path_from_uri(data_uri)
+        with open(filepath, "r") as file:
+            metadata = {}
+            fields = collections.defaultdict(dict)
+
+            # if isinstance(f, pathlib.PosixPath):
+            #    line = f.read_text().split('\n')[0]
+            # else:
+            line = file.readline()
+            m = re.match(r"#\s*XDI/(\S*)\s*(\S*)?", line)
+            if not m:
+                raise ValueError(
+                    f"not an XDI file, no XDI versioning information in first line\n{line}"
+                )
+
+            metadata["xdi_version"] = m[1]
+            metadata["extra_version"] = m[2]
+
+            field_end_re = re.compile(r"#\s*/{3,}")
+            header_end_re = re.compile(r"#\s*-{3,}")
+
+            has_comments = False
+
+            # read header
+            for line in file:
+                if line[0] != "#":
+                    raise ValueError(f"reached invalid line in header\n{line}")
+                if re.match(field_end_re, line):
+                    has_comments = True
+                    break
+                elif re.match(header_end_re, line):
+                    break
+
+                try:
+                    key, val = line[1:].strip().split(":", 1)
+                    val = val.strip()
+                    namespace, tag = key.split(".")
+                    # TODO coerce to lower case?
+                except ValueError:
+                    print(f"error processing line\n{line}")
+                    raise
+
+                fields[namespace][tag] = val
+
+            if has_comments:
+                comments = ""
+                for line in file:
+                    if re.match(header_end_re, line):
+                        break
+                    comments += line
+
+                metadata["comments"] = comments
+
+            metadata["fields"] = fields
+
+            line = file.readline()
+            if line[0] != "#":
+                raise ValueError(f"expected column labels. got\n{line}")
+            col_labels = line[1:].split()
+
+            # TODO validate
+
+            df = pd.read_table(file, sep=r"\s+", names=col_labels)
+
+        ddf = dask.dataframe.from_pandas(df, npartitions=1)
+        structure = TableStructure.from_dask_dataframe(ddf)
+
+        super().__init__(
+            partitions=ddf.partitions,
+            structure=structure,
+            metadata=metadata,
+            specs=(specs or []) + [Spec("xdi", version="1.0")],
+        )
+
+    @classmethod
+    def from_assets(
+        cls,
+        assets: List[Asset],
+        structure: TableStructure,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "XDIAdapter":
+        return cls(
+            assets[0].data_uri,
+            structure,
+            metadata,
+            specs,
+            **kwargs,
+        )
+
+    @classmethod
+    def from_uris(
+        cls,
+        data_uri: Union[str, List[str]],
+        **kwargs: Optional[Any],
+    ) -> "XDIAdapter":
+        if not isinstance(data_uri, str):
+            data_uri = data_uri[0]
+
+        return cls(data_uri, **kwargs)
 
 
 def read_xdi(data_uri, structure=None, metadata=None, specs=None, access_policy=None):

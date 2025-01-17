@@ -81,6 +81,13 @@ class TiffAdapter:
             specs=specs,
         )
 
+    @classmethod
+    def from_uris(cls, data_uri: str, **kwargs: Optional[Any]) -> "TiffAdapter":
+        if not isinstance(data_uri, str):
+            data_uri = data_uri[0]
+
+        return cls(data_uri)
+
     def metadata(self) -> JSON:
         """
 

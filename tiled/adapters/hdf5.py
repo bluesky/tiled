@@ -14,7 +14,6 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset
-from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
@@ -109,8 +108,15 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "HDF5Adapter":
+        if len(assets) == 1:
+            data_uri = assets[0].data_uri
+        else:
+            for ast in assets:
+                if ast.parameter == "data_uri":
+                    data_uri = ast.data_uri
+                    break
         return hdf5_lookup(
-            data_uri=assets[0].data_uri,
+            data_uri=data_uri,
             structure=structure,
             metadata=metadata,
             specs=specs,
@@ -146,6 +152,8 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         -------
 
         """
+        if not isinstance(data_uri, str):
+            data_uri = data_uri[0]
         filepath = path_from_uri(data_uri)
         cache_key = (h5py.File, filepath, "r", swmr, libver)
         file = with_resource_cache(
@@ -383,7 +391,7 @@ def hdf5_lookup(
         raise ValueError("dataset and path kwargs should not both be set!")
 
     dataset = dataset or path or []
-    adapter = HDF5Adapter.from_uri(
+    adapter = HDF5Adapter.from_uris(
         data_uri,
         structure=structure,
         metadata=metadata,

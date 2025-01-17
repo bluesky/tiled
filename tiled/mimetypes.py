@@ -13,9 +13,9 @@ ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
-        # "image/tiff": lambda: importlib.import_module(
-        #     "..adapters.tiff", __name__
-        # ).TiffAdapter,
+        "image/tiff": lambda: importlib.import_module(
+            "..adapters.tiff", __name__
+        ).TiffAdapter,
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
         ).TiffSequenceAdapter,

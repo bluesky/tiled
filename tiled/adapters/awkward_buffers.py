@@ -79,6 +79,4 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "AwkwardBuffersAdapter":
-        return cls.from_directory(
-            assets[0].data_uri, structure, metadata, specs
-        )
+        return cls.from_directory(assets[0].data_uri, structure, metadata, specs)
