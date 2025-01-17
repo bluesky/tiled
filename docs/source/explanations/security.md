@@ -257,7 +257,7 @@ authentication:
       # The audience claim is checked by the OIDC Client (Tiled)
       # It checks that the Authentication header that you are passed has not been intercepted
       # And that elevated claims from other services do not apply here
-      audience: tiled # or similar
+      audience: tiled # something unique to ensure received headers are for you
       client_id: tiled_client
       client_secret: ${OIDC_CLIENT_SECRET} # referencing an environment variable
       well_known_uri: example.com/.well-known/openid-configuration
