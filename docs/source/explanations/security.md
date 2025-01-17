@@ -257,7 +257,7 @@ authentication:
       # The audience claim is checked by the OIDC Client (Tiled)
       # It checks that the Authentication header that you are passed has not been intercepted
       # And that elevated claims from other services do not apply here
-      audience: tiled # something unique to ensure received headers are for you
+      audience: tiled  # something unique to ensure received headers are for you
       client_id: tiled_client
       client_secret: ${OIDC_CLIENT_SECRET} # referencing an environment variable
       well_known_uri: example.com/.well-known/openid-configuration
@@ -265,6 +265,10 @@ authentication:
 
 There are example configurations for ORCID and Google in the directory
 `example_configs/` in the Tiled source repository.
+
+You can also try it against a locally-runing dummy OIDC provider. See the
+README and files under `example_configs/simple_oidc/` in the Tiled source
+repository.
 
 ### Toy examples for testing and development
 
