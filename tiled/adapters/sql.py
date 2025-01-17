@@ -192,7 +192,7 @@ class SQLAdapter:
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
         else:
-            if isinstance(data, list):
+            if not isinstance(data, list):
                 batches = [data]
             else:
                 batches = data
@@ -243,7 +243,7 @@ class SQLAdapter:
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
         else:
-            if isinstance(data, list):
+            if not isinstance(data, list):
                 batches = [data]
             else:
                 batches = data
