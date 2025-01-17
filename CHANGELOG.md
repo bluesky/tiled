@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Fixed
+
+- Update usage of `dask.dataframe.core` to adjust to backward-incompatible
+  changes in Dask 2025.1.0.
+
 ### Maintenance
 
 - Addressed DeprecationWarnings from Python and dependencies
