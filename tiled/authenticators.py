@@ -145,7 +145,7 @@ properties:
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
-        response: httpx.Response = httpx.get(self._well_known_url).raise_for_status()
+        response: httpx.Response = httpx.get(self._well_known_url)
         response.raise_for_status()
         return response.json()
 
