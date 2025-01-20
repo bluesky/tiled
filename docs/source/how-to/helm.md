@@ -96,3 +96,74 @@ tiled:
 
 Additional templates to be deployed alongside the tiled server can be defined- for
 example the SealedSecret defined above.
+
+## Deploying with oauth2-proxy
+
+Deploying behind a reverse proxy that redirects unauthenticated requests to your OAuth2/OIDC provider places a layer of security in front of the tiled API, and allows authenticated requests in the web frontend with a full OIDC flow on your provider's login page.
+
+Configure your OAuth2 client values, referencing back to the Quickstart guide for how to configure a SealedSecret in your templates directory.
+
+```{note}
+The following is how the current version of the oauth2-proxy Helm chart expects the values to be named.
+```
+
+```yaml
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: tiled-secrets
+spec:
+  encryptedData:
+    # server specific cookie for the secret `openssl rand -base64 32 | head -c 32 | kubeseal ...`
+    cookie-secret: AgCC...
+    # From your authentication provider
+    client-secret: AgCC...
+    client-id: AgCC...
+```
+
+Ensure that tiled is not accessible directly, and configure the reverse proxy
+
+```yaml
+tiled:
+  ingress:
+    enabled: false
+  service:
+    type: ClusterIP
+
+  oauth2:
+    enabled: true
+    targetService: tiled # Overrides name of the service: makes routing easier
+    ingress: {}  # Configure your ingress here
+    config:
+      existingSecret: tiled-secrets
+```
+
+Configure tiled to use an OAuth2 compatible authentication method, such as the OIDCAuthenticator
+
+```yaml
+tiled:
+  ...
+  # mount CLIENT_SECRET and CLIENT_ID as env vars
+  extraEnvVars:
+    - name: CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: tiled-secrets
+          key: client-secret
+    - name: CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: tiled-secrets
+          key: client-id
+  config:
+    authentication:
+      providers:
+      # Configure the OIDCAuthenticator
+      - provider: example.com
+        authenticator: tiled.authenticators:OIDCAuthenticator
+        args:
+          audience: tiled  # something unique to ensure received headers are for you
+          client_id: ${CLIENT_ID}
+          client_secret: ${CLIENT_SECRET}
+          well_known_uri: https://example.com/.well-known/openid-configuration
+          confirmation_message: "You have logged in with example.com as {id}."
