@@ -164,18 +164,18 @@ class _DaskDataFrameClient(BaseClient):
         # server-side dask array.
         label = f"remote-dask-dataframe-{self.item['links']['self']}"
         meta = structure.meta
-
         if columns is not None:
             meta = meta[columns]
+
         ddf = dask.dataframe.from_map(
             self._get_partition,
             range(structure.npartitions),
             meta=meta,
             label=label,
             divisions=(None,) * (1 + structure.npartitions),
+            columns=columns,
         )
-        if columns is not None:
-            ddf = ddf[columns]
+
         return ddf
 
     # We implement *some* of the Mapping interface here but intentionally not
