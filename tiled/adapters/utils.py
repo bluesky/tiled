@@ -84,7 +84,7 @@ def asset_parameters_to_adapter_kwargs(data_source: DataSource) -> dict[str, Any
 def init_adapter_from_catalog(
     adapter_cls: type[Any],
     data_source: DataSource,
-    node: Any,   # tiled.catalog.orm.Node ?
+    node: Any,  # tiled.catalog.orm.Node ?
     **kwargs: Optional[Any],
 ) -> Any:
     # TODO: Sort out typing for Adapters
@@ -93,4 +93,4 @@ def init_adapter_from_catalog(
     kwargs.update(parameters)
     kwargs["metadata"] = node.metadata_
     kwargs["specs"] = node.specs
-    return adapter_cls(structure=data_source.structure, **kwargs)  # type: ignore
+    return adapter_cls(structure=data_source.structure, **kwargs)
