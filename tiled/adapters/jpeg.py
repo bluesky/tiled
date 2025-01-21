@@ -5,13 +5,15 @@ import numpy as np
 from numpy._typing import NDArray
 from PIL import Image
 
+from ..catalog.orm import Node
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset
+from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
+from .utils import init_adapter_from_catalog
 
 
 class JPEGAdapter:
@@ -51,28 +53,18 @@ class JPEGAdapter:
         self._structure = structure
 
     @classmethod
-    def from_assets(
+    def from_catalog(
         cls,
-        assets: List[Asset],
-        structure: ArrayStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        data_source: DataSource,
+        node: Node,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "JPEGAdapter":
-        return cls(
-            assets[0].data_uri,
-            structure=structure,
-            metadata=metadata,
-            specs=specs,
-        )
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     @classmethod
     def from_uris(
         cls,
         data_uris: Union[str, List[str]],
-        structure: Optional[ArrayStructure] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "JPEGAdapter":
         if not isinstance(data_uris, str):
@@ -82,41 +74,22 @@ class JPEGAdapter:
         cache_key = (Image.open, filepath)
         _file = with_resource_cache(cache_key, Image.open, filepath)
 
-        if structure is None:
-            arr = np.asarray(_file)
-            structure = ArrayStructure(
-                shape=arr.shape,
-                chunks=tuple((dim,) for dim in arr.shape),
-                data_type=BuiltinDtype.from_numpy_dtype(arr.dtype),
-            )
+        arr = np.asarray(_file)
+        structure = ArrayStructure(
+            shape=arr.shape,
+            chunks=tuple((dim,) for dim in arr.shape),
+            data_type=BuiltinDtype.from_numpy_dtype(arr.dtype),
+        )
 
         return cls(
             data_uris,
             structure=structure,
-            metadata=metadata,
-            specs=specs,
         )
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         return self._provided_metadata.copy()
 
     def read(self, slice: Optional[NDSlice] = None) -> NDArray[Any]:
-        """
-
-        Parameters
-        ----------
-        slice :
-
-        Returns
-        -------
-
-        """
         arr = np.asarray(self._file)
         if slice is not None:
             arr = arr[slice]
@@ -125,17 +98,6 @@ class JPEGAdapter:
     def read_block(
         self, block: Tuple[int, ...], slice: Optional[builtins.slice] = None
     ) -> NDArray[Any]:
-        """
-
-        Parameters
-        ----------
-        block :
-        slice :
-
-        Returns
-        -------
-
-        """
         if sum(block) != 0:
             raise IndexError(block)
 
@@ -145,12 +107,6 @@ class JPEGAdapter:
         return arr
 
     def structure(self) -> ArrayStructure:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure
 
 

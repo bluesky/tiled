@@ -10,10 +10,12 @@ import zarr.storage
 from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
+from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..server.schemas import Asset
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
@@ -442,29 +444,29 @@ class ZarrGroupAdapter(
 
 class ZarrAdapter:
     @classmethod
-    def from_assets(
+    def from_catalog(
         cls,
-        assets: List[Asset],
-        structure: ArrayStructure,  # NOTE: possibly need to be a Union of Array and Mapping structures
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        data_source: DataSource,
+        node: Node,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
-        zarr_obj = zarr.open(path_from_uri(assets[0].data_uri))  # Group or Array
+        zarr_obj = zarr.open(
+            path_from_uri(data_source.assets[0].data_uri)
+        )  # Group or Array
         if isinstance(zarr_obj, zarr.hierarchy.Group):
             return ZarrGroupAdapter(
                 zarr_obj,
-                structure=structure,
-                metadata=metadata,
-                specs=specs,
+                structure=data_source.structure,
+                metadata=node.metadata_,
+                specs=node.specs,
                 **kwargs,
             )
         else:
             return ZarrArrayAdapter(
                 zarr_obj,
-                structure=structure,
-                metadata=metadata,
-                specs=specs,
+                structure=data_source.structure,
+                metadata=node.metadata_,
+                specs=node.specs,
                 **kwargs,
             )
 

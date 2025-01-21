@@ -15,8 +15,10 @@ import pandas as pd
 
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.table import TableAdapter
+from tiled.adapters.utils import init_adapter_from_catalog
+from tiled.catalog.orm import Node
 from tiled.structures.core import Spec, StructureFamily
-from tiled.structures.data_source import Asset
+from tiled.structures.data_source import DataSource
 from tiled.structures.table import TableStructure
 from tiled.type_aliases import JSON
 from tiled.utils import path_from_uri
@@ -110,21 +112,13 @@ class XDIAdapter(TableAdapter):
         )
 
     @classmethod
-    def from_assets(
+    def from_catalog(
         cls,
-        assets: List[Asset],
-        structure: TableStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        data_source: DataSource,
+        node: Node,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "XDIAdapter":
-        return cls(
-            assets[0].data_uri,
-            structure,
-            metadata,
-            specs,
-            **kwargs,
-        )
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(

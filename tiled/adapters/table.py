@@ -24,6 +24,28 @@ class TableAdapter:
 
     structure_family = StructureFamily.table
 
+    def __init__(
+        self,
+        partitions: Union[dask.dataframe.DataFrame, pandas.DataFrame],
+        structure: TableStructure,
+        *,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+    ) -> None:
+        """
+
+        Parameters
+        ----------
+        partitions :
+        structure :
+        metadata :
+        specs :
+        """
+        self._metadata = metadata or {}
+        self._partitions = list(partitions)
+        self._structure = structure
+        self.specs = specs or []
+
     @classmethod
     def from_pandas(
         cls,
@@ -109,28 +131,6 @@ class TableAdapter:
             specs=specs,
         )
 
-    def __init__(
-        self,
-        partitions: Union[dask.dataframe.DataFrame, pandas.DataFrame],
-        structure: TableStructure,
-        *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-    ) -> None:
-        """
-
-        Parameters
-        ----------
-        partitions :
-        structure :
-        metadata :
-        specs :
-        """
-        self._metadata = metadata or {}
-        self._partitions = list(partitions)
-        self._structure = structure
-        self.specs = specs or []
-
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure.columns!r})"
 
@@ -161,21 +161,9 @@ class TableAdapter:
         )
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         return self._metadata
 
     def structure(self) -> TableStructure:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure
 
     def read(

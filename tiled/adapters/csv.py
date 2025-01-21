@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import dask.dataframe
 import pandas
 
+from ..catalog.orm import Node
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
@@ -11,6 +12,7 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
+from .utils import init_adapter_from_catalog
 
 
 class CSVAdapter:
@@ -20,11 +22,11 @@ class CSVAdapter:
 
     def __init__(
         self,
-        data_uris: List[str],
+        data_uris: Union[str, List[str]],
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        **kwargs: Optional[Any],
     ) -> None:
         """Adapter for partitioned tabular data stored as a sequence of text (csv) files
 
@@ -37,6 +39,8 @@ class CSVAdapter:
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
+        if isinstance(data_uris, str):
+            data_uris = [data_uris]
         self._file_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         self._read_csv_kwargs = kwargs
@@ -50,21 +54,13 @@ class CSVAdapter:
         self.specs = list(specs or [])
 
     @classmethod
-    def from_assets(
+    def from_catalog(
         cls,
-        assets: List[Asset],
-        structure: TableStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        data_source: DataSource,
+        node: Node,
+        **kwargs: Optional[Any],
     ) -> "CSVAdapter":
-        return cls(
-            [ast.data_uri for ast in assets],
-            structure,
-            metadata,
-            specs,
-            **kwargs,
-        )
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     @classmethod
     def from_uris(
@@ -72,9 +68,6 @@ class CSVAdapter:
         data_uris: Union[str, List[str]],
         **kwargs: Optional[Any],
     ) -> "CSVAdapter":
-        if isinstance(data_uris, str):
-            data_uris = [data_uris]
-
         return cls(data_uris, **kwargs)
 
     def __repr__(self) -> str:
@@ -286,12 +279,10 @@ class CSVArrayAdapter(ArrayAdapter):
     """Adapter for array-type data stored as partitioned csv files"""
 
     @classmethod
-    def from_assets(
+    def from_catalog(
         cls,
-        assets: List[Asset],
-        structure: ArrayStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        data_source: DataSource,
+        node: Node,
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         """Adapter for partitioned array data stored as a sequence of csv files
@@ -307,7 +298,8 @@ class CSVArrayAdapter(ArrayAdapter):
         """
 
         # Load the array lazily with Dask
-        file_paths = [path_from_uri(ast.data_uri) for ast in assets]
+        file_paths = [path_from_uri(ast.data_uri) for ast in data_source.assets]
+        structure = data_source.structure
         dtype_numpy = structure.data_type.to_numpy_dtype()
         nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
         _kwargs = {"dtype": dtype_numpy, "header": None}
@@ -341,6 +333,12 @@ class CSVArrayAdapter(ArrayAdapter):
                 array = array[:nrows, ...]
 
             array = array.reshape(structure.shape).rechunk(structure.chunks)
+
+        if node is not None:
+            metadata = node.metadata_
+            specs = node.specs
+        else:
+            metadata, specs = None, None
 
         return cls(
             array,

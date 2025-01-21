@@ -3,10 +3,8 @@ from typing import Dict, List, Optional, Union
 
 import xarray
 
-from ..server.schemas import Asset
-from ..structures.core import Spec
-from ..structures.table import TableStructure
-from ..type_aliases import JSON
+from ..catalog.orm import Node
+from ..structures.data_source import DataSource
 from ..utils import path_from_uri
 from .xarray import DatasetAdapter
 
@@ -28,16 +26,12 @@ def read_netcdf(filepath: Union[str, List[str], Path]) -> DatasetAdapter:
 
 class NetCDFAdapter:
     @classmethod
-    def from_assets(
+    def from_catalog(
         cls,
-        assets: List[Asset],
-        structure: Optional[
-            TableStructure
-        ] = None,  # NOTE: ContainerStructure? ArrayStructure?
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        data_source: DataSource,
+        node: Node,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "NetCDFAdapter":
-        filepath = path_from_uri(assets[0].data_uri)
+        filepath = path_from_uri(data_source.assets[0].data_uri)
 
         return read_netcdf(filepath)  # type: ignore

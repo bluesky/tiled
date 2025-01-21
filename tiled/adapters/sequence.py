@@ -2,18 +2,19 @@ import builtins
 import math
 import warnings
 from abc import abstractmethod
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from ndindex import ndindex
 from numpy._typing import NDArray
 
+from ..catalog.orm import Node
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset
+from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
+from .utils import init_adapter_from_catalog
 
 
 def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
@@ -68,40 +69,9 @@ class FileSequenceAdapter:
 
     structure_family = StructureFamily.array
 
-    @classmethod
-    def from_uris(
-        cls,
-        data_uris: List[str],
-        structure: Optional[ArrayStructure] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-    ) -> "FileSequenceAdapter":
-        return cls(
-            filepaths=[path_from_uri(data_uri) for data_uri in data_uris],
-            structure=structure,
-            specs=specs,
-            metadata=metadata,
-        )
-
-    @classmethod
-    def from_assets(
-        cls,
-        assets: List[Asset],
-        structure: ArrayStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
-    ) -> "FileSequenceAdapter":
-        return cls(
-            filepaths=[path_from_uri(a.data_uri) for a in assets],
-            structure=structure,
-            specs=specs,
-            metadata=metadata,
-        )
-
     def __init__(
         self,
-        filepaths: List[Path],
+        data_uris: List[str],
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
@@ -116,7 +86,9 @@ class FileSequenceAdapter:
         metadata :
         specs :
         """
-        self.filepaths = filepaths
+        if isinstance(data_uris, str):
+            data_uris = [data_uris]
+        self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         # TODO Check shape, chunks against reality.
         self.specs = specs or []
         self._provided_metadata = metadata or {}
@@ -131,6 +103,19 @@ class FileSequenceAdapter:
                 data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
         self._structure = structure
+
+    @classmethod
+    def from_uris(cls, data_uris: List[str]) -> "FileSequenceAdapter":
+        return cls(data_uris=data_uris)
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+    ) -> "FileSequenceAdapter":
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     @abstractmethod
     def _load_from_files(

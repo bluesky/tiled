@@ -12,6 +12,7 @@ from starlette.status import HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.tiff import TiffAdapter
+from ..adapters.utils import init_adapter_from_catalog
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.register import (
@@ -211,20 +212,13 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
             super().__init__(image_uri, metadata=metadata, **kwargs)
 
         @classmethod
-        def from_assets(
+        def from_catalog(
             cls,
-            assets: list[Asset],
-            structure: ArrayStructure,
-            metadata=None,
-            specs=None,
+            data_source,
+            node,
             **kwargs,
         ):
-            for ast in assets:
-                if ast.parameter == "image_uri":
-                    image_uri = ast.data_uri
-                if ast.parameter == "metadata_uri":
-                    metadata_uri = ast.data_uri
-            return cls(image_uri, metadata_uri, structure=structure, specs=specs)
+            return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     catalog = in_memory(
         writable_storage=tmpdir,

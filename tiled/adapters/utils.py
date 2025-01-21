@@ -1,8 +1,13 @@
 import warnings
-from typing import Any
+from collections import defaultdict
+from typing import Any, Optional
+
+from ..catalog.orm import Node
+from ..structures.data_source import DataSource
 
 # for back-compat
 from ..utils import node_repr as tree_repr  # noqa: F401
+from .protocols import BaseAdapter
 
 _MESSAGE = (
     "Instead of {name}_indexer[...] use {name}()[...]. "
@@ -95,3 +100,33 @@ class IndexCallable:
 
         """
         return self.fn(key)
+
+
+def asset_parameters_to_adapter_kwargs(data_source: DataSource) -> dict[str, Any]:
+    """Transform database representation of Adapter parameters to Python representation."""
+    parameters: dict[str, Any] = defaultdict(list)
+    for asset in data_source.assets:
+        if asset.num is None:
+            # This asset is associated with a parameter that takes a single URI.
+            param = asset.parameter or "data_uri"
+            parameters[param] = asset.data_uri
+        else:
+            # This asset is associated with a parameter that takes a list of URIs.
+            param = asset.parameter or "data_uris"
+            parameters[param].append(asset.data_uri)
+    return parameters
+
+
+def init_adapter_from_catalog(
+    adapter_cls: type[Any],
+    data_source: DataSource,
+    node: Node,
+    **kwargs: Optional[Any],
+) -> BaseAdapter:
+    # TODO: Sort out typing for Adapters
+    """Factory function to produce Adapter instances given their parameters encoded in data sources"""
+    parameters = asset_parameters_to_adapter_kwargs(data_source)
+    kwargs.update(parameters)
+    kwargs["metadata"] = node.metadata_
+    kwargs["specs"] = node.specs
+    return adapter_cls(structure=data_source.structure, **kwargs)  # type: ignore

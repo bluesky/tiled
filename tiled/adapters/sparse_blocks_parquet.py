@@ -9,11 +9,14 @@ import sparse
 from numpy._typing import NDArray
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
+from ..catalog.orm import Node
 from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
+from .utils import init_adapter_from_catalog
 
 
 def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
@@ -65,16 +68,13 @@ class SparseBlocksParquetAdapter:
         self.specs = list(specs or [])
 
     @classmethod
-    def from_assets(
+    def from_catalog(
         cls,
-        assets: List[Asset],
-        structure: COOStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        data_source: DataSource,
+        node: Node,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "SparseBlocksParquetAdapter":
-        data_uris = [a.data_uri for a in assets]
-        return cls(data_uris, structure, metadata, specs)
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     @classmethod
     def init_storage(
