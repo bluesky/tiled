@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ default (include "tiled.fullname" .) .Values.oauth2.targetService }}
+  name: {{ include "tiled.fullname" . }}
   labels:
     {{- include "tiled.labels" . | nindent 4 }}
 spec:

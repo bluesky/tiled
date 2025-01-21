@@ -17,4 +17,3 @@ version: 0.0.1
 
 # Container version, automatically incremented by CI during release
 appVersion: v0.1.0b12
-    

@@ -49,8 +49,8 @@ kubectl apply -f secret.yaml
 ## Further Configuration
 
 A common pattern for managing the configuration of a Helm chart is to wrap the config
-as another layer of chart, with the bundled instance configuration and the dependent
-charts kept under source control.
+as another layer of chart: an "Umbrella Chart" under which is the instance configuration 
+and the dependent chart versions are kept together in source control.
 
 ```
 (
@@ -62,7 +62,7 @@ charts kept under source control.
 ```
 
 The dependent chart(s): tiled and any other services that *should live and die with the
-tiled instance* can be referenced from the Chart.yaml:
+tiled instance* are referenced from the Chart.yaml:
 
 ```yaml
 apiVersion: v2
@@ -84,8 +84,8 @@ dependencies:
 While overrides for the bundled values.yaml in each dependency chart can be passed
 as part of the values.yaml.
 
-Note that the `name` in the `dependencies` in the Chart.yaml give the top-level key
-to use in the values.yaml:
+Note that the `name` (or `alias`) in the `dependencies` in the Chart.yaml give the top-level
+key to use in the values.yaml:
 
 ```yaml
 tiled:
@@ -99,9 +99,7 @@ example the SealedSecret defined above.
 
 ## Deploying with oauth2-proxy
 
-Deploying behind a reverse proxy that redirects unauthenticated requests to your OAuth2/OIDC provider places a layer of security in front of the tiled API, and allows authenticated requests in the web frontend with a full OIDC flow on your provider's login page.
-
-Configure your OAuth2 client values, referencing back to the Quickstart guide for how to configure a SealedSecret in your templates directory.
+Deploying behind a reverse proxy that redirects unauthenticated requests to your OAuth2 provider places a layer of security in front of the tiled API, and allows authenticated requests in the web frontend with a full OAuth2 flow on your provider's login page.
 
 ```{note}
 The following assumes that your tiled installation is configured with an umbrella chart as described in the Further Configuration section.
@@ -109,7 +107,6 @@ It adds the oauth2-proxy helm chart as a dependency of the umbrella chart- the p
 It makes use of [the currently unstable alphaConfig](https://oauth2-proxy.github.io/oauth2-proxy/configuration/alpha-config/
 ), to allow it to pass Authorization headers into the tiled pod.
 ```
-
 
 ```yaml
 dependencies:
@@ -121,7 +118,7 @@ dependencies:
     repository: "https://oauth2-proxy.github.io/manifests"
 ```
 
-Add required configuration as SealedSecrets as appropriate.
+Add required OAuth2 configuration to your SealedSecret.
 
 ```yaml
 apiVersion: bitnami.com/v1alpha1
@@ -138,7 +135,9 @@ Ensure that tiled is not accessible directly, and configure the reverse proxy.
 ```yaml
 tiled:
   ...
-  ingress:  # Move ingress/LoadBalancer configuration into the oauth2-proxy configuration
+  # Move access configuration to target the oauth2-proxy
+  # NB: These default values are shown here for completeness
+  ingress:
     enabled: false
   service:
     type: ClusterIP
@@ -149,8 +148,13 @@ oauth2-proxy:
       valueFrom:
         secretKeyRef:
           name: tiled-secrets
-          key: client-secret
-  ingress: {}  # Configure your Ingress/LoadBalancer to point to the oauth2-proxy pod
+          key: CLIENT_SECRET
+
+  ingress:  # Configure your Ingress/LoadBalancer to point to the oauth2-proxy pod
+    enabled: true
+    hosts:
+      - tiled.example.com
+    ...
   config:
     configFile: |-  # Cannot be empty else tries to define invalid upstreams
       email_domains = [ "*" ]
@@ -163,8 +167,15 @@ oauth2-proxy:
         upstreams:
           - id: tiled
             path: /
-            uri: http://tiled # Assuming tiled dependency AND helm deployment are named "tiled"
-      providers: [] # Configure your OAuth2 provider here
+            uri: http://tiled # (!) Assumes tiled dependency AND helm deployment are named "tiled"
+      providers: # Configure your OAuth2 provider here
+        - id: example.com
+          clientID: tiled
+          clientSecret: ${OIDC_CLIENT_SECRET}
+          provider: oidc
+          oidcConfig:
+            issuerURL: https://example.com/realms/master
+            jwksURL: https://example.com/realms/master/protocol/openid-connect/certs
       injectRequestHeaders:
         - name: Authorization  # Passes header into pod
           values:
@@ -173,18 +184,19 @@ oauth2-proxy:
 
 ```
 
-Configure tiled to use an OAuth2 compatible authentication method, such as the OIDCAuthenticator
+You may also configure tiled to use an OAuth2 compatible authentication method, such as the 
+OIDCAuthenticator, configured for the same OAuth2 provider.
 
 ```yaml
 tiled:
   ...
-  # mount CLIENT_SECRET and CLIENT_ID as env vars
+  # mount CLIENT_SECRET as an environment variable
   extraEnvVars:
     - name: CLIENT_SECRET
       valueFrom:
         secretKeyRef:
           name: tiled-secrets
-          key: client-secret
+          key: CLIENT_SECRET
 
   config:
     authentication:
@@ -198,3 +210,4 @@ tiled:
           client_secret: ${CLIENT_SECRET}
           well_known_uri: https://example.com/.well-known/openid-configuration
           confirmation_message: "You have logged in with example.com as {id}."
+```
