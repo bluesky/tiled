@@ -1,7 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 
 import dask
-import dask.dataframe.core
+import dask.dataframe
 import httpx
 
 from ..serialization.table import deserialize_arrow, serialize_arrow
@@ -162,19 +162,16 @@ class _DaskDataFrameClient(BaseClient):
         structure = self.structure()
         # Build a client-side dask dataframe whose partitions pull from a
         # server-side dask array.
-        name = f"remote-dask-dataframe-{self.item['links']['self']}"
-        dask_tasks = {
-            (name, partition): (self._get_partition, partition, columns)
-            for partition in range(structure.npartitions)
-        }
+        label = f"remote-dask-dataframe-{self.item['links']['self']}"
         meta = structure.meta
 
         if columns is not None:
             meta = meta[columns]
-        ddf = dask.dataframe.core.DataFrame(
-            dask_tasks,
-            name=name,
+        ddf = dask.dataframe.from_map(
+            self._get_partition,
+            range(structure.npartitions),
             meta=meta,
+            label=label,
             divisions=(None,) * (1 + structure.npartitions),
         )
         if columns is not None:
