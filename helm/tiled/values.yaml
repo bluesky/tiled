@@ -13,15 +13,6 @@ config:
         writable_storage: "/storage/data"
         init_if_not_exists: true
 
-# configure the oauth2-proxy reverse proxy
-oauth2:
-  # targetService: tiled
-  enabled: false
-  config:
-    configFile: |-
-      upstreams = [ "{{ required "Must set .Values.oauth2.targetService when using oauth2-proxy" .Values.targetService }}" ]
-      email_domains = [ "*" ]
-
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 

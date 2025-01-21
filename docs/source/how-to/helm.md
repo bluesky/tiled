@@ -104,8 +104,24 @@ Deploying behind a reverse proxy that redirects unauthenticated requests to your
 Configure your OAuth2 client values, referencing back to the Quickstart guide for how to configure a SealedSecret in your templates directory.
 
 ```{note}
-The following is how the current version of the oauth2-proxy Helm chart expects the values to be named.
+The following assumes that your tiled installation is configured with an umbrella chart as described in the Further Configuration section.
+It adds the oauth2-proxy helm chart as a dependency of the umbrella chart- the proxy will live and die with the tiled instance.
+It makes use of [the currently unstable alphaConfig](https://oauth2-proxy.github.io/oauth2-proxy/configuration/alpha-config/
+), to allow it to pass Authorization headers into the tiled pod.
 ```
+
+
+```yaml
+dependencies:
+  - name: tiled
+    version: "0.1.0"
+    repository: "oci://ghcr.io/bluesky/charts"
+  - name: oauth2-proxy
+    version: "~7.10.2" # >=7.10.2 < 7.11
+    repository: "https://oauth2-proxy.github.io/manifests"
+```
+
+Add required configuration as SealedSecrets as appropriate.
 
 ```yaml
 apiVersion: bitnami.com/v1alpha1
@@ -114,28 +130,47 @@ metadata:
   name: tiled-secrets
 spec:
   encryptedData:
-    # server specific cookie for the secret `openssl rand -base64 32 | head -c 32 | kubeseal ...`
-    cookie-secret: AgCC...
-    # From your authentication provider
-    client-secret: AgCC...
-    client-id: AgCC...
+    CLIENT_SECRET: AgCC...
 ```
 
-Ensure that tiled is not accessible directly, and configure the reverse proxy
+Ensure that tiled is not accessible directly, and configure the reverse proxy.
 
 ```yaml
 tiled:
-  ingress:
+  ...
+  ingress:  # Move ingress/LoadBalancer configuration into the oauth2-proxy configuration
     enabled: false
   service:
     type: ClusterIP
 
-  oauth2:
+oauth2-proxy:
+  extraEnv:
+    - name: CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: tiled-secrets
+          key: client-secret
+  ingress: {}  # Configure your Ingress/LoadBalancer to point to the oauth2-proxy pod
+  config:
+    configFile: |-  # Cannot be empty else tries to define invalid upstreams
+      email_domains = [ "*" ]
+      skip_provider_button = true
+  alphaConfig:
     enabled: true
-    targetService: tiled # Overrides name of the service: makes routing easier
-    ingress: {}  # Configure your ingress here
-    config:
-      existingSecret: tiled-secrets
+    configData: # https://oauth2-proxy.github.io/oauth2-proxy/configuration/alpha-config/
+      upstreamConfig:
+        proxyRawPath: true
+        upstreams:
+          - id: tiled
+            path: /
+            uri: http://tiled # Assuming tiled dependency AND helm deployment are named "tiled"
+      providers: [] # Configure your OAuth2 provider here
+      injectRequestHeaders:
+        - name: Authorization  # Passes header into pod
+          values:
+            - claim: access_token
+              prefix: "Bearer "
+
 ```
 
 Configure tiled to use an OAuth2 compatible authentication method, such as the OIDCAuthenticator
@@ -150,11 +185,7 @@ tiled:
         secretKeyRef:
           name: tiled-secrets
           key: client-secret
-    - name: CLIENT_ID
-      valueFrom:
-        secretKeyRef:
-          name: tiled-secrets
-          key: client-id
+
   config:
     authentication:
       providers:
@@ -163,7 +194,7 @@ tiled:
         authenticator: tiled.authenticators:OIDCAuthenticator
         args:
           audience: tiled  # something unique to ensure received headers are for you
-          client_id: ${CLIENT_ID}
+          client_id: tiled
           client_secret: ${CLIENT_SECRET}
           well_known_uri: https://example.com/.well-known/openid-configuration
           confirmation_message: "You have logged in with example.com as {id}."

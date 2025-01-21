@@ -17,11 +17,4 @@ version: 0.0.1
 
 # Container version, automatically incremented by CI during release
 appVersion: v0.1.0b12
-
-dependencies:
-  - name: oauth2-proxy
-    alias: oauth2
-    version: "~7.10.2" # >=7.10.2, <7.11
-    repository: "https://oauth2-proxy.github.io/manifests"
-    condition: oauth2.enabled
     
