@@ -9,6 +9,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Addressed DeprecationWarnings from Python and dependencies
 - Update AccessPolicy Docs to match new filter arguments
+- Refactored intialization of dask DataFrame
 
 ## v0.1.0-b13 (2024-01-09)
 
