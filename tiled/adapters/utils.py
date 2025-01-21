@@ -2,12 +2,10 @@ import warnings
 from collections import defaultdict
 from typing import Any, Optional
 
-from ..catalog.orm import Node
 from ..structures.data_source import DataSource
 
 # for back-compat
 from ..utils import node_repr as tree_repr  # noqa: F401
-from .protocols import BaseAdapter
 
 _MESSAGE = (
     "Instead of {name}_indexer[...] use {name}()[...]. "
@@ -29,34 +27,16 @@ class IndexersMixin:
 
     @property
     def keys_indexer(self) -> Any:
-        """
-
-        Returns
-        -------
-
-        """
         warnings.warn(_MESSAGE.format(name="keys"), DeprecationWarning)
         return self.keys()
 
     @property
     def values_indexer(self) -> Any:
-        """
-
-        Returns
-        -------
-
-        """
         warnings.warn(_MESSAGE.format(name="values"), DeprecationWarning)
         return self.values()
 
     @property
     def items_indexer(self) -> Any:
-        """
-
-        Returns
-        -------
-
-        """
         warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
         return self.items()
 
@@ -80,25 +60,9 @@ class IndexCallable:
     __slots__ = ("fn",)
 
     def __init__(self, fn: Any) -> None:
-        """
-
-        Parameters
-        ----------
-        fn :
-        """
         self.fn = fn
 
     def __getitem__(self, key: str) -> Any:
-        """
-
-        Parameters
-        ----------
-        key :
-
-        Returns
-        -------
-
-        """
         return self.fn(key)
 
 
@@ -120,9 +84,9 @@ def asset_parameters_to_adapter_kwargs(data_source: DataSource) -> dict[str, Any
 def init_adapter_from_catalog(
     adapter_cls: type[Any],
     data_source: DataSource,
-    node: Node,
+    node: Any,   # tiled.catalog.orm.Node ?
     **kwargs: Optional[Any],
-) -> BaseAdapter:
+) -> Any:
     # TODO: Sort out typing for Adapters
     """Factory function to produce Adapter instances given their parameters encoded in data sources"""
     parameters = asset_parameters_to_adapter_kwargs(data_source)
