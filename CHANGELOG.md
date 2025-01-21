@@ -3,13 +3,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.1.0-b14 (2024-01-21)
+
+### Changed
+
+- Updated OIDC Authenticator configuration to expect `well_known_uri` and
+  `audience` and to no longer expect `token_uri`, `authorization_endpoint` and
+  `public_keys`, which can be fetched at initialization (server startup) time.
+  See examples `example_configs/orcid_auth.yml`,
+  `example_configs/google_auth.yml`, and `example_configs/simple_oidc`.
 
 ### Maintenance
 
 - Addressed DeprecationWarnings from Python and dependencies
 - Update AccessPolicy Docs to match new filter arguments
-- Refactored intialization of dask DataFrame
+- Refactored intialization of dask DataFrame to be compatible with dask 2025.1
 
 ## v0.1.0-b13 (2024-01-09)
 
