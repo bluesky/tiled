@@ -1,3 +1,4 @@
+import functools
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -168,12 +169,11 @@ class _DaskDataFrameClient(BaseClient):
             meta = meta[columns]
 
         ddf = dask.dataframe.from_map(
-            self._get_partition,
+            functools.partial(self._get_partition, columns=columns),
             range(structure.npartitions),
             meta=meta,
             label=label,
             divisions=(None,) * (1 + structure.npartitions),
-            columns=columns,
         )
 
         return ddf
