@@ -2,7 +2,7 @@ import builtins
 import collections.abc
 import os
 import sys
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import zarr.core
 import zarr.hierarchy
@@ -375,7 +375,8 @@ class ZarrAdapter:
         cls,
         data_source: DataSource,
         node: Node,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        /,
+        **kwargs: Optional[Any],
     ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
         zarr_obj = zarr.open(
             path_from_uri(data_source.assets[0].data_uri)

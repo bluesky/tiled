@@ -51,6 +51,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         cls,
         data_source: DataSource,
         node: Node,
+        /,
         **kwargs: Optional[Any],
     ) -> "AwkwardBuffersAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore

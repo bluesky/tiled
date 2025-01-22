@@ -479,8 +479,8 @@ class CatalogNodeAdapter:
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_class.from_catalog,
-                data_source=data_source,
-                node=self.node,
+                data_source,
+                self.node,
                 **data_source.parameters,
             ),
         )

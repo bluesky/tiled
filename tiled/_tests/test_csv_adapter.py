@@ -47,7 +47,7 @@ def csv_table_file(tmpdir):
     fpath = Path(tmpdir, "table.csv")
     df1.to_csv(fpath, index=False)
 
-    yield fpath
+    yield str(fpath)
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def csv_array1_file(tmpdir):
     fpath = Path(tmpdir, "array_1.csv")
     df_arr1.to_csv(fpath, index=False, header=False)
 
-    yield fpath
+    yield str(fpath)
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ def csv_array2_file(tmpdir):
     fpath = Path(tmpdir, "array_2.csv")
     df_arr2.to_csv(fpath, index=False, header=False)
 
-    yield fpath
+    yield str(fpath)
 
 
 def test_csv_table(context, csv_table_file):
@@ -107,6 +107,7 @@ def test_csv_arrays(context, csv_array1_file, csv_array2_file):
                 data_uri=f"file://localhost{csv_fpath}",
                 is_directory=False,
                 parameter="data_uris",
+                num=0,
             )
         ]
         csv_data_source = DataSource(

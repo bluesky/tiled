@@ -216,6 +216,7 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
             cls,
             data_source,
             node,
+            /,
             **kwargs,
         ):
             return init_adapter_from_catalog(cls, data_source, node, **kwargs)

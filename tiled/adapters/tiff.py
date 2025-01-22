@@ -70,7 +70,8 @@ class TiffAdapter:
         cls,
         data_source: DataSource,
         node: Node,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        /,
+        **kwargs: Optional[Any],
     ) -> "TiffAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 

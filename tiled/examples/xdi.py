@@ -8,7 +8,7 @@ import collections
 import io
 import pathlib
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 
 import dask.dataframe
 import pandas as pd
@@ -116,7 +116,8 @@ class XDIAdapter(TableAdapter):
         cls,
         data_source: DataSource,
         node: Node,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        /,
+        **kwargs: Optional[Any],
     ) -> "XDIAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 

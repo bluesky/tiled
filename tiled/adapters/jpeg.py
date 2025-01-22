@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 from numpy._typing import NDArray
@@ -57,7 +57,8 @@ class JPEGAdapter:
         cls,
         data_source: DataSource,
         node: Node,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        /,
+        **kwargs: Optional[Any],
     ) -> "JPEGAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
@@ -65,7 +66,7 @@ class JPEGAdapter:
     def from_uris(
         cls,
         data_uri: str,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        **kwargs: Optional[Any],
     ) -> "JPEGAdapter":
         filepath = path_from_uri(data_uri)
         cache_key = (Image.open, filepath)

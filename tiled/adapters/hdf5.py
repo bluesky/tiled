@@ -2,7 +2,7 @@ import collections.abc
 import os
 import sys
 import warnings
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import h5py
 import numpy
@@ -84,9 +84,10 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         cls,
         data_source: DataSource,
         node: Node,
+        /,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        **kwargs: Optional[Any],
     ) -> "HDF5Adapter":
         assets = data_source.assets
         if len(assets) == 1:

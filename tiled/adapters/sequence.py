@@ -2,7 +2,7 @@ import builtins
 import math
 import warnings
 from abc import abstractmethod
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 from ndindex import ndindex
@@ -111,7 +111,8 @@ class FileSequenceAdapter:
         cls,
         data_source: DataSource,
         node: Node,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        /,
+        **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 

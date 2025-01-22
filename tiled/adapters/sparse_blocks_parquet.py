@@ -1,5 +1,5 @@
 import itertools
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import dask.base
 import dask.dataframe
@@ -72,7 +72,8 @@ class SparseBlocksParquetAdapter:
         cls,
         data_source: DataSource,
         node: Node,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        /,
+        **kwargs: Optional[Any],
     ) -> "SparseBlocksParquetAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 

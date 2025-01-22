@@ -86,6 +86,7 @@ def init_adapter_from_catalog(
     adapter_cls: type[Any],
     data_source: DataSource,
     node: Any,  # tiled.catalog.orm.Node ?
+    /,
     **kwargs: Optional[Any],
 ) -> Any:
     # TODO: Sort out typing for Adapters

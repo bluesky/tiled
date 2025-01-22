@@ -56,6 +56,7 @@ class CSVAdapter:
         cls,
         data_source: DataSource,
         node: Node,
+        /,
         **kwargs: Optional[Any],
     ) -> "CSVAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
@@ -281,6 +282,7 @@ class CSVArrayAdapter(ArrayAdapter):
         cls,
         data_source: DataSource,
         node: Node,
+        /,
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         """Adapter for partitioned array data stored as a sequence of csv files
@@ -349,10 +351,9 @@ class CSVArrayAdapter(ArrayAdapter):
     def from_uris(
         cls,
         *data_uris: str,
-        **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
+        **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
-
         array = dask.dataframe.read_csv(
             file_paths, header=None, **kwargs
         ).to_dask_array()
