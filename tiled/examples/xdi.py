@@ -123,12 +123,9 @@ class XDIAdapter(TableAdapter):
     @classmethod
     def from_uris(
         cls,
-        data_uri: Union[str, List[str]],
+        data_uri: str,
         **kwargs: Optional[Any],
     ) -> "XDIAdapter":
-        if not isinstance(data_uri, str):
-            data_uri = data_uri[0]
-
         return cls(data_uri, **kwargs)
 
 

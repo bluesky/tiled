@@ -56,9 +56,7 @@ class ExcelAdapter(MapAdapter):
         return cls(mapping, **kwargs)
 
     @classmethod
-    def from_uris(
-        cls, data_uri: Union[str, list[str]], **kwargs: Any
-    ) -> "ExcelAdapter":
+    def from_uris(cls, data_uri: str, **kwargs: Any) -> "ExcelAdapter":
         """
         Read the sheets in an Excel file.
 
@@ -81,8 +79,6 @@ class ExcelAdapter(MapAdapter):
         -------
 
         """
-        if not isinstance(data_uri, str):
-            data_uri = data_uri[0]
         file = pandas.ExcelFile(data_uri)
         return cls.from_file(file)
 

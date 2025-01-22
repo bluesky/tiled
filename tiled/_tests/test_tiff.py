@@ -34,7 +34,7 @@ def client(tmpdir_module):
         {
             "color": TiffAdapter(ensure_uri(path)),
             "sequence": TiffSequenceAdapter.from_uris(
-                [ensure_uri(filepath) for filepath in filepaths]
+                *[ensure_uri(filepath) for filepath in filepaths]
             ),
             "5d_sequence": TiffSequenceAdapter(
                 [ensure_uri(filepath) for filepath in filepaths],

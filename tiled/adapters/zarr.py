@@ -79,12 +79,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         ]
 
     def _stencil(self) -> Tuple[slice, ...]:
-        """
-        Trims overflow because Zarr always has equal-sized chunks.
-        Returns
-        -------
-
-        """
+        """Trim overflow because Zarr always has equal-sized chunks."""
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
     def read(
@@ -273,52 +268,18 @@ class ZarrGroupAdapter(
         super().__init__()
 
     def __repr__(self) -> str:
-        """
-
-        Returns
-        -------
-
-        """
         return node_repr(self, list(self))
 
     def metadata(self) -> Any:
-        """
-
-        Returns
-        -------
-
-        """
         return self._node.attrs
 
     def structure(self) -> None:
-        """
-
-        Returns
-        -------
-
-        """
         return None
 
     def __iter__(self) -> Iterator[Any]:
-        """
-
-        Returns
-        -------
-
-        """
         yield from self._node
 
     def __getitem__(self, key: str) -> Union[ArrayAdapter, "ZarrGroupAdapter"]:
-        """
-
-        Parameters
-        ----------
-        key :
-
-        Returns
-        -------
-
-        """
         value = self._node[key]
         if isinstance(value, zarr.hierarchy.Group):
             return ZarrGroupAdapter(value)
@@ -326,39 +287,15 @@ class ZarrGroupAdapter(
             return ZarrArrayAdapter.from_array(value)
 
     def __len__(self) -> int:
-        """
-
-        Returns
-        -------
-
-        """
         return len(self._node)
 
     def keys(self) -> KeysView:  # type: ignore
-        """
-
-        Returns
-        -------
-
-        """
         return KeysView(lambda: len(self), self._keys_slice)
 
     def values(self) -> ValuesView:  # type: ignore
-        """
-
-        Returns
-        -------
-
-        """
         return ValuesView(lambda: len(self), self._items_slice)
 
     def items(self) -> ItemsView:  # type: ignore
-        """
-
-        Returns
-        -------
-
-        """
         return ItemsView(lambda: len(self), self._items_slice)
 
     def search(self, query: Any) -> None:
@@ -370,7 +307,7 @@ class ZarrGroupAdapter(
 
         Returns
         -------
-                Return a Tree with a subset of the mapping.
+            A Tree with a subset of the mapping.
 
         """
         raise NotImplementedError
@@ -429,16 +366,6 @@ class ZarrGroupAdapter(
         return items[start:stop]
 
     def inlined_contents_enabled(self, depth: int) -> bool:
-        """
-
-        Parameters
-        ----------
-        depth :
-
-        Returns
-        -------
-
-        """
         return depth <= INLINED_DEPTH
 
 
@@ -472,10 +399,8 @@ class ZarrAdapter:
 
     @classmethod
     def from_uris(
-        cls, data_uri: Union[str, list[str]], **kwargs: Optional[Any]
+        cls, data_uri: str, **kwargs: Optional[Any]
     ) -> Union[ZarrArrayAdapter, ZarrGroupAdapter]:
-        if isinstance(data_uri, list):
-            data_uri = data_uri[0]
         zarr_obj = zarr.open(path_from_uri(data_uri))  # Group or Array
         if isinstance(zarr_obj, zarr.hierarchy.Group):
             return ZarrGroupAdapter(zarr_obj, **kwargs)

@@ -2,7 +2,7 @@ import builtins
 import math
 import warnings
 from abc import abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 from ndindex import ndindex
@@ -71,7 +71,7 @@ class FileSequenceAdapter:
 
     def __init__(
         self,
-        data_uris: List[str],
+        data_uris: Iterable[str],
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
@@ -86,8 +86,6 @@ class FileSequenceAdapter:
         metadata :
         specs :
         """
-        if isinstance(data_uris, str):
-            data_uris = [data_uris]
         self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         # TODO Check shape, chunks against reality.
         self.specs = specs or []
@@ -105,7 +103,7 @@ class FileSequenceAdapter:
         self._structure = structure
 
     @classmethod
-    def from_uris(cls, data_uris: List[str]) -> "FileSequenceAdapter":
+    def from_uris(cls, *data_uris: str) -> "FileSequenceAdapter":
         return cls(data_uris=data_uris)
 
     @classmethod

@@ -34,7 +34,7 @@ def client(tmpdir_module):
         {
             "color": JPEGAdapter.from_uris(ensure_uri(path)),
             "sequence": JPEGSequenceAdapter.from_uris(
-                [ensure_uri(filepath) for filepath in filepaths]
+                *[ensure_uri(filepath) for filepath in filepaths]
             ),
         }
     )

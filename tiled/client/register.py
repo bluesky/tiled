@@ -300,7 +300,7 @@ async def register_single_item(
     logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, item)
     try:
         adapter = await anyio.to_thread.run_sync(
-            adapter_class.from_uris, [ensure_uri(item)]
+            adapter_class.from_uris, ensure_uri(item)
         )
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s':", item)
@@ -411,7 +411,7 @@ async def register_image_sequence(node, name, sequence, settings):
     key = settings.key_from_filename(name)
     try:
         adapter = adapter_class.from_uris(
-            [ensure_uri(filepath) for filepath in sequence]
+            *[ensure_uri(filepath) for filepath in sequence]
         )
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)

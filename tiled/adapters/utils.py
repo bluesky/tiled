@@ -70,14 +70,15 @@ def asset_parameters_to_adapter_kwargs(data_source: DataSource) -> dict[str, Any
     """Transform database representation of Adapter parameters to Python representation."""
     parameters: dict[str, Any] = defaultdict(list)
     for asset in data_source.assets:
-        if asset.num is None:
-            # This asset is associated with a parameter that takes a single URI.
-            param = asset.parameter or "data_uri"
-            parameters[param] = asset.data_uri
-        else:
+        if (asset.num is not None) or (asset.parameter == "data_uris"):
             # This asset is associated with a parameter that takes a list of URIs.
             param = asset.parameter or "data_uris"
             parameters[param].append(asset.data_uri)
+        else:
+            # This asset is associated with a parameter that takes a single URI.
+            param = asset.parameter or "data_uri"
+            parameters[param] = asset.data_uri
+
     return parameters
 
 

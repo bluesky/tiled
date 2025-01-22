@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import dask.dataframe
 import pandas
@@ -22,7 +22,7 @@ class CSVAdapter:
 
     def __init__(
         self,
-        data_uris: Union[str, List[str]],
+        data_uris: Iterable[str],
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
@@ -39,8 +39,6 @@ class CSVAdapter:
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
-        if isinstance(data_uris, str):
-            data_uris = [data_uris]
         self._file_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         self._read_csv_kwargs = kwargs
@@ -65,7 +63,7 @@ class CSVAdapter:
     @classmethod
     def from_uris(
         cls,
-        data_uris: Union[str, List[str]],
+        *data_uris: str,
         **kwargs: Optional[Any],
     ) -> "CSVAdapter":
         return cls(data_uris, **kwargs)
@@ -350,11 +348,9 @@ class CSVArrayAdapter(ArrayAdapter):
     @classmethod
     def from_uris(
         cls,
-        data_uris: Union[str, List[str]],
+        *data_uris: str,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "CSVArrayAdapter":
-        if isinstance(data_uris, str):
-            data_uris = [data_uris]
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = dask.dataframe.read_csv(

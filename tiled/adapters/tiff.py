@@ -44,8 +44,6 @@ class TiffAdapter:
         metadata :
         specs :
         """
-        if not isinstance(data_uri, str):
-            raise Exception
         filepath = path_from_uri(data_uri)
         cache_key = (tifffile.TiffFile, filepath)
         self._file = with_resource_cache(cache_key, tifffile.TiffFile, filepath)
@@ -78,9 +76,6 @@ class TiffAdapter:
 
     @classmethod
     def from_uris(cls, data_uri: str, **kwargs: Optional[Any]) -> "TiffAdapter":
-        if not isinstance(data_uri, str):
-            data_uri = data_uri[0]
-
         return cls(data_uri)
 
     def metadata(self) -> JSON:

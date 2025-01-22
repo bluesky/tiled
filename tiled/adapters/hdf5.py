@@ -119,13 +119,11 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
     @classmethod
     def from_uris(
         cls,
-        data_uri: Union[str, list[str]],
+        data_uri: str,
         *,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
     ) -> "HDF5Adapter":
-        if not isinstance(data_uri, str):
-            data_uri = data_uri[0]
         filepath = path_from_uri(data_uri)
         cache_key = (h5py.File, filepath, "r", swmr, libver)
         file = with_resource_cache(

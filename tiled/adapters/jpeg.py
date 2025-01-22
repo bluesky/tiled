@@ -64,13 +64,10 @@ class JPEGAdapter:
     @classmethod
     def from_uris(
         cls,
-        data_uris: Union[str, List[str]],
+        data_uri: str,
         **kwargs: Optional[Union[str, List[str], Dict[str, str]]],
     ) -> "JPEGAdapter":
-        if not isinstance(data_uris, str):
-            data_uris = data_uris[0]
-
-        filepath = path_from_uri(data_uris)
+        filepath = path_from_uri(data_uri)
         cache_key = (Image.open, filepath)
         _file = with_resource_cache(cache_key, Image.open, filepath)
 
@@ -82,7 +79,7 @@ class JPEGAdapter:
         )
 
         return cls(
-            data_uris,
+            data_uri,
             structure=structure,
         )
 
