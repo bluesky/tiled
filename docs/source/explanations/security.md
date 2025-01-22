@@ -238,43 +238,37 @@ pip install httpx
 3. It is recommended to set the Client Secret as an environment variable, such
    as `OIDC_CLIENT_SECRET`, and reference that from configuration file as shown
    below.
-4. Obtain the OIDC provider's public key(s). These are published by the OIDC provider.
-   Starting from a URL like:
+4. Get the OIDC provider's well-known endpoint. These are expected shared configuration values published by the OIDC provider.
+   Typically it is a URL like:
 
    * [https://accounts.google.com/.well-known/openid-configuration](https://accounts.google.com/.well-known/openid-configuration)
    * [https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration](https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration)
    * [https://orcid.org/.well-known/openid-configuration](https://orcid.org/.well-known/openid-configuration)
-
-   Navigate to the link under the key `jwks_uri`. These public key(s) are designed
-   to prevent man-in-the-middle attacks. They may be rotated over time.
 
 The configuration file(s) must include the following.
 
 ```yaml
 authentication:
   providers:
-  - provider: SOME_NAME_HERE
+  - provider: example.com
     authenticator: tiled.authenticators:OIDCAuthenticator
     args:
-      # All of these are given by the OIDC provider you register
-      # your application.
-      client_id: ...
-      client_secret: ${OIDC_CLIENT_SECRET}  # reference an environment variable
-      # These come from the OIDC provider as described above.
-      token_uri: ...
-      authorization_endpoint: ...
-      public_keys:
-        - kty: ...
-          e: ...
-          use: ...
-          kid: ...
-          n: ...
-          alg: ...
-      confirmation_message: "You have logged in with ... as {id}."
+      # Values should come from your OIDC provider configuration
+      # The audience claim is checked by the OIDC Client (Tiled)
+      # It checks that the Authentication header that you are passed has not been intercepted
+      # And that elevated claims from other services do not apply here
+      audience: tiled  # something unique to ensure received headers are for you
+      client_id: tiled_client
+      client_secret: ${OIDC_CLIENT_SECRET} # referencing an environment variable
+      well_known_uri: example.com/.well-known/openid-configuration
 ```
 
 There are example configurations for ORCID and Google in the directory
 `example_configs/` in the Tiled source repository.
+
+You can also try it against a locally-runing dummy OIDC provider. See the
+README and files under `example_configs/simple_oidc/` in the Tiled source
+repository.
 
 ### Toy examples for testing and development
 

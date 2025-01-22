@@ -101,10 +101,10 @@ class PASSAccessPolicy:
                 f"Its identities are: {principal.identities}"
             )
 
-    def allowed_scopes(self, node, principal):
+    def allowed_scopes(self, node, principal, path_parts):
         return {"read:metadata", "read:data"}
 
-    def filters(self, node, principal, scopes):
+    def filters(self, node, principal, scopes, path_parts):
         queries = []
         id = self._get_id(principal)
         if not scopes.issubset({"read:metadata", "read:data"}):
