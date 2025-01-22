@@ -10,11 +10,12 @@ potentially any language.
 The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
-* awkward --- nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
-* container --- a of other structures, akin to a dictionary or a directory
-* sparse --- a sparse array (i.e. an array which is mostly zeros)
 * table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
+* container --- a collection of other structures, akin to a dictionary or a directory
+* composite --- a container-like structure to combine table columns and arrays in a common namespace
+* sparse --- a sparse array (i.e. an array which is mostly zeros)
+* awkward --- nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
 
 ## How structure is encoded
 
@@ -573,5 +574,79 @@ response.
     }
   },
   "count": 5
+}
+```
+
+### Composite
+
+This is a specialized container-like structure designed to link together multiple tables and arrays that store
+related scientific data. It does not support nesting but provides a common namespace across all columns of the
+contained tables along with the arrays (thus, name collisions are forbidden). This allows to further abstract out
+the disparate internal storage mechanisms (e.g. Parquet for tables and zarr for arrays) and present the user with a
+smooth homogeneous interface for data access. Composite structures do not support pagination and are not
+recommended for "wide" datasets with more than ~1000 items (cloumns and arrays) in the namespace.
+
+Below is an example of a Composite structure that describes two tables and two arrays of various sizes. It sis very
+similar to a usual Container structure, where `contents` list the structures of its constituents; additionally,
+`flat_keys` defines the internal namespace of directly addressible columns and arrays.
+
+```json
+{
+    "contents": [
+        {
+            "structure_family": "table",
+            "structure": {
+                "arrow_schema": "data:application/vnd.apache.arrow.file;base64,/////...FFFF",
+                "npartitions": 1,
+                "columns": ["A", "B"],
+                "resizable": false
+            },
+            "name": "table1"
+        },
+        {
+            "structure_family": "table",
+            "structure": {
+                "arrow_schema": "data:application/vnd.apache.arrow.file;base64,/////...FFFF",
+                "npartitions": 1,
+                "columns": ["C", "D", "E"],
+                "resizable": false
+            },
+            "name": "table2"
+        },
+        {
+            "structure_family": "array",
+            "structure": {
+                "data_type": {
+                    "endianness": "little",
+                    "kind": "f",
+                    "itemsize": 8,
+                    "dt_units": null
+                },
+                "chunks": [[3], [5]],
+                "shape": [3, 5],
+                "dims": null,
+                "resizable": false
+            },
+            "name": "F"
+        },
+        {
+            "structure_family": "array",
+            "structure": {
+                "data_type": {
+                    "endianness": "not_applicable",
+                    "kind": "u",
+                    "itemsize": 1,
+                    "dt_units": null
+                },
+                "chunks": [[5], [7], [3]],
+                "shape": [5, 7, 3],
+                "dims": null,
+                "resizable": false
+            },
+            "name": "G"
+        }
+    ],
+    "flat_keys": ["A", "B", "C", "D", "E", "F", "G"],
+    "count": 7
 }
 ```

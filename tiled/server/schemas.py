@@ -6,14 +6,16 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
-from pydantic import ConfigDict, Field, StringConstraints
+from pydantic import ConfigDict, Field, StringConstraints, ValidationInfo
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
 from ..structures.core import StructureFamily
-from ..structures.data_source import Management
+from ..structures.data_source import Management, validate_data_sources
 from .pydantic_array import ArrayStructure
 from .pydantic_awkward import AwkwardStructure
+from .pydantic_composite import CompositeStructure
+from .pydantic_container import ContainerStructure
 from .pydantic_sparse import SparseStructure
 from .pydantic_table import TableStructure
 
@@ -145,15 +147,18 @@ class DataSource(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            SparseStructure,
             NodeStructure,
+            SparseStructure,
             TableStructure,
+            CompositeStructure,
+            ContainerStructure,
         ]
     ] = None
     mimetype: Optional[str] = None
     parameters: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable
+    name: Optional[str] = None
 
     model_config = pydantic.ConfigDict(extra="forbid")
 
@@ -167,6 +172,7 @@ class DataSource(pydantic.BaseModel):
             parameters=orm.parameters,
             assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
+            name=orm.name,
         )
 
 
@@ -179,9 +185,11 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
-            SparseStructure,
             NodeStructure,
+            SparseStructure,
             TableStructure,
+            CompositeStructure,
+            ContainerStructure,
         ]
     ] = None
 
@@ -230,9 +238,15 @@ class SparseLinks(pydantic.BaseModel):
     block: str
 
 
+class CompositeLinks(pydantic.BaseModel):
+    self: str
+    full: str
+
+
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
+    StructureFamily.composite: CompositeLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
@@ -456,6 +470,10 @@ class PostMetadataRequest(pydantic.BaseModel):
                 raise ValueError
         return v
 
+    @pydantic.field_validator("data_sources")
+    def check_consistency(cls, v, info: ValidationInfo):
+        return validate_data_sources(info.data["structure_family"], v)
+
 
 class PutDataSourceRequest(pydantic.BaseModel):
     data_source: DataSource
@@ -463,14 +481,23 @@ class PutDataSourceRequest(pydantic.BaseModel):
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, CompositeLinks]
+    structure: Union[
+        ArrayStructure,
+        AwkwardStructure,
+        NodeStructure,
+        SparseStructure,
+        TableStructure,
+        CompositeStructure,
+        ContainerStructure,
+    ]
     metadata: Dict
     data_sources: List[DataSource]
 
 
 class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     id: str
-    links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
+    links: Union[ArrayLinks, DataFrameLinks, SparseLinks, CompositeLinks]
     # May be None if not altered
     metadata: Optional[Dict] = None
     data_sources: Optional[List[DataSource]] = None

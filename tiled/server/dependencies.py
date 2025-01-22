@@ -12,6 +12,7 @@ from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
 from ..query_registration import query_registry as default_query_registry
+from ..structures.core import StructureFamily
 from ..validation_registration import validation_registry as default_validation_registry
 from .authentication import get_current_principal, get_session_state
 from .core import NoEntry
@@ -59,6 +60,7 @@ def SecureEntry(scopes, structure_families=None):
     async def inner(
         path: str,
         request: Request,
+        part: Optional[str] = None,
         principal: str = Depends(get_current_principal),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -152,6 +154,7 @@ def SecureEntry(scopes, structure_families=None):
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND, detail=f"No such entry: {path_parts}"
             )
+
         # Fast path for the common successful case
         if (structure_families is None) or (
             entry.structure_family in structure_families
@@ -161,7 +164,7 @@ def SecureEntry(scopes, structure_families=None):
             status_code=HTTP_404_NOT_FOUND,
             detail=(
                 f"The node at {path} has structure family {entry.structure_family} "
-                "and this endpoint is compatible with structure families "
+                "and this endpoint is compatible only with structure families "
                 f"{structure_families}"
             ),
         )

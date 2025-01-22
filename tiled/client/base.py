@@ -14,7 +14,7 @@ from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error
+from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs
 
 
 class MetadataRevisions:
@@ -126,18 +126,13 @@ class BaseClient:
         self._metadata_revisions = None
         self._include_data_sources = include_data_sources
         attributes = self.item["attributes"]
-        structure_family = attributes["structure_family"]
-
         if structure is not None:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family == StructureFamily.container:
-            self._structure = None
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
             self._structure = structure_type.from_json(attributes["structure"])
-
         super().__init__()
 
     def structure(self):
@@ -642,24 +637,19 @@ client or pass the optional parameter `include_data_sources=True` to
             )
 
         assert content_type in patch_mimetypes
-        if specs_patch is None:
-            normalized_specs_patch = None
-        else:
-            normalized_specs_patch = []
 
         if content_type == patch_mimetypes.JSON_PATCH:
-            if specs_patch:
+            if specs_patch is None:
+                normalized_specs_patch = None
+            else:
+                normalized_specs_patch = []
                 for spec_patch in copy(specs_patch):
                     value = spec_patch.get("value", None)
                     if isinstance(value, str):
                         spec_patch["value"] = asdict(Spec(value))
                     normalized_specs_patch.append(spec_patch)
         elif content_type == patch_mimetypes.MERGE_PATCH:
-            if specs_patch:
-                for spec in specs_patch:
-                    if isinstance(spec, str):
-                        spec = Spec(spec)
-                    normalized_specs_patch.append(asdict(spec))
+            normalized_specs_patch = normalize_specs(specs_patch)
 
         data = {
             "content-type": content_type,
@@ -714,17 +704,9 @@ client or pass the optional parameter `include_data_sources=True` to
 
         self._cached_len = None
 
-        if specs is None:
-            normalized_specs = None
-        else:
-            normalized_specs = []
-            for spec in specs:
-                if isinstance(spec, str):
-                    spec = Spec(spec)
-                normalized_specs.append(asdict(spec))
         data = {
             "metadata": metadata,
-            "specs": normalized_specs,
+            "specs": normalize_specs(specs),
         }
 
         content = handle_error(
@@ -744,7 +726,7 @@ client or pass the optional parameter `include_data_sources=True` to
                 self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
-            self._item["attributes"]["specs"] = normalized_specs
+            self._item["attributes"]["specs"] = normalize_specs(specs)
 
     @property
     def metadata_revisions(self):

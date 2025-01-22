@@ -61,6 +61,7 @@ from .dependencies import (
 )
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
+from .pydantic_composite import CompositeStructure
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
@@ -168,14 +169,15 @@ async def search(
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
     omit_links: bool = Query(False),
     include_data_sources: bool = Query(False),
-    entry: Any = SecureEntry(scopes=["read:metadata"]),
+    entry: Any = SecureEntry(
+        scopes=["read:metadata"],
+        structure_families={StructureFamily.container, StructureFamily.composite},
+    ),
     query_registry=Depends(get_query_registry),
     principal: str = Depends(get_current_principal),
     **filters,
 ):
     request.state.endpoint = "search"
-    if entry.structure_family != StructureFamily.container:
-        raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
     try:
         resource, metadata_stale_at, must_revalidate = await construct_entries_response(
             query_registry,
@@ -318,6 +320,7 @@ def patch_route_signature(route, query_registry):
 async def metadata(
     request: Request,
     path: str,
+    part=None,
     fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
     select_metadata: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
@@ -340,8 +343,9 @@ async def metadata(
             select_metadata,
             omit_links,
             include_data_sources,
-            resolve_media_type(request),
+            media_type=resolve_media_type(request),
             max_depth=max_depth,
+            is_composite_part=(part is not None),
         )
     except JMESPathError as err:
         raise HTTPException(
@@ -358,6 +362,11 @@ async def metadata(
 
 
 @router.get(
+    "/composite/array/block/{path:path}",
+    response_model=schemas.Response,
+    name="Composite array block",
+)
+@router.get(
     "/array/block/{path:path}", response_model=schemas.Response, name="array block"
 )
 async def array_block(
@@ -371,6 +380,7 @@ async def array_block(
     expected_shape=Depends(expected_shape),
     format: Optional[str] = None,
     filename: Optional[str] = None,
+    data_source: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
     settings: BaseSettings = Depends(get_settings),
 ):
@@ -418,10 +428,12 @@ async def array_block(
                 "Use slicing ('?slice=...') to request smaller chunks."
             ),
         )
+    else:
+        structure_family = entry.structure_family
     try:
         with record_timing(request.state.metrics, "pack"):
             return await construct_data_response(
-                entry.structure_family,
+                structure_family,
                 serialization_registry,
                 array,
                 entry.metadata(),
@@ -436,6 +448,11 @@ async def array_block(
         raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
+@router.get(
+    "/composite/array/full/{path:path}",
+    response_model=schemas.Response,
+    name="Composite full array",
+)
 @router.get(
     "/array/full/{path:path}", response_model=schemas.Response, name="full array"
 )
@@ -455,7 +472,6 @@ async def array_full(
     """
     Fetch a slice of array-like data.
     """
-    structure_family = entry.structure_family
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
@@ -463,7 +479,7 @@ async def array_full(
     try:
         with record_timing(request.state.metrics, "read"):
             array = await ensure_awaitable(entry.read, slice)
-        if structure_family == StructureFamily.array:
+        if entry.structure_family == StructureFamily.array:
             array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
     except IndexError:
         raise HTTPException(
@@ -485,7 +501,7 @@ async def array_full(
     try:
         with record_timing(request.state.metrics, "pack"):
             return await construct_data_response(
-                structure_family,
+                entry.structure_family,
                 serialization_registry,
                 array,
                 entry.metadata(),
@@ -499,6 +515,11 @@ async def array_full(
         raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
+@router.get(
+    "/composite/table/partition/{path:path}",
+    response_model=schemas.Response,
+    name="composite table partition",
+)
 @router.get(
     "/table/partition/{path:path}",
     response_model=schemas.Response,
@@ -549,6 +570,11 @@ async def get_table_partition(
     )
 
 
+@router.post(
+    "/composite/table/partition/{path:path}",
+    response_model=schemas.Response,
+    name="composite table partition",
+)
 @router.post(
     "/table/partition/{path:path}",
     response_model=schemas.Response,
@@ -633,6 +659,11 @@ async def table_partition(
 
 
 @router.get(
+    "/composite/table/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'table' data",
+)
+@router.get(
     "/table/full/{path:path}",
     response_model=schemas.Response,
     name="full 'table' data",
@@ -660,6 +691,11 @@ async def get_table_full(
     )
 
 
+@router.post(
+    "/composite/table/full/{path:path}",
+    response_model=schemas.Response,
+    name="full 'table' data",
+)
 @router.post(
     "/table/full/{path:path}",
     response_model=schemas.Response,
@@ -910,6 +946,11 @@ async def node_full(
 
 
 @router.get(
+    "/composite/awkward/buffers/{path:path}",
+    response_model=schemas.Response,
+    name="Composite AwkwardArray buffers",
+)
+@router.get(
     "/awkward/buffers/{path:path}",
     response_model=schemas.Response,
     name="AwkwardArray buffers",
@@ -946,6 +987,11 @@ async def get_awkward_buffers(
     )
 
 
+@router.post(
+    "/composite/awkward/buffers/{path:path}",
+    response_model=schemas.Response,
+    name="Composite AwkwardArray buffers",
+)
 @router.post(
     "/awkward/buffers/{path:path}",
     response_model=schemas.Response,
@@ -1027,6 +1073,11 @@ async def _awkward_buffers(
         raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
 
+@router.get(
+    "/composite/awkward/full/{path:path}",
+    response_model=schemas.Response,
+    name="Composite Full AwkwardArray",
+)
 @router.get(
     "/awkward/full/{path:path}",
     response_model=schemas.Response,
@@ -1143,21 +1194,41 @@ async def _create_node(
         body.structure_family,
         body.specs,
     )
-    if structure_family == StructureFamily.container:
-        structure = None
-    else:
-        if len(body.data_sources) != 1:
-            raise NotImplementedError
+    metadata_modified = False
+    if structure_family == StructureFamily.composite:
+        structure = CompositeStructure(contents=None, count=None)
+    elif body.data_sources:
+        assert len(body.data_sources) == 1  # more not yet implemented
         structure = body.data_sources[0].structure
+    else:
+        structure = None
 
-    metadata_modified, metadata = await validate_metadata(
-        metadata=metadata,
-        structure_family=structure_family,
-        structure=structure,
-        specs=specs,
-        validation_registry=validation_registry,
-        settings=settings,
-    )
+    # Specs should be ordered from most specific/constrained to least.
+    # Validate them in reverse order, with the least constrained spec first,
+    # because it may do normalization that helps pass the more constrained one.
+    # Known Issue:
+    # When there is more than one spec, it's possible for the validator for
+    # Spec 2 to make a modification that breaks the validation for Spec 1.
+    # For now we leave it to the server maintainer to ensure that validators
+    # won't step on each other in this way, but this may need revisiting.
+    for spec in reversed(specs):
+        if spec.name not in validation_registry:
+            if settings.reject_undeclared_specs:
+                raise HTTPException(
+                    status_code=400, detail=f"Unrecognized spec: {spec.name}"
+                )
+        else:
+            validator = validation_registry(spec.name)
+            try:
+                result = validator(metadata, structure_family, structure, spec)
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"failed validation for spec {spec.name}:\n{e}",
+                )
+            if result is not None:
+                metadata_modified = True
+                metadata = result
 
     key, node = await entry.create_node(
         metadata=body.metadata,
@@ -1166,13 +1237,22 @@ async def _create_node(
         specs=body.specs,
         data_sources=body.data_sources,
     )
+    is_composite_part = entry.structure_family == StructureFamily.composite
     links = links_for_node(
-        structure_family, structure, get_base_url(request), path + f"/{key}"
+        structure_family,
+        structure,
+        get_base_url(request),
+        path + f"/{key}",
+        is_composite_part=is_composite_part,
     )
+    structure = node.structure()
+    if structure is not None:
+        structure = structure.model_dump()
     response_data = {
         "id": key,
         "links": links,
         "data_sources": [ds.model_dump() for ds in node.data_sources],
+        "structure": structure,
     }
     if metadata_modified:
         response_data["metadata"] = metadata
@@ -1224,6 +1304,7 @@ async def bulk_delete(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/array/full/{path:path}")
 @router.put("/array/full/{path:path}")
 async def put_array_full(
     request: Request,
@@ -1254,6 +1335,7 @@ async def put_array_full(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/array/full/{path:path}")
 @router.put("/array/block/{path:path}")
 async def put_array_block(
     request: Request,
@@ -1289,6 +1371,7 @@ async def put_array_block(
     return json_or_msgpack(request, None)
 
 
+@router.patch("/composite/array/full/{path:path}")
 @router.patch("/array/full/{path:path}")
 async def patch_array_full(
     request: Request,
@@ -1316,6 +1399,7 @@ async def patch_array_full(
     return json_or_msgpack(request, structure)
 
 
+@router.put("/composite/table/full/{path:path}")
 @router.put("/table/full/{path:path}")
 @router.put("/node/full/{path:path}", deprecated=True)
 async def put_node_full(
@@ -1338,6 +1422,7 @@ async def put_node_full(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/table/partition/{path:path}")
 @router.put("/table/partition/{path:path}")
 async def put_table_partition(
     partition: int,
@@ -1358,11 +1443,14 @@ async def put_table_partition(
     return json_or_msgpack(request, None)
 
 
+@router.patch("/composite/table/partition/{path:path}")
 @router.patch("/table/partition/{path:path}")
 async def patch_table_partition(
     partition: int,
     request: Request,
-    entry=SecureEntry(scopes=["write:data"]),
+    entry=SecureEntry(
+        scopes=["write:data"], structure_families={StructureFamily.table}
+    ),
     deserialization_registry=Depends(get_deserialization_registry),
 ):
     if not hasattr(entry, "write_partition"):
@@ -1378,6 +1466,7 @@ async def patch_table_partition(
     return json_or_msgpack(request, None)
 
 
+@router.put("/composite/awkward/full/{path:path}")
 @router.put("/awkward/full/{path:path}")
 async def put_awkward_full(
     request: Request,

@@ -52,7 +52,7 @@ class Kind(str, enum.Enum):
     unicode = "U"  # fixed-length sequence of Py_UNICODE
     other = "V"  # "V" is for "void" -- generic fixed-size chunk of memory
 
-    # By default, do not tolerate numpy objectg arrays
+    # By default, do not tolerate numpy object arrays
     if os.getenv("TILED_ALLOW_OBJECT_ARRAYS", "0") != "0":
         object = "O"  # Object (i.e. the memory contains a pointer to PyObject)
 

@@ -1,14 +1,17 @@
 import builtins
 import uuid
 from collections.abc import Hashable
+from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
+from typing import Union
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
 import httpx
 import msgpack
 
+from ..structures.core import Spec
 from ..utils import path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
@@ -206,6 +209,18 @@ DEFAULT_TIMEOUT_PARAMS = {
     "write": 30.0,
     "pool": 5.0,
 }
+
+
+def normalize_specs(specs: Union[list[str, Spec], None]) -> list[dict]:
+    if specs is None:
+        return None
+
+    result = []
+    for spec in specs:
+        if isinstance(spec, str):
+            spec = Spec(spec)
+        result.append(asdict(spec))
+    return result
 
 
 def params_from_slice(slice):

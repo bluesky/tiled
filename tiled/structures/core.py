@@ -18,6 +18,7 @@ class StructureFamily(str, enum.Enum):
     container = "container"
     sparse = "sparse"
     table = "table"
+    composite = "composite"
 
 
 @dataclass(frozen=True)
@@ -54,11 +55,17 @@ STRUCTURE_TYPES = OneShotCachedMap(
         StructureFamily.awkward: lambda: importlib.import_module(
             "...structures.awkward", StructureFamily.__module__
         ).AwkwardStructure,
+        StructureFamily.container: lambda: importlib.import_module(
+            "...structures.container", StructureFamily.__module__
+        ).ContainerStructure,
         StructureFamily.table: lambda: importlib.import_module(
             "...structures.table", StructureFamily.__module__
         ).TableStructure,
         StructureFamily.sparse: lambda: importlib.import_module(
             "...structures.sparse", StructureFamily.__module__
         ).SparseStructure,
+        StructureFamily.composite: lambda: importlib.import_module(
+            "...structures.composite", StructureFamily.__module__
+        ).CompositeStructure,
     }
 )

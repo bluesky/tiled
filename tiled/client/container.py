@@ -15,7 +15,7 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
@@ -25,6 +25,7 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
+    normalize_specs,
 )
 
 
@@ -36,16 +37,16 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # This is populated when the first instance is created.
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
-    @classmethod
-    def _discover_entrypoints(cls, entrypoint_name):
-        return OneShotCachedMap(
-            {
-                name: entrypoint.load
-                for name, entrypoint in entrypoints.get_group_named(
-                    entrypoint_name
-                ).items()
-            }
-        )
+    # @classmethod
+    # def _discover_entrypoints(cls, entrypoint_name):
+    #     return OneShotCachedMap(
+    #         {
+    #             name: entrypoint.load
+    #             for name, entrypoint in entrypoints.get_group_named(
+    #                 entrypoint_name
+    #             ).items()
+    #         }
+    #     )
 
     @classmethod
     def discover_clients_from_entrypoints(cls):
@@ -147,8 +148,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         if isinstance(structure_clients, str):
             structure_clients = DEFAULT_STRUCTURE_CLIENT_DISPATCH[structure_clients]
-        if structure_clients is UNCHANGED:
-            structure_clients = self.structure_clients
+        # if structure_clients is UNCHANGED:
+        #     structure_clients = self.structure_clients
         if queries is UNCHANGED:
             queries = self._queries
         if sorting is UNCHANGED:
@@ -164,9 +165,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, there is an
         # implication that the contents are not expected to be dynamic. Used the
         # count provided in the structure.
-        structure = self.item["attributes"]["structure"]
-        if structure["contents"]:
-            return structure["count"]
+        if self.structure() and (self.structure().count is not None):
+            return self.structure().count
         now = time.monotonic()
         if self._cached_len is not None:
             length, deadline = self._cached_len
@@ -199,14 +199,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
-        contents = self.item["attributes"]["structure"]["contents"]
+        structure = self.structure()
         if (
-            (contents is not None)
+            structure
+            and structure.contents
             and (not self._queries)
             and ((not self.sorting) or (self.sorting == [("_", 1)]))
             and (not _ignore_inlined_contents)
         ):
-            return (yield from contents)
+            return (yield from structure.contents)
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
             content = handle_error(
@@ -305,7 +306,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # to the node of interest without downloading information about
             # intermediate parents.
             for i, key in enumerate(keys):
-                item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
+                structure = self.structure()
+                item = ((structure and structure.contents) or {}).get(key)
                 if (item is None) or _ignore_inlined_contents:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
@@ -607,18 +609,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         self._cached_len = None
         metadata = metadata or {}
-        specs = specs or []
-        normalized_specs = []
-        for spec in specs:
-            if isinstance(spec, str):
-                spec = Spec(spec)
-            normalized_specs.append(asdict(spec))
 
         item = {
             "attributes": {
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
-                "specs": normalized_specs,
+                "specs": normalize_specs(specs or []),
                 "data_sources": [asdict(data_source) for data_source in data_sources],
             }
         }
@@ -626,7 +622,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if key is not None:
             body["id"] = key
 
-        # if check:
+        # Register existing (external) assets
         if any(data_source.assets for data_source in data_sources):
             endpoint = self.uri.replace("/metadata/", "/register/", 1)
         else:
@@ -642,8 +638,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
+        elif structure_family == StructureFamily.composite:
+            structure = {"contents": None, "count": None}
         else:
-            # Only containers can have multiple data_sources right now.
+            # We assume that each node is backed by only _one_ data_source
             (data_source,) = data_sources
             structure = data_source.structure
         item["attributes"]["structure"] = structure
@@ -653,7 +651,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             item["attributes"]["metadata"] = document.pop("metadata")
         # Ditto for structure
         if "structure" in document:
-            item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
+            structure = STRUCTURE_TYPES[structure_family].from_json(
                 document.pop("structure")
             )
 
@@ -661,8 +659,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         item.update(document)
 
         # Ensure this is a dataclass, not a dict.
-        # When we apply type hints and mypy to the client it should be possible
-        # to dispense with this.
+        # TODO: When we apply type hints and mypy to the client it should be possible to dispense with this.
         if (structure_family != StructureFamily.container) and isinstance(
             structure, dict
         ):
@@ -681,7 +678,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_container(self, key=None, *, metadata=None, dims=None, specs=None):
+    def create_container(self, key=None, *, metadata=None, specs=None):
         """
         EXPERIMENTAL: Create a new, empty container.
 
@@ -692,8 +689,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        dims : List[str], optional
-            A label for each dimension of the array.
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
@@ -701,6 +696,29 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         return self.new(
             StructureFamily.container,
+            [],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+
+    def create_composite(self, key=None, *, metadata=None, specs=None):
+        """Create a new, empty composite.
+
+        Parameters
+        ----------
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+        return self.new(
+            StructureFamily.composite,
             [],
             key=key,
             metadata=metadata,
@@ -1055,6 +1073,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
+            ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DatasetClient"
             ),
@@ -1072,6 +1093,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "sparse": _LazyLoad(("..sparse", Container.__module__), "SparseClient"),
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DaskDataFrameClient"
+            ),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
             ),
             "xarray_dataset": _LazyLoad(
                 ("..xarray", Container.__module__), "DaskDatasetClient"

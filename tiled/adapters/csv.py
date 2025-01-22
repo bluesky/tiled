@@ -89,6 +89,8 @@ class CSVAdapter:
         access_policy :
         """
         # TODO Store data_uris instead and generalize to non-file schemes.
+        if isinstance(data_uris, str):
+            data_uris = [data_uris]
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         if structure is None:

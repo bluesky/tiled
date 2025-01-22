@@ -72,7 +72,10 @@ Sometimes it is necessary to take more manual control of this registration
 process, such as if you want to take advantage of particular knowledge
 about the files to specify particular `metadata` or `specs`.
 
-Use the Python client, as in this example.
+#### Registering external data
+
+To register data from external files in Tiled, one can use the Python client and
+construct Data Source object explicitly passing the list of assets, as in the following example.
 
 ```py
 import numpy
@@ -111,4 +114,26 @@ client.new(
     metadata={},
     specs=[],
 )
+```
+
+#### Writing a composite structure
+
+A Composite structure allows the user to acess the columns of contained tables in
+a flat name space along with other arrays. Writing new data to a Composite container
+is analoguous to the usual containers, however exceptions will be raised if there are
+any name collisions.
+
+```python
+import pandas
+
+rng = numpy.random.default_rng(12345)
+arr = rng.random(size=(3, 5), dtype="float64")
+df = pandas.DataFrame({"A": ["one", "two", "three"], "B": [1, 2, 3]})
+
+# Create a Composite node
+node = client.create_composite(key="x")
+
+# Write the data
+node.write_array(arr, key="C")
+node.write_dataframe(df, key="table1")
 ```
