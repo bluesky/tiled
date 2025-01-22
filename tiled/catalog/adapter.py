@@ -94,26 +94,26 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-INIT_STORAGE = OneShotCachedMap(
+STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
-        ).ZarrArrayAdapter.init_storage,
+        ).ZarrArrayAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
-        ).AwkwardBuffersAdapter.init_storage,
+        ).AwkwardBuffersAdapter,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
-        ).ParquetDatasetAdapter.init_storage,
+        ).ParquetDatasetAdapter,
         "text/csv": lambda: importlib.import_module(
             "...adapters.csv", __name__
-        ).CSVAdapter.init_storage,
+        ).CSVAdapter,
         SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
-        ).SparseBlocksParquetAdapter.init_storage,
+        ).SparseBlocksParquetAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.arrow", __name__
-        ).ArrowAdapter.init_storage,
+        ).ArrowAdapter,
     }
 )
 
@@ -638,7 +638,7 @@ class CatalogNodeAdapter:
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    if data_source.mimetype not in INIT_STORAGE:
+                    if data_source.mimetype not in STORAGE_ADAPTERS_BY_MIMETYPE:
                         raise HTTPException(
                             status_code=415,
                             detail=(
@@ -646,9 +646,9 @@ class CatalogNodeAdapter:
                                 "is not one that the Tiled server knows how to write."
                             ),
                         )
-                    init_storage = INIT_STORAGE[data_source.mimetype]
+                    adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
                     assets = await ensure_awaitable(
-                        init_storage, data_uri, data_source.structure
+                        adapter.init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
                 else:
