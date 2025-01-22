@@ -71,7 +71,7 @@ def test_csv_table(context, csv_table_file):
 
     csv_assets = [
         Asset(
-            data_uri=f"file://localhost{csv_table_file}",
+            data_uri=f"file://localhost/{csv_table_file}",
             is_directory=False,
             parameter="data_uris",
             num=0,
@@ -104,7 +104,7 @@ def test_csv_arrays(context, csv_array1_file, csv_array2_file):
     ):
         csv_assets = [
             Asset(
-                data_uri=f"file://localhost{csv_fpath}",
+                data_uri=f"file://localhost/{csv_fpath}",
                 is_directory=False,
                 parameter="data_uris",
                 num=0,
@@ -132,10 +132,10 @@ def test_csv_arrays(context, csv_array1_file, csv_array2_file):
 
 
 def test_csv_arrays_from_uris(csv_array1_file, csv_array2_file):
-    array_adapter = CSVArrayAdapter.from_uris(f"file://localhost{csv_array1_file}")
+    array_adapter = CSVArrayAdapter.from_uris(f"file://localhost/{csv_array1_file}")
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr1).all()
 
-    array_adapter = CSVArrayAdapter.from_uris(f"file://localhost{csv_array2_file}")
+    array_adapter = CSVArrayAdapter.from_uris(f"file://localhost/{csv_array2_file}")
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr2).all()
