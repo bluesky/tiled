@@ -49,7 +49,7 @@ tiled serve catalog <DATABASE_URI> -r <DIRECTORY> [--public] [--api-key <SECRET>
 ```
 
 - The `<DATABASE_URI>` may be a SQLite file like `catalog.db` or a PostgreSQL
-  URI like `postgres+asyncpg://<USERNAME>:<PASSWORD>:<HOST>/<DATABASE>`.
+  URI like `postgresql+asyncpg://<USERNAME>:<PASSWORD>@<HOST>/<DATABASE>`.
 - The `<DIRECTORY>` instructs Tiled to enable an authorized clients to register
   files in that directory to be served. For security reasons, nothing outside
   of that directory will be possible to register. (Multiple `-r` arguments may
