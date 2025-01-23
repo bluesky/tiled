@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b15 (2024-01-23)
+
+### Maintenance
+
+- Adjust for backward-incompatible change in dependency Starlette 0.45.0.
+
 ## v0.1.0-b14 (2024-01-21)
 
 ### Changed
