@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b16 (2024-01-23)
+
+### Maintenance
+
+- Update GitHub Actions `upload-artifact` and `download-artifact`.
+
 ## v0.1.0-b15 (2024-01-23)
 
 ### Maintenance
