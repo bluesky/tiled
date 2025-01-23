@@ -78,7 +78,7 @@ async def client(request, tmpdir_module):
             yield client
     elif request.param == "sqlite":
         tree = in_memory(
-            writable_storage=tmpdir_module / "sqlite",
+            writable_storage=str(tmpdir_module / "sqlite"),
             metadata={"backend": request.param},
         )
         app = build_app(tree)

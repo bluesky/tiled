@@ -65,6 +65,7 @@ class DaskDatasetClient(Container):
             array_structure = array_structures[name]
             shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
+
             if optimize_wide_table and (
                 (not shape)  # empty
                 or (

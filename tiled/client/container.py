@@ -6,6 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -926,9 +927,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs=None,
     ):
         """
-        EXPERIMENTAL: Write a DataFrame.
-
-        This is subject to change or removal without notice
+        Write a DataFrame.
 
         Parameters
         ----------
@@ -941,7 +940,94 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+
+        See Also
+        --------
+        write_appendable_dataframe
         """
+        return self._write_dataframe(
+            dataframe,
+            None,  # default format, not appendable
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+
+    def write_appendable_dataframe(
+        self,
+        dataframe,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        table_name: Optional[str] = None,
+    ):
+        """
+        Write a DataFrame and store it such that rows can be appended to a partition.
+
+        Parameters
+        ----------
+        dataframe : pandas.DataFrame
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        table_name : str, optional
+            Optionally provide a name for the table this should be stored in.
+            By default a name unique to the schema will be chosen.
+
+        See Also
+        --------
+        write_dataframe
+        """
+        return self._write_dataframe(
+            dataframe,
+            "application/x-tiled-sql-table",
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            table_name=table_name,
+        )
+
+    def _write_dataframe(
+        self,
+        dataframe,
+        mimetype: str,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        table_name=None,
+    ):
+        """
+        This is called by write_dataframe and write_appendable_dataframe.
+
+        Parameters
+        ----------
+        dataframe : pandas.DataFrame
+        mimetype : str
+            Storage format which the server will be requested to use.
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        """
+        parameters = {}
+        if table_name is not None:
+            if mimetype != "application/x-tiled-sql-table":
+                raise ValueError(
+                    "table_name parameter cannot be set for non-SQL tables"
+                )
+            parameters["table_name"] = table_name
+
         import dask.dataframe
 
         from ..structures.table import TableStructure
@@ -952,13 +1038,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if isinstance(dataframe, dask.dataframe.DataFrame):
             structure = TableStructure.from_dask_dataframe(dataframe)
         elif isinstance(dataframe, dict):
+            # table as dict, e.g. {"a": [1,2,3], "b": [4,5,6]}
             structure = TableStructure.from_dict(dataframe)
         else:
             structure = TableStructure.from_pandas(dataframe)
         client = self.new(
             StructureFamily.table,
             [
-                DataSource(structure=structure, structure_family=StructureFamily.table),
+                DataSource(
+                    structure=structure,
+                    structure_family=StructureFamily.table,
+                    mimetype=mimetype,
+                    parameters=parameters,
+                )
             ],
             key=key,
             metadata=metadata,
