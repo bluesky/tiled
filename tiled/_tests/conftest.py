@@ -191,7 +191,7 @@ async def sqlite_with_example_data_adapter(request, tmpdir):
     if not SQLITE_DATABASE_PATH.is_file():
         raise pytest.skip(f"Could not find {SQLITE_DATABASE_PATH}")
     adapter = from_uri(
-        f"sqlite+aiosqlite:///{SQLITE_DATABASE_PATH}",
+        f"sqlite:///{SQLITE_DATABASE_PATH}",
         writable_storage=str(tmpdir),
     )
     yield adapter

@@ -98,7 +98,7 @@ def context(tmpdir_module):
             ],
         },
         "database": {
-            "uri": "sqlite+aiosqlite://",  # in-memory
+            "uri": "sqlite://",  # in-memory
         },
         "access_control": {
             "access_policy": "tiled.access_policies:SimpleAccessPolicy",
@@ -378,14 +378,14 @@ def test_service_principal_access(tmpdir):
             "tiled_admins": [{"id": "admin", "provider": "toy"}],
         },
         "database": {
-            "uri": f"sqlite+aiosqlite:///{tmpdir}/auth.db",
+            "uri": f"sqlite:///{tmpdir}/auth.db",
             "init_if_not_exists": True,
         },
         "trees": [
             {
                 "tree": "catalog",
                 "args": {
-                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": f"file://localhost{tmpdir}/data",
                     "init_if_not_exists": True,
                 },

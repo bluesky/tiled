@@ -32,7 +32,7 @@ def config(tmpdir):
     - a unique temporary sqlite database location
     - a unique nested dict instance that the test can mutate
     """
-    database_uri = f"sqlite+aiosqlite:///{tmpdir}/tiled.sqlite"
+    database_uri = f"sqlite:///{tmpdir}/tiled.sqlite"
     subprocess.run(
         [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
         check=True,

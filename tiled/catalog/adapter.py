@@ -1354,7 +1354,7 @@ def in_memory(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
 ):
-    uri = "sqlite+aiosqlite:///:memory:"
+    uri = "sqlite:///:memory:"
     return from_uri(
         uri=uri,
         metadata=metadata,
