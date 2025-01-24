@@ -10,6 +10,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Refactor and standardize Adapter API: implement from_uris and from_catalog
   classmethods for instantiation from files and registered Tiled nodes, respectively.
 - Refactor CSVAdapter to allow pd.read_csv kwargs
+- Removed `tiled.adapters.zarr.read_zarr` utility function.
 
 ## v0.1.0-b16 (2024-01-23)
 
