@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Added `.get` methods on TableAdapter and ParquetDatasetAdapter
+- Ability to read string-valued columns of data frames as arrays
+
 ### Maintenance
 
 - Make depedencies shared by client and server into core dependencies.
