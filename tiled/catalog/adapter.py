@@ -484,10 +484,8 @@ class CatalogNodeAdapter:
                 ndslice = deserialize_ndslice(data_source.parameters['slices'][0])
 
                 adapter = ArrayAdapter.from_array(adapter.read(slice=ndslice))
-
-                breakpoint()
             return adapter
-        parameters = collections.defaultdict(list)
+
         for asset in data_source.assets:
             if asset.parameter is None:
                 continue
@@ -511,17 +509,6 @@ class CatalogNodeAdapter:
                         f"Refusing to serve {asset.data_uri} because it is outside "
                         "the readable storage area for this server."
                     )
-            if asset.num is None:
-                parameters[asset.parameter] = asset.data_uri
-            else:
-                parameters[asset.parameter].append(asset.data_uri)
-        # breakpoint()
-        adapter_kwargs = dict(parameters)
-        adapter_kwargs.update(data_source.parameters)
-        adapter_kwargs["specs"] = self.node.specs
-        adapter_kwargs["metadata"] = self.node.metadata_
-        adapter_kwargs["structure"] = data_source.structure
-        adapter_kwargs["access_policy"] = self.access_policy
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_class.from_catalog,
