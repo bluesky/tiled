@@ -23,24 +23,6 @@ from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
-def read_zarr(
-    data_uri: str,
-    structure: Optional[ArrayStructure] = None,
-    **kwargs: Any,
-) -> Union["ZarrGroupAdapter", ArrayAdapter]:
-    filepath = path_from_uri(data_uri)
-    zarr_obj = zarr.open(filepath)  # Group or Array
-    adapter: Union[ZarrGroupAdapter, ArrayAdapter]
-    if isinstance(zarr_obj, zarr.hierarchy.Group):
-        adapter = ZarrGroupAdapter(zarr_obj, **kwargs)
-    else:
-        if structure is None:
-            adapter = ZarrArrayAdapter.from_array(zarr_obj, **kwargs)
-        else:
-            adapter = ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
-    return adapter
-
-
 class ZarrArrayAdapter(ArrayAdapter):
     """ """
 
