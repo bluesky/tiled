@@ -94,26 +94,26 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-INIT_STORAGE = OneShotCachedMap(
+STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
-        ).ZarrArrayAdapter.init_storage,
+        ).ZarrArrayAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "...adapters.awkward_buffers", __name__
-        ).AwkwardBuffersAdapter.init_storage,
+        ).AwkwardBuffersAdapter,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.parquet", __name__
-        ).ParquetDatasetAdapter.init_storage,
+        ).ParquetDatasetAdapter,
         "text/csv": lambda: importlib.import_module(
             "...adapters.csv", __name__
-        ).CSVAdapter.init_storage,
+        ).CSVAdapter,
         SPARSE_BLOCKS_PARQUET_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sparse_blocks_parquet", __name__
-        ).SparseBlocksParquetAdapter.init_storage,
+        ).SparseBlocksParquetAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.arrow", __name__
-        ).ArrowAdapter.init_storage,
+        ).ArrowAdapter,
     }
 )
 
@@ -443,19 +443,16 @@ class CatalogNodeAdapter:
                             break
                     return adapter
             return None
-        return STRUCTURES[node.structure_family](
-            self.context, node, access_policy=self.access_policy
-        )
+        return STRUCTURES[node.structure_family](self.context, node)
 
     async def get_adapter(self):
         (data_source,) = self.data_sources
         try:
-            adapter_factory = self.context.adapters_by_mimetype[data_source.mimetype]
+            adapter_class = self.context.adapters_by_mimetype[data_source.mimetype]
         except KeyError:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
-        parameters = collections.defaultdict(list)
         for asset in data_source.assets:
             if asset.parameter is None:
                 continue
@@ -465,8 +462,7 @@ class CatalogNodeAdapter:
                     f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
                 )
             if scheme == "file":
-                # Protect against misbehaving clients reading from unintended
-                # parts of the filesystem.
+                # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
                 for readable_storage in self.context.readable_storage:
                     if Path(
@@ -480,18 +476,13 @@ class CatalogNodeAdapter:
                         f"Refusing to serve {asset.data_uri} because it is outside "
                         "the readable storage area for this server."
                     )
-            if asset.num is None:
-                parameters[asset.parameter] = asset.data_uri
-            else:
-                parameters[asset.parameter].append(asset.data_uri)
-        adapter_kwargs = dict(parameters)
-        adapter_kwargs.update(data_source.parameters)
-        adapter_kwargs["specs"] = self.node.specs
-        adapter_kwargs["metadata"] = self.node.metadata_
-        adapter_kwargs["structure"] = data_source.structure
-        adapter_kwargs["access_policy"] = self.access_policy
         adapter = await anyio.to_thread.run_sync(
-            partial(adapter_factory, **adapter_kwargs)
+            partial(
+                adapter_class.from_catalog,
+                data_source,
+                self.node,
+                **data_source.parameters,
+            ),
         )
         for query in self.queries:
             adapter = adapter.search(query)
@@ -647,7 +638,7 @@ class CatalogNodeAdapter:
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
-                    if data_source.mimetype not in INIT_STORAGE:
+                    if data_source.mimetype not in STORAGE_ADAPTERS_BY_MIMETYPE:
                         raise HTTPException(
                             status_code=415,
                             detail=(
@@ -655,9 +646,9 @@ class CatalogNodeAdapter:
                                 "is not one that the Tiled server knows how to write."
                             ),
                         )
-                    init_storage = INIT_STORAGE[data_source.mimetype]
+                    adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
                     assets = await ensure_awaitable(
-                        init_storage, data_uri, data_source.structure
+                        adapter.init_storage, data_uri, data_source.structure
                     )
                     data_source.assets.extend(assets)
                 else:

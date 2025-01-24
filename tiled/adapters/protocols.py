@@ -19,6 +19,13 @@ from .awkward_directory_container import DirectoryContainer
 
 
 class BaseAdapter(Protocol):
+    # @abstractmethod
+    # @classmethod
+    # def from_catalog(
+    #     cls, data_source: DataSource, node: Node, /, **kwargs: Optional[Any]
+    # ) -> "BaseAdapter":
+    #     pass
+
     @abstractmethod
     def metadata(self) -> JSON:
         pass

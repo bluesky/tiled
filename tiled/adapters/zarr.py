@@ -10,14 +10,15 @@ import zarr.storage
 from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
+from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..server.schemas import Asset
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
-from .protocols import AccessPolicy
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -27,18 +28,6 @@ def read_zarr(
     structure: Optional[ArrayStructure] = None,
     **kwargs: Any,
 ) -> Union["ZarrGroupAdapter", ArrayAdapter]:
-    """
-
-    Parameters
-    ----------
-    data_uri :
-    structure :
-    kwargs :
-
-    Returns
-    -------
-
-    """
     filepath = path_from_uri(data_uri)
     zarr_obj = zarr.open(filepath)  # Group or Array
     adapter: Union[ZarrGroupAdapter, ArrayAdapter]
@@ -90,12 +79,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         ]
 
     def _stencil(self) -> Tuple[slice, ...]:
-        """
-        Trims overflow because Zarr always has equal-sized chunks.
-        Returns
-        -------
-
-        """
+        """Trim overflow because Zarr always has equal-sized chunks."""
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
     def read(
@@ -264,7 +248,6 @@ class ZarrGroupAdapter(
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -274,75 +257,29 @@ class ZarrGroupAdapter(
         structure :
         metadata :
         specs :
-        access_policy :
         """
         if structure is not None:
             raise ValueError(
                 f"structure is expected to be None for containers, not {structure}"
             )
         self._node = node
-        self._access_policy = access_policy
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         super().__init__()
 
     def __repr__(self) -> str:
-        """
-
-        Returns
-        -------
-
-        """
         return node_repr(self, list(self))
 
-    @property
-    def access_policy(self) -> Optional[AccessPolicy]:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._access_policy
-
     def metadata(self) -> Any:
-        """
-
-        Returns
-        -------
-
-        """
         return self._node.attrs
 
     def structure(self) -> None:
-        """
-
-        Returns
-        -------
-
-        """
         return None
 
     def __iter__(self) -> Iterator[Any]:
-        """
-
-        Returns
-        -------
-
-        """
         yield from self._node
 
     def __getitem__(self, key: str) -> Union[ArrayAdapter, "ZarrGroupAdapter"]:
-        """
-
-        Parameters
-        ----------
-        key :
-
-        Returns
-        -------
-
-        """
         value = self._node[key]
         if isinstance(value, zarr.hierarchy.Group):
             return ZarrGroupAdapter(value)
@@ -350,39 +287,15 @@ class ZarrGroupAdapter(
             return ZarrArrayAdapter.from_array(value)
 
     def __len__(self) -> int:
-        """
-
-        Returns
-        -------
-
-        """
         return len(self._node)
 
     def keys(self) -> KeysView:  # type: ignore
-        """
-
-        Returns
-        -------
-
-        """
         return KeysView(lambda: len(self), self._keys_slice)
 
     def values(self) -> ValuesView:  # type: ignore
-        """
-
-        Returns
-        -------
-
-        """
         return ValuesView(lambda: len(self), self._items_slice)
 
     def items(self) -> ItemsView:  # type: ignore
-        """
-
-        Returns
-        -------
-
-        """
         return ItemsView(lambda: len(self), self._items_slice)
 
     def search(self, query: Any) -> None:
@@ -394,7 +307,7 @@ class ZarrGroupAdapter(
 
         Returns
         -------
-                Return a Tree with a subset of the mapping.
+            A Tree with a subset of the mapping.
 
         """
         raise NotImplementedError
@@ -453,14 +366,45 @@ class ZarrGroupAdapter(
         return items[start:stop]
 
     def inlined_contents_enabled(self, depth: int) -> bool:
-        """
-
-        Parameters
-        ----------
-        depth :
-
-        Returns
-        -------
-
-        """
         return depth <= INLINED_DEPTH
+
+
+class ZarrAdapter:
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
+        zarr_obj = zarr.open(
+            path_from_uri(data_source.assets[0].data_uri)
+        )  # Group or Array
+        if isinstance(zarr_obj, zarr.hierarchy.Group):
+            return ZarrGroupAdapter(
+                zarr_obj,
+                structure=data_source.structure,
+                metadata=node.metadata_,
+                specs=node.specs,
+                **kwargs,
+            )
+        else:
+            return ZarrArrayAdapter(
+                zarr_obj,
+                structure=data_source.structure,
+                metadata=node.metadata_,
+                specs=node.specs,
+                **kwargs,
+            )
+
+    @classmethod
+    def from_uris(
+        cls, data_uri: str, **kwargs: Optional[Any]
+    ) -> Union[ZarrArrayAdapter, ZarrGroupAdapter]:
+        zarr_obj = zarr.open(path_from_uri(data_uri))  # Group or Array
+        if isinstance(zarr_obj, zarr.hierarchy.Group):
+            return ZarrGroupAdapter(zarr_obj, **kwargs)
+        else:
+            structure = ArrayStructure.from_array(zarr_obj)
+            return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)

@@ -1,18 +1,19 @@
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import pandas
 import pyarrow
 import pyarrow.feather as feather
 import pyarrow.fs
 
+from ..catalog.orm import Node
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
-from .protocols import AccessPolicy
+from .utils import init_adapter_from_catalog
 
 
 class ArrowAdapter:
@@ -26,7 +27,7 @@ class ArrowAdapter:
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
+        **kwargs: Optional[Any],
     ) -> None:
         """
 
@@ -36,7 +37,6 @@ class ArrowAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
@@ -46,15 +46,18 @@ class ArrowAdapter:
             structure = TableStructure.from_arrow_table(table)
         self._structure = structure
         self.specs = list(specs or [])
-        self.access_policy = access_policy
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> "ArrowAdapter":
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         return self._metadata
 
     @classmethod
@@ -84,25 +87,9 @@ class ArrowAdapter:
         return assets
 
     def structure(self) -> TableStructure:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
-        """
-
-        Parameters
-        ----------
-        key :
-
-        Returns
-        -------
-
-        """
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)
@@ -153,7 +140,6 @@ class ArrowAdapter:
         structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "ArrowAdapter":
         """
 
@@ -163,7 +149,6 @@ class ArrowAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -174,7 +159,6 @@ class ArrowAdapter:
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def __getitem__(self, key: str) -> ArrayAdapter:
@@ -192,12 +176,6 @@ class ArrowAdapter:
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
-        """
-
-        Returns
-        -------
-
-        """
         yield from (
             (key, ArrayAdapter.from_array(self.read([key])[key].values))
             for key in self._structure.columns

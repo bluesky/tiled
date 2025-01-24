@@ -2,18 +2,19 @@ import builtins
 import math
 import warnings
 from abc import abstractmethod
-from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 from ndindex import ndindex
 from numpy._typing import NDArray
 
+from ..catalog.orm import Node
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
-from .protocols import AccessPolicy
+from .utils import init_adapter_from_catalog
 
 
 def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
@@ -66,48 +67,15 @@ class FileSequenceAdapter:
     When subclassing, define the `_load_from_files` method specific for a particular file type.
     """
 
-    structure_family = "array"
-
-    @classmethod
-    def from_uris(
-        cls,
-        data_uris: List[str],
-        structure: Optional[ArrayStructure] = None,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
-    ) -> "FileSequenceAdapter":
-        """
-
-        Parameters
-        ----------
-        data_uris :
-        structure :
-        metadata :
-        specs :
-        access_policy :
-
-        Returns
-        -------
-
-        """
-
-        return cls(
-            filepaths=[path_from_uri(data_uri) for data_uri in data_uris],
-            structure=structure,
-            specs=specs,
-            metadata=metadata,
-            access_policy=access_policy,
-        )
+    structure_family = StructureFamily.array
 
     def __init__(
         self,
-        filepaths: List[Path],
+        data_uris: Iterable[str],
         *,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -117,13 +85,11 @@ class FileSequenceAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
-        self.filepaths = filepaths
+        self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         # TODO Check shape, chunks against reality.
         self.specs = specs or []
         self._provided_metadata = metadata or {}
-        self.access_policy = access_policy
         if structure is None:
             dat0 = self._load_from_files(0)
             shape = (len(self.filepaths), *dat0.shape[1:])
@@ -135,6 +101,20 @@ class FileSequenceAdapter:
                 data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
         self._structure = structure
+
+    @classmethod
+    def from_uris(cls, *data_uris: str) -> "FileSequenceAdapter":
+        return cls(data_uris=data_uris)
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> "FileSequenceAdapter":
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     @abstractmethod
     def _load_from_files(

@@ -33,7 +33,7 @@ async def test_xdi_round_trip(tmpdir):
                     "readable_storage": [tmpdir / "files"],
                     "init_if_not_exists": True,
                     "adapters_by_mimetype": {
-                        "application/x-xdi": "tiled.examples.xdi:read_xdi"
+                        "application/x-xdi": "tiled.examples.xdi:XDIAdapter"
                     },
                 },
             }
@@ -46,7 +46,7 @@ async def test_xdi_round_trip(tmpdir):
         await register(
             client,
             tmpdir / "files",
-            adapters_by_mimetype={"application/x-xdi": "tiled.examples.xdi:read_xdi"},
+            adapters_by_mimetype={"application/x-xdi": "tiled.examples.xdi:XDIAdapter"},
             mimetypes_by_file_ext={".xdi": "application/x-xdi"},
         )
         client["example"].export(str(tmpdir / "exported.xdi"))

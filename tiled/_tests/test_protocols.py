@@ -37,7 +37,6 @@ class CustomArrayAdapter:
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         self._array = array
         self._structure = structure
@@ -109,13 +108,11 @@ class CustomAwkwardAdapter:
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         self.container = container
         self._metadata = metadata or {}
         self._structure = structure
         self._specs = list(specs or [])
-        self.access_policy = access_policy
 
     def structure(self) -> AwkwardStructure:
         return self._structure
@@ -188,7 +185,6 @@ class CustomSparseAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
         Construct from blocks with coords given in block-local reference frame.
@@ -198,13 +194,11 @@ class CustomSparseAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self.blocks = blocks
         self._metadata = metadata or {}
         self._structure = structure
         self._specs = specs or []
-        self.access_policy = access_policy
 
         all_coords = [[1], [1]]
         all_data = [[1], [1]]
@@ -277,7 +271,6 @@ class CustomTableAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -287,13 +280,11 @@ class CustomTableAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self._metadata = metadata or {}
         self._partitions = list(partitions)
         self._structure = structure
         self._specs = specs or []
-        self.access_policy = access_policy
 
     def structure(self) -> TableStructure:
         return self._structure

@@ -1,15 +1,15 @@
-from typing import Any
+from typing import Any, Optional
 
 import dask.dataframe
 import pandas
 
-from ..adapters.mapping import MapAdapter
+from ..catalog.orm import Node
+from ..structures.data_source import DataSource
 from .dataframe import DataFrameAdapter
+from .mapping import MapAdapter
 
 
 class ExcelAdapter(MapAdapter):
-    """ """
-
     @classmethod
     def from_file(cls, file: Any, **kwargs: Any) -> "ExcelAdapter":
         """
@@ -56,7 +56,7 @@ class ExcelAdapter(MapAdapter):
         return cls(mapping, **kwargs)
 
     @classmethod
-    def from_uri(cls, data_uri: str, **kwargs: Any) -> "ExcelAdapter":
+    def from_uris(cls, data_uri: str, **kwargs: Any) -> "ExcelAdapter":
         """
         Read the sheets in an Excel file.
 
@@ -81,3 +81,20 @@ class ExcelAdapter(MapAdapter):
         """
         file = pandas.ExcelFile(data_uri)
         return cls.from_file(file)
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> "ExcelAdapter":
+        data_uri = data_source.assets[0].data_uri
+        return cls.from_uris(
+            data_uri,
+            structure=data_source.structure,
+            metadata=node.metadata_,
+            specs=node.specs,
+            **kwargs,
+        )

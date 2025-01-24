@@ -10,7 +10,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from ..type_aliases import JSON, NDSlice
 from .array import slice_and_shape_from_block_and_chunks
-from .protocols import AccessPolicy
 
 
 class COOAdapter:
@@ -26,7 +25,6 @@ class COOAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "COOAdapter":
         """
         Simplest constructor. Single chunk from coords, data arrays.
@@ -39,7 +37,6 @@ class COOAdapter:
         dims :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -56,7 +53,6 @@ class COOAdapter:
             structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     @classmethod
@@ -67,7 +63,6 @@ class COOAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "COOAdapter":
         """
         Construct from sparse.COO object.
@@ -77,7 +72,6 @@ class COOAdapter:
         dims :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -90,7 +84,6 @@ class COOAdapter:
             dims=dims,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     @classmethod
@@ -103,7 +96,6 @@ class COOAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "COOAdapter":
         """
         Construct from blocks with coords given in global reference frame.
@@ -115,7 +107,6 @@ class COOAdapter:
         dims :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -140,7 +131,6 @@ class COOAdapter:
             structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def __init__(
@@ -150,7 +140,6 @@ class COOAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
         Construct from blocks with coords given in block-local reference frame.
@@ -160,13 +149,11 @@ class COOAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self.blocks = blocks
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = specs or []
-        self.access_policy = access_policy
 
     def metadata(self) -> JSON:
         """

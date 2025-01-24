@@ -12,6 +12,7 @@ from starlette.status import HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.tiff import TiffAdapter
+from ..adapters.utils import init_adapter_from_catalog
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.register import (
@@ -203,17 +204,29 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
     with open(metadata_filepath, "w") as file:
         yaml.dump(metadata, file)
 
-    def read_tiff_with_yaml_metadata(image_uri, metadata_uri, metadata=None, **kwargs):
-        with open(path_from_uri(metadata_uri)) as file:
-            metadata = yaml.safe_load(file)
-        return TiffAdapter(image_uri, metadata=metadata, **kwargs)
+    class TiffAdapterWithSidecar(TiffAdapter):
+        def __init__(self, image_uri, metadata_uri, metadata=None, **kwargs):
+            with open(path_from_uri(metadata_uri)) as file:
+                metadata = yaml.safe_load(file)
+
+            super().__init__(image_uri, metadata=metadata, **kwargs)
+
+        @classmethod
+        def from_catalog(
+            cls,
+            data_source,
+            node,
+            /,
+            **kwargs,
+        ):
+            return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     catalog = in_memory(
         writable_storage=tmpdir,
-        adapters_by_mimetype={MIMETYPE: read_tiff_with_yaml_metadata},
+        adapters_by_mimetype={MIMETYPE: TiffAdapterWithSidecar},
     )
     with Context.from_app(build_app(catalog)) as context:
-        adapter = read_tiff_with_yaml_metadata(
+        adapter = TiffAdapterWithSidecar(
             ensure_uri(image_filepath), ensure_uri(metadata_filepath)
         )
         client = from_context(context)
@@ -295,7 +308,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
     )
     catalog = in_memory(writable_storage=tmpdir)
     with Context.from_app(build_app(catalog)) as context:
-        adapter = HDF5Adapter.from_uri(ensure_uri(filepath))
+        adapter = HDF5Adapter.from_uris(ensure_uri(filepath))
         client = from_context(context)
         client.new(
             key="VDS",

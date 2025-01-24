@@ -4,13 +4,15 @@ from typing import Any, List, Optional, Union
 import dask.dataframe
 import pandas
 
+from ..catalog.orm import Node
 from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .dataframe import DataFrameAdapter
-from .protocols import AccessPolicy
+from .utils import init_adapter_from_catalog
 
 
 class ParquetDatasetAdapter:
@@ -24,7 +26,6 @@ class ParquetDatasetAdapter:
         structure: TableStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -34,32 +35,30 @@ class ParquetDatasetAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         # TODO Store data_uris instead and generalize to non-file schemes.
+        if isinstance(data_uris, str):
+            data_uris = [data_uris]
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
-        self.access_policy = access_policy
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> "ParquetDatasetAdapter":
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         return self._metadata
 
     @property
     def dataframe_adapter(self) -> DataFrameAdapter:
-        """
-
-        Returns
-        -------
-
-        """
         partitions = []
         for path in self._partition_paths:
             if not Path(path).exists():

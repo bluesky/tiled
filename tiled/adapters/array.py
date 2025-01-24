@@ -6,7 +6,6 @@ from numpy.typing import NDArray
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON, NDSlice
-from .protocols import AccessPolicy
 
 
 class ArrayAdapter:
@@ -33,7 +32,6 @@ class ArrayAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -43,7 +41,6 @@ class ArrayAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self._array = array
         self._structure = structure
@@ -60,7 +57,6 @@ class ArrayAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "ArrayAdapter":
         """
 
@@ -72,7 +68,6 @@ class ArrayAdapter:
         dims :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -86,7 +81,6 @@ class ArrayAdapter:
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def __repr__(self) -> str:
@@ -100,30 +94,12 @@ class ArrayAdapter:
 
     @property
     def dims(self) -> Optional[Tuple[str, ...]]:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure.dims
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         return self._metadata
 
     def structure(self) -> ArrayStructure:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure
 
     def read(
