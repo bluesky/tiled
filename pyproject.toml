@@ -14,8 +14,9 @@ maintainers = [
 ]
 requires-python = ">=3.9"
 
-# All dependencies are optional; it depends on whether you are running
-# a client or server (or both) and what data structures you care about.
+# Dependencies common to both server and client; additional dependencies are
+# available depending on whether you are running client/server/both, and what
+# data structures you care about.
 # Use pip install tiled[all] to get everything.
 dependencies = [
     "httpx >=0.20.0,!=0.23.1",
