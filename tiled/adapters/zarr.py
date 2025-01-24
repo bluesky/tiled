@@ -363,7 +363,7 @@ class ZarrAdapter:
         zarr_obj = zarr.open(
             path_from_uri(data_source.assets[0].data_uri)
         )  # Group or Array
-        if isinstance(zarr_obj, zarr.hierarchy.Group):
+        if node.structure_family == StructureFamily.container:
             return ZarrGroupAdapter(
                 zarr_obj,
                 structure=data_source.structure,
