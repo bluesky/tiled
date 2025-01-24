@@ -96,7 +96,7 @@ For non-interactive authentication, use an API key.
 
 
 def from_context(
-    context,
+    context: Context,
     structure_clients="numpy",
     node_path_parts=None,
     include_data_sources=False,
@@ -126,8 +126,8 @@ def from_context(
     # 2. If there are cached valid credentials for this server, use them.
     # 3. If not, and the server requires authentication, prompt for authentication.
     if context.api_key is None:
-        auth_is_required = context.server_info["authentication"]["required"]
-        has_providers = len(context.server_info["authentication"]["providers"]) > 0
+        auth_is_required = context.server_info.authentication.required
+        has_providers = len(context.server_info.authentication.providers) > 0
         if auth_is_required and not has_providers:
             raise RuntimeError(
                 """This server requires API key authentication.
