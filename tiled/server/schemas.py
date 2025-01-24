@@ -272,43 +272,6 @@ class DeviceCode(pydantic.BaseModel):
     grant_type: str
 
 
-class AuthenticationMode(str, enum.Enum):
-    password = "password"
-    external = "external"
-
-
-class AboutAuthenticationProvider(pydantic.BaseModel):
-    provider: str
-    mode: AuthenticationMode
-    links: Dict[str, str]
-    confirmation_message: Optional[str] = None
-
-
-class AboutAuthenticationLinks(pydantic.BaseModel):
-    whoami: str
-    apikey: str
-    refresh_session: str
-    revoke_session: str
-    logout: str
-
-
-class AboutAuthentication(pydantic.BaseModel):
-    required: bool
-    providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks] = None
-
-
-class About(pydantic.BaseModel):
-    api_version: int
-    library_version: str
-    formats: Dict[str, List[str]]
-    aliases: Dict[str, Dict[str, List[str]]]
-    queries: List[str]
-    authentication: AboutAuthentication
-    links: Dict[str, str]
-    meta: Dict
-
-
 class PrincipalType(str, enum.Enum):
     user = "user"
     service = "service"
