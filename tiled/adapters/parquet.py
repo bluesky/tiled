@@ -11,9 +11,9 @@ from ..structures.data_source import DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
+from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 from .utils import init_adapter_from_catalog
-from .array import ArrayAdapter
 
 
 class ParquetDatasetAdapter:
@@ -164,7 +164,6 @@ class ParquetDatasetAdapter:
 
         """
         return self._structure
-
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         return self.dataframe_adapter.get(key)
