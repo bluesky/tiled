@@ -479,8 +479,10 @@ class CatalogNodeAdapter:
                     node = (await db.execute(statement)).scalar()
                 if node is None:
                     raise RuntimeError("Can not find the root node for %s", asset.data_uri)
-                catalog_adapter = await STRUCTURES[node.structure_family](self.context, node).lookup_adapter(rest)
-                adapter = await catalog_adapter.get_adapter()
+                adapter = await STRUCTURES[node.structure_family](self.context, node).lookup_adapter(rest)
+                if isinstance(adapter, CatalogNodeAdapter):
+                    adapter = await adapter.get_adapter()
+
                 ndslice = deserialize_ndslice(data_source.parameters['slices'][0])
 
                 adapter = ArrayAdapter.from_array(adapter.read(slice=ndslice))
