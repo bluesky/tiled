@@ -182,7 +182,7 @@ In a scaled (multi-process) deployment, when Tiled is configured with an
 Authenticator, a persistent database must be provided via configuration like
 
 database:
-  uri: sqlite+aiosqlite:////path/to/database.sqlite
+  uri: sqlite:////path/to/database.sqlite
 
 """
                 )
@@ -483,7 +483,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in memory. Horizontally scaled deployments
             # must specify a persistent database.
-            settings.database_uri = settings.database_uri or "sqlite+aiosqlite://"
+            settings.database_uri = settings.database_uri or "sqlite://"
         return settings
 
     async def startup_event():
