@@ -1,12 +1,16 @@
 import collections
 import collections.abc
+import copy
 import functools
 import importlib
 import itertools
+from ndindex import ndindex
 import time
 import warnings
 from dataclasses import asdict
 from urllib.parse import parse_qs, urlparse
+from typing import Iterable
+from ..type_aliases import NDSlice
 
 import entrypoints
 import httpx
@@ -16,7 +20,7 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import DataSource
+from ..structures.data_source import Asset, DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
@@ -792,6 +796,48 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # to bother with the return type?
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
+    
+    def create_array_view(self, key, array_link='/X/Y/a1', slices: Iterable[NDSlice] =[(1, ..., slice(0, 5, 2))]):
+
+        from ..structures.array import ArrayStructure, BuiltinDtype
+
+        endpoint = self.uri.split('metadata')[0] + "metadata" + array_link
+        document = handle_error(self.context.http_client.get(endpoint)).json()
+        input_structure = document['data']['attributes']['structure']
+        out_shape = ndindex(slices[0]).newshape(input_structure['shape'])
+        out_chunks = [[i] for i in out_shape]    # No chunking, TODO: more general case
+        # breakpoint()
+
+        out_structure = copy.deepcopy(input_structure)
+        out_structure['shape'] = out_shape
+        out_structure['chunks'] = out_chunks
+        structure = ArrayStructure.from_json(out_structure)
+
+        def serialize_ndslice(ndslice):
+            result = []
+            for s in ndslice:
+                if isinstance(s, slice):
+                    result.append({"start": s.start, "stop": s.stop, "step": s.step})
+                else:
+                    result.append(s)
+            return result
+
+        assets = [Asset(data_uri=f"tiled://{array_link}", is_directory=False, parameter='data_uri')]
+        client = self.new(
+            StructureFamily.array,
+            [
+                DataSource(structure=structure, structure_family=StructureFamily.array, management="view",
+                           assets = assets,
+                           parameters = {"slices": [serialize_ndslice(s) for s in slices] },
+                           mimetype="application/x-array-view"),
+            ],
+            key=key,
+            metadata={},
+            specs=[],
+        )
+        return client
+    
+
 
     def write_awkward(
         self,

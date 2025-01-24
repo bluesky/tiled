@@ -61,6 +61,7 @@ from ..mimetypes import (
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     ZARR_MIMETYPE,
 )
+from ..adapters.array import ArrayAdapter
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
@@ -404,6 +405,7 @@ class CatalogNodeAdapter:
         if not segments:
             return self
         *ancestors, key = segments
+
         if self.conditions and len(segments) > 1:
             # There are some conditions (i.e. WHERE clauses) applied to
             # this node, either via user search queries or via access
@@ -453,13 +455,46 @@ class CatalogNodeAdapter:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
+        if data_source.management == Management.view:
+            # return adapter
+            for asset in data_source.assets:
+                scheme = urlparse(asset.data_uri).scheme
+                if scheme != "tiled":
+                    raise ValueError
+                segments = asset.data_uri.lstrip("tiled://").split('/')
+                root, *rest = segments
+
+                def deserialize_ndslice(ser_ndslice):
+                    result = []
+                    for s in ser_ndslice:
+                        if isinstance(s, dict):
+                            result.append(slice(s.get("start"), s.get('stop'), s.get('step')))
+                        else:
+                            result.append(s)
+                    return tuple(result)
+
+                # Get the root node and a CatalogNodeAdapter for the tiled://... address
+                statement = self.apply_conditions(select(orm.Node)).filter(orm.Node.ancestors == []).filter(orm.Node.key == root)
+                async with self.context.session() as db:
+                    node = (await db.execute(statement)).scalar()
+                if node is None:
+                    raise RuntimeError("Can not find the root node for %s", asset.data_uri)
+                catalog_adapter = await STRUCTURES[node.structure_family](self.context, node).lookup_adapter(rest)
+                adapter = await catalog_adapter.get_adapter()
+                ndslice = deserialize_ndslice(data_source.parameters['slices'][0])
+
+                adapter = ArrayAdapter.from_array(adapter.read(slice=ndslice))
+
+                breakpoint()
+            return adapter
+        parameters = collections.defaultdict(list)
         for asset in data_source.assets:
             if asset.parameter is None:
                 continue
             scheme = urlparse(asset.data_uri).scheme
-            if scheme != "file":
+            if scheme not in ("file", "tiled"):
                 raise NotImplementedError(
-                    f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
+                    f"Only 'file://...' scheme URLs and Tiled views are currently supported, not {asset.data_uri}"
                 )
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
@@ -476,6 +511,17 @@ class CatalogNodeAdapter:
                         f"Refusing to serve {asset.data_uri} because it is outside "
                         "the readable storage area for this server."
                     )
+            if asset.num is None:
+                parameters[asset.parameter] = asset.data_uri
+            else:
+                parameters[asset.parameter].append(asset.data_uri)
+        # breakpoint()
+        adapter_kwargs = dict(parameters)
+        adapter_kwargs.update(data_source.parameters)
+        adapter_kwargs["specs"] = self.node.specs
+        adapter_kwargs["metadata"] = self.node.metadata_
+        adapter_kwargs["structure"] = data_source.structure
+        adapter_kwargs["access_policy"] = self.access_policy
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_class.from_catalog,
@@ -627,14 +673,14 @@ class CatalogNodeAdapter:
                 raise
             await db.refresh(node)
             for data_source in data_sources:
-                if data_source.management != Management.external:
+                if data_source.management not in (Management.external, Management.view):
                     if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
                     if data_source.mimetype is None:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
                             data_source.structure_family
                         ]
-                    data_source.parameters = {}
+                    # data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
@@ -1062,6 +1108,21 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             db.add(data_source)
             await db.commit()
             return structure_dict
+
+
+class CatalogArrayViewAdapter(CatalogNodeAdapter):
+    async def read(self, *args, **kwargs):
+        if not self.data_sources:
+            fields = kwargs.get("fields")
+            if fields:
+                return self.search(KeysFilter(fields))
+            return self
+        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+
+    async def read_block(self, *args, **kwargs):
+        return await ensure_awaitable(
+            (await self.get_adapter()).read_block, *args, **kwargs
+        )
 
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):

@@ -10,6 +10,7 @@ class Management(str, enum.Enum):
     immutable = "immutable"
     locked = "locked"
     writable = "writable"
+    view = "view"
 
 
 @dataclasses.dataclass
