@@ -73,8 +73,8 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        tiled catalog upgrade-database sqlite+aiosqlite:///tiled_test_db_sqlite.db
-        tiled catalog upgrade-database postgresql+asyncpg://postgres:secret@localhost:5432/tiled-example-data
+        tiled catalog upgrade-database sqlite:///tiled_test_db_sqlite.db
+        tiled catalog upgrade-database postgresql://postgres:secret@localhost:5432/tiled-example-data
 
     - name: Test with pytest
       shell: bash -l {0}
@@ -84,7 +84,7 @@ jobs:
         coverage report
       env:
         # Provide test suite with a PostgreSQL database to use.
-        TILED_TEST_POSTGRESQL_URI: postgresql+asyncpg://postgres:secret@localhost:5432
+        TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
         # Opt in to LDAPAuthenticator tests.
         TILED_TEST_LDAP: 1
 

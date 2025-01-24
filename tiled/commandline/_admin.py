@@ -29,8 +29,10 @@ def initialize_database(database_uri: str):
     )
     from ..utils import ensure_specified_sql_driver
 
+    database_uri = ensure_specified_sql_driver(database_uri)
+
     async def do_setup():
-        engine = create_async_engine(ensure_specified_sql_driver(database_uri))
+        engine = create_async_engine(database_uri)
         redacted_url = engine.url._replace(password="[redacted]")
         try:
             await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)

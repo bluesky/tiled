@@ -181,7 +181,7 @@ def test_full_text_after_migration():
     with sqlite_from_dump("before_creating_fts5_virtual_table.sql") as database_path:
         subprocess.check_call(
             [sys.executable]
-            + f"-m tiled catalog upgrade-database sqlite+aiosqlite:///{database_path}".split()
+            + f"-m tiled catalog upgrade-database sqlite:///{database_path}".split()
         )
         catalog = from_uri(database_path)
         app = build_app(catalog)

@@ -388,14 +388,14 @@ async def test_access_control(tmpdir):
             ],
         },
         "database": {
-            "uri": "sqlite+aiosqlite://",  # in-memory
+            "uri": "sqlite://",  # in-memory
         },
         "trees": [
             {
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },
@@ -536,14 +536,14 @@ async def test_constraints_on_parameter_and_num(a, assets):
 async def test_init_db_logging(tmpdir, caplog):
     config = {
         "database": {
-            "uri": "sqlite+aiosqlite://",  # in-memory
+            "uri": "sqlite://",  # in-memory
         },
         "trees": [
             {
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },

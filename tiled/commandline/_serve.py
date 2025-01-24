@@ -115,7 +115,7 @@ def serve_directory(
         f"Creating catalog database at {temp_directory / SQLITE_CATALOG_FILENAME}",
         err=True,
     )
-    database = f"sqlite+aiosqlite:///{Path(temp_directory, SQLITE_CATALOG_FILENAME)}"
+    database = f"sqlite:///{Path(temp_directory, SQLITE_CATALOG_FILENAME)}"
 
     # Because this is a tempfile we know this is a fresh database and we do not
     # need to check its current state.
@@ -131,7 +131,8 @@ def serve_directory(
     from ..catalog.core import initialize_database
     from ..utils import ensure_specified_sql_driver
 
-    engine = create_async_engine(ensure_specified_sql_driver(database))
+    database = ensure_specified_sql_driver(database)
+    engine = create_async_engine(database)
     asyncio.run(initialize_database(engine))
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
@@ -364,7 +365,7 @@ def serve_catalog(
 
     parsed_database = urllib.parse.urlparse(database)
     if parsed_database.scheme in ("", "file"):
-        database = f"sqlite+aiosqlite:///{parsed_database.path}"
+        database = f"sqlite:///{parsed_database.path}"
 
     if temp:
         if database is not None:
@@ -386,7 +387,7 @@ def serve_catalog(
             f"Creating writable catalog data directory at {directory / DATA_SUBDIRECTORY}",
             err=True,
         )
-        database = f"sqlite+aiosqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
+        database = f"sqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
 
         # Because this is a tempfile we know this is a fresh database and we do not
         # need to check its current state.
@@ -402,7 +403,8 @@ def serve_catalog(
         from ..catalog.core import initialize_database
         from ..utils import ensure_specified_sql_driver
 
-        engine = create_async_engine(ensure_specified_sql_driver(database))
+        database = ensure_specified_sql_driver(database)
+        engine = create_async_engine(database)
         asyncio.run(initialize_database(engine))
         stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
