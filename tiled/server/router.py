@@ -26,6 +26,8 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
+from tiled.schemas import About
+
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
@@ -67,7 +69,7 @@ from .utils import filter_for_access, get_base_url, record_timing
 router = APIRouter()
 
 
-@router.get("/", response_model=schemas.About)
+@router.get("/", response_model=About)
 async def about(
     request: Request,
     settings: BaseSettings = Depends(get_settings),
@@ -130,7 +132,7 @@ async def about(
 
     return json_or_msgpack(
         request,
-        schemas.About(
+        About(
             library_version=__version__,
             api_version=0,
             formats={

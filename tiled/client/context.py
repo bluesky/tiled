@@ -6,10 +6,14 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
+from typing import List
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import platformdirs
+from pydantic import TypeAdapter
+
+from tiled.schemas import About, AboutAuthenticationProvider
 
 from .._version import __version__ as tiled_version
 from ..utils import UNSET, DictView, parse_time_string
@@ -42,11 +46,13 @@ prompt the user to provide credentials in the stdin. Options:
         )
 
 
-def identity_provider_input(providers, provider=None):
+def identity_provider_input(
+    providers: List[AboutAuthenticationProvider],
+) -> AboutAuthenticationProvider:
     while True:
-        print("Authenticaiton providers:")
+        print("Authentication providers:")
         for i, spec in enumerate(providers, start=1):
-            print(f"{i} - {spec['provider']}")
+            print(f"{i} - {spec.provider}")
         raw_choice = input(
             "Choose an authentication provider (or press Enter to cancel): "
         )
@@ -81,18 +87,18 @@ class PasswordRejected(RuntimeError):
     pass
 
 
-def prompt_for_credentials(http_client, providers):
+def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvider]):
     """
     Prompt for credentials or third-party login at an interactive terminal.
     """
     if len(providers) == 1:
         # There is only one choice, so no need to prompt the user.
-        (spec,) = providers
+        spec = providers[0]
     else:
         spec = identity_provider_input(providers)
-    auth_endpoint = spec["links"]["auth_endpoint"]
-    provider = spec["provider"]
-    mode = spec["mode"]
+    auth_endpoint = spec.links["auth_endpoint"]
+    provider = spec.provider
+    mode = spec.mode
     if mode == "password":
         # Prompt for username, password at terminal.
         username = username_input()
@@ -124,7 +130,7 @@ def prompt_for_credentials(http_client, providers):
         tokens = device_code_grant(http_client, auth_endpoint)
     else:
         raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-    confirmation_message = spec.get("confirmation_message")
+    confirmation_message = spec.confirmation_message
     if confirmation_message:
         username = tokens["identity"]["id"]
         print(confirmation_message.format(id=username))
@@ -252,7 +258,7 @@ class Context:
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        self.server_info = handle_error(
+        server_info = handle_error(
             self.http_client.get(
                 self.api_uri,
                 headers={
@@ -261,6 +267,7 @@ class Context:
                 },
             )
         ).json()
+        self.server_info: About = TypeAdapter(About).validate_python(server_info)
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
@@ -270,7 +277,7 @@ class Context:
             auth_info.append("(unauthenticated)")
         else:
             auth_info.append("authenticated")
-            if self.server_info["authentication"].get("links"):
+            if self.server_info.authentication.links:
                 whoami = self.whoami()
                 auth_info.append("as")
                 if whoami["type"] == "service":
@@ -435,7 +442,7 @@ class Context:
             raise_server_exceptions=raise_server_exceptions,
         )
         if api_key is UNSET:
-            if not context.server_info["authentication"]["providers"]:
+            if not context.server_info.authentication.providers:
                 # This is a single-user server.
                 # Extract the API key from the app and set it.
                 from ..server.settings import get_settings
@@ -487,7 +494,7 @@ class Context:
             raise RuntimeError("Not API key is configured for the client.")
         return handle_error(
             self.http_client.get(
-                self.server_info["authentication"]["links"]["apikey"],
+                self.server_info.authentication.links.apikey,
                 headers={"Accept": MSGPACK_MIME_TYPE},
             )
         ).json()
@@ -516,7 +523,7 @@ class Context:
             expires_in = parse_time_string(expires_in)
         return handle_error(
             self.http_client.post(
-                self.server_info["authentication"]["links"]["apikey"],
+                self.server_info.authentication.links.apikey,
                 headers={"Accept": MSGPACK_MIME_TYPE},
                 json={"scopes": scopes, "expires_in": expires_in, "note": note},
             )
@@ -536,7 +543,7 @@ class Context:
             Identify the API key to be deleted by passing its first 8 characters.
             (Any additional characters passed will be truncated.)
         """
-        url_path = self.server_info["authentication"]["links"]["apikey"]
+        url_path = self.server_info.authentication.links.apikey
         handle_error(
             self.http_client.delete(
                 url_path,
@@ -605,8 +612,11 @@ class Context:
             Next time, try to automatically authenticate using this session.
         """
         # Obtain tokens via OAuth2 unless the caller has passed them.
-        providers = self.server_info["authentication"]["providers"]
-        tokens = prompt_for_credentials(self.http_client, providers)
+        providers = self.server_info.authentication.providers
+        tokens = prompt_for_credentials(
+            self.http_client,
+            providers,
+        )
         self.configure_auth(tokens, remember_me=remember_me)
 
     # These two methods are aliased for convenience.
@@ -628,7 +638,7 @@ class Context:
             )
         # Configure an httpx.Auth instance on the http_client, which
         # will manage refreshing the tokens as needed.
-        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
+        refresh_url = self.server_info.authentication.links.refresh_session
         csrf_token = self.http_client.cookies["tiled_csrf"]
         if remember_me:
             token_directory = self._token_directory()
@@ -671,7 +681,7 @@ class Context:
         success : bool
             Indicating whether valid cached tokens were found
         """
-        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
+        refresh_url = self.server_info.authentication.links.refresh_session
         csrf_token = self.http_client.cookies["tiled_csrf"]
 
         # Try automatically authenticating using cached tokens, if any.
@@ -731,7 +741,7 @@ class Context:
         "Return information about the currently-authenticated user or service."
         return handle_error(
             self.http_client.get(
-                self.server_info["authentication"]["links"]["whoami"],
+                self.server_info.authentication.links.whoami,
                 headers={"Accept": MSGPACK_MIME_TYPE},
             )
         ).json()
@@ -774,7 +784,7 @@ class Context:
         """
         handle_error(
             self.http_client.delete(
-                self.server_info["authentication"]["links"]["revoke_session"].format(
+                self.server_info.authentication.links.revoke_session.format(
                     session_id=session_id
                 ),
                 headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
@@ -785,9 +795,9 @@ class Context:
 class Admin:
     "Accessor for requests that require administrative privileges."
 
-    def __init__(self, context):
+    def __init__(self, context: Context):
         self.context = context
-        self.base_url = context.server_info["links"]["self"]
+        self.base_url = context.server_info.links["self"]
 
     def list_principals(self, offset=0, limit=100):
         "List Principals (users and services) in the authenticaiton database."

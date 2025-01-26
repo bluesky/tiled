@@ -3,6 +3,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `.get` methods on TableAdapter and ParquetDatasetAdapter
+- Ability to read string-valued columns of data frames as arrays
+
+### Maintenance
+
+- Make depedencies shared by client and server into core dependencies.
+- Use schemas for describing server configuration on the client side too.
+
 ## v0.1.0-b16 (2024-01-23)
 
 ### Maintenance
