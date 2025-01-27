@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class AboutAuthenticationProvider(BaseModel):
     provider: str
-    mode: Literal["password", "external"]
+    mode: Literal["internal", "external"]
     links: Dict[str, str]
     confirmation_message: Optional[str] = None
 

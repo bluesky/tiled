@@ -99,7 +99,7 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     auth_endpoint = spec.links["auth_endpoint"]
     provider = spec.provider
     mode = spec.mode
-    if mode == "password":
+    if mode == "internal":
         # Prompt for username, password at terminal.
         username = username_input()
         PASSWORD_ATTEMPTS = 3

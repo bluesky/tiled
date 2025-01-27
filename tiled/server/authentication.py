@@ -1,4 +1,3 @@
-import enum
 import hashlib
 import secrets
 import uuid as uuid_module
@@ -62,7 +61,7 @@ from ..authn_database.core import (
 from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
-from .protocols import UsernamePasswordAuthenticator, UserSessionState
+from .protocols import InternalAuthenticator, UserSessionState
 from .settings import get_settings
 from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
@@ -84,11 +83,6 @@ DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
 def utcnow():
     "UTC now with second resolution"
     return datetime.now(timezone.utc).replace(microsecond=0)
-
-
-class Mode(enum.Enum):
-    password = "password"
-    external = "external"
 
 
 class Token(BaseModel):
@@ -710,9 +704,7 @@ def build_device_code_token_route(authenticator, provider):
     return route
 
 
-def build_handle_credentials_route(
-    authenticator: UsernamePasswordAuthenticator, provider
-):
+def build_handle_credentials_route(authenticator: InternalAuthenticator, provider):
     "Register a handle_credentials route function for this Authenticator."
 
     async def route(
