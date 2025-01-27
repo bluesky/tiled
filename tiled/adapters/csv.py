@@ -206,7 +206,7 @@ class CSVAdapter:
         """
         if key not in self.structure().columns:
             return None
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        return self[key]
 
     def generate_data_sources(
         self,
@@ -258,8 +258,17 @@ class CSVAdapter:
         -------
         An array adapter corresponding to a single column in the table.
         """
-        # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        array = self.read([key])[key].values
+
+        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+        if isinstance(array.dtype, pandas.StringDtype):
+            import numpy
+
+            max_size = max((len(i) for i in array.ravel()))
+            array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
+
+        return ArrayAdapter.from_array(array)
+
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         """Iterator over table columns
