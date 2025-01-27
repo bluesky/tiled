@@ -1,12 +1,16 @@
 import collections
 import collections.abc
+import copy
 import functools
 import importlib
 import itertools
+from ndindex import ndindex
 import time
 import warnings
 from dataclasses import asdict
 from urllib.parse import parse_qs, urlparse
+from typing import Iterable, Optional
+from ..type_aliases import NDSlice
 
 import entrypoints
 import httpx
@@ -16,7 +20,7 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import DataSource
+from ..structures.data_source import Asset, DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
@@ -792,6 +796,56 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # to bother with the return type?
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
+    
+    def create_array_view(self, links: Iterable[str], key: str=None, slices: Optional[Iterable[NDSlice]] = None):
+
+        from ..structures.array import ArrayStructure
+
+        def serialize_ndslice(ndslice):
+            result = []
+            for s in ndslice:
+                if isinstance(s, slice):
+                    result.append({"start": s.start, "stop": s.stop, "step": s.step})
+                elif s is Ellipsis:
+                    result.append('ellipsis')
+                else:
+                    result.append(s)
+            return result
+
+        if slices is None:
+            slices = [(...,)] * len(links)
+        assets = []
+        substructures = []
+
+        for link, slc in zip(links, slices):
+            endpoint = self.uri.split('metadata')[0] + "metadata" + link
+            document = handle_error(self.context.http_client.get(endpoint)).json()
+            input_structure = document['data']['attributes']['structure']
+            out_shape = ndindex(slc).newshape(input_structure['shape'])
+            out_chunks = [[i] for i in out_shape]    # No chunking, TODO: more general case -- reassign chunks
+
+            substructures.append(copy.deepcopy(input_structure))
+            substructures[-1]['shape'] = out_shape
+            substructures[-1]['chunks'] = out_chunks
+            assets.append(Asset(data_uri=f"tiled://{links[0]}", is_directory=False, parameter='data_uri'))
+    
+        # TODO: combine substructures if tehre are multiple sub-arrays that are concatenated
+        structure = ArrayStructure.from_json(substructures[-1])
+        client = self.new(
+            StructureFamily.array,
+            [
+                DataSource(structure=structure, structure_family=StructureFamily.array, management="view",
+                           assets = assets,
+                           parameters = {"slices": [serialize_ndslice(s) for s in slices] },
+                           mimetype="application/x-array-view"),
+            ],
+            key=key,
+            metadata={},
+            specs=[],
+        )
+        return client
+    
+
 
     def write_awkward(
         self,
