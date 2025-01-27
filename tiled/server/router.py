@@ -13,7 +13,6 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Sec
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
-from pydantic_settings import BaseSettings
 from starlette.status import (
     HTTP_200_OK,
     HTTP_206_PARTIAL_CONTENT,
@@ -64,7 +63,7 @@ from .dependencies import (
 )
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
-from .settings import get_settings
+from .settings import Settings, get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
 router = APIRouter()
@@ -73,7 +72,7 @@ router = APIRouter()
 @router.get("/", response_model=About)
 async def about(
     request: Request,
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
@@ -375,7 +374,7 @@ async def array_block(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch a chunk of array-like data.
@@ -453,7 +452,7 @@ async def array_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch a slice of array-like data.
@@ -516,7 +515,7 @@ async def get_table_partition(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame [GET route].
@@ -565,7 +564,7 @@ async def post_table_partition(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame [POST route].
@@ -590,7 +589,7 @@ async def table_partition(
     format: Optional[str],
     filename: Optional[str],
     serialization_registry,
-    settings: BaseSettings,
+    settings: Settings,
 ):
     """
     Fetch a partition (continuous block of rows) from a DataFrame.
@@ -647,7 +646,7 @@ async def get_table_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch the data for the given table [GET route].
@@ -675,7 +674,7 @@ async def post_table_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch the data for the given table [POST route].
@@ -698,7 +697,7 @@ async def table_full(
     format: Optional[str],
     filename: Optional[str],
     serialization_registry,
-    settings: BaseSettings,
+    settings: Settings,
 ):
     """
     Fetch the data for the given table.
@@ -860,7 +859,7 @@ async def node_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch the data below the given node.
@@ -926,7 +925,7 @@ async def get_awkward_buffers(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch a slice of AwkwardArray data.
@@ -963,7 +962,7 @@ async def post_awkward_buffers(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch a slice of AwkwardArray data.
@@ -993,7 +992,7 @@ async def _awkward_buffers(
     format: Optional[str],
     filename: Optional[str],
     serialization_registry,
-    settings: BaseSettings,
+    settings: Settings,
 ):
     structure_family = entry.structure_family
     structure = entry.structure()
@@ -1044,7 +1043,7 @@ async def awkward_full(
     format: Optional[str] = None,
     filename: Optional[str] = None,
     serialization_registry=Depends(get_serialization_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     """
     Fetch a slice of AwkwardArray data.
@@ -1090,7 +1089,7 @@ async def post_metadata(
     path: str,
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create"]),
 ):
     for data_source in body.data_sources:
@@ -1120,7 +1119,7 @@ async def post_register(
     path: str,
     body: schemas.PostMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "create", "register"]),
 ):
     return await _create_node(
@@ -1138,7 +1137,7 @@ async def _create_node(
     path: str,
     body: schemas.PostMetadataRequest,
     validation_registry,
-    settings: BaseSettings,
+    settings: Settings,
     entry,
 ):
     metadata, structure_family, specs = (
@@ -1189,7 +1188,7 @@ async def put_data_source(
     path: str,
     data_source: int,
     body: schemas.PutDataSourceRequest,
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata", "register"]),
 ):
     await entry.put_data_source(
@@ -1410,7 +1409,7 @@ async def patch_metadata(
     request: Request,
     body: schemas.PatchMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if not hasattr(entry, "replace_metadata"):
@@ -1473,7 +1472,7 @@ async def put_metadata(
     request: Request,
     body: schemas.PutMetadataRequest,
     validation_registry=Depends(get_validation_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
     entry=SecureEntry(scopes=["write:metadata"]),
 ):
     if not hasattr(entry, "replace_metadata"):
@@ -1563,7 +1562,7 @@ async def get_asset(
     id: int,
     relative_path: Optional[Path] = None,
     entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     if not settings.expose_raw_assets:
         raise HTTPException(
@@ -1660,7 +1659,7 @@ async def get_asset_manifest(
     request: Request,
     id: int,
     entry=SecureEntry(scopes=["read:data"]),  # TODO: Separate scope for assets?
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     if not settings.expose_raw_assets:
         raise HTTPException(
@@ -1707,7 +1706,7 @@ async def validate_metadata(
     structure,
     specs: List[Spec],
     validation_registry=Depends(get_validation_registry),
-    settings: BaseSettings = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ):
     metadata_modified = False
 
