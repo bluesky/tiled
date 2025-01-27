@@ -8,7 +8,7 @@ import sys
 import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
-from functools import lru_cache, partial
+from functools import cache, partial
 from pathlib import Path
 from typing import List
 
@@ -437,15 +437,15 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         response_model=schemas.GetDistinctResponse,
     )(patch_route_signature(distinct, query_registry))
 
-    @lru_cache(1)
+    @cache
     def override_get_authenticators():
         return authenticators
 
-    @lru_cache(1)
+    @cache
     def override_get_root_tree():
         return tree
 
-    @lru_cache(1)
+    @cache
     def override_get_settings():
         settings = get_settings()
         for item in [
@@ -771,14 +771,14 @@ Back up the database, and then run:
     app.dependency_overrides[get_settings] = override_get_settings
     if query_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_query_registry():
             return query_registry
 
         app.dependency_overrides[get_query_registry] = override_get_query_registry
     if serialization_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_serialization_registry():
             return serialization_registry
 
@@ -788,7 +788,7 @@ Back up the database, and then run:
 
     if validation_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_validation_registry():
             return validation_registry
 

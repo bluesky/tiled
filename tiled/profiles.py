@@ -13,7 +13,7 @@ import os
 import shutil
 import sys
 import warnings
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 import jsonschema
@@ -35,7 +35,7 @@ __all__ = [
 ]
 
 
-@lru_cache(maxsize=1)
+@cache
 def schema():
     "Load the schema for profiles."
     import yaml
@@ -204,7 +204,7 @@ The profile will be ommitted. Fix this by removing one of the duplicates"""
     return combined
 
 
-@lru_cache(maxsize=1)
+@cache
 def load_profiles():
     """
     Return a mapping of profile_name to (source_path, content).

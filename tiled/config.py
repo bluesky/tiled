@@ -8,7 +8,7 @@ import os
 import warnings
 from collections import defaultdict
 from datetime import timedelta
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 import jsonschema
@@ -25,7 +25,7 @@ from .utils import import_object, parse, prepend_to_sys_path
 from .validation_registration import validation_registry as default_validation_registry
 
 
-@lru_cache(maxsize=1)
+@cache
 def schema():
     "Load the schema for service-side configuration."
     import yaml

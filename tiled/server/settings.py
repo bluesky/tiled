@@ -2,7 +2,7 @@ import collections
 import os
 import secrets
 from datetime import timedelta
-from functools import lru_cache
+from functools import cache
 from typing import Any, List, Optional
 
 from pydantic_settings import BaseSettings
@@ -79,6 +79,6 @@ class Settings(BaseSettings):
         )
 
 
-@lru_cache()
+@cache
 def get_settings() -> Settings:
     return Settings()
