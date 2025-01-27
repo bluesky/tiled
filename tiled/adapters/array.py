@@ -148,16 +148,6 @@ class ArrayAdapter:
         return array
 
 
-class ArrayViewAdapter(ArrayAdapter):
-
-    structure_family = StructureFamily.array
-
-    @classmethod
-    def from_catalog(cls, data_source, node, **kwargs):
-        breakpoint()
-        pass
-
-
 def slice_and_shape_from_block_and_chunks(
     block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
 ) -> Tuple[NDSlice, Tuple[int, ...]]:

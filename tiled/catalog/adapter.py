@@ -469,6 +469,8 @@ class CatalogNodeAdapter:
                     for s in ser_ndslice:
                         if isinstance(s, dict):
                             result.append(slice(s.get("start"), s.get('stop'), s.get('step')))
+                        elif s == 'ellipsis':
+                            result.append(...)
                         else:
                             result.append(s)
                     return tuple(result)
@@ -1097,21 +1099,6 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             db.add(data_source)
             await db.commit()
             return structure_dict
-
-
-class CatalogArrayViewAdapter(CatalogNodeAdapter):
-    async def read(self, *args, **kwargs):
-        if not self.data_sources:
-            fields = kwargs.get("fields")
-            if fields:
-                return self.search(KeysFilter(fields))
-            return self
-        return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
-
-    async def read_block(self, *args, **kwargs):
-        return await ensure_awaitable(
-            (await self.get_adapter()).read_block, *args, **kwargs
-        )
 
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):

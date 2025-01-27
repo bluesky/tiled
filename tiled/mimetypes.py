@@ -13,7 +13,7 @@ ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
-        "application/x-array-view": lambda: importlib.import_module("..adapters.array", __name__).ArrayViewAdapter,
+        "application/x-array-view": lambda: importlib.import_module("..adapters.array", __name__).ArrayAdapter,
         "image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
         ).TiffAdapter,

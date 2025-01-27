@@ -9,7 +9,7 @@ import time
 import warnings
 from dataclasses import asdict
 from urllib.parse import parse_qs, urlparse
-from typing import Iterable
+from typing import Iterable, Optional
 from ..type_aliases import NDSlice
 
 import entrypoints
@@ -797,32 +797,40 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
     
-    def create_array_view(self, key, array_link='/X/Y/a1', slices: Iterable[NDSlice] =[(1, ..., slice(0, 5, 2))]):
+    def create_array_view(self, links: Iterable[str], key: str=None, slices: Optional[Iterable[NDSlice]] = None):
 
-        from ..structures.array import ArrayStructure, BuiltinDtype
-
-        endpoint = self.uri.split('metadata')[0] + "metadata" + array_link
-        document = handle_error(self.context.http_client.get(endpoint)).json()
-        input_structure = document['data']['attributes']['structure']
-        out_shape = ndindex(slices[0]).newshape(input_structure['shape'])
-        out_chunks = [[i] for i in out_shape]    # No chunking, TODO: more general case
-        # breakpoint()
-
-        out_structure = copy.deepcopy(input_structure)
-        out_structure['shape'] = out_shape
-        out_structure['chunks'] = out_chunks
-        structure = ArrayStructure.from_json(out_structure)
+        from ..structures.array import ArrayStructure
 
         def serialize_ndslice(ndslice):
             result = []
             for s in ndslice:
                 if isinstance(s, slice):
                     result.append({"start": s.start, "stop": s.stop, "step": s.step})
+                elif s is Ellipsis:
+                    result.append('ellipsis')
                 else:
                     result.append(s)
             return result
 
-        assets = [Asset(data_uri=f"tiled://{array_link}", is_directory=False, parameter='data_uri')]
+        if slices is None:
+            slices = [(...,)] * len(links)
+        assets = []
+        substructures = []
+
+        for link, slc in zip(links, slices):
+            endpoint = self.uri.split('metadata')[0] + "metadata" + link
+            document = handle_error(self.context.http_client.get(endpoint)).json()
+            input_structure = document['data']['attributes']['structure']
+            out_shape = ndindex(slc).newshape(input_structure['shape'])
+            out_chunks = [[i] for i in out_shape]    # No chunking, TODO: more general case -- reassign chunks
+
+            substructures.append(copy.deepcopy(input_structure))
+            substructures[-1]['shape'] = out_shape
+            substructures[-1]['chunks'] = out_chunks
+            assets.append(Asset(data_uri=f"tiled://{links[0]}", is_directory=False, parameter='data_uri'))
+    
+        # TODO: combine substructures if tehre are multiple sub-arrays that are concatenated
+        structure = ArrayStructure.from_json(substructures[-1])
         client = self.new(
             StructureFamily.array,
             [
