@@ -14,6 +14,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Make depedencies shared by client and server into core dependencies.
 - Use schemas for describing server configuration on the client side too.
+- Refactored Authentication providers to make use of inheritance, adjusted
+  mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
 
 ## v0.1.0-b16 (2024-01-23)
 

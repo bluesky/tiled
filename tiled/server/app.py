@@ -34,7 +34,8 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from ..authenticators import Mode
+from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
@@ -384,12 +385,11 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
-            mode = authenticator.mode
-            if mode == Mode.password:
+            if isinstance(authenticator, InternalAuthenticator):
                 authentication_router.post(f"/provider/{provider}/token")(
                     build_handle_credentials_route(authenticator, provider)
                 )
-            elif mode == Mode.external:
+            elif isinstance(authenticator, ExternalAuthenticator):
                 # Client starts here to create a PendingSession.
                 authentication_router.post(f"/provider/{provider}/authorize")(
                     build_device_code_authorize_route(authenticator, provider)
@@ -414,7 +414,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 #     build_auth_code_route(authenticator, provider)
                 # )
             else:
-                raise ValueError(f"unknown authentication mode {mode}")
+                raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(
                     custom_router, prefix=f"/provider/{provider}"

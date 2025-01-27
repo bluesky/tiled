@@ -27,13 +27,14 @@ from starlette.status import (
 )
 
 from tiled.schemas import About
+from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
 from . import schemas
-from .authentication import Mode, get_authenticators, get_current_principal
+from .authentication import get_authenticators, get_current_principal
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -92,10 +93,10 @@ async def about(
     }
     provider_specs = []
     for provider, authenticator in authenticators.items():
-        if authenticator.mode == Mode.password:
+        if isinstance(authenticator, InternalAuthenticator):
             spec = {
                 "provider": provider,
-                "mode": authenticator.mode.value,
+                "mode": "internal",
                 "links": {
                     "auth_endpoint": f"{base_url}/auth/provider/{provider}/token"
                 },
@@ -103,10 +104,10 @@ async def about(
                     authenticator, "confirmation_message", None
                 ),
             }
-        elif authenticator.mode == Mode.external:
+        elif isinstance(authenticator, ExternalAuthenticator):
             spec = {
                 "provider": provider,
-                "mode": authenticator.mode.value,
+                "mode": "external",
                 "links": {
                     "auth_endpoint": f"{base_url}/auth/provider/{provider}/authorize"
                 },
