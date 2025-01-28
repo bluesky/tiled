@@ -11,6 +11,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   classmethods for instantiation from files and registered Tiled nodes, respectively.
 - Refactor CSVAdapter to allow pd.read_csv kwargs
 - Removed `tiled.adapters.zarr.read_zarr` utility function.
+- Server declares authentication provider modes are `external` or `internal`. The
+  latter was renamed from `password`. Client accepts either `internal` or `password`
+  for backward-compatibility with older servers.
 
 ### Added
 
