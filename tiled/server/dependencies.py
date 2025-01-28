@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import cache
 from typing import Optional, Tuple, Union
 
 import pydantic_settings
@@ -24,25 +24,25 @@ DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
 
-@lru_cache(1)
+@cache
 def get_query_registry():
     "This may be overridden via dependency_overrides."
     return default_query_registry
 
 
-@lru_cache(1)
+@cache
 def get_deserialization_registry():
     "This may be overridden via dependency_overrides."
     return default_deserialization_registry
 
 
-@lru_cache(1)
+@cache
 def get_serialization_registry():
     "This may be overridden via dependency_overrides."
     return default_serialization_registry
 
 
-@lru_cache(1)
+@cache
 def get_validation_registry():
     "This may be overridden via dependency_overrides."
     return default_validation_registry

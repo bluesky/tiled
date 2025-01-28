@@ -10,6 +10,8 @@ import jsonpatch
 import orjson
 from httpx import URL
 
+from tiled.client.context import Context
+
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
@@ -112,7 +114,7 @@ class BaseClient:
 
     def __init__(
         self,
-        context,
+        context: Context,
         *,
         item,
         structure_clients,
@@ -415,9 +417,9 @@ client or pass the optional parameter `include_data_sources=True` to
         "List formats that the server can export this data as."
         formats = set()
         for spec in self.item["attributes"]["specs"]:
-            formats.update(self.context.server_info["formats"].get(spec["name"], []))
+            formats.update(self.context.server_info.formats.get(spec["name"], []))
         formats.update(
-            self.context.server_info["formats"][
+            self.context.server_info.formats[
                 self.item["attributes"]["structure_family"]
             ]
         )

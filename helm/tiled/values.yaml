@@ -9,7 +9,7 @@ config:
     - path: /
       tree: catalog
       args:
-        uri: "sqlite+aiosqlite:////storage/catalog.db"
+        uri: "sqlite:////storage/catalog.db"
         writable_storage: "/storage/data"
         init_if_not_exists: true
 

@@ -8,7 +8,7 @@ import sys
 import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
-from functools import lru_cache, partial
+from functools import cache, partial
 from pathlib import Path
 from typing import List
 
@@ -34,7 +34,8 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from ..authenticators import Mode
+from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
@@ -182,7 +183,7 @@ In a scaled (multi-process) deployment, when Tiled is configured with an
 Authenticator, a persistent database must be provided via configuration like
 
 database:
-  uri: sqlite+aiosqlite:////path/to/database.sqlite
+  uri: sqlite:////path/to/database.sqlite
 
 """
                 )
@@ -384,12 +385,11 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
-            mode = authenticator.mode
-            if mode == Mode.password:
+            if isinstance(authenticator, InternalAuthenticator):
                 authentication_router.post(f"/provider/{provider}/token")(
                     build_handle_credentials_route(authenticator, provider)
                 )
-            elif mode == Mode.external:
+            elif isinstance(authenticator, ExternalAuthenticator):
                 # Client starts here to create a PendingSession.
                 authentication_router.post(f"/provider/{provider}/authorize")(
                     build_device_code_authorize_route(authenticator, provider)
@@ -414,7 +414,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 #     build_auth_code_route(authenticator, provider)
                 # )
             else:
-                raise ValueError(f"unknown authentication mode {mode}")
+                raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
                 authentication_router.include_router(
                     custom_router, prefix=f"/provider/{provider}"
@@ -437,15 +437,15 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         response_model=schemas.GetDistinctResponse,
     )(patch_route_signature(distinct, query_registry))
 
-    @lru_cache(1)
+    @cache
     def override_get_authenticators():
         return authenticators
 
-    @lru_cache(1)
+    @cache
     def override_get_root_tree():
         return tree
 
-    @lru_cache(1)
+    @cache
     def override_get_settings():
         settings = get_settings()
         for item in [
@@ -483,7 +483,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in memory. Horizontally scaled deployments
             # must specify a persistent database.
-            settings.database_uri = settings.database_uri or "sqlite+aiosqlite://"
+            settings.database_uri = settings.database_uri or "sqlite://"
         return settings
 
     async def startup_event():
@@ -771,14 +771,14 @@ Back up the database, and then run:
     app.dependency_overrides[get_settings] = override_get_settings
     if query_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_query_registry():
             return query_registry
 
         app.dependency_overrides[get_query_registry] = override_get_query_registry
     if serialization_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_serialization_registry():
             return serialization_registry
 
@@ -788,7 +788,7 @@ Back up the database, and then run:
 
     if validation_registry is not None:
 
-        @lru_cache(1)
+        @cache
         def override_get_validation_registry():
             return validation_registry
 

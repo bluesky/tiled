@@ -1,13 +1,13 @@
 import numpy
 
 from tiled.adapters.array import ArrayAdapter
-from tiled.authenticators import Mode, UserSessionState
+from tiled.authenticators import UserSessionState
+from tiled.server.protocols import InternalAuthenticator
 from tiled.structures.core import StructureFamily
 
 
-class Authenticator:
+class Authenticator(InternalAuthenticator):
     "This accepts any password and stashes it in session state as 'token'."
-    mode = Mode.password
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         return UserSessionState(username, {"token": password})

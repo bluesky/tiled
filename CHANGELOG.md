@@ -12,6 +12,20 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Refactor CSVAdapter to allow pd.read_csv kwargs
 - Removed `tiled.adapters.zarr.read_zarr` utility function.
 
+### Added
+
+- Added `.get` methods on TableAdapter and ParquetDatasetAdapter
+- Ability to read string-valued columns of data frames as arrays
+
+### Maintenance
+
+- Make depedencies shared by client and server into core dependencies.
+- Use schemas for describing server configuration on the client side too.
+- Refactored Authentication providers to make use of inheritance, adjusted
+  mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
+- Improved type hinting and efficiency of caching singleton values
+
+
 ## v0.1.0-b16 (2024-01-23)
 
 ### Maintenance

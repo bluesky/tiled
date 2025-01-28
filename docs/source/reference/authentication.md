@@ -49,7 +49,7 @@ $ http :8000/api/v1/ | jq .authentication
   "providers": [
     {
       "provider": "toy",
-      "mode": "password",
+      "mode": "internal",
       "links": {
         "auth_endpoint": "http://localhost:8000/api/v1/auth/provider/toy/token"
       },

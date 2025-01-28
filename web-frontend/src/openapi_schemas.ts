@@ -94,7 +94,7 @@ export interface components {
      * @description An enumeration.
      * @enum {string}
      */
-    AuthenticationMode: "password" | "external";
+    AuthenticationMode: "internal" | "external";
     /**
      * EntryFields
      * @description An enumeration.

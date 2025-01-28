@@ -5,7 +5,7 @@ conventions for metrics & labels. We generally prefer naming them
 """
 
 import os
-from functools import lru_cache
+from functools import cache
 
 from fastapi import APIRouter, Request, Response, Security
 from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
@@ -135,7 +135,7 @@ def capture_request_metrics(request, response):
             ).observe(metrics["compress"]["ratio"])
 
 
-@lru_cache()
+@cache
 def prometheus_registry():
     """
     Configure prometheus_client.
