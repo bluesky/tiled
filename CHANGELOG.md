@@ -5,6 +5,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Refactor and standardize Adapter API: implement from_uris and from_catalog
+  classmethods for instantiation from files and registered Tiled nodes, respectively.
+- Refactor CSVAdapter to allow pd.read_csv kwargs
+- Removed `tiled.adapters.zarr.read_zarr` utility function.
+
 ### Added
 
 - Added `.get` methods on TableAdapter and ParquetDatasetAdapter
@@ -17,6 +24,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Refactored Authentication providers to make use of inheritance, adjusted
   mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
 - Improved type hinting and efficiency of caching singleton values
+
 
 ## v0.1.0-b16 (2024-01-23)
 
@@ -39,9 +47,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `public_keys`, which can be fetched at initialization (server startup) time.
   See examples `example_configs/orcid_auth.yml`,
   `example_configs/google_auth.yml`, and `example_configs/simple_oidc`.
-- Refactor and standardize Adapter API: implement from_uris and from_catalog
-  classmethods for instantiation from files and registered Tiled nodes, respectively.
-- Refactor CSVAdapter to allow pd.read_csv kwargs
 
 ### Maintenance
 
