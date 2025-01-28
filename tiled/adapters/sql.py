@@ -94,16 +94,25 @@ class SQLAdapter:
             data_source.structure.arrow_schema_decoded
         )  # based on hash of Arrow schema
         encoded = schema.serialize()
+
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
-        data_source.parameters.setdefault("table_name", default_table_name)
+        table_name = data_source.parameters.setdefault("table_name", default_table_name)
+
         data_source.parameters["dataset_id"] = secrets.randbits(63)
         data_uri = storage.get("sql")  # TODO scrub credential
 
         schema_new = schema.insert(0, pyarrow.field("dataset_id", pyarrow.int64()))
-        statement = schema_to_pg_create_table(schema_new, default_table_name)
+        create_table_statement = schema_to_pg_create_table(schema_new, table_name)
+
+        create_index_statement = f"""create
+        index if not exists
+        dataset_id_index
+        on
+        {table_name}(dataset_id);"""
 
         conn = create_connection(data_uri)
-        conn.cursor().execute(statement)
+        conn.cursor().execute(create_table_statement)
+        conn.cursor().execute(create_index_statement)
         conn.commit()
 
         data_source.assets.append(
@@ -232,8 +241,8 @@ class SQLAdapter:
             raise NotImplementedError
         return self.read(fields)
 
+def create_connection(uri: str):
 
-def create_connection(uri):
     if uri.startswith("sqlite:"):
         # Ensure this path is writable to avoid a confusing error message
         # from abdc_driver_sqlite.
