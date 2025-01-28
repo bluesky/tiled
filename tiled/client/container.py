@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
+import pyarrow
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -918,6 +919,67 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(coords, data)
         return client
 
+    def create_appendable_dataframe(
+        self,
+        schema: pyarrow.Schema,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        table_name: Optional[str] = None,
+    ):
+        """
+        Write a DataFrame and store it such that rows can be appended to a partition.
+
+        Parameters
+        ----------
+        schema : column names info in the form of pyarrow.Schema
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        table_name : str, optional
+            Optionally provide a name for the table this should be stored in.
+            By default a name unique to the schema will be chosen.
+
+        See Also
+        --------
+        write_dataframe
+        """
+        parameters = {}
+        if table_name is not None:
+            parameters["table_name"] = table_name
+
+        mimetype = "application/x-tiled-sql-table"
+
+        from ..structures.table import TableStructure
+
+        metadata = metadata or {}
+        specs = specs or []
+
+        structure = TableStructure.from_schema(schema)
+
+        client = self.new(
+            StructureFamily.table,
+            [
+                DataSource(
+                    structure=structure,
+                    structure_family=StructureFamily.table,
+                    mimetype=mimetype,
+                    parameters=parameters,
+                )
+            ],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+
+        return client
+
     def write_dataframe(
         self,
         dataframe,
@@ -951,46 +1013,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-        )
-
-    def write_appendable_dataframe(
-        self,
-        dataframe,
-        *,
-        key=None,
-        metadata=None,
-        specs=None,
-        table_name: Optional[str] = None,
-    ):
-        """
-        Write a DataFrame and store it such that rows can be appended to a partition.
-
-        Parameters
-        ----------
-        dataframe : pandas.DataFrame
-        key : str, optional
-            Key (name) for this new node. If None, the server will provide a unique key.
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        specs : List[Spec], optional
-            List of names that are used to label that the data and/or metadata
-            conform to some named standard specification.
-        table_name : str, optional
-            Optionally provide a name for the table this should be stored in.
-            By default a name unique to the schema will be chosen.
-
-        See Also
-        --------
-        write_dataframe
-        """
-        return self._write_dataframe(
-            dataframe,
-            "application/x-tiled-sql-table",
-            key=key,
-            metadata=metadata,
-            specs=specs,
-            table_name=table_name,
         )
 
     def _write_dataframe(
@@ -1042,6 +1064,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure = TableStructure.from_dict(dataframe)
         else:
             structure = TableStructure.from_pandas(dataframe)
+
         client = self.new(
             StructureFamily.table,
             [
