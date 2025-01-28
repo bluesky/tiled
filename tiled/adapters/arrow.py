@@ -1,7 +1,6 @@
 import copy
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
-from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
 import pandas

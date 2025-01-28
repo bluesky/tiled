@@ -14,7 +14,6 @@ from ..server.schemas import Asset
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
-
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .awkward import AwkwardAdapter
