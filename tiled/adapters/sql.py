@@ -48,28 +48,7 @@ class SQLAdapter:
         """
         self.uri = data_uri
 
-        if self.uri.startswith("sqlite:"):
-            # Ensure this path is writable to avoid a confusing error message
-            # from abdc_driver_sqlite.
-            filepath = path_from_uri(self.uri)
-            directory = Path(filepath).parent
-            if directory.exists():
-                if not os.access(directory, os.X_OK | os.W_OK):
-                    raise ValueError(
-                        f"The directory {directory} exists but is not writable and executable."
-                    )
-                if Path(filepath).is_file() and (not os.access(filepath, os.W_OK)):
-                    raise ValueError(f"The path {filepath} exists but is not writable.")
-            else:
-                raise ValueError(f"The directory {directory} does not exist.")
-            self.conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
-        elif self.uri.startswith("postgresql:"):
-            self.conn = adbc_driver_postgresql.dbapi.connect(self.uri)
-        else:
-            raise ValueError(
-                "The database uri must start with either `sqlite:` or `postgresql:` "
-            )
-
+        self.conn = create_connection(self.uri)
         self.cur = self.conn.cursor()
 
         self._metadata = metadata or {}
@@ -78,6 +57,8 @@ class SQLAdapter:
         self.access_policy = access_policy
         self.table_name = table_name
         self.dataset_id = dataset_id
+
+
 
     def metadata(self) -> JSON:
         """
@@ -118,7 +99,16 @@ class SQLAdapter:
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         data_source.parameters.setdefault("table_name", default_table_name)
         data_source.parameters["dataset_id"] = secrets.randbits(63)
-        data_uri = storage.get("sql")  # TODO scrub credentials
+        data_uri = storage.get("sql")  # TODO scrub credential
+
+
+        schema_new = schema.insert(0, pyarrow.field("dataset_id", pyarrow.int64()))
+        statement = schema_to_pg_create_table(schema_new, default_table_name)
+
+        conn = create_connection(data_uri)
+        conn.cursor().execute(statement)
+        conn.commit()
+
         data_source.assets.append(
             Asset(
                 data_uri=data_uri,
@@ -177,54 +167,6 @@ class SQLAdapter:
             for key in self._structure.columns
         )
 
-    def write(
-        self,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
-    ) -> None:
-        """
-        "Function to write the data as arrow format."
-        Parameters
-        ----------
-        data : data to write into arrow file. Can be a list of record batch, or pandas dataframe.
-        Returns
-        -------
-        """
-        if isinstance(data, pandas.DataFrame):
-            table = pyarrow.Table.from_pandas(data)
-        else:
-            if not isinstance(data, list):
-                batches = [data]
-            else:
-                batches = data
-            table = pyarrow.Table.from_batches(batches)
-        table_with_dataset_id = add_dataset_column(table, self.dataset_id)
-
-        # Delete any existing rows from this table for this dataset_id.
-        # query = f"DELETE FROM {self.table_name} WHERE dataset_id={self.dataset_id}"
-        # self.cur.execute(query)
-        self.cur.adbc_ingest(
-            self.table_name, table_with_dataset_id, mode="create_append"
-        )
-        self.conn.commit()
-
-    def write_partition(
-        self,
-        partition: int,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
-    ) -> None:
-        """
-        "Function to write the data as arrow format."
-        Parameters
-        ----------
-        partition : the partition index to write.
-        data : data to write into arrow file. Can be a list of record batch, or pandas dataframe.
-        Returns
-        -------
-        """
-        if partition != 0:
-            raise NotImplementedError
-        return self.write(data)
-
     def append_partition(
         self,
         data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
@@ -250,7 +192,7 @@ class SQLAdapter:
             table = pyarrow.Table.from_batches(batches)
         table_with_dataset_id = add_dataset_column(table, self.dataset_id)
 
-        self.cur.adbc_ingest(self.table_name, table_with_dataset_id, mode="append")
+        self.cur.adbc_ingest(self.table_name, table_with_dataset_id, mode="create_append")
         self.conn.commit()
 
     def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
@@ -291,7 +233,144 @@ class SQLAdapter:
             raise NotImplementedError
         return self.read(fields)
 
+def create_connection(uri):
+    if uri.startswith("sqlite:"):
+        # Ensure this path is writable to avoid a confusing error message
+        # from abdc_driver_sqlite.
+        filepath = path_from_uri(uri)
+        directory = Path(filepath).parent
+        if directory.exists():
+            if not os.access(directory, os.X_OK | os.W_OK):
+                raise ValueError(
+                    f"The directory {directory} exists but is not writable and executable."
+                )
+            if Path(filepath).is_file() and (not os.access(filepath, os.W_OK)):
+                raise ValueError(f"The path {filepath} exists but is not writable.")
+        else:
+            raise ValueError(f"The directory {directory} does not exist.")
+        conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
+    elif uri.startswith("postgresql:"):
+        conn = adbc_driver_postgresql.dbapi.connect(uri)
+    else:
+        raise ValueError(
+            "The database uri must start with either `sqlite:` or `postgresql:` "
+        )
+
+    return conn
 
 def add_dataset_column(table: pyarrow.Table, dataset_id: int) -> pyarrow.Table:
     column = dataset_id * numpy.ones(len(table), dtype=numpy.int64)
     return table.add_column(0, pyarrow.field("dataset_id", pyarrow.int64()), [column])
+
+def schema_to_pg_create_table(schema: pyarrow.Schema, table_name: str) -> str:
+    # Comprehensive mapping of PyArrow types to PostgreSQL types
+    type_mapping = {
+        # Numeric Types
+        'int8': 'SMALLINT',  # Could also use "TINYINT" but not native to PG
+        'int16': 'SMALLINT',
+        'int32': 'INTEGER',
+        'int64': 'BIGINT',
+        'uint8': 'SMALLINT',
+        'uint16': 'INTEGER',
+        'uint32': 'BIGINT',
+        'uint64': 'NUMERIC',  # No unsigned in PG, so use NUMERIC
+        'float16': 'REAL',
+        'float32': 'REAL',
+        'float64': 'DOUBLE PRECISION',
+        'decimal128': 'DECIMAL',
+        'decimal256': 'DECIMAL',
+
+        # String Types
+        'string': 'TEXT',
+        'large_string': 'TEXT',
+
+        # Binary Types
+        'binary': 'BYTEA',
+        'large_binary': 'BYTEA',
+
+        # Boolean Type
+        'bool': 'BOOLEAN',
+
+        # Temporal Types
+        'date32': 'DATE',
+        'date64': 'DATE',
+        'timestamp[s]': 'TIMESTAMP',
+        'timestamp[ms]': 'TIMESTAMP',
+        'timestamp[us]': 'TIMESTAMP',
+        'timestamp[ns]': 'TIMESTAMP',
+        'time32[s]': 'TIME',
+        'time32[ms]': 'TIME',
+        'time64[us]': 'TIME',
+        'time64[ns]': 'TIME',
+
+        # Interval Types
+        'interval[s]': 'INTERVAL',
+        'interval[ms]': 'INTERVAL',
+        'interval[us]': 'INTERVAL',
+        'interval[ns]': 'INTERVAL',
+        'interval_month_day_nano': 'INTERVAL',
+
+        # List Types - mapped to ARRAY
+        'list': 'ARRAY',
+        'large_list': 'ARRAY',
+        'fixed_size_list': 'ARRAY',
+
+        # Struct Type
+        'struct': 'JSONB',  # Best approximate in PG
+
+        # Dictionary Type (usually used for categorical data)
+        'dictionary': 'TEXT',  # Stored as its target type
+
+        # Fixed Size Types
+        'fixed_size_binary': 'BYTEA',
+
+        # Map Type
+        'map': 'JSONB',  # Best approximate in PG
+
+        # Duration Types
+        'duration[s]': 'INTERVAL',
+        'duration[ms]': 'INTERVAL',
+        'duration[us]': 'INTERVAL',
+        'duration[ns]': 'INTERVAL',
+    }
+
+    def get_sql_type(field: pyarrow.Field) -> str:
+        base_type = str(field.type).lower()
+
+        # Handle list types (arrays)
+        if base_type.startswith(('list', 'large_list', 'fixed_size_list')):
+            value_type = field.type.value_type
+            sql_value_type = type_mapping.get(str(value_type).lower(), 'TEXT')
+            return f"{sql_value_type}[]"
+
+        # Handle dictionary types
+        if base_type.startswith('dictionary'):
+            # Use the dictionary value type
+            value_type = field.type.value_type
+            return type_mapping.get(str(value_type).lower(), 'TEXT')
+
+        # Handle decimal types with precision and scale
+        if base_type.startswith('decimal'):
+            precision = field.type.precision
+            scale = field.type.scale
+            return f"DECIMAL({precision}, {scale})"
+
+        # Default handling
+        return type_mapping.get(base_type, 'TEXT')
+
+    # Build column definitions
+    columns = []
+
+    for field in schema:
+        sql_type = get_sql_type(field)
+        nullable = "NULL" if field.nullable else "NOT NULL"
+        columns.append(f"{field.name} {sql_type} {nullable}")
+
+    # Construct the CREATE TABLE statement
+    create_statement = (f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+        """ + ',\n        '.join(columns)
+    + """)
+    """)
+
+    return create_statement
