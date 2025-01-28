@@ -3,7 +3,7 @@ import hashlib
 import os
 import secrets
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import adbc_driver_postgresql.dbapi
 import adbc_driver_sqlite.dbapi
@@ -12,6 +12,7 @@ import pandas
 import pyarrow
 import pyarrow.fs
 
+from ..catalog.orm import Node
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.table import TableStructure
@@ -19,6 +20,7 @@ from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
+from .utils import init_adapter_from_catalog
 
 
 class SQLAdapter:
@@ -125,9 +127,20 @@ class SQLAdapter:
         )
         return data_source
 
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> "SQLAdapter":
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+
     def structure(self) -> TableStructure:
         """
         The structure of the actual data.
+
         Returns
         -------
         The structure of the data.
@@ -137,6 +150,7 @@ class SQLAdapter:
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         """
         Get the data for a specific key
+
         Parameters
         ----------
         key : a string to indicate which column to be retrieved
@@ -151,6 +165,7 @@ class SQLAdapter:
     def __getitem__(self, key: str) -> ArrayAdapter:
         """
         Get the data for a specific key.
+
         Parameters
         ----------
         key : a string to indicate which column to be retrieved
@@ -164,6 +179,7 @@ class SQLAdapter:
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         """
         The function to iterate over the SQLAdapter data.
+
         Returns
         -------
         An iterator for the data in the associated database.
@@ -241,8 +257,8 @@ class SQLAdapter:
             raise NotImplementedError
         return self.read(fields)
 
-def create_connection(uri: str):
 
+def create_connection(uri: str):
     if uri.startswith("sqlite:"):
         # Ensure this path is writable to avoid a confusing error message
         # from abdc_driver_sqlite.
