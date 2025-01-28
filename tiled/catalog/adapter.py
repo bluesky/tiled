@@ -661,8 +661,8 @@ class CatalogNodeAdapter:
                             ),
                         )
                     adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
-                    assets = await ensure_awaitable(
-                        init_storage,
+                    data_source = await ensure_awaitable(
+                        adapter.init_storage,
                         self.context.writable_storage,
                         data_source,
                         self.segments + [key],
