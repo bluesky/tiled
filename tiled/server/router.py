@@ -29,6 +29,7 @@ from starlette.status import (
 from tiled.schemas import About
 
 from .. import __version__
+from ..catalog.adapter import CatalogArrayAdapter
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
@@ -63,6 +64,7 @@ from .dependencies import (
 )
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
+from .schemas import Management
 from .settings import get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
@@ -334,6 +336,11 @@ async def metadata(
     request.state.endpoint = "metadata"
     base_url = get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
+
+    # Update the structure for views, if necessary
+    if isinstance(entry, CatalogArrayAdapter) and entry.management() == Management.view:
+        await entry.update_structure()
+
     try:
         resource = await construct_resource(
             base_url,
@@ -382,6 +389,11 @@ async def array_block(
     """
     Fetch a chunk of array-like data.
     """
+
+    # Update the structure for views, if necessary
+    if isinstance(entry, CatalogArrayAdapter) and entry.management() == Management.view:
+        await entry.update_structure()
+
     shape = entry.structure().shape
     # Check that block dimensionality matches array dimensionality.
     ndim = len(shape)
@@ -464,6 +476,10 @@ async def array_full(
     # Deferred import because this is not a required dependency of the server
     # for some use cases.
     import numpy
+
+    # Update the structure for views, if necessary
+    if isinstance(entry, CatalogArrayAdapter) and entry.management() == Management.view:
+        await entry.update_structure()
 
     try:
         with record_timing(request.state.metrics, "read"):

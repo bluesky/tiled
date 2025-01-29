@@ -7,6 +7,7 @@ import tifffile as tf
 
 from ..catalog import in_memory
 from ..client import Context, from_context
+from ..client.utils import ClientError
 from ..server.app import build_app
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
@@ -142,6 +143,25 @@ def test_relative_paths(context):
     assert numpy.array_equal(
         client["x/y/arr1_twice_removed"].read(), client["arr1"].read()
     )
+
+
+def test_resizable_arrays(context):
+    client = from_context(context)
+    arr_client = client["x/y"].write_array(arr2, key="arr2_resizable", resizable=True)
+    arr_client.read()
+    view = client["x/y"].create_array_view(
+        arr_link="arr2_resizable", key="arr2_resizable_view"
+    )
+    assert numpy.array_equal(client["x/y/arr2_resizable_view"].read(), arr2)
+
+    arr2_extension = rng.integers(0, 255, size=(15, 17, 13), dtype="uint8")
+    arr_client.patch(arr2_extension, offset=0, extend=True)
+    assert arr_client.structure().shape == (15, 17, 13)
+
+    with pytest.raises(ClientError):
+        view.read()
+    view.refresh()
+    assert numpy.array_equal(view.read(), arr2_extension)
 
 
 def test_external_assets(context, tiff_sequence, csv_file):

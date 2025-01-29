@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, quote_plus, urlparse
 
 import anyio
 from fastapi import HTTPException
+from ndindex import ndindex
 from sqlalchemy import (
     delete,
     event,
@@ -65,6 +66,7 @@ from ..mimetypes import (
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
+from ..type_aliases import NDSlice
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -310,6 +312,7 @@ class CatalogNodeAdapter:
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
+        self._data_sources = []
 
     def metadata(self):
         return self.node.metadata_
@@ -350,7 +353,9 @@ class CatalogNodeAdapter:
 
     @property
     def data_sources(self):
-        return [DataSource.from_orm(ds) for ds in (self.node.data_sources or [])]
+        return self._data_sources or [
+            DataSource.from_orm(ds) for ds in (self.node.data_sources or [])
+        ]
 
     async def asset_by_id(self, asset_id):
         statement = (
@@ -376,6 +381,12 @@ class CatalogNodeAdapter:
         if self.data_sources:
             assert len(self.data_sources) == 1  # more not yet implemented
             return self.data_sources[0].structure
+        return None
+
+    def management(self):
+        if self.data_sources:
+            assert len(self.data_sources) == 1  # more not yet implemented
+            return self.data_sources[0].management
         return None
 
     def apply_conditions(self, statement):
@@ -452,6 +463,29 @@ class CatalogNodeAdapter:
             return None
         return STRUCTURES[node.structure_family](self.context, node)
 
+    async def get_adapter_for_tiled_uri(self, tiled_uri):
+        "Get the node and a CatalogNodeAdapter for the tiled://... address"
+        # NOTE: parse_qs(urlparse(...)) retuens _lists_ of arguments
+        uri_qs = parse_qs(urlparse(tiled_uri).query)
+        node_id = uri_qs["node_id"][0]
+        segments = uri_qs.get("segments")
+        segments = segments[0].split("/") if segments else []
+
+        statement = self.apply_conditions(select(orm.Node)).filter(
+            orm.Node.id == node_id
+        )
+        async with self.context.session() as db:
+            node = (await db.execute(statement)).scalar()
+        if node is None:
+            raise RuntimeError("Can not find the node with id %s", node_id)
+        adapter = await STRUCTURES[node.structure_family](
+            self.context, node
+        ).lookup_adapter(segments)
+        if isinstance(adapter, CatalogNodeAdapter):
+            adapter = await adapter.get_adapter()
+
+        return node, adapter
+
     async def get_adapter(self):
         (data_source,) = self.data_sources
         try:
@@ -468,26 +502,7 @@ class CatalogNodeAdapter:
             if urlparse(asset.data_uri).scheme != "tiled":
                 raise ValueError
 
-            # Get the root node and a CatalogNodeAdapter for the tiled://... address
-            uri_qs = parse_qs(urlparse(asset.data_uri).query)
-            node_id = uri_qs["node_id"][
-                0
-            ]  # NOTE: parse_qs(urlparse(...)) retuens _lists_ of arguments
-            segments = uri_qs.get("segments")
-            segments = segments[0].split("/") if segments else []
-
-            statement = self.apply_conditions(select(orm.Node)).filter(
-                orm.Node.id == node_id
-            )
-            async with self.context.session() as db:
-                node = (await db.execute(statement)).scalar()
-            if node is None:
-                raise RuntimeError("Can not find the root node for %s", asset.data_uri)
-            adapter = await STRUCTURES[node.structure_family](
-                self.context, node
-            ).lookup_adapter(segments)
-            if isinstance(adapter, CatalogNodeAdapter):
-                adapter = await adapter.get_adapter()
+            node, adapter = await self.get_adapter_for_tiled_uri(asset.data_uri)
 
             return ArrayAdapter.view_from_catalog(data_source, node, adapter)
 
@@ -1106,6 +1121,27 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             db.add(data_source)
             await db.commit()
             return structure_dict
+
+    async def update_structure(self):
+        assert len(self.data_sources) == 1
+        data_source = self.data_sources[0]
+        if data_source.management == Management.view:
+            tiled_uri = data_source.assets[0].data_uri
+            node, adapter = await self.get_adapter_for_tiled_uri(tiled_uri)
+            structure = adapter.structure()  # structure of the original array
+            slice = data_source.parameters.get("slice")
+            if slice is not None:
+                slice = NDSlice(*slice)
+                view_shape = ndindex(slice).newshape(structure.shape)
+                view_chunks = tuple(
+                    (i,) for i in view_shape
+                )  # No chunking, TODO: more general case -- reassign chunks
+                structure.shape = tuple(view_shape)
+                structure.chunks = view_chunks
+
+            data_source.structure = structure
+            self._data_sources.clear()
+            self._data_sources.append(data_source)
 
 
 class CatalogAwkwardAdapter(CatalogNodeAdapter):

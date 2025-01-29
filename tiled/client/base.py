@@ -148,11 +148,12 @@ class BaseClient:
         """
         if getattr(self._structure, "resizable", None):
             # In the future, conditionally fetch updated information.
-            raise NotImplementedError(
-                "The server has indicated that this has a dynamic, resizable "
-                "structure and this version of the Tiled Python client cannot "
-                "cope with that."
-            )
+            # raise NotImplementedError(
+            #     "The server has indicated that this has a dynamic, resizable "
+            #     "structure and this version of the Tiled Python client cannot "
+            #     "cope with that."
+            # )
+            pass
         return self._structure
 
     def login(self):

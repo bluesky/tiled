@@ -712,7 +712,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             specs=specs,
         )
 
-    def write_array(self, array, *, key=None, metadata=None, dims=None, specs=None):
+    def write_array(
+        self, array, *, key=None, metadata=None, dims=None, specs=None, resizable=False
+    ):
         """
         EXPERIMENTAL: Write an array.
 
@@ -765,6 +767,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             chunks=chunks,
             dims=dims,
             data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
+            resizable=resizable,
         )
         client = self.new(
             StructureFamily.array,
@@ -827,10 +830,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 view_structure["chunks"] = view_chunks
         else:
             # The structure might change
-            raise NotImplementedError("Views of resizable arrays are not supported yet")
-            # view_structure = copy.deepcopy(input_structure)
-            # view_structure['shape'] = None
-            # view_structure['chunks'] = None
+            # raise NotImplementedError("Views of resizable arrays are not supported yet")
+            view_structure = copy.deepcopy(input_structure)
+            view_structure["shape"] = []
+            view_structure["chunks"] = []
 
         assets = [
             Asset(
