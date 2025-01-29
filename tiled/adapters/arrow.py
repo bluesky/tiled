@@ -52,7 +52,7 @@ class ArrowAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[TableStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],

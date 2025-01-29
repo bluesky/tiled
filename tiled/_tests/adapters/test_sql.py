@@ -1,5 +1,5 @@
 import os
-import tempfile
+from pathlib import Path
 from typing import Generator
 
 import adbc_driver_sqlite
@@ -30,7 +30,7 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage(tmp_path) -> DataSource[TableStructure]:
+def data_source_from_init_storage(tmp_path: Path) -> DataSource[TableStructure]:
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=1)
     data_source = DataSource(
@@ -75,6 +75,7 @@ def test_write_read_sql_one(adapter_sql: SQLAdapter) -> None:
     result["f2"] = result["f2"].astype("boolean")
 
     assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(result)
+
 
 def test_write_read_sql_list(adapter_sql: SQLAdapter) -> None:
     adapter_sql.append_partition([batch0, batch1, batch2], 0)
@@ -136,6 +137,7 @@ def test_write_read_psql_one(adapter_psql: SQLAdapter) -> None:
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
     result["f2"] = result["f2"].astype("boolean")
+
 
 def test_write_read_psql_list(adapter_psql: SQLAdapter) -> None:
     adapter_psql.append_partition([batch0, batch1, batch2], 0)
