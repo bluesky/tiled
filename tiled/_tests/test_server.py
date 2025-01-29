@@ -54,6 +54,19 @@ def server(tmpdir):
         yield url
 
 
+@pytest.fixture
+def public_server(tmpdir):
+    catalog = in_memory(writable_storage=tmpdir)
+    app = build_app(
+        catalog, {"single_user_api_key": API_KEY, "allow_anonymous_access": True}
+    )
+    app.include_router(router)
+    config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
+    server = Server(config)
+    with server.run_in_thread() as url:
+        yield url
+
+
 @router.get("/error")
 def error():
     1 / 0  # error!
@@ -80,3 +93,7 @@ def test_writing_integration(server):
     client = from_uri(server, api_key=API_KEY)
     x = client.write_array([1, 2, 3], key="array")
     x[:]
+
+
+def test_public_server(public_server):
+    from_uri(public_server)

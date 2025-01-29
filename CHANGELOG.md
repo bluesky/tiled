@@ -5,15 +5,33 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Refactor and standardize Adapter API: implement from_uris and from_catalog
+  classmethods for instantiation from files and registered Tiled nodes, respectively.
+- Refactor CSVAdapter to allow pd.read_csv kwargs
+- Removed `tiled.adapters.zarr.read_zarr` utility function.
+- Server declares authentication provider modes are `external` or `internal`. The
+  latter was renamed from `password`. Client accepts either `internal` or `password`
+  for backward-compatibility with older servers.
+
 ### Added
 
 - Added `.get` methods on TableAdapter and ParquetDatasetAdapter
 - Ability to read string-valued columns of data frames as arrays
 
+### Fixed
+
+- Do not attempt to use auth tokens if the server declares no authentication
+  providers.
+
 ### Maintenance
 
 - Make depedencies shared by client and server into core dependencies.
 - Use schemas for describing server configuration on the client side too.
+- Refactored Authentication providers to make use of inheritance, adjusted
+  mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
+- Improved type hinting and efficiency of caching singleton values
 - Enable and document remote debugging with Helm
 
 ## v0.1.0-b16 (2024-01-23)
@@ -37,9 +55,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `public_keys`, which can be fetched at initialization (server startup) time.
   See examples `example_configs/orcid_auth.yml`,
   `example_configs/google_auth.yml`, and `example_configs/simple_oidc`.
-- Refactor and standardize Adapter API: implement from_uris and from_catalog
-  classmethods for instantiation from files and registered Tiled nodes, respectively.
-- Refactor CSVAdapter to allow pd.read_csv kwargs
 
 ### Maintenance
 
