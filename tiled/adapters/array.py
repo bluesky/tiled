@@ -1,10 +1,12 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 import dask.array
 from numpy.typing import NDArray
 
+from ..catalog.orm import Node
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
 
 
@@ -52,8 +54,8 @@ class ArrayAdapter:
         cls,
         array: NDArray[Any],
         *,
-        shape: Optional[Tuple[int, ...]] = None,
-        chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
+        # shape: Optional[Tuple[int, ...]] = None,
+        # chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
@@ -63,8 +65,6 @@ class ArrayAdapter:
         Parameters
         ----------
         array :
-        shape :
-        chunks :
         dims :
         metadata :
         specs :
@@ -73,9 +73,7 @@ class ArrayAdapter:
         -------
 
         """
-        structure = ArrayStructure.from_array(
-            array, shape=shape, chunks=chunks, dims=dims
-        )
+        structure = ArrayStructure.from_array(array, dims=dims)
         return cls(
             array,
             structure=structure,
@@ -83,13 +81,39 @@ class ArrayAdapter:
             specs=specs,
         )
 
+    @classmethod
+    def view_from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        *adapters: Union[
+            "ArrayAdapter", Any
+        ],  # Allow Adapters not inherited from ArrayAdapter
+        **kwargs: Optional[Any],
+    ) -> "ArrayAdapter":
+        assert len(adapters) == len(data_source.assets)
+        if len(data_source.assets) > 1:
+            raise NotImplementedError(
+                "Array Views combining multiple assets are not supported yet."
+            )
+        adapter = adapters[0]
+
+        slice = data_source.parameters.get("slice")
+        slice = NDSlice.from_json(slice) if slice is not None else None
+        if isinstance(adapter, ArrayAdapter):
+            arr = adapter._array[slice] if slice else adapter._array
+        else:
+            arr = adapter.read(slice) if slice else adapter.read()
+
+        return cls(
+            array=arr,
+            structure=data_source.structure,
+            metadata=node.metadata_,
+            specs=node.specs,
+        )
+
     def __repr__(self) -> str:
-        """
-
-        Returns
-        -------
-
-        """
         return f"{type(self).__name__}({self._array!r})"
 
     @property
@@ -104,7 +128,7 @@ class ArrayAdapter:
 
     def read(
         self,
-        slice: NDSlice = ...,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -124,7 +148,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: NDSlice = ...,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -169,4 +193,4 @@ def slice_and_shape_from_block_and_chunks(
         dim = c[b]
         slice_.append(slice(start, start + dim))
         shape.append(dim)
-    return tuple(slice_), tuple(shape)
+    return NDSlice(*slice_), NDSlice(*shape)

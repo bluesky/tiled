@@ -12,7 +12,7 @@ import uuid
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 import anyio
 from fastapi import HTTPException
@@ -53,6 +53,7 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..adapters.array import ArrayAdapter
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -404,6 +405,7 @@ class CatalogNodeAdapter:
         if not segments:
             return self
         *ancestors, key = segments
+
         if self.conditions and len(segments) > 1:
             # There are some conditions (i.e. WHERE clauses) applied to
             # this node, either via user search queries or via access
@@ -441,6 +443,11 @@ class CatalogNodeAdapter:
                         adapter = await anyio.to_thread.run_sync(adapter.get, segment)
                         if adapter is None:
                             break
+                    adapter.tiled_uri = (
+                        catalog_adapter.tiled_uri
+                        + "&segments="
+                        + "/".join(segments[i:])
+                    )
                     return adapter
             return None
         return STRUCTURES[node.structure_family](self.context, node)
@@ -453,13 +460,45 @@ class CatalogNodeAdapter:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
+
+        if data_source.management == Management.view:
+            assert len(data_source.assets) == 1
+            asset = data_source.assets[0]
+
+            if urlparse(asset.data_uri).scheme != "tiled":
+                raise ValueError
+
+            # Get the root node and a CatalogNodeAdapter for the tiled://... address
+            uri_qs = parse_qs(urlparse(asset.data_uri).query)
+            node_id = uri_qs["node_id"][
+                0
+            ]  # NOTE: parse_qs(urlparse(...)) retuens _lists_ of arguments
+            segments = uri_qs.get("segments")
+            segments = segments[0].split("/") if segments else []
+
+            statement = self.apply_conditions(select(orm.Node)).filter(
+                orm.Node.id == node_id
+            )
+            async with self.context.session() as db:
+                node = (await db.execute(statement)).scalar()
+            if node is None:
+                raise RuntimeError("Can not find the root node for %s", asset.data_uri)
+            adapter = await STRUCTURES[node.structure_family](
+                self.context, node
+            ).lookup_adapter(segments)
+            if isinstance(adapter, CatalogNodeAdapter):
+                adapter = await adapter.get_adapter()
+
+            return ArrayAdapter.view_from_catalog(data_source, node, adapter)
+
+        # Handle usual (internal and external) Data Sources
         for asset in data_source.assets:
             if asset.parameter is None:
                 continue
             scheme = urlparse(asset.data_uri).scheme
-            if scheme != "file":
+            if scheme not in ("file"):
                 raise NotImplementedError(
-                    f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
+                    f"Only 'file://...' scheme URLs and Tiled views are currently supported, not {asset.data_uri}"
                 )
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
@@ -476,6 +515,7 @@ class CatalogNodeAdapter:
                         f"Refusing to serve {asset.data_uri} because it is outside "
                         "the readable storage area for this server."
                     )
+
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_class.from_catalog,
@@ -627,14 +667,14 @@ class CatalogNodeAdapter:
                 raise
             await db.refresh(node)
             for data_source in data_sources:
-                if data_source.management != Management.external:
+                if data_source.management not in (Management.external, Management.view):
                     if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
                     if data_source.mimetype is None:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
                             data_source.structure_family
                         ]
-                    data_source.parameters = {}
+                    # data_source.parameters = {}
                     data_uri = str(self.context.writable_storage) + "".join(
                         f"/{quote_plus(segment)}" for segment in (self.segments + [key])
                     )
@@ -947,6 +987,10 @@ class CatalogNodeAdapter:
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
             await db.commit()
+
+    @property
+    def tiled_uri(self):
+        return f"tiled://self?node_id={self.node.id}"
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):

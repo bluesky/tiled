@@ -1,22 +1,27 @@
 import collections
 import collections.abc
+import copy
 import functools
 import importlib
 import itertools
 import time
 import warnings
 from dataclasses import asdict
+from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
+from ndindex import ndindex
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import DataSource
+from ..structures.data_source import Asset, DataSource
+from ..type_aliases import NDSlice
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
@@ -791,6 +796,65 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # TODO Is there a fire-and-forget analogue such that we don't need
             # to bother with the return type?
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
+        return client
+
+    def create_array_view(
+        self, arr_link: str, key: str = None, slice: Optional[NDSlice] = None
+    ):
+        from ..structures.array import ArrayStructure
+
+        # Resolve relative paths
+        arr_link = (
+            Path(self.uri.split("metadata")[1]).joinpath(arr_link).resolve().as_posix()
+        )
+
+        endpoint = (
+            self.uri.split("metadata")[0] + "metadata" + arr_link + "?tiled_uri=true"
+        )
+        document = handle_error(self.context.http_client.get(endpoint)).json()
+        input_structure = document["data"]["attributes"]["structure"]
+
+        if not input_structure["resizable"]:
+            # Can determine the fixed structure for the View rightaway
+            view_structure = copy.deepcopy(input_structure)
+            if slice is not None:
+                slice = NDSlice(*slice)
+                view_shape = ndindex(slice).newshape(input_structure["shape"])
+                view_chunks = [
+                    [i] for i in view_shape
+                ]  # No chunking, TODO: more general case -- reassign chunks
+                view_structure["shape"] = view_shape
+                view_structure["chunks"] = view_chunks
+        else:
+            # The structure might change
+            raise NotImplementedError("Views of resizable arrays are not supported yet")
+            # view_structure = copy.deepcopy(input_structure)
+            # view_structure['shape'] = None
+            # view_structure['chunks'] = None
+
+        assets = [
+            Asset(
+                data_uri=document["meta"]["tiled_uri"],
+                is_directory=False,
+                parameter="data_uri",
+            )
+        ]
+        client = self.new(
+            StructureFamily.array,
+            [
+                DataSource(
+                    structure=ArrayStructure.from_json(view_structure),
+                    structure_family=StructureFamily.array,
+                    management="view",
+                    assets=assets,
+                    parameters={"slice": slice.to_json()} if slice is not None else {},
+                    mimetype="application/x-array-view",
+                ),
+            ],
+            key=key,
+            metadata={},
+            specs=[],
+        )
         return client
 
     def write_awkward(
