@@ -47,7 +47,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          push: true
+          push: startsWith(github.ref, 'refs/tags/')
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
@@ -56,6 +56,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
         id: install
+        if: startsWith(github.ref, 'refs/tags/')
 
       - name: Log in to the Chart registry
         run: |
@@ -65,4 +66,8 @@ jobs:
         run: |
           helm dependencies update helm/tiled
           helm package helm/tiled --version ${{ steps.meta.outputs.version }} --app-version ${{ steps.meta.outputs.version }} -d /tmp/
+
+      - name: Publish Helm chart
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
           helm push /tmp/tiled-${{ steps.meta.outputs.version }}.tgz oci://ghcr.io/bluesky/charts
