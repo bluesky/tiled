@@ -27,10 +27,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Maintenance
 
-- Make depedencies shared by client and server into core dependencies.
+- Make dependencies shared by client and server into core dependencies.
 - Use schemas for describing server configuration on the client side too.
 - Refactored Authentication providers to make use of inheritance, adjusted
   mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
+  Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
 
 
