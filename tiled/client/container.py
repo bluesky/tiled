@@ -4,16 +4,16 @@ import copy
 import functools
 import importlib
 import itertools
-from ndindex import ndindex
 import time
 import warnings
 from dataclasses import asdict
+from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
-from typing import Iterable, Optional
-from ..type_aliases import NDSlice
 
 import entrypoints
 import httpx
+from ndindex import ndindex
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -21,6 +21,7 @@ from ..queries import KeyLookup
 from ..query_registration import query_registry
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
+from ..type_aliases import NDSlice
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
@@ -796,56 +797,65 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # to bother with the return type?
             da.map_blocks(write_block, dtype=da.dtype, client=client).compute()
         return client
-    
-    def create_array_view(self, links: Iterable[str], key: str=None, slices: Optional[Iterable[NDSlice]] = None):
 
+    def create_array_view(
+        self, arr_link: str, key: str = None, slice: Optional[NDSlice] = None
+    ):
         from ..structures.array import ArrayStructure
 
-        def serialize_ndslice(ndslice):
-            result = []
-            for s in ndslice:
-                if isinstance(s, slice):
-                    result.append({"start": s.start, "stop": s.stop, "step": s.step})
-                elif s is Ellipsis:
-                    result.append('ellipsis')
-                else:
-                    result.append(s)
-            return result
+        # Resolve relative paths
+        arr_link = (
+            Path(self.uri.split("metadata")[1]).joinpath(arr_link).resolve().as_posix()
+        )
 
-        if slices is None:
-            slices = [(...,)] * len(links)
-        assets = []
-        substructures = []
+        endpoint = (
+            self.uri.split("metadata")[0] + "metadata" + arr_link + "?tiled_uri=true"
+        )
+        document = handle_error(self.context.http_client.get(endpoint)).json()
+        input_structure = document["data"]["attributes"]["structure"]
 
-        for link, slc in zip(links, slices):
-            endpoint = self.uri.split('metadata')[0] + "metadata" + link
-            document = handle_error(self.context.http_client.get(endpoint)).json()
-            input_structure = document['data']['attributes']['structure']
-            out_shape = ndindex(slc).newshape(input_structure['shape'])
-            out_chunks = [[i] for i in out_shape]    # No chunking, TODO: more general case -- reassign chunks
+        if not input_structure["resizable"]:
+            # Can determine the fixed structure for the View rightaway
+            view_structure = copy.deepcopy(input_structure)
+            if slice is not None:
+                slice = NDSlice(*slice)
+                view_shape = ndindex(slice).newshape(input_structure["shape"])
+                view_chunks = [
+                    [i] for i in view_shape
+                ]  # No chunking, TODO: more general case -- reassign chunks
+                view_structure["shape"] = view_shape
+                view_structure["chunks"] = view_chunks
+        else:
+            # The structure might change
+            raise NotImplementedError("Views of resizable arrays are not supported yet")
+            # view_structure = copy.deepcopy(input_structure)
+            # view_structure['shape'] = None
+            # view_structure['chunks'] = None
 
-            substructures.append(copy.deepcopy(input_structure))
-            substructures[-1]['shape'] = out_shape
-            substructures[-1]['chunks'] = out_chunks
-            assets.append(Asset(data_uri=f"tiled://{links[0]}", is_directory=False, parameter='data_uri'))
-    
-        # TODO: combine substructures if tehre are multiple sub-arrays that are concatenated
-        structure = ArrayStructure.from_json(substructures[-1])
+        assets = [
+            Asset(
+                data_uri=document["meta"]["tiled_uri"],
+                is_directory=False,
+                parameter="data_uri",
+            )
+        ]
         client = self.new(
             StructureFamily.array,
             [
-                DataSource(structure=structure, structure_family=StructureFamily.array, management="view",
-                           assets = assets,
-                           parameters = {"slices": [serialize_ndslice(s) for s in slices] },
-                           mimetype="application/x-array-view"),
+                DataSource(
+                    structure=ArrayStructure.from_json(view_structure),
+                    structure_family=StructureFamily.array,
+                    management="view",
+                    assets=assets,
+                    parameters={"slice": slice.to_json()} if slice is not None else {},
+                    mimetype="application/x-array-view",
+                ),
             ],
             key=key,
             metadata={},
             specs=[],
         )
         return client
-    
-
 
     def write_awkward(
         self,

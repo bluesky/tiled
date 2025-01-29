@@ -327,6 +327,7 @@ async def metadata(
     include_data_sources: bool = Query(False),
     entry: Any = SecureEntry(scopes=["read:metadata"]),
     root_path: bool = Query(False),
+    tiled_uri: bool = Query(False),
 ):
     """Fetch the metadata and structure information for one entry"""
 
@@ -351,6 +352,8 @@ async def metadata(
             detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
         )
     meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
+    if tiled_uri:
+        meta["tiled_uri"] = entry.tiled_uri
 
     return json_or_msgpack(
         request,

@@ -5,7 +5,7 @@ if sys.version_info < (3, 10):
 else:
     from types import EllipsisType
 
-from typing import Any, Dict, List, Set, Tuple, Union
+from typing import Any, Dict, List, Set, Union
 
 JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
 # NDSlice = Union[
@@ -14,7 +14,6 @@ JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
 
 
 class NDSlice(tuple):
-
     def __new__(cls, *args: Union[int, slice, EllipsisType]):
         return super().__new__(cls, tuple(args))
 
@@ -24,10 +23,10 @@ class NDSlice(tuple):
         result = []
         for s in ser:
             if isinstance(s, dict):
-                result.append(slice(s.get("start"), s.get('stop'), s.get('step')))
+                result.append(slice(s.get("start"), s.get("stop"), s.get("step")))
             elif isinstance(s, int):
                 result.append(s)
-            elif s == 'ellipsis':
+            elif s == "ellipsis":
                 result.append(...)
             else:
                 raise ValueError("Can not intialize NDSlice from %s", s)
@@ -42,10 +41,11 @@ class NDSlice(tuple):
             elif isinstance(s, int):
                 result.append(s)
             elif s is Ellipsis:
-                result.append('ellipsis')
+                result.append("ellipsis")
             else:
                 raise ValueError("Unprocessable entry in NDSlice, %s", s)
         return result
+
 
 Scopes = Set[str]
 Query = Any  # for now...

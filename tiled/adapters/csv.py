@@ -269,7 +269,6 @@ class CSVAdapter:
 
         return ArrayAdapter.from_array(array)
 
-
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         """Iterator over table columns
 

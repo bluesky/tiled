@@ -12,7 +12,7 @@ import uuid
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 import anyio
 from fastapi import HTTPException
@@ -53,6 +53,7 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..adapters.array import ArrayAdapter
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -61,7 +62,6 @@ from ..mimetypes import (
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     ZARR_MIMETYPE,
 )
-from ..adapters.array import ArrayAdapter
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
@@ -443,6 +443,11 @@ class CatalogNodeAdapter:
                         adapter = await anyio.to_thread.run_sync(adapter.get, segment)
                         if adapter is None:
                             break
+                    adapter.tiled_uri = (
+                        catalog_adapter.tiled_uri
+                        + "&segments="
+                        + "/".join(segments[i:])
+                    )
                     return adapter
             return None
         return STRUCTURES[node.structure_family](self.context, node)
@@ -455,46 +460,43 @@ class CatalogNodeAdapter:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
             )
+
         if data_source.management == Management.view:
-            # return adapter
-            for asset in data_source.assets:
-                scheme = urlparse(asset.data_uri).scheme
-                if scheme != "tiled":
-                    raise ValueError
-                segments = asset.data_uri.lstrip("tiled://").split('/')
-                root, *rest = segments
+            assert len(data_source.assets) == 1
+            asset = data_source.assets[0]
 
-                def deserialize_ndslice(ser_ndslice):
-                    result = []
-                    for s in ser_ndslice:
-                        if isinstance(s, dict):
-                            result.append(slice(s.get("start"), s.get('stop'), s.get('step')))
-                        elif s == 'ellipsis':
-                            result.append(...)
-                        else:
-                            result.append(s)
-                    return tuple(result)
+            if urlparse(asset.data_uri).scheme != "tiled":
+                raise ValueError
 
-                # Get the root node and a CatalogNodeAdapter for the tiled://... address
-                statement = self.apply_conditions(select(orm.Node)).filter(orm.Node.ancestors == []).filter(orm.Node.key == root)
-                async with self.context.session() as db:
-                    node = (await db.execute(statement)).scalar()
-                if node is None:
-                    raise RuntimeError("Can not find the root node for %s", asset.data_uri)
-                adapter = await STRUCTURES[node.structure_family](self.context, node).lookup_adapter(rest)
-                if isinstance(adapter, CatalogNodeAdapter):
-                    adapter = await adapter.get_adapter()
+            # Get the root node and a CatalogNodeAdapter for the tiled://... address
+            uri_qs = parse_qs(urlparse(asset.data_uri).query)
+            node_id = uri_qs["node_id"][
+                0
+            ]  # NOTE: parse_qs(urlparse(...)) retuens _lists_ of arguments
+            segments = uri_qs.get("segments")
+            segments = segments[0].split("/") if segments else []
 
-                ndslice = deserialize_ndslice(data_source.parameters['slices'][0])
+            statement = self.apply_conditions(select(orm.Node)).filter(
+                orm.Node.id == node_id
+            )
+            async with self.context.session() as db:
+                node = (await db.execute(statement)).scalar()
+            if node is None:
+                raise RuntimeError("Can not find the root node for %s", asset.data_uri)
+            adapter = await STRUCTURES[node.structure_family](
+                self.context, node
+            ).lookup_adapter(segments)
+            if isinstance(adapter, CatalogNodeAdapter):
+                adapter = await adapter.get_adapter()
 
-                adapter = ArrayAdapter.from_array(adapter.read(slice=ndslice))
-            return adapter
+            return ArrayAdapter.view_from_catalog(data_source, node, adapter)
 
+        # Handle usual (internal and external) Data Sources
         for asset in data_source.assets:
             if asset.parameter is None:
                 continue
             scheme = urlparse(asset.data_uri).scheme
-            if scheme not in ("file", "tiled"):
+            if scheme not in ("file"):
                 raise NotImplementedError(
                     f"Only 'file://...' scheme URLs and Tiled views are currently supported, not {asset.data_uri}"
                 )
@@ -513,6 +515,7 @@ class CatalogNodeAdapter:
                         f"Refusing to serve {asset.data_uri} because it is outside "
                         "the readable storage area for this server."
                     )
+
         adapter = await anyio.to_thread.run_sync(
             partial(
                 adapter_class.from_catalog,
@@ -984,6 +987,10 @@ class CatalogNodeAdapter:
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
             await db.commit()
+
+    @property
+    def tiled_uri(self):
+        return f"tiled://self?node_id={self.node.id}"
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):

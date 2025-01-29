@@ -1,10 +1,8 @@
 from pathlib import Path
 
-import awkward
 import numpy
 import pandas
 import pytest
-import sparse
 import tifffile as tf
 
 from ..catalog import in_memory
@@ -36,6 +34,7 @@ arr2 = rng.integers(0, 255, size=(5, 7, 3), dtype="uint8")
 img_data = rng.integers(0, 255, size=(5, 13, 17, 3), dtype="uint8")
 
 md = {"md_key1": "md_val1", "md_key2": 2}
+
 
 @pytest.fixture
 def tiff_sequence(tmpdir):
@@ -87,32 +86,62 @@ def context(tree):
 
 def test_original_locations(context):
     client = from_context(context)
-    arr_v = client.create_container(key = 'arr_v')
-    arr_v.create_array_view(links=['/arr1'], key='arr1')
-    arr_v.create_array_view(links=['/x/arr1'], key='x_arr1')
-    arr_v.create_array_view(links=['/x/y/arr1'], key='x_y_arr1')
+    arr_v = client.create_container(key="arr_v")
+    arr_v.create_array_view(arr_link="/arr1", key="arr1")
+    arr_v.create_array_view(arr_link="/x/arr1", key="x_arr1")
+    arr_v.create_array_view(arr_link="/x/y/arr1", key="x_y_arr1")
 
-    for key in ('arr1', 'x_arr1', 'x_y_arr1'):
+    for key in ("arr1", "x_arr1", "x_y_arr1"):
         assert numpy.array_equal(arr_v[key].read(), arr1)
 
 
 def test_table_columns(context):
     client = from_context(context)
-    tbl_v = client.create_container(key = 'tbl_v')
-    tbl_v.create_array_view(links=['/x/y/df1/A'], key='A')
-    tbl_v.create_array_view(links=['/x/y/df1/B'], key='B')
+    tbl_v = client.create_container(key="tbl_v")
+    tbl_v.create_array_view(arr_link="/x/y/df1/A", key="A")
+    tbl_v.create_array_view(arr_link="/x/y/df1/B", key="B")
 
-    for key in ('A', 'B'):
+    for key in ("A", "B"):
         assert numpy.array_equal(tbl_v[key].read(), df1[key])
+
 
 def test_slices(context):
     client = from_context(context)
-    slc_v = client.create_container(key = 'slc_v')
-    slc_v.create_array_view(links=['/x/df2/C'], key='C', slices=[(slice(0, 2),)])
-    assert numpy.array_equal(slc_v['C'].read(), df2['C'][0:2])
+    slc_v = client.create_container(key="slc_v")
+    slc_v.create_array_view(arr_link="/x/df2/C", key="C", slice=(slice(0, 2),))
+    assert numpy.array_equal(slc_v["C"].read(), df2["C"][0:2])
 
-    slc_v.create_array_view(links=['/x/arr2'], key='a2_v', slices=[(slice(0, 2), 1, ...)])
-    assert numpy.array_equal(slc_v['a2_v'].read(), arr2[slice(0, 2), 1, ...])
+    slc_v.create_array_view(arr_link="/x/arr2", key="a2_v", slice=(slice(0, 2), 1, ...))
+    assert numpy.array_equal(slc_v["a2_v"].read(), arr2[slice(0, 2), 1, ...])
+
+
+def test_relative_paths(context):
+    client = from_context(context)
+    view = client["x/y"].create_array_view(arr_link="arr1", key="arr1_same_level_1")
+    assert numpy.array_equal(view.read(), arr1)
+    assert numpy.array_equal(
+        client["x/y/arr1_same_level_1"].read(), client["x/y/arr1"].read()
+    )
+
+    view = client["x/y"].create_array_view(arr_link="./arr1", key="arr1_same_level_2")
+    assert numpy.array_equal(view.read(), arr1)
+    assert numpy.array_equal(
+        client["x/y/arr1_same_level_2"].read(), client["x/y/arr1"].read()
+    )
+
+    view = client["x/y"].create_array_view(arr_link="../arr2", key="arr2_from_parent")
+    assert numpy.array_equal(view.read(), arr2)
+    assert numpy.array_equal(
+        client["x/y/arr2_from_parent"].read(), client["x/arr2"].read()
+    )
+
+    view = client["x/y"].create_array_view(
+        arr_link="../../arr1", key="arr1_twice_removed"
+    )
+    assert numpy.array_equal(view.read(), arr1)
+    assert numpy.array_equal(
+        client["x/y/arr1_twice_removed"].read(), client["arr1"].read()
+    )
 
 
 def test_external_assets(context, tiff_sequence, csv_file):
@@ -121,7 +150,7 @@ def test_external_assets(context, tiff_sequence, csv_file):
     # Write some data with external assets
     tiff_assets = [
         Asset(
-            data_uri=f"file://localhost{fpath}",
+            data_uri=f"file://localhost/{fpath}",
             is_directory=False,
             parameter="data_uris",
             num=i + 1,
@@ -143,7 +172,7 @@ def test_external_assets(context, tiff_sequence, csv_file):
 
     csv_assets = [
         Asset(
-            data_uri=f"file://localhost{csv_file}",
+            data_uri=f"file://localhost/{csv_file}",
             is_directory=False,
             parameter="data_uris",
         )
@@ -168,10 +197,10 @@ def test_external_assets(context, tiff_sequence, csv_file):
         key="table",
     )
 
-    ext_v = client.create_container(key = 'ext_v')
-    ext_v.create_array_view(links=['/z/image'], key='image_v')
-    ext_v.create_array_view(links=['/z/table/col1'], key='col1_v')
-    ext_v.create_array_view(links=['/z/table/col2'], key='col2_v')
-    assert numpy.array_equal(ext_v['image_v'].read(), img_data)
-    assert numpy.array_equal(ext_v['col1_v'].read(), df3['col1'])
-    assert numpy.array_equal(ext_v['col2_v'].read(), df3['col2'])
+    ext_v = client.create_container(key="ext_v")
+    ext_v.create_array_view(arr_link="/z/image", key="image_v")
+    ext_v.create_array_view(arr_link="/z/table/col1", key="col1_v")
+    ext_v.create_array_view(arr_link="/z/table/col2", key="col2_v")
+    assert numpy.array_equal(ext_v["image_v"].read(), img_data)
+    assert numpy.array_equal(ext_v["col1_v"].read(), df3["col1"])
+    assert numpy.array_equal(ext_v["col2_v"].read(), df3["col2"])
