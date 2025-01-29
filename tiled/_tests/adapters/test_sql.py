@@ -30,7 +30,7 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage() -> DataSource[TableStructure]:
+def data_source_from_init_storage(tmp_path) -> DataSource[TableStructure]:
     table = pa.Table.from_arrays(data0, names)
     structure = TableStructure.from_arrow_table(table, npartitions=1)
     data_source = DataSource(
@@ -40,7 +40,8 @@ def data_source_from_init_storage() -> DataSource[TableStructure]:
         structure=structure,
         assets=[],
     )
-    storage = Storage(filesystem=None, sql="sqlite:////tmp/test.sqlite")
+    data_uri = f"sqlite:///{tmp_path}/test.db"
+    storage = Storage(filesystem=None, sql=data_uri)
     return SQLAdapter.init_storage(
         data_source=data_source, storage=storage, path_parts=[]
     )
@@ -50,15 +51,13 @@ def data_source_from_init_storage() -> DataSource[TableStructure]:
 def adapter_sql(
     data_source_from_init_storage: DataSource[TableStructure],
 ) -> Generator[SQLAdapter, None, None]:
-    with tempfile.TemporaryDirectory() as td:
-        data_uri = f"sqlite:///{td}/test.db"
-        data_source = data_source_from_init_storage
-        yield SQLAdapter(
-            data_uri,
-            data_source.structure,
-            data_source.parameters["table_name"],
-            data_source.parameters["dataset_id"],
-        )
+    data_source = data_source_from_init_storage
+    yield SQLAdapter(
+        data_source.assets[0].data_uri,
+        data_source.structure,
+        data_source.parameters["table_name"],
+        data_source.parameters["dataset_id"],
+    )
 
 
 def test_attributes(adapter_sql: SQLAdapter) -> None:
@@ -67,9 +66,9 @@ def test_attributes(adapter_sql: SQLAdapter) -> None:
     assert isinstance(adapter_sql.conn, adbc_driver_sqlite.dbapi.AdbcSqliteConnection)
 
 
-def test_write_read_sql(adapter_sql: SQLAdapter) -> None:
+def test_write_read_sql_one(adapter_sql: SQLAdapter) -> None:
     # test writing and reading it
-    adapter_sql.write(batch0)
+    adapter_sql.append_partition(batch0, 0)
     result = adapter_sql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
@@ -77,14 +76,8 @@ def test_write_read_sql(adapter_sql: SQLAdapter) -> None:
 
     assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(result)
 
-    adapter_sql.write([batch0, batch1])
-    result = adapter_sql.read()
-    # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
-    # so we explicitely convert the last column to boolean for testing purposes
-    result["f2"] = result["f2"].astype("boolean")
-    assert pa.Table.from_batches([batch0, batch1]) == pa.Table.from_pandas(result)
-
-    adapter_sql.write([batch0, batch1, batch2])
+def test_write_read_sql_list(adapter_sql: SQLAdapter) -> None:
+    adapter_sql.append_partition([batch0, batch1, batch2], 0)
     result = adapter_sql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
@@ -94,9 +87,8 @@ def test_write_read_sql(adapter_sql: SQLAdapter) -> None:
     )
 
     # test write , append and read all
-    adapter_sql.write([batch0, batch1, batch2])
-    adapter_sql.append([batch2, batch0, batch1])
-    adapter_sql.append([batch1, batch2, batch0])
+    adapter_sql.append_partition([batch2, batch0, batch1], 0)
+    adapter_sql.append_partition([batch1, batch2, batch0], 0)
     result = adapter_sql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
@@ -137,24 +129,16 @@ def test_psql(postgres_uri: str, adapter_psql: SQLAdapter) -> None:
     # )
 
 
-def test_write_read_psql(adapter_psql: SQLAdapter) -> None:
+def test_write_read_psql_one(adapter_psql: SQLAdapter) -> None:
     # test writing and reading it
-    adapter_psql.write(batch0)
+    adapter_psql.append_partition(batch0, 0)
     result = adapter_psql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
     result["f2"] = result["f2"].astype("boolean")
 
-    assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(result)
-
-    adapter_psql.write([batch0, batch1])
-    result = adapter_psql.read()
-    # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
-    # so we explicitely convert the last column to boolean for testing purposes
-    result["f2"] = result["f2"].astype("boolean")
-    assert pa.Table.from_batches([batch0, batch1]) == pa.Table.from_pandas(result)
-
-    adapter_psql.write([batch0, batch1, batch2])
+def test_write_read_psql_list(adapter_psql: SQLAdapter) -> None:
+    adapter_psql.append_partition([batch0, batch1, batch2], 0)
     result = adapter_psql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
@@ -164,9 +148,8 @@ def test_write_read_psql(adapter_psql: SQLAdapter) -> None:
     )
 
     # test write , append and read all
-    adapter_psql.write([batch0, batch1, batch2])
-    adapter_psql.append([batch2, batch0, batch1])
-    adapter_psql.append([batch1, batch2, batch0])
+    adapter_psql.append_partition([batch2, batch0, batch1], 0)
+    adapter_psql.append_partition([batch1, batch2, batch0], 0)
     result = adapter_psql.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes

@@ -100,7 +100,8 @@ class SQLAdapter:
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
 
-        data_source.parameters["dataset_id"] = secrets.randbits(63)
+        dataset_id = secrets.randbits(63)
+        data_source.parameters["dataset_id"] = dataset_id
         data_uri = storage.get("sql")  # TODO scrub credential
 
         schema_new = schema.insert(0, pyarrow.field("dataset_id", pyarrow.int64()))
@@ -213,9 +214,8 @@ class SQLAdapter:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
         table_with_dataset_id = add_dataset_column(table, self.dataset_id)
-
         self.cur.adbc_ingest(
-            self.table_name, table_with_dataset_id, mode="create_append"
+            self.table_name, table_with_dataset_id, mode="append"
         )
         self.conn.commit()
 
