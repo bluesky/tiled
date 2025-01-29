@@ -56,7 +56,7 @@ class CSVAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[TableStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],
@@ -245,7 +245,7 @@ class CSVAdapter:
             DataSource(
                 structure_family=StructureFamily.table,
                 mimetype=mimetype,
-                structure=dict_or_none(self.structure()),
+                structure=self.structure(),
                 parameters={},
                 management=Management.external,
                 assets=[
@@ -293,7 +293,7 @@ class CSVArrayAdapter(ArrayAdapter):
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[ArrayStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],

@@ -10,7 +10,6 @@ from urllib.parse import quote_plus
 import awkward.forms
 
 from ..catalog.orm import Node
-from ..server.schemas import Asset
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
@@ -75,7 +74,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[AwkwardStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],

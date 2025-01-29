@@ -131,7 +131,7 @@ class SQLAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[TableStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],
@@ -214,9 +214,7 @@ class SQLAdapter:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
         table_with_dataset_id = add_dataset_column(table, self.dataset_id)
-        self.cur.adbc_ingest(
-            self.table_name, table_with_dataset_id, mode="append"
-        )
+        self.cur.adbc_ingest(self.table_name, table_with_dataset_id, mode="append")
         self.conn.commit()
 
     def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
@@ -258,7 +256,7 @@ class SQLAdapter:
         return self.read(fields)
 
 
-def create_connection(uri: str):
+def create_connection(uri: str) -> adbc_driver_sqlite.dbapi.AdbcSqliteConnection:
     if uri.startswith("sqlite:"):
         # Ensure this path is writable to avoid a confusing error message
         # from abdc_driver_sqlite.
@@ -280,7 +278,6 @@ def create_connection(uri: str):
         raise ValueError(
             "The database uri must start with either `sqlite:` or `postgresql:` "
         )
-
     return conn
 
 
