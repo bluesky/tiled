@@ -33,7 +33,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
   Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
-
+- Enable and document remote debugging with Helm
 
 ## v0.1.0-b16 (2024-01-23)
 
