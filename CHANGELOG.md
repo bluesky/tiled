@@ -20,6 +20,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Added `.get` methods on TableAdapter and ParquetDatasetAdapter
 - Ability to read string-valued columns of data frames as arrays
 
+### Fixed
+
+- Do not attempt to use auth tokens if the server declares no authentication
+  providers.
+
 ### Maintenance
 
 - Make depedencies shared by client and server into core dependencies.
