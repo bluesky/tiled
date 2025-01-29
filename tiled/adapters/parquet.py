@@ -14,7 +14,6 @@ from ..utils import path_from_uri
 from .array import ArrayAdapter
 from .dataframe import DataFrameAdapter
 from .utils import init_adapter_from_catalog
-from .array import ArrayAdapter
 
 
 class ParquetDatasetAdapter:
@@ -45,9 +44,6 @@ class ParquetDatasetAdapter:
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
-
-    def get(self, key: str) -> ArrayAdapter:
-        return self.dataframe_adapter[key]
 
     @classmethod
     def from_catalog(
