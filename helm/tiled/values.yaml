@@ -16,9 +16,9 @@ config:
 # Use `kubectl port forward` to access from your machine
 debug:
   # Whether the container should start in debug mode
-  enabled: true
+  enabled: false
   # Whether to suspend the process until a debugger connects
-  suspend: true
+  suspend: false
   # Port to listen for the debugger on
   port: 5678
 
