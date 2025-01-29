@@ -385,6 +385,14 @@ class Context:
         """
         uri = httpx.URL(uri)
         node_path_parts = []
+        # Ensure that HTTPS is used if available
+        # Rely on location header from HTTP->HTTPS redirect to determine if exists
+        if uri.scheme == "http":
+            redirect_header = httpx.get(uri).headers.get("location", None)
+            if redirect_header is not None:
+                redirect_uri = httpx.URL(redirect_header)
+                if redirect_uri.scheme == "https":
+                    uri = redirect_uri
         if "/metadata" in uri.path:
             api_path, _, node_path = uri.path.partition("/metadata")
             api_uri = uri.copy_with(path=api_path)
