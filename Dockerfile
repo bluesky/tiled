@@ -51,6 +51,8 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
 # We want cURL and httpie so healthchecks can be performed within the container
 RUN apt-get update && apt-get install -y curl httpie
+# Install debugpy to allow us to use remote debugging
+RUN pip install debugpy
 
 WORKDIR /deploy
 RUN mkdir /deploy/config

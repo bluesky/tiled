@@ -13,6 +13,13 @@ config:
         writable_storage: "/storage/data"
         init_if_not_exists: true
 
+debug:
+  # When enabled listens for a debugger connection on the port on a ClusterIP.
+  # Use `kubectl port forward` to access from your machine
+  enabled: true
+  suspend: true
+  port: 5678
+
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 
