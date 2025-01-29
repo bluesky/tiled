@@ -1,4 +1,5 @@
 import itertools
+from types import EllipsisType
 from typing import Any, List, Optional, Tuple, Union
 
 import dask.base
@@ -122,7 +123,7 @@ class SparseBlocksParquetAdapter:
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
-        slice: NDSlice = ...,
+        slice: Union[NDSlice, EllipsisType] = ...,
     ) -> None:
         if slice != ...:
             raise NotImplementedError(
@@ -178,7 +179,9 @@ class SparseBlocksParquetAdapter:
         return arr[slice]
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[NDSlice]
+        self,
+        block: Tuple[int, ...],
+        slice: Optional[Union[NDSlice, EllipsisType]] = ...,
     ) -> sparse.COO:
         """
 

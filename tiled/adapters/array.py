@@ -1,3 +1,4 @@
+from types import EllipsisType
 from typing import Any, List, Optional, Tuple, Union
 
 import dask.array
@@ -128,7 +129,7 @@ class ArrayAdapter:
 
     def read(
         self,
-        slice: NDSlice = NDSlice(...),
+        slice: Union[NDSlice, EllipsisType] = ...,
     ) -> NDArray[Any]:
         """
 
@@ -148,7 +149,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: NDSlice = NDSlice(...),
+        slice: Union[NDSlice, EllipsisType] = ...,
     ) -> NDArray[Any]:
         """
 
@@ -174,7 +175,7 @@ class ArrayAdapter:
 
 def slice_and_shape_from_block_and_chunks(
     block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
-) -> Tuple[NDSlice, Tuple[int, ...]]:
+) -> tuple[NDSlice, NDSlice]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
     Parameters

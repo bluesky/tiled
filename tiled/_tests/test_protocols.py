@@ -85,8 +85,8 @@ def test_arrayadapter_protocol(mocker: MockFixture) -> None:
 
     array = numpy.random.rand(2, 512, 512)
     metadata: JSON = {"foo": "bar"}
-    anyslice = (1, 1, 1)
-    anyblock = (1, 1, 1)
+    anyslice = NDSlice(1, 1, 1)
+    anyblock = NDSlice(1, 1, 1)
 
     anyarrayadapter = CustomArrayAdapter(array, structure, metadata=metadata)
     assert anyarrayadapter.structure_family == StructureFamily.array
@@ -158,7 +158,7 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
     structure = AwkwardStructure(length=2, form={"a": "b"})
 
     metadata: JSON = {"foo": "bar"}
-    anyslice = (1, 1, 1)
+    anyslice = NDSlice(1, 1, 1)
     container = DirectoryContainer(directory=Path("somedirectory"), form={})
     form_keys = ["a", "b", "c"]
 
@@ -247,8 +247,8 @@ def test_sparseadapter_protocol(mocker: MockFixture) -> None:
     array = numpy.random.rand(2, 512, 512)
     blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]] = {(1,): (array, (1,))}
     metadata: JSON = {"foo": "bar"}
-    anyslice = (1, 1, 1)
-    anyblock = (1, 1, 1)
+    anyslice = NDSlice(1, 1, 1)
+    anyblock = NDSlice(1, 1, 1)
 
     anysparseadapter = CustomSparseAdapter(blocks, structure, metadata=metadata)
     assert anysparseadapter.structure_family == StructureFamily.sparse

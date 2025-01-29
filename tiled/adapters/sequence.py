@@ -2,6 +2,7 @@ import builtins
 import math
 import warnings
 from abc import abstractmethod
+from types import EllipsisType
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -145,7 +146,9 @@ class FileSequenceAdapter:
         # TODO How to deal with the many headers?
         return self._provided_metadata
 
-    def read(self, slice: Optional[NDSlice] = ...) -> NDArray[Any]:
+    def read(
+        self, slice: Union[NDSlice, EllipsisType, builtins.slice] = ...
+    ) -> NDArray[Any]:
         """Return a numpy array
 
         Receives a sequence of values to select from a collection of data files
@@ -200,7 +203,7 @@ class FileSequenceAdapter:
         return force_reshape(arr, sliced_shape)
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[NDSlice] = ...
+        self, block: Tuple[int, ...], slice: Union[NDSlice, EllipsisType] = ...
     ) -> NDArray[Any]:
         """
 

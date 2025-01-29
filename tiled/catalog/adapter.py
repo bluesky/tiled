@@ -511,7 +511,7 @@ class CatalogNodeAdapter:
             if asset.parameter is None:
                 continue
             scheme = urlparse(asset.data_uri).scheme
-            if scheme not in ("file"):
+            if scheme != "file":
                 raise NotImplementedError(
                     f"Only 'file://...' scheme URLs and Tiled views are currently supported, not {asset.data_uri}"
                 )
