@@ -3,7 +3,7 @@ import collections.abc
 import copy
 import os
 import sys
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
 import zarr.core
@@ -366,7 +366,7 @@ class ZarrAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
         **kwargs: Optional[Any],
@@ -385,7 +385,7 @@ class ZarrAdapter:
         else:
             return ZarrArrayAdapter(
                 zarr_obj,
-                structure=data_source.structure,
+                structure=cast(ArrayStructure, data_source.structure),
                 metadata=node.metadata_,
                 specs=node.specs,
                 **kwargs,

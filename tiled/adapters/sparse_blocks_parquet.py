@@ -12,10 +12,9 @@ from numpy._typing import NDArray
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..catalog.orm import Node
-from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
-from ..structures.sparse import COOStructure
+from ..structures.sparse import COOStructure, SparseStructure
 from ..type_aliases import JSON, NDSlice
 from ..utils import path_from_uri
 from .utils import init_adapter_from_catalog
@@ -72,7 +71,7 @@ class SparseBlocksParquetAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[SparseStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],

@@ -7,7 +7,6 @@ import dask.dataframe
 import pandas
 
 from ..catalog.orm import Node
-from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.table import TableStructure
@@ -50,7 +49,7 @@ class ParquetDatasetAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[TableStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],
