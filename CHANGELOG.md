@@ -3,7 +3,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.1.0-b17 (2024-01-29)
 
 ### Changed
 
@@ -33,7 +33,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
   Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
-
 
 ## v0.1.0-b16 (2024-01-23)
 
@@ -99,7 +98,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   certain features that we rely on from Zarr 2.
 
 
-## 2024-12-09
+## v0.1.0b12 (2024-12-09)
 
 ### Added
 
