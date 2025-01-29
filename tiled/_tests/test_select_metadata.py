@@ -16,7 +16,7 @@ def module_tmp_path(tmp_path_factory: pytest.TempdirFactory) -> pathlib.Path:
 
 @pytest.fixture(scope="module")
 def client(module_tmp_path):
-    catalog = in_memory(writable_storage=module_tmp_path)
+    catalog = in_memory(writable_storage=str(module_tmp_path))
     app = build_app(catalog)
     with Context.from_app(app) as context:
         client = from_context(context)

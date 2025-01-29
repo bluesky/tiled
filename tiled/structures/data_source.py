@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import Any, List, Optional
+from typing import Generic, List, Optional, TypeVar
 
 from .core import StructureFamily
 
@@ -21,10 +21,13 @@ class Asset:
     id: Optional[int] = None
 
 
+StructureT = TypeVar("StructureT")
+
+
 @dataclasses.dataclass
-class DataSource:
+class DataSource(Generic[StructureT]):
     structure_family: StructureFamily
-    structure: Any
+    structure: StructureT
     id: Optional[int] = None
     mimetype: Optional[str] = None
     parameters: dict = dataclasses.field(default_factory=dict)
@@ -36,3 +39,15 @@ class DataSource:
         d = d.copy()
         assets = [Asset(**a) for a in d.pop("assets")]
         return cls(assets=assets, **d)
+
+
+@dataclasses.dataclass
+class Storage:
+    filesystem: Optional[str]
+    sql: Optional[str]
+
+    def get(self, storage: str) -> str:
+        uri = getattr(self, storage)
+        if isinstance(uri, str):
+            return uri
+        raise TypeError(f"{storage} is not set")

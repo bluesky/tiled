@@ -28,7 +28,7 @@ class NetCDFAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[None],
         node: Node,
         /,
         **kwargs: Optional[Any],

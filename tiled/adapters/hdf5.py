@@ -82,7 +82,7 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
         swmr: bool = SWMR_DEFAULT,

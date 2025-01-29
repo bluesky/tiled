@@ -55,7 +55,7 @@ class JPEGAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[ArrayStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],
