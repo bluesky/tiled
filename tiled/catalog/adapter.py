@@ -1123,12 +1123,18 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             return structure_dict
 
     async def update_structure(self):
+        import dataclasses
+
+        from ..server.pydantic_array import ArrayStructure
+
         assert len(self.data_sources) == 1
         data_source = self.data_sources[0]
-        if data_source.management == Management.view:
+        if self.management() == Management.view and self.structure().resizable:
             tiled_uri = data_source.assets[0].data_uri
             node, adapter = await self.get_adapter_for_tiled_uri(tiled_uri)
-            structure = adapter.structure()  # structure of the original array
+            structure = ArrayStructure.from_json(
+                dataclasses.asdict(adapter.structure())
+            )  # structure of the original array
             slice = data_source.parameters.get("slice")
             if slice is not None:
                 slice = NDSlice.from_json(slice)

@@ -802,7 +802,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return client
 
     def create_array_view(
-        self, arr_link: str, key: str = None, slice: Optional[NDSlice] = None
+        self,
+        arr_link: str,
+        key: str = None,
+        slice: Optional[NDSlice] = None,
+        resizable=False,
     ):
         from ..structures.array import ArrayStructure
 
@@ -817,9 +821,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         document = handle_error(self.context.http_client.get(endpoint)).json()
         input_structure = document["data"]["attributes"]["structure"]
 
+        view_structure = copy.deepcopy(input_structure)
         if not input_structure["resizable"]:
             # Can determine the fixed structure for the View rightaway
-            view_structure = copy.deepcopy(input_structure)
+
             if slice is not None:
                 slice = NDSlice(*slice)
                 view_shape = ndindex(slice).newshape(input_structure["shape"])
@@ -831,9 +836,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             # The structure might change
             # raise NotImplementedError("Views of resizable arrays are not supported yet")
-            view_structure = copy.deepcopy(input_structure)
             view_structure["shape"] = []
             view_structure["chunks"] = []
+
+        # Even if the original array is not resizable, we may want to update the view
+        view_structure["resizable"] |= resizable
 
         assets = [
             Asset(
