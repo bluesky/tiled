@@ -85,7 +85,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
     def read(
         self,
-        slice: Union[NDSlice, EllipsisType] = ...,
+        slice: Optional[NDSlice] = None,
     ) -> NDArray[Any]:
         """
 
@@ -97,12 +97,12 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        return self._array[self._stencil()][slice]
+        return self._array[self._stencil()][slice or ...]
 
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: Union[NDSlice, EllipsisType] = ...,
+        slice: Optional[NDSlice] = None,
     ) -> NDArray[Any]:
         """
 
@@ -120,12 +120,12 @@ class ZarrArrayAdapter(ArrayAdapter):
         )
         # Slice the block out of the whole array,
         # and optionally a sub-slice therein.
-        return self._array[self._stencil()][block_slice][slice]
+        return self._array[self._stencil()][block_slice][slice or ...]
 
     def write(
         self,
         data: NDArray[Any],
-        slice: Union[NDSlice, EllipsisType] = ...,
+        slice: Optional[NDSlice] = None,
     ) -> None:
         """
 
@@ -138,7 +138,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        if slice is not ...:
+        if slice is not None:
             raise NotImplementedError
         self._array[self._stencil()] = data
 

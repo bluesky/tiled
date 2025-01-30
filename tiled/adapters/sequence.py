@@ -203,7 +203,7 @@ class FileSequenceAdapter:
         return force_reshape(arr, sliced_shape)
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Union[NDSlice, EllipsisType] = ...
+        self, block: Tuple[int, ...], slice: Optional[NDSlice] = None
     ) -> NDArray[Any]:
         """
 
@@ -219,7 +219,7 @@ class FileSequenceAdapter:
         if any(block[1:]):
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
-        return arr[slice]
+        return arr[slice] if slice else arr
 
     def structure(self) -> ArrayStructure:
         """

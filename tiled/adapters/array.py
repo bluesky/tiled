@@ -103,7 +103,7 @@ class ArrayAdapter:
         slice = data_source.parameters.get("slice")
         slice = NDSlice.from_json(slice) if slice is not None else None
         if isinstance(adapter, ArrayAdapter):
-            arr = adapter._array[slice] if slice else adapter._array
+            arr = adapter._array[tuple(slice)] if slice else adapter._array
         else:
             arr = adapter.read(slice) if slice else adapter.read()
 
@@ -129,7 +129,7 @@ class ArrayAdapter:
 
     def read(
         self,
-        slice: Union[NDSlice, EllipsisType] = ...,
+        slice: Optional[NDSlice] = None,
     ) -> NDArray[Any]:
         """
 
@@ -141,7 +141,7 @@ class ArrayAdapter:
         -------
 
         """
-        array = self._array[slice]
+        array = self._array[tuple(slice)] if slice else self._array
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
@@ -149,7 +149,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: Union[NDSlice, EllipsisType] = ...,
+        slice: Optional[NDSlice] = None,
     ) -> NDArray[Any]:
         """
 
@@ -164,7 +164,7 @@ class ArrayAdapter:
         """
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
-        array = self._array[slice_]
+        array = self._array[tuple(slice_)]
         # Slice within the block.
         if slice is not None:
             array = array[slice]

@@ -123,9 +123,9 @@ class SparseBlocksParquetAdapter:
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
-        slice: Union[NDSlice, EllipsisType] = ...,
+        slice: Optional[NDSlice] = None,
     ) -> None:
-        if slice != ...:
+        if slice is not None:
             raise NotImplementedError(
                 "Writing into a slice of a sparse block is not yet supported."
             )
@@ -181,7 +181,7 @@ class SparseBlocksParquetAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: Optional[Union[NDSlice, EllipsisType]] = ...,
+        slice: Optional[NDSlice] = None,
     ) -> sparse.COO:
         """
 
@@ -197,7 +197,7 @@ class SparseBlocksParquetAdapter:
         coords, data = load_block(self.blocks[block])
         _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
-        return arr[slice]
+        return arr[slice] if slice else arr
 
     def structure(self) -> COOStructure:
         """

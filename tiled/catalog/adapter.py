@@ -1131,7 +1131,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             structure = adapter.structure()  # structure of the original array
             slice = data_source.parameters.get("slice")
             if slice is not None:
-                slice = NDSlice(*slice)
+                slice = NDSlice.from_json(slice)
                 view_shape = ndindex(slice).newshape(structure.shape)
                 view_chunks = tuple(
                     (i,) for i in view_shape
