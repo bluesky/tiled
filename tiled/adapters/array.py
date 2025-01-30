@@ -1,4 +1,3 @@
-from types import EllipsisType
 from typing import Any, List, Optional, Tuple, Union
 
 import dask.array

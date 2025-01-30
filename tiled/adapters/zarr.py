@@ -2,7 +2,6 @@ import builtins
 import collections.abc
 import os
 import sys
-from types import EllipsisType
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import zarr.core
