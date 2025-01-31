@@ -10,10 +10,10 @@ from pydantic import ConfigDict, Field, StringConstraints
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
-from ..adapters.array import ArrayStructure
-from ..adapters.awkward import AwkwardStructure
-from ..adapters.sparse import SparseStructure
-from ..adapters.table import TableStructure
+from ..structures.array import ArrayStructure
+from ..structures.awkward import AwkwardStructure
+from ..structures.sparse import SparseStructure
+from ..structures.table import TableStructure
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
 
