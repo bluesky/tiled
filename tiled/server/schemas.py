@@ -10,12 +10,12 @@ from pydantic import ConfigDict, Field, StringConstraints
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
+from ..adapters.array import ArrayStructure
+from ..adapters.awkward import AwkwardStructure
+from ..adapters.sparse import SparseStructure
+from ..adapters.table import TableStructure
 from ..structures.core import StructureFamily
 from ..structures.data_source import Management
-from .pydantic_array import ArrayStructure
-from .pydantic_awkward import AwkwardStructure
-from .pydantic_sparse import SparseStructure
-from .pydantic_table import TableStructure
 
 if TYPE_CHECKING:
     import tiled.authn_database.orm
