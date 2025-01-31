@@ -1,5 +1,6 @@
 import collections
 import copy
+import dataclasses
 import importlib
 import itertools as it
 import logging
@@ -1180,7 +1181,7 @@ def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
         return None
-    return structure.model_dump()
+    return dataclasses.asdict(structure)
 
 
 def binary_op(query, tree, operation):

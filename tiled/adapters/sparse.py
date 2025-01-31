@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import dask
+import dask.dataframe
 import numpy
 import pandas
 import sparse
