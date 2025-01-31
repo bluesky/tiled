@@ -224,3 +224,14 @@ def test_external_assets(context, tiff_sequence, csv_file):
     assert numpy.array_equal(ext_v["image_v"].read(), img_data)
     assert numpy.array_equal(ext_v["col1_v"].read(), df3["col1"])
     assert numpy.array_equal(ext_v["col2_v"].read(), df3["col2"])
+
+
+def test_table_view(context):
+    client = from_context(context)
+    tbl_view = client["x/y"].create_table_view(
+        key="tbl_view",
+        arr_links=["/x/y/arr1", "/x/y/df1/A"],
+        slices=[(slice(0, 8, 3), 1), None],
+    )
+
+    tbl_view.read()

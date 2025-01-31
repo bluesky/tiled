@@ -55,6 +55,7 @@ from tiled.queries import (
 )
 
 from ..adapters.array import ArrayAdapter
+from ..adapters.table import TableViewAdapter
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -496,15 +497,26 @@ class CatalogNodeAdapter:
             )
 
         if data_source.management == Management.view:
-            assert len(data_source.assets) == 1
-            asset = data_source.assets[0]
+            for asset in data_source.assets:
+                if urlparse(asset.data_uri).scheme != "tiled":
+                    raise ValueError
 
-            if urlparse(asset.data_uri).scheme != "tiled":
-                raise ValueError
+            if data_source.mimetype == "application/x-array-view":
+                assert len(data_source.assets) == 1
+                _, adapter = await self.get_adapter_for_tiled_uri(
+                    data_source.assets[0].data_uri
+                )
+                return ArrayAdapter.view_from_catalog(data_source, self.node, adapter)
 
-            node, adapter = await self.get_adapter_for_tiled_uri(asset.data_uri)
+            elif data_source.mimetype == "application/x-table-view":
+                adapters = []
+                for asset in data_source.assets:
+                    _, adapter = await self.get_adapter_for_tiled_uri(asset.data_uri)
+                    adapters.append(adapter)
 
-            return ArrayAdapter.view_from_catalog(data_source, node, adapter)
+                return TableViewAdapter.view_from_catalog(
+                    data_source, self.node, *adapters
+                )
 
         # Handle usual (internal and external) Data Sources
         for asset in data_source.assets:
@@ -1132,9 +1144,11 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         if self.management() == Management.view and self.structure().resizable:
             tiled_uri = data_source.assets[0].data_uri
             node, adapter = await self.get_adapter_for_tiled_uri(tiled_uri)
-            structure = ArrayStructure.from_json(
-                dataclasses.asdict(adapter.structure())
-            )  # structure of the original array
+            # get structure of the original array
+            # TODO: remove pydantic hacks
+            structure = adapter.structure()
+            if not isinstance(structure, ArrayStructure):
+                structure = ArrayStructure.from_json(dataclasses.asdict(structure))
             slice = data_source.parameters.get("slice")
             if slice is not None:
                 slice = NDSlice.from_json(slice)

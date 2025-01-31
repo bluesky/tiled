@@ -16,6 +16,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "application/x-array-view": lambda: importlib.import_module(
             "..adapters.array", __name__
         ).ArrayAdapter,
+        "application/x-table-view": lambda: importlib.import_module(
+            "..adapters.table", __name__
+        ).TableViewAdapter,
         "image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
         ).TiffAdapter,

@@ -104,6 +104,7 @@ class ArrayAdapter:
         if isinstance(adapter, ArrayAdapter):
             arr = adapter._array[tuple(slice)] if slice else adapter._array
         else:
+            # For adapters that do not inherit from ArrayAdapter
             arr = adapter.read(slice) if slice else adapter.read()
 
         return cls(

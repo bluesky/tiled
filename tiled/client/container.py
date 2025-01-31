@@ -8,7 +8,7 @@ import time
 import warnings
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -859,6 +859,97 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     assets=assets,
                     parameters={"slice": slice.to_json()} if slice is not None else {},
                     mimetype="application/x-array-view",
+                ),
+            ],
+            key=key,
+            metadata={},
+            specs=[],
+        )
+        return client
+
+    def create_table_view(
+        self,
+        arr_links: Iterable[str],
+        key: str = None,
+        slices: Optional[Iterable[NDSlice]] = None,
+        resizable=False,
+    ):
+        import numpy
+
+        from ..structures.array import ArrayStructure
+        from ..structures.table import TableStructure
+
+        assets, arrs = [], []
+        slices = (
+            [NDSlice(*s) if s is not None else NDSlice(...) for s in slices]
+            if slices is not None
+            else [None] * len(arr_links)
+        )
+        assert len(slices) == len(arr_links)
+
+        for num, (link, slice) in enumerate(zip(arr_links, slices)):
+            # Resolve relative paths
+            arr_link = (
+                Path(self.uri.split("metadata")[1]).joinpath(link).resolve().as_posix()
+            )
+            endpoint = (
+                self.uri.split("metadata")[0]
+                + "metadata"
+                + arr_link
+                + "?tiled_uri=true"
+            )
+            document = handle_error(self.context.http_client.get(endpoint)).json()
+            input_structure = document["data"]["attributes"]["structure"]
+
+            view_structure = copy.deepcopy(input_structure)
+            if not input_structure["resizable"]:
+                # Can determine the fixed structure for the View rightaway
+
+                if slice is not None:
+                    view_shape = ndindex(slice).newshape(input_structure["shape"])
+                    view_chunks = [
+                        [i] for i in view_shape
+                    ]  # No chunking, TODO: more general case -- reassign chunks
+                    view_structure["shape"] = view_shape
+                    view_structure["chunks"] = view_chunks
+            else:
+                # The structure might change
+                # raise NotImplementedError("Views of resizable arrays are not supported yet")
+                view_structure["shape"] = []
+                view_structure["chunks"] = []
+
+            # Even if the original array is not resizable, we may want to update the view
+            view_structure["resizable"] |= resizable
+            arr_structure = ArrayStructure.from_json(view_structure)
+            arrs.append(
+                numpy.empty(shape=(1,), dtype=arr_structure.data_type.to_numpy_dtype())
+            )
+
+            assets.append(
+                Asset(
+                    data_uri=document["meta"]["tiled_uri"],
+                    is_directory=False,
+                    parameter="data_uri",
+                    num=num,
+                )
+            )
+
+        structure = TableStructure.from_dict(
+            {f"col{c}": a for c, a in zip(range(len(arrs)), arrs)}
+        )
+
+        client = self.new(
+            StructureFamily.table,
+            [
+                DataSource(
+                    structure=structure,
+                    structure_family=StructureFamily.table,
+                    management="view",
+                    assets=assets,
+                    parameters={"slices": [s.to_json() for s in slices]}
+                    if slices is not None
+                    else {},
+                    mimetype="application/x-table-view",
                 ),
             ],
             key=key,

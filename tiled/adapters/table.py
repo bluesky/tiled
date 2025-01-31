@@ -1,12 +1,15 @@
+import itertools
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask.base
 import dask.dataframe
 import pandas
 
+from ..catalog.orm import Node
 from ..structures.core import Spec, StructureFamily
+from ..structures.data_source import DataSource
 from ..structures.table import TableStructure
-from ..type_aliases import JSON
+from ..type_aliases import JSON, NDSlice
 from .array import ArrayAdapter
 
 
@@ -213,6 +216,47 @@ class TableAdapter:
         if isinstance(df, dask.dataframe.DataFrame):
             return df.compute()
         return partition
+
+
+class TableViewAdapter(TableAdapter):
+    # TODO: this is extremely slow and inefficient
+
+    @classmethod
+    def view_from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        *adapters: Union[
+            "ArrayAdapter", Any
+        ],  # Allow Adapters not inherited from ArrayAdapter
+        **kwargs: Optional[Any],
+    ) -> "TableViewAdapter":
+        assert len(adapters) == len(data_source.assets)
+
+        slices = data_source.parameters.get("slices", [])
+        slices = [NDSlice.from_json(s) if s is not None else None for s in slices]
+
+        arrs = []
+        for adapter, slice in itertools.zip_longest(adapters, slices):
+            if isinstance(adapter, ArrayAdapter):
+                arr = adapter._array[tuple(slice)] if slice else adapter._array
+            else:
+                arr = adapter.read(slice) if slice else adapter.read()
+            arrs.append(arr)
+
+        structure = data_source.structure
+
+        # TODO: use dask.dataframe.from_map
+        df = pandas.DataFrame.from_dict({c: a for c, a in zip(structure.columns, arrs)})
+        ddf = dask.dataframe.from_pandas(df, npartitions=1)
+
+        return cls(
+            ddf.partitions,
+            structure,
+            metadata=node.metadata_,
+            specs=node.specs,
+        )
 
 
 DataFrameAdapter = TableAdapter
