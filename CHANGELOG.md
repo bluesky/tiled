@@ -24,6 +24,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Do not attempt to use auth tokens if the server declares no authentication
   providers.
+- Prevent "incognito mode" (remember_me=False) from failing after a previous
+  login session has since been logged out (no token files)
 
 ### Maintenance
 
