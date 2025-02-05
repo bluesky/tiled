@@ -83,7 +83,7 @@ class TiledAuth(httpx.Auth):
         with self._sync_lock:
             if self.token_directory is not None:
                 filepath = self.token_directory / key
-                filepath.unlink(missing_ok=False)
+                filepath.unlink(missing_ok=True)
             self.tokens.pop(key, None)  # Clear cached value.
 
     def sync_auth_flow(self, request, attempt=0):
