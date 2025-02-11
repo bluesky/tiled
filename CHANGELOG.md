@@ -1,12 +1,17 @@
 <!-- Add the recent changes in the code under the relevant category.
 Write the date in place of the "Unreleased" in the case a new version is released. -->
-
 # Changelog
 
 ## Unreleased
 
-### Maintenance
-- Remove pydentic-based definitions of structures and use dataclasses instead.
+### Changed
+
+- Removed pydantic-based definitions of structures, which had duplicated
+  the dataclass-based defintions in order to work around a pydantic bug
+  which has since been resolved. All modules named `tiled.server.pydantic_*`
+  have been removed. These were used internally by the server and should
+  not affect user code.
+- Publish Container image and Helm chart only during a tagged release.
 
 ## v0.1.0-b17 (2024-01-29)
 
@@ -40,7 +45,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
   Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
-- Publish Container image and Helm chart only during a tagged release.
 
 ## v0.1.0-b16 (2024-01-23)
 
