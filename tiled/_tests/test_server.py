@@ -62,7 +62,7 @@ def server(tmpdir):
 
 @pytest.fixture
 def public_server(tmpdir):
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     app = build_app(
         catalog, {"single_user_api_key": API_KEY, "allow_anonymous_access": True}
     )
