@@ -30,28 +30,31 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage(tmp_path: Path) -> DataSource[TableStructure]:
-    table = pa.Table.from_arrays(data0, names)
-    structure = TableStructure.from_arrow_table(table, npartitions=1)
-    data_source = DataSource(
-        management=Management.writable,
-        mimetype="application/x-tiled-sql-table",
-        structure_family=StructureFamily.table,
-        structure=structure,
-        assets=[],
-    )
-    data_uri = f"sqlite:///{tmp_path}/test.db"
-    storage = Storage(filesystem=None, sql=data_uri)
-    return SQLAdapter.init_storage(
-        data_source=data_source, storage=storage, path_parts=[]
-    )
+def data_source_from_init_storage() -> DataSource[TableStructure]:
+    def _data_source_from_init_storage(data_uri):
+        table = pa.Table.from_arrays(data0, names)
+        structure = TableStructure.from_arrow_table(table, npartitions=1)
+        data_source = DataSource(
+            management=Management.writable,
+            mimetype="application/x-tiled-sql-table",
+            structure_family=StructureFamily.table,
+            structure=structure,
+            assets=[],
+        )
 
+        storage = Storage(filesystem=None, sql=data_uri)
+        return SQLAdapter.init_storage(
+            data_source=data_source, storage=storage, path_parts=[]
+        )
+    return _data_source_from_init_storage
 
 @pytest.fixture
 def adapter_sql(
+    tmp_path: Path,
     data_source_from_init_storage: DataSource[TableStructure],
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage
+    data_uri = f"sqlite:///{tmp_path}/test.db"
+    data_source = data_source_from_init_storage(data_uri)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -113,7 +116,7 @@ def postgres_uri() -> str:
 def adapter_psql(
     data_source_from_init_storage: DataSource[TableStructure], postgres_uri: str
 ) -> SQLAdapter:
-    data_source = data_source_from_init_storage
+    data_source = data_source_from_init_storage(postgres_uri)
     return SQLAdapter(
         postgres_uri,
         data_source.structure,
