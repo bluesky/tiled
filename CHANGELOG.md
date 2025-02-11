@@ -3,6 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Maintenance
+- Remove pydentic-based definitions of structures and use dataclasses instead.
+
 ## v0.1.0-b17 (2024-01-29)
 
 ### Changed
