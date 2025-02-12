@@ -12,6 +12,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   have been removed. These were used internally by the server and should
   not affect user code.
 - Publish Container image and Helm chart only during a tagged release.
+- Stop warning when `data_sources()` are fetched after the item was already
+  fetched. (Too noisy.)
 
 ## v0.1.0-b17 (2024-01-29)
 
