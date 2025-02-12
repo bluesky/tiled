@@ -96,3 +96,54 @@ tiled:
 
 Additional templates to be deployed alongside the tiled server can be defined- for
 example the SealedSecret defined above.
+
+## Remote debugging
+
+The helm chart defines values for enabling debugpy breakpoints inside of the deployed
+container, for use in the situation that cluster infrastructure is required for
+debugging: e.g. checking the value of headers passed from authentication providers.
+
+```yaml
+debug:
+  # Whether the container should start in debug mode
+  enabled: true
+  # Whether to suspend the process until a debugger connects
+  suspend: true
+  # Port to listen for the debugger on
+  port: 5678
+```
+
+To connect to the port of the pod on the cluster, you can use `kubectl port forward` to
+forward your local machine's port 5678 to the container's:
+
+```sh
+$ kubectl get pods
+NAME                            READY   STATUS    RESTARTS        AGE
+tiled-cbbc9df58-hjm7q           1/1     Running   0 (5d19h ago)   5d19h
+$ kubectl port forward pod/tiled-cbbc9df58-hjm7q 5678:5678
+Forwarding from 127.0.0.1:5678 -> 5678
+```
+
+Check out the deployed version of tiled and configure your IDE to attach to a remote
+debugpy process: the following is a launch configuration from VSCode `launch.json`.
+Note that the version of python and port may need to be changed. With this
+configuration, `"justMyCode": False` was required for breakpoints to be active.
+
+```json
+{
+    "name": "Python Debugger: Remote Attach",
+    "type": "debugpy",
+    "request": "attach",
+    "connect": {
+        "host": "localhost",
+        "port": 5678
+    },
+    "pathMappings": [
+        {
+            "localRoot": "${workspaceFolder}/tiled",
+            "remoteRoot": "/opt/venv/lib/python3.12/site-packages/tiled"
+        }
+    ],
+    "justMyCode": false
+}
+```

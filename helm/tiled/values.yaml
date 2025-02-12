@@ -13,6 +13,15 @@ config:
         writable_storage: "/storage/data"
         init_if_not_exists: true
 
+# Use `kubectl port forward` to access from your machine
+debug:
+  # Whether the container should start in debug mode
+  enabled: false
+  # Whether to suspend the process until a debugger connects
+  suspend: false
+  # Port to listen for the debugger on
+  port: 5678
+
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 
