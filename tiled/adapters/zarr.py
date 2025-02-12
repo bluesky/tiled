@@ -1,7 +1,6 @@
 import builtins
-import collections.abc
 import os
-import sys
+from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import zarr.core
@@ -205,18 +204,8 @@ class ZarrArrayAdapter(ArrayAdapter):
         return new_shape_tuple, new_chunks_tuple
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
 class ZarrGroupAdapter(
-    MappingType[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    Mapping[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
     IndexersMixin,
 ):
     """ """
