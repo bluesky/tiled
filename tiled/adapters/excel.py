@@ -85,6 +85,8 @@ class ExcelAdapter(MapAdapter):
     @classmethod
     def from_catalog(
         cls,
+        # An Excel file is a container of tables, hence
+        # DataSource[None].
         data_source: DataSource[None],
         node: Node,
         /,

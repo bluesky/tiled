@@ -71,6 +71,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixi
     @classmethod
     def from_catalog(
         cls,
+        # An HDF5 node may reference a dataset (array) or group (container).
         data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
