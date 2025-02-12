@@ -921,7 +921,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(coords, data)
         return client
 
-    def create_appendable_dataframe(
+    def create_appendable_table(
         self,
         schema: "pyarrow.Schema",
         *,

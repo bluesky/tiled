@@ -11,6 +11,7 @@ import dask.dataframe
 import numpy
 import pandas
 import pandas.testing
+import pyarrow
 import pytest
 import sparse
 from pandas.testing import assert_frame_equal
@@ -40,7 +41,12 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 @pytest.fixture
 def tree(tmpdir):
-    return in_memory(writable_storage=str(tmpdir))
+    return in_memory(
+        writable_storage={
+            "filesystem": str(tmpdir / "data"),
+            "sql": f"duckdb:///{tmpdir / 'data.duckdb'}",
+        }
+    )
 
 
 def test_write_array_full(tree):
@@ -665,26 +671,8 @@ def test_append_partition(
 ):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
-        df = pandas.DataFrame(orig_file)
-        structure = TableStructure.from_pandas(df)
+        table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
 
-        x = client.new(
-            "table",
-            [
-                DataSource(
-                    structure_family="table",
-                    structure=structure,
-                    mimetype="text/csv",
-                ),
-            ],
-            key="x",
-        )
-        x.write(df)
-
-        df2 = pandas.DataFrame(file_toappend)
-
-        x.append_partition(df2, 0)
-
-        df3 = pandas.DataFrame(expected_file)
-
-        assert_frame_equal(x.read(), df3, check_dtype=False)
+        x = client.create_appendable_table(table.schema, key="x")
+        x.append_partition(table, 0)
+        assert_frame_equal(x.read(), table.to_pandas())
