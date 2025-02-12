@@ -8,7 +8,7 @@ import typer
 serve_app = typer.Typer()
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
-SQLITE_TABULAR_DATA_FILENAME = "data.db"
+DUCKDB_TABULAR_DATA_FILENAME = "data.duckdb"
 DATA_SUBDIRECTORY = "data"
 
 
@@ -391,12 +391,12 @@ def serve_catalog(
             err=True,
         )
         typer.echo(
-            f"Creating writable tabular data database at {directory / SQLITE_TABULAR_DATA_FILENAME}",
+            f"Creating writable tabular data database at {directory / DUCKDB_TABULAR_DATA_FILENAME}",
             err=True,
         )
         database = f"sqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
         tabular_data_database = (
-            f"sqlite:///{Path(directory, SQLITE_TABULAR_DATA_FILENAME)}"
+            f"duckdb:///{Path(directory, DUCKDB_TABULAR_DATA_FILENAME)}"
         )
 
         # Because this is a tempfile we know this is a fresh database and we do not

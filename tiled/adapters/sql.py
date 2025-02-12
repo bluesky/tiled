@@ -6,8 +6,8 @@ import secrets
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
+import adbc_driver_duckdb.dbapi
 import adbc_driver_postgresql.dbapi
-import adbc_driver_sqlite.dbapi
 import numpy
 import pandas
 import pyarrow
@@ -44,7 +44,7 @@ class SQLAdapter:
         Construct the SQLAdapter object.
         Parameters
         ----------
-        data_uri : the uri of the database, starting either with "sqlite://" or "postgresql://"
+        data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
         structure : the structure of the data. structure is not optional for sql database
         metadata : the optional metadata of the data.
         specs : the specs.
@@ -257,10 +257,10 @@ class SQLAdapter:
         return self.read(fields)
 
 
-def create_connection(uri: str) -> adbc_driver_sqlite.dbapi.AdbcSqliteConnection:
-    if uri.startswith("sqlite:"):
+def create_connection(uri: str) -> adbc_driver_duckdb.dbapi.Connection:
+    if uri.startswith("duckdb:"):
         # Ensure this path is writable to avoid a confusing error message
-        # from abdc_driver_sqlite.
+        # from abdc_driver_duckdb.
         filepath = path_from_uri(uri)
         directory = Path(filepath).parent
         if directory.exists():
@@ -272,12 +272,12 @@ def create_connection(uri: str) -> adbc_driver_sqlite.dbapi.AdbcSqliteConnection
                 raise ValueError(f"The path {filepath} exists but is not writable.")
         else:
             raise ValueError(f"The directory {directory} does not exist.")
-        conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
+        conn = adbc_driver_duckdb.dbapi.connect(str(filepath))
     elif uri.startswith("postgresql:"):
         conn = adbc_driver_postgresql.dbapi.connect(uri)
     else:
         raise ValueError(
-            "The database uri must start with either `sqlite:` or `postgresql:` "
+            "The database uri must start with either `duckdb:` or `postgresql:` "
         )
     return conn
 

@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Generator, Union
 
-import adbc_driver_sqlite
+import adbc_driver_duckdb
 import pyarrow as pa
 import pytest
 
@@ -55,7 +55,7 @@ def adapter_sql(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str], DataSource[TableStructure]],
 ) -> Generator[SQLAdapter, None, None]:
-    data_uri = f"sqlite:///{tmp_path}/test.db"
+    data_uri = f"duckdb:///{tmp_path}/test.db"
     data_source = data_source_from_init_storage(data_uri)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
@@ -68,7 +68,7 @@ def adapter_sql(
 def test_attributes(adapter_sql: SQLAdapter) -> None:
     assert adapter_sql.structure().columns == names
     assert adapter_sql.structure().npartitions == 1
-    assert isinstance(adapter_sql.conn, adbc_driver_sqlite.dbapi.AdbcSqliteConnection)
+    assert isinstance(adapter_sql.conn, adbc_driver_duckdb.dbapi.Connection)
 
 
 def test_write_read_sql_one(adapter_sql: SQLAdapter) -> None:
