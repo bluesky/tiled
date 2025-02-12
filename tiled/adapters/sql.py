@@ -110,12 +110,10 @@ class SQLAdapter:
         schema_new = schema.insert(0, pyarrow.field("dataset_id", pyarrow.int64()))
         create_table_statement = schema_to_pg_create_table(schema_new, table_name)
 
-        create_index_statement = f"""create
-        index if not exists
-        dataset_id_index
-        on
-        {table_name}(dataset_id);"""
-
+        create_index_statement = (
+            "CREATE INDEX IF NOT EXISTS dataset_id_index "
+            f"ON {table_name}(dataset_id)"
+        )
         conn = create_connection(data_uri)
         conn.cursor().execute(create_table_statement)
         conn.cursor().execute(create_index_statement)
