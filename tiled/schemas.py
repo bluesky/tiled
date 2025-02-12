@@ -1,20 +1,14 @@
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 
 class AboutAuthenticationProvider(BaseModel):
     provider: str
-    mode: Literal["internal", "external"]
+    # "password" is a back-compat alias for "internal"; "internal should be preferred.
+    mode: Literal["internal", "external", "password"]
     links: Dict[str, str]
     confirmation_message: Optional[str] = None
-
-    @field_validator("mode", mode="before")
-    @classmethod
-    def accept_mode_password_as_backcompat_alias_for_internal(cls, value: Any) -> Any:
-        if isinstance(value, str) and value == "password":
-            value = "internal"
-        return value
 
 
 class AboutAuthenticationLinks(BaseModel):

@@ -99,7 +99,9 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     auth_endpoint = spec.links["auth_endpoint"]
     provider = spec.provider
     mode = spec.mode
-    if mode == "internal":
+    # Note: "password" is included here for back-compat with older servers;
+    # the new name for this mode is "internal".
+    if mode == "internal" or mode == "password":
         # Prompt for username, password at terminal.
         username = username_input()
         PASSWORD_ATTEMPTS = 3
@@ -234,19 +236,15 @@ class Context:
             # where the context starts and stops and the wrapped ASGI app.
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
-            if sys.version_info < (3, 9):
-                import atexit
 
-                atexit.register(client.__exit__)
-            else:
-                import threading
+            import threading
 
-                # The threading module has its own (internal) atexit
-                # mechanism that runs at thread shutdown, prior to the atexit
-                # mechanism that runs at interpreter shutdown.
-                # We need to intervene at that layer to close the portal, or else
-                # we will wait forever for a thread run by the portal to join().
-                threading._register_atexit(client.__exit__)
+            # The threading module has its own (internal) atexit
+            # mechanism that runs at thread shutdown, prior to the atexit
+            # mechanism that runs at interpreter shutdown.
+            # We need to intervene at that layer to close the portal, or else
+            # we will wait forever for a thread run by the portal to join().
+            threading._register_atexit(client.__exit__)
 
         self.http_client = client
         self._verify = verify

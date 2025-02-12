@@ -1,9 +1,20 @@
 <!-- Add the recent changes in the code under the relevant category.
 Write the date in place of the "Unreleased" in the case a new version is released. -->
-
 # Changelog
 
 ## Unreleased
+
+### Changed
+
+- Removed pydantic-based definitions of structures, which had duplicated
+  the dataclass-based defintions in order to work around a pydantic bug
+  which has since been resolved. All modules named `tiled.server.pydantic_*`
+  have been removed. These were used internally by the server and should
+  not affect user code.
+- Publish Container image and Helm chart only during a tagged release.
+- Enable and document remote debugging with Helm
+
+## v0.1.0-b17 (2024-01-29)
 
 ### Changed
 
@@ -24,15 +35,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Do not attempt to use auth tokens if the server declares no authentication
   providers.
+- Prevent "incognito mode" (remember_me=False) from failing after a previous
+  login session has since been logged out (no token files)
 
 ### Maintenance
 
-- Make depedencies shared by client and server into core dependencies.
+- Make dependencies shared by client and server into core dependencies.
 - Use schemas for describing server configuration on the client side too.
 - Refactored Authentication providers to make use of inheritance, adjusted
   mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
+  Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
-- Enable and document remote debugging with Helm
 
 ## v0.1.0-b16 (2024-01-23)
 
@@ -98,7 +111,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   certain features that we rely on from Zarr 2.
 
 
-## 2024-12-09
+## v0.1.0b12 (2024-12-09)
 
 ### Added
 

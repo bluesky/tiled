@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 import anyio
+import packaging
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
@@ -91,11 +92,25 @@ async def about(
         "required": not settings.allow_anonymous_access,
     }
     provider_specs = []
+    user_agent = request.headers.get("user-agent", "")
+    # The name of the "internal" mode used to be "password".
+    # This ensures back-compat with older Python clients.
+    internal_mode_name = "internal"
+    MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0b17")
+    if user_agent.startswith("python-tiled/"):
+        agent, _, raw_version = user_agent.partition("/")
+        try:
+            parsed_version = packaging.version.parse(raw_version)
+        except Exception:
+            pass
+        else:
+            if parsed_version < MINIMUM_INTERNAL_PYTHON_CLIENT_VERSION:
+                internal_mode_name = "password"
     for provider, authenticator in authenticators.items():
         if isinstance(authenticator, InternalAuthenticator):
             spec = {
                 "provider": provider,
-                "mode": "internal",
+                "mode": internal_mode_name,
                 "links": {
                     "auth_endpoint": f"{base_url}/auth/provider/{provider}/token"
                 },
