@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Generator
+from typing import Callable, Generator
 
 import adbc_driver_sqlite
 import pyarrow as pa
@@ -30,8 +30,8 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage() -> DataSource[TableStructure]:
-    def _data_source_from_init_storage(data_uri):
+def data_source_from_init_storage() -> Callable[[str], DataSource[TableStructure]]:
+    def _data_source_from_init_storage(data_uri: str) -> DataSource[TableStructure]:
         table = pa.Table.from_arrays(data0, names)
         structure = TableStructure.from_arrow_table(table, npartitions=1)
         data_source = DataSource(
@@ -46,12 +46,14 @@ def data_source_from_init_storage() -> DataSource[TableStructure]:
         return SQLAdapter.init_storage(
             data_source=data_source, storage=storage, path_parts=[]
         )
+
     return _data_source_from_init_storage
+
 
 @pytest.fixture
 def adapter_sql(
     tmp_path: Path,
-    data_source_from_init_storage: DataSource[TableStructure],
+    data_source_from_init_storage: Callable[[str], DataSource[TableStructure]],
 ) -> Generator[SQLAdapter, None, None]:
     data_uri = f"sqlite:///{tmp_path}/test.db"
     data_source = data_source_from_init_storage(data_uri)
@@ -114,7 +116,8 @@ def postgres_uri() -> str:
 
 @pytest.fixture
 def adapter_psql(
-    data_source_from_init_storage: DataSource[TableStructure], postgres_uri: str
+    data_source_from_init_storage: Callable[[str], DataSource[TableStructure]],
+    postgres_uri: str,
 ) -> SQLAdapter:
     data_source = data_source_from_init_storage(postgres_uri)
     return SQLAdapter(
