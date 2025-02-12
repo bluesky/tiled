@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Tuple, Union
@@ -11,6 +12,7 @@ import numpy
 import pandas
 import pyarrow
 import pyarrow.fs
+from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
 from ..structures.core import Spec, StructureFamily
@@ -99,6 +101,7 @@ class SQLAdapter:
 
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
+        check_table_name(table_name)
 
         dataset_id = secrets.randbits(63)
         data_source.parameters["dataset_id"] = dataset_id
@@ -390,3 +393,17 @@ def schema_to_pg_create_table(schema: pyarrow.Schema, table_name: str) -> str:
     )
 
     return create_statement
+
+
+TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+
+
+def check_table_name(table_name: str) -> None:
+    if len(table_name) > 63:
+        raise ValueError("Table name is too long, max character number is 63!")
+
+    if TABLE_NAME_PATTERN.match(table_name) is None:
+        raise ValueError("Illegal table name!")
+
+    if table_name.lower() in RESERVED_WORDS:
+        raise ValueError("Reserved SQL keywords are not allowed in the table name!")

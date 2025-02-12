@@ -1,12 +1,12 @@
 import os
 from pathlib import Path
-from typing import Callable, Generator
+from typing import Any, Callable, Generator, Union
 
 import adbc_driver_sqlite
 import pyarrow as pa
 import pytest
 
-from tiled.adapters.sql import SQLAdapter
+from tiled.adapters.sql import SQLAdapter, check_table_name
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management, Storage
 from tiled.structures.table import TableStructure
@@ -166,3 +166,120 @@ def test_write_read_psql_list(adapter_psql: SQLAdapter) -> None:
     assert pa.Table.from_batches(
         [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
     ) == pa.Table.from_pandas(result)
+
+
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (
+            "table_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljm",
+            pytest.raises(
+                ValueError, match="Table name is too long, max character number is 63!"
+            ),
+        ),
+        (
+            "create_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
+            pytest.raises(
+                ValueError, match="Table name is too long, max character number is 63!"
+            ),
+        ),
+        (
+            "hello_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
+            pytest.raises(
+                ValueError, match="Table name is too long, max character number is 63!"
+            ),
+        ),
+        ("my_table_here_123_", None),
+        ("the_short_table12374620_hello_table23704ynnm", None),
+    ],
+)
+def test_check_table_name_long_name(
+    table_name: str, expected: Union[None, Any]
+) -> None:
+    if isinstance(expected, type(pytest.raises(ValueError))):
+        with expected:
+            check_table_name(table_name)
+    else:
+        assert check_table_name(table_name) is None  # type: ignore[func-returns-value]
+
+
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (
+            "_here_is_my_table",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "create_this_table1246*",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "create this_table1246",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "drop this_table1246",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "table_mytable!",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        ("my_table_here_123_", None),
+        ("the_short_table12374620_hello_table23704ynnm", None),
+    ],
+)
+def test_check_table_name_illegal_name(
+    table_name: str, expected: Union[None, Any]
+) -> None:
+    if isinstance(expected, type(pytest.raises(ValueError))):
+        with expected:
+            check_table_name(table_name)
+    else:
+        assert check_table_name(table_name) is None  # type: ignore[func-returns-value]
+
+
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (
+            "select",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        (
+            "create",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        (
+            "SELECT",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        (
+            "from",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        ("drop_this_table123_", None),
+        ("DROP_thistable123_hwejk", None),
+    ],
+)
+def test_check_table_name_reserved_keywords(
+    table_name: str, expected: Union[None, Any]
+) -> None:
+    if isinstance(expected, type(pytest.raises(ValueError))):
+        with expected:
+            check_table_name(table_name)
+    else:
+        assert check_table_name(table_name) is None  # type: ignore[func-returns-value]
