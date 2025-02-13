@@ -60,7 +60,6 @@ class SQLAdapter:
         structure : the structure of the data. structure is not optional for sql database
         metadata : the optional metadata of the data.
         specs : the specs.
-        access_policy : the access policy of the data.
         """
         self.uri = data_uri
 
@@ -70,7 +69,6 @@ class SQLAdapter:
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
-        self.access_policy = access_policy
         self.table_name = table_name
         self.dataset_id = dataset_id
 
