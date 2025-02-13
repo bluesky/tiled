@@ -2,6 +2,7 @@ import collections.abc
 import os
 import sys
 import warnings
+import dask.array
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import h5py
@@ -97,6 +98,7 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
                 if ast.parameter == "data_uri":
                     data_uri = ast.data_uri
                     break
+        breakpoint()
         filepath = path_from_uri(data_uri)
         cache_key = (h5py.File, filepath, "r", swmr, libver)
         file = with_resource_cache(
@@ -259,3 +261,93 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
 
     def inlined_contents_enabled(self, depth: int) -> bool:
         return depth <= INLINED_DEPTH
+
+
+class HDF5ArrayAdapter(ArrayAdapter):
+    """Adapter for array-type data stored in HDF5 files"""
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> "HDF5ArrayAdapter":
+        """Adapter for array data stored in HDF5 files
+
+        Parameters
+        ----------
+        data_uris : list of uris to csv files
+        structure :
+        metadata :
+        specs :
+        kwargs : dict
+        """
+
+        # Load the array lazily with Dask
+        file_paths = [path_from_uri(ast.data_uri) for ast in data_source.assets]
+        structure = data_source.structure
+        dtype_numpy = structure.data_type.to_numpy_dtype()
+        nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
+        _kwargs = {"dtype": dtype_numpy, "header": None}
+        _kwargs.update(kwargs)
+        ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
+        chunks_0: tuple[int, ...] = structure.chunks[
+            0
+        ]  # chunking along the rows dimension (when not stackable)
+        if not dtype_numpy.isbuiltin:
+            # Structural np dtype (0) -- return a records array
+            # NOTE: dask.DataFrame.to_records() allows one to pass `index=False` to drop the index column, but as
+            #       of desk ver. 2024.2.1 it seems broken and doesn't do anything. Instead, we set an index to any
+            #       (first) column in the df to prevent it from creating an extra one.
+            array = ddf.set_index(ddf.columns[0]).to_records(lengths=chunks_0)
+        else:
+            # Simple np dtype (1 or 2) -- all fields have the same type -- return a usual array
+            array = ddf.to_dask_array(lengths=chunks_0)
+
+        # Possibly extend or cut the table according the nrows parameter
+        if nrows is not None:
+            # TODO: this pulls all the data and can take long to compute. Instead, we can open the files and
+            #       iterate over the rows directly, which is about 4-5 times faster for 50K rows.
+            #       Can also just .compute() and return a np array instead
+            nrows_actual = len(ddf)
+            if nrows > nrows_actual:
+                padding = dask.array.zeros_like(
+                    array, shape=(nrows - nrows_actual, *array.shape[1:])
+                )
+                array = dask.array.append(array[:nrows_actual, ...], padding, axis=0)
+            else:
+                array = array[:nrows, ...]
+
+            array = array.reshape(structure.shape).rechunk(structure.chunks)
+
+        if node is not None:
+            metadata = node.metadata_
+            specs = node.specs
+        else:
+            metadata, specs = None, None
+
+        return cls(
+            array,
+            structure,
+            metadata=metadata,
+            specs=specs,
+        )
+
+    @classmethod
+    def from_uris(
+        cls,
+        *data_uris: str,
+        dataset: str = "",
+        slice: Tuple[Union[int, slice], ...] = (),
+        swmr: bool = SWMR_DEFAULT,
+        **kwargs: Optional[Any],
+    ) -> "HDF5ArrayAdapter":
+        file_paths = [path_from_uri(uri) for uri in data_uris]
+        array = dask.dataframe.read_csv(
+            file_paths, header=None, **kwargs
+        ).to_dask_array()
+        structure = ArrayStructure.from_array(array)
+
+        return cls(array, structure)

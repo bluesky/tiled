@@ -289,10 +289,8 @@ class CSVArrayAdapter(ArrayAdapter):
 
         Parameters
         ----------
-        data_uris : list of uris to csv files
-        structure :
-        metadata :
-        specs :
+        data_source :
+        node :
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
