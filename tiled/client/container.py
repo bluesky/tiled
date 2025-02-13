@@ -6,12 +6,12 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
-import pyarrow
+import pandas
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -28,6 +28,9 @@ from .utils import (
     export_util,
     handle_error,
 )
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -919,9 +922,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(coords, data)
         return client
 
-    def create_appendable_dataframe(
+    def create_appendable_table(
         self,
-        schema: pyarrow.Schema,
+        schema: "pyarrow.Schema",
         *,
         key=None,
         metadata=None,
@@ -933,7 +936,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         Parameters
         ----------
-        schema : column names info in the form of pyarrow.Schema
+        schema : column names and dtypes info in the form of pyarrow.Schema
         key : str, optional
             Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
@@ -1017,7 +1020,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _write_dataframe(
         self,
-        dataframe,
+        dataframe: Union[pandas.DataFrame, dict[str, Any]],
         mimetype: str,
         *,
         key=None,
@@ -1030,7 +1033,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         Parameters
         ----------
-        dataframe : pandas.DataFrame
+        dataframe : pandas.DataFrame or dict with values representing columns.
         mimetype : str
             Storage format which the server will be requested to use.
         key : str, optional

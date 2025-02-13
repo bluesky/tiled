@@ -1,8 +1,6 @@
-import collections.abc
 import copy
 import itertools
 import operator
-import sys
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import (
@@ -19,6 +17,8 @@ from typing import (
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
+
+from collections.abc import Iterable, Mapping
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
@@ -43,17 +43,8 @@ from ..utils import UNCHANGED, Sentinel
 from .protocols import AccessPolicy, AnyAdapter
 from .utils import IndexersMixin
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
 
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
-class MapAdapter(MappingType[str, AnyAdapter], IndexersMixin):
+class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
     """
     Adapt any mapping (dictionary-like object) to Tiled.
     """
@@ -537,7 +528,7 @@ def walk_string_values(tree: MapAdapter, node: Optional[Any] = None) -> Iterator
         elif hasattr(value, "items"):
             for k, v in value.items():
                 yield from walk_string_values(value, k)
-        elif isinstance(value, collections.abc.Iterable):
+        elif isinstance(value, Iterable):
             for item in value:
                 if isinstance(item, str):
                     yield item
@@ -706,7 +697,7 @@ def contains(query: Any, tree: MapAdapter) -> MapAdapter:
     matches = {}
     for key, value, term in iter_child_metadata(query.key, tree):
         if (
-            isinstance(term, collections.abc.Iterable)
+            isinstance(term, Iterable)
             and (not isinstance(term, str))
             and (query.value in term)
         ):

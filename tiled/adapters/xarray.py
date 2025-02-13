@@ -1,6 +1,5 @@
-import collections.abc
 import itertools
-import sys
+from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional
 
 import xarray
@@ -82,17 +81,7 @@ class DatasetAdapter(MapAdapter):
         return True
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
-class _DatasetMap(MappingType[str, Any]):
+class _DatasetMap(Mapping[str, Any]):
     def __init__(self, dataset: Any) -> None:
         """
 

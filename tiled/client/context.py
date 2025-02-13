@@ -236,19 +236,15 @@ class Context:
             # where the context starts and stops and the wrapped ASGI app.
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
-            if sys.version_info < (3, 9):
-                import atexit
 
-                atexit.register(client.__exit__)
-            else:
-                import threading
+            import threading
 
-                # The threading module has its own (internal) atexit
-                # mechanism that runs at thread shutdown, prior to the atexit
-                # mechanism that runs at interpreter shutdown.
-                # We need to intervene at that layer to close the portal, or else
-                # we will wait forever for a thread run by the portal to join().
-                threading._register_atexit(client.__exit__)
+            # The threading module has its own (internal) atexit
+            # mechanism that runs at thread shutdown, prior to the atexit
+            # mechanism that runs at interpreter shutdown.
+            # We need to intervene at that layer to close the portal, or else
+            # we will wait forever for a thread run by the portal to join().
+            threading._register_atexit(client.__exit__)
 
         self.http_client = client
         self._verify = verify

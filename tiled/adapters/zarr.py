@@ -1,8 +1,7 @@
 import builtins
-import collections.abc
 import copy
 import os
-import sys
+from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
@@ -46,7 +45,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = str(storage.get("filesystem")) + "".join(
+        data_uri = storage.get("filesystem") + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
         # Zarr requires evenly-sized chunks within each dimension.
@@ -216,18 +215,8 @@ class ZarrArrayAdapter(ArrayAdapter):
         return new_shape_tuple, new_chunks_tuple
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
 class ZarrGroupAdapter(
-    MappingType[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    Mapping[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
     IndexersMixin,
 ):
     """ """
@@ -366,6 +355,7 @@ class ZarrAdapter:
     @classmethod
     def from_catalog(
         cls,
+        # A Zarr node may reference an array or group (container).
         data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,

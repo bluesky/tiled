@@ -12,7 +12,7 @@ from typing_extensions import Annotated, TypedDict
 
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import StructureFamily
+from ..structures.core import STRUCTURE_TYPES, StructureFamily
 from ..structures.data_source import Management
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
@@ -140,15 +140,6 @@ class Revision(pydantic.BaseModel):
         )
 
 
-STRUCTURE_TYPES = {
-    StructureFamily.array: ArrayStructure,
-    StructureFamily.awkward: AwkwardStructure,
-    StructureFamily.table: TableStructure,
-    StructureFamily.sparse: SparseStructure,
-    StructureFamily.container: NodeStructure,
-}
-
-
 class DataSource(pydantic.BaseModel, Generic[StructureT]):
     id: Optional[int] = None
     structure_family: StructureFamily
@@ -164,7 +155,7 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
     def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
         if hasattr(orm.structure, "structure"):
             structure_cls = STRUCTURE_TYPES[orm.structure_family]
-            structure = structure_cls(**orm.structure.structure)
+            structure = structure_cls.from_json(orm.structure.structure)
         else:
             structure = None
         return cls(
@@ -434,7 +425,9 @@ class PostMetadataRequest(pydantic.BaseModel):
             if self.structure_family != StructureFamily.container:
                 structure_cls = STRUCTURE_TYPES[self.structure_family]
                 if data_source.structure is not None:
-                    data_source.structure = structure_cls(**data_source.structure)
+                    data_source.structure = structure_cls.from_json(
+                        data_source.structure
+                    )
         return self
 
 
