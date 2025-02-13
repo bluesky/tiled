@@ -51,7 +51,6 @@ class SQLAdapter:
         dataset_id: int,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
         Construct the SQLAdapter object.
