@@ -1,16 +1,18 @@
 import copy
 import hashlib
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
+import adbc_driver_duckdb.dbapi
 import adbc_driver_postgresql.dbapi
-import adbc_driver_sqlite.dbapi
 import numpy
 import pandas
 import pyarrow
 import pyarrow.fs
+from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
 from ..structures.core import Spec, StructureFamily
@@ -42,7 +44,7 @@ class SQLAdapter:
         Construct the SQLAdapter object.
         Parameters
         ----------
-        data_uri : the uri of the database, starting either with "sqlite://" or "postgresql://"
+        data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
         structure : the structure of the data. structure is not optional for sql database
         metadata : the optional metadata of the data.
         specs : the specs.
@@ -99,6 +101,7 @@ class SQLAdapter:
 
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
+        check_table_name(table_name)
 
         dataset_id = secrets.randbits(63)
         data_source.parameters["dataset_id"] = dataset_id
@@ -107,12 +110,10 @@ class SQLAdapter:
         schema_new = schema.insert(0, pyarrow.field("dataset_id", pyarrow.int64()))
         create_table_statement = schema_to_pg_create_table(schema_new, table_name)
 
-        create_index_statement = f"""create
-        index if not exists
-        dataset_id_index
-        on
-        {table_name}(dataset_id);"""
-
+        create_index_statement = (
+            "CREATE INDEX IF NOT EXISTS dataset_id_index "
+            f"ON {table_name}(dataset_id)"
+        )
         conn = create_connection(data_uri)
         conn.cursor().execute(create_table_statement)
         conn.cursor().execute(create_index_statement)
@@ -256,10 +257,10 @@ class SQLAdapter:
         return self.read(fields)
 
 
-def create_connection(uri: str) -> adbc_driver_sqlite.dbapi.AdbcSqliteConnection:
-    if uri.startswith("sqlite:"):
+def create_connection(uri: str) -> adbc_driver_duckdb.dbapi.Connection:
+    if uri.startswith("duckdb:"):
         # Ensure this path is writable to avoid a confusing error message
-        # from abdc_driver_sqlite.
+        # from abdc_driver_duckdb.
         filepath = path_from_uri(uri)
         directory = Path(filepath).parent
         if directory.exists():
@@ -271,12 +272,12 @@ def create_connection(uri: str) -> adbc_driver_sqlite.dbapi.AdbcSqliteConnection
                 raise ValueError(f"The path {filepath} exists but is not writable.")
         else:
             raise ValueError(f"The directory {directory} does not exist.")
-        conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
+        conn = adbc_driver_duckdb.dbapi.connect(str(filepath))
     elif uri.startswith("postgresql:"):
         conn = adbc_driver_postgresql.dbapi.connect(uri)
     else:
         raise ValueError(
-            "The database uri must start with either `sqlite:` or `postgresql:` "
+            "The database uri must start with either `duckdb:` or `postgresql:` "
         )
     return conn
 
@@ -286,96 +287,137 @@ def add_dataset_column(table: pyarrow.Table, dataset_id: int) -> pyarrow.Table:
     return table.add_column(0, pyarrow.field("dataset_id", pyarrow.int64()), [column])
 
 
+# Mapping between Arrow types and PostgreSQL column type name.
+ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
+    # Boolean
+    pyarrow.bool_(): "bool",
+    # Integers
+    pyarrow.int8(): "int2",
+    pyarrow.uint8(): "int2",
+    pyarrow.int16(): "int2",
+    pyarrow.uint16(): "int4",
+    pyarrow.int32(): "int4",
+    pyarrow.uint32(): "int8",
+    pyarrow.int64(): "int8",
+    pyarrow.uint64(): "int8",
+    # Floating Point
+    pyarrow.float16(): "float4",
+    pyarrow.float32(): "float4",
+    pyarrow.float64(): "float8",
+    # String Types
+    pyarrow.string(): "text",
+    pyarrow.large_string(): "text",
+    # TODO Consider adding support for these types, with testing.
+    # # Binary Types
+    # pyarrow.binary(): "bytea",
+    # pyarrow.large_binary(): "bytea",
+    # # Date/Time Types
+    # pyarrow.date32(): "date",
+    # pyarrow.date64(): "date",
+    # pyarrow.time32("s"): "time",
+    # pyarrow.time64("us"): "time",
+    # pyarrow.timestamp(
+    #     "us"
+    # ): "timestamp",  # Note: becomes timestamptz if timezone specified
+    # # Duration/Interval
+    # pyarrow.duration("us"): "interval",
+    # # Decimal Types
+    # pyarrow.decimal128(precision=38, scale=9): "numeric",
+    # pyarrow.decimal256(precision=76, scale=18): "numeric",
+}
+
+
+def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+    """Get the PostgreSQL type name for a given PyArrow field.
+
+    Parameters
+    ----------
+    field : pyarrow.Field
+        The PyArrow field containing type and metadata information
+
+    Returns
+    -------
+    str
+        The corresponding PostgreSQL type name
+
+    Raises
+    ------
+    ValueError
+        If the field's type is not supported
+
+    Examples
+    --------
+    >>> import pyarrow as pa
+    >>> field = pyarrow.field('timestamp_col', pyarrow.timestamp('us', tz='UTC'))
+    >>> get_pg_type(field)
+    'timestamptz'
+    >>> field = pyarrow.field('int_list', pyarrow.list_(pyarrow.int32()))
+    >>> get_pg_type(field)
+    'int4 ARRAY'
+    >>> field = pyarrow.field('dict_col', pyarrow.dictionary(pyarrow.int8(), pyarrow.string()))
+    >>> get_pg_type(field)
+    'text'
+    """
+
+    def _resolve_type(
+        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
+    ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
+        """Internal helper to resolve type, handling nested cases."""
+        # Handle list types
+        if pyarrow.types.is_list(arrow_type):
+            value_type = _resolve_type(arrow_type.value_type)
+            return f"{value_type} ARRAY"
+
+        # Handle fixed size list types
+        if pyarrow.types.is_fixed_size_list(arrow_type):
+            value_type = _resolve_type(arrow_type.value_type)
+            return f"{value_type} ARRAY"
+
+        # Handle large list types
+        if pyarrow.types.is_large_list(arrow_type):
+            value_type = _resolve_type(arrow_type.value_type)
+            return f"{value_type} ARRAY"
+
+        # TODO Consider adding support for these types, with testing.
+
+        # # Handle dictionary types - use value type
+        # if pyarrow.types.is_dictionary(arrow_type):
+        #     return _resolve_type(arrow_type.value_type)
+
+        # # Handle timestamp with timezone
+        # if pyarrow.types.is_timestamp(arrow_type) and arrow_type.tz is not None:
+        #     return "timestamptz"
+
+        # Look up base type
+        for pa_type, pg_type in ARROW_TO_PG_TYPES.items():
+            if arrow_type == pa_type:
+                return pg_type
+
+        # TODO Consider adding support for these types, with testing.
+
+        # # Special handling for time types with different units
+        # if pyarrow.types.is_time(arrow_type):
+        #     return "time"
+
+        # # Special handling for timestamp types without timezone
+        # if pyarrow.types.is_timestamp(arrow_type):
+        #     return "timestamp"
+
+        # # Special handling for duration/interval types with different units
+        # if pyarrow.types.is_duration(arrow_type):
+        #     return "interval"
+
+        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+
+    return _resolve_type(field.type)
+
+
 def schema_to_pg_create_table(schema: pyarrow.Schema, table_name: str) -> str:
-    # Comprehensive mapping of PyArrow types to PostgreSQL types
-    type_mapping = {
-        # Numeric Types
-        "int8": "SMALLINT",  # Could also use "TINYINT" but not native to PG
-        "int16": "SMALLINT",
-        "int32": "INTEGER",
-        "int64": "BIGINT",
-        "uint8": "SMALLINT",
-        "uint16": "INTEGER",
-        "uint32": "BIGINT",
-        "uint64": "NUMERIC",  # No unsigned in PG, so use NUMERIC
-        "float16": "REAL",
-        "float32": "REAL",
-        "float64": "DOUBLE PRECISION",
-        "decimal128": "DECIMAL",
-        "decimal256": "DECIMAL",
-        # String Types
-        "string": "TEXT",
-        "large_string": "TEXT",
-        # Binary Types
-        "binary": "BYTEA",
-        "large_binary": "BYTEA",
-        # Boolean Type
-        "bool": "BOOLEAN",
-        # Temporal Types
-        "date32": "DATE",
-        "date64": "DATE",
-        "timestamp[s]": "TIMESTAMP",
-        "timestamp[ms]": "TIMESTAMP",
-        "timestamp[us]": "TIMESTAMP",
-        "timestamp[ns]": "TIMESTAMP",
-        "time32[s]": "TIME",
-        "time32[ms]": "TIME",
-        "time64[us]": "TIME",
-        "time64[ns]": "TIME",
-        # Interval Types
-        "interval[s]": "INTERVAL",
-        "interval[ms]": "INTERVAL",
-        "interval[us]": "INTERVAL",
-        "interval[ns]": "INTERVAL",
-        "interval_month_day_nano": "INTERVAL",
-        # List Types - mapped to ARRAY
-        "list": "ARRAY",
-        "large_list": "ARRAY",
-        "fixed_size_list": "ARRAY",
-        # Struct Type
-        "struct": "JSONB",  # Best approximate in PG
-        # Dictionary Type (usually used for categorical data)
-        "dictionary": "TEXT",  # Stored as its target type
-        # Fixed Size Types
-        "fixed_size_binary": "BYTEA",
-        # Map Type
-        "map": "JSONB",  # Best approximate in PG
-        # Duration Types
-        "duration[s]": "INTERVAL",
-        "duration[ms]": "INTERVAL",
-        "duration[us]": "INTERVAL",
-        "duration[ns]": "INTERVAL",
-    }
-
-    def get_sql_type(field: pyarrow.Field) -> str:
-        base_type = str(field.type).lower()
-
-        # Handle list types (arrays)
-        if base_type.startswith(("list", "large_list", "fixed_size_list")):
-            value_type = field.type.value_type
-            sql_value_type = type_mapping.get(str(value_type).lower(), "TEXT")
-            return f"{sql_value_type}[]"
-
-        # Handle dictionary types
-        if base_type.startswith("dictionary"):
-            # Use the dictionary value type
-            value_type = field.type.value_type
-            return type_mapping.get(str(value_type).lower(), "TEXT")
-
-        # Handle decimal types with precision and scale
-        if base_type.startswith("decimal"):
-            precision = field.type.precision
-            scale = field.type.scale
-            return f"DECIMAL({precision}, {scale})"
-
-        # Default handling
-        return type_mapping.get(base_type, "TEXT")
-
     # Build column definitions
     columns = []
 
     for field in schema:
-        sql_type = get_sql_type(field)
+        sql_type = arrow_field_to_pg_type(field)
         nullable = "NULL" if field.nullable else "NOT NULL"
         columns.append(f"{field.name} {sql_type} {nullable}")
 
@@ -390,3 +432,176 @@ def schema_to_pg_create_table(schema: pyarrow.Schema, table_name: str) -> str:
     )
 
     return create_statement
+
+
+# Mapping between Arrow types and DuckDB column type names
+ARROW_TO_DUCKDB_TYPES = {
+    # Boolean
+    pyarrow.bool_(): "BOOLEAN",
+    # Integers
+    pyarrow.int8(): "TINYINT",
+    pyarrow.uint8(): "UTINYINT",
+    pyarrow.int16(): "SMALLINT",
+    pyarrow.uint16(): "USMALLINT",
+    pyarrow.int32(): "INTEGER",
+    pyarrow.uint32(): "UINTEGER",
+    pyarrow.int64(): "BIGINT",
+    pyarrow.uint64(): "UBIGINT",
+    # Floating point
+    pyarrow.float16(): "REAL",  # Note: gets converted to float32 internally
+    pyarrow.float32(): "REAL",
+    pyarrow.float64(): "DOUBLE",
+    # Decimal
+    pyarrow.decimal128(precision=38, scale=9): "DECIMAL",
+    pyarrow.decimal256(precision=76, scale=38): "DECIMAL",
+    # String types
+    pyarrow.string(): "VARCHAR",
+    pyarrow.large_string(): "VARCHAR",
+    # TODO Consider adding support for these types, with testing.
+    # # Binary
+    # pyarrow.binary(): 'BLOB',
+    # pyarrow.large_binary(): 'BLOB',
+    # # Temporal types
+    # pyarrow.date32(): 'DATE',
+    # pyarrow.date64(): 'DATE',
+    # pyarrow.time32('s'): 'TIME',
+    # pyarrow.time32('ms'): 'TIME',
+    # pyarrow.time64('us'): 'TIME',
+    # pyarrow.time64('ns'): 'TIME',
+    # pyarrow.timestamp('s'): 'TIMESTAMP',
+    # pyarrow.timestamp('ms'): 'TIMESTAMP',
+    # pyarrow.timestamp('us'): 'TIMESTAMP',
+    # pyarrow.timestamp('ns'): 'TIMESTAMP',
+    # pyarrow.timestamp('us', tz='UTC'): 'TIMESTAMP WITH TIME ZONE',
+    # # Interval/Duration
+    # pyarrow.duration('s'): 'INTERVAL',
+    # pyarrow.duration('ms'): 'INTERVAL',
+    # pyarrow.duration('us'): 'INTERVAL',
+    # pyarrow.duration('ns'): 'INTERVAL',
+}
+
+
+def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+    """Get the DuckDB type name for a given PyArrow field.
+
+    Parameters
+    ----------
+    field : Union[pyarrow.Field, pyarrow.DataType]
+        The PyArrow field or type to convert
+
+    Returns
+    -------
+    str
+        The corresponding DuckDB type name
+
+    Raises
+    ------
+    ValueError
+        If the field's type is not supported or cannot be mapped
+
+    Examples
+    --------
+    >>> import pyarrow as pa
+    >>> get_duckdb_type(pyarrow.int32())
+    'INTEGER'
+    >>> get_duckdb_type(pyarrow.timestamp('us', tz='UTC'))
+    'TIMESTAMP WITH TIME ZONE'
+    >>> get_duckdb_type(pyarrow.list_(pyarrow.int32()))
+    'INTEGER[]'
+    >>> struct_type = pyarrow.struct([('x', pyarrow.int32()), ('y', pyarrow.string())])
+    >>> get_duckdb_type(struct_type)
+    'STRUCT(x INTEGER, y VARCHAR)'
+    """
+
+    def _resolve_type(
+        arrow_type: Union[pyarrow.Field, pyarrow.DataType]
+    ) -> Union[pyarrow.Field, pyarrow.DataType, str]:
+        """Internal helper to resolve type, handling nested cases."""
+        # Handle decimal types with custom precision/scale
+        if pyarrow.types.is_decimal(arrow_type):
+            return f"DECIMAL({arrow_type.precision}, {arrow_type.scale})"
+
+        # Handle list types (including large lists and fixed size lists)
+        if (
+            pyarrow.types.is_list(arrow_type)
+            or pyarrow.types.is_large_list(arrow_type)
+            or pyarrow.types.is_fixed_size_list(arrow_type)
+        ):
+            value_type = _resolve_type(arrow_type.value_type)
+            return f"{value_type}[]"
+
+        # TODO Consider adding support for these types, with testing.
+
+        # # Handle fixed size binary
+        # if pyarrow.types.is_fixed_size_binary(arrow_type):
+        #     return f'BLOB({arrow_type.byte_width})'
+
+        # # Handle dictionary types - use value type
+        # if pyarrow.types.is_dictionary(arrow_type):
+        #     return _resolve_type(arrow_type.value_type)
+
+        # # Handle timestamp with timezone
+        # if pyarrow.types.is_timestamp(arrow_type):
+        #     if arrow_type.tz is not None:
+        #         return 'TIMESTAMP WITH TIME ZONE'
+        #     return 'TIMESTAMP'
+
+        # # Handle struct types
+        # if pyarrow.types.is_struct(arrow_type):
+        #     fields = []
+        #     for field in arrow_type:
+        #         field_type = _resolve_type(field.type)
+        #         fields.append(f'{field.name} {field_type}')
+        #     return f'STRUCT({", ".join(fields)})'
+
+        # # Handle map types
+        # if pyarrow.types.is_map(arrow_type):
+        #     key_type = _resolve_type(arrow_type.key_type)
+        #     item_type = _resolve_type(arrow_type.item_type)
+        #     return f'MAP({key_type}, {item_type})'
+
+        # Look up base type
+        for pa_type, duck_type in ARROW_TO_DUCKDB_TYPES.items():
+            if arrow_type == pa_type:
+                return duck_type
+
+        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+
+    arrow_type = field.type if isinstance(field, pyarrow.Field) else field
+    return _resolve_type(arrow_type)
+
+
+def schema_to_duckdb_create_table(schema: pyarrow.Schema, table_name: str) -> str:
+    # Build column definitions
+    columns = []
+
+    for field in schema:
+        sql_type = arrow_field_to_duckdb_type(field)
+        nullable = "NULL" if field.nullable else "NOT NULL"
+        columns.append(f"{field.name} {sql_type} {nullable}")
+
+    # Construct the CREATE TABLE statement
+    create_statement = (
+        f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+        """
+        + ",\n        ".join(columns)
+        + """)
+    """
+    )
+
+    return create_statement
+
+
+TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+
+
+def check_table_name(table_name: str) -> None:
+    if len(table_name) > 63:
+        raise ValueError("Table name is too long, max character number is 63!")
+
+    if TABLE_NAME_PATTERN.match(table_name) is None:
+        raise ValueError("Illegal table name!")
+
+    if table_name.lower() in RESERVED_WORDS:
+        raise ValueError("Reserved SQL keywords are not allowed in the table name!")

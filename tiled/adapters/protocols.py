@@ -1,6 +1,5 @@
-import collections.abc
-import sys
 from abc import abstractmethod
+from collections.abc import Mapping
 from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
 import dask.dataframe
@@ -35,17 +34,7 @@ class BaseAdapter(Protocol):
         pass
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
-class ContainerAdapter(MappingType[str, "AnyAdapter"], BaseAdapter):
+class ContainerAdapter(Mapping[str, "AnyAdapter"], BaseAdapter):
     structure_family: Literal[StructureFamily.container]
 
     @abstractmethod

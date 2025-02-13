@@ -1,12 +1,12 @@
 import os
 from pathlib import Path
-from typing import Generator
+from typing import Any, Callable, Generator, Union
 
-import adbc_driver_sqlite
+import adbc_driver_duckdb
 import pyarrow as pa
 import pytest
 
-from tiled.adapters.sql import SQLAdapter
+from tiled.adapters.sql import SQLAdapter, check_table_name
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management, Storage
 from tiled.structures.table import TableStructure
@@ -30,28 +30,33 @@ batch2 = pa.record_batch(data2, names=names)
 
 
 @pytest.fixture
-def data_source_from_init_storage(tmp_path: Path) -> DataSource[TableStructure]:
-    table = pa.Table.from_arrays(data0, names)
-    structure = TableStructure.from_arrow_table(table, npartitions=1)
-    data_source = DataSource(
-        management=Management.writable,
-        mimetype="application/x-tiled-sql-table",
-        structure_family=StructureFamily.table,
-        structure=structure,
-        assets=[],
-    )
-    data_uri = f"sqlite:///{tmp_path}/test.db"
-    storage = Storage(filesystem=None, sql=data_uri)
-    return SQLAdapter.init_storage(
-        data_source=data_source, storage=storage, path_parts=[]
-    )
+def data_source_from_init_storage() -> Callable[[str], DataSource[TableStructure]]:
+    def _data_source_from_init_storage(data_uri: str) -> DataSource[TableStructure]:
+        table = pa.Table.from_arrays(data0, names)
+        structure = TableStructure.from_arrow_table(table, npartitions=1)
+        data_source = DataSource(
+            management=Management.writable,
+            mimetype="application/x-tiled-sql-table",
+            structure_family=StructureFamily.table,
+            structure=structure,
+            assets=[],
+        )
+
+        storage = Storage(filesystem=None, sql=data_uri)
+        return SQLAdapter.init_storage(
+            data_source=data_source, storage=storage, path_parts=[]
+        )
+
+    return _data_source_from_init_storage
 
 
 @pytest.fixture
 def adapter_sql(
-    data_source_from_init_storage: DataSource[TableStructure],
+    tmp_path: Path,
+    data_source_from_init_storage: Callable[[str], DataSource[TableStructure]],
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage
+    data_uri = f"duckdb:///{tmp_path}/test.db"
+    data_source = data_source_from_init_storage(data_uri)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -63,7 +68,7 @@ def adapter_sql(
 def test_attributes(adapter_sql: SQLAdapter) -> None:
     assert adapter_sql.structure().columns == names
     assert adapter_sql.structure().npartitions == 1
-    assert isinstance(adapter_sql.conn, adbc_driver_sqlite.dbapi.AdbcSqliteConnection)
+    assert isinstance(adapter_sql.conn, adbc_driver_duckdb.dbapi.Connection)
 
 
 def test_write_read_sql_one(adapter_sql: SQLAdapter) -> None:
@@ -111,9 +116,10 @@ def postgres_uri() -> str:
 
 @pytest.fixture
 def adapter_psql(
-    data_source_from_init_storage: DataSource[TableStructure], postgres_uri: str
+    data_source_from_init_storage: Callable[[str], DataSource[TableStructure]],
+    postgres_uri: str,
 ) -> SQLAdapter:
-    data_source = data_source_from_init_storage
+    data_source = data_source_from_init_storage(postgres_uri)
     return SQLAdapter(
         postgres_uri,
         data_source.structure,
@@ -160,3 +166,120 @@ def test_write_read_psql_list(adapter_psql: SQLAdapter) -> None:
     assert pa.Table.from_batches(
         [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
     ) == pa.Table.from_pandas(result)
+
+
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (
+            "table_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljm",
+            pytest.raises(
+                ValueError, match="Table name is too long, max character number is 63!"
+            ),
+        ),
+        (
+            "create_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
+            pytest.raises(
+                ValueError, match="Table name is too long, max character number is 63!"
+            ),
+        ),
+        (
+            "hello_abcdefg12423pnjsbldfhjdfbv_hbdhfljb128w40_ndgjfsdflfnscljk_sdbf_jhvjkbefl",
+            pytest.raises(
+                ValueError, match="Table name is too long, max character number is 63!"
+            ),
+        ),
+        ("my_table_here_123_", None),
+        ("the_short_table12374620_hello_table23704ynnm", None),
+    ],
+)
+def test_check_table_name_long_name(
+    table_name: str, expected: Union[None, Any]
+) -> None:
+    if isinstance(expected, type(pytest.raises(ValueError))):
+        with expected:
+            check_table_name(table_name)
+    else:
+        assert check_table_name(table_name) is None  # type: ignore[func-returns-value]
+
+
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (
+            "_here_is_my_table",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "create_this_table1246*",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "create this_table1246",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "drop this_table1246",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "table_mytable!",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        ("my_table_here_123_", None),
+        ("the_short_table12374620_hello_table23704ynnm", None),
+    ],
+)
+def test_check_table_name_illegal_name(
+    table_name: str, expected: Union[None, Any]
+) -> None:
+    if isinstance(expected, type(pytest.raises(ValueError))):
+        with expected:
+            check_table_name(table_name)
+    else:
+        assert check_table_name(table_name) is None  # type: ignore[func-returns-value]
+
+
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (
+            "select",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        (
+            "create",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        (
+            "SELECT",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        (
+            "from",
+            pytest.raises(
+                ValueError,
+                match="Reserved SQL keywords are not allowed in the table name!",
+            ),
+        ),
+        ("drop_this_table123_", None),
+        ("DROP_thistable123_hwejk", None),
+    ],
+)
+def test_check_table_name_reserved_keywords(
+    table_name: str, expected: Union[None, Any]
+) -> None:
+    if isinstance(expected, type(pytest.raises(ValueError))):
+        with expected:
+            check_table_name(table_name)
+    else:
+        assert check_table_name(table_name) is None  # type: ignore[func-returns-value]

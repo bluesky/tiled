@@ -1,7 +1,6 @@
-import collections.abc
 import os
-import sys
 import warnings
+from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import h5py
@@ -27,17 +26,7 @@ def from_dataset(dataset: NDArray[Any]) -> ArrayAdapter:
     return ArrayAdapter.from_array(dataset, metadata=getattr(dataset, "attrs", {}))
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
-class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixin):
+class HDF5Adapter(Mapping[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixin):
     """
     Read an HDF5 file or a group within one.
 
@@ -82,7 +71,8 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource[Union[ArrayStructure, None]],
+        # An HDF5 node may reference a dataset (array) or group (container).
+s        data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
         swmr: bool = SWMR_DEFAULT,

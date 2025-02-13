@@ -6,7 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -28,6 +28,9 @@ from .utils import (
     export_util,
     handle_error,
 )
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -919,9 +922,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(coords, data)
         return client
 
-    def create_appendable_dataframe(
+    def create_appendable_table(
         self,
-        schema: pyarrow.Schema,
+        schema: "pyarrow.Schema",
         *,
         key=None,
         metadata=None,

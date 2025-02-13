@@ -169,7 +169,7 @@ class Context:
                     )
                 writable_storage = {"filesystem": filesystem_storage}
             self.writable_storage = Storage(
-                filesystem=writable_storage.get("filesystem"),
+                filesystem=ensure_uri(writable_storage.get("filesystem")),
                 sql=writable_storage.get("sql"),
             )
             # If it is writable, it is automatically also readable.
