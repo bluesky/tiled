@@ -1,9 +1,14 @@
+import builtins
 import collections.abc
 import os
 import sys
 import warnings
+from pathlib import Path
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
+import dask
+import dask.array
+import dask.delayed
 import h5py
 import numpy
 from numpy._typing import NDArray
@@ -259,3 +264,111 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
 
     def inlined_contents_enabled(self, depth: int) -> bool:
         return depth <= INLINED_DEPTH
+
+
+class HDF5ArrayAdapter(ArrayAdapter):
+    """Adapter for array-type data stored in HDF5 files"""
+
+    @staticmethod
+    def lazy_load_hdf5_array(
+        *file_paths: Union[str, Path],
+        dataset: Optional[str] = None,
+        swmr: bool = SWMR_DEFAULT,
+        libver: str = "latest",
+    ) -> dask.array.Array:
+        """Lazily load arrays from possibly many HDF5 files"""
+
+        def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
+            f = h5py.File(fpath, "r", swmr=swmr, libver=libver)
+            return f[dataset] if dataset else f
+
+        def _get_hdf5_specs(
+            fpath: Union[str, Path]
+        ) -> Tuple[Tuple[int, ...], numpy.dtype]:
+            with h5py.File(fpath, "r", swmr=swmr, libver=libver) as f:
+                f = f[dataset] if dataset else f
+                return f.shape, f.dtype
+
+        # Need to know shapes/dtyeps of constituent arrays to load them lazily
+        shapes_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
+        delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
+        arrs = [
+            dask.array.from_delayed(val, shape=shape, dtype=dtype)
+            for (val, (shape, dtype)) in zip(delayed, shapes_dtypes)
+        ]
+        array = dask.array.concatenate(arrs, axis=0)
+
+        return array
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource,
+        node: Node,
+        /,
+        dataset: Optional[str] = None,
+        slice: Optional[Tuple[Union[int, builtins.slice], ...]] = None,
+        swmr: bool = SWMR_DEFAULT,
+        libver: str = "latest",
+        **kwargs: Optional[Any],
+    ) -> "HDF5ArrayAdapter":
+        """Adapter for array data stored in HDF5 files
+
+        Parameters
+        ----------
+        data_source :
+        node :
+        kwargs : dict
+        """
+
+        structure = data_source.structure
+        file_paths = [path_from_uri(ast.data_uri) for ast in data_source.assets]
+
+        array = cls.lazy_load_hdf5_array(
+            *file_paths, dataset=dataset, swmr=swmr, libver=libver
+        )
+
+        if slice:
+            array = array[slice]
+
+        if array.shape != structure.shape:
+            raise ValueError(
+                f"Shape mismatch between array data and structure: "
+                f"{array.shape} != {structure.shape}"
+            )
+        if array.dtype != structure.dtype:
+            raise ValueError(
+                f"Data type mismatch between array data and structure: "
+                f"{array.dtype} != {structure.dtype}"
+            )
+
+        # TODO: Possibly rechunk according to structure.chunks? Is it expensive/necessary?
+
+        return cls(
+            array,
+            structure,
+            metadata=node.metadata_,
+            specs=node.specs,
+        )
+
+    @classmethod
+    def from_uris(
+        cls,
+        *data_uris: str,
+        dataset: Optional[str] = None,
+        slice: Optional[Tuple[Union[int, builtins.slice], ...]] = None,
+        swmr: bool = SWMR_DEFAULT,
+        libver: str = "latest",
+        **kwargs: Optional[Any],
+    ) -> "HDF5ArrayAdapter":
+        file_paths = [path_from_uri(uri) for uri in data_uris]
+        array = cls.lazy_load_hdf5_array(
+            *file_paths, dataset=dataset, swmr=swmr, libver=libver
+        )
+
+        if slice:
+            array = array[slice]
+
+        structure = ArrayStructure.from_array(array)
+
+        return cls(array, structure)
