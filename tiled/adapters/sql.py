@@ -4,18 +4,7 @@ import os
 import re
 import secrets
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Iterator,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import numpy
 import pandas
@@ -30,11 +19,8 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .array import ArrayAdapter
-from .protocols import AccessPolicy
 from .utils import init_adapter_from_catalog
 
-if TYPE_CHECKING:
-    import adbc_driver_manager.dbapi
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 
 
@@ -51,17 +37,15 @@ class SQLAdapter:
         dataset_id: int,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
         Construct the SQLAdapter object.
         Parameters
         ----------
-        data_uri : the uri of the database, starting with "duckdb://", "sqlite://", or "postgresql://"
-        structure : the structure of the data. structure is not optional for sql database
+        data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
+        structure : the structure of the data; structure is not optional for sql database
         metadata : the optional metadata of the data.
         specs : the specs.
-        access_policy : the access policy of the data.
         """
         self.uri = data_uri
 
@@ -71,7 +55,6 @@ class SQLAdapter:
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
-        self.access_policy = access_policy
         self.table_name = table_name
         self.dataset_id = dataset_id
 
@@ -259,7 +242,7 @@ class SQLAdapter:
         self, partition: int, fields: Optional[Union[str, List[str]]] = None
     ) -> pandas.DataFrame:
         """
-        The concatenated data from given set of partitions as pyarrow table.
+        Function to read a batch of data from a given partition.
         Parameters
         ----------
         partition : the partition index to write.
@@ -273,7 +256,18 @@ class SQLAdapter:
         return self.read(fields)
 
 
-def create_connection(uri: str) -> "adbc_driver_manager.dbapi.Connection":
+def create_connection(
+    uri: str,
+) -> Any:
+    """
+    Function to create an adbc connection of type duckdb , sqlite or postgresql.
+    Parameters
+    ----------
+    uri : the uri which is used to create a connection
+    Returns
+    -------
+    Returns a connection of type duckdb , sqlite or postgresql.
+    """
     if uri.startswith("duckdb:"):
         import adbc_driver_duckdb.dbapi
 

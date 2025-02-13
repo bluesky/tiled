@@ -45,7 +45,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = str(storage.get("filesystem")) + "".join(
+        data_uri = storage.get("filesystem") + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
         # Zarr requires evenly-sized chunks within each dimension.
