@@ -6,11 +6,12 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
+import pandas
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -1019,7 +1020,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _write_dataframe(
         self,
-        dataframe : Union[pandas.DataFrame, dict[str, Any]],
+        dataframe: Union[pandas.DataFrame, dict[str, Any]],
         mimetype: str,
         *,
         key=None,

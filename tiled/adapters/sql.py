@@ -30,11 +30,12 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .array import ArrayAdapter
-from .protocols import AccessPolicy
 from .utils import init_adapter_from_catalog
 
 if TYPE_CHECKING:
-    import adbc_driver_manager.dbapi
+    import adbc_driver_duckdb.dbapi
+    import adbc_driver_postgresql.dbapi
+    import adbc_driver_sqlite.dbapi
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 
 
@@ -56,8 +57,8 @@ class SQLAdapter:
         Construct the SQLAdapter object.
         Parameters
         ----------
-        data_uri : the uri of the database, starting with "duckdb://", "sqlite://", or "postgresql://"
-        structure : the structure of the data. structure is not optional for sql database
+        data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
+        structure : the structure of the data; structure is not optional for sql database
         metadata : the optional metadata of the data.
         specs : the specs.
         """
@@ -256,7 +257,7 @@ class SQLAdapter:
         self, partition: int, fields: Optional[Union[str, List[str]]] = None
     ) -> pandas.DataFrame:
         """
-        The concatenated data from given set of partitions as pyarrow table.
+        Function to read a batch of data from a given partition.
         Parameters
         ----------
         partition : the partition index to write.
@@ -270,7 +271,22 @@ class SQLAdapter:
         return self.read(fields)
 
 
-def create_connection(uri: str) -> "adbc_driver_manager.dbapi.Connection":
+def create_connection(
+    uri: str,
+) -> Union[
+    adbc_driver_duckdb.dbapi.Connection,
+    adbc_driver_sqlite.dbapi.Connection,
+    adbc_driver_postgresql.dbapi.Connection,
+]:
+    """
+    Function to create an adbc connection of type duckdb , sqlite or postgresql.
+    Parameters
+    ----------
+    uri : the uri which is used to create a connection
+    Returns
+    -------
+    Returns a connection of type duckdb , sqlite or postgresql.
+    """
     if uri.startswith("duckdb:"):
         import adbc_driver_duckdb.dbapi
 
