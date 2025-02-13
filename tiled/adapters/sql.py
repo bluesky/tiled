@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     import adbc_driver_duckdb.dbapi
     import adbc_driver_postgresql.dbapi
     import adbc_driver_sqlite.dbapi
+
+
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 
 
