@@ -332,17 +332,11 @@ class CSVArrayAdapter(ArrayAdapter):
 
             array = array.reshape(structure.shape).rechunk(structure.chunks)
 
-        if node is not None:
-            metadata = node.metadata_
-            specs = node.specs
-        else:
-            metadata, specs = None, None
-
         return cls(
             array,
             structure,
-            metadata=metadata,
-            specs=specs,
+            metadata=node.metadata_,
+            specs=node.specs,
         )
 
     @classmethod
