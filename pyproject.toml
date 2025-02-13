@@ -57,6 +57,7 @@ tiled = "tiled.commandline.main:main"
 all = [
     "adbc_driver_manager",
     "adbc_driver_postgresql",
+    "adbc_driver_sqlite",
     "aiofiles",
     "aiosqlite",
     "alembic",
@@ -201,6 +202,7 @@ minimal-server = [
 server = [
     "adbc_driver_manager",
     "adbc_driver_postgresql",
+    "adbc_driver_sqlite",
     "aiofiles",
     "aiosqlite",
     "alembic",
