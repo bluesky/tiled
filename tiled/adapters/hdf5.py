@@ -72,7 +72,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixi
     def from_catalog(
         cls,
         # An HDF5 node may reference a dataset (array) or group (container).
-s        data_source: DataSource[Union[ArrayStructure, None]],
+        data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
         swmr: bool = SWMR_DEFAULT,
