@@ -276,7 +276,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
     ) -> dask.array.Array:
-        """Lazily load arrays from possibly many HDF5 files"""
+        """Lazily load arrays from possibly multiple HDF5 files"""
 
         def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
             f = h5py.File(fpath, "r", swmr=swmr, libver=libver)
@@ -289,7 +289,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 f = f[dataset] if dataset else f
                 return f.shape, f.dtype
 
-        # Need to know shapes/dtyeps of constituent arrays to load them lazily
+        # Need to know shapes/dtypes of constituent arrays to load them lazily
         shapes_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
         delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
         arrs = [
