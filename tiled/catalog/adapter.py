@@ -160,7 +160,7 @@ class Context:
             raise ValueError("readable_storage should be a list of URIs or paths")
         if writable_storage:
             if isinstance(writable_storage, (str, Path)):
-                # Interpret input a filesystem path or 'file:' URI.
+                # Interpret input as a filesystem path or 'file:' URI.
                 filesystem_storage = ensure_uri(str(writable_storage))
                 if not urlparse(filesystem_storage).scheme == "file":
                     raise ValueError(
