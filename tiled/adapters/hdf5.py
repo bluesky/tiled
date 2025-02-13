@@ -338,10 +338,10 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 f"Shape mismatch between array data and structure: "
                 f"{array.shape} != {structure.shape}"
             )
-        if array.dtype != structure.dtype:
+        if array.dtype != structure.data_type.to_numpy_dtype():
             raise ValueError(
                 f"Data type mismatch between array data and structure: "
-                f"{array.dtype} != {structure.dtype}"
+                f"{array.dtype} != {structure.data_type.to_numpy_dtype()}"
             )
 
         # TODO: Possibly rechunk according to structure.chunks? Is it expensive/necessary?
