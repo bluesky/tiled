@@ -333,10 +333,10 @@ class HDF5ArrayAdapter(ArrayAdapter):
         if slice:
             array = array[slice]
 
-        if array.shape != structure.shape:
+        if array.shape != tuple(structure.shape):
             raise ValueError(
                 f"Shape mismatch between array data and structure: "
-                f"{array.shape} != {structure.shape}"
+                f"{array.shape} != {tuple(structure.shape)}"
             )
         if array.dtype != structure.data_type.to_numpy_dtype():
             raise ValueError(
