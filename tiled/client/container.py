@@ -935,7 +935,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         Parameters
         ----------
-        schema : column names info in the form of pyarrow.Schema
+        schema : column names and dtypes info in the form of pyarrow.Schema
         key : str, optional
             Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
@@ -1019,7 +1019,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _write_dataframe(
         self,
-        dataframe,
+        dataframe : Union[pandas.DataFrame, dict[str, Any]],
         mimetype: str,
         *,
         key=None,
@@ -1032,7 +1032,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         Parameters
         ----------
-        dataframe : pandas.DataFrame
+        dataframe : pandas.DataFrame or dict with values representing columns.
         mimetype : str
             Storage format which the server will be requested to use.
         key : str, optional
