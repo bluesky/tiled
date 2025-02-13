@@ -4,10 +4,19 @@ import os
 import re
 import secrets
 from pathlib import Path
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
-import adbc_driver_duckdb.dbapi
-import adbc_driver_postgresql.dbapi
 import numpy
 import pandas
 import pyarrow
@@ -23,6 +32,10 @@ from ..utils import path_from_uri
 from .array import ArrayAdapter
 from .protocols import AccessPolicy
 from .utils import init_adapter_from_catalog
+
+if TYPE_CHECKING:
+    import adbc_driver_manager.dbapi
+DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 
 
 class SQLAdapter:
@@ -44,7 +57,7 @@ class SQLAdapter:
         Construct the SQLAdapter object.
         Parameters
         ----------
-        data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
+        data_uri : the uri of the database, starting with "duckdb://", "sqlite://", or "postgresql://"
         structure : the structure of the data. structure is not optional for sql database
         metadata : the optional metadata of the data.
         specs : the specs.
@@ -107,14 +120,17 @@ class SQLAdapter:
         data_source.parameters["dataset_id"] = dataset_id
         data_uri = storage.get("sql")  # TODO scrub credential
 
+        conn = create_connection(data_uri)
+        dialect, _ = data_uri.split(":", 1)
         schema_new = schema.insert(0, pyarrow.field("dataset_id", pyarrow.int64()))
-        create_table_statement = schema_to_pg_create_table(schema_new, table_name)
+        create_table_statement = arrow_schema_to_create_table(
+            schema_new, table_name, cast(DIALECTS, dialect)
+        )
 
         create_index_statement = (
             "CREATE INDEX IF NOT EXISTS dataset_id_index "
             f"ON {table_name}(dataset_id)"
         )
-        conn = create_connection(data_uri)
         conn.cursor().execute(create_table_statement)
         conn.cursor().execute(create_index_statement)
         conn.commit()
@@ -257,29 +273,42 @@ class SQLAdapter:
         return self.read(fields)
 
 
-def create_connection(uri: str) -> adbc_driver_duckdb.dbapi.Connection:
+def create_connection(uri: str) -> "adbc_driver_manager.dbapi.Connection":
     if uri.startswith("duckdb:"):
-        # Ensure this path is writable to avoid a confusing error message
-        # from abdc_driver_duckdb.
-        filepath = path_from_uri(uri)
-        directory = Path(filepath).parent
-        if directory.exists():
-            if not os.access(directory, os.X_OK | os.W_OK):
-                raise ValueError(
-                    f"The directory {directory} exists but is not writable and executable."
-                )
-            if Path(filepath).is_file() and (not os.access(filepath, os.W_OK)):
-                raise ValueError(f"The path {filepath} exists but is not writable.")
-        else:
-            raise ValueError(f"The directory {directory} does not exist.")
+        import adbc_driver_duckdb.dbapi
+
+        filepath = _ensure_writable_location(uri)
         conn = adbc_driver_duckdb.dbapi.connect(str(filepath))
+    elif uri.startswith("sqlite:"):
+        import adbc_driver_sqlite.dbapi
+
+        filepath = _ensure_writable_location(uri)
+        conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
     elif uri.startswith("postgresql:"):
+        import adbc_driver_postgresql.dbapi
+
         conn = adbc_driver_postgresql.dbapi.connect(uri)
     else:
         raise ValueError(
-            "The database uri must start with either `duckdb:` or `postgresql:` "
+            "The database uri must start with `duckdb:`, `sqlite:`, or `postgresql:`"
         )
     return conn
+
+
+def _ensure_writable_location(uri: str) -> Path:
+    "Ensure path is writable to avoid a confusing error message from driver."
+    filepath = path_from_uri(uri)
+    directory = Path(filepath).parent
+    if directory.exists():
+        if not os.access(directory, os.X_OK | os.W_OK):
+            raise ValueError(
+                f"The directory {directory} exists but is not writable and executable."
+            )
+        if Path(filepath).is_file() and (not os.access(filepath, os.W_OK)):
+            raise ValueError(f"The path {filepath} exists but is not writable.")
+    else:
+        raise ValueError(f"The directory {directory} does not exist.")
+    return filepath
 
 
 def add_dataset_column(table: pyarrow.Table, dataset_id: int) -> pyarrow.Table:
@@ -410,28 +439,6 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
 
     return _resolve_type(field.type)
-
-
-def schema_to_pg_create_table(schema: pyarrow.Schema, table_name: str) -> str:
-    # Build column definitions
-    columns = []
-
-    for field in schema:
-        sql_type = arrow_field_to_pg_type(field)
-        nullable = "NULL" if field.nullable else "NOT NULL"
-        columns.append(f"{field.name} {sql_type} {nullable}")
-
-    # Construct the CREATE TABLE statement
-    create_statement = (
-        f"""
-    CREATE TABLE IF NOT EXISTS {table_name} (
-        """
-        + ",\n        ".join(columns)
-        + """)
-    """
-    )
-
-    return create_statement
 
 
 # Mapping between Arrow types and DuckDB column type names
@@ -571,12 +578,130 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
     return _resolve_type(arrow_type)
 
 
-def schema_to_duckdb_create_table(schema: pyarrow.Schema, table_name: str) -> str:
+ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
+    # Boolean - stored as INTEGER
+    pyarrow.bool_(): "INTEGER",
+    # Integers - all stored as INTEGER
+    pyarrow.int8(): "INTEGER",
+    pyarrow.uint8(): "INTEGER",
+    pyarrow.int16(): "INTEGER",
+    pyarrow.uint16(): "INTEGER",
+    pyarrow.int32(): "INTEGER",
+    pyarrow.uint32(): "INTEGER",
+    pyarrow.int64(): "INTEGER",
+    pyarrow.uint64(): "INTEGER",  # Note: may exceed SQLite INTEGER range
+    # Floating point - stored as REAL
+    pyarrow.float16(): "REAL",
+    pyarrow.float32(): "REAL",
+    pyarrow.float64(): "REAL",
+    # Decimal - stored as TEXT to preserve precision
+    pyarrow.decimal128(precision=38, scale=9): "TEXT",
+    pyarrow.decimal256(precision=76, scale=38): "TEXT",
+    # String types - stored as TEXT
+    pyarrow.string(): "TEXT",
+    pyarrow.large_string(): "TEXT",
+    # TODO Consider adding support for these types, with testing.
+    # # Binary - stored as BLOB
+    # pyarrow.binary(): 'BLOB',
+    # pyarrow.large_binary(): 'BLOB',
+    # pyarrow.fixed_size_binary_type(32): 'BLOB',
+    # # Temporal types - stored as TEXT or INTEGER
+    # pyarrow.date32(): 'TEXT',  # ISO8601 date string
+    # pyarrow.date64(): 'TEXT',  # ISO8601 date string
+    # pyarrow.time32('s'): 'TEXT',  # ISO8601 time string
+    # pyarrow.time64('us'): 'TEXT',  # ISO8601 time string
+    # pyarrow.timestamp('s'): 'INTEGER',  # Unix timestamp
+    # pyarrow.timestamp('ms'): 'INTEGER',  # Unix timestamp
+    # pyarrow.timestamp('us'): 'INTEGER',  # Unix timestamp
+    # pyarrow.timestamp('ns'): 'INTEGER',  # Unix timestamp
+    # pyarrow.timestamp('us', tz='UTC'): 'TEXT',  # ISO8601 timestamp with TZ
+    # # Duration/Interval - stored as INTEGER (microseconds) or TEXT
+    # pyarrow.duration('s'): 'INTEGER',
+    # pyarrow.duration('ms'): 'INTEGER',
+    # pyarrow.duration('us'): 'INTEGER',
+    # pyarrow.duration('ns'): 'INTEGER'
+}
+
+
+def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
+    """Get the SQLite type name for a given PyArrow field.
+
+    Parameters
+    ----------
+    field : Union[pyarrow.Field, pyarrow.DataType]
+        The PyArrow field or type to convert
+
+    Returns
+    -------
+    str
+        The corresponding SQLite type name
+
+    Raises
+    ------
+    ValueError
+        If the field's type is not supported or cannot be mapped
+
+    Examples
+    --------
+    >>> import pyarrow as pa
+    >>> get_sqlite_type(pyarrow.int32())
+    'INTEGER'
+    >>> get_sqlite_type(pyarrow.string())
+    'TEXT'
+    >>> get_sqlite_type(pyarrow.timestamp('us', tz='UTC'))
+    'TEXT'
+    >>> get_sqlite_type(pyarrow.list_(pyarrow.int32()))
+    'TEXT'  # JSON encoded array
+    """
+
+    def _resolve_type(arrow_type: pyarrow.DataType) -> str:
+        # Handle dictionary types - use value type
+        if pyarrow.types.is_dictionary(arrow_type):
+            return _resolve_type(arrow_type.value_type)
+
+        # Handle timestamp with timezone - store as TEXT
+        if pyarrow.types.is_timestamp(arrow_type) and arrow_type.tz is not None:
+            return "TEXT"
+
+        # Handle nested types (lists, structs, maps) - store as JSON TEXT
+        if (
+            pyarrow.types.is_list(arrow_type)
+            or pyarrow.types.is_struct(arrow_type)
+            or pyarrow.types.is_map(arrow_type)
+            or pyarrow.types.is_fixed_size_list(arrow_type)
+            or pyarrow.types.is_large_list(arrow_type)
+        ):
+            return "TEXT"  # JSON encoded
+
+        # Look up base type
+        for pa_type, sqlite_type in ARROW_TO_SQLITE_TYPES.items():
+            if arrow_type == pa_type:
+                return sqlite_type
+
+        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+
+    arrow_type = field.type if isinstance(field, pyarrow.Field) else field
+    return _resolve_type(arrow_type)
+
+
+DIALECT_TO_TYPE_CONVERTER: dict[
+    DIALECTS, Callable[[Union[pyarrow.Field, pyarrow.DataType]], str]
+] = {
+    "duckdb": arrow_field_to_duckdb_type,
+    "sqlite": arrow_field_to_sqlite_type,
+    "postgresql": arrow_field_to_pg_type,
+}
+
+
+def arrow_schema_to_create_table(
+    schema: pyarrow.Schema, table_name: str, dialect: DIALECTS
+) -> str:
     # Build column definitions
     columns = []
 
+    converter = DIALECT_TO_TYPE_CONVERTER[dialect]
     for field in schema:
-        sql_type = arrow_field_to_duckdb_type(field)
+        sql_type = converter(field)
         nullable = "NULL" if field.nullable else "NOT NULL"
         columns.append(f"{field.name} {sql_type} {nullable}")
 

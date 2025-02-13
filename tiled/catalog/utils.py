@@ -20,7 +20,11 @@ def classify_writable_storage(uris: list[str]) -> dict[str, str]:
             if "filesystem" in result:
                 raise NotImplementedError("Can only write to one filesystem location")
             result["filesystem"] = item_uri
-        elif item_uri.startswith("duckdb:") or item_uri.startswith("postgresql:"):
+        elif (
+            item_uri.startswith("duckdb:")
+            or item_uri.startswith("sqlite:")
+            or item_uri.startswith("postgresql:")
+        ):
             if "sql" in result:
                 raise NotImplementedError("Can only write to one SQL database")
             result["sql"] = item_uri
