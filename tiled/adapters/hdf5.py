@@ -306,7 +306,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         data_source: DataSource,
         node: Node,
         /,
-        dataset: Optional[str] = None,
+        dataset: Optional[list[str]] = None,
         slice: Optional[Tuple[Union[int, builtins.slice], ...]] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
@@ -323,6 +323,8 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         structure = data_source.structure
         file_paths = [path_from_uri(ast.data_uri) for ast in data_source.assets]
+        if dataset is not None:
+            dataset = "/".join(dataset)
 
         array = cls.lazy_load_hdf5_array(
             *file_paths, dataset=dataset, swmr=swmr, libver=libver
@@ -343,6 +345,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
             )
 
         # TODO: Possibly rechunk according to structure.chunks? Is it expensive/necessary?
+        # array = dask.array.rechunk(array, chunks=structure.chunks)
 
         return cls(
             array,
