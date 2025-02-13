@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
-import pandas
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -29,7 +28,11 @@ from .utils import (
     handle_error,
 )
 
+# import pandas
+
+
 if TYPE_CHECKING:
+    import pandas
     import pyarrow
 
 
@@ -1020,7 +1023,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _write_dataframe(
         self,
-        dataframe: Union[pandas.DataFrame, dict[str, Any]],
+        dataframe: Union["pandas.DataFrame", dict[str, Any]],
         mimetype: str,
         *,
         key=None,
