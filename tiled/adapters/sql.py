@@ -103,11 +103,9 @@ class SQLAdapter:
         if data_source.structure.npartitions > 1:
             raise ValueError("The SQL adapter must have only 1 partition")
 
-        schema = (
-            data_source.structure.arrow_schema_decoded
-        )  # based on hash of Arrow schema
+        # Create a table_name based on the hash of Arrow schema
+        schema = data_source.structure.arrow_schema_decoded
         encoded = schema.serialize()
-
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
         check_table_name(table_name)
