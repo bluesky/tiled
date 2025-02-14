@@ -928,6 +928,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def create_appendable_table(
         self,
         schema: "pyarrow.Schema",
+        npartitions: int = 1,
         *,
         key=None,
         metadata=None,
@@ -962,7 +963,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         from ..structures.table import TableStructure
 
-        structure = TableStructure.from_schema(schema)
+        structure = TableStructure.from_schema(schema, npartitions)
 
         client = self.new(
             StructureFamily.table,
