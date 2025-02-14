@@ -23,7 +23,9 @@ from tiled.server.app import build_app
 @contextlib.contextmanager
 def client_factory(readable_storage=None):
     with tempfile.TemporaryDirectory() as tempdir:
-        catalog = in_memory(writable_storage=tempdir, readable_storage=readable_storage)
+        catalog = in_memory(
+            writable_storage=str(tempdir), readable_storage=readable_storage
+        )
         app = build_app(catalog)
         with Context.from_app(app) as context:
             client = from_context(context)

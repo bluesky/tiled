@@ -4,6 +4,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+
+### Added
+
+- Added `SQLAdapter` which can save and interact with table structured data in `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
+
 ### Changed
 
 - Removed pydantic-based definitions of structures, which had duplicated

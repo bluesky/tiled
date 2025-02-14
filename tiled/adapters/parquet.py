@@ -1,13 +1,14 @@
+import copy
 from pathlib import Path
 from typing import Any, List, Optional, Union
+from urllib.parse import quote_plus
 
 import dask.dataframe
 import pandas
 
 from ..catalog.orm import Node
-from ..server.schemas import Asset
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import DataSource
+from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -48,7 +49,7 @@ class ParquetDatasetAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[TableStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],
@@ -70,7 +71,12 @@ class ParquetDatasetAdapter:
         return DataFrameAdapter(partitions, self._structure)
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[TableStructure],
+        path_parts: List[str],
+    ) -> DataSource[TableStructure]:
         """
 
         Parameters
@@ -82,6 +88,10 @@ class ParquetDatasetAdapter:
         -------
 
         """
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        data_uri = storage.get("filesystem") + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         assets = [
@@ -91,9 +101,10 @@ class ParquetDatasetAdapter:
                 parameter="data_uris",
                 num=i,
             )
-            for i in range(structure.npartitions)
+            for i in range(data_source.structure.npartitions)
         ]
-        return assets
+        data_source.assets.extend(assets)
+        return data_source
 
     def write_partition(
         self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int

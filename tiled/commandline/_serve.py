@@ -8,6 +8,7 @@ import typer
 serve_app = typer.Typer()
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
+DUCKDB_TABULAR_DATA_FILENAME = "data.duckdb"
 DATA_SUBDIRECTORY = "data"
 
 
@@ -174,7 +175,7 @@ def serve_directory(
         mimetype, obj_ref = match.groups()
         adapters_by_mimetype[mimetype] = obj_ref
     catalog_adapter = catalog_from_uri(
-        database,
+        ensure_specified_sql_driver(database),
         readable_storage=[directory],
         adapters_by_mimetype=adapters_by_mimetype,
     )
@@ -295,11 +296,11 @@ def serve_catalog(
         "-r",
         help="Locations that the server may read from",
     ),
-    write: str = typer.Option(
+    write: List[str] = typer.Option(
         None,
         "--write",
         "-w",
-        help="Location that the server may write to",
+        help="Locations that the server may write to",
     ),
     temp: bool = typer.Option(
         False,
@@ -361,12 +362,14 @@ def serve_catalog(
     import urllib.parse
 
     from ..catalog import from_uri
+    from ..catalog.utils import classify_writable_storage
     from ..server.app import build_app, print_admin_api_key_if_generated
 
     parsed_database = urllib.parse.urlparse(database)
     if parsed_database.scheme in ("", "file"):
         database = f"sqlite:///{parsed_database.path}"
 
+    write = write or []
     if temp:
         if database is not None:
             typer.echo(
@@ -378,15 +381,11 @@ def serve_catalog(
         import tempfile
 
         directory = Path(tempfile.TemporaryDirectory().name)
+        typer.echo(
+            f"Initializing temporary storage in {directory}",
+            err=True,
+        )
         directory.mkdir()
-        typer.echo(
-            f"Creating catalog database at {directory / SQLITE_CATALOG_FILENAME}",
-            err=True,
-        )
-        typer.echo(
-            f"Creating writable catalog data directory at {directory / DATA_SUBDIRECTORY}",
-            err=True,
-        )
         database = f"sqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
 
         # Because this is a tempfile we know this is a fresh database and we do not
@@ -404,13 +403,30 @@ def serve_catalog(
         from ..utils import ensure_specified_sql_driver
 
         database = ensure_specified_sql_driver(database)
+        typer.echo(
+            f"  catalog database:          {directory / SQLITE_CATALOG_FILENAME}",
+            err=True,
+        )
         engine = create_async_engine(database)
         asyncio.run(initialize_database(engine))
         stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
-        if write is None:
-            write = directory / DATA_SUBDIRECTORY
-            write.mkdir()
+        if not write:
+            typer.echo(
+                f"  writable file storage:     {directory / DATA_SUBDIRECTORY}",
+                err=True,
+            )
+            writable_dir = directory / DATA_SUBDIRECTORY
+            writable_dir.mkdir()
+            write.append(writable_dir)
+            typer.echo(
+                f"  writable tabular storage:  {directory / DUCKDB_TABULAR_DATA_FILENAME}",
+                err=True,
+            )
+            tabular_data_database = (
+                f"duckdb:///{Path(directory, DUCKDB_TABULAR_DATA_FILENAME)}"
+            )
+            write.append(tabular_data_database)
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
     elif database is None:
         typer.echo(
@@ -438,16 +454,17 @@ or use an existing one:
         catalog_logger.addHandler(StreamHandler())
         catalog_logger.setLevel("INFO")
 
-    if write is None:
+    if not write:
         typer.echo(
             "This catalog will be served as read-only. "
             "To make it writable, specify a writable directory with --write.",
             err=True,
         )
+
     server_settings = {}
     tree = from_uri(
         database,
-        writable_storage=write,
+        writable_storage=classify_writable_storage(write),
         readable_storage=read,
         init_if_not_exists=init,
     )
