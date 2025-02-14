@@ -960,12 +960,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if table_name is not None:
             parameters["table_name"] = table_name
 
-        mimetype = "application/x-tiled-sql-table"
-
         from ..structures.table import TableStructure
-
-        metadata = metadata or {}
-        specs = specs or []
 
         structure = TableStructure.from_schema(schema)
 
@@ -975,20 +970,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 DataSource(
                     structure=structure,
                     structure_family=StructureFamily.table,
-                    mimetype=mimetype,
+                    mimetype="application/x-tiled-sql-table",
                     parameters=parameters,
                 )
             ],
             key=key,
-            metadata=metadata,
-            specs=specs,
+            metadata=metadata or {},
+            specs=specs or [],
         )
 
         return client
 
     def write_dataframe(
         self,
-        dataframe,
+        dataframe: Union["pandas.DataFrame", dict[str, Any]],
         *,
         key=None,
         metadata=None,
@@ -999,7 +994,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         Parameters
         ----------
-        dataframe : pandas.DataFrame
+        dataframe : pandas.DataFrame or dict
         key : str, optional
             Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
@@ -1013,55 +1008,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         --------
         create_appendable_dataframe
         """
-        return self._write_dataframe(
-            dataframe,
-            None,  # default format, not appendable
-            key=key,
-            metadata=metadata,
-            specs=specs,
-        )
-
-    def _write_dataframe(
-        self,
-        dataframe: Union["pandas.DataFrame", dict[str, Any]],
-        mimetype: str,
-        *,
-        key=None,
-        metadata=None,
-        specs=None,
-        table_name=None,
-    ):
-        """
-        This is called by write_dataframe and write_appendable_dataframe.
-
-        Parameters
-        ----------
-        dataframe : pandas.DataFrame or dict with values representing columns.
-        mimetype : str
-            Storage format which the server will be requested to use.
-        key : str, optional
-            Key (name) for this new node. If None, the server will provide a unique key.
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        specs : List[Spec], optional
-            List of names that are used to label that the data and/or metadata
-            conform to some named standard specification.
-        """
-        parameters = {}
-        if table_name is not None:
-            if mimetype != "application/x-tiled-sql-table":
-                raise ValueError(
-                    "table_name parameter cannot be set for non-SQL tables"
-                )
-            parameters["table_name"] = table_name
-
         import dask.dataframe
 
         from ..structures.table import TableStructure
-
-        metadata = metadata or {}
-        specs = specs or []
 
         if isinstance(dataframe, dask.dataframe.DataFrame):
             structure = TableStructure.from_dask_dataframe(dataframe)
@@ -1077,13 +1026,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 DataSource(
                     structure=structure,
                     structure_family=StructureFamily.table,
-                    mimetype=mimetype,
-                    parameters=parameters,
                 )
             ],
             key=key,
-            metadata=metadata,
-            specs=specs,
+            metadata=metadata or {},
+            specs=specs or [],
         )
 
         if hasattr(dataframe, "partitions"):
