@@ -1,17 +1,11 @@
 import builtins
 import collections.abc
 import os
-<<<<<<< HEAD
-import warnings
-from pathlib import Path
-from collections.abc import Mapping
-=======
 import re
 import sys
 import warnings
 from pathlib import Path
 from types import EllipsisType
->>>>>>> hdf5-array-adapter
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
