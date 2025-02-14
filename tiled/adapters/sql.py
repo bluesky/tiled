@@ -115,7 +115,7 @@ class SQLAdapter:
         dialect, _ = data_uri.split(":", 1)
         # Prefix columns with internal _dataset_id, _partition_id, ...
         schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
-        schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int64()))
+        schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
         create_table_statement = arrow_schema_to_create_table(
             schema, table_name, cast(DIALECTS, dialect)
         )
@@ -251,13 +251,13 @@ class SQLAdapter:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
         # Prepend columns for internal dataset_id and partition number.
-        dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int64)
+        dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int32)
         partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)
         table = table.add_column(
             0, pyarrow.field("_partition_id", pyarrow.int16()), [partition_id_column]
         )
         table = table.add_column(
-            0, pyarrow.field("_dataset_id", pyarrow.int64()), [dataset_id_column]
+            0, pyarrow.field("_dataset_id", pyarrow.int32()), [dataset_id_column]
         )
         self.cur.adbc_ingest(self.table_name, table, mode="append")
         self.conn.commit()
