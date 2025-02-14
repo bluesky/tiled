@@ -232,6 +232,15 @@ def test_write_read_list_batch_one_part(
     assert test_table == pa.Table.from_pandas(result_read_partition)
 
 
+def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
+    "Verify that two tables have the same rows, regardless of order."
+    assert table1.num_rows == table2.num_rows
+
+    rows1 = {tuple(row) for row in table1.to_pylist()}
+    rows2 = {tuple(row) for row in table2.to_pylist()}
+    assert rows1 == rows2
+
+
 @pytest.mark.parametrize(
     "adapter",
     [
@@ -281,11 +290,23 @@ def test_write_read_one_batch_many_part(
     result_read = adapter.read()
     result_read["f3"] = result_read["f3"].astype("boolean")
 
-    # note that now partition 1 has [batch0, batch2], partition 1 has
-    # [batch1, batch0] and partititon 2 has [batch2, batch1]
-    assert pa.Table.from_batches(
-        [batch0, batch2, batch1, batch0, batch2, batch1]
-    ) == pa.Table.from_pandas(result_read)
+    # Check that each partition matches
+    assert_same_rows(
+        pa.Table.from_batches([batch0, batch2]),
+        pa.Table.from_pandas(adapter.read_partition(0)),
+    )
+    assert_same_rows(
+        pa.Table.from_batches([batch1, batch0]),
+        pa.Table.from_pandas(adapter.read_partition(1)),
+    )
+    assert_same_rows(
+        pa.Table.from_batches([batch2, batch1]),
+        pa.Table.from_pandas(adapter.read_partition(2)),
+    )
+    assert_same_rows(
+        pa.Table.from_batches([batch0, batch2, batch1, batch0, batch2, batch1]),
+        pa.Table.from_pandas(result_read),
+    )
 
     # test reading a specific parition after appending
     result_read_partition = adapter.read_partition(0)
