@@ -26,6 +26,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Server declares authentication provider modes are `external` or `internal`. The
   latter was renamed from `password`. Client accepts either `internal` or `password`
   for backward-compatibility with older servers.
+- Make context switch to HTTPS URI, if available, upon creation
 
 ### Added
 
