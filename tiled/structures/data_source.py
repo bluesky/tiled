@@ -50,8 +50,10 @@ class Storage:
     sql: Optional[str] = None
 
     def __post_init__(self):
-        self.filesystem = ensure_uri(self.filesystem)
-        self.sql = ensure_uri(self.sql)
+        if self.filesystem is not None:
+            self.filesystem = ensure_uri(self.filesystem)
+        if self.sql is not None:
+            self.sql = ensure_uri(self.sql)
 
     @classmethod
     def from_path(cls, path: Union[str, Path]):
