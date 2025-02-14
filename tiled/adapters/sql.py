@@ -4,7 +4,18 @@ import os
 import re
 import secrets
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 import numpy
 import pandas
@@ -21,6 +32,8 @@ from ..utils import path_from_uri
 from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
+if TYPE_CHECKING:
+    import adbc_driver_manager.dbapi
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 
 
@@ -258,7 +271,7 @@ class SQLAdapter:
 
 def create_connection(
     uri: str,
-) -> Any:
+) -> "adbc_driver_manager.dbapi.Connect":
     """
     Function to create an adbc connection of type duckdb , sqlite or postgresql.
     Parameters
