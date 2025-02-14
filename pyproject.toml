@@ -55,6 +55,9 @@ tiled = "tiled.commandline.main:main"
 
 # This is the union of all optional dependencies.
 all = [
+    "adbc_driver_manager",
+    "adbc_driver_postgresql",
+    "adbc_driver_sqlite",
     "aiofiles",
     "aiosqlite",
     "alembic",
@@ -68,6 +71,7 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
+    "duckdb",
     "entrypoints",
     "fastapi",
     "h5netcdf",
@@ -196,6 +200,9 @@ minimal-server = [
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
+    "adbc_driver_manager",
+    "adbc_driver_postgresql",
+    "adbc_driver_sqlite",
     "aiofiles",
     "aiosqlite",
     "alembic",
@@ -209,6 +216,7 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
+    "duckdb",
     "fastapi",
     "h5netcdf",
     "h5py",

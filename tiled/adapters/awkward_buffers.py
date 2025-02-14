@@ -1,16 +1,18 @@
 """
 A directory containing awkward buffers, one file per form key.
 """
+
+import copy
 from pathlib import Path
 from typing import Any, List, Optional
+from urllib.parse import quote_plus
 
 import awkward.forms
 
 from ..catalog.orm import Node
-from ..server.schemas import Asset
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import DataSource
+from ..structures.data_source import Asset, DataSource, Storage
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .awkward import AwkwardAdapter
@@ -20,6 +22,35 @@ from .utils import init_adapter_from_catalog
 
 class AwkwardBuffersAdapter(AwkwardAdapter):
     structure_family = StructureFamily.awkward
+
+    @classmethod
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[AwkwardStructure],
+        path_parts: List[str],
+    ) -> DataSource[AwkwardStructure]:
+        """
+
+        Parameters
+        ----------
+        data_uri :
+        structure :
+
+        Returns
+        -------
+
+        """
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        data_uri = storage.get("filesystem") + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
+        directory: Path = path_from_uri(data_uri)
+        directory.mkdir(parents=True, exist_ok=True)
+        data_source.assets.append(
+            Asset(data_uri=data_uri, is_directory=True, parameter="data_uri")
+        )
+        return data_source
 
     def __init__(
         self,
@@ -41,15 +72,9 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         )
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: AwkwardStructure) -> List[Asset]:
-        directory: Path = path_from_uri(data_uri)
-        directory.mkdir(parents=True, exist_ok=True)
-        return [Asset(data_uri=data_uri, is_directory=True, parameter="data_uri")]
-
-    @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[AwkwardStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],

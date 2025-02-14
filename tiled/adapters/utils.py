@@ -1,8 +1,11 @@
 import warnings
 from collections import defaultdict
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ..structures.data_source import DataSource
+
+if TYPE_CHECKING:
+    from ..type_aliases import AnyStructure
 
 # for back-compat
 from ..utils import node_repr as tree_repr  # noqa: F401
@@ -66,7 +69,9 @@ class IndexCallable:
         return self.fn(key)
 
 
-def asset_parameters_to_adapter_kwargs(data_source: DataSource) -> dict[str, Any]:
+def asset_parameters_to_adapter_kwargs(
+    data_source: DataSource["AnyStructure"],
+) -> dict[str, Any]:
     """Transform database representation of Adapter parameters to Python representation."""
     parameters: dict[str, Any] = defaultdict(list)
     for asset in data_source.assets:
@@ -84,7 +89,7 @@ def asset_parameters_to_adapter_kwargs(data_source: DataSource) -> dict[str, Any
 
 def init_adapter_from_catalog(
     adapter_cls: type[Any],
-    data_source: DataSource,
+    data_source: DataSource["AnyStructure"],
     node: Any,  # tiled.catalog.orm.Node ?
     /,
     **kwargs: Optional[Any],

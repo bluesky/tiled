@@ -1,5 +1,7 @@
+import copy
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from urllib.parse import quote_plus
 
 import pandas
 import pyarrow
@@ -8,7 +10,7 @@ import pyarrow.fs
 
 from ..catalog.orm import Node
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Management
+from ..structures.data_source import Asset, DataSource, Management, Storage
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
@@ -50,7 +52,7 @@ class ArrowAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[TableStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],
@@ -61,18 +63,28 @@ class ArrowAdapter:
         return self._metadata
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[TableStructure],
+        path_parts: List[str],
+    ) -> DataSource[TableStructure]:
         """
         Class to initialize the list of assets for given uri.
         Parameters
         ----------
-        data_uri :
-        structure :
-
+        storage : the storage option for .arrow files
+        data_source : data source representing the adapter
+        path_parts: the list of partitions
         Returns
         -------
         The list of assets.
         """
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        data_uri = storage.get("filesystem") + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
+
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
         assets = [
@@ -82,9 +94,10 @@ class ArrowAdapter:
                 parameter="data_uris",
                 num=i,
             )
-            for i in range(structure.npartitions)
+            for i in range(data_source.structure.npartitions)
         ]
-        return assets
+        data_source.assets.extend(assets)
+        return data_source
 
     def structure(self) -> TableStructure:
         return self._structure
@@ -100,7 +113,7 @@ class ArrowAdapter:
         dict_or_none: Callable[[TableStructure], Dict[str, str]],
         item: Union[str, Path],
         is_directory: bool,
-    ) -> List[DataSource]:
+    ) -> List[DataSource[TableStructure]]:
         """
 
         Parameters
@@ -118,7 +131,7 @@ class ArrowAdapter:
             DataSource(
                 structure_family=self.structure_family,
                 mimetype=mimetype,
-                structure=dict_or_none(self.structure()),
+                structure=self.structure(),
                 parameters={},
                 management=Management.external,
                 assets=[

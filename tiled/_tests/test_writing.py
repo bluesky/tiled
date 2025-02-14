@@ -11,6 +11,7 @@ import dask.dataframe
 import numpy
 import pandas
 import pandas.testing
+import pyarrow
 import pytest
 import sparse
 from pandas.testing import assert_frame_equal
@@ -40,7 +41,12 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 @pytest.fixture
 def tree(tmpdir):
-    return in_memory(writable_storage=tmpdir)
+    return in_memory(
+        writable_storage={
+            "filesystem": str(tmpdir / "data"),
+            "sql": f"duckdb:///{tmpdir / 'data.duckdb'}",
+        }
+    )
 
 
 def test_write_array_full(tree):
@@ -635,7 +641,7 @@ def test_write_with_specified_mimetype(tree):
 
 
 @pytest.mark.parametrize(
-    "orig_file, file_toappend, expected_file",
+    "orig_file, file_to_append, expected_file",
     [
         (
             {"A": [1, 2, 3], "B": [4, 5, 6]},
@@ -660,31 +666,15 @@ def test_write_with_specified_mimetype(tree):
 def test_append_partition(
     tree: CatalogContainerAdapter,
     orig_file: dict,
-    file_toappend: dict,
+    file_to_append: dict,
     expected_file: dict,
 ):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
-        df = pandas.DataFrame(orig_file)
-        structure = TableStructure.from_pandas(df)
+        orig_table = pyarrow.Table.from_pydict(orig_file)
+        table_to_append = pyarrow.Table.from_pydict(file_to_append)
 
-        x = client.new(
-            "table",
-            [
-                DataSource(
-                    structure_family="table",
-                    structure=structure,
-                    mimetype="text/csv",
-                ),
-            ],
-            key="x",
-        )
-        x.write(df)
-
-        df2 = pandas.DataFrame(file_toappend)
-
-        x.append_partition(df2, 0)
-
-        df3 = pandas.DataFrame(expected_file)
-
-        assert_frame_equal(x.read(), df3, check_dtype=False)
+        x = client.create_appendable_table(orig_table.schema, key="x")
+        x.append_partition(orig_table, 0)
+        x.append_partition(table_to_append, 0)
+        assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
