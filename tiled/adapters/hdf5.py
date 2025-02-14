@@ -1,9 +1,17 @@
 import builtins
 import collections.abc
 import os
+<<<<<<< HEAD
 import warnings
 from pathlib import Path
 from collections.abc import Mapping
+=======
+import re
+import sys
+import warnings
+from pathlib import Path
+from types import EllipsisType
+>>>>>>> hdf5-array-adapter
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
@@ -32,7 +40,54 @@ def from_dataset(dataset: NDArray[Any]) -> ArrayAdapter:
     return ArrayAdapter.from_array(dataset, metadata=getattr(dataset, "attrs", {}))
 
 
-class HDF5Adapter(Mapping[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixin):
+def ndslice_from_string(
+    arg: str,
+) -> Tuple[Union[int, builtins.slice, EllipsisType], ...]:
+    """Parse and convert a string representation of a slice
+
+    For example, '(1:3, 4, 1:5:2, ...)' is converted to (slice(1, 3), 4, slice(1, 5, 2), ...).
+    """
+    if not (arg.startswith("[") and arg.endswith("]")) and not (
+        arg.startswith("(") and arg.endswith(")")
+    ):
+        raise ValueError("Slice must be enclosed in square brackets or parentheses.")
+    result: list[Union[int, builtins.slice, EllipsisType]] = []
+    for part in arg[1:-1].split(","):
+        if part.strip() == ":":
+            result.append(builtins.slice(None))
+        elif m := re.match(r"^(\d+):$", part.strip()):
+            start, stop = int(m.group(1)), None
+            result.append(builtins.slice(start, stop))
+        elif m := re.match(r"^:(\d+)$", part.strip()):
+            start, stop = 0, int(m.group(1))
+            result.append(builtins.slice(start, stop))
+        elif m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
+            start, stop, step = map(int, m.groups())
+            result.append(builtins.slice(start, stop, step))
+        elif m := re.match(r"^(\d+):(\d+)$", part.strip()):
+            start, stop = map(int, m.groups())
+            result.append(builtins.slice(start, stop))
+        elif m := re.match(r"^(\d+)$", part.strip()):
+            result.append(int(m.group()))
+        elif part.strip() == "...":
+            result.append(Ellipsis)
+        else:
+            raise ValueError(f"Invalid slice part: {part}")
+        # TODO: cases like "::n" or ":4:"
+    return tuple(result)
+
+
+if sys.version_info < (3, 9):
+    from typing_extensions import Mapping
+
+    MappingType = Mapping
+else:
+    import collections
+
+    MappingType = collections.abc.Mapping
+
+
+class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixin):
     """
     Read an HDF5 file or a group within one.
 
@@ -267,7 +322,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
     ) -> dask.array.Array:
-        """Lazily load arrays from possibly many HDF5 files"""
+        """Lazily load arrays from possibly multiple HDF5 files"""
 
         def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
             f = h5py.File(fpath, "r", swmr=swmr, libver=libver)
@@ -280,7 +335,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 f = f[dataset] if dataset else f
                 return f.shape, f.dtype
 
-        # Need to know shapes/dtyeps of constituent arrays to load them lazily
+        # Need to know shapes/dtypes of constituent arrays to load them lazily
         shapes_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
         delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
         arrs = [
@@ -298,7 +353,8 @@ class HDF5ArrayAdapter(ArrayAdapter):
         node: Node,
         /,
         dataset: Optional[list[str]] = None,
-        slice: Optional[Tuple[Union[int, builtins.slice], ...]] = None,
+        slice: Optional[str | Tuple[Union[int, builtins.slice, EllipsisType], ...]] = None,
+        squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         **kwargs: Optional[Any],
@@ -322,7 +378,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
         )
 
         if slice:
+            if isinstance(slice, str):
+                slice = ndslice_from_string(slice)
             array = array[slice]
+        if squeeze:
+            array = array.squeeze()
 
         if array.shape != tuple(structure.shape):
             raise ValueError(
@@ -350,7 +410,8 @@ class HDF5ArrayAdapter(ArrayAdapter):
         cls,
         *data_uris: str,
         dataset: Optional[str] = None,
-        slice: Optional[Tuple[Union[int, builtins.slice], ...]] = None,
+        slice: Optional[str | Tuple[Union[int, builtins.slice, EllipsisType], ...]] = None,
+        squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         **kwargs: Optional[Any],
@@ -361,7 +422,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
         )
 
         if slice:
+            if isinstance(slice, str):
+                slice = ndslice_from_string(slice)
             array = array[slice]
+        if squeeze:
+            array = array.squeeze()
 
         structure = ArrayStructure.from_array(array)
 
