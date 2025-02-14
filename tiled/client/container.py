@@ -1011,7 +1011,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         See Also
         --------
-        write_appendable_dataframe
+        create_appendable_dataframe
         """
         return self._write_dataframe(
             dataframe,
