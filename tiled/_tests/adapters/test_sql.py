@@ -1,15 +1,18 @@
 import os
 from pathlib import Path
-from typing import Any, Callable, Generator, Union
+from typing import Any, AsyncGenerator, Callable, Generator, Union
 
 import adbc_driver_duckdb
 import pyarrow as pa
 import pytest
+import pytest_asyncio
 
 from tiled.adapters.sql import SQLAdapter, check_table_name
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management, Storage
 from tiled.structures.table import TableStructure
+
+from ..utils import temp_postgres
 
 names = ["f0", "f1", "f2", "f3"]
 data0 = [
@@ -105,13 +108,14 @@ def test_attributes_many_part(adapter_sql_many_partition: SQLAdapter) -> None:
     )
 
 
-@pytest.fixture
-def postgres_uri() -> str:
+@pytest_asyncio.fixture
+async def postgres_uri() -> AsyncGenerator[str, None]:
     uri = os.getenv("TILED_TEST_POSTGRESQL_URI")
-    if uri is not None:
-        return uri
-    pytest.skip("TILED_TEST_POSTGRESQL_URI is not set")
-    return ""
+    if uri is None:
+        pytest.skip("TILED_TEST_POSTGRESQL_URI is not set")
+
+    async with temp_postgres(uri) as uri_with_database_name:
+        yield uri_with_database_name
 
 
 @pytest.fixture
@@ -300,11 +304,11 @@ def test_write_read_one_batch_many_part(
     )
 
     # read a specific field
-    result_read = adapter.read_partition(0, fields="f1")
+    result_read = adapter.read_partition(0, fields=["f1"])
     assert [*data0[1].tolist(), *data2[1].tolist()] == result_read.tolist()
-    result_read = adapter.read_partition(1, fields="f0")
+    result_read = adapter.read_partition(1, fields=["f0"])
     assert [*data1[0].tolist(), *data0[0].tolist()] == result_read.tolist()
-    result_read = adapter.read_partition(2, fields="f2")
+    result_read = adapter.read_partition(2, fields=["f2"])
     assert [*data2[2].tolist(), *data1[2].tolist()] == result_read.tolist()
 
 

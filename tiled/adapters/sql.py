@@ -262,7 +262,7 @@ class SQLAdapter:
         self.cur.adbc_ingest(self.table_name, table, mode="append")
         self.conn.commit()
 
-    def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
+    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
@@ -289,7 +289,7 @@ class SQLAdapter:
         return table
 
     def read_partition(
-        self, partition: int, fields: Optional[Union[str, List[str]]] = None
+        self, partition: int, fields: Optional[List[str]] = None
     ) -> pandas.DataFrame:
         """
         Read a batch of data from a given partition.
