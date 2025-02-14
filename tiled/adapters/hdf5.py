@@ -156,7 +156,7 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         )
         dataset = kwargs.get("dataset") or kwargs.get("path") or []
         if isinstance(dataset, str):
-            dataset = dataset.split('/')
+            dataset = dataset.strip("/").split('/')
         for segment in dataset:
             adapter = adapter.get(segment)  # type: ignore
             if adapter is None:
