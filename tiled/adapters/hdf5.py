@@ -329,15 +329,16 @@ class HDF5ArrayAdapter(ArrayAdapter):
         ) -> Tuple[Tuple[int, ...], numpy.dtype]:
             with h5py.File(fpath, "r", swmr=swmr, libver=libver) as f:
                 f = f[dataset] if dataset else f
-                return f.shape, f.dtype
+                return f.shape, f.chunks, f.dtype
 
         # Need to know shapes/dtypes of constituent arrays to load them lazily
-        shapes_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
+        shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
         delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
         arrs = [
             dask.array.from_delayed(val, shape=shape, dtype=dtype)
-            for (val, (shape, dtype)) in zip(delayed, shapes_dtypes)
+            for (val, (shape, chunk_shape, dtype)) in zip(delayed, shapes_chunks_dtypes)
         ]
+        # TODO: Rechunk?
         array = dask.array.concatenate(arrs, axis=0)
 
         return array
