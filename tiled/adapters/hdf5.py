@@ -47,18 +47,27 @@ def ndslice_from_string(
         raise ValueError("Slice must be enclosed in square brackets or parentheses.")
     result: list[Union[int, builtins.slice, EllipsisType]] = []
     for part in arg[1:-1].split(","):
-        if m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
+        if part.strip() == ":":
+            result.append(builtins.slice(None))
+        elif m := re.match(r"^(\d+):$", part.strip()):
+            start, stop = int(m.group(1)), None
+            result.append(builtins.slice(start, stop))
+        elif m := re.match(r"^:(\d+)$", part.strip()):
+            start, stop = 0, int(m.group(1))
+            result.append(builtins.slice(start, stop))
+        elif m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
             start, stop, step = map(int, m.groups())
             result.append(builtins.slice(start, stop, step))
-        elif m := re.match(r"^(\d):(\d)$", part.strip()):
+        elif m := re.match(r"^(\d+):(\d+)$", part.strip()):
             start, stop = map(int, m.groups())
             result.append(builtins.slice(start, stop))
-        elif m := re.match(r"^(\d)$", part.strip()):
+        elif m := re.match(r"^(\d+)$", part.strip()):
             result.append(int(m.group()))
         elif part.strip() == "...":
             result.append(Ellipsis)
         else:
             raise ValueError(f"Invalid slice part: {part}")
+        # TODO: cases like "::n" or ":4:"
     return tuple(result)
 
 
@@ -337,7 +346,8 @@ class HDF5ArrayAdapter(ArrayAdapter):
         node: Node,
         /,
         dataset: Optional[list[str]] = None,
-        slice: Optional[Tuple[Union[int, builtins.slice], ...]] = None,
+        slice: Optional[str | Tuple[Union[int, builtins.slice, EllipsisType], ...]] = None,
+        squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         **kwargs: Optional[Any],
@@ -361,7 +371,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
         )
 
         if slice:
+            if isinstance(slice, str):
+                slice = ndslice_from_string(slice)
             array = array[slice]
+        if squeeze:
+            array = array.squeeze()
 
         if array.shape != tuple(structure.shape):
             raise ValueError(
@@ -389,7 +403,8 @@ class HDF5ArrayAdapter(ArrayAdapter):
         cls,
         *data_uris: str,
         dataset: Optional[str] = None,
-        slice: Optional[Tuple[Union[int, builtins.slice], ...]] = None,
+        slice: Optional[str | Tuple[Union[int, builtins.slice, EllipsisType], ...]] = None,
+        squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         **kwargs: Optional[Any],
@@ -400,7 +415,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
         )
 
         if slice:
+            if isinstance(slice, str):
+                slice = ndslice_from_string(slice)
             array = array[slice]
+        if squeeze:
+            array = array.squeeze()
 
         structure = ArrayStructure.from_array(array)
 
