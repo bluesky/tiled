@@ -122,14 +122,16 @@ async def postgres_uri() -> AsyncGenerator[str, None]:
 def adapter_psql_one_partition(
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
     postgres_uri: str,
-) -> SQLAdapter:
+) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 1)
-    return SQLAdapter(
+    adapter = SQLAdapter(
         postgres_uri,
         data_source.structure,
         data_source.parameters["table_name"],
         data_source.parameters["dataset_id"],
     )
+    yield adapter
+    adapter.close()
 
 
 @pytest.fixture

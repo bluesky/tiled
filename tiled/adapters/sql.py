@@ -62,13 +62,15 @@ class SQLAdapter:
         self.uri = data_uri
 
         self.conn = create_connection(self.uri)
-        self.cur = self.conn.cursor()
 
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
+
+    def close(self) -> None:
+        self.conn.close()
 
     def metadata(self) -> JSON:
         """
@@ -125,8 +127,10 @@ class SQLAdapter:
             f"ON {table_name}(_dataset_id, _partition_id)"
         )
 
-        conn.cursor().execute(create_table_statement)
-        conn.cursor().execute(create_index_statement)
+        with conn.cursor() as cursor:
+            cursor.execute(create_table_statement)
+        with conn.cursor() as cursor:
+            cursor.execute(create_index_statement)
         # Just once, create a SEQUENCE (or the closest analogue in SQLite) to
         # provide unique dataset_id for each dataset in this database.
         # (If it exists, do nothing.)
@@ -134,24 +138,28 @@ class SQLAdapter:
         # initializing here.
         if dialect == "sqlite":
             # Create single-row table with a counter, if it does not exist.
-            conn.cursor().execute(
-                "CREATE TABLE IF NOT EXISTS _dataset_id_counter (value INTEGER NOT NULL)"
-            )
-            conn.cursor().execute(
-                "INSERT INTO _dataset_id_counter (value) "
-                "SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _dataset_id_counter)"
-            )
-            cursor = conn.cursor()
-            # Increment the counter.
-            cursor.execute(
-                "UPDATE _dataset_id_counter SET value = value + 1 " "RETURNING value"
-            )
-            (dataset_id,) = cursor.fetchone()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "CREATE TABLE IF NOT EXISTS _dataset_id_counter (value INTEGER NOT NULL)"
+                )
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO _dataset_id_counter (value) "
+                    "SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _dataset_id_counter)"
+                )
+            with conn.cursor() as cursor:
+                # Increment the counter.
+                cursor.execute(
+                    "UPDATE _dataset_id_counter SET value = value + 1 "
+                    "RETURNING value"
+                )
+                (dataset_id,) = cursor.fetchone()
         else:
-            conn.cursor().execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
-            cursor = conn.cursor()
-            cursor.execute("SELECT nextval('_dataset_id_counter')")
-            (dataset_id,) = cursor.fetchone()
+            with conn.cursor() as cursor:
+                cursor.execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT nextval('_dataset_id_counter')")
+                (dataset_id,) = cursor.fetchone()
         data_source.parameters["dataset_id"] = dataset_id
         conn.commit()
 
@@ -163,6 +171,7 @@ class SQLAdapter:
                 num=None,
             )
         )
+        conn.close()
         return data_source
 
     @classmethod
@@ -259,7 +268,8 @@ class SQLAdapter:
         table = table.add_column(
             0, pyarrow.field("_dataset_id", pyarrow.int32()), [dataset_id_column]
         )
-        self.cur.adbc_ingest(self.table_name, table, mode="append")
+        with self.conn.cursor() as cursor:
+            cursor.adbc_ingest(self.table_name, table, mode="append")
         self.conn.commit()
 
     def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
@@ -277,8 +287,9 @@ class SQLAdapter:
             f"SELECT * FROM {self.table_name} "
             f"WHERE _dataset_id={self.dataset_id} ORDER BY _partition_id"
         )
-        self.cur.execute(query)
-        data = self.cur.fetch_arrow_table()
+        with self.conn.cursor() as cursor:
+            cursor.execute(query)
+            data = cursor.fetch_arrow_table()
         self.conn.commit()
 
         table = data.to_pandas()
@@ -308,8 +319,9 @@ class SQLAdapter:
             f"SELECT * FROM {self.table_name} "
             f"WHERE _dataset_id={self.dataset_id} AND _partition_id={int(partition)}"
         )
-        self.cur.execute(query)
-        data = self.cur.fetch_arrow_table()
+        with self.conn.cursor() as cursor:
+            cursor.execute(query)
+            data = cursor.fetch_arrow_table()
         self.conn.commit()
 
         table = data.to_pandas()
