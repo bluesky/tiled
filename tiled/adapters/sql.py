@@ -2,7 +2,6 @@ import copy
 import hashlib
 import os
 import re
-import secrets
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -110,14 +109,12 @@ class SQLAdapter:
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
         check_table_name(table_name)
 
-        dataset_id = secrets.randbits(63)
-        data_source.parameters["dataset_id"] = dataset_id
         data_uri = storage.get("sql")  # TODO scrub credential
 
         conn = create_connection(data_uri)
         dialect, _ = data_uri.split(":", 1)
         # Prefix columns with internal _dataset_id, _partition_id, ...
-        schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int8()))
+        schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
         schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int64()))
         create_table_statement = arrow_schema_to_create_table(
             schema, table_name, cast(DIALECTS, dialect)
@@ -127,8 +124,35 @@ class SQLAdapter:
             "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
             f"ON {table_name}(_dataset_id, _partition_id)"
         )
+
         conn.cursor().execute(create_table_statement)
         conn.cursor().execute(create_index_statement)
+        # Just once, create a SEQUENCE (or the closest analogue in SQLite) to
+        # provide unique dataset_id for each dataset in this database.
+        # (If it exists, do nothing.)
+        # Then obtain the next value in the SEQUENCE for the dataset we are
+        # initializing here.
+        if dialect == "sqlite":
+            # Create single-row table with a counter, if it does not exist.
+            conn.cursor().execute(
+                "CREATE TABLE IF NOT EXISTS _dataset_id_counter (value INTEGER NOT NULL)"
+            )
+            conn.cursor().execute(
+                "INSERT INTO _dataset_id_counter (value) "
+                "SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _dataset_id_counter)"
+            )
+            cursor = conn.cursor()
+            # Increment the counter.
+            cursor.execute(
+                "UPDATE _dataset_id_counter SET value = value + 1 " "RETURNING value"
+            )
+            (dataset_id,) = cursor.fetchone()
+        else:
+            conn.cursor().execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
+            cursor = conn.cursor()
+            cursor.execute("SELECT nextval('_dataset_id_counter')")
+            (dataset_id,) = cursor.fetchone()
+        data_source.parameters["dataset_id"] = dataset_id
         conn.commit()
 
         data_source.assets.append(
@@ -228,9 +252,9 @@ class SQLAdapter:
             table = pyarrow.Table.from_batches(batches)
         # Prepend columns for internal dataset_id and partition number.
         dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int64)
-        partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int8)
+        partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)
         table = table.add_column(
-            0, pyarrow.field("_partition_id", pyarrow.int8()), [partition_id_column]
+            0, pyarrow.field("_partition_id", pyarrow.int16()), [partition_id_column]
         )
         table = table.add_column(
             0, pyarrow.field("_dataset_id", pyarrow.int64()), [dataset_id_column]
