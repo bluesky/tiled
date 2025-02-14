@@ -1,9 +1,11 @@
 import builtins
 import collections.abc
 import os
+import re
 import sys
 import warnings
 from pathlib import Path
+from types import EllipsisType
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
@@ -30,6 +32,34 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 def from_dataset(dataset: NDArray[Any]) -> ArrayAdapter:
     return ArrayAdapter.from_array(dataset, metadata=getattr(dataset, "attrs", {}))
+
+
+def ndslice_from_string(
+    arg: str,
+) -> Tuple[Union[int, builtins.slice, EllipsisType], ...]:
+    """Parse and convert a string representation of a slice
+
+    For example, '(1:3, 4, 1:5:2, ...)' is converted to (slice(1, 3), 4, slice(1, 5, 2), ...).
+    """
+    if not (arg.startswith("[") and arg.endswith("]")) and not (
+        arg.startswith("(") and arg.endswith(")")
+    ):
+        raise ValueError("Slice must be enclosed in square brackets or parentheses.")
+    result: list[Union[int, builtins.slice, EllipsisType]] = []
+    for part in arg[1:-1].split(","):
+        if m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
+            start, stop, step = map(int, m.groups())
+            result.append(builtins.slice(start, stop, step))
+        elif m := re.match(r"^(\d):(\d)$", part.strip()):
+            start, stop = map(int, m.groups())
+            result.append(builtins.slice(start, stop))
+        elif m := re.match(r"^(\d)$", part.strip()):
+            result.append(int(m.group()))
+        elif part.strip() == "...":
+            result.append(Ellipsis)
+        else:
+            raise ValueError(f"Invalid slice part: {part}")
+    return tuple(result)
 
 
 if sys.version_info < (3, 9):
