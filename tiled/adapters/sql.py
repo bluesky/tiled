@@ -230,7 +230,10 @@ class SQLAdapter:
             else:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
-        table_with_dataset_id = add_dataset_column(table, self.dataset_id)
+        new_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int64)
+        table_with_dataset_id = table.add_column(
+            0, pyarrow.field("dataset_id", pyarrow.int64()), [new_column]
+        )
         self.cur.adbc_ingest(self.table_name, table_with_dataset_id, mode="append")
         self.conn.commit()
 
@@ -320,11 +323,6 @@ def _ensure_writable_location(uri: str) -> Path:
     else:
         raise ValueError(f"The directory {directory} does not exist.")
     return filepath
-
-
-def add_dataset_column(table: pyarrow.Table, dataset_id: int) -> pyarrow.Table:
-    column = dataset_id * numpy.ones(len(table), dtype=numpy.int64)
-    return table.add_column(0, pyarrow.field("dataset_id", pyarrow.int64()), [column])
 
 
 # Mapping between Arrow types and PostgreSQL column type name.
