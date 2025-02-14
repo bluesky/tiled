@@ -126,7 +126,8 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        # An HDF5 node may reference a dataset (array) or group (container).
+        data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
         swmr: bool = SWMR_DEFAULT,
@@ -154,6 +155,8 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
             specs=node.specs,
         )
         dataset = kwargs.get("dataset") or kwargs.get("path") or []
+        if isinstance(dataset, str):
+            dataset = dataset.split('/')
         for segment in dataset:
             adapter = adapter.get(segment)  # type: ignore
             if adapter is None:
@@ -345,7 +348,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         data_source: DataSource,
         node: Node,
         /,
-        dataset: Optional[list[str]] = None,
+        dataset: Optional[str] = None,
         slice: Optional[str | Tuple[Union[int, builtins.slice, EllipsisType], ...]] = None,
         squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
@@ -363,8 +366,6 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         structure = data_source.structure
         file_paths = [path_from_uri(ast.data_uri) for ast in data_source.assets]
-        if dataset is not None:
-            dataset = "/".join(dataset)
 
         array = cls.lazy_load_hdf5_array(
             *file_paths, dataset=dataset, swmr=swmr, libver=libver
@@ -410,6 +411,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         **kwargs: Optional[Any],
     ) -> "HDF5ArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
+
         array = cls.lazy_load_hdf5_array(
             *file_paths, dataset=dataset, swmr=swmr, libver=libver
         )
