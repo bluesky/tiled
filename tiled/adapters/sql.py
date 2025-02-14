@@ -289,7 +289,7 @@ class SQLAdapter:
         return table
 
     def read_partition(
-        self, partition: int, fields: Optional[List[str]] = None
+        self, partition: int, fields: Optional[Union[str, List[str]]] = None
     ) -> pandas.DataFrame:
         """
         Read a batch of data from a given partition.
