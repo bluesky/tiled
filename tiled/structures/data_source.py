@@ -1,7 +1,10 @@
 import dataclasses
 import enum
-from typing import Generic, List, Optional, TypeVar
+from pathlib import Path
+from typing import Generic, List, Optional, TypeVar, Union
+from urllib.parse import urlparse
 
+from ..utils import ensure_uri
 from .core import StructureFamily
 
 
@@ -43,11 +46,25 @@ class DataSource(Generic[StructureT]):
 
 @dataclasses.dataclass
 class Storage:
-    filesystem: Optional[str]
-    sql: Optional[str]
+    filesystem: Optional[str] = None
+    sql: Optional[str] = None
 
-    def get(self, storage: str) -> str:
-        uri = getattr(self, storage)
-        if isinstance(uri, str):
-            return uri
-        raise TypeError(f"{storage} is not set")
+    def __post_init__(self):
+        self.filesystem = ensure_uri(self.filesystem)
+        self.sql = ensure_uri(self.sql)
+
+    @classmethod
+    def from_path(cls, path: Union[str, Path]):
+        # Interpret input as a filesystem path or 'file:' URI.
+        filesystem_storage = ensure_uri(str(path))
+        if not urlparse(filesystem_storage).scheme == "file":
+            raise ValueError(f"Could not parse as filepath: {path}")
+        return cls(filesystem=filesystem_storage)
+
+    def get(self, key: str) -> str:
+        value = getattr(self, key)
+        if not value:
+            raise RuntimeError(
+                f"Adapter requested {key} storage but none is configured."
+            )
+        return value
