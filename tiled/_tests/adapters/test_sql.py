@@ -305,11 +305,11 @@ def test_write_read_one_batch_many_part(
 
     # read a specific field
     result_read = adapter.read_partition(0, fields=["f1"])
-    assert [*data0[1].tolist(), *data2[1].tolist()] == result_read.tolist()
+    assert [*data0[1].tolist(), *data2[1].tolist()] == result_read["f1"].tolist()
     result_read = adapter.read_partition(1, fields=["f0"])
-    assert [*data1[0].tolist(), *data0[0].tolist()] == result_read.tolist()
+    assert [*data1[0].tolist(), *data0[0].tolist()] == result_read["f0"].tolist()
     result_read = adapter.read_partition(2, fields=["f2"])
-    assert [*data2[2].tolist(), *data1[2].tolist()] == result_read.tolist()
+    assert [*data2[2].tolist(), *data1[2].tolist()] == result_read["f2"].tolist()
 
 
 @pytest.mark.parametrize(
