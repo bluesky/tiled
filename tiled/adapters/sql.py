@@ -218,6 +218,10 @@ class SQLAdapter:
         Returns
         -------
         """
+        if partition != 0:
+            raise NotImplementedError(
+                "Tables stored in SQL presently only support one partition."
+            )
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
         else:
