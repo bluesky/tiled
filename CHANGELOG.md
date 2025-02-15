@@ -7,7 +7,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- Added `SQLAdapter` which can save and interact with table structured data in `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
+- Added `SQLAdapter` which can save and interact with table structured data in
+  `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
+- New parameter to `tiled.client.tree` `on_error` defaults to skipping errors
+  and printing the error message. To restore original strict behavior, pass
+  `on_error="raise"`.
 
 ### Changed
 
