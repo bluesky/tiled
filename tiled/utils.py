@@ -338,7 +338,7 @@ def walk(tree, nodes=None):
             yield nodes
 
 
-def gen_tree(tree, nodes=None, last=None):
+def gen_tree(tree, nodes=None, last=None, on_error="skip"):
     "A generator of lines for the tree utility"
 
     # Normally, traversing a Tree will cause the structure clients to be
@@ -355,22 +355,35 @@ def gen_tree(tree, nodes=None, last=None):
     structure_clients = collections.defaultdict(lambda: dummy_client)
     structure_clients["container"] = Container
     fast_tree = tree.new_variation(structure_clients=structure_clients)
-    if nodes is None:
-        last_index = len(fast_tree) - 1
-        for index, node in enumerate(fast_tree):
-            yield from gen_tree(fast_tree, [node], [index == last_index])
-    else:
-        value = fast_tree[nodes[-1]]
-        if hasattr(value, "items"):
-            yield _line(nodes, last)
-            last_index = len(value) - 1
-            for index, (k, v) in enumerate(value.items()):
-                yield from gen_tree(value, nodes + [k], last + [index == last_index])
+    try:
+        if nodes is None:
+            last_index = len(fast_tree) - 1
+            for index, node in enumerate(fast_tree):
+                yield from gen_tree(
+                    fast_tree, [node], [index == last_index], on_error=on_error
+                )
         else:
-            yield _line(nodes, last)
+            value = fast_tree[nodes[-1]]
+            if hasattr(value, "items"):
+                yield _line(nodes, last)
+                last_index = len(value) - 1
+                for index, (k, v) in enumerate(value.items()):
+                    yield from gen_tree(
+                        value,
+                        nodes + [k],
+                        last + [index == last_index],
+                        on_error=on_error,
+                    )
+            else:
+                yield _line(nodes, last)
+    except Exception as err:
+        if on_error == "skip":
+            yield f"SKIPPING due to error: {err}"
+        else:
+            raise
 
 
-def tree(tree, max_lines=20):
+def tree(tree, max_lines=20, on_error="skip"):
     """
     Print a visual sketch of Tree structure akin to UNIX `tree`.
 
@@ -380,6 +393,7 @@ def tree(tree, max_lines=20):
     max_lines: int or None, optional
         By default, output is trucated at 20 lines. ``None`` means "Do not
         truncate."
+    on_error : {"skip", "raise"}
 
     Examples
     --------
@@ -398,7 +412,7 @@ def tree(tree, max_lines=20):
     if len(tree) == 0:
         print("<Empty>")
         return
-    for counter, line in enumerate(gen_tree(tree), start=1):
+    for counter, line in enumerate(gen_tree(tree, on_error=on_error), start=1):
         if (max_lines is not None) and (counter > max_lines):
             print(
                 f"<Output truncated at {max_lines} lines. "
