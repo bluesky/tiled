@@ -4,10 +4,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
-
 ### Added
 
-- Added `SQLAdapter` which can save and interact with table structured data in `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
+- Added `SQLAdapter` which can save and interact with table structured data in
+  `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
 
 ### Changed
 
@@ -19,6 +19,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Publish Container image and Helm chart only during a tagged release.
 - Stop warning when `data_sources()` are fetched after the item was already
   fetched. (Too noisy.)
+- In Tiled's authentication database, when PostgreSQL is used, all datetimes
+  are stored explicitly localized to UTC. This requires a database migration
+  to update existing rows.
 
 ## v0.1.0-b17 (2024-01-29)
 

@@ -86,9 +86,11 @@ class Timestamped:
 
     __mapper_args__ = {"eager_defaults": True}
 
-    time_created = Column(DateTime(timezone=False), server_default=func.now())
+    time_created = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     time_updated = Column(
-        DateTime(timezone=False), onupdate=func.now()
+        DateTime(timezone=True), onupdate=func.now()
     )  # null until first update
 
     def __repr__(self):
@@ -144,7 +146,7 @@ class Identity(Timestamped, Base):
     id = Column(Unicode(255), primary_key=True, nullable=False)
     provider = Column(Unicode(255), primary_key=True, nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
-    latest_login = Column(DateTime(timezone=False), nullable=True)
+    latest_login = Column(DateTime(timezone=True), nullable=True)
     # In the future we may add a notion of "primary" identity.
 
     principal = relationship("Principal", back_populates="identities")
@@ -174,8 +176,8 @@ class APIKey(Timestamped, Base):
     hashed_secret = Column(
         LargeBinary(32), primary_key=True, index=True, nullable=False
     )
-    expiration_time = Column(DateTime(timezone=False), nullable=True)
-    latest_activity = Column(DateTime(timezone=False), nullable=True)
+    expiration_time = Column(DateTime(timezone=True), nullable=True)
+    latest_activity = Column(DateTime(timezone=True), nullable=True)
     note = Column(Unicode(1023), nullable=True)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     scopes = Column(JSONList(511), nullable=False)
@@ -201,9 +203,9 @@ class Session(Timestamped, Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     # This uuid is exposed to the client.
     uuid = Column(UUID, index=True, nullable=False, default=uuid_module.uuid4)
-    time_last_refreshed = Column(DateTime(timezone=False), nullable=True)
+    time_last_refreshed = Column(DateTime(timezone=True), nullable=True)
     refresh_count = Column(Integer, nullable=False, default=0)
-    expiration_time = Column(DateTime(timezone=False), nullable=False)
+    expiration_time = Column(DateTime(timezone=True), nullable=False)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
     # State allows for custom  authenticator information to be stored in the session.
@@ -222,7 +224,7 @@ class PendingSession(Base):
         LargeBinary(32), primary_key=True, index=True, nullable=False
     )
     user_code = Column(Unicode(8), index=True, nullable=False)
-    expiration_time = Column(DateTime(timezone=False), nullable=False)
+    expiration_time = Column(DateTime(timezone=True), nullable=False)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
 
     session = relationship("Session", lazy="joined")
