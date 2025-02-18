@@ -335,10 +335,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
         delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
         arrs = [
-            dask.array.from_delayed(val, shape=shape, dtype=dtype)
+            dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(chunk_shape)
             for (val, (shape, chunk_shape, dtype)) in zip(delayed, shapes_chunks_dtypes)
         ]
-        # TODO: Rechunk?
         array = dask.array.concatenate(arrs, axis=0)
 
         return array
