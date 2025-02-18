@@ -2,7 +2,7 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## Unreleased
+## 0.1.0-b18 (2024-02-18)
 
 ### Added
 
@@ -23,7 +23,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   are stored explicitly localized to UTC. This requires a database migration
   to update existing rows.
 
-## v0.1.0-b17 (2024-01-29)
+## 0.1.0-b17 (2024-01-29)
 
 ### Changed
 
@@ -57,19 +57,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
   Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
 
-## v0.1.0-b16 (2024-01-23)
+## 0.1.0-b16 (2024-01-23)
 
 ### Maintenance
 
 - Update GitHub Actions `upload-artifact` and `download-artifact`.
 
-## v0.1.0-b15 (2024-01-23)
+## 0.1.0-b15 (2024-01-23)
 
 ### Maintenance
 
 - Adjust for backward-incompatible change in dependency Starlette 0.45.0.
 
-## v0.1.0-b14 (2024-01-21)
+## 0.1.0-b14 (2024-01-21)
 
 ### Changed
 
