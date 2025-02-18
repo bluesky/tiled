@@ -3,12 +3,15 @@ import zipfile
 
 import awkward
 
-from ..media_type_registration import deserialization_registry, serialization_registry
+from ..media_type_registration import (
+    default_deserialization_registry,
+    default_serialization_registry,
+)
 from ..structures.core import StructureFamily
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
 
 
-@serialization_registry.register(StructureFamily.awkward, "application/zip")
+@default_serialization_registry.register(StructureFamily.awkward, "application/zip")
 def to_zipped_buffers(components, metadata):
     (form, length, container) = components
     file = io.BytesIO()
@@ -22,7 +25,7 @@ def to_zipped_buffers(components, metadata):
     return file.getbuffer()
 
 
-@deserialization_registry.register(StructureFamily.awkward, "application/zip")
+@default_deserialization_registry.register(StructureFamily.awkward, "application/zip")
 def from_zipped_buffers(buffer, form, length):
     file = io.BytesIO(buffer)
     with zipfile.ZipFile(file, "r") as zip:
@@ -33,7 +36,7 @@ def from_zipped_buffers(buffer, form, length):
     return container
 
 
-@serialization_registry.register(StructureFamily.awkward, "application/json")
+@default_serialization_registry.register(StructureFamily.awkward, "application/json")
 def to_json(components, metadata):
     (form, length, container) = components
     file = io.StringIO()
@@ -44,7 +47,7 @@ def to_json(components, metadata):
 
 if modules_available("pyarrow"):
 
-    @serialization_registry.register(
+    @default_serialization_registry.register(
         StructureFamily.awkward, APACHE_ARROW_FILE_MIME_TYPE
     )
     def to_arrow(components, metadata):
@@ -60,7 +63,9 @@ if modules_available("pyarrow"):
 
     # There seems to be no official Parquet MIME type.
     # https://issues.apache.org/jira/browse/PARQUET-1889
-    @serialization_registry.register(StructureFamily.awkward, "application/x-parquet")
+    @default_serialization_registry.register(
+        StructureFamily.awkward, "application/x-parquet"
+    )
     def to_parquet(components, metadata):
         import pyarrow.parquet
 
