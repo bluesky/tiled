@@ -9,6 +9,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Run authentication tests againts PostgreSQL as well as SQLite.
 - Tighten up handling of `time_created` and `time_updated` in authentication
   database.
+- New authentication database migration fixes error in migration in previous release.
 
 ## 0.1.0-b18 (2024-02-18)
 
