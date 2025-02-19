@@ -54,6 +54,8 @@ def upgrade():
             # We will set nullable properly at the end.
             op.add_column(
                 table,
+                # NOTE: Later it was noticed that server_default was missed here.
+                # The following migration (0c705a02954c) fixed this.
                 sa.Column(
                     f"{column}_localized", sa.DateTime(timezone=True), nullable=True
                 ),
