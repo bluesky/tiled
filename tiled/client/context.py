@@ -454,8 +454,7 @@ class Context:
                 # Extract the API key from the app and set it.
                 from ..server.settings import get_settings
 
-                settings = app.dependency_overrides[get_settings]()
-                api_key = settings.single_user_api_key or None
+                api_key = get_settings().single_user_api_key or None
             else:
                 # This is a multi-user server but no API key was passed,
                 # so we will leave it as None on the Context.
