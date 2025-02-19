@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Maintenance
 
 - Run authentication tests againts PostgreSQL as well as SQLite.
+- Tighten up handling of `time_created` and `time_updated` in authentication
+  database.
 
 ## 0.1.0-b18 (2024-02-18)
 
