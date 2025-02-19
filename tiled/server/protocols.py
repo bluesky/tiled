@@ -13,11 +13,15 @@ class UserSessionState:
     state: dict = None
 
 
-class InternalAuthenticator(ABC):
+class Authenticator(ABC):
+    ...
+
+
+class InternalAuthenticator(Authenticator, ABC):
     def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
         raise NotImplementedError
 
 
-class ExternalAuthenticator(ABC):
+class ExternalAuthenticator(Authenticator, ABC):
     def authenticate(self, request: Request) -> Optional[UserSessionState]:
         raise NotImplementedError

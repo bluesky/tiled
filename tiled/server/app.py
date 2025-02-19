@@ -16,7 +16,7 @@ import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
+from fastapi import FastAPI, HTTPException, Request, Response, Security
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -34,7 +34,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+from tiled.server.protocols import Authenticator
 
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
@@ -134,7 +134,7 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = {
+    authenticators: dict[str, Authenticator] = {
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }
@@ -357,68 +357,16 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/api/v1")
 
-    if authentication.get("providers", []):
+    if authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
-        from .authentication import (
-            base_authentication_router,
-            build_auth_code_route,
-            build_device_code_authorize_route,
-            build_device_code_token_route,
-            build_device_code_user_code_form_route,
-            build_device_code_user_code_submit_route,
-            build_handle_credentials_route,
-            oauth2_scheme,
-        )
+        from .authentication import build_authentication_router
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
-        oauth2_scheme.model.flows.password.tokenUrl = (
-            f"/api/v1/auth/provider/{first_provider}/token"
+        authentication_router = build_authentication_router(
+            authenticators, first_provider
         )
-        # Authenticators provide Router(s) for their particular flow.
-        # Collect them in the authentication_router.
-        authentication_router = APIRouter()
-        # This adds the universal routes like /session/refresh and /session/revoke.
-        # Below we will add routes specific to our authentication providers.
-        authentication_router.include_router(base_authentication_router)
-        for spec in authentication["providers"]:
-            provider = spec["provider"]
-            authenticator = spec["authenticator"]
-            if isinstance(authenticator, InternalAuthenticator):
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_handle_credentials_route(authenticator, provider)
-                )
-            elif isinstance(authenticator, ExternalAuthenticator):
-                # Client starts here to create a PendingSession.
-                authentication_router.post(f"/provider/{provider}/authorize")(
-                    build_device_code_authorize_route(authenticator, provider)
-                )
-                # External OAuth redirects here with code, presenting form for user code.
-                authentication_router.get(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_form_route(authenticator, provider)
-                )
-                # User code and auth code are submitted here.
-                authentication_router.post(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_submit_route(authenticator, provider)
-                )
-                # Client polls here for token.
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_device_code_token_route(authenticator, provider)
-                )
-                # Normal code flow end point for web UIs
-                authentication_router.get(f"/provider/{provider}/code")(
-                    build_auth_code_route(authenticator, provider)
-                )
-                # authentication_router.post(f"/provider/{provider}/code")(
-                #     build_auth_code_route(authenticator, provider)
-                # )
-            else:
-                raise ValueError(f"unknown authenticator type {type(authenticator)}")
-            for custom_router in getattr(authenticator, "include_routers", []):
-                authentication_router.include_router(
-                    custom_router, prefix=f"/provider/{provider}"
-                )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
 
