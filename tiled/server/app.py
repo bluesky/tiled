@@ -140,6 +140,7 @@ def build_app(
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }
+    first_authenticator = authentication["providers"][0]["provider"]
     server_settings = server_settings or {}
     query_registry = query_registry or default_query_registry
     compression_registry = compression_registry or default_compression_registry
@@ -403,18 +404,20 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
 
         authentication_router = build_authentication_router(
-            authenticators, merged_settings
+            authenticators, merged_settings, first_authenticator
         )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
         get_current_principal = current_principal_getter(
-            authenticators, merged_settings
+            authenticators, merged_settings, first_authenticator
         )
 
     else:
         get_current_principal = get_current_principal_from_api_key
 
-    get_session_state = session_state_getter(authenticators, merged_settings)
+    get_session_state = session_state_getter(
+        authenticators, merged_settings, first_authenticator
+    )
 
     app.include_router(
         get_router(

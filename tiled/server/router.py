@@ -1102,7 +1102,6 @@ def get_router(
             structure_family=structure_family,
             structure=structure,
             specs=specs,
-            validation_registry=validation_registry,
             settings=settings,
         )
 
@@ -1389,7 +1388,6 @@ def get_router(
             structure_family=structure_family,
             structure=structure,
             specs=[Spec(x) for x in specs],
-            validation_registry=validation_registry,
             settings=settings,
         )
 
@@ -1425,7 +1423,6 @@ def get_router(
             structure_family=structure_family,
             structure=structure,
             specs=specs,
-            validation_registry=validation_registry,
             settings=settings,
         )
 
