@@ -2,6 +2,12 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+## Unreleased
+
+### Maintenance
+
+- Run authentication tests againts PostgreSQL as well as SQLite.
+
 ## 0.1.0-b18 (2024-02-18)
 
 ### Added
