@@ -1,6 +1,5 @@
 import json
 import uuid as uuid_module
-from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -89,10 +88,6 @@ class Timestamped:
 
     time_created = Column(
         DateTime(timezone=True),
-        # server default is applied too late for SQLAlchemy...
-        default=datetime.now(timezone.utc),
-        # but a server default is good to have for other clients
-        # so add that as well
         server_default=func.now(),
         nullable=False,
     )
