@@ -1055,7 +1055,6 @@ def get_router(
             request=request,
             path=path,
             body=body,
-            validation_registry=validation_registry,
             settings=settings,
             entry=entry,
         )
@@ -1072,7 +1071,6 @@ def get_router(
             request=request,
             path=path,
             body=body,
-            validation_registry=validation_registry,
             settings=settings,
             entry=entry,
         )
@@ -1081,7 +1079,6 @@ def get_router(
         request: Request,
         path: str,
         body: schemas.PostMetadataRequest,
-        validation_registry,
         settings: Settings,
         entry,
     ):
@@ -1127,11 +1124,7 @@ def get_router(
 
     @router.put("/data_source/{path:path}")
     async def put_data_source(
-        request: Request,
-        path: str,
-        data_source: int,
         body: schemas.PutDataSourceRequest,
-        settings: Settings = Depends(get_settings),
         entry=SecureEntry(scopes=["write:metadata", "register"]),
     ):
         await entry.put_data_source(
