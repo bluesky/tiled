@@ -162,7 +162,7 @@ async def filter_for_access(entry, principal, scopes, metrics, path_parts):
 
 async def move_api_key(
     request: Request,
-    api_key: str | None = Depends(get_api_key),
+    api_key: Optional[str] = Depends(get_api_key),
 ):
     """
     Moves API key if given as a query parameter into a cookie

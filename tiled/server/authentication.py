@@ -121,7 +121,7 @@ def create_refresh_token(session_id, secret_key, expires_delta):
 
 
 def decode_token_for_authenticators(
-    authenticators: dict[str, Any] | None, settings: Settings
+    authenticators: Optional[dict[str, Any]], settings: Settings
 ):
     if (
         authenticators is not None
@@ -187,7 +187,7 @@ async def create_pending_session(db):
 async def get_current_principal_from_api_key(
     request: Request,
     security_scopes: SecurityScopes,
-    api_key: str | None = Depends(get_api_key),
+    api_key: Optional[str] = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
     db=Depends(get_database_session),
 ):
@@ -264,7 +264,7 @@ def session_state_getter(authenticators: dict[str, Authenticator], settings: Set
     decode_token = decode_token_for_authenticators(authenticators, settings)
 
     async def get_session_state(
-        decoded_access_token: dict[str, Any] | None = Depends(decode_token)
+        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_token)
     ):
         if decoded_access_token:
             return decoded_access_token.get("state")
@@ -281,8 +281,8 @@ def current_principal_getter(
     async def get_current_principal(
         request: Request,
         security_scopes: SecurityScopes,
-        decoded_access_token: dict[str, Any] | None = Depends(decode_token),
-        api_key: str | None = Depends(get_api_key),
+        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_token),
+        api_key: Optional[str] = Depends(get_api_key),
         settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
     ):
@@ -741,7 +741,9 @@ def build_handle_credentials_route(authenticator: InternalAuthenticator, provide
         db=Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        user_session_state: UserSessionState | None = await authenticator.authenticate(
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(
             username=form_data.username, password=form_data.password
         )
         if not user_session_state or not user_session_state.user_name:
@@ -906,7 +908,7 @@ def build_base_authentication_router(
     async def principal(
         request: Request,
         uuid: uuid_module.UUID,
-        _: str | None = Security(move_api_key, scopes=["read:principals"]),
+        _: Optional[str] = Security(move_api_key, scopes=["read:principals"]),
         db=Depends(get_database_session),
     ):
         "Get information about one Principal (user or service)."
@@ -941,7 +943,7 @@ def build_base_authentication_router(
         request: Request,
         uuid: uuid_module.UUID,
         first_eight: str,
-        _: str | None = Security(move_api_key, scopes=["admin:apikeys"]),
+        _: Optional[str] = Security(move_api_key, scopes=["admin:apikeys"]),
         db=Depends(get_database_session),
     ):
         "Allow Tiled Admins to delete any user's apikeys e.g."

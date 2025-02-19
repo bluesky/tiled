@@ -10,6 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 import anyio
 import packaging.version
@@ -114,10 +115,10 @@ def build_app(
     tree,
     authentication=None,
     server_settings=None,
-    query_registry: QueryRegistry | None = None,
-    serialization_registry: SerializationRegistry | None = None,
-    compression_registry: CompressionRegistry | None = None,
-    deserialization_registry: SerializationRegistry | None = None,
+    query_registry: Optional[QueryRegistry] = None,
+    serialization_registry: Optional[SerializationRegistry] = None,
+    compression_registry: Optional[CompressionRegistry] = None,
+    deserialization_registry: Optional[SerializationRegistry] = None,
     validation_registry=None,
     tasks=None,
     scalable=False,
