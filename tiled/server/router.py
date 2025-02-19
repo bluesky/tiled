@@ -24,6 +24,7 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
+from tiled.media_type_registration import SerializationRegistry
 from tiled.schemas import About
 from tiled.server.protocols import (
     Authenticator,
@@ -34,7 +35,7 @@ from tiled.server.protocols import (
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
-from ..validation_registration import ValidationError
+from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .core import (
     DEFAULT_PAGE_SIZE,
@@ -71,9 +72,9 @@ def get_router(
     get_current_principal,
     tree: Mapping[str, Any],
     get_session_state,
-    serialization_registry,
-    deserialization_registry,
-    validation_registry,
+    serialization_registry: SerializationRegistry,
+    deserialization_registry: SerializationRegistry,
+    validation_registry: ValidationRegistry,
 ) -> APIRouter:
     router = APIRouter()
     SecureEntry = SecureEntryBuilder(get_current_principal, tree, get_session_state)

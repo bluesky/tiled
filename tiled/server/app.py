@@ -407,10 +407,12 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
-        principal_getter = current_principal_getter(authenticators, merged_settings)
+        get_current_principal = current_principal_getter(
+            authenticators, merged_settings
+        )
 
     else:
-        principal_getter = get_current_principal_from_api_key
+        get_current_principal = get_current_principal_from_api_key
 
     get_session_state = session_state_getter(authenticators, merged_settings)
 
@@ -418,7 +420,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         get_router(
             query_registry,
             authenticators,
-            principal_getter,
+            get_current_principal,
             tree,
             get_session_state,
             serialization_registry,
