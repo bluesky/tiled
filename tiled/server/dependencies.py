@@ -1,6 +1,5 @@
 from typing import Optional, Tuple, Union
 
-import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
@@ -14,13 +13,12 @@ DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
 
-def SecureEntryBuilder(get_current_principal, get_root_tree, get_session_state):
+def SecureEntryBuilder(get_current_principal, tree, get_session_state):
     def SecureEntry(scopes, structure_families=None):
         async def inner(
             path: str,
             request: Request,
             principal: str = Depends(get_current_principal),
-            root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
             session_state: dict = Depends(get_session_state),
         ):
             """
@@ -38,9 +36,9 @@ def SecureEntryBuilder(get_current_principal, get_root_tree, get_session_state):
             """
             path_parts = [segment for segment in path.split("/") if segment]
             path_parts_relative = path_parts
-            entry = root_tree
+            entry = tree
             entry_with_access_policy = (
-                entry if getattr(root_tree, "access_policy", None) is not None else None
+                entry if getattr(tree, "access_policy", None) is not None else None
             )
 
             # If the entry/adapter can take a session state, pass it in.

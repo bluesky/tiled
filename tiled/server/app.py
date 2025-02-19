@@ -41,17 +41,16 @@ from tiled.server.authentication import (
 from tiled.server.protocols import Authenticator
 
 from ..config import construct_build_app_kwargs
-from ..media_type_registration import CompressionRegistry, SerializationRegistry
 from ..media_type_registration import (
-    compression_registry as default_compression_registry,
+    CompressionRegistry,
+    SerializationRegistry,
+    default_compression_registry,
+    default_deserialization_registry,
+    default_serialization_registry,
 )
-from ..media_type_registration import (
-    deserialization_registry as default_deserialization_registry,
-)
-from ..query_registration import QueryRegistry
-from ..query_registration import query_registry as default_query_registry
+from ..query_registration import QueryRegistry, default_query_registry
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
-from ..validation_registration import validation_registry as default_validation_registry
+from ..validation_registration import default_validation_registry
 from .compression import CompressionMiddleware
 from .router import get_router
 from .settings import get_settings
@@ -145,6 +144,7 @@ def build_app(
     query_registry = query_registry or default_query_registry
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
+    serialization_registry = serialization_registry or default_serialization_registry
     deserialization_registry = (
         deserialization_registry or default_deserialization_registry
     )
@@ -410,7 +410,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         principal_getter = current_principal_getter(authenticators, merged_settings)
 
     else:
-        principal_getter = get_current_principal_from_api_key()
+        principal_getter = get_current_principal_from_api_key
 
     get_session_state = session_state_getter(authenticators, merged_settings)
 
@@ -419,7 +419,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             query_registry,
             authenticators,
             principal_getter,
-            lambda: tree,
+            tree,
             get_session_state,
             serialization_registry,
             deserialization_registry,
