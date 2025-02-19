@@ -133,7 +133,7 @@ def decode_token_for_authenticators(
     ):
         return auth.decode_access_token
 
-    def decode_token(token: str):
+    def decode_token(access_token: str):
         credentials_exception = HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -144,7 +144,7 @@ def decode_token_for_authenticators(
         # fail. They supports key rotation.
         for secret_key in settings.secret_keys:
             try:
-                payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+                payload = jwt.decode(access_token, secret_key, algorithms=[ALGORITHM])
                 break
             except ExpiredSignatureError:
                 # Do not let this be caught below with the other JWTError types.

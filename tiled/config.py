@@ -15,14 +15,12 @@ import jsonschema
 
 from .adapters.mapping import MapAdapter
 from .media_type_registration import (
-    compression_registry as default_compression_registry,
+    default_compression_registry,
+    default_serialization_registry,
 )
-from .media_type_registration import (
-    serialization_registry as default_serialization_registry,
-)
-from .query_registration import query_registry as default_query_registry
+from .query_registration import default_query_registry
 from .utils import import_object, parse, prepend_to_sys_path
-from .validation_registration import validation_registry as default_validation_registry
+from .validation_registration import default_validation_registry
 
 
 @cache

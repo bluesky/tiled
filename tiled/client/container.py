@@ -15,7 +15,7 @@ import httpx
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
-from ..query_registration import query_registry
+from ..query_registration import default_query_registry
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
@@ -1055,7 +1055,7 @@ def _queries_to_params(*queries):
     "Compute GET params from the queries."
     params = collections.defaultdict(list)
     for query in queries:
-        name = query_registry.query_type_to_name[type(query)]
+        name = default_query_registry.query_type_to_name[type(query)]
         for field, value in query.encode().items():
             if value is not None:
                 params[f"filter[{name}][condition][{field}]"].append(value)

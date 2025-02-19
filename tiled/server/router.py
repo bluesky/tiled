@@ -4,7 +4,7 @@ import warnings
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Mapping, Optional
 
 import anyio
 import packaging
@@ -69,16 +69,14 @@ def get_router(
     query_registry,
     authenticators: dict[str, Authenticator],
     get_current_principal,
-    get_root_tree,
+    tree: Mapping[str, Any],
     get_session_state,
     serialization_registry,
     deserialization_registry,
     validation_registry,
 ) -> APIRouter:
     router = APIRouter()
-    SecureEntry = SecureEntryBuilder(
-        get_current_principal, get_root_tree, get_session_state
-    )
+    SecureEntry = SecureEntryBuilder(get_current_principal, tree, get_session_state)
 
     @router.get("/", response_model=About)
     async def about(
