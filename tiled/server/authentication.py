@@ -19,7 +19,6 @@ from fastapi import (
     Security,
 )
 from fastapi.security import (
-    OAuth2,
     OAuth2AuthorizationCodeBearer,
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
@@ -821,7 +820,7 @@ async def generate_apikey(db, principal, apikey_params, request):
 def build_base_authentication_router(
     decode_token: Callable[[str], dict[str, Any]],
     authenticators: dict[str, Authenticator],
-    settings: Settings
+    settings: Settings,
 ) -> APIRouter:
     authentication_router = APIRouter()
     get_current_principal = current_principal_getter(authenticators, settings)
@@ -1234,7 +1233,6 @@ def build_base_authentication_router(
     async def logout(
         request: Request,
         response: Response,
-        _: str | None = Security(move_api_key),
     ):
         "Deprecated. See revoke_session: POST /session/revoke."
         request.state.endpoint = "auth"
@@ -1256,11 +1254,13 @@ def get_oauth2_scheme(authenticators: dict[str, Authenticator], first_provider: 
 
 
 def build_authentication_router(
-    authenticators: dict[str, Authenticator], first_provider: str, settings: Settings
+    authenticators: dict[str, Authenticator], settings: Settings
 ) -> APIRouter:
     decode_access_token = decode_token_for_authenticators(authenticators, settings)
 
-    authentication_router = build_base_authentication_router(decode_access_token, authenticators, settings)
+    authentication_router = build_base_authentication_router(
+        decode_access_token, authenticators, settings
+    )
     for provider, authenticator in authenticators.items():
         if isinstance(authenticator, ExternalAuthenticator):
             add_external_authenticator_routes(
