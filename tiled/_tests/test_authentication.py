@@ -25,14 +25,14 @@ tree = MapAdapter({"A1": arr, "A2": arr})
 
 
 @pytest.fixture
-def config(tmpdir):
+def config(sqlite_or_postgresql_database_uri):
     """
     Return config with
 
     - a unique temporary sqlite database location
     - a unique nested dict instance that the test can mutate
     """
-    database_uri = f"sqlite:///{tmpdir}/tiled.sqlite"
+    database_uri = sqlite_or_postgresql_database_uri
     subprocess.run(
         [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
         check=True,
