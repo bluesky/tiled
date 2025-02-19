@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 
 import anyio
 import packaging
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
@@ -62,7 +62,7 @@ from .dependencies import (
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
 from .settings import Settings, get_settings
-from .utils import filter_for_access, get_base_url, move_api_key, record_timing
+from .utils import filter_for_access, get_base_url, record_timing
 
 
 def get_router(
@@ -84,7 +84,6 @@ def get_router(
     async def about(
         request: Request,
         settings: Settings = Depends(get_settings),
-        _: str | None = Security(move_api_key),
     ):
         # TODO The lazy import of entry modules and serializers means that the
         # lists of formats are not populated until they are first used. Not very
@@ -198,7 +197,6 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         entry: Any = SecureEntry(scopes=["read:metadata"]),
-        _: str | None = Depends(move_api_key),
         **filters,
     ):
         request.state.endpoint = "search"

@@ -10,7 +10,6 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any
 
 import anyio
 import packaging.version
@@ -221,7 +220,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, dependencies=[Security(move_api_key)])
     setattr(app.state, "authenticated", bool(authenticators))
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
@@ -270,10 +269,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
 
         @app.get("/", response_class=HTMLResponse)
-        async def index(
-            request: Request,
-            _: str | None = Security(move_api_key),
-        ):
+        async def index(request: Request):
             return templates.TemplateResponse(
                 request,
                 "index.html",
@@ -359,6 +355,44 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/api/v1")
 
+    merged_settings = get_settings()
+    for item in [
+        "allow_anonymous_access",
+        "secret_keys",
+        "single_user_api_key",
+        "access_token_max_age",
+        "refresh_token_max_age",
+        "session_max_age",
+    ]:
+        if authentication.get(item) is not None:
+            setattr(merged_settings, item, authentication[item])
+    if authentication.get("single_user_api_key") is not None:
+        merged_settings.single_user_api_key_generated = False
+    for item in [
+        "allow_origins",
+        "response_bytesize_limit",
+        "reject_undeclared_specs",
+        "expose_raw_assets",
+    ]:
+        if server_settings.get(item) is not None:
+            setattr(merged_settings, item, server_settings[item])
+    database = server_settings.get("database", {})
+    if database.get("uri"):
+        merged_settings.database_uri = database["uri"]
+    if database.get("pool_size"):
+        merged_settings.database_pool_size = database["pool_size"]
+    if database.get("pool_pre_ping"):
+        merged_settings.database_pool_pre_ping = database["pool_pre_ping"]
+    if database.get("max_overflow"):
+        merged_settings.database_max_overflow = database["max_overflow"]
+    if database.get("init_if_not_exists"):
+        merged_settings.database_init_if_not_exists = database["init_if_not_exists"]
+    if authentication.get("providers"):
+        # If we support authentication providers, we need a database, so if one is
+        # not set, use a SQLite database in memory. Horizontally scaled deployments
+        # must specify a persistent database.
+        merged_settings.database_uri = merged_settings.database_uri or "sqlite://"
+
     if authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
@@ -367,19 +401,17 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             current_principal_getter,
         )
 
-        # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
-        first_provider = authentication["providers"][0]["provider"]
         authentication_router = build_authentication_router(
-            authenticators, first_provider, get_settings()
+            authenticators, merged_settings
         )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
-        principal_getter = current_principal_getter(authenticators, get_settings())
+        principal_getter = current_principal_getter(authenticators, merged_settings)
 
     else:
         principal_getter = get_current_principal_from_api_key()
 
-    get_session_state = session_state_getter(authenticators, get_settings())
+    get_session_state = session_state_getter(authenticators, merged_settings)
 
     app.include_router(
         get_router(
@@ -400,7 +432,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
         logger.info(f"Tiled version {__version__}")
         # Validate the single-user API key.
-        single_user_api_key = get_settings().single_user_api_key
+        single_user_api_key = merged_settings.single_user_api_key
         API_KEY_MSG = """
 Here are two ways to generate a good API key:
 
@@ -445,12 +477,12 @@ confusing behavior due to ambiguous encodings.
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
 
-        app.state.allow_origins.extend(get_settings().allow_origins)
+        app.state.allow_origins.extend(merged_settings.allow_origins)
         # Expose the root_tree here to make it easier to access it from tests,
         # in usages like:
         # client.context.app.state.root_tree
 
-        if get_settings().database_uri is not None:
+        if merged_settings.database_uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
 
             from ..alembic_utils import (
@@ -471,7 +503,7 @@ confusing behavior due to ambiguous encodings.
             # This creates a connection pool and stashes it in a module-global
             # registry, keyed on database_settings, where can be retrieved by
             # the Dependency get_database_session.
-            engine = open_database_connection_pool(get_settings().database_settings)
+            engine = open_database_connection_pool(merged_settings.database_settings)
             if not engine.url.database:
                 # Special-case for in-memory SQLite: Because it is transient we can
                 # skip over anything related to migrations.
@@ -482,7 +514,7 @@ confusing behavior due to ambiguous encodings.
                 try:
                     await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)
                 except UninitializedDatabase:
-                    if get_settings().database_init_if_not_exists:
+                    if merged_settings.database_init_if_not_exists:
                         # The alembic stamping can only be does synchronously.
                         # The cleanest option available is to start a subprocess
                         # because SQLite is allergic to threads.
@@ -575,12 +607,12 @@ Back up the database, and then run:
         for task in tasks.get("shutdown", []):
             await task()
 
-        if get_settings().database_uri is not None:
+        if merged_settings.database_uri is not None:
             from ..authn_database.connection_pool import close_database_connection_pool
 
             for task in app.state.tasks:
                 task.cancel()
-            await close_database_connection_pool(get_settings().database_settings)
+            await close_database_connection_pool(merged_settings.database_settings)
 
     app.add_middleware(
         CompressionMiddleware,
@@ -830,7 +862,9 @@ def print_admin_api_key_if_generated(
 """,
             file=sys.stderr,
         )
-    if (not getattr(web_app.state, "authenticated", False)) and (force or settings.single_user_api_key_generated):
+    if (not getattr(web_app.state, "authenticated", False)) and (
+        force or settings.single_user_api_key_generated
+    ):
         print(
             f"""
     Navigate a web browser or connect a Tiled client to:
