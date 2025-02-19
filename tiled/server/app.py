@@ -222,6 +222,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         await shutdown_event()
 
     app = FastAPI(lifespan=lifespan)
+    setattr(app.state, "authenticated", bool(authenticators))
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -385,7 +386,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             query_registry,
             authenticators,
             principal_getter,
-            get_settings().tree,
+            lambda: tree,
             get_session_state,
             serialization_registry,
             deserialization_registry,
@@ -814,7 +815,6 @@ def print_admin_api_key_if_generated(
     web_app: FastAPI,
     host: str,
     port: int,
-    authenticators: dict[str, Any] | None,
     force: bool = False,
 ):
     "Print message to stderr with API key if server-generated (or force=True)."
@@ -830,7 +830,7 @@ def print_admin_api_key_if_generated(
 """,
             file=sys.stderr,
         )
-    if (not authenticators) and (force or settings.single_user_api_key_generated):
+    if (not getattr(web_app.state, "authenticated", False)) and (force or settings.single_user_api_key_generated):
         print(
             f"""
     Navigate a web browser or connect a Tiled client to:

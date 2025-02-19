@@ -4,7 +4,6 @@ import uuid as uuid_module
 import warnings
 from collections.abc import Callable
 from datetime import timedelta, timezone
-from functools import cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -262,7 +261,6 @@ async def get_current_principal_from_api_key(
     return principal
 
 
-@cache
 def session_state_getter(authenticators: dict[str, Authenticator], settings: Settings):
     decode_token = decode_token_for_authenticators(authenticators, settings)
 
@@ -275,7 +273,6 @@ def session_state_getter(authenticators: dict[str, Authenticator], settings: Set
     return get_session_state
 
 
-@cache
 def current_principal_getter(
     authenticators: dict[str, Authenticator],
     settings: Settings,
@@ -822,12 +819,12 @@ async def generate_apikey(db, principal, apikey_params, request):
 
 
 def build_base_authentication_router(
-    oauth2_schema: OAuth2,
     decode_token: Callable[[str], dict[str, Any]],
     authenticators: dict[str, Authenticator],
+    settings: Settings
 ) -> APIRouter:
     authentication_router = APIRouter()
-    get_current_principal = current_principal_getter(oauth2_schema, authenticators)
+    get_current_principal = current_principal_getter(authenticators, settings)
 
     @authentication_router.get(
         "/principal",
@@ -1247,7 +1244,6 @@ def build_base_authentication_router(
     return authentication_router
 
 
-@cache
 def get_oauth2_scheme(authenticators: dict[str, Authenticator], first_provider: str):
     if len(authenticators) == 1 and isinstance(
         auth := authenticators[first_provider], ProxiedOIDCAuthenticator
@@ -1262,12 +1258,9 @@ def get_oauth2_scheme(authenticators: dict[str, Authenticator], first_provider: 
 def build_authentication_router(
     authenticators: dict[str, Authenticator], first_provider: str, settings: Settings
 ) -> APIRouter:
-    oauth2_scheme = get_oauth2_scheme(authenticators, first_provider)
     decode_access_token = decode_token_for_authenticators(authenticators, settings)
 
-    authentication_router = build_base_authentication_router(
-        oauth2_scheme, decode_access_token, authenticators
-    )
+    authentication_router = build_base_authentication_router(decode_access_token, authenticators, settings)
     for provider, authenticator in authenticators.items():
         if isinstance(authenticator, ExternalAuthenticator):
             add_external_authenticator_routes(
