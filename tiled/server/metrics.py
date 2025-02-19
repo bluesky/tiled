@@ -6,6 +6,7 @@ conventions for metrics & labels. We generally prefer naming them
 
 import os
 from functools import cache
+from typing import Optional
 
 from fastapi import APIRouter, Request, Response, Security
 from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
@@ -158,7 +159,7 @@ def prometheus_registry():
 
 @router.get("/metrics")
 async def metrics(
-    request: Request, _: str | None = Security(move_api_key, scopes=["metrics"])
+    request: Request, _: Optional[str] = Security(move_api_key, scopes=["metrics"])
 ):
     """
     Prometheus metrics
