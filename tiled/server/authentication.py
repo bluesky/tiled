@@ -73,7 +73,6 @@ from .utils import (
     get_api_key,
     get_base_url,
     headers_for_401,
-    move_api_key,
     utcnow,
 )
 
@@ -133,7 +132,7 @@ def decode_token_for_authenticators(
     ):
         return auth.decode_access_token
 
-    def decode_token(access_token: str):
+    def decode_access_token(access_token: str):
         credentials_exception = HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -156,7 +155,7 @@ def decode_token_for_authenticators(
             raise credentials_exception
         return payload
 
-    return decode_token
+    return decode_access_token
 
 
 async def create_pending_session(db):
@@ -261,10 +260,10 @@ async def get_current_principal_from_api_key(
 
 
 def session_state_getter(authenticators: dict[str, Authenticator], settings: Settings):
-    decode_token = decode_token_for_authenticators(authenticators, settings)
+    decode_access_token = decode_token_for_authenticators(authenticators, settings)
 
     async def get_session_state(
-        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_token)
+        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_access_token)
     ):
         if decoded_access_token:
             return decoded_access_token.get("state")
@@ -276,12 +275,12 @@ def current_principal_getter(
     authenticators: dict[str, Authenticator],
     settings: Settings,
 ):
-    decode_token = decode_token_for_authenticators(authenticators, settings)
+    decode_access_token = decode_token_for_authenticators(authenticators, settings)
 
     async def get_current_principal(
         request: Request,
         security_scopes: SecurityScopes,
-        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_token),
+        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_access_token),
         api_key: Optional[str] = Depends(get_api_key),
         settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
@@ -820,7 +819,7 @@ async def generate_apikey(db, principal, apikey_params, request):
 
 
 def build_base_authentication_router(
-    decode_token: Callable[[str], dict[str, Any]],
+    decode_access_token: Callable[[str], dict[str, Any]],
     authenticators: dict[str, Authenticator],
     settings: Settings,
 ) -> APIRouter:
@@ -904,11 +903,11 @@ def build_base_authentication_router(
     @authentication_router.get(
         "/principal/{uuid}",
         response_model=schemas.Principal,
+        dependencies=[Security(lambda: None, scopes=["read:principals"])],
     )
     async def principal(
         request: Request,
         uuid: uuid_module.UUID,
-        _: Optional[str] = Security(move_api_key, scopes=["read:principals"]),
         db=Depends(get_database_session),
     ):
         "Get information about one Principal (user or service)."
@@ -938,12 +937,12 @@ def build_base_authentication_router(
     @authentication_router.delete(
         "/principal/{uuid}/apikey",
         response_model=schemas.Principal,
+        dependencies=[Security(lambda: None, scopes=["admin:apikeys"])],
     )
     async def revoke_apikey_for_principal(
         request: Request,
         uuid: uuid_module.UUID,
         first_eight: str,
-        _: Optional[str] = Security(move_api_key, scopes=["admin:apikeys"]),
         db=Depends(get_database_session),
     ):
         "Allow Tiled Admins to delete any user's apikeys e.g."
@@ -1008,7 +1007,7 @@ def build_base_authentication_router(
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
         request.state.endpoint = "auth"
-        payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
+        payload = decode_access_token(refresh_token.refresh_token, settings.secret_keys)
         session_id = payload["sid"]
         # Find this session in the database.
         session = await lookup_valid_session(db, session_id)
@@ -1045,7 +1044,7 @@ def build_base_authentication_router(
 
     async def slide_session(refresh_token, settings, db):
         try:
-            payload = decode_token(refresh_token, settings.secret_keys)
+            payload = decode_access_token(refresh_token, settings.secret_keys)
         except ExpiredSignatureError:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
