@@ -194,7 +194,6 @@ async def get_current_principal_from_api_key(
     security_scopes: SecurityScopes,
     api_key: Optional[str] = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
-    db=Depends(get_database_session),
 ):
     """
     Get current Principal from:
@@ -1020,7 +1019,6 @@ def build_base_authentication_router(
     async def revoke_session(
         request: Request,
         refresh_token: schemas.RefreshToken,
-        settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
