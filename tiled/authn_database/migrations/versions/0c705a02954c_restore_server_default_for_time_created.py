@@ -34,6 +34,5 @@ SET DEFAULT CURRENT_TIMESTAMP;
 
 
 def downgrade():
-    connection = op.get_bind()
-    if connection.engine.dialect.name == "sqlite":
-        return
+    # No action required
+    pass
