@@ -51,6 +51,12 @@ from ..media_type_registration import (
 from ..query_registration import QueryRegistry, default_query_registry
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import default_validation_registry
+from .authentication import (
+    build_authentication_router,
+    current_principal_getter,
+    decode_token_for_authenticators,
+    get_oauth2_scheme,
+)
 from .compression import CompressionMiddleware
 from .router import get_router
 from .settings import get_settings
@@ -140,7 +146,6 @@ def build_app(
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }
-    first_authenticator = authentication["providers"][0]["provider"]
     server_settings = server_settings or {}
     query_registry = query_registry or default_query_registry
     compression_registry = compression_registry or default_compression_registry
@@ -395,29 +400,29 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # must specify a persistent database.
         merged_settings.database_uri = merged_settings.database_uri or "sqlite://"
 
-    if authenticators:
-        # Delay this imports to avoid delaying startup with the SQL and cryptography
-        # imports if they are not needed.
-        from .authentication import (
-            build_authentication_router,
-            current_principal_getter,
-        )
+    token_decoder = decode_token_for_authenticators(authenticators, merged_settings)
+
+    if authentication.get("providers", []):
+        first_authenticator = authentication["providers"][0]["provider"]
+
+        oauth2_scheme = get_oauth2_scheme(authenticators, first_authenticator)
 
         authentication_router = build_authentication_router(
-            authenticators, merged_settings, first_authenticator
+            token_decoder, authenticators, oauth2_scheme
         )
+        get_current_principal = current_principal_getter(
+            authenticators,
+            oauth2_scheme,
+            token_decoder,
+        )
+
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
-        get_current_principal = current_principal_getter(
-            authenticators, merged_settings, first_authenticator
-        )
 
     else:
         get_current_principal = get_current_principal_from_api_key
 
-    get_session_state = session_state_getter(
-        authenticators, merged_settings, first_authenticator
-    )
+    get_session_state = session_state_getter(token_decoder)
 
     app.include_router(
         get_router(

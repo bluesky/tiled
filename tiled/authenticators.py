@@ -5,7 +5,7 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
-from typing import Any, Mapping, Optional, cast
+from typing import Any, Callable, Mapping, Optional, cast
 
 import httpx
 from fastapi import APIRouter, Request
@@ -238,6 +238,10 @@ class ProxiedOIDCAuthenticator(OIDCAuthenticator):
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=self.authorization_endpoint, tokenUrl=self.token_endpoint
         )
+
+    @property
+    def oauth2_scheme(self) -> Callable[[Request], str]:
+        return self._oidc_bearer
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         access_token = self._oidc_bearer(request)

@@ -19,7 +19,7 @@ from fastapi import (
     Security,
 )
 from fastapi.security import (
-    OAuth2AuthorizationCodeBearer,
+    OAuth2,
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
     SecurityScopes,
@@ -120,10 +120,8 @@ def create_refresh_token(session_id: str, secret_key: str, expires_delta: float)
 
 
 def decode_token_for_authenticators(
-    authenticators: Optional[dict[str, Any]],
-    settings: Settings,
-    first_authenticator: str,
-) -> Callable[[Request], Awaitable[Optional[dict[str, Any]]]]:
+    authenticators: Optional[dict[str, Any]], settings: Settings
+) -> Callable[[str], Awaitable[Optional[dict[str, Any]]]]:
     if (
         authenticators is not None
         and len(authenticators) == 1
@@ -134,17 +132,12 @@ def decode_token_for_authenticators(
     ):
         return auth.decode_access_token
 
-    first_authenticator_oauth2_getter = OAuth2PasswordBearer(
-        f"/api/v1/auth/provider/{first_authenticator}/token", auto_error=False
-    )
-
-    async def decode_access_token(request: Request) -> Optional[dict[str, Any]]:
+    async def decode_access_token(access_token: str) -> Optional[dict[str, Any]]:
         credentials_exception = HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-        access_token = await first_authenticator_oauth2_getter(request)
         # The first key in settings.secret_keys is used for *encoding*.
         # All keys are tried for *decoding* until one works or they all
         # fail. They supports key rotation.
@@ -264,17 +257,22 @@ async def get_current_principal_from_api_key(
     return principal
 
 
-def session_state_getter(
-    authenticators: dict[str, Authenticator],
-    settings: Settings,
-    first_authenticator: str,
-):
-    decode_access_token = decode_token_for_authenticators(
-        authenticators, settings, first_authenticator
-    )
+def token_decoder(
+    decode_access_token: Callable[[Request], Awaitable[str]], oauth2_scheme: OAuth2
+) -> Callable[[str], Awaitable[Optional[dict[str, Any]]]]:
+    async def token_from_request(
+        access_token: str = Depends(oauth2_scheme),
+    ) -> Awaitable[Optional[dict[str, Any]]]:
+        return await decode_access_token(access_token)
 
+    return token_from_request
+
+
+def session_state_getter(
+    token_decoder: Callable[[str], Awaitable[Optional[dict[str, Any]]]],
+):
     async def get_session_state(
-        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_access_token)
+        decoded_access_token: Optional[dict[str, Any]] = Depends(token_decoder)
     ):
         if decoded_access_token:
             return decoded_access_token.get("state")
@@ -283,18 +281,14 @@ def session_state_getter(
 
 
 def current_principal_getter(
+    token_decoder: Callable[[str], Awaitable[Optional[dict[str, Any]]]],
     authenticators: dict[str, Authenticator],
-    settings: Settings,
-    first_authenticator: str,
+    oauth2_scheme: OAuth2,
 ):
-    decode_access_token = decode_token_for_authenticators(
-        authenticators, settings, first_authenticator
-    )
-
     async def get_current_principal(
         request: Request,
         security_scopes: SecurityScopes,
-        decoded_access_token: Optional[dict[str, Any]] = Depends(decode_access_token),
+        encoded_token: str = Depends(oauth2_scheme),
         api_key: Optional[str] = Depends(get_api_key),
         settings: Settings = Depends(get_settings),
         db=Depends(get_database_session),
@@ -311,6 +305,7 @@ def current_principal_getter(
         the Principal will be SpecialUsers.admin always.
         """
 
+        access_token = await token_decoder(encoded_token)
         if api_key is not None:
             if authenticators:
                 # Tiled is in a multi-user configuration with authentication providers.
@@ -380,16 +375,16 @@ def current_principal_getter(
                 request.state.cookies_to_set.append(
                     {"key": API_KEY_COOKIE_NAME, "value": api_key}
                 )
-        elif decoded_access_token is not None:
+        elif access_token is not None:
             principal = schemas.Principal(
-                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-                type=decoded_access_token["sub_typ"],
+                uuid=uuid_module.UUID(hex=access_token["sub"]),
+                type=access_token["sub_typ"],
                 identities=[
                     schemas.Identity(id=identity["id"], provider=identity["idp"])
-                    for identity in decoded_access_token["ids"]
+                    for identity in access_token["ids"]
                 ],
             )
-            scopes = decoded_access_token["scp"]
+            scopes = access_token["scp"]
         else:
             # No form of authentication is present.
             principal = SpecialUsers.public
@@ -833,14 +828,13 @@ async def generate_apikey(db, principal, apikey_params, request):
 
 
 def build_base_authentication_router(
-    decode_access_token: Callable[[Request], dict[str, Any]],
+    decode_access_token: Callable[[str], Awaitable[dict[str, Any]]],
     authenticators: dict[str, Authenticator],
-    settings: Settings,
-    first_authenticator: str,
+    oauth2: OAuth2,
 ) -> APIRouter:
     authentication_router = APIRouter()
     get_current_principal = current_principal_getter(
-        authenticators, settings, first_authenticator
+        decode_access_token, authenticators, oauth2
     )
 
     @authentication_router.get(
@@ -1263,24 +1257,23 @@ def get_oauth2_scheme(authenticators: dict[str, Authenticator], first_provider: 
     if len(authenticators) == 1 and isinstance(
         auth := authenticators[first_provider], ProxiedOIDCAuthenticator
     ):
-        return OAuth2AuthorizationCodeBearer(
-            auth.authorization_endpoint, auth.token_endpoint
-        )
+        return auth.oauth2_scheme
     else:
-        return OAuth2PasswordBearer(f"/api/v1/auth/provider/{first_provider}/token")
+        return OAuth2PasswordBearer(
+            f"/api/v1/auth/provider/{first_provider}/token", auto_error=False
+        )
 
 
 def build_authentication_router(
+    decode_access_token: Callable[[str], Awaitable[dict[str, Any]]],
     authenticators: dict[str, Authenticator],
-    settings: Settings,
-    first_authenticator: str,
+    oauth2: OAuth2,
 ) -> APIRouter:
-    decode_access_token = decode_token_for_authenticators(
-        authenticators, settings, first_authenticator
-    )
+    if not authenticators:
+        return APIRouter()
 
     authentication_router = build_base_authentication_router(
-        decode_access_token, authenticators, settings, first_authenticator
+        decode_access_token, authenticators, oauth2
     )
     for provider, authenticator in authenticators.items():
         if isinstance(authenticator, ExternalAuthenticator):
