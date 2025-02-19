@@ -5,7 +5,7 @@ import warnings
 from collections.abc import Callable
 from datetime import timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Awaitable, Optional
 
 import sqlalchemy.exc
 from fastapi import (
@@ -120,8 +120,10 @@ def create_refresh_token(session_id, secret_key, expires_delta):
 
 
 def decode_token_for_authenticators(
-    authenticators: Optional[dict[str, Any]], settings: Settings
-):
+    authenticators: Optional[dict[str, Any]],
+    settings: Settings,
+    first_authenticator: str,
+) -> Callable[[Request], Awaitable[Optional[dict[str, Any]]]]:
     if (
         authenticators is not None
         and len(authenticators) == 1
@@ -132,28 +134,32 @@ def decode_token_for_authenticators(
     ):
         return auth.decode_access_token
 
-    def decode_access_token(access_token: str):
+    first_authenticator_oauth2_getter = OAuth2PasswordBearer(
+        f"/api/v1/auth/provider/{first_authenticator}/token", auto_error=False
+    )
+
+    async def decode_access_token(request: Request) -> Optional[dict[str, Any]]:
         credentials_exception = HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+        access_token = await first_authenticator_oauth2_getter(request)
         # The first key in settings.secret_keys is used for *encoding*.
         # All keys are tried for *decoding* until one works or they all
         # fail. They supports key rotation.
+        if not access_token or not settings.secret_keys:
+            return None
         for secret_key in settings.secret_keys:
             try:
-                payload = jwt.decode(access_token, secret_key, algorithms=[ALGORITHM])
-                break
+                return jwt.decode(access_token, secret_key, algorithms=[ALGORITHM])
             except ExpiredSignatureError:
                 # Do not let this be caught below with the other JWTError types.
                 raise
             except JWTError:
                 # Try the next key in the key rotation.
                 continue
-        else:
-            raise credentials_exception
-        return payload
+        raise credentials_exception
 
     return decode_access_token
 
@@ -259,8 +265,14 @@ async def get_current_principal_from_api_key(
     return principal
 
 
-def session_state_getter(authenticators: dict[str, Authenticator], settings: Settings):
-    decode_access_token = decode_token_for_authenticators(authenticators, settings)
+def session_state_getter(
+    authenticators: dict[str, Authenticator],
+    settings: Settings,
+    first_authenticator: str,
+):
+    decode_access_token = decode_token_for_authenticators(
+        authenticators, settings, first_authenticator
+    )
 
     async def get_session_state(
         decoded_access_token: Optional[dict[str, Any]] = Depends(decode_access_token)
@@ -274,8 +286,11 @@ def session_state_getter(authenticators: dict[str, Authenticator], settings: Set
 def current_principal_getter(
     authenticators: dict[str, Authenticator],
     settings: Settings,
+    first_authenticator: str,
 ):
-    decode_access_token = decode_token_for_authenticators(authenticators, settings)
+    decode_access_token = decode_token_for_authenticators(
+        authenticators, settings, first_authenticator
+    )
 
     async def get_current_principal(
         request: Request,
@@ -819,12 +834,15 @@ async def generate_apikey(db, principal, apikey_params, request):
 
 
 def build_base_authentication_router(
-    decode_access_token: Callable[[str], dict[str, Any]],
+    decode_access_token: Callable[[Request], dict[str, Any]],
     authenticators: dict[str, Authenticator],
     settings: Settings,
+    first_authenticator: str,
 ) -> APIRouter:
     authentication_router = APIRouter()
-    get_current_principal = current_principal_getter(authenticators, settings)
+    get_current_principal = current_principal_getter(
+        authenticators, settings, first_authenticator
+    )
 
     @authentication_router.get(
         "/principal",
@@ -1007,7 +1025,7 @@ def build_base_authentication_router(
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
         request.state.endpoint = "auth"
-        payload = decode_access_token(refresh_token.refresh_token, settings.secret_keys)
+        payload = decode_access_token(refresh_token.refresh_token)
         session_id = payload["sid"]
         # Find this session in the database.
         session = await lookup_valid_session(db, session_id)
@@ -1042,9 +1060,9 @@ def build_base_authentication_router(
         await db.commit()
         return Response(status_code=HTTP_204_NO_CONTENT)
 
-    async def slide_session(refresh_token, settings, db):
+    async def slide_session(refresh_token: str, settings: Settings, db):
         try:
-            payload = decode_access_token(refresh_token, settings.secret_keys)
+            payload = await decode_access_token(refresh_token)
         except ExpiredSignatureError:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
@@ -1255,12 +1273,16 @@ def get_oauth2_scheme(authenticators: dict[str, Authenticator], first_provider: 
 
 
 def build_authentication_router(
-    authenticators: dict[str, Authenticator], settings: Settings
+    authenticators: dict[str, Authenticator],
+    settings: Settings,
+    first_authenticator: str,
 ) -> APIRouter:
-    decode_access_token = decode_token_for_authenticators(authenticators, settings)
+    decode_access_token = decode_token_for_authenticators(
+        authenticators, settings, first_authenticator
+    )
 
     authentication_router = build_base_authentication_router(
-        decode_access_token, authenticators, settings
+        decode_access_token, authenticators, settings, first_authenticator
     )
     for provider, authenticator in authenticators.items():
         if isinstance(authenticator, ExternalAuthenticator):
