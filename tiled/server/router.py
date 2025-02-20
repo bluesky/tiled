@@ -1,10 +1,12 @@
+import dataclasses
+import inspect
 import os
 import re
 import warnings
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, List, Mapping, Optional
+from typing import Any, Callable, List, Mapping, Optional, ParamSpec, TypeVar
 
 import anyio
 import packaging
@@ -25,6 +27,7 @@ from starlette.status import (
 )
 
 from tiled.media_type_registration import SerializationRegistry
+from tiled.query_registration import QueryRegistry
 from tiled.schemas import About
 from tiled.server.protocols import (
     Authenticator,
@@ -65,6 +68,71 @@ from .links import links_for_node
 from .settings import Settings, get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
+
+P = ParamSpec("P")
+T = TypeVar("T")
+
+def patch_route_signature(query_registry: QueryRegistry) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    """
+    This is done dynamically at router startup.
+
+    We check the registry of known search query types, which is user
+    configurable, and use that to define the allowed HTTP query parameters for
+    this route.
+
+    Take a route that accept unspecified search queries as **filters.
+    Return a wrapped version of the route that has the supported
+    search queries explicitly spelled out in the function signature.
+
+    This has no change in the actual behavior of the function,
+    but it enables FastAPI to generate good OpenAPI documentation
+    showing the supported search queries.
+
+    """
+
+    def inner(route: Callable[P, T]) -> Callable[P, T]:
+        # Build a wrapper so that we can modify the signature
+        # without mutating the wrapped original.
+
+        async def route_with_sig(*args, **kwargs):
+            return await route(*args, **kwargs)
+
+        # Black magic here! FastAPI bases its validation and auto-generated swagger
+        # documentation on the signature of the route function. We do not know what
+        # that signature should be at compile-time. We only know it once we have a
+        # chance to check the user-configurable registry of query types. Therefore,
+        # we modify the signature here, at runtime, just before handing it to
+        # FastAPI in the usual way.
+
+        # When FastAPI calls the function with these added parameters, they will be
+        # accepted via **filters.
+
+        # Make a copy of the original parameters.
+        signature = inspect.signature(route)
+        parameters = list(signature.parameters.values())
+        # Drop the **filters parameter from the signature.
+        del parameters[-1]
+        # Add a parameter for each field in each type of query.
+        for name, query in query_registry.name_to_query_type.items():
+            for field in dataclasses.fields(query):
+                # The structured "alias" here is based on
+                # https://mglaman.dev/blog/using-json-router-query-your-search-router-indexes
+                if getattr(field.type, "__origin__", None) is list:
+                    field_type = str
+                else:
+                    field_type = field.type
+                injected_parameter = inspect.Parameter(
+                    name=f"filter___{name}___{field.name}",
+                    kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=Query(None, alias=f"filter[{name}][condition][{field.name}]"),
+                    annotation=Optional[List[field_type]],
+                )
+                parameters.append(injected_parameter)
+        route_with_sig.__signature__ = signature.replace(parameters=parameters)
+        # End black magic
+
+        return route_with_sig
+    return inner
 
 def get_router(
     query_registry,
@@ -182,6 +250,7 @@ def get_router(
             dict,
         ],
     )
+    @patch_route_signature(query_registry=query_registry)
     async def search(
         request: Request,
         path: str,
@@ -256,6 +325,7 @@ def get_router(
         "/api/v1/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
     )
+    @patch_route_signature(query_registry=query_registry)
     async def distinct(
         request: Request,
         structure_families: bool = False,
