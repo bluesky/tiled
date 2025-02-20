@@ -1,7 +1,7 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from ..server.settings import get_settings
+from ..server.settings import Settings, get_settings
 from ..utils import ensure_specified_sql_driver
 
 # A given process probably only has one of these at a time, but we
@@ -31,7 +31,7 @@ async def close_database_connection_pool(database_settings):
         await engine.dispose()
 
 
-async def get_database_engine(settings=Depends(get_settings)):
+async def get_database_engine(settings: Settings = Depends(get_settings)):
     # Special case for single-user mode
     if settings.database_uri is None:
         return None

@@ -23,7 +23,7 @@ class ValidationRegistry:
         return spec in self._lookup
 
 
-validation_registry = ValidationRegistry()
+default_validation_registry = ValidationRegistry()
 "Global validation registry"
 
 
