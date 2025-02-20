@@ -135,14 +135,14 @@ def patch_route_signature(query_registry: QueryRegistry) -> Callable[[Callable[P
     return inner
 
 def get_router(
-    query_registry,
-    authenticators: dict[str, Authenticator],
-    get_current_principal,
     tree: Mapping[str, Any],
-    get_session_state,
+    query_registry: QueryRegistry,
     serialization_registry: SerializationRegistry,
     deserialization_registry: SerializationRegistry,
     validation_registry: ValidationRegistry,
+    authenticators: dict[str, Authenticator],
+    get_current_principal: Callable[..., Optional[str]],
+    get_session_state: Callable[..., Optional[dict[str, Any]]],
 ) -> APIRouter:
     router = APIRouter()
     SecureEntry = SecureEntryBuilder(tree, get_current_principal, get_session_state)
