@@ -257,17 +257,6 @@ async def get_current_principal_from_api_key(
     return principal
 
 
-def token_decoder(
-    decode_access_token: Callable[[Request], Awaitable[str]], oauth2_scheme: OAuth2
-) -> Callable[[str], Awaitable[Optional[dict[str, Any]]]]:
-    async def token_from_request(
-        access_token: str = Depends(oauth2_scheme),
-    ) -> Awaitable[Optional[dict[str, Any]]]:
-        return await decode_access_token(access_token)
-
-    return token_from_request
-
-
 def session_state_getter(
     token_decoder: Callable[[str], Awaitable[Optional[dict[str, Any]]]],
     oauth2_scheme: OAuth2,
