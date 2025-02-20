@@ -428,14 +428,14 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
     app.include_router(
         get_router(
-            query_registry,
-            authenticators,
-            get_current_principal,
             tree,
-            get_session_state,
+            query_registry,
             serialization_registry,
             deserialization_registry,
             validation_registry,
+            authenticators,
+            get_current_principal,
+            get_session_state,
         ),
         prefix="/api/v1",
     )
