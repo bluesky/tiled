@@ -411,18 +411,20 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             token_decoder, authenticators, oauth2_scheme
         )
         get_current_principal = current_principal_getter(
+            token_decoder,
             authenticators,
             oauth2_scheme,
-            token_decoder,
         )
 
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
+        get_session_state = session_state_getter(token_decoder, oauth2_scheme)
 
     else:
         get_current_principal = get_current_principal_from_api_key
 
-    get_session_state = session_state_getter(token_decoder)
+        def get_session_state():
+            return None
 
     app.include_router(
         get_router(

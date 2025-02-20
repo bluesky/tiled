@@ -1,3 +1,5 @@
+from typing import Any, Self
+
 import numpy
 
 from tiled.adapters.array import ArrayAdapter
@@ -55,7 +57,7 @@ class Adapter:
         self.client = MockClient(base_url)
         self.metadata = metadata
 
-    def with_session_state(self, state):
+    def with_session_state(self, state: dict[str, Any]) -> Self:
         return AuthenticatedAdapter(self.client, state["token"], metadata=self.metadata)
 
 

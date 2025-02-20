@@ -77,7 +77,7 @@ def get_router(
     validation_registry: ValidationRegistry,
 ) -> APIRouter:
     router = APIRouter()
-    SecureEntry = SecureEntryBuilder(get_current_principal, tree, get_session_state)
+    SecureEntry = SecureEntryBuilder(tree, get_current_principal, get_session_state)
 
     @router.get("/", response_model=About)
     async def about(
