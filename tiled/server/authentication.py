@@ -526,243 +526,6 @@ async def create_tokens_from_session(settings, db, session, provider):
     }
 
 
-def build_auth_code_route(authenticator: ExternalAuthenticator, provider: str):
-    "Build an auth_code route function for this Authenticator."
-
-    async def route(
-        request: Request,
-        settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
-    ):
-        request.state.endpoint = "auth"
-        user_session_state = await authenticator.authenticate(request)
-        if not user_session_state:
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
-            )
-        session = await create_session(
-            settings,
-            db,
-            provider,
-            user_session_state.user_name,
-            user_session_state.state,
-        )
-        tokens = await create_tokens_from_session(settings, db, session, provider)
-        return tokens
-
-    return route
-
-
-def build_device_code_authorize_route(
-    authenticator: ExternalAuthenticator, provider: str
-):
-    "Build an /authorize route function for this Authenticator."
-
-    async def route(
-        request: Request,
-        db=Depends(get_database_session),
-    ):
-        request.state.endpoint = "auth"
-        pending_session = await create_pending_session(db)
-        verification_uri = f"{get_base_url(request)}/auth/provider/{provider}/token"
-        authorization_uri = authenticator.authorization_endpoint.copy_with(
-            params={
-                "client_id": authenticator.client_id,
-                "response_type": "code",
-                "scope": "openid",
-                "redirect_uri": f"{get_base_url(request)}/auth/provider/{provider}/device_code",
-            }
-        )
-        return {
-            "authorization_uri": str(
-                authorization_uri
-            ),  # URL that user should visit in browser
-            "verification_uri": str(
-                verification_uri
-            ),  # URL that terminal client will poll
-            "interval": DEVICE_CODE_POLLING_INTERVAL,  # suggested polling interval
-            "device_code": pending_session["device_code"],
-            "expires_in": DEVICE_CODE_MAX_AGE,  # seconds
-            "user_code": pending_session["user_code"],
-        }
-
-    return route
-
-
-def build_device_code_user_code_form_route(provider: str):
-    if not SHARE_TILED_PATH:
-        raise Exception(
-            "Static assets could not be found and are required for "
-            "setting up external OAuth authentication."
-        )
-    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
-
-    async def route(
-        request: Request,
-        code: str,
-    ):
-        action = (
-            f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
-        )
-        return templates.TemplateResponse(
-            request,
-            "device_code_form.html",
-            {
-                "code": code,
-                "action": action,
-            },
-        )
-
-    return route
-
-
-def build_device_code_user_code_submit_route(
-    authenticator: ExternalAuthenticator, provider: str
-):
-    "Build an /authorize route function for this Authenticator."
-
-    if not SHARE_TILED_PATH:
-        raise Exception(
-            "Static assets could not be found and are required for "
-            "setting up external OAuth authentication."
-        )
-    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
-
-    async def route(
-        request: Request,
-        code: str = Form(),
-        user_code: str = Form(),
-        settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
-    ):
-        request.state.endpoint = "auth"
-        action = (
-            f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
-        )
-        normalized_user_code = user_code.upper().replace("-", "").strip()
-        pending_session = await lookup_valid_pending_session_by_user_code(
-            db, normalized_user_code
-        )
-        if pending_session is None:
-            message = "Invalid user code. It may have been mistyped, or the pending request may have expired."
-            return templates.TemplateResponse(
-                request,
-                "device_code_form.html",
-                {
-                    "code": code,
-                    "action": action,
-                    "message": message,
-                },
-                status_code=HTTP_401_UNAUTHORIZED,
-            )
-        user_session_state = await authenticator.authenticate(request)
-        if not user_session_state:
-            return templates.TemplateResponse(
-                request,
-                "device_code_failure.html",
-                {
-                    "message": (
-                        "User code was correct but authentication with third party failed. "
-                        "Ask administrator to see logs for details."
-                    ),
-                },
-                status_code=HTTP_401_UNAUTHORIZED,
-            )
-        session = await create_session(
-            settings,
-            db,
-            provider,
-            user_session_state.user_name,
-            user_session_state.state,
-        )
-        pending_session.session_id = session.id
-        db.add(pending_session)
-        await db.commit()
-        return templates.TemplateResponse(
-            request,
-            "device_code_success.html",
-            {
-                "interval": DEVICE_CODE_POLLING_INTERVAL,
-            },
-        )
-
-    return route
-
-
-def build_device_code_token_route(provider: str):
-    "Build an /authorize route function for this Authenticator."
-
-    async def route(
-        request: Request,
-        body: schemas.DeviceCode,
-        settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
-    ):
-        request.state.endpoint = "auth"
-        device_code_hex = body.device_code
-        try:
-            device_code = bytes.fromhex(device_code_hex)
-        except Exception:
-            # Not valid hex, therefore not a valid device_code
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid device code"
-            )
-        pending_session = await lookup_valid_pending_session_by_device_code(
-            db, device_code
-        )
-        if pending_session is None:
-            raise HTTPException(
-                404,
-                detail="No such device_code. The pending request may have expired.",
-            )
-        if pending_session.session_id is None:
-            raise HTTPException(
-                HTTP_400_BAD_REQUEST, {"error": "authorization_pending"}
-            )
-        session = pending_session.session
-        # The pending session can only be used once.
-        await db.delete(pending_session)
-        await db.commit()
-        tokens = await create_tokens_from_session(settings, db, session, provider)
-        return tokens
-
-    return route
-
-
-def build_handle_credentials_route(authenticator: InternalAuthenticator, provider: str):
-    "Register a handle_credentials route function for this Authenticator."
-
-    async def route(
-        request: Request,
-        form_data: OAuth2PasswordRequestForm = Depends(),
-        settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
-    ):
-        request.state.endpoint = "auth"
-        user_session_state: Optional[
-            UserSessionState
-        ] = await authenticator.authenticate(
-            username=form_data.username, password=form_data.password
-        )
-        if not user_session_state or not user_session_state.user_name:
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        session = await create_session(
-            settings,
-            db,
-            provider,
-            user_session_state.user_name,
-            state=user_session_state.state,
-        )
-        tokens = await create_tokens_from_session(settings, db, session, provider)
-        return tokens
-
-    return route
-
-
 async def generate_apikey(db, principal, apikey_params, request):
     if apikey_params.scopes is None:
         scopes = ["inherit"]
@@ -1287,34 +1050,211 @@ def build_authentication_router(
 def add_external_authenticator_routes(
     router: APIRouter, provider: str, authenticator: ExternalAuthenticator
 ):
+    if not SHARE_TILED_PATH:
+        raise Exception(
+            "Static assets could not be found and are required for "
+            "setting up external OAuth authentication."
+        )
+    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
+
     # Client starts here to create a PendingSession.
-    router.post(f"/provider/{provider}/authorize")(
-        build_device_code_authorize_route(authenticator, provider)
-    )
+    @router.post(f"/provider/{provider}/authorize")
+    async def device_code_authorize(
+        request: Request,
+        db=Depends(get_database_session),
+    ):
+        request.state.endpoint = "auth"
+        pending_session = await create_pending_session(db)
+        verification_uri = f"{get_base_url(request)}/auth/provider/{provider}/token"
+        authorization_uri = authenticator.authorization_endpoint.copy_with(
+            params={
+                "client_id": authenticator.client_id,
+                "response_type": "code",
+                "scope": "openid",
+                "redirect_uri": f"{get_base_url(request)}/auth/provider/{provider}/device_code",
+            }
+        )
+        return {
+            "authorization_uri": str(
+                authorization_uri
+            ),  # URL that user should visit in browser
+            "verification_uri": str(
+                verification_uri
+            ),  # URL that terminal client will poll
+            "interval": DEVICE_CODE_POLLING_INTERVAL,  # suggested polling interval
+            "device_code": pending_session["device_code"],
+            "expires_in": DEVICE_CODE_MAX_AGE,  # seconds
+            "user_code": pending_session["user_code"],
+        }
 
     # External OAuth redirects here with code, presenting form for user code.
-    router.get(f"/provider/{provider}/device_code")(
-        build_device_code_user_code_form_route(provider)
-    )
+    @router.get(f"/provider/{provider}/device_code")
+    async def device_code_user_code_form(
+        request: Request,
+        code: str,
+    ):
+        action = (
+            f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
+        )
+        return templates.TemplateResponse(
+            request,
+            "device_code_form.html",
+            {
+                "code": code,
+                "action": action,
+            },
+        )
 
     # User code and auth code are submitted here.
-    router.post(f"/provider/{provider}/device_code")(
-        build_device_code_user_code_submit_route(authenticator, provider)
-    )
+    @router.post(f"/provider/{provider}/device_code")
+    async def device_code_user_code_submit(
+        request: Request,
+        code: str = Form(),
+        user_code: str = Form(),
+        settings: Settings = Depends(get_settings),
+        db=Depends(get_database_session),
+    ):
+        request.state.endpoint = "auth"
+        action = (
+            f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
+        )
+        normalized_user_code = user_code.upper().replace("-", "").strip()
+        pending_session = await lookup_valid_pending_session_by_user_code(
+            db, normalized_user_code
+        )
+        if pending_session is None:
+            message = "Invalid user code. It may have been mistyped, or the pending request may have expired."
+            return templates.TemplateResponse(
+                request,
+                "device_code_form.html",
+                {
+                    "code": code,
+                    "action": action,
+                    "message": message,
+                },
+                status_code=HTTP_401_UNAUTHORIZED,
+            )
+        user_session_state = await authenticator.authenticate(request)
+        if not user_session_state:
+            return templates.TemplateResponse(
+                request,
+                "device_code_failure.html",
+                {
+                    "message": (
+                        "User code was correct but authentication with third party failed. "
+                        "Ask administrator to see logs for details."
+                    ),
+                },
+                status_code=HTTP_401_UNAUTHORIZED,
+            )
+        session = await create_session(
+            settings,
+            db,
+            provider,
+            user_session_state.user_name,
+            user_session_state.state,
+        )
+        pending_session.session_id = session.id
+        db.add(pending_session)
+        await db.commit()
+        return templates.TemplateResponse(
+            request,
+            "device_code_success.html",
+            {
+                "interval": DEVICE_CODE_POLLING_INTERVAL,
+            },
+        )
 
     # Client polls here for token.
-    router.post(f"/provider/{provider}/token")(build_device_code_token_route(provider))
+    @router.post(f"/provider/{provider}/token")
+    async def device_code_token_route(
+        request: Request,
+        body: schemas.DeviceCode,
+        settings: Settings = Depends(get_settings),
+        db=Depends(get_database_session),
+    ):
+        request.state.endpoint = "auth"
+        device_code_hex = body.device_code
+        try:
+            device_code = bytes.fromhex(device_code_hex)
+        except Exception:
+            # Not valid hex, therefore not a valid device_code
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid device code"
+            )
+        pending_session = await lookup_valid_pending_session_by_device_code(
+            db, device_code
+        )
+        if pending_session is None:
+            raise HTTPException(
+                404,
+                detail="No such device_code. The pending request may have expired.",
+            )
+        if pending_session.session_id is None:
+            raise HTTPException(
+                HTTP_400_BAD_REQUEST, {"error": "authorization_pending"}
+            )
+        session = pending_session.session
+        # The pending session can only be used once.
+        await db.delete(pending_session)
+        await db.commit()
+        tokens = await create_tokens_from_session(settings, db, session, provider)
+        return tokens
 
     # Normal code flow end point for web UIs
-    router.get(f"/provider/{provider}/code")(
-        build_auth_code_route(authenticator, provider)
-    )
+    @router.get(f"/provider/{provider}/code")
+    async def auth_code_route(
+        request: Request,
+        settings: Settings = Depends(get_settings),
+        db=Depends(get_database_session),
+    ):
+        request.state.endpoint = "auth"
+        user_session_state = await authenticator.authenticate(request)
+        if not user_session_state:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
+            )
+        session = await create_session(
+            settings,
+            db,
+            provider,
+            user_session_state.user_name,
+            user_session_state.state,
+        )
+        tokens = await create_tokens_from_session(settings, db, session, provider)
+        return tokens
 
 
 def add_internal_authenticator_routes(
     router: APIRouter, provider: str, authenticator: InternalAuthenticator
 ):
     "Register a handle_credentials route function for this Authenticator."
-    router.post(f"/provider/{provider}/token")(
-        build_handle_credentials_route(authenticator, provider)
-    )
+
+    @router.post(f"/provider/{provider}/token")
+    async def handle_credentials(
+        request: Request,
+        form_data: OAuth2PasswordRequestForm = Depends(),
+        settings: Settings = Depends(get_settings),
+        db=Depends(get_database_session),
+    ):
+        request.state.endpoint = "auth"
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(
+            username=form_data.username, password=form_data.password
+        )
+        if not user_session_state or not user_session_state.user_name:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        session = await create_session(
+            settings,
+            db,
+            provider,
+            user_session_state.user_name,
+            state=user_session_state.state,
+        )
+        tokens = await create_tokens_from_session(settings, db, session, provider)
+        return tokens

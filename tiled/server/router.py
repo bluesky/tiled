@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, List, Mapping, Optional, ParamSpec, TypeVar
+from typing import Any, Callable, List, Mapping, Optional, TypeVar
 
 import anyio
 import packaging
@@ -68,11 +68,12 @@ from .links import links_for_node
 from .settings import Settings, get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
-
-P = ParamSpec("P")
 T = TypeVar("T")
 
-def patch_route_signature(query_registry: QueryRegistry) -> Callable[[Callable[P, T]], Callable[P, T]]:
+
+def patch_route_signature(
+    query_registry: QueryRegistry,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     This is done dynamically at router startup.
 
@@ -90,7 +91,7 @@ def patch_route_signature(query_registry: QueryRegistry) -> Callable[[Callable[P
 
     """
 
-    def inner(route: Callable[P, T]) -> Callable[P, T]:
+    def inner(route: Callable[..., T]) -> Callable[..., T]:
         # Build a wrapper so that we can modify the signature
         # without mutating the wrapped original.
 
@@ -124,7 +125,9 @@ def patch_route_signature(query_registry: QueryRegistry) -> Callable[[Callable[P
                 injected_parameter = inspect.Parameter(
                     name=f"filter___{name}___{field.name}",
                     kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    default=Query(None, alias=f"filter[{name}][condition][{field.name}]"),
+                    default=Query(
+                        None, alias=f"filter[{name}][condition][{field.name}]"
+                    ),
                     annotation=Optional[List[field_type]],
                 )
                 parameters.append(injected_parameter)
@@ -132,7 +135,9 @@ def patch_route_signature(query_registry: QueryRegistry) -> Callable[[Callable[P
         # End black magic
 
         return route_with_sig
+
     return inner
+
 
 def get_router(
     tree: Mapping[str, Any],
