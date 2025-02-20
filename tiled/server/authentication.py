@@ -1018,7 +1018,7 @@ def build_base_authentication_router(
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
         request.state.endpoint = "auth"
-        payload = decode_access_token(refresh_token.refresh_token)
+        payload = await decode_access_token(refresh_token.refresh_token)
         session_id = payload["sid"]
         # Find this session in the database.
         session = await lookup_valid_session(db, session_id)

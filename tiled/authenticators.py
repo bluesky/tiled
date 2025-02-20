@@ -212,7 +212,7 @@ properties:
         response_body = response.json()
         access_token = response_body["access_token"]
         try:
-            verified_body = self.decode_access_token(access_token)
+            verified_body = await self.decode_access_token(access_token)
             return UserSessionState(verified_body["sub"], {})
 
         except JWTError:
@@ -246,7 +246,7 @@ class ProxiedOIDCAuthenticator(OIDCAuthenticator):
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         access_token = self._oidc_bearer(request)
         try:
-            verified_body = self.decode_access_token(access_token)
+            verified_body = await self.decode_access_token(access_token)
             return UserSessionState(verified_body["sub"], {})
 
         except JWTError:
