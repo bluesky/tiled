@@ -523,13 +523,13 @@ def prepend_to_sys_path(*paths):
             sys.path.pop(0)
 
 
-def safe_json_dump(content):
+def safe_json_dump(content, default: Callable = None):
     """
     Baes64-encode raw bytes, and provide a fallback if orjson numpy handling fails.
     """
     import orjson
 
-    def default(content):
+    def _default(content):
         if isinstance(content, bytes):
             content = f"data:application/octet-stream;base64,{base64.b64encode(content).decode('utf-8')}"
             return content
@@ -547,9 +547,24 @@ def safe_json_dump(content):
                 return content.decode("utf-8")
         raise TypeError
 
+    def null_default(content):
+        return content
+
+    if default is None:
+        default = null_default
+
+    def combined_default(content):
+        try:
+            content = default(content)
+        except TypeError:
+            pass
+        return _default(content)
+
     # Not all numpy dtypes are supported by orjson.
     # Fall back to converting to a (possibly nested) Python list.
-    return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY, default=default)
+    return orjson.dumps(
+        content, option=orjson.OPT_SERIALIZE_NUMPY, default=combined_default
+    )
 
 
 class MissingDependency(ModuleNotFoundError):
