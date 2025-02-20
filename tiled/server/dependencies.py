@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Any, Callable, Mapping, Optional, Tuple, Union
 
 from fastapi import Depends, HTTPException, Query, Request, Security
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
@@ -13,13 +13,17 @@ DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
 
-def SecureEntryBuilder(get_current_principal, tree, get_session_state):
+def SecureEntryBuilder(
+    tree: Mapping[str, Any],
+    get_current_principal: Callable[..., Optional[str]],
+    get_session_state: Callable[..., Optional[dict[str, Any]]],
+):
     def SecureEntry(scopes, structure_families=None):
         async def inner(
             path: str,
             request: Request,
-            principal: str = Depends(get_current_principal),
-            session_state: dict = Depends(get_session_state),
+            principal: Optional[str] = Depends(get_current_principal),
+            session_state: Optional[dict[str, Any]] = Depends(get_session_state),
         ):
             """
             Obtain a node in the tree from its path.

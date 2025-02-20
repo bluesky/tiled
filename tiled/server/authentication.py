@@ -270,12 +270,13 @@ def token_decoder(
 
 def session_state_getter(
     token_decoder: Callable[[str], Awaitable[Optional[dict[str, Any]]]],
+    oauth2_scheme: OAuth2,
 ):
-    async def get_session_state(
-        decoded_access_token: Optional[dict[str, Any]] = Depends(token_decoder)
-    ):
-        if decoded_access_token:
-            return decoded_access_token.get("state")
+    async def get_session_state(access_token: Optional[str] = Depends(oauth2_scheme)):
+        if access_token:
+            decoded_access_token = await token_decoder(access_token)
+            if decoded_access_token:
+                return decoded_access_token.get("state")
 
     return get_session_state
 
