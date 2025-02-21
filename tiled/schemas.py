@@ -21,12 +21,12 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
-from ..structures.array import ArrayStructure
-from ..structures.awkward import AwkwardStructure
-from ..structures.core import STRUCTURE_TYPES, StructureFamily
-from ..structures.data_source import Management
-from ..structures.sparse import SparseStructure
-from ..structures.table import TableStructure
+from .structures.array import ArrayStructure
+from .structures.awkward import AwkwardStructure
+from .structures.core import STRUCTURE_TYPES, StructureFamily
+from .structures.data_source import Management
+from .structures.sparse import SparseStructure
+from .structures.table import TableStructure
 
 if TYPE_CHECKING:
     import tiled.authn_database.orm
