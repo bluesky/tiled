@@ -320,5 +320,5 @@ forbidden_modules=["tiled.server"]
 # fine-grained enough to specify this.
 ignore_imports=[
   "tiled.client.constructors -> tiled.server.app",
-  "tiled.client.constructors -> tiled.server.settings",
+  "tiled.client.context -> tiled.server.settings",
 ]
