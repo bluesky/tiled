@@ -2,6 +2,15 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The client utility `tree` was moved from `tiled.utils` to `tiled.client.utils`.
+  It remains, as before, re-imported for convenience in `tiled.client`.
+- The objects in `tiled.server.schemas` were merged into `tiled.schemas` and
+  the former was removed.
+
 ## 0.1.0-b19 (2024-02-19)
 
 ### Maintenance

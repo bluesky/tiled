@@ -23,7 +23,7 @@ a directory of files or hierarchical structure like an HDF5 file or XML file.
 Tiled provides a utility for visualizing a nested structure.
 
 ```python
->>> from tiled.utils import tree
+>>> from tiled.client import tree
 >>> tree(client)
 ├── big_image
 ├── small_image

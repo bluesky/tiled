@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql import func
 
-from ..server.schemas import Management
+from ..schemas import Management
 from ..structures.core import StructureFamily
 from .base import Base
 

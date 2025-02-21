@@ -29,11 +29,10 @@ from starlette.status import (
 from tiled.schemas import About
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
-from .. import __version__
+from .. import __version__, schemas
 from ..structures.core import Spec, StructureFamily
 from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError
-from . import schemas
 from .authentication import get_authenticators, get_current_principal
 from .core import (
     DEFAULT_PAGE_SIZE,

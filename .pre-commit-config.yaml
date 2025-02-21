@@ -35,3 +35,8 @@ repos:
     hooks:
     -    id: mypy
          args: [--strict]
+
+-   repo: https://github.com/seddonym/import-linter
+    rev: v2.2
+    hooks:
+    -     id: import-linter

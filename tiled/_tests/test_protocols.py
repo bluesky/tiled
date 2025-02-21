@@ -19,7 +19,7 @@ from tiled.adapters.protocols import (
     SparseAdapter,
     TableAdapter,
 )
-from tiled.server.schemas import Principal, PrincipalType
+from tiled.schemas import Principal, PrincipalType
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.core import Spec, StructureFamily
