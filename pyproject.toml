@@ -314,3 +314,11 @@ name="Client cannot import from Server"
 type="forbidden"
 source_modules=["tiled.client"]
 forbidden_modules=["tiled.server"]
+# These exemptions allow for client to launch server on a background thread
+# These imports are deferred, in local scope not global scope, and only are
+# trigged when an in-process server in launched. The importlinter is not
+# fine-grained enough to specify this.
+ignore_imports=[
+  "tiled.client.constructors -> tiled.server.app",
+  "tiled.client.constructors -> tiled.server.settings",
+]
