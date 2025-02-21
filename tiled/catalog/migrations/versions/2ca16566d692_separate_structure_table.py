@@ -14,7 +14,7 @@ from sqlalchemy.sql import func
 
 from tiled.catalog.orm import JSONVariant
 from tiled.catalog.utils import compute_structure_id
-from tiled.server.schemas import Management
+from tiled.schemas import Management
 
 # revision identifiers, used by Alembic.
 revision = "2ca16566d692"

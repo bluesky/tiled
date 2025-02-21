@@ -64,7 +64,7 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import Asset, DataSource, Management, Revision, Spec
+from ..schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..structures.data_source import Storage
 from ..utils import (

@@ -7,7 +7,7 @@ import pandas
 import sparse
 from numpy.typing import NDArray
 
-from ..server.schemas import Principal
+from ..schemas import Principal
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily

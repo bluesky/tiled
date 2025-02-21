@@ -35,7 +35,7 @@ from ..queries import (
     StructureFamilyQuery,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import SortingItem
+from ..schemas import SortingItem
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON

@@ -22,8 +22,8 @@ from ..catalog.explain import record_explanations
 from ..client import Context, from_context
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
+from ..schemas import Asset, DataSource, Management
 from ..server.app import build_app, build_app_from_config
-from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
 from ..utils import ensure_uri
 from .utils import enter_username_password
