@@ -214,14 +214,8 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Inde
 
     def metadata(self) -> JSON:
         fpath = path_from_uri(self.uris[0])
-        with h5py.File(fpath, "r") as _file:
-            node = _file[self.dataset] if self.dataset else _file
-            d = dict(getattr(node, "attrs", {}))
-            for k, v in list(d.items()):
-                # Convert any bytes to str.
-                if isinstance(v, bytes):
-                    d[k] = v.decode()
-            d.update(self._metadata)
+        d = cls.get_metadata_from_file(fpath, self.dataset)
+        d.update(self._metadata)
         return d
 
     def __iter__(self) -> Iterator[Any]:
@@ -379,6 +373,17 @@ class HDF5ArrayAdapter(ArrayAdapter):
         array = dask.array.concatenate(arrs, axis=0)
 
         return array
+
+    @staticmethod
+    def get_metadata_from_file(file_path: str, dataset: Optional[str] = None) -> JSON:
+        with h5py.File(fpath, "r") as _file:
+            node = _file[self.dataset] if self.dataset else _file
+            d = dict(getattr(node, "attrs", {}))
+            for k, v in list(d.items()):
+                # Convert any bytes to str.
+                if isinstance(v, bytes):
+                    d[k] = v.decode()
+        return d
 
     @classmethod
     def from_catalog(
