@@ -1,4 +1,5 @@
 import builtins
+import collections
 import uuid
 from collections.abc import Hashable
 from pathlib import Path
@@ -313,3 +314,107 @@ def get_asset_filepaths(node):
             # because it cannot provide a filepath.
             filepaths.append(path_from_uri(asset.data_uri))
     return filepaths
+
+
+def _line(nodes, last):
+    "Generate a single line for the tree utility"
+    tee = "├"
+    vertical = "│   "
+    horizontal = "── "
+    L = "└"
+    blank = "    "
+    indent = ""
+    for item in last[:-1]:
+        if item:
+            indent += blank
+        else:
+            indent += vertical
+    if last[-1]:
+        return indent + L + horizontal + nodes[-1]
+    else:
+        return indent + tee + horizontal + nodes[-1]
+
+
+def walk(tree, nodes=None):
+    "Walk the entries in a (nested) Tree depth first."
+    if nodes is None:
+        for node in tree:
+            yield from walk(tree, [node])
+    else:
+        value = tree[nodes[-1]]
+        if hasattr(value, "items"):
+            yield nodes
+            for k, v in value.items():
+                yield from walk(value, nodes + [k])
+        else:
+            yield nodes
+
+
+def gen_tree(tree, nodes=None, last=None):
+    "A generator of lines for the tree utility"
+
+    # Normally, traversing a Tree will cause the structure clients to be
+    # instanitated which in turn triggers import of the associated libraries like
+    # numpy, pandas, and xarray. We want to avoid paying for that, especially
+    # when this function is used in a CLI where import overhead can accumulate to
+    # about 2 seconds, the bulk of the time. Therefore, we do something a bit
+    # "clever" here to override the normal structure clients with dummy placeholders.
+    from .client.container import Container
+
+    def dummy_client(*args, **kwargs):
+        return None
+
+    structure_clients = collections.defaultdict(lambda: dummy_client)
+    structure_clients["container"] = Container
+    fast_tree = tree.new_variation(structure_clients=structure_clients)
+    if nodes is None:
+        last_index = len(fast_tree) - 1
+        for index, node in enumerate(fast_tree):
+            yield from gen_tree(fast_tree, [node], [index == last_index])
+    else:
+        value = fast_tree[nodes[-1]]
+        if hasattr(value, "items"):
+            yield _line(nodes, last)
+            last_index = len(value) - 1
+            for index, (k, v) in enumerate(value.items()):
+                yield from gen_tree(value, nodes + [k], last + [index == last_index])
+        else:
+            yield _line(nodes, last)
+
+
+def tree(tree, max_lines=20):
+    """
+    Print a visual sketch of Tree structure akin to UNIX `tree`.
+
+    Parameters
+    ----------
+    tree : Tree
+    max_lines: int or None, optional
+        By default, output is trucated at 20 lines. ``None`` means "Do not
+        truncate."
+
+    Examples
+    --------
+
+    >>> tree(tree)
+    ├── A
+    │   ├── dog
+    │   ├── cat
+    │   └── monkey
+    └── B
+        ├── snake
+        ├── bear
+        └── wolf
+
+    """
+    if len(tree) == 0:
+        print("<Empty>")
+        return
+    for counter, line in enumerate(gen_tree(tree), start=1):
+        if (max_lines is not None) and (counter > max_lines):
+            print(
+                f"<Output truncated at {max_lines} lines. "
+                "Adjust tree's max_lines parameter to see more.>"
+            )
+            break
+        print(line)

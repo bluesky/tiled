@@ -7,8 +7,8 @@ from ..adapters import hdf5 as hdf5_adapters
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, record_history
+from ..client import tree as tree_util
 from ..server.app import build_app
-from ..utils import tree as tree_util
 
 
 @pytest.fixture
