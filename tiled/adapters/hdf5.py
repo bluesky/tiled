@@ -81,7 +81,31 @@ else:
     MappingType = collections.abc.Mapping
 
 
-class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixin):
+def parse_hdf5_tree(arg: Union[h5py.File, h5py.Group]) -> dict[str, Any]:
+    """Parse an HDF5 file or group into a nested dictionary structure
+
+    the resulting tree structure represenets any groups as nested dictionaries ans datasets as None.
+    
+    Parameters
+    ----------
+    arg : h5py.File or h5py.Group
+        The file or group to parse
+
+    Returns
+    -------
+    dict
+        A nested dictionary structure representing the HDF5 file or group
+    """
+    res = {}
+    for key, val in arg.items():
+        if isinstance(val, h5py.Group):
+            res[key] = parse_hdf5_file(val)
+        elif isinstance(val, h5py.Dataset):
+            res[key] = None
+    return res
+
+
+class HDF5Adapter(MappingType[str, Union["HDF5Adapter", HDF5ArrayAdapter]], IndexersMixin):
     """
     Read an HDF5 file or a group within one.
 
@@ -95,33 +119,28 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
     >>> import h5py
     >>> HDF5Adapter.from_uri("file://localhost/path/to/file.h5")
 
-    From the root node of a file given an h5py.File object
-
-    >>> import h5py
-    >>> file = h5py.File("path/to/file.h5")
-    >>> HDF5Adapter.from_file(file)
-
-    From a group within a file
-
-    >>> import h5py
-    >>> file = h5py.File("path/to/file.h5")
-    >>> HDF5Adapter(file["some_group']["some_sub_group"])
-
     """
 
     structure_family = StructureFamily.container
 
     def __init__(
         self,
-        file: Any,
-        *,
+        tree: dict[str, Any],
+        *data_uris: str,
+        dataset: Optional[str] = None,
         structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
+        **kwargs: Optional[Any]
     ) -> None:
-        self._file = file
+        self._tree = tree
+        self.uris = data_uris
+        self.dataset = dataset
         self.specs = specs or []
+        self.swmr = swmr
+        self.libver
         self._metadata = metadata or {}
+        self._kwargs = kwargs   # e.g. swmr, libver, etc.
 
     @classmethod
     def from_catalog(
@@ -130,18 +149,26 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
+        dataset: Optional[Union[str, list[str]]] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         **kwargs: Optional[Any],
-    ) -> "HDF5Adapter":
+    ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+        if data_source.structure_family == StructureFamily.array:
+            return HDF5ArrayAdapter.from_catalog(
+                data_source, node, dataset=dataset, swmr=swmr, libver=libver, **kwargs
+            )
+
+        # Initialize adapter for the entire HDF5 tree
         assets = data_source.assets
         if len(assets) == 1:
-            data_uri = assets[0].data_uri
+            data_uris = [assets[0].data_uri]
         else:
-            for ast in assets:
-                if ast.parameter == "data_uri":
-                    data_uri = ast.data_uri
-                    break
+            # for ast in assets:
+            #     if ast.parameter == "data_uri":
+            #         data_uri = ast.data_uri
+            #         break
+            data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uri"]
         filepath = path_from_uri(data_uri)
         cache_key = (h5py.File, filepath, "r", swmr, libver)
         file = with_resource_cache(
@@ -167,15 +194,15 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
     @classmethod
     def from_uris(
         cls,
-        data_uri: str,
-        *,
+        *data_uris: str,
+        dataset: Optional[str] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
     ) -> "HDF5Adapter":
-        filepath = path_from_uri(data_uri)
-        cache_key = (h5py.File, filepath, "r", swmr, libver)
+        fpath = path_from_uri(data_uri)
+        cache_key = (h5py.File, fpath, "r", swmr, libver)
         file = with_resource_cache(
-            cache_key, h5py.File, filepath, "r", swmr=swmr, libver=libver
+            cache_key, h5py.File, fpath, "r", swmr=swmr, libver=libver
         )
         return cls(file)
 
@@ -186,45 +213,31 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         return None
 
     def metadata(self) -> JSON:
-        d = dict(self._file.attrs)
-        for k, v in list(d.items()):
-            # Convert any bytes to str.
-            if isinstance(v, bytes):
-                d[k] = v.decode()
-        d.update(self._metadata)
+        fpath = path_from_uri(self.uris[0])
+        with h5py.File(fpath, "r") as _file:
+            node = _file[self.dataset] if self.dataset else _file
+            d = dict(getattr(node, "attrs", {}))
+            for k, v in list(d.items()):
+                # Convert any bytes to str.
+                if isinstance(v, bytes):
+                    d[k] = v.decode()
+            d.update(self._metadata)
         return d
 
     def __iter__(self) -> Iterator[Any]:
-        yield from self._file
+        yield from self._tree    # Iterate over the keys of the tree
 
-    def __getitem__(self, key: str) -> Union["HDF5Adapter", ArrayAdapter]:
-        value = self._file[key]
-        if isinstance(value, h5py.Group):
-            return HDF5Adapter(value)
+    def __getitem__(self, key: str) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+        node = self._tree[key]
+        dataset = f"{self.dataset}/{key}"   # Referenced to root of the file
+        if isinstance(node, dict):
+            return HDF5Adapter(node, *self.uris, dataset=dataset,
+                               metadata=self._metadata, specs=self.specs, **self._kwargs)
         else:
-            if value.dtype == numpy.dtype("O"):
-                warnings.warn(
-                    f"The dataset {key} is of object type, using a "
-                    "Python-only feature of h5py that is not supported by "
-                    "HDF5 in general. Read more about that feature at "
-                    "https://docs.h5py.org/en/stable/special.html. "
-                    "Consider using a fixed-length field instead. "
-                    "Tiled will serve an empty placeholder, unless the "
-                    "object is of size 1, where it will attempt to repackage "
-                    "the data into a numpy array."
-                )
-
-                check_str_dtype = h5py.check_string_dtype(value.dtype)
-                if check_str_dtype.length is None:
-                    dataset_names = value.file[self._file.name + "/" + key][...][()]
-                    if value.size == 1:
-                        arr = numpy.array(dataset_names)
-                        return from_dataset(arr)
-                return from_dataset(numpy.array([]))
-            return from_dataset(value)
+            return HDF5ArrayAdapter.from_uris(*self.uris, dataset=dataset, **self._kwargs)
 
     def __len__(self) -> int:
-        return len(self._file)
+        return len(self._tree)
 
     def keys(self) -> KeysView:  # type: ignore
         return KeysView(lambda: len(self), self._keys_slice)
@@ -279,7 +292,7 @@ class HDF5Adapter(MappingType[str, Union["HDF5Adapter", ArrayAdapter]], Indexers
         -------
 
         """
-        keys = list(self._file)
+        keys = list(self._tree.keys())
         if direction < 0:
             keys = list(reversed(keys))
         return keys[start:stop]
@@ -332,11 +345,36 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 return f.shape, f.chunks, f.dtype
 
         # Need to know shapes/dtypes of constituent arrays to load them lazily
-        shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
+        (shapes, chunks, dtypes) = [_get_hdf5_specs(fpath) for fpath in file_paths]
+        if dtypes[0] == numpy.dtype("O"):
+            assert len(file_paths) == 1, "Cannot handle object arrays from multiple files"
+            warnings.warn(
+                f"The dataset {key} is of object type, using a "
+                "Python-only feature of h5py that is not supported by "
+                "HDF5 in general. Read more about that feature at "
+                "https://docs.h5py.org/en/stable/special.html. "
+                "Consider using a fixed-length field instead. "
+                "Tiled will serve an empty placeholder, unless the "
+                "object is of size 1, where it will attempt to repackage "
+                "the data into a numpy array."
+            )
+            # TODO: It should be possible to put this in dask.delayed too -- needs to be thoroughly tested
+
+            check_str_dtype = h5py.check_string_dtype(dtypes[0])
+            if check_str_dtype.length is None:
+                with h5py.File(file_paths[0], "r", swmr=swmr, libver=libver) as f:
+                    value = f[dataset] if dataset else f
+                    dataset_names = value.file[f.name + "/" + key][...][()]
+                    if value.size == 1:
+                        arr = numpy.array(dataset_names)
+                    # TODO: refactor and test
+                return dask.array.from_array(arr)
+            return dask.array.empty(shape=())
+        
         delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
         arrs = [
             dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(chunk_shape)
-            for (val, (shape, chunk_shape, dtype)) in zip(delayed, shapes_chunks_dtypes)
+            for (val, shape, chunk_shape, dtype) in zip(delayed, shapes, chunks, dtypes)
         ]
         array = dask.array.concatenate(arrs, axis=0)
 
