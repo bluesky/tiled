@@ -21,7 +21,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
 # Some are not directly used, but they register things on import.
-from .. import queries
+from .. import queries, schemas
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
@@ -33,7 +33,6 @@ from ..utils import (
     ensure_awaitable,
     safe_json_dump,
 )
-from . import schemas
 from .etag import tokenize
 from .links import links_for_node
 from .utils import record_timing

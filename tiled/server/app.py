@@ -36,13 +36,13 @@ from starlette.status import (
 
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
+from .. import schemas
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     compression_registry as default_compression_registry,
 )
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import validation_registry as default_validation_registry
-from . import schemas
 from .authentication import get_current_principal
 from .compression import CompressionMiddleware
 from .dependencies import (
