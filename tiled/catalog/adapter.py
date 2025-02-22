@@ -155,35 +155,23 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
-        readable_storage = readable_storage or []
-        if not isinstance(readable_storage, list):
+
+        if isinstance(writable_storage, (str, Path)):
+            storage = Storage.from_path(writable_storage)
+        else:
+            storage = Storage(**(writable_storage or {}))
+        if isinstance(readable_storage, str):
             raise ValueError("readable_storage should be a list of URIs or paths")
-        if writable_storage:
-            if isinstance(writable_storage, (str, Path)):
-                # Interpret input as a filesystem path or 'file:' URI.
-                filesystem_storage = ensure_uri(str(writable_storage))
-                if not urlparse(filesystem_storage).scheme == "file":
-                    raise ValueError(
-                        "Expecting either a filepath, a URI with file: scheme, "
-                        "or a dict that may include keys 'filesystem' and 'sql'."
-                    )
-                writable_storage = {"filesystem": filesystem_storage}
-            self.writable_storage = Storage(
-                filesystem=ensure_uri(writable_storage.get("filesystem")),
-                sql=writable_storage.get("sql"),
-            )
-            # If it is writable, it is automatically also readable.
-            if (
-                self.writable_storage.filesystem
-                and self.writable_storage.filesystem not in readable_storage
-            ):
-                readable_storage.append(self.writable_storage.filesystem)
-            if (
-                self.writable_storage.sql
-                and self.writable_storage.sql not in readable_storage
-            ):
-                readable_storage.append(self.writable_storage.sql)
-        self.readable_storage = [ensure_uri(path) for path in readable_storage]
+        self.readable_storage = set(
+            ensure_uri(path) for path in (readable_storage or [])
+        )
+        # Writable storage should also be readable.
+        if storage.filesystem is not None:
+            self.readable_storage.add(storage.filesystem)
+        if storage.sql is not None:
+            self.readable_storage.add(storage.sql)
+        self.writable_storage = storage
+
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
         # If adapters_by_mimetype comes from a configuration file,

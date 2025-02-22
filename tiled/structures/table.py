@@ -23,6 +23,13 @@ class TableStructure:
     columns: List[str]
     resizable: Union[bool, Tuple[bool, ...]] = False
 
+    def __post_init__(self):
+        for column in self.columns:
+            if column.startswith("_"):
+                raise ValueError(
+                    "Tiled reserved column names starting with '_' for internal use."
+                )
+
     @classmethod
     def from_dask_dataframe(cls, ddf) -> "TableStructure":
         import dask.dataframe.utils

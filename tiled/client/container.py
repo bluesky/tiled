@@ -30,6 +30,7 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
+    import pandas
     import pyarrow
 
 
@@ -925,6 +926,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def create_appendable_table(
         self,
         schema: "pyarrow.Schema",
+        npartitions: int = 1,
         *,
         key=None,
         metadata=None,
@@ -957,14 +959,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if table_name is not None:
             parameters["table_name"] = table_name
 
-        mimetype = "application/x-tiled-sql-table"
-
         from ..structures.table import TableStructure
 
-        metadata = metadata or {}
-        specs = specs or []
-
-        structure = TableStructure.from_schema(schema)
+        structure = TableStructure.from_schema(schema, npartitions)
 
         client = self.new(
             StructureFamily.table,
@@ -972,20 +969,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 DataSource(
                     structure=structure,
                     structure_family=StructureFamily.table,
-                    mimetype=mimetype,
+                    mimetype="application/x-tiled-sql-table",
                     parameters=parameters,
                 )
             ],
             key=key,
-            metadata=metadata,
-            specs=specs,
+            metadata=metadata or {},
+            specs=specs or [],
         )
 
         return client
 
     def write_dataframe(
         self,
-        dataframe,
+        dataframe: Union["pandas.DataFrame", dict[str, Any]],
         *,
         key=None,
         metadata=None,
@@ -996,7 +993,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         Parameters
         ----------
-        dataframe : pandas.DataFrame
+        dataframe : pandas.DataFrame or dict
         key : str, optional
             Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
@@ -1008,7 +1005,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         See Also
         --------
-        write_appendable_dataframe
+        create_appendable_dataframe
         """
         return self._write_dataframe(
             dataframe,
@@ -1057,9 +1054,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         from ..structures.table import TableStructure
 
-        metadata = metadata or {}
-        specs = specs or []
-
         if isinstance(dataframe, dask.dataframe.DataFrame):
             structure = TableStructure.from_dask_dataframe(dataframe)
         elif isinstance(dataframe, dict):
@@ -1074,13 +1068,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 DataSource(
                     structure=structure,
                     structure_family=StructureFamily.table,
-                    mimetype=mimetype,
-                    parameters=parameters,
                 )
             ],
             key=key,
-            metadata=metadata,
-            specs=specs,
+            metadata=metadata or {},
+            specs=specs or [],
         )
 
         if hasattr(dataframe, "partitions"):

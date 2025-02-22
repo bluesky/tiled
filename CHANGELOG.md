@@ -2,7 +2,21 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## Unreleased
+## 0.1.0-b19 (2024-02-19)
+
+### Maintenance
+
+- Run authentication tests againts PostgreSQL as well as SQLite.
+- Tighten up handling of `time_created` and `time_updated` in authentication
+  database.
+- New authentication database migration fixes error in migration in previous release.
+
+## 0.1.0-b18 (2024-02-18)
+
+### Added
+
+- Added `SQLAdapter` which can save and interact with table structured data in
+  `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
 
 ### Changed
 
@@ -12,8 +26,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   have been removed. These were used internally by the server and should
   not affect user code.
 - Publish Container image and Helm chart only during a tagged release.
+- Stop warning when `data_sources()` are fetched after the item was already
+  fetched. (Too noisy.)
+- In Tiled's authentication database, when PostgreSQL is used, all datetimes
+  are stored explicitly localized to UTC. This requires a database migration
+  to update existing rows.
 
-## v0.1.0-b17 (2024-01-29)
+## 0.1.0-b17 (2024-01-29)
 
 ### Changed
 
@@ -24,6 +43,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Server declares authentication provider modes are `external` or `internal`. The
   latter was renamed from `password`. Client accepts either `internal` or `password`
   for backward-compatibility with older servers.
+- Make context switch to HTTPS URI, if available, upon creation
 
 ### Added
 
@@ -46,19 +66,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
   Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
 
-## v0.1.0-b16 (2024-01-23)
+## 0.1.0-b16 (2024-01-23)
 
 ### Maintenance
 
 - Update GitHub Actions `upload-artifact` and `download-artifact`.
 
-## v0.1.0-b15 (2024-01-23)
+## 0.1.0-b15 (2024-01-23)
 
 ### Maintenance
 
 - Adjust for backward-incompatible change in dependency Starlette 0.45.0.
 
-## v0.1.0-b14 (2024-01-21)
+## 0.1.0-b14 (2024-01-21)
 
 ### Changed
 

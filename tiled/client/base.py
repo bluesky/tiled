@@ -1,5 +1,4 @@
 import time
-import warnings
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
@@ -246,14 +245,6 @@ class BaseClient:
         return StructureFamily[self.item["attributes"]["structure_family"]]
 
     def data_sources(self):
-        if not self._include_data_sources:
-            warnings.warn(
-                """Calling include_data_sources().refresh().
-To fetch the data sources up front, call include_data_sources() on the
-client or pass the optional parameter `include_data_sources=True` to
-`from_uri(...)` or similar."""
-            )
-
         data_sources_json = (
             self.include_data_sources().item["attributes"].get("data_sources")
         )

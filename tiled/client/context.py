@@ -381,6 +381,15 @@ class Context:
         """
         uri = httpx.URL(uri)
         node_path_parts = []
+        # Ensure that HTTPS is used if available
+        # Logic will follow only one redirect, it is intended ONLY to toggle HTTPS.
+        # The redirect will be followed only if the netloc host is identical to the original.
+        if uri.scheme == "http":
+            response_from_http = httpx.get(uri)
+            if response_from_http.is_redirect:
+                redirect_uri = httpx.URL(response_from_http.headers["location"])
+                if redirect_uri.scheme == "https" and redirect_uri.host == uri.host:
+                    uri = redirect_uri
         if "/metadata" in uri.path:
             api_path, _, node_path = uri.path.partition("/metadata")
             api_uri = uri.copy_with(path=api_path)

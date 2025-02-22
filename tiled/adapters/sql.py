@@ -2,9 +2,19 @@ import copy
 import hashlib
 import os
 import re
-import secrets
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 import numpy
 import pandas
@@ -21,6 +31,8 @@ from ..utils import path_from_uri
 from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
+if TYPE_CHECKING:
+    import adbc_driver_manager.dbapi
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 
 
@@ -50,13 +62,15 @@ class SQLAdapter:
         self.uri = data_uri
 
         self.conn = create_connection(self.uri)
-        self.cur = self.conn.cursor()
 
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
+
+    def close(self) -> None:
+        self.conn.close()
 
     def metadata(self) -> JSON:
         """
@@ -75,47 +89,78 @@ class SQLAdapter:
         path_parts: List[str],
     ) -> DataSource[TableStructure]:
         """
-        Class to initialize the list of assets for given uri. In SQL Adapter we hve  single partition.
+        Class to initialize the list of assets for given uri.
 
         Parameters
         ----------
-        storage: the storage kind
-        data_source : data source describing the data
-        path_parts: the list of partitions.
+        storage: Storage
+        data_source : DataSource
+        path_parts : List[str]
+            Not used by this adapter
+
         Returns
         -------
         A modified copy of the data source
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        if data_source.structure.npartitions > 1:
-            raise ValueError("The SQL adapter must have only 1 partition")
 
-        schema = (
-            data_source.structure.arrow_schema_decoded
-        )  # based on hash of Arrow schema
+        # Create a table_name based on the hash of Arrow schema
+        schema = data_source.structure.arrow_schema_decoded
         encoded = schema.serialize()
-
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
         check_table_name(table_name)
 
-        dataset_id = secrets.randbits(63)
-        data_source.parameters["dataset_id"] = dataset_id
         data_uri = storage.get("sql")  # TODO scrub credential
 
         conn = create_connection(data_uri)
         dialect, _ = data_uri.split(":", 1)
-        schema_new = schema.insert(0, pyarrow.field("dataset_id", pyarrow.int64()))
+        # Prefix columns with internal _dataset_id, _partition_id, ...
+        schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
+        schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
         create_table_statement = arrow_schema_to_create_table(
-            schema_new, table_name, cast(DIALECTS, dialect)
+            schema, table_name, cast(DIALECTS, dialect)
         )
 
         create_index_statement = (
-            "CREATE INDEX IF NOT EXISTS dataset_id_index "
-            f"ON {table_name}(dataset_id)"
+            "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
+            f"ON {table_name}(_dataset_id, _partition_id)"
         )
-        conn.cursor().execute(create_table_statement)
-        conn.cursor().execute(create_index_statement)
+
+        with conn.cursor() as cursor:
+            cursor.execute(create_table_statement)
+        with conn.cursor() as cursor:
+            cursor.execute(create_index_statement)
+        # Just once, create a SEQUENCE (or the closest analogue in SQLite) to
+        # provide unique dataset_id for each dataset in this database.
+        # (If it exists, do nothing.)
+        # Then obtain the next value in the SEQUENCE for the dataset we are
+        # initializing here.
+        if dialect == "sqlite":
+            # Create single-row table with a counter, if it does not exist.
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "CREATE TABLE IF NOT EXISTS _dataset_id_counter (value INTEGER NOT NULL)"
+                )
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO _dataset_id_counter (value) "
+                    "SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _dataset_id_counter)"
+                )
+            with conn.cursor() as cursor:
+                # Increment the counter.
+                cursor.execute(
+                    "UPDATE _dataset_id_counter SET value = value + 1 "
+                    "RETURNING value"
+                )
+                (dataset_id,) = cursor.fetchone()
+        else:
+            with conn.cursor() as cursor:
+                cursor.execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT nextval('_dataset_id_counter')")
+                (dataset_id,) = cursor.fetchone()
+        data_source.parameters["dataset_id"] = dataset_id
         conn.commit()
 
         data_source.assets.append(
@@ -126,6 +171,7 @@ class SQLAdapter:
                 num=None,
             )
         )
+        conn.close()
         return data_source
 
     @classmethod
@@ -213,11 +259,20 @@ class SQLAdapter:
             else:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
-        table_with_dataset_id = add_dataset_column(table, self.dataset_id)
-        self.cur.adbc_ingest(self.table_name, table_with_dataset_id, mode="append")
+        # Prepend columns for internal dataset_id and partition number.
+        dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int32)
+        partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)
+        table = table.add_column(
+            0, pyarrow.field("_partition_id", pyarrow.int16()), [partition_id_column]
+        )
+        table = table.add_column(
+            0, pyarrow.field("_dataset_id", pyarrow.int32()), [dataset_id_column]
+        )
+        with self.conn.cursor() as cursor:
+            cursor.adbc_ingest(self.table_name, table, mode="append")
         self.conn.commit()
 
-    def read(self, fields: Optional[Union[str, List[str]]] = None) -> pandas.DataFrame:
+    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
         """
         The concatenated data from given set of partitions as pyarrow table.
         Parameters
@@ -228,37 +283,58 @@ class SQLAdapter:
         Returns the concatenated pyarrow table as pandas dataframe.
         """
 
-        query = f"SELECT * FROM {self.table_name} WHERE dataset_id={self.dataset_id}"
-        self.cur.execute(query)
-        data = self.cur.fetch_arrow_table()
+        query = (
+            f"SELECT * FROM {self.table_name} "
+            f"WHERE _dataset_id={self.dataset_id} ORDER BY _partition_id"
+        )
+        with self.conn.cursor() as cursor:
+            cursor.execute(query)
+            data = cursor.fetch_arrow_table()
         self.conn.commit()
 
         table = data.to_pandas()
+        table = table.drop("_dataset_id", axis=1)
+        table = table.drop("_partition_id", axis=1)
         if fields is not None:
-            return table[fields]
-        return table.drop("dataset_id", axis=1)
+            table = table[fields]
+        return table
 
     def read_partition(
-        self, partition: int, fields: Optional[Union[str, List[str]]] = None
+        self, partition: int, fields: Optional[List[str]] = None
     ) -> pandas.DataFrame:
         """
-        Function to read a batch of data from a given partition.
+        Read a batch of data from a given partition.
+
         Parameters
         ----------
-        partition : the partition index to write.
-        fields: optional string to return the data in the specified field.
+        partition : int
+        fields : Optional[List[str]]
+            Optional list of field names to select. By default return all.
+
         Returns
         -------
         Returns the concatenated pyarrow table as pandas dataframe.
         """
-        if partition != 0:
-            raise NotImplementedError
-        return self.read(fields)
+        query = (
+            f"SELECT * FROM {self.table_name} "
+            f"WHERE _dataset_id={self.dataset_id} AND _partition_id={int(partition)}"
+        )
+        with self.conn.cursor() as cursor:
+            cursor.execute(query)
+            data = cursor.fetch_arrow_table()
+        self.conn.commit()
+
+        table = data.to_pandas()
+        table = table.drop("_dataset_id", axis=1)
+        table = table.drop("_partition_id", axis=1)
+        if fields is not None:
+            table = table[fields]
+        return table
 
 
 def create_connection(
     uri: str,
-) -> Any:
+) -> "adbc_driver_manager.dbapi.Connection":
     """
     Function to create an adbc connection of type duckdb , sqlite or postgresql.
     Parameters
@@ -303,11 +379,6 @@ def _ensure_writable_location(uri: str) -> Path:
     else:
         raise ValueError(f"The directory {directory} does not exist.")
     return filepath
-
-
-def add_dataset_column(table: pyarrow.Table, dataset_id: int) -> pyarrow.Table:
-    column = dataset_id * numpy.ones(len(table), dtype=numpy.int64)
-    return table.add_column(0, pyarrow.field("dataset_id", pyarrow.int64()), [column])
 
 
 # Mapping between Arrow types and PostgreSQL column type name.

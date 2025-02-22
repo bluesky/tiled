@@ -355,7 +355,7 @@ class ZarrAdapter:
     @classmethod
     def from_catalog(
         cls,
-        # A Zarr node may reference an array or group (container).
+        # An Zarr node may reference an array or group (container).
         data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
