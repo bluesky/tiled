@@ -387,9 +387,6 @@ def serve_catalog(
         )
         directory.mkdir()
         database = f"sqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
-        tabular_data_database = (
-            f"duckdb:///{Path(directory, DUCKDB_TABULAR_DATA_FILENAME)}"
-        )
 
         # Because this is a tempfile we know this is a fresh database and we do not
         # need to check its current state.
