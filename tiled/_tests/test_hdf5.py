@@ -1,5 +1,3 @@
-import io
-
 import numpy
 import pytest
 
@@ -8,43 +6,42 @@ from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, record_history
 from ..server.app import build_app
+from ..utils import ensure_uri
 from ..utils import tree as tree_util
 
 
-@pytest.fixture
-def example_file():
+@pytest.fixture(scope="module")
+def example_file(tmp_path_factory):
     h5py = pytest.importorskip("h5py")
-    file = h5py.File(io.BytesIO(), "w")
-    a = file.create_group("a")
-    b = a.create_group("b")
-    c = b.create_group("c")
-    c.create_dataset("d", data=numpy.ones((3, 3)))
-    yield file
+    file_path = tmp_path_factory.mktemp("data").joinpath("example.h5")
+    with h5py.File(file_path, "w") as file:
+        a = file.create_group("a")
+        b = a.create_group("b")
+        c = b.create_group("c")
+        c.create_dataset("d", data=numpy.ones((3, 3)))
+    return ensure_uri(file_path)
 
-    file.close()
 
-
-@pytest.fixture
-def example_file_with_vlen_str_in_dataset():
+@pytest.fixture(scope="module")
+def example_file_with_vlen_str_in_dataset(tmp_path_factory):
     h5py = pytest.importorskip("h5py")
-    file = h5py.File(io.BytesIO(), "w")
-    a = file.create_group("a")
-    b = a.create_group("b")
-    c = b.create_group("c")
-    # Need to do this to make a vlen str dataset
-    dt = h5py.string_dtype(encoding="utf-8")
-    dset = c.create_dataset("d", (100,), dtype=dt)
-    assert dset.dtype == "object"
-    dset[0] = b"test"
-    yield file
-
-    file.close()
+    file_path = tmp_path_factory.mktemp("data").joinpath("example_with_vlen_str.h5")
+    with h5py.File(file_path, "w") as file:
+        a = file.create_group("a")
+        b = a.create_group("b")
+        c = b.create_group("c")
+        # Need to do this to make a vlen str dataset
+        dt = h5py.string_dtype(encoding="utf-8")
+        dset = c.create_dataset("d", (100,), dtype=dt)
+        assert dset.dtype == "object"
+        dset[0] = b"test"
+    return ensure_uri(file_path)
 
 
 def test_from_file(example_file, buffer):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
-    tree = HDF5Adapter(example_file)
+    tree = HDF5Adapter.from_uris(example_file)
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         arr = client["a"]["b"]["c"]["d"].read()
@@ -57,7 +54,7 @@ def test_from_file(example_file, buffer):
 def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
-    tree = HDF5Adapter(example_file_with_vlen_str_in_dataset)
+    tree = HDF5Adapter.from_uris(example_file_with_vlen_str_in_dataset)
     with pytest.warns(UserWarning):
         with Context.from_app(build_app(tree)) as context:
             client = from_context(context)
@@ -72,7 +69,7 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, 
 def test_from_group(example_file, buffer):
     """Serve a Group within an HDF5 file."""
     h5py = pytest.importorskip("h5py")
-    tree = HDF5Adapter(example_file["a"]["b"])
+    tree = HDF5Adapter.from_uris(example_file, dataset="a/b")
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
     arr = client["c"]["d"].read()
@@ -87,8 +84,8 @@ def test_from_multiple(example_file, buffer):
     h5py = pytest.importorskip("h5py")
     tree = MapAdapter(
         {
-            "A": HDF5Adapter(example_file),
-            "B": HDF5Adapter(example_file),
+            "A": HDF5Adapter.from_uris(example_file),
+            "B": HDF5Adapter.from_uris(example_file),
         }
     )
     with Context.from_app(build_app(tree)) as context:
@@ -105,7 +102,7 @@ def test_from_multiple(example_file, buffer):
 
 def test_inlined_contents(example_file):
     """Test that the recursive structure and metadata are inlined into one request."""
-    tree = HDF5Adapter(example_file)
+    tree = HDF5Adapter.from_uris(example_file)
     assert hdf5_adapters.INLINED_DEPTH > 1
     original = hdf5_adapters.INLINED_DEPTH
     try:
