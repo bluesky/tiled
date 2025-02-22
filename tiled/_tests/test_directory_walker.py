@@ -56,7 +56,7 @@ async def test_collision(example_data_dir, tmpdir):
     p = Path(example_data_dir, "a.tiff")
     tifffile.imwrite(str(p), data)
 
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(client, example_data_dir)
@@ -87,7 +87,7 @@ async def test_same_filename_separate_directory(tmpdir):
     Path(tmpdir, "two").mkdir()
     df1.to_csv(Path(tmpdir, "one", "a.csv"))
     df1.to_csv(Path(tmpdir, "two", "a.csv"))
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(client, tmpdir)
@@ -122,7 +122,7 @@ async def test_mimetype_detection_hook(tmpdir):
             return "text/csv"
         return mimetype
 
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(
@@ -144,7 +144,7 @@ async def test_skip_all_in_combination(tmpdir):
     for i in range(2):
         tifffile.imwrite(Path(tmpdir, "one", f"image{i:05}.tif"), data)
 
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     # By default, both file and tiff sequence are registered.
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
@@ -175,7 +175,7 @@ async def test_tiff_seq_custom_sorting(tmpdir):
         tifffile.imwrite(file, i * data)
 
     settings = Settings.init()
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register_image_sequence(
@@ -222,7 +222,7 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
             return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     catalog = in_memory(
-        writable_storage=tmpdir,
+        writable_storage=str(tmpdir),
         adapters_by_mimetype={MIMETYPE: TiffAdapterWithSidecar},
     )
     with Context.from_app(build_app(catalog)) as context:
@@ -306,7 +306,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
             parameter="data_uri",
         )
     )
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         adapter = HDF5Adapter.from_uris(ensure_uri(filepath))
         client = from_context(context)
@@ -330,7 +330,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
 
 
 def test_unknown_mimetype(tmpdir):
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         asset = Asset(
@@ -358,7 +358,7 @@ def test_unknown_mimetype(tmpdir):
 
 
 def test_one_asset_two_data_sources(tmpdir):
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         asset = Asset(

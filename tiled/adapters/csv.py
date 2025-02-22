@@ -1,5 +1,7 @@
+import copy
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from urllib.parse import quote_plus
 
 import dask.dataframe
 import pandas
@@ -7,7 +9,7 @@ import pandas
 from ..catalog.orm import Node
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Management
+from ..structures.data_source import Asset, DataSource, Management, Storage
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
@@ -54,7 +56,7 @@ class CSVAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[TableStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],
@@ -76,8 +78,13 @@ class CSVAdapter:
         return self._metadata
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: TableStructure) -> List[Asset]:
-        """Initialize partitioned csv storage
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[TableStructure],
+        path_parts: List[str],
+    ) -> DataSource[TableStructure]:
+        """Initialize partitioned CSV storage
 
         Parameters
         ----------
@@ -90,7 +97,12 @@ class CSVAdapter:
         -------
             list of assets with each element corresponding to individual partition files
         """
-        path_from_uri(data_uri).mkdir(parents=True, exist_ok=True)
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        data_uri = storage.get("filesystem") + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
+        directory = path_from_uri(data_uri)
+        directory.mkdir(parents=True, exist_ok=True)
         assets = [
             Asset(
                 data_uri=f"{data_uri}/partition-{i}.csv",
@@ -98,9 +110,10 @@ class CSVAdapter:
                 parameter="data_uris",
                 num=i,
             )
-            for i in range(structure.npartitions)
+            for i in range(data_source.structure.npartitions)
         ]
-        return assets
+        data_source.assets.extend(assets)
+        return data_source
 
     def append_partition(
         self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
@@ -214,7 +227,7 @@ class CSVAdapter:
         dict_or_none: Callable[[TableStructure], Dict[str, str]],
         item: Union[str, Path],
         is_directory: bool,
-    ) -> List[DataSource]:
+    ) -> List[DataSource[TableStructure]]:
         """
 
         Parameters
@@ -232,7 +245,7 @@ class CSVAdapter:
             DataSource(
                 structure_family=StructureFamily.table,
                 mimetype=mimetype,
-                structure=dict_or_none(self.structure()),
+                structure=self.structure(),
                 parameters={},
                 management=Management.external,
                 assets=[
@@ -280,7 +293,7 @@ class CSVArrayAdapter(ArrayAdapter):
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[ArrayStructure],
         node: Node,
         /,
         **kwargs: Optional[Any],

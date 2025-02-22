@@ -1,8 +1,9 @@
 import builtins
-import collections.abc
+import copy
 import os
-import sys
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from collections.abc import Mapping
+from typing import Any, Iterator, List, Optional, Tuple, Union, cast
+from urllib.parse import quote_plus
 
 import zarr.core
 import zarr.hierarchy
@@ -12,10 +13,9 @@ from numpy._typing import NDArray
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..server.schemas import Asset
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import DataSource
+from ..structures.data_source import Asset, DataSource, Storage
 from ..type_aliases import JSON, NDSlice
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
@@ -27,7 +27,12 @@ class ZarrArrayAdapter(ArrayAdapter):
     """ """
 
     @classmethod
-    def init_storage(cls, data_uri: str, structure: ArrayStructure) -> List[Asset]:
+    def init_storage(
+        cls,
+        storage: Storage,
+        data_source: DataSource[ArrayStructure],
+        path_parts: List[str],
+    ) -> DataSource[ArrayStructure]:
         """
 
         Parameters
@@ -39,26 +44,31 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        data_uri = storage.get("filesystem") + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
-        zarr_chunks = tuple(dim[0] for dim in structure.chunks)
-        shape = tuple(dim[0] * len(dim) for dim in structure.chunks)
+        zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
+        shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        storage = zarr.storage.DirectoryStore(str(directory))
+        store = zarr.storage.DirectoryStore(str(directory))
         zarr.storage.init_array(
-            storage,
+            store,
             shape=shape,
             chunks=zarr_chunks,
-            dtype=structure.data_type.to_numpy_dtype(),
+            dtype=data_source.structure.data_type.to_numpy_dtype(),
         )
-        return [
+        data_source.assets.append(
             Asset(
                 data_uri=data_uri,
                 is_directory=True,
                 parameter="data_uri",
             )
-        ]
+        )
+        return data_source
 
     def _stencil(self) -> Tuple[slice, ...]:
         """Trim overflow because Zarr always has equal-sized chunks."""
@@ -205,18 +215,8 @@ class ZarrArrayAdapter(ArrayAdapter):
         return new_shape_tuple, new_chunks_tuple
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
 class ZarrGroupAdapter(
-    MappingType[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    Mapping[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
     IndexersMixin,
 ):
     """ """
@@ -355,7 +355,8 @@ class ZarrAdapter:
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        # An Zarr node may reference an array or group (container).
+        data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
         **kwargs: Optional[Any],
@@ -374,7 +375,7 @@ class ZarrAdapter:
         else:
             return ZarrArrayAdapter(
                 zarr_obj,
-                structure=data_source.structure,
+                structure=cast(ArrayStructure, data_source.structure),
                 metadata=node.metadata_,
                 specs=node.specs,
                 **kwargs,

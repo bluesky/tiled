@@ -118,6 +118,24 @@ TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
 
 @pytest_asyncio.fixture
+async def sqlite_database_uri(tmpdir):
+    yield f"sqlite:///{tmpdir}/tiled.sqlite"
+
+
+@pytest_asyncio.fixture
+async def postgresql_database_uri():
+    if not TILED_TEST_POSTGRESQL_URI:
+        raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database:
+        yield uri_with_database
+
+
+@pytest.fixture(params=["sqlite_database_uri", "postgresql_database_uri"])
+def sqlite_or_postgresql_database_uri(request):
+    yield request.getfixturevalue(request.param)
+
+
+@pytest_asyncio.fixture
 async def postgresql_adapter(request, tmpdir):
     """
     Adapter instance

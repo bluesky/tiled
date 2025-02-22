@@ -13,7 +13,7 @@ import uuid
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import urlparse
 
 import anyio
 from fastapi import HTTPException
@@ -60,11 +60,13 @@ from ..mimetypes import (
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    TILED_SQL_TABLE_MIMETYPE,
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
+from ..structures.data_source import Storage
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -115,6 +117,9 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "...adapters.arrow", __name__
         ).ArrowAdapter,
+        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.sql", __name__
+        ).SQLAdapter,
     }
 )
 
@@ -150,19 +155,23 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
-        readable_storage = readable_storage or []
-        if not isinstance(readable_storage, list):
+
+        if isinstance(writable_storage, (str, Path)):
+            storage = Storage.from_path(writable_storage)
+        else:
+            storage = Storage(**(writable_storage or {}))
+        if isinstance(readable_storage, str):
             raise ValueError("readable_storage should be a list of URIs or paths")
-        if writable_storage:
-            writable_storage = ensure_uri(str(writable_storage))
-            if not urlparse(writable_storage).scheme == "file":
-                raise NotImplementedError(
-                    "Only file://... writable storage is currently supported."
-                )
-            # If it is writable, it is automatically also readable.
-            readable_storage.append(writable_storage)
-        self.writable_storage = writable_storage
-        self.readable_storage = [ensure_uri(path) for path in readable_storage]
+        self.readable_storage = set(
+            ensure_uri(path) for path in (readable_storage or [])
+        )
+        # Writable storage should also be readable.
+        if storage.filesystem is not None:
+            self.readable_storage.add(storage.filesystem)
+        if storage.sql is not None:
+            self.readable_storage.add(storage.sql)
+        self.writable_storage = storage
+
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
         # If adapters_by_mimetype comes from a configuration file,
@@ -329,7 +338,7 @@ class CatalogNodeAdapter:
 
     @property
     def writable(self):
-        return bool(self.context.writable_storage)
+        return any(dataclasses.asdict(self.context.writable_storage).values())
 
     def __repr__(self):
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
@@ -458,10 +467,6 @@ class CatalogNodeAdapter:
             if asset.parameter is None:
                 continue
             scheme = urlparse(asset.data_uri).scheme
-            if scheme != "file":
-                raise NotImplementedError(
-                    f"Only 'file://...' scheme URLs are currently supported, not {asset.data_uri}"
-                )
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
@@ -635,10 +640,6 @@ class CatalogNodeAdapter:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
                             data_source.structure_family
                         ]
-                    data_source.parameters = {}
-                    data_uri = str(self.context.writable_storage) + "".join(
-                        f"/{quote_plus(segment)}" for segment in (self.segments + [key])
-                    )
                     if data_source.mimetype not in STORAGE_ADAPTERS_BY_MIMETYPE:
                         raise HTTPException(
                             status_code=415,
@@ -648,10 +649,12 @@ class CatalogNodeAdapter:
                             ),
                         )
                     adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
-                    assets = await ensure_awaitable(
-                        adapter.init_storage, data_uri, data_source.structure
+                    data_source = await ensure_awaitable(
+                        adapter.init_storage,
+                        self.context.writable_storage,
+                        data_source,
+                        self.segments + [key],
                     )
-                    data_source.assets.extend(assets)
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
                         raise HTTPException(
@@ -1181,6 +1184,8 @@ def _prepare_structure(structure_family, structure):
     "Convert from pydantic model to dict."
     if structure is None:
         return None
+    if isinstance(structure, dict):
+        return structure
     return dataclasses.asdict(structure)
 
 

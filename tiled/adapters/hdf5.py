@@ -1,10 +1,9 @@
 import builtins
-import collections.abc
 import copy
 import os
 import re
-import sys
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from types import EllipsisType
 from typing import Any, Iterator, List, Optional, Tuple, Union
@@ -25,16 +24,6 @@ from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
-
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
@@ -210,7 +199,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
     @classmethod
     def from_catalog(
         cls,
-        data_source: DataSource,
+        data_source: DataSource[ArrayStructure],
         node: Node,
         /,
         dataset: Optional[str] = None,
@@ -303,9 +292,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         return cls(array, structure, metadata=metadata)
 
 
-class HDF5Adapter(
-    MappingType[str, Union["HDF5Adapter", HDF5ArrayAdapter]], IndexersMixin
-):
+class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], IndexersMixin):
     """Adapter for HDF5 files
 
     This map the structure of an HDF5 file onto a "Tree" of array structures.
@@ -363,7 +350,7 @@ class HDF5Adapter(
     def from_catalog(
         cls,
         # An HDF5 node may reference a dataset (array) or group (container).
-        data_source: DataSource,
+        data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
         dataset: Optional[Union[str, list[str]]] = None,
@@ -379,7 +366,7 @@ class HDF5Adapter(
         # If the data source is an array, return an HDF5ArrayAdapter
         if data_source.structure_family == StructureFamily.array:
             return HDF5ArrayAdapter.from_catalog(
-                data_source,
+                data_source,  # type: ignore
                 node,
                 dataset=dataset,
                 swmr=swmr,
