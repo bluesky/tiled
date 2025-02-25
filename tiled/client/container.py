@@ -28,8 +28,6 @@ from .utils import (
     handle_error,
 )
 
-# import pandas
-
 
 if TYPE_CHECKING:
     import pandas
@@ -935,8 +933,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs=None,
         table_name: Optional[str] = None,
     ):
-        """
-        Write a DataFrame and store it such that rows can be appended to a partition.
+        """Initialize a table whose rows can be appended to a partition.
 
         Parameters
         ----------
@@ -990,8 +987,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
     ):
-        """
-        Write a DataFrame.
+        """Write a DataFrame.
 
         Parameters
         ----------
@@ -1007,7 +1003,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         See Also
         --------
-        create_appendable_dataframe
+        create_appendable_table
         """
         import dask.dataframe
 
