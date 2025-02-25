@@ -938,6 +938,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         Parameters
         ----------
         schema : column names and dtypes info in the form of pyarrow.Schema
+        npartitions : int, optional
+            Number of partitions to create. Default is 1.
         key : str, optional
             Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
