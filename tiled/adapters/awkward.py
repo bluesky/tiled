@@ -118,10 +118,4 @@ class AwkwardAdapter:
             self.container[form_key] = value
 
     def structure(self) -> AwkwardStructure:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure
