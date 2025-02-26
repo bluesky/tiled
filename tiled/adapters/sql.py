@@ -245,10 +245,11 @@ class SQLAdapter:
 
         Parameters
         ----------
-        data : data to append to the database. Can be a list of record batches, pyarrow table, or pandas dataframe.
+        data : data to append to the database. Can be a record_batch, a list of record batches, pyarrow table, or a
+            pandas dataframe.
         partition : the partition index to write.
         """
-        # Conver the data to pyarrow table
+        # Convert the data to pyarrow table
         if isinstance(data, pyarrow.Table):
             table = data
         elif isinstance(data, pandas.DataFrame):
