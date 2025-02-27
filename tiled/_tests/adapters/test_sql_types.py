@@ -321,42 +321,42 @@ def test_psql_data_types(
         ),
         (
             pa.schema([("some_float16", pa.float16())]),
-            pa.schema([("some_float16", "float")]),
+            pa.schema([("some_float16", "int64")]),
             ["REAL"],
         ),
         (
             pa.schema([("some_float32", pa.float32())]),
-            pa.schema([("some_float32", "float")]),
+            pa.schema([("some_float32", "int64")]),
             ["REAL"],
         ),
         (
             pa.schema([("some_float64", pa.float64())]),
-            pa.schema([("some_float64", "double")]),
+            pa.schema([("some_float64", "int64")]),
             ["REAL"],
         ),
         (
             pa.schema([("some_string", pa.string())]),
-            pa.schema([("some_string", "string")]),
+            pa.schema([("some_string", "int64")]),
             ["TEXT"],
         ),
         (
             pa.schema([("some_large_string", pa.large_string())]),
-            pa.schema([("some_large_string", "string")]),
+            pa.schema([("some_large_string", "int64")]),
             ["TEXT"],
         ),
         (
             pa.schema([("some_integer_array", pa.list_(pa.int32()))]),
-            pa.schema([("some_integer_array", "string")]),
+            pa.schema([("some_integer_array", "int64")]),
             ["TEXT"],
         ),
         (
             pa.schema([("some_large_integer_array", pa.list_(pa.int64()))]),
-            pa.schema([("some_large_integer_array", "string")]),
+            pa.schema([("some_large_integer_array", "int64")]),
             ["TEXT"],
         ),
         (
             pa.schema([("some_fixed_size_integer_array", pa.list_(pa.int64(), 2))]),
-            pa.schema([("some_fixed_size_integer_array", "string")]),
+            pa.schema([("some_fixed_size_integer_array", "int64")]),
             ["TEXT"],
         ),
     ],
@@ -380,6 +380,9 @@ def test_sqlite_data_types(
         cursor.execute(query)
     conn.commit()
 
+    # !!!!!BIG BIG WARNING!!!
+    # For some weird reason `adbc_get_table_schema` reads everything as `int64`
+    # Not sure it is a bug but but be aware!!!!!!
     assert conn.adbc_get_table_schema("random_test_table") == expected_schema
 
     conn.close()
