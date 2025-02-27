@@ -73,8 +73,8 @@ class SQLAdapter:
         self.conn.close()
 
     def metadata(self) -> JSON:
-        """
-        The metadata representing the actual data.
+        """The metadata representing the actual data.
+
         Returns
         -------
         The metadata representing the actual data.
@@ -195,46 +195,47 @@ class SQLAdapter:
         return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
-        """
-        Get the data for a specific key
+        """Get the data for a specific key
 
         Parameters
         ----------
         key : a string to indicate which column to be retrieved
+
         Returns
         -------
         The column for the associated key.
         """
         if key not in self.structure().columns:
             return None
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        return self[key]
 
     def __getitem__(self, key: str) -> ArrayAdapter:
-        """
-        Get the data for a specific key.
+        """Get the data for a specific key.
 
         Parameters
         ----------
         key : a string to indicate which column to be retrieved
+
         Returns
         -------
         The column for the associated key.
         """
+
+        # Construct the metadata for the array: assume that relevant metadata is in the `key` field
+        metadata = {k:v for k, v in self.metadata().items() if k not in self.structure().columns}
+        metadata.update(self.metadata().get(key, {}))
+
         # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        return ArrayAdapter.from_array(self.read([key])[key].values, metadata=metadata)
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
-        """
-        The function to iterate over the SQLAdapter data.
+        """Iterate over the SQLAdapter data.
 
         Returns
         -------
         An iterator for the data in the associated database.
         """
-        yield from (
-            (key, ArrayAdapter.from_array(self.read([key])[key].values))
-            for key in self._structure.columns
-        )
+        yield from ((key, self[key]) for key in self._structure.columns)
 
     def append_partition(
         self,

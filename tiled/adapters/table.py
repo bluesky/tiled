@@ -145,7 +145,11 @@ class TableAdapter:
             max_size = max((len(i) for i in array.ravel()))
             array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
 
-        return ArrayAdapter.from_array(array)
+        # Construct the metadata for the array: assume that relevant metadata is in the `key` field
+        metadata = {k:v for k, v in self.metadata().items() if k not in self.structure().columns}
+        metadata.update(self.metadata().get(key, {}))
+
+        return ArrayAdapter.from_array(array, metadata=metadata)
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         if key not in self.structure().columns:
