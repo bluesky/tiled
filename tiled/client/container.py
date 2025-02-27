@@ -648,7 +648,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         ).json()
 
-        if structure_family == StructureFamily.container:
+        if structure_family in [StructureFamily.container, StructureFamily.composite]:
             structure = {"contents": None, "count": None}
         else:
             # Only containers can have multiple data_sources right now.
@@ -671,7 +671,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Ensure this is a dataclass, not a dict.
         # When we apply type hints and mypy to the client it should be possible
         # to dispense with this.
-        if (structure_family != StructureFamily.container) and isinstance(
+        if (structure_family not in [StructureFamily.container, StructureFamily.composite]) and isinstance(
             structure, dict
         ):
             structure_type = STRUCTURE_TYPES[structure_family]
@@ -689,9 +689,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_container(self, key=None, *, metadata=None, dims=None, specs=None):
-        """
-        EXPERIMENTAL: Create a new, empty container.
+    def create_container(self, key=None, *, metadata=None, specs=None, flat=False):
+        """Create a new, empty container.
 
         Parameters
         ----------
@@ -700,15 +699,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        dims : List[str], optional
-            A label for each dimension of the array.
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        flat : bool, optional
+            If True, the container will be flat (composite), otherwise -- a usual container.
 
         """
         return self.new(
-            StructureFamily.container,
+            StructureFamily.container if not flat else StructureFamily.composite,
             [],
             key=key,
             metadata=metadata,
@@ -1051,6 +1050,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return client
 
 
+class Composite(Container):
+    pass
+
+
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
     params = collections.defaultdict(list)
@@ -1115,6 +1118,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
             "container": _Wrap(Container),
+            "composite": _Wrap(Composite),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
             "awkward": _LazyLoad(("..awkward", Container.__module__), "AwkwardClient"),
             "dataframe": _LazyLoad(
@@ -1132,6 +1136,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "dask": OneShotCachedMap(
         {
             "container": _Wrap(Container),
+            "composite": _Wrap(Composite),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
             # TODO Create DaskAwkwardClient
             # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),

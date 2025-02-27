@@ -232,6 +232,7 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
+    StructureFamily.composite: ContainerLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
@@ -422,7 +423,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     def narrow_strucutre_type(self):
         "Convert the structure on each data_source from a dict to the appropriate pydantic model."
         for data_source in self.data_sources:
-            if self.structure_family != StructureFamily.container:
+            if self.structure_family not in [StructureFamily.container, StructureFamily.composite]:
                 structure_cls = STRUCTURE_TYPES[self.structure_family]
                 if data_source.structure is not None:
                     data_source.structure = structure_cls.from_json(

@@ -16,6 +16,7 @@ class StructureFamily(str, enum.Enum):
     array = "array"
     awkward = "awkward"
     container = "container"
+    composite = "composite"
     sparse = "sparse"
     table = "table"
 

@@ -48,6 +48,7 @@ LINKS_BY_STRUCTURE_FAMILY = {
     StructureFamily.array: links_for_array,
     StructureFamily.awkward: links_for_awkward,
     StructureFamily.container: links_for_container,
+    StructureFamily.composite: links_for_container,
     StructureFamily.sparse: links_for_array,  # spare and array are the same
     StructureFamily.table: links_for_table,
 }

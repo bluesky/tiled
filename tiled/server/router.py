@@ -191,7 +191,7 @@ async def search(
     **filters,
 ):
     request.state.endpoint = "search"
-    if entry.structure_family != StructureFamily.container:
+    if entry.structure_family not in [StructureFamily.container, StructureFamily.composite]:
         raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
     try:
         resource, metadata_stale_at, must_revalidate = await construct_entries_response(
@@ -760,7 +760,7 @@ async def table_full(
 async def get_container_full(
     request: Request,
     entry=SecureEntry(
-        scopes=["read:data"], structure_families={StructureFamily.container}
+        scopes=["read:data"], structure_families={StructureFamily.container, StructureFamily.composite}
     ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
@@ -790,7 +790,7 @@ async def get_container_full(
 async def post_container_full(
     request: Request,
     entry=SecureEntry(
-        scopes=["read:data"], structure_families={StructureFamily.container}
+        scopes=["read:data"], structure_families={StructureFamily.container, StructureFamily.composite}
     ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Body(None, min_length=1),
@@ -867,7 +867,7 @@ async def node_full(
     request: Request,
     entry=SecureEntry(
         scopes=["read:data"],
-        structure_families={StructureFamily.table, StructureFamily.container},
+        structure_families={StructureFamily.table, StructureFamily.container, StructureFamily.composite},
     ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
@@ -898,7 +898,7 @@ async def node_full(
                 "request a smaller chunks."
             ),
         )
-    if entry.structure_family == StructureFamily.container:
+    if entry.structure_family in [StructureFamily.container, StructureFamily.composite]:
         curried_filter = partial(
             filter_for_access,
             principal=principal,
@@ -1160,7 +1160,7 @@ async def _create_node(
         body.structure_family,
         body.specs,
     )
-    if structure_family == StructureFamily.container:
+    if structure_family in [StructureFamily.container, StructureFamily.composite]:
         structure = None
     else:
         if len(body.data_sources) != 1:
