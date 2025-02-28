@@ -1051,7 +1051,54 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
-    pass
+
+    @property
+    def _flat_keys_mapping(self, maxlen=None):
+        result = {}
+        next_page_url = f"{self.item['links']['search']}"
+        while (next_page_url is not None) or (maxlen is not None and len(result) < maxlen):
+            content = handle_error(
+                self.context.http_client.get(
+                    next_page_url,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={
+                        **parse_qs(urlparse(next_page_url).query),
+                        **self._queries_as_params,
+                        "select_metadata": False,
+                        "omit_links": True,
+                    },
+                )
+            ).json()
+            self._cached_len = (
+                content["meta"]["count"],
+                time.monotonic() + LENGTH_CACHE_TTL,
+            )
+            for item in content["data"]:
+                if item["attributes"]["structure_family"] == StructureFamily.table:
+                    for col in item["attributes"]["structure"]["columns"]:
+                        result[col] = item["id"] + "/" + col
+                else:
+                    result[item["id"]] = item["id"]
+
+            next_page_url = content["links"]["next"]
+
+        return result
+
+    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+        yield from self._flat_keys_mapping.keys()
+
+    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+        for key, val in self._flat_keys_mapping.items():
+            yield key, self[val]
+
+    def __len__(self):
+        return len(self._flat_keys_mapping)
+    
+    def __getitem__(self, keys, _ignore_inlined_contents=False):
+        if keys in self._flat_keys_mapping:
+            keys = self._flat_keys_mapping[keys]
+
+        return super().__getitem__(keys, _ignore_inlined_contents)
 
 
 def _queries_to_params(*queries):
