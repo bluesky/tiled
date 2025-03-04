@@ -1,13 +1,13 @@
 import contextlib
 import pathlib
+import secrets
 import tempfile
 import threading
 import time
+from typing import Optional
+from urllib.parse import quote_plus
 
 import uvicorn
-
-from tiled.catalog import from_uri as catalog_from_uri
-from tiled.server.app import build_app
 
 
 class ThreadedServer(uvicorn.Server):
@@ -34,12 +34,22 @@ class ThreadedServer(uvicorn.Server):
 
 
 class TempTiledServer:
-    def __init__(self, port=0, dir_path=None, api_key="secret"):
+    def __init__(
+        self,
+        port: int = 0,
+        dir_path: Optional[str | pathlib.Path] = None,
+        api_key: Optional[str] = None,
+    ):
+        # Delay import to avoid circular import.
+        from tiled.catalog import from_uri as catalog_from_uri
+        from tiled.server.app import build_app
+
         if dir_path is None:
-            dir_path = pathlib.Path(tempfile.TemporaryDirectory().name)
+            dir_path = pathlib.Path(tempfile.TemporaryDirectory(delete=False).name)
         else:
             dir_path = pathlib.Path(dir_path)
         dir_path.mkdir(parents=True, exist_ok=True)
+        api_key = api_key or secrets.token_hex(32)
 
         self.catalog = catalog_from_uri(
             dir_path / "catalog.db",
@@ -52,6 +62,29 @@ class TempTiledServer:
         self._cm = ThreadedServer(
             uvicorn.Config(self.app, port=port, loop="asyncio")
         ).run_in_thread()
+        netloc = self._cm.__enter__()
 
-    def run(self):
-        return self._cm.__enter__()
+        # Stash attributes for easy introspection
+        self.port = port
+        self.dir_path = dir_path
+        self.api_key = api_key
+        self.uri = f"{netloc}/api/v1?api_key={quote_plus(api_key)}"
+        self.web_ui_link = f"{netloc}?api_key={quote_plus(api_key)}"
+
+    def __repr__(self):
+        return f"<{type(self).__name__} '{self.uri}'>"
+
+    def _repr_html_(self):
+        return f"""
+<table>
+  <tr>
+    <td>Web Interface</td>
+    <td><a href={self.web_ui_link}>{self.web_ui_link}</a></td>
+  </tr>
+    <td>API</td>
+    <td><code>{self.web_ui_link}</code></td>
+  </tr>
+</table>"""
+
+    def close(self):
+        self._cm.__exit__(None, None, None)
