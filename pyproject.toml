@@ -76,6 +76,7 @@ all = [
     "fastapi",
     "h5netcdf",
     "h5py",
+    "hdf5plugin",
     "jinja2",
     "jmespath",
     "lz4",
