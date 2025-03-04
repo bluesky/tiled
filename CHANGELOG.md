@@ -5,7 +5,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ## (2025-03-04)
 
 ### Changed
-- Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files. 
+- Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
 
 ## 0.1.0-b19 (2025-02-19)
 
