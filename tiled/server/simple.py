@@ -33,7 +33,7 @@ class ThreadedServer(uvicorn.Server):
             thread.join()
 
 
-class TempTiledServer:
+class SimpleTiledServer:
     def __init__(
         self,
         port: int = 0,
