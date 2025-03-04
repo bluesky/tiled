@@ -2,7 +2,12 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## 0.1.0-b19 (2024-02-19)
+## (2025-03-04)
+
+### Changed
+- Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
+
+## 0.1.0-b19 (2025-02-19)
 
 ### Maintenance
 
@@ -11,7 +16,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   database.
 - New authentication database migration fixes error in migration in previous release.
 
-## 0.1.0-b18 (2024-02-18)
+## 0.1.0-b18 (2025-02-18)
 
 ### Added
 
@@ -32,7 +37,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   are stored explicitly localized to UTC. This requires a database migration
   to update existing rows.
 
-## 0.1.0-b17 (2024-01-29)
+## 0.1.0-b17 (2025-01-29)
 
 ### Changed
 
@@ -66,19 +71,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
   Python clients older than v0.1.0b17 will be sent `password` for back-compat.
 - Improved type hinting and efficiency of caching singleton values
 
-## 0.1.0-b16 (2024-01-23)
+## 0.1.0-b16 (2025-01-23)
 
 ### Maintenance
 
 - Update GitHub Actions `upload-artifact` and `download-artifact`.
 
-## 0.1.0-b15 (2024-01-23)
+## 0.1.0-b15 (2025-01-23)
 
 ### Maintenance
 
 - Adjust for backward-incompatible change in dependency Starlette 0.45.0.
 
-## 0.1.0-b14 (2024-01-21)
+## 0.1.0-b14 (2025-01-21)
 
 ### Changed
 
@@ -94,7 +99,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Update AccessPolicy Docs to match new filter arguments
 - Refactored intialization of dask DataFrame to be compatible with dask 2025.1
 
-## v0.1.0-b13 (2024-01-09)
+## v0.1.0-b13 (2025-01-09)
 
 ### Added
 
