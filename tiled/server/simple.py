@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import pathlib
 import secrets
 import tempfile
@@ -41,8 +42,9 @@ class SimpleTiledServer:
         api_key: Optional[str] = None,
     ):
         # Delay import to avoid circular import.
-        from tiled.catalog import from_uri as catalog_from_uri
-        from tiled.server.app import build_app
+        from ..catalog import from_uri as catalog_from_uri
+        from .app import build_app
+        from .logging_config import LOGGING_CONFIG
 
         if dir_path is None:
             dir_path = pathlib.Path(tempfile.TemporaryDirectory(delete=False).name)
@@ -50,6 +52,16 @@ class SimpleTiledServer:
             dir_path = pathlib.Path(dir_path)
         dir_path.mkdir(parents=True, exist_ok=True)
         api_key = api_key or secrets.token_hex(32)
+
+        # Alter copy of default LOGGING_CONFIG to log to files instead of
+        # stdout and stderr.
+        log_config = copy.deepcopy(LOGGING_CONFIG)
+        log_config["handlers"]["access"]["class"] = "logging.FileHandler"
+        del log_config["handlers"]["access"]["stream"]
+        log_config["handlers"]["access"]["filename"] = str(dir_path / "access.log")
+        log_config["handlers"]["default"]["class"] = "logging.FileHandler"
+        del log_config["handlers"]["default"]["stream"]
+        log_config["handlers"]["default"]["filename"] = str(dir_path / "error.log")
 
         self.catalog = catalog_from_uri(
             dir_path / "catalog.db",
@@ -60,7 +72,7 @@ class SimpleTiledServer:
             self.catalog, authentication={"single_user_api_key": api_key}
         )
         self._cm = ThreadedServer(
-            uvicorn.Config(self.app, port=port, loop="asyncio")
+            uvicorn.Config(self.app, port=port, loop="asyncio", log_config=log_config)
         ).run_in_thread()
         netloc = self._cm.__enter__()
 
