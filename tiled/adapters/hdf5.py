@@ -145,7 +145,9 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixi
         try:
             value = self._file[key]
         except KeyError as e:
-            warnings.warn(f"KeyError: {e}, probably broken external link. Returning warning as value:")
+            warnings.warn(
+                f"KeyError: {e}, probably broken external link. Returning warning as value:"
+            )
             return from_dataset(numpy.array([f"KeyError: {e}"]))
 
         if isinstance(value, h5py.Group):
