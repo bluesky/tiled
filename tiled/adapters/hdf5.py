@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import h5py
+import hdf5plugin  # noqa: F401
 import numpy
 from numpy._typing import NDArray
 

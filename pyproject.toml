@@ -76,6 +76,7 @@ all = [
     "fastapi",
     "h5netcdf",
     "h5py",
+    "hdf5plugin",
     "jinja2",
     "jmespath",
     "lz4",
@@ -164,6 +165,7 @@ dev = [
 formats = [
     "h5netcdf",
     "h5py",
+    "hdf5plugin",
     "openpyxl",
     "pillow",
     "tifffile",
@@ -220,6 +222,7 @@ server = [
     "fastapi",
     "h5netcdf",
     "h5py",
+    "hdf5plugin",
     "jinja2",
     "jmespath",
     "lz4",
