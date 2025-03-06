@@ -17,11 +17,12 @@ The server can be stopped by calling `server.close()`. Only one server may
 be run at a time, per Python process.
 
 By default, the Simple Tiled Server allocates a temporary directory for
-storage, including files, embedded databases, and server logs. The temporary
-directory is deleted when the server is stopped.
+storage, including files, embedded databases, and server logs. Its location is
+given at `server.directory`. The temporary directory is removed when the server
+is stopped.
 
 To use persistent storage, specify a directory. If it does not exist, it will
-be created.
+be created. It will _not_ be removed when the server is stopped.
 
 ```python
 server = SimpleTiledServer("my_data/")
