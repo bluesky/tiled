@@ -2,6 +2,7 @@ import contextlib
 import copy
 import pathlib
 import secrets
+import shutil
 import tempfile
 import threading
 import time
@@ -86,8 +87,10 @@ class SimpleTiledServer:
 
         if directory is None:
             directory = pathlib.Path(tempfile.TemporaryDirectory(delete=False).name)
+            self._cleanup_directory = True
         else:
             directory = pathlib.Path(directory)
+            self._cleanup_directory = False
         directory.mkdir(parents=True, exist_ok=True)
         # In production we use a proper 32-bit token, but for brevity we
         # use just 8 here. This server only accepts connections on localhost
@@ -146,6 +149,8 @@ class SimpleTiledServer:
 
     def close(self):
         self._cm.__exit__(None, None, None)
+        if self._cleanup_directory:
+            shutil.rmtree(self.directory)
 
     def __enter__(self):
         return self

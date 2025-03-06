@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from tiled.client import from_uri
 from tiled.server import SimpleTiledServer
 
@@ -52,3 +54,16 @@ def test_persistent_data(tmp_path):
         client2 = from_uri(server2.uri)
         assert "x" in client2
     assert server1.directory == server2.directory == tmp_path
+
+
+def test_cleanup(tmp_path):
+    # Temp dir defined by SimpleTileServer is cleaned up.
+    with SimpleTiledServer() as server:
+        pass
+    assert not Path(server.directory).exists()
+
+    # Directory provided by user (which happens to be temp as well,
+    # because this is a test) is _not_ cleaned up.
+    with SimpleTiledServer(tmp_path) as server:
+        pass
+    assert Path(server.directory).exists()
