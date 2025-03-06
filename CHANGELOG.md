@@ -12,6 +12,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Changed
 
 - Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
+- Removed no-op `?include_data_sources=false` (which is the default) from some
+  requests issued by the Python client.
 
 ### Maintenance
 
