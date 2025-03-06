@@ -28,6 +28,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Added `SQLAdapter` which can save and interact with table structured data in
   `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
+- Coverage status shows the missing uncovered lines now.
+- Added few more tests to `SQLAdapter`.
 
 ### Changed
 
