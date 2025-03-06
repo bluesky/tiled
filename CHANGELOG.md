@@ -2,9 +2,15 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## (2025-03-04)
+## Unreleased
+
+### Added
+
+- `tiled.server.SimpleTiledServer` can be used for tutorials or development.
+  It launches a tiled server on a background thread with basic security.
 
 ### Changed
+
 - Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
 
 ## 0.1.0-b19 (2025-02-19)
