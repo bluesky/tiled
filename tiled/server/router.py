@@ -248,7 +248,7 @@ def get_router(
         )
 
     @router.get(
-        "/api/v1/search/{path:path}",
+        "/search/{path:path}",
         response_model=schemas.Response[
             List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
@@ -327,7 +327,7 @@ def get_router(
             )
 
     @router.get(
-        "/api/v1/distinct/{path:path}",
+        "/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
     )
     @patch_route_signature(query_registry=query_registry)
