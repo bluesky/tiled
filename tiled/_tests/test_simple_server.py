@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import httpx
+
 from tiled.client import from_uri
 from tiled.server import SimpleTiledServer
 
@@ -13,6 +15,9 @@ def test_default():
         x[:]
         repr(server)
         server._repr_html_()  # impl, used by Jupyter
+        # Web UI
+        response = httpx.get(server.web_ui_link).raise_for_status()
+        assert response.headers["content-type"].startswith("text/html")
 
 
 def test_no_collisions():
