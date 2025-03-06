@@ -86,7 +86,7 @@ class SimpleTiledServer:
         from .logging_config import LOGGING_CONFIG
 
         if directory is None:
-            directory = pathlib.Path(tempfile.TemporaryDirectory(delete=False).name)
+            directory = pathlib.Path(tempfile.mkdtemp())
             self._cleanup_directory = True
         else:
             directory = pathlib.Path(directory)
