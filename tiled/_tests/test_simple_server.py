@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import httpx
+import pytest
 
 from tiled.client import from_uri
 from tiled.server import SimpleTiledServer
@@ -20,19 +21,13 @@ def test_default():
         assert response.headers["content-type"].startswith("text/html")
 
 
-def test_no_collisions():
-    "Two default servers use distinct ports and storage."
+def test_one_at_a_time():
+    "We cannot run two uvicorn servers in one process."
     # Two servers start on different ports.
-    with SimpleTiledServer() as server1, SimpleTiledServer() as server2:
-        assert server1.port != server2.port
-
-        # Data is separately stored.
-        client1 = from_uri(server1.uri)
-        client2 = from_uri(server2.uri)
-        client1.write_array([1, 2, 3], key="x1")
-        client2.write_array([1, 2, 3], key="x2")
-        assert list(client1) == ["x1"]
-        assert list(client2) == ["x2"]
+    MSG = "Only one server can be run at a time in a given Python process."
+    with SimpleTiledServer():
+        with pytest.raises(RuntimeError, match=MSG):
+            SimpleTiledServer()
 
 
 def test_specified_port():
