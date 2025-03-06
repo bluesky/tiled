@@ -51,7 +51,11 @@ class SimpleTiledServer:
         else:
             dir_path = pathlib.Path(dir_path)
         dir_path.mkdir(parents=True, exist_ok=True)
-        api_key = api_key or secrets.token_hex(32)
+        # In production we use a proper 32-bit token, but for brevity we
+        # use just 8 here. This server only accepts connections on localhost
+        # and is not intended for production use, so we think this is an
+        # acceptable concession to usability.
+        api_key = api_key or secrets.token_hex(8)
 
         # Alter copy of default LOGGING_CONFIG to log to files instead of
         # stdout and stderr.
