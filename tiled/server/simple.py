@@ -1,6 +1,7 @@
 import contextlib
 import copy
 import pathlib
+import platform
 import secrets
 import shutil
 import tempfile
@@ -159,7 +160,9 @@ class SimpleTiledServer:
 
     def close(self):
         self._cm.__exit__(None, None, None)
-        if self._cleanup_directory:
+        if self._cleanup_directory and (platform.system() != "Windows"):
+            # Windows cannot delete the logfiles because the global Python
+            # logging system still has the logfiles open for appending.
             shutil.rmtree(self.directory)
 
     def __enter__(self):
