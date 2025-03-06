@@ -5,7 +5,7 @@ import secrets
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Union
 from urllib.parse import quote_plus
 
 import uvicorn
@@ -38,7 +38,7 @@ class SimpleTiledServer:
     def __init__(
         self,
         port: int = 0,
-        dir_path: Optional[str | pathlib.Path] = None,
+        dir_path: Optional[Union[str, pathlib.Path]] = None,
         api_key: Optional[str] = None,
     ):
         # Delay import to avoid circular import.
