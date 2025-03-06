@@ -21,12 +21,12 @@ class ThreadedServer(uvicorn.Server):
         thread.start()
         try:
             # Wait for server to start up, or raise TimeoutError.
-            for _ in range(100):
+            for _ in range(200):
                 time.sleep(0.1)
                 if self.started:
                     break
             else:
-                raise TimeoutError("Server did not start in 10 seconds.")
+                raise TimeoutError("Server did not start in 20 seconds.")
             host, port = self.servers[0].sockets[0].getsockname()
             yield f"http://{host}:{port}"
         finally:
