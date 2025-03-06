@@ -13,6 +13,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
 
+### Maintenance
+
+- Remove a redundant dependency declaration.
+
 ## 0.1.0-b19 (2025-02-19)
 
 ### Maintenance
