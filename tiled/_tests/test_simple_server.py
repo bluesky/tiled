@@ -1,3 +1,4 @@
+import platform
 from pathlib import Path
 
 import httpx
@@ -57,6 +58,10 @@ def test_persistent_data(tmp_path):
 
 
 def test_cleanup(tmp_path):
+    if platform.system() == "Windows":
+        # Windows cannot delete the logfiles because the global Python
+        # logging system still has the logfiles open for appending.
+        pytest.skip("Temp data directory is not cleaned up on Windows.")
     # Temp dir defined by SimpleTileServer is cleaned up.
     with SimpleTiledServer() as server:
         pass
