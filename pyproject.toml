@@ -196,7 +196,6 @@ minimal-server = [
     "python-multipart",
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
-    "starlette",
     "uvicorn[standard]",
     "zarr <3",
 ]
