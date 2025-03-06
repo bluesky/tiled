@@ -12,6 +12,7 @@ tutorials/login
 tutorials/serving-files
 tutorials/search
 tutorials/writing
+tutorials/simple-server
 tutorials/plotly-integration
 ```
 
