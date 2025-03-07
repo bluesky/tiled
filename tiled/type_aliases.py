@@ -22,3 +22,13 @@ Query = Any  # for now...
 Filters = List[Query]
 
 AnyStructure = Union[TableStructure, ArrayStructure, SparseStructure, AwkwardStructure]
+
+__all__ = [
+    "AnyStructure",
+    "EllipsisType",
+    "JSON",
+    "NDSlice",
+    "Scopes",
+    "Query",
+    "Filters",
+]

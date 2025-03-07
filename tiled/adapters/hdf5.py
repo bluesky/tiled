@@ -5,7 +5,6 @@ import re
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
-from types import EllipsisType
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
@@ -21,7 +20,7 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..type_aliases import JSON
+from ..type_aliases import JSON, EllipsisType
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
 
