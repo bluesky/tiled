@@ -666,12 +666,17 @@ class Context:
         """
         Boolean indicated whether session is authenticated (true) or anonymous (false)
 
-        >>> c.authenticated
+        Examples
+        --------
+
+        An anonymous session at first, after login, is authenticated.
+
+        >>> client.context.authenticated
         False
-        >>> c.login()
+        >>> client.login()
         Username: USERNAME
         Password: <input is hidden>
-        >>> c.authenticated
+        >>> client.context.authenticated
         True
 
         """
