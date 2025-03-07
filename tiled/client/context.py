@@ -662,7 +662,7 @@ class Context:
         self.http_client.auth = auth
 
     @property
-    def authenticated(self):
+    def authenticated(self) -> bool:
         # Confirm the state of properties that authentication consists of
         return (self.api_key is not None) or (self.http_client.auth is not None)
 
