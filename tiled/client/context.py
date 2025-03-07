@@ -273,8 +273,10 @@ class Context:
         auth_info = []
         if (self.api_key is None) and (self.http_client.auth is None):
             auth_info.append("(unauthenticated)")
+            self.authenticated = False
         else:
             auth_info.append("authenticated")
+            self.authenticated = True
             if self.server_info.authentication.links:
                 whoami = self.whoami()
                 auth_info.append("as")
