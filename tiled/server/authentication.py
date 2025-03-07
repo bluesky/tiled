@@ -297,7 +297,14 @@ def current_principal_getter(
         the Principal will be SpecialUsers.admin always.
         """
 
-        access_token = await token_decoder(encoded_token)
+        try:
+            access_token = await token_decoder(encoded_token)
+        except ExpiredSignatureError:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="Access token has expired. Refresh token.",
+                headers=headers_for_401(request, security_scopes),
+            )
         if api_key is not None:
             if authenticators:
                 # Tiled is in a multi-user configuration with authentication providers.
