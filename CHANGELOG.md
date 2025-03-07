@@ -2,7 +2,7 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## Unreleased
+## 0.1.0-b20 (2025-03-07)
 
 ### Added
 
