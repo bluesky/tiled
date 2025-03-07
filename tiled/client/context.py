@@ -273,10 +273,8 @@ class Context:
         auth_info = []
         if (self.api_key is None) and (self.http_client.auth is None):
             auth_info.append("(unauthenticated)")
-            self.authenticated = False
         else:
             auth_info.append("authenticated")
-            self.authenticated = True
             if self.server_info.authentication.links:
                 whoami = self.whoami()
                 auth_info.append("as")
@@ -662,6 +660,11 @@ class Context:
         auth.sync_set_token("access_token", tokens["access_token"])
         auth.sync_set_token("refresh_token", tokens["refresh_token"])
         self.http_client.auth = auth
+
+    @property
+    def authenticated(self):
+        # Confirm the state of properties that authentication consists of
+        return (self.api_key is not None) or (self.http_client.auth is not None)
 
     def _token_directory(self):
         # e.g. ~/.config/tiled/tokens/{host:port}
