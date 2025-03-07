@@ -663,6 +663,19 @@ class Context:
 
     @property
     def authenticated(self) -> bool:
+        """
+        Compute and confirm a client's logged in status as a simple property
+        Checks if the client has either an api_key or an http_client.auth
+
+        >>> c.authenticated
+        False
+        >>> c.login()
+        Username: USERNAME
+        Password: <input is hidden>
+        >>> c.authenticated
+        True
+
+        """
         # Confirm the state of properties that authentication consists of
         return (self.api_key is not None) or (self.http_client.auth is not None)
 
