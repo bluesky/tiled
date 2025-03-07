@@ -2,11 +2,24 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## (2025-03-04)
+
+## 0.1.0-b20 (2025-03-07)
+
+### Added
+
+- `tiled.server.SimpleTiledServer` can be used for tutorials or development.
+  It launches a tiled server on a background thread with basic security.
 
 ### Changed
+
 - Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
+- Removed no-op `?include_data_sources=false` (which is the default) from some
+  requests issued by the Python client.
 - Added a try-except statement to gracefully skip over broken external links in HDF5 files.
+
+### Maintenance
+
+- Remove a redundant dependency declaration.
 
 ## 0.1.0-b19 (2025-02-19)
 
@@ -23,6 +36,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Added `SQLAdapter` which can save and interact with table structured data in
   `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
+- Coverage status shows the missing uncovered lines now.
+- Added few more tests to `SQLAdapter`.
 
 ### Changed
 

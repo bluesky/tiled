@@ -165,6 +165,7 @@ dev = [
 formats = [
     "h5netcdf",
     "h5py",
+    "hdf5plugin",
     "openpyxl",
     "pillow",
     "tifffile",
@@ -195,7 +196,6 @@ minimal-server = [
     "python-multipart",
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
-    "starlette",
     "uvicorn[standard]",
     "zarr <3",
 ]
@@ -221,6 +221,7 @@ server = [
     "fastapi",
     "h5netcdf",
     "h5py",
+    "hdf5plugin",
     "jinja2",
     "jmespath",
     "lz4",
