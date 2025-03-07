@@ -664,8 +664,7 @@ class Context:
     @property
     def authenticated(self) -> bool:
         """
-        Compute and confirm a client's logged in status as a simple property
-        Checks if the client has either an api_key or an http_client.auth
+        Boolean indicated whether session is authenticated (true) or anonymous (false)
 
         >>> c.authenticated
         False
