@@ -1100,6 +1100,67 @@ class Composite(Container):
 
         return super().__getitem__(keys, _ignore_inlined_contents)
 
+    def read(self, *keys):
+        
+        try:
+            link = self.item["links"]["full"].replace('container/full', 'dataset').rstrip('/')
+            params = {}
+            if self._include_data_sources:
+                params["include_data_sources"] = True
+            link = link + "".join(f"/{key}" for key in keys)
+            content = handle_error(
+                self.context.http_client.get(
+                    link,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={**parse_qs(urlparse(link).query), **params},
+                )
+            ).json()
+            item = content["data"]
+            print(f"{content=}, {self.structure_clients=}")
+        except ClientError as err:
+            if err.response.status_code == httpx.codes.NOT_FOUND:
+                # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
+                err_arg = keys
+                if len(err_arg) == 1:
+                    (err_arg,) = err_arg
+                raise KeyError(err_arg)
+            raise
+
+        result = client_for_item(
+            self.context,
+            self.structure_clients,
+            item,
+            include_data_sources=self._include_data_sources,
+        )
+        return result
+
+    def zip_arrays(self, *keys, block=(), dtype=None, shape=None, slice=None):
+        import numpy
+
+        if shape:
+            # Check for special case of shape with 0 in it.
+            if 0 in shape:
+                # This is valid, and it has come up in the wild.  An array with
+                # 0 as one of the dimensions never contains data, so we can
+                # short-circuit here without any further information from the
+                # service.
+                return numpy.array([], dtype=dtype).reshape(shape)
+            expected_shape = ",".join(map(str, shape))
+        else:
+            expected_shape = "scalar"
+
+        link = self.item["links"]["full"].replace('container/full', 'zipped/array/block').rstrip('/')
+        # link = link + "".join(f"/{key}" for key in keys)
+        content = handle_error(
+                self.context.http_client.get(
+                    link,
+                    headers={"Accept": "application/octet-stream"},
+                    params={**parse_qs(urlparse(link).query), "block": ",".join(map(str, block)),
+                    "expected_shape": expected_shape,
+                    "parts": keys},
+                )
+            ).read()
+        return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
