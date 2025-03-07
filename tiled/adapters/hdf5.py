@@ -142,6 +142,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", ArrayAdapter]], IndexersMixi
         yield from self._file
 
     def __getitem__(self, key: str) -> Union["HDF5Adapter", ArrayAdapter]:
+        # TODO: Handle broken external links better in the future. See tiled PR #904.
         try:
             value = self._file[key]
         except KeyError as e:
