@@ -1000,7 +1000,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return [
                 (
                     node.key,
-                    type(self)(self.context, node, access_policy=self.access_policy),
+                    STRUCTURES[node.structure_family](self.context, node, access_policy=self.access_policy),
                 )
                 for node in nodes
             ]

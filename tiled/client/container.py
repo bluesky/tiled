@@ -1100,14 +1100,12 @@ class Composite(Container):
 
         return super().__getitem__(keys, _ignore_inlined_contents)
 
-    def read(self, *keys):
-        
+    def to_dataset(self, *keys):
         try:
             link = self.item["links"]["full"].replace('container/full', 'dataset').rstrip('/')
-            params = {}
+            params = {"parts": keys}
             if self._include_data_sources:
                 params["include_data_sources"] = True
-            link = link + "".join(f"/{key}" for key in keys)
             content = handle_error(
                 self.context.http_client.get(
                     link,
@@ -1116,7 +1114,6 @@ class Composite(Container):
                 )
             ).json()
             item = content["data"]
-            print(f"{content=}, {self.structure_clients=}")
         except ClientError as err:
             if err.response.status_code == httpx.codes.NOT_FOUND:
                 # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
@@ -1161,6 +1158,7 @@ class Composite(Container):
                 )
             ).read()
         return numpy.frombuffer(content, dtype=dtype).reshape(shape)
+
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."

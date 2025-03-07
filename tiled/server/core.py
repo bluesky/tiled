@@ -11,6 +11,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
 from typing import Any
+from ndindex import ndindex
 
 import anyio
 import dateutil.tz
@@ -26,6 +27,7 @@ from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
 from ..structures.core import Spec, StructureFamily
+from ..structures.array import ArrayStructure
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     SerializationError,
@@ -253,6 +255,115 @@ async def construct_entries_response(
         metadata_stale_at,
         must_revalidate,
     )
+
+
+async def construct_dynamic_resource(
+    base_url,
+    path_parts,
+    entry,
+    slice=None,
+):
+    path_str = "/".join(path_parts)
+    attributes = {"ancestors": path_parts[:-1]}
+    attributes["specs"] = [schemas.Spec(**Spec("xarray_data_var").model_dump())]
+    attributes["structure_family"] = entry.structure_family
+
+    if entry.structure_family == StructureFamily.array:
+        structure = asdict(entry.structure())
+        if slice is not None:
+            sliced_shape = ndindex(slice).newshape(structure['shape'])
+            structure['shape'] = sliced_shape
+        attributes["structure"] = structure
+
+        links = {"self": f"{base_url}/metadata/{path_str}"}
+        ResourceLinksT = schemas.resource_links_type_by_structure_family[
+            entry.structure_family
+        ]
+        links.update(
+            links_for_node(
+                entry.structure_family,
+                ArrayStructure.from_json(structure),
+                base_url,
+                path_str,
+            )
+        )
+        d = {
+            "id": path_parts[-1],
+            "attributes": schemas.NodeAttributes(**attributes),
+            "links": links,
+        }
+        resource = schemas.Resource[schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict](**d)
+
+    else:
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Composite array parts must be 0 or 1 dimensional arrays."
+            ),
+        )
+
+    return resource
+
+
+async def construct_dynamic_entries_response(
+    entry,
+    parts,
+    path,
+    offset,
+    limit,
+    base_url,
+):
+
+    if parts is None:
+        # parts = await entry.keys_range(offset=0, limit=None)
+        adapters = {key : val for (key, val) in await entry.items_range(offset=0, limit=None)}
+        # TODO: pull columns from tables
+    else:
+        adapters = {key : await entry.lookup_adapter(key.split('/')) for key in parts}
+
+    shapes = [adapter.structure().shape for adapter in adapters.values()]
+    # Check that the arrays are 0 or 1 dimensional
+    for shp in shapes:
+        if len(shp) > 2 or (len(shp)==2 and (1 not in shp)):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Composite array parts must be 0 or 1 dimensional arrays."
+                ),
+            )
+
+    # Find if arrays need to be subsampled
+    # TODO
+    sizes = [math.prod(shp) for shp in shapes]
+    ratios = [size/min(sizes) for size in sizes]
+
+    assert len(set(sizes)) == 1, "All parts must have the same size"
+
+
+    path_parts = [segment for segment in path.split("/") if segment]
+    contents = {}
+
+    for key, entry in adapters.items():
+        resource = await construct_dynamic_resource(
+            base_url,
+            path_parts + key.split('/'),
+            entry,
+            slice=None,
+        )
+        contents[resource.id] = resource
+
+    # Construct response for the main dataset
+    attributes = {"ancestors": []}
+    attributes["structure_family"] = StructureFamily.container
+    attributes["specs"] = [schemas.Spec(**Spec("xarray_dataset").model_dump())]
+    attributes["structure"] = schemas.NodeStructure(
+        count=len(contents),
+        contents=contents,
+    )
+
+    data = schemas.Resource(attributes=schemas.NodeAttributes(**attributes), links={}, meta={"count": len(contents)}, id=path_parts[-1])
+
+    return schemas.Response(data=data, links=[], meta={"count": len(contents)})
 
 
 DEFAULT_MEDIA_TYPES = {

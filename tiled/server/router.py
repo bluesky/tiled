@@ -45,6 +45,7 @@ from .core import (
     WrongTypeForRoute,
     apply_search,
     construct_data_response,
+    construct_dynamic_entries_response,
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
@@ -761,45 +762,38 @@ async def table_full(
 async def get_dataset(
     request: Request,
     path: str,
-    entry=SecureEntry(
+    entry: Any = SecureEntry(
         scopes=["read:data", "read:metadata"], structure_families={StructureFamily.composite}
     ),
-    fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
-    select_metadata: Optional[str] = Query(None),
+    parts: Optional[List[str]] = Query(None),
+    offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+    limit: Optional[int] = Query(
+        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+    ),
+    sort: Optional[str] = Query(None),
     max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
-    omit_links: bool = Query(False),
     include_data_sources: bool = Query(False),
-    root_path: bool = Query(False),
-    format: Optional[str] = None,
-    filename: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
+    principal: str = Depends(get_current_principal),
 ):
-    base_url = get_base_url(request)
-    path_parts = [segment for segment in path.split("/") if segment]
     try:
-        resource = await construct_resource(
-            base_url,
-            path_parts,
+        resource = await construct_dynamic_entries_response(
             entry,
-            fields,
-            select_metadata,
-            omit_links,
-            include_data_sources,
-            resolve_media_type(request),
-            max_depth=max_depth,
+            parts,
+            path,
+            offset,
+            limit,
+            get_base_url(request),
         )
-    except JMESPathError as err:
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
+        return json_or_msgpack(
+            request,
+            resource.model_dump(),
+            expires=getattr(entry, "metadata_stale_at", None),
+            headers={},
         )
-    meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
-
-    return json_or_msgpack(
-        request,
-        schemas.Response(data=resource, meta=meta).model_dump(),
-        expires=getattr(entry, "metadata_stale_at", None),
-    )
+    except NoEntry:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
+    except WrongTypeForRoute as err:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
 
 
 @router.get(
@@ -824,7 +818,12 @@ async def zipped_array_block(
     """
     import dask.array
 
-    adapters = {key : await entry.lookup_adapter(key.split('/')) for key in parts}
+    if parts is None:
+        # parts = await entry.keys_range(offset=0, limit=None)
+        # TODO: pull columns from tables
+        adapters = {key : val for (key, val) in await entry.items_range(offset=0, limit=None)}
+    else:
+        adapters = {key : await entry.lookup_adapter(key.split('/')) for key in parts}
     shapes = [adapter.structure().shape for adapter in adapters.values()]
     # Check that the arrays are 0 or 1 dimensional
     for shp in shapes:
