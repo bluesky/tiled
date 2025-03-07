@@ -100,7 +100,9 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
-def create_access_token(data: dict[str, Any], secret_key: str, expires_delta: float):
+def create_access_token(
+    data: dict[str, Any], secret_key: str, expires_delta: timedelta
+):
     to_encode = data.copy()
     expire = utcnow() + expires_delta
     to_encode.update({"exp": expire, "type": "access"})
@@ -108,7 +110,7 @@ def create_access_token(data: dict[str, Any], secret_key: str, expires_delta: fl
     return encoded_jwt
 
 
-def create_refresh_token(session_id: str, secret_key: str, expires_delta: float):
+def create_refresh_token(session_id: str, secret_key: str, expires_delta: timedelta):
     expire = utcnow() + expires_delta
     to_encode = {
         "type": "refresh",
