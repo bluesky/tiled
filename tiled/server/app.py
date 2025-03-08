@@ -496,7 +496,7 @@ confusing behavior due to ambiguous encodings.
         # client.context.app.state.root_tree
 
         if merged_settings.database_uri is not None:
-            from sqlalchemy.ext.asyncio import AsyncSession
+            from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
             from ..alembic_utils import (
                 DatabaseUpgradeNeeded,
@@ -516,7 +516,10 @@ confusing behavior due to ambiguous encodings.
             # This creates a connection pool and stashes it in a module-global
             # registry, keyed on database_settings, where can be retrieved by
             # the Dependency get_database_session.
-            engine = open_database_connection_pool(merged_settings.database_settings)
+            engine: AsyncEngine = open_database_connection_pool(
+                merged_settings.database_settings
+            )
+            app.state.authn_database_engine = engine
             if not engine.url.database:
                 # Special-case for in-memory SQLite: Because it is transient we can
                 # skip over anything related to migrations.
@@ -625,7 +628,7 @@ Back up the database, and then run:
 
             for task in app.state.tasks:
                 task.cancel()
-            await close_database_connection_pool(merged_settings.database_settings)
+            await close_database_connection_pool(app.state.authn_database_engine)
 
     app.add_middleware(
         CompressionMiddleware,
