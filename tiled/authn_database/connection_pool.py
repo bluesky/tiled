@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
-from ..settings import DatabaseSettings
+from ..server.settings import DatabaseSettings
 from ..utils import ensure_specified_sql_driver
 
 
