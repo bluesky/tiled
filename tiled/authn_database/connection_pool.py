@@ -3,10 +3,11 @@ from typing import Optional
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
+from ..settings import DatabaseSettings
 from ..utils import ensure_specified_sql_driver
 
 
-def open_database_connection_pool(database_settings) -> AsyncEngine:
+def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncEngine:
     connect_args = {}
     kwargs = {}  # extra kwargs passed to create_engine
     # kwargs["pool_size"] = database_settings.pool_size
@@ -20,7 +21,7 @@ def open_database_connection_pool(database_settings) -> AsyncEngine:
     return engine
 
 
-async def close_database_connection_pool(engine) -> None:
+async def close_database_connection_pool(engine: AsyncEngine) -> None:
     if engine is not None:
         await engine.dispose()
 
@@ -31,7 +32,7 @@ async def get_database_engine(request: Request) -> Optional[AsyncEngine]:
 
 
 async def get_database_session(
-    engine=Depends(get_database_engine),
+    engine: AsyncEngine = Depends(get_database_engine),
 ) -> Optional[AsyncSession]:
     # Special case for single-user mode
     if engine is None:
