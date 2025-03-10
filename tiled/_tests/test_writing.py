@@ -18,6 +18,7 @@ from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
@@ -627,7 +628,7 @@ def test_write_with_specified_mimetype(tree):
             assert x.data_sources()[0].mimetype == mimetype
 
         # Specifying unsupported mimetype raises expected error.
-        with fail_with_status_code(415):
+        with fail_with_status_code(HTTP_415_UNSUPPORTED_MEDIA_TYPE):
             client.new(
                 "table",
                 [
@@ -678,3 +679,89 @@ def test_append_partition(
         x.append_partition(orig_table, 0)
         x.append_partition(table_to_append, 0)
         assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
+
+
+def test_composite_one_table(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        client.create_container(key="x", flat=True)
+        client["x"].write_dataframe(df)
+        assert len(client["x"].parts) == 1
+
+
+def test_composite_two_tables(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        x = client.create_container(key="x", flat=True)
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
+        x.parts["table1"].read()
+        x.parts["table2"].read()
+
+
+def test_composite_two_tables_colliding_names(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        x = client.create_container(key="x", flat=True)
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_dataframe(df2, key="table1")
+
+
+def test_composite_two_tables_colliding_keys(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
+        x = client.create_container(key="x", flat=True)
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_dataframe(df2, key="table2")
+
+
+def test_composite_two_tables_two_arrays(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        arr1 = numpy.ones((5, 5), dtype=numpy.float64)
+        arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
+        x = client.create_container(key="x", flat=True)
+
+        # Write by data source.
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
+        x.write_array(arr1, key="F")
+        x.write_array(arr2, key="G")
+
+        # Read by data source.
+        x.parts["table1"].read()
+        x.parts["table2"].read()
+        x.parts["F"].read()
+        x.parts["G"].read()
+
+        # Read by column.
+        for column in ["A", "B", "C", "D", "E", "F", "G"]:
+            x[column].read()
+
+
+def test_composite_table_column_array_key_collision(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        arr = numpy.array([1, 2, 3], dtype=numpy.float64)
+
+        x = client.create_container(key="x", flat=True)
+        x.write_dataframe(df, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_array(arr, key="A")
+
+        y = client.create_container(key="y", flat=True)
+        y.write_array(arr, key="A")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            y.write_dataframe(df, key="table1")
