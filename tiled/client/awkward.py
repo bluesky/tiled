@@ -26,15 +26,13 @@ class AwkwardClient(BaseClient):
     def read(self, slice=...):
         structure = self.structure()
         form = awkward.forms.from_dict(structure.form)
-        typetracer, report = awkward.typetracer.typetracer_with_report(
-            form,
-        )
+        typetracer, report = awkward.typetracer.typetracer_with_report(form)
         proxy_array = awkward.Array(typetracer)
         awkward.typetracer.touch_data(proxy_array[slice])
         form_keys_touched = set(report.data_touched)
         projected_form = project_form(form, form_keys_touched)
         # The order is not important, but sort so that the request is deterministic.
-        form_keys = sorted(list(form_keys_touched))
+        form_keys = sorted(form_keys_touched)
         content = handle_error(
             self.context.http_client.post(
                 self.item["links"]["buffers"],
@@ -44,10 +42,7 @@ class AwkwardClient(BaseClient):
         ).read()
         container = from_zipped_buffers(content, projected_form, structure.length)
         projected_array = awkward.from_buffers(
-            projected_form,
-            structure.length,
-            container,
-            allow_noncanonical_form=True,
+            projected_form, structure.length, container, allow_noncanonical_form=True
         )
         return projected_array[slice]
 

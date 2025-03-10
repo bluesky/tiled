@@ -62,7 +62,7 @@ class FileSequenceAdapter:
     """Base adapter class for image (and other file) sequences
 
     Assumes that each file contains an array of the same shape and dtype, and the sequence of files defines the
-    left-most dimension in the resulting compound array.
+    left-most dimension in the resulting compound (stacked) array.
 
     When subclassing, define the `_load_from_files` method specific for a particular file type.
     """
@@ -130,7 +130,7 @@ class FileSequenceAdapter:
 
         Returns
         -------
-            A numpy ND array with data from each file stacked along an addional (left-most) dimension.
+            A numpy or dask ND array with data from each file stacked along an addional (left-most) dimension.
         """
 
         pass
