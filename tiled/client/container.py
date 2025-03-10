@@ -671,9 +671,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Ensure this is a dataclass, not a dict.
         # When we apply type hints and mypy to the client it should be possible
         # to dispense with this.
-        if (structure_family not in [StructureFamily.container, StructureFamily.composite]) and isinstance(
-            structure, dict
-        ):
+        if (
+            structure_family
+            not in [StructureFamily.container, StructureFamily.composite]
+        ) and isinstance(structure, dict):
             structure_type = STRUCTURE_TYPES[structure_family]
             structure = structure_type.from_json(structure)
 
@@ -1051,12 +1052,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
-
     @property
     def _flat_keys_mapping(self, maxlen=None):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
-        while (next_page_url is not None) or (maxlen is not None and len(result) < maxlen):
+        while (next_page_url is not None) or (
+            maxlen is not None and len(result) < maxlen
+        ):
             content = handle_error(
                 self.context.http_client.get(
                     next_page_url,
@@ -1093,71 +1095,12 @@ class Composite(Container):
 
     def __len__(self):
         return len(self._flat_keys_mapping)
-    
+
     def __getitem__(self, keys, _ignore_inlined_contents=False):
         if keys in self._flat_keys_mapping:
             keys = self._flat_keys_mapping[keys]
 
         return super().__getitem__(keys, _ignore_inlined_contents)
-
-    def to_dataset(self, *keys):
-        try:
-            link = self.item["links"]["full"].replace('container/full', 'dataset').rstrip('/')
-            params = {"parts": keys}
-            if self._include_data_sources:
-                params["include_data_sources"] = True
-            content = handle_error(
-                self.context.http_client.get(
-                    link,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={**parse_qs(urlparse(link).query), **params},
-                )
-            ).json()
-            item = content["data"]
-        except ClientError as err:
-            if err.response.status_code == httpx.codes.NOT_FOUND:
-                # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
-                err_arg = keys
-                if len(err_arg) == 1:
-                    (err_arg,) = err_arg
-                raise KeyError(err_arg)
-            raise
-
-        result = client_for_item(
-            self.context,
-            self.structure_clients,
-            item,
-            include_data_sources=self._include_data_sources,
-        )
-        return result
-
-    def zip_arrays(self, *keys, block=(), dtype=None, shape=None, slice=None):
-        import numpy
-
-        if shape:
-            # Check for special case of shape with 0 in it.
-            if 0 in shape:
-                # This is valid, and it has come up in the wild.  An array with
-                # 0 as one of the dimensions never contains data, so we can
-                # short-circuit here without any further information from the
-                # service.
-                return numpy.array([], dtype=dtype).reshape(shape)
-            expected_shape = ",".join(map(str, shape))
-        else:
-            expected_shape = "scalar"
-
-        link = self.item["links"]["full"].replace('container/full', 'zipped/array/block').rstrip('/')
-        # link = link + "".join(f"/{key}" for key in keys)
-        content = handle_error(
-                self.context.http_client.get(
-                    link,
-                    headers={"Accept": "application/octet-stream"},
-                    params={**parse_qs(urlparse(link).query), "block": ",".join(map(str, block)),
-                    "expected_shape": expected_shape,
-                    "parts": keys},
-                )
-            ).read()
-        return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
 
 def _queries_to_params(*queries):

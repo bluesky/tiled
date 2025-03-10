@@ -423,7 +423,10 @@ class PostMetadataRequest(pydantic.BaseModel):
     def narrow_strucutre_type(self):
         "Convert the structure on each data_source from a dict to the appropriate pydantic model."
         for data_source in self.data_sources:
-            if self.structure_family not in [StructureFamily.container, StructureFamily.composite]:
+            if self.structure_family not in [
+                StructureFamily.container,
+                StructureFamily.composite,
+            ]:
                 structure_cls = STRUCTURE_TYPES[self.structure_family]
                 if data_source.structure is not None:
                     data_source.structure = structure_cls.from_json(

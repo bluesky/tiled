@@ -4,7 +4,6 @@ import os
 import re
 import warnings
 from datetime import datetime, timedelta, timezone
-from math import prod
 from functools import partial
 from pathlib import Path
 from typing import Any, List, Optional
@@ -45,7 +44,6 @@ from .core import (
     WrongTypeForRoute,
     apply_search,
     construct_data_response,
-    construct_dynamic_entries_response,
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
@@ -193,7 +191,10 @@ async def search(
     **filters,
 ):
     request.state.endpoint = "search"
-    if entry.structure_family not in [StructureFamily.container, StructureFamily.composite]:
+    if entry.structure_family not in [
+        StructureFamily.container,
+        StructureFamily.composite,
+    ]:
         raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
     try:
         resource, metadata_stale_at, must_revalidate = await construct_entries_response(
@@ -755,143 +756,6 @@ async def table_full(
 
 
 @router.get(
-    "/dataset/{path:path}",
-    response_model=schemas.Response,
-    name="full 'container' metadata and data",
-)
-async def get_dataset(
-    request: Request,
-    path: str,
-    entry: Any = SecureEntry(
-        scopes=["read:data", "read:metadata"], structure_families={StructureFamily.composite}
-    ),
-    parts: Optional[List[str]] = Query(None),
-    offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-    limit: Optional[int] = Query(
-        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-    ),
-    sort: Optional[str] = Query(None),
-    max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
-    include_data_sources: bool = Query(False),
-    principal: str = Depends(get_current_principal),
-):
-    try:
-        resource = await construct_dynamic_entries_response(
-            entry,
-            parts,
-            path,
-            offset,
-            limit,
-            get_base_url(request),
-        )
-        return json_or_msgpack(
-            request,
-            resource.model_dump(),
-            expires=getattr(entry, "metadata_stale_at", None),
-            headers={},
-        )
-    except NoEntry:
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
-    except WrongTypeForRoute as err:
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
-
-
-@router.get(
-    "/zipped/array/block/{path:path}", response_model=schemas.Response, name="zipped array block"
-)
-async def zipped_array_block(
-    request: Request,
-    entry=SecureEntry(
-        scopes=["read:data"],
-        structure_families={StructureFamily.composite},
-    ),
-    parts: Optional[List[str]] = Query(None),
-    block=Depends(block),
-    slice=Depends(slice_),
-    expected_shape=Depends(expected_shape),
-    format: Optional[str] = None,
-    filename: Optional[str] = None,
-    serialization_registry=Depends(get_serialization_registry),
-    settings: Settings = Depends(get_settings),
-):
-    """Fetch a chunk of array-like data.
-    """
-    import dask.array
-
-    if parts is None:
-        # parts = await entry.keys_range(offset=0, limit=None)
-        # TODO: pull columns from tables
-        adapters = {key : val for (key, val) in await entry.items_range(offset=0, limit=None)}
-    else:
-        adapters = {key : await entry.lookup_adapter(key.split('/')) for key in parts}
-    shapes = [adapter.structure().shape for adapter in adapters.values()]
-    # Check that the arrays are 0 or 1 dimensional
-    for shp in shapes:
-        if len(shp) > 2 or (len(shp)==2 and (1 not in shp)):
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Composite array parts must be 0 or 1 dimensional arrays."
-                ),
-            )
-
-    # Find if arrays need to be subsampled
-    # TODO
-    sizes = [prod(shp) for shp in shapes]
-    ratios = [size/min(sizes) for size in sizes]
-
-    assert len(set(sizes)) == 1, "All parts must have the same size"
-
-    shape = (sizes[0], len(adapters))
-    # Check that block dimensionality matches array dimensionality.
-    ndim = len(shape)
-    if block and len(block) != ndim:
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Block parameter must have {ndim} comma-separated parameters, "
-                f"corresponding to the dimensions of this {ndim}-dimensional array."
-            ),
-        )
-    
-    # Read th eentire arrays and concatenate them
-    with record_timing(request.state.metrics, "read"):
-        array = [(await ensure_awaitable(adapter.read)).reshape(-1, 1) for adapter in adapters.values()]
-    array = dask.array.concatenate(array, axis=1)
-
-    # if (expected_shape is not None) and (expected_shape != array.shape):
-    #     raise HTTPException(
-    #         status_code=HTTP_400_BAD_REQUEST,
-    #         detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-    #     )
-    if array.nbytes > settings.response_bytesize_limit:
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Response would exceed {settings.response_bytesize_limit}. "
-                "Use slicing ('?slice=...') to request smaller chunks."
-            ),
-        )
-    try:
-        with record_timing(request.state.metrics, "pack"):
-            return await construct_data_response(
-                StructureFamily.array,
-                serialization_registry,
-                array,
-                entry.metadata(),
-                request,
-                format,
-                specs=getattr(entry, "specs", []),
-                expires=getattr(entry, "content_stale_at", None),
-                filename=filename,
-            )
-    except UnsupportedMediaTypes as err:
-        # raise HTTPException(status_code=406, detail=", ".join(err.supported))
-        raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
-
-
-
-@router.get(
     "/container/full/{path:path}",
     response_model=schemas.Response,
     name="full 'container' metadata and data",
@@ -899,7 +763,8 @@ async def zipped_array_block(
 async def get_container_full(
     request: Request,
     entry=SecureEntry(
-        scopes=["read:data"], structure_families={StructureFamily.container, StructureFamily.composite}
+        scopes=["read:data"],
+        structure_families={StructureFamily.container, StructureFamily.composite},
     ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),
@@ -929,7 +794,8 @@ async def get_container_full(
 async def post_container_full(
     request: Request,
     entry=SecureEntry(
-        scopes=["read:data"], structure_families={StructureFamily.container, StructureFamily.composite}
+        scopes=["read:data"],
+        structure_families={StructureFamily.container, StructureFamily.composite},
     ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Body(None, min_length=1),
@@ -1006,7 +872,11 @@ async def node_full(
     request: Request,
     entry=SecureEntry(
         scopes=["read:data"],
-        structure_families={StructureFamily.table, StructureFamily.container, StructureFamily.composite},
+        structure_families={
+            StructureFamily.table,
+            StructureFamily.container,
+            StructureFamily.composite,
+        },
     ),
     principal: str = Depends(get_current_principal),
     field: Optional[List[str]] = Query(None, min_length=1),

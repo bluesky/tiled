@@ -222,8 +222,12 @@ class SQLAdapter:
         """
 
         # Construct the metadata for the array: assume that relevant metadata is in the `key` field
-        metadata = {k:v for k, v in self.metadata().items() if k not in self.structure().columns}
-        metadata.update(self.metadata().get(key, {}))
+        metadata = {
+            k: v
+            for k, v in self.metadata().items()
+            if k not in self.structure().columns
+        }
+        metadata.update(self.metadata().get(key, {}))  # type: ignore
 
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values, metadata=metadata)
