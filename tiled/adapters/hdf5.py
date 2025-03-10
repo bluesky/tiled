@@ -205,7 +205,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         /,
         dataset: Optional[str] = None,
         slice: Optional[
-            str | Tuple[Union[int, builtins.slice, EllipsisType], ...]
+            Union[str, Tuple[Union[int, builtins.slice, EllipsisType], ...]]
         ] = None,
         squeeze: Optional[bool] = False,
         swmr: bool = SWMR_DEFAULT,
@@ -389,7 +389,9 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
             tree = parse_hdf5_tree(file[dataset] if dataset else file)
 
         if tree is None:
-            raise ValueError("Data source pointing to an HDF5 Dataset should have an array structure")
+            raise ValueError(
+                "Data source pointing to an HDF5 Dataset should have an array structure"
+            )
 
         return cls(
             tree,
