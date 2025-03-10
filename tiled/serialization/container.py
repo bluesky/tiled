@@ -81,6 +81,9 @@ if modules_available("h5py"):
     serialization_registry.register(
         StructureFamily.container, "application/x-hdf5", serialize_hdf5
     )
+    serialization_registry.register(
+        StructureFamily.composite, "application/x-hdf5", serialize_hdf5
+    )
 
 if modules_available("orjson"):
 
@@ -103,4 +106,7 @@ if modules_available("orjson"):
 
     serialization_registry.register(
         StructureFamily.container, "application/json", serialize_json
+    )
+    serialization_registry.register(
+        StructureFamily.composite, "application/json", serialize_json
     )

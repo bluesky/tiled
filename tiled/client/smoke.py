@@ -24,7 +24,7 @@ def read(node, verbose=False, strict=False):
     """
 
     faulty_entries = []
-    if node.structure_family == StructureFamily.container:
+    if node.structure_family in [StructureFamily.container, StructureFamily.composite]:
         for key, child_node in node.items():
             fault_result = read(child_node, verbose=verbose, strict=strict)
             faulty_entries.extend(fault_result)
