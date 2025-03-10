@@ -65,7 +65,9 @@ def ndslice_from_string(
     return tuple(result)
 
 
-def parse_hdf5_tree(tree: Union[h5py.File, h5py.Group]) -> dict[str, Union[Any, None]]:
+def parse_hdf5_tree(
+    tree: Union[h5py.File, h5py.Group, h5py.Dataset]
+) -> Union[dict[str, Union[Any, None]], None]:
     """Parse an HDF5 file or group into a nested dictionary structure
 
     the resulting tree structure represenets any groups as nested dictionaries ans datasets as None.
@@ -82,11 +84,11 @@ def parse_hdf5_tree(tree: Union[h5py.File, h5py.Group]) -> dict[str, Union[Any, 
     """
     res: dict[str, Union[Any, None]] = {}
 
+    if isinstance(tree, h5py.Dataset):
+        return None
+
     for key, val in tree.items():
-        if isinstance(val, h5py.Group):
-            res[key] = parse_hdf5_tree(val)
-        elif isinstance(val, h5py.Dataset):
-            res[key] = None
+        res[key] = parse_hdf5_tree(val)
 
     return res
 
@@ -143,7 +145,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # Define helper functions for reading and getting specs of HDF5 arrays with dask.delayed
         def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
             f = h5py.File(fpath, "r", swmr=swmr, libver=libver)
-            return f[dataset] if dataset else f
+            return f[dataset][()] if dataset else f[()]
 
         def _get_hdf5_specs(
             fpath: Union[str, Path]
@@ -386,6 +388,9 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         with h5py.File(file_path, "r", swmr=swmr, libver=libver) as file:
             tree = parse_hdf5_tree(file[dataset] if dataset else file)
 
+        if tree is None:
+            raise ValueError("Data source pointing to an HDF5 Dataset should have an array structure")
+
         return cls(
             tree,
             *data_uris,
@@ -409,6 +414,11 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         fpath = path_from_uri(data_uris[0])
         with h5py.File(fpath, "r", swmr=swmr, libver=libver) as file:
             tree = parse_hdf5_tree(file[dataset] if dataset else file)
+
+        if tree is None:
+            return HDF5ArrayAdapter.from_uris(
+                *data_uris, dataset=dataset, swmr=swmr, libver=libver
+            )
 
         return cls(tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver)
 
