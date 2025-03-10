@@ -6,13 +6,11 @@ from fastapi import Depends, HTTPException, Query, Request, Security
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from ..media_type_registration import (
-    deserialization_registry as default_deserialization_registry,
+    default_deserialization_registry,
+    default_serialization_registry,
 )
-from ..media_type_registration import (
-    serialization_registry as default_serialization_registry,
-)
-from ..query_registration import query_registry as default_query_registry
-from ..validation_registration import validation_registry as default_validation_registry
+from ..query_registration import default_query_registry
+from ..validation_registration import default_validation_registry
 from .authentication import get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing

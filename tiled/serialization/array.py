@@ -3,7 +3,10 @@ import io
 
 import numpy
 
-from ..media_type_registration import deserialization_registry, serialization_registry
+from ..media_type_registration import (
+    default_deserialization_registry,
+    default_serialization_registry,
+)
 from ..utils import (
     SerializationError,
     UnsupportedShape,
@@ -22,13 +25,13 @@ def as_buffer(array, metadata):
         return numpy.asarray(array).tobytes()
 
 
-serialization_registry.register(
+default_serialization_registry.register(
     "array",
     "application/octet-stream",
     as_buffer,
 )
 if modules_available("orjson"):
-    serialization_registry.register(
+    default_serialization_registry.register(
         "array",
         "application/json",
         lambda array, metadata: safe_json_dump(array),
@@ -43,10 +46,12 @@ def serialize_csv(array, metadata):
     return file.getvalue().encode()
 
 
-serialization_registry.register("array", "text/csv", serialize_csv)
-serialization_registry.register("array", "text/x-comma-separated-values", serialize_csv)
-serialization_registry.register("array", "text/plain", serialize_csv)
-deserialization_registry.register(
+default_serialization_registry.register("array", "text/csv", serialize_csv)
+default_serialization_registry.register(
+    "array", "text/x-comma-separated-values", serialize_csv
+)
+default_serialization_registry.register("array", "text/plain", serialize_csv)
+default_deserialization_registry.register(
     "array",
     "application/octet-stream",
     lambda buffer, dtype, shape: numpy.frombuffer(buffer, dtype=dtype).reshape(shape),
@@ -90,10 +95,10 @@ if modules_available("PIL"):
         image = Image.open(file, format=format)
         return numpy.asarray(image).asdtype(dtype).reshape(shape)
 
-    serialization_registry.register(
+    default_serialization_registry.register(
         "array", "image/png", lambda array, metadata: save_to_buffer_PIL(array, "png")
     )
-    deserialization_registry.register(
+    default_deserialization_registry.register(
         "array",
         "image/png",
         lambda buffer, dtype, shape: array_from_buffer_PIL(buffer, "png", dtype, shape),
@@ -120,18 +125,24 @@ if modules_available("tifffile"):
         imwrite(file, normalized_array)
         return file.getbuffer()
 
-    serialization_registry.register("array", "image/tiff", save_to_buffer_tifffile)
-    deserialization_registry.register("array", "image/tiff", array_from_buffer_tifffile)
+    default_serialization_registry.register(
+        "array", "image/tiff", save_to_buffer_tifffile
+    )
+    default_deserialization_registry.register(
+        "array", "image/tiff", array_from_buffer_tifffile
+    )
 
 
 def serialize_html(array, metadata):
     "Try to display as image. Fall back to CSV."
     try:
-        png_data = serialization_registry.dispatch("array", "image/png")(
+        png_data = default_serialization_registry.dispatch("array", "image/png")(
             array, metadata
         )
     except Exception:
-        csv_data = serialization_registry.dispatch("array", "text/csv")(array, metadata)
+        csv_data = default_serialization_registry.dispatch("array", "text/csv")(
+            array, metadata
+        )
         return "<html>" "<body>" f"{csv_data.decode()!s}" "</body>" "</html>"
     else:
         return (
@@ -145,4 +156,4 @@ def serialize_html(array, metadata):
         )
 
 
-serialization_registry.register("array", "text/html", serialize_html)
+default_serialization_registry.register("array", "text/html", serialize_html)
