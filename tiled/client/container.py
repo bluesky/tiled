@@ -1052,8 +1052,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
+
     @property
-    def _flat_keys_mapping(self, maxlen=None):
+    def _contents(self, maxlen=None):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
         while (next_page_url is not None) or (
@@ -1067,24 +1068,30 @@ class Composite(Container):
                         **parse_qs(urlparse(next_page_url).query),
                         **self._queries_as_params,
                         "select_metadata": False,
-                        "omit_links": True,
                     },
                 )
             ).json()
-            self._cached_len = (
-                content["meta"]["count"],
-                time.monotonic() + LENGTH_CACHE_TTL,
-            )
-            for item in content["data"]:
-                if item["attributes"]["structure_family"] == StructureFamily.table:
-                    for col in item["attributes"]["structure"]["columns"]:
-                        result[col] = item["id"] + "/" + col
-                else:
-                    result[item["id"]] = item["id"]
+            result.update({item['id'] : item for item in content["data"]})
 
             next_page_url = content["links"]["next"]
 
         return result
+
+    @property
+    def _flat_keys_mapping(self):
+        result = {}
+        for key, item in self._contents.items():
+            if item["attributes"]["structure_family"] == StructureFamily.table:
+                for col in item["attributes"]["structure"]["columns"]:
+                    result[col] = item["id"] + "/" + col
+            else:
+                result[item["id"]] = item["id"]
+
+        return result
+        
+    @property
+    def parts(self):
+        return CompositeContents(self)
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
         yield from self._flat_keys_mapping.keys()
@@ -1096,11 +1103,54 @@ class Composite(Container):
     def __len__(self):
         return len(self._flat_keys_mapping)
 
-    def __getitem__(self, keys, _ignore_inlined_contents=False):
-        if keys in self._flat_keys_mapping:
-            keys = self._flat_keys_mapping[keys]
+    def __getitem__(self, key: str, _ignore_inlined_contents=False):
+        if key in self._flat_keys_mapping:
+            key = self._flat_keys_mapping[key]
+        else:
+            raise KeyError(key)
 
-        return super().__getitem__(keys, _ignore_inlined_contents)
+        return super().__getitem__(key, _ignore_inlined_contents)
+
+
+class CompositeContents:
+    def __init__(self, node):
+        self._contents = node._contents
+        self.context = node.context
+        self.structure_clients = node.structure_clients
+        self._include_data_sources = node._include_data_sources
+
+    def __repr__(self):
+        return (
+            f"<{type(self).__name__} {{"
+            + ", ".join(f"'{item}'" for item in self._contents)
+            + "}>"
+        )
+
+    def __getitem__(self, key):
+        key, *tail = key.split("/")
+
+        if key not in self._contents:
+            raise KeyError(key)
+
+        client = client_for_item(
+            self.context,
+            self.structure_clients,
+            self._contents[key],
+            include_data_sources=self._include_data_sources,
+        )
+
+        if tail:
+            return client['/'.join(tail)]
+        else:
+            return client
+        
+
+    def __iter__(self):
+        for key in self._contents:
+            yield key
+
+    def __len__(self) -> int:
+        return len(self._contents)
 
 
 def _queries_to_params(*queries):
