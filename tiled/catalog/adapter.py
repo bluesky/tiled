@@ -1033,10 +1033,16 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             assert len(data_sources) == 1
             if data_sources[0].structure_family == StructureFamily.table:
                 new_keys = data_sources[0].structure.columns
-            elif data_sources[0].structure_family in [StructureFamily.array, StructureFamily.awkward, StructureFamily.sparse]:
+            elif data_sources[0].structure_family in [
+                StructureFamily.array,
+                StructureFamily.awkward,
+                StructureFamily.sparse,
+            ]:
                 new_keys = [key]
             else:
-                raise ValueError(f"Unsupported structure family: {data_sources[0].structure_family}")
+                raise ValueError(
+                    f"Unsupported structure family: {data_sources[0].structure_family}"
+                )
 
             # Get all keys and columns names in the Composite node
             flat_keys = []
@@ -1052,6 +1058,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         return await super().create_node(
             structure_family, metadata, key=key, specs=specs, data_sources=data_sources
         )
+
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):

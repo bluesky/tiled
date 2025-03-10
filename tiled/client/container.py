@@ -1052,7 +1052,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
-
     @property
     def _contents(self, maxlen=None):
         result = {}
@@ -1071,7 +1070,7 @@ class Composite(Container):
                     },
                 )
             ).json()
-            result.update({item['id'] : item for item in content["data"]})
+            result.update({item["id"]: item for item in content["data"]})
 
             next_page_url = content["links"]["next"]
 
@@ -1088,7 +1087,7 @@ class Composite(Container):
                 result[item["id"]] = item["id"]
 
         return result
-        
+
     @property
     def parts(self):
         return CompositeContents(self)
@@ -1140,10 +1139,9 @@ class CompositeContents:
         )
 
         if tail:
-            return client['/'.join(tail)]
+            return client["/".join(tail)]
         else:
             return client
-        
 
     def __iter__(self):
         for key in self._contents:
