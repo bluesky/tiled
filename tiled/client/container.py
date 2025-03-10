@@ -1101,35 +1101,21 @@ class Composite(Container):
         return super().__getitem__(keys, _ignore_inlined_contents)
 
     def to_dataset(self, *keys):
-        try:
-            link = self.item["links"]["full"].replace('container/full', 'dataset').rstrip('/')
-            params = {"parts": keys}
-            if self._include_data_sources:
-                params["include_data_sources"] = True
-            content = handle_error(
-                self.context.http_client.get(
-                    link,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={**parse_qs(urlparse(link).query), **params},
-                )
-            ).json()
-            item = content["data"]
-        except ClientError as err:
-            if err.response.status_code == httpx.codes.NOT_FOUND:
-                # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
-                err_arg = keys
-                if len(err_arg) == 1:
-                    (err_arg,) = err_arg
-                raise KeyError(err_arg)
-            raise
+        link = self.item["links"]["full"].replace('container/full', 'dataset').rstrip('/')
+        content = handle_error(
+            self.context.http_client.get(
+                link,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={**parse_qs(urlparse(link).query), "parts": keys},
+            )
+        ).json()
+        item = content["data"]
 
-        result = client_for_item(
+        return client_for_item(
             self.context,
             self.structure_clients,
             item,
-            include_data_sources=self._include_data_sources,
         )
-        return result
 
     def zip_arrays(self, *keys, block=(), dtype=None, shape=None, slice=None):
         import numpy

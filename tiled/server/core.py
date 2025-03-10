@@ -292,20 +292,18 @@ async def construct_dynamic_resource(
             "attributes": schemas.NodeAttributes(**attributes),
             "links": links,
         }
-        resource = schemas.Resource[schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict](**d)
+        return schemas.Resource[schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict](**d)
 
     else:
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=(
-                f"Composite array parts must be 0 or 1 dimensional arrays."
+                f"Composite array parts must be arrays."
             ),
         )
 
-    return resource
 
-
-async def construct_dynamic_entries_response(
+async def construct_dynamic_dataset_response(
     entry,
     parts,
     path,
@@ -315,12 +313,13 @@ async def construct_dynamic_entries_response(
 ):
 
     if parts is None:
-        # parts = await entry.keys_range(offset=0, limit=None)
         adapters = {key : val for (key, val) in await entry.items_range(offset=0, limit=None)}
         # TODO: pull columns from tables
     else:
         adapters = {key : await entry.lookup_adapter(key.split('/')) for key in parts}
 
+    
+    # Check shapes and dtypes of constituent arrays
     shapes = [adapter.structure().shape for adapter in adapters.values()]
     # Check that the arrays are 0 or 1 dimensional
     for shp in shapes:
@@ -336,8 +335,9 @@ async def construct_dynamic_entries_response(
     # TODO
     sizes = [math.prod(shp) for shp in shapes]
     ratios = [size/min(sizes) for size in sizes]
-
     assert len(set(sizes)) == 1, "All parts must have the same size"
+
+
 
 
     path_parts = [segment for segment in path.split("/") if segment]

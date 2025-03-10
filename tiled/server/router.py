@@ -45,7 +45,7 @@ from .core import (
     WrongTypeForRoute,
     apply_search,
     construct_data_response,
-    construct_dynamic_entries_response,
+    construct_dynamic_dataset_response,
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
@@ -770,13 +770,9 @@ async def get_dataset(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    sort: Optional[str] = Query(None),
-    max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
-    include_data_sources: bool = Query(False),
-    principal: str = Depends(get_current_principal),
 ):
     try:
-        resource = await construct_dynamic_entries_response(
+        resource = await construct_dynamic_dataset_response(
             entry,
             parts,
             path,
