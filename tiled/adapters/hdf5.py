@@ -263,7 +263,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         *data_uris: str,
         dataset: Optional[str] = None,
         slice: Optional[
-            str | Tuple[Union[int, builtins.slice, EllipsisType], ...]
+            Union[str, Tuple[Union[int, builtins.slice, EllipsisType], ...]]
         ] = None,
         squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
