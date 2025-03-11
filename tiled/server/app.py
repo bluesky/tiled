@@ -10,7 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import anyio
 import packaging.version
@@ -34,7 +34,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from tiled.query_registration import QueryRegistry
+from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
@@ -46,15 +46,9 @@ from ..media_type_registration import (
 )
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
-from . import schemas
 from .compression import CompressionMiddleware
-from .dependencies import (
-    get_query_registry,
-    get_root_tree,
-    get_serialization_registry,
-    get_validation_registry,
-)
-from .router import distinct, patch_route_signature, router, search
+from .dependencies import get_root_tree
+from .router import get_router
 from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
@@ -143,7 +137,7 @@ def build_app(
         for spec in authentication.get("providers", [])
     }
     server_settings = server_settings or {}
-    query_registry = query_registry or get_query_registry()
+    query_registry = query_registry or default_query_registry
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
     tasks = tasks or {}
@@ -349,6 +343,12 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             ),
         )
 
+    router = get_router(
+        query_registry,
+        serialization_registry,
+        deserialization_registry,
+        validation_registry,
+    )
     app.include_router(router, prefix="/api/v1")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
@@ -422,21 +422,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
-
-    # The /search route is defined after import time so that the user has the
-    # opporunity to register custom query types before startup.
-    app.get(
-        "/api/v1/search/{path:path}",
-        response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-            schemas.PaginationLinks,
-            dict,
-        ],
-    )(patch_route_signature(search, query_registry))
-    app.get(
-        "/api/v1/distinct/{path:path}",
-        response_model=schemas.GetDistinctResponse,
-    )(patch_route_signature(distinct, query_registry))
 
     @cache
     def override_get_authenticators():
@@ -770,32 +755,6 @@ Back up the database, and then run:
     app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
-    if query_registry is not None:
-
-        @cache
-        def override_get_query_registry():
-            return query_registry
-
-        app.dependency_overrides[get_query_registry] = override_get_query_registry
-    if serialization_registry is not None:
-
-        @cache
-        def override_get_serialization_registry():
-            return serialization_registry
-
-        app.dependency_overrides[
-            get_serialization_registry
-        ] = override_get_serialization_registry
-
-    if validation_registry is not None:
-
-        @cache
-        def override_get_validation_registry():
-            return validation_registry
-
-        app.dependency_overrides[
-            get_validation_registry
-        ] = override_get_validation_registry
 
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):
