@@ -43,8 +43,8 @@ from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
     default_compression_registry,
+    default_deserialization_registry,
     default_serialization_registry,
-    default_deserialization_registry
 )
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
@@ -141,7 +141,9 @@ def build_app(
     server_settings = server_settings or {}
     query_registry = query_registry or default_query_registry
     serialization_registry = serialization_registry or default_serialization_registry
-    deserialization_registry = deserialization_registry or default_deserialization_registry
+    deserialization_registry = (
+        deserialization_registry or default_deserialization_registry
+    )
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
     tasks = tasks or {}

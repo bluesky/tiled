@@ -173,7 +173,7 @@ async def get_api_key(
     api_key_cookie: Optional[str] = Depends(
         APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
     ),
-) -> str | None:
+) -> Optional[str]:
     for api_key in [api_key_query, api_key_header, api_key_cookie]:
         if api_key is not None:
             return api_key
