@@ -105,7 +105,7 @@ def get_hdf5_attrs(
     with h5py.File(file_path, "r", swmr=swmr, libver=libver, **kwargs) as _file:
         node = _file[dataset] if dataset else _file
         d = dict(getattr(node, "attrs", {}))
-        for k, v in list(d.items()):
+        for k, v in d.items():
             # Convert any bytes to str.
             if isinstance(v, bytes):
                 d[k] = v.decode()
