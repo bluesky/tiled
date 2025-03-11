@@ -1050,8 +1050,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
-    @property
-    def _contents(self, maxlen=None):
+
+    def _get_contents(self, maxlen=None):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
         while (next_page_url is not None) or (
@@ -1077,7 +1077,7 @@ class Composite(Container):
     @property
     def _flat_keys_mapping(self):
         result = {}
-        for key, item in self._contents.items():
+        for key, item in self._get_contents().items():
             if item["attributes"]["structure_family"] == StructureFamily.table:
                 for col in item["attributes"]["structure"]["columns"]:
                     result[col] = item["id"] + "/" + col
@@ -1111,7 +1111,7 @@ class Composite(Container):
 
 class CompositeContents:
     def __init__(self, node):
-        self._contents = node._contents
+        self._contents = node._get_contents()
         self.context = node.context
         self.structure_clients = node.structure_clients
         self._include_data_sources = node._include_data_sources
