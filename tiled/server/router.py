@@ -235,7 +235,7 @@ def get_router(
         )
 
     @router.get(
-        "/api/v1/search/{path:path}",
+        "/search/{path:path}",
         response_model=schemas.Response[
             List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
             schemas.PaginationLinks,
@@ -257,7 +257,6 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         entry: Any = SecureEntry(scopes=["read:metadata"]),
-        principal: str = Depends(get_current_principal),
         **filters,
     ):
         request.state.endpoint = "search"
@@ -315,7 +314,7 @@ def get_router(
             )
 
     @router.get(
-        "/api/v1/distinct/{path:path}",
+        "/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
     )
     @patch_route_signature
