@@ -182,7 +182,7 @@ properties:
             cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
         )
 
-    async def decode_access_token(self, access_token: str) -> dict[str, Any]:
+    async def decode_token(self, access_token: str) -> dict[str, Any]:
         keys = httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
         return jwt.decode(
             token=access_token,
@@ -212,7 +212,7 @@ properties:
         response_body = response.json()
         access_token = response_body["access_token"]
         try:
-            verified_body = await self.decode_access_token(access_token)
+            verified_body = await self.decode_token(access_token)
             return UserSessionState(verified_body["sub"], {})
 
         except JWTError:
@@ -246,7 +246,7 @@ class ProxiedOIDCAuthenticator(OIDCAuthenticator):
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         access_token = self._oidc_bearer(request)
         try:
-            verified_body = await self.decode_access_token(access_token)
+            verified_body = await self.decode_token(access_token)
             return UserSessionState(verified_body["sub"], {})
 
         except JWTError:

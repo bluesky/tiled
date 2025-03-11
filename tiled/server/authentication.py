@@ -132,9 +132,9 @@ def decode_token_for_authenticators(
             ProxiedOIDCAuthenticator,
         )
     ):
-        return auth.decode_access_token
+        return auth.decode_token
 
-    async def decode_access_token(access_token: str) -> Optional[dict[str, Any]]:
+    async def decode_token(token: str) -> Optional[dict[str, Any]]:
         credentials_exception = HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -143,11 +143,11 @@ def decode_token_for_authenticators(
         # The first key in settings.secret_keys is used for *encoding*.
         # All keys are tried for *decoding* until one works or they all
         # fail. They supports key rotation.
-        if not access_token or not settings.secret_keys:
+        if not token or not settings.secret_keys:
             return None
         for secret_key in settings.secret_keys:
             try:
-                return jwt.decode(access_token, secret_key, algorithms=[ALGORITHM])
+                return jwt.decode(token, secret_key, algorithms=ALGORITHM)
             except ExpiredSignatureError:
                 # Do not let this be caught below with the other JWTError types.
                 raise
@@ -156,7 +156,7 @@ def decode_token_for_authenticators(
                 continue
         raise credentials_exception
 
-    return decode_access_token
+    return decode_token
 
 
 async def create_pending_session(db):
@@ -273,7 +273,7 @@ def session_state_getter(
 
 
 def current_principal_getter(
-    token_decoder: Callable[[str], Awaitable[Optional[dict[str, Any]]]],
+    decode_token: Callable[[str], Awaitable[Optional[dict[str, Any]]]],
     authenticators: dict[str, Authenticator],
     oauth2_scheme: OAuth2,
 ):
@@ -298,7 +298,7 @@ def current_principal_getter(
         """
 
         try:
-            access_token = await token_decoder(encoded_token)
+            access_token = await decode_token(encoded_token)
         except ExpiredSignatureError:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
@@ -590,13 +590,13 @@ async def generate_apikey(db, principal, apikey_params, request):
 
 
 def build_base_authentication_router(
-    decode_access_token: Callable[[str], Awaitable[dict[str, Any]]],
+    decode_token: Callable[[str], Awaitable[dict[str, Any]]],
     authenticators: dict[str, Authenticator],
     oauth2: OAuth2,
 ) -> APIRouter:
     authentication_router = APIRouter()
     get_current_principal = current_principal_getter(
-        decode_access_token, authenticators, oauth2
+        decode_token, authenticators, oauth2
     )
 
     @authentication_router.get(
@@ -779,7 +779,7 @@ def build_base_authentication_router(
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
         request.state.endpoint = "auth"
-        payload = await decode_access_token(refresh_token.refresh_token)
+        payload = await decode_token(refresh_token.refresh_token)
         session_id = payload["sid"]
         # Find this session in the database.
         session = await lookup_valid_session(db, session_id)
@@ -816,7 +816,7 @@ def build_base_authentication_router(
 
     async def slide_session(refresh_token: str, settings: Settings, db):
         try:
-            payload = await decode_access_token(refresh_token)
+            payload = await decode_token(refresh_token)
         except ExpiredSignatureError:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
@@ -1027,7 +1027,7 @@ def get_oauth2_scheme(authenticators: dict[str, Authenticator], first_provider: 
 
 
 def build_authentication_router(
-    decode_access_token: Callable[[str], Awaitable[dict[str, Any]]],
+    decode_token: Callable[[str], Awaitable[dict[str, Any]]],
     authenticators: dict[str, Authenticator],
     oauth2: OAuth2,
 ) -> APIRouter:
@@ -1035,7 +1035,7 @@ def build_authentication_router(
         return APIRouter()
 
     authentication_router = build_base_authentication_router(
-        decode_access_token, authenticators, oauth2
+        decode_token, authenticators, oauth2
     )
     for provider, authenticator in authenticators.items():
         if isinstance(authenticator, ExternalAuthenticator):
