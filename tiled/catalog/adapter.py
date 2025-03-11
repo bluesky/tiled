@@ -1018,6 +1018,8 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return self
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
+
+class CatalogCompositeAdapter(CatalogContainerAdapter):
     async def create_node(
         self,
         structure_family,
@@ -1029,31 +1031,30 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         key = key or self.context.key_maker()
 
         # Check for column name collisions in a Composite node
-        if self.structure_family == StructureFamily.composite:
-            assert len(data_sources) == 1
-            if data_sources[0].structure_family == StructureFamily.table:
-                new_keys = data_sources[0].structure.columns
-            elif data_sources[0].structure_family in [
-                StructureFamily.array,
-                StructureFamily.awkward,
-                StructureFamily.sparse,
-            ]:
-                new_keys = [key]
-            else:
-                raise ValueError(
-                    f"Unsupported structure family: {data_sources[0].structure_family}"
-                )
+        assert len(data_sources) == 1
+        if data_sources[0].structure_family == StructureFamily.table:
+            new_keys = data_sources[0].structure.columns
+        elif data_sources[0].structure_family in [
+            StructureFamily.array,
+            StructureFamily.awkward,
+            StructureFamily.sparse,
+        ]:
+            new_keys = [key]
+        else:
+            raise ValueError(
+                f"Unsupported structure family: {data_sources[0].structure_family}"
+            )
 
-            # Get all keys and columns names in the Composite node
-            flat_keys = []
-            for _key, item in await self.items_range(offset=0, limit=None):
-                flat_keys.append(_key)
-                if item.structure_family == StructureFamily.table:
-                    flat_keys.extend(item.structure().columns)
+        # Get all keys and columns names in the Composite node
+        flat_keys = []
+        for _key, item in await self.items_range(offset=0, limit=None):
+            flat_keys.append(_key)
+            if item.structure_family == StructureFamily.table:
+                flat_keys.extend(item.structure().columns)
 
-            key_conflicts = set(new_keys) & set(flat_keys)
-            if key_conflicts:
-                raise Collision(f"Column name collision: {key_conflicts}")
+        key_conflicts = set(new_keys) & set(flat_keys)
+        if key_conflicts:
+            raise Collision(f"Column name collision: {key_conflicts}")
 
         return await super().create_node(
             structure_family, metadata, key=key, specs=specs, data_sources=data_sources
@@ -1549,5 +1550,5 @@ STRUCTURES = {
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
-    StructureFamily.composite: CatalogContainerAdapter,
+    StructureFamily.composite: CatalogCompositeAdapter,
 }

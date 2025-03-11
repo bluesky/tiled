@@ -319,9 +319,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     # or because it was added after we fetched the inlined contents.
                     # Make a request for it.
                     try:
-                        self_link = self.item["links"]["self"]
-                        if self_link.endswith("/"):
-                            self_link = self_link[:-1]
+                        self_link = self.item["links"]["self"].rstrip("/")
                         params = {}
                         if self._include_data_sources:
                             params["include_data_sources"] = True
@@ -1096,8 +1094,8 @@ class Composite(Container):
         yield from self._flat_keys_mapping.keys()
 
     def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
-        for key, val in self._flat_keys_mapping.items():
-            yield key, self[val]
+        for key in self._flat_keys_mapping.keys():
+            yield key, self[key]
 
     def __len__(self):
         return len(self._flat_keys_mapping)
