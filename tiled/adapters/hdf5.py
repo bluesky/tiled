@@ -438,7 +438,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
     def __iter__(self) -> Iterator[Any]:
         yield from self._tree  # Iterate over the keys of the tree
 
-    def __getitem__(self, key: str) -> "HDF5Adapter":
+    def __getitem__(self, key: str) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         node = copy.deepcopy(self._tree)
         for segment in key.strip("/").split("/"):
             node = node[segment]
