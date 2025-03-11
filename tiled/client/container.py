@@ -259,7 +259,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         for key in keys:
             if not isinstance(key, str):
                 raise TypeError("Containers can only be indexed by strings")
-        keys = '/'.join(keys).split('/')
+        keys = "/".join(keys).strip("/").split("/")
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
@@ -711,7 +711,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             metadata=metadata,
             specs=specs,
         )
-    
+
     def create_container(self, key=None, *, metadata=None, specs=None):
         """Create a new, empty container.
 
@@ -1072,7 +1072,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
-
     def _get_contents(self, maxlen=None):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
@@ -1129,15 +1128,13 @@ class Composite(Container):
             raise KeyError(key)
 
         return super().__getitem__(key, _ignore_inlined_contents)
-    
+
     def create_container(self, key=None, *, metadata=None, specs=None):
-        """Composite nodes can not include nested containers by design.
-        """
+        """Composite nodes can not include nested containers by design."""
         raise NotImplementedError("Cannot create a container within a composite node.")
-    
+
     def create_composite(self, key=None, *, metadata=None, specs=None):
-        """Ccomposite nodes can not include nested composites by design.
-        """
+        """Ccomposite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
 

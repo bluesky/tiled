@@ -411,6 +411,7 @@ class CatalogNodeAdapter:
     async def lookup_adapter(
         self, segments
     ):  # TODO: Accept filter for predicate-pushdown.
+        print(f"lookup_adapter in {self.__class__} ({segments})")
         if not segments:
             return self
         *ancestors, key = segments
@@ -452,6 +453,14 @@ class CatalogNodeAdapter:
                         if adapter is None:
                             break
                     return adapter
+                elif (
+                    isinstance(catalog_adapter, CatalogCompositeAdapter)
+                    and len(segments[i:]) == 1
+                ):
+                    _segm = (
+                        await catalog_adapter._resolve_flat_key(segments[i])
+                    ).split("/")
+                    return await catalog_adapter.lookup_adapter(_segm)
             return None
         return STRUCTURES[node.structure_family](self.context, node)
 
@@ -1020,6 +1029,15 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogCompositeAdapter(CatalogContainerAdapter):
+    async def _resolve_flat_key(self, key):
+        for _key, item in await self.items_range(offset=0, limit=None):
+            if key == _key:
+                return _key
+            if item.structure_family == StructureFamily.table:
+                if key in item.structure().columns:
+                    return f"{_key}/{key}"
+        raise KeyError(key)
+
     async def create_node(
         self,
         structure_family,
