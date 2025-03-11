@@ -254,7 +254,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # >>> node.search(...)['a', 'b']
         #
         # which must only return a result if 'a' is contained in the search results.
-        if isinstance(keys, str):
+        if not isinstance(keys, tuple):
             keys = (keys,)
         for key in keys:
             if not isinstance(key, str):
@@ -705,7 +705,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         """
         return self.new(
-            StructureFamily.container if not flat else StructureFamily.composite,
+            StructureFamily.composite,
             [],
             key=key,
             metadata=metadata,
@@ -728,7 +728,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         """
         return self.new(
-            StructureFamily.container if not flat else StructureFamily.composite,
+            StructureFamily.container,
             [],
             key=key,
             metadata=metadata,
