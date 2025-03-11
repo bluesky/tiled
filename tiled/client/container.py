@@ -647,7 +647,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         ).json()
 
-        if structure_family in [StructureFamily.container, StructureFamily.composite]:
+        if structure_family in {StructureFamily.container, StructureFamily.composite}:
             structure = {"contents": None, "count": None}
         else:
             # Only containers can have multiple data_sources right now.
@@ -689,7 +689,30 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_container(self, key=None, *, metadata=None, specs=None, flat=False):
+    def create_composite(self, key=None, *, metadata=None, specs=None):
+        """Create a new, empty composite container.
+
+        Parameters
+        ----------
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+        return self.new(
+            StructureFamily.container if not flat else StructureFamily.composite,
+            [],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+    
+    def create_container(self, key=None, *, metadata=None, specs=None):
         """Create a new, empty container.
 
         Parameters
@@ -702,8 +725,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        flat : bool, optional
-            If True, the container will be flat (composite), otherwise -- a usual container.
 
         """
         return self.new(
@@ -1108,6 +1129,16 @@ class Composite(Container):
             raise KeyError(key)
 
         return super().__getitem__(key, _ignore_inlined_contents)
+    
+    def create_container(self, key=None, *, metadata=None, specs=None):
+        """Composite nodes can not include nested containers by design.
+        """
+        raise NotImplementedError("Cannot create a container within a composite node.")
+    
+    def create_composite(self, key=None, *, metadata=None, specs=None):
+        """Ccomposite nodes can not include nested composites by design.
+        """
+        raise NotImplementedError("Cannot create a composite within a composite node.")
 
 
 class CompositeContents:

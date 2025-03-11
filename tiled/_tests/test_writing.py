@@ -685,7 +685,7 @@ def test_composite_one_table(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
-        client.create_container(key="x", flat=True)
+        client.create_composite(key="x")
         client["x"].write_dataframe(df)
         assert len(client["x"].parts) == 1
 
@@ -695,7 +695,7 @@ def test_composite_two_tables(tree):
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        x = client.create_container(key="x", flat=True)
+        x = client.create_composite(key="x")
         x.write_dataframe(df1, key="table1")
         x.write_dataframe(df2, key="table2")
         x.parts["table1"].read()
@@ -707,7 +707,7 @@ def test_composite_two_tables_colliding_names(tree):
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        x = client.create_container(key="x", flat=True)
+        x = client.create_composite(key="x")
         x.write_dataframe(df1, key="table1")
         with fail_with_status_code(HTTP_409_CONFLICT):
             x.write_dataframe(df2, key="table1")
@@ -718,7 +718,7 @@ def test_composite_two_tables_colliding_keys(tree):
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
-        x = client.create_container(key="x", flat=True)
+        x = client.create_composite(key="x")
         x.write_dataframe(df1, key="table1")
         with fail_with_status_code(HTTP_409_CONFLICT):
             x.write_dataframe(df2, key="table2")
@@ -731,7 +731,7 @@ def test_composite_two_tables_two_arrays(tree):
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
         arr1 = numpy.ones((5, 5), dtype=numpy.float64)
         arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
-        x = client.create_container(key="x", flat=True)
+        x = client.create_composite(key="x")
 
         # Write by data source.
         x.write_dataframe(df1, key="table1")
@@ -756,12 +756,12 @@ def test_composite_table_column_array_key_collision(tree):
         df = pandas.DataFrame({"A": [], "B": []})
         arr = numpy.array([1, 2, 3], dtype=numpy.float64)
 
-        x = client.create_container(key="x", flat=True)
+        x = client.create_composite(key="x")
         x.write_dataframe(df, key="table1")
         with fail_with_status_code(HTTP_409_CONFLICT):
             x.write_array(arr, key="A")
 
-        y = client.create_container(key="y", flat=True)
+        y = client.create_composite(key="y")
         y.write_array(arr, key="A")
         with fail_with_status_code(HTTP_409_CONFLICT):
             y.write_dataframe(df, key="table1")

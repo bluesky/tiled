@@ -90,10 +90,10 @@ def _copy_container(source, dest, on_conflict):
         if num_data_sources == 0:
             # A container with no data sources is just an organizational
             # entity in the database.
-            if child_node.structure_family in [
+            if child_node.structure_family in {
                 StructureFamily.container,
                 StructureFamily.composite,
-            ]:
+            }:
                 data_sources = []
             else:
                 raise ValueError(
@@ -105,10 +105,10 @@ def _copy_container(source, dest, on_conflict):
             if original_data_source.management == Management.external:
                 data_sources = [original_data_source]
             else:
-                if child_node.structure_family in [
+                if child_node.structure_family in {
                     StructureFamily.container,
                     StructureFamily.composite,
-                ]:
+                }:
                     data_sources = []
                 else:
                     data_sources = [

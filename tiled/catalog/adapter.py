@@ -634,10 +634,10 @@ class CatalogNodeAdapter:
             await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
-                    if structure_family in [
+                    if structure_family in {
                         StructureFamily.container,
                         StructureFamily.composite,
-                    ]:
+                    }:
                         raise NotImplementedError(structure_family)
                     if data_source.mimetype is None:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
@@ -1034,11 +1034,11 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         assert len(data_sources) == 1
         if data_sources[0].structure_family == StructureFamily.table:
             new_keys = data_sources[0].structure.columns
-        elif data_sources[0].structure_family in [
+        elif data_sources[0].structure_family in {
             StructureFamily.array,
             StructureFamily.awkward,
             StructureFamily.sparse,
-        ]:
+        }:
             new_keys = [key]
         else:
             raise ValueError(

@@ -63,7 +63,7 @@ def tree(tmp_path_factory):
 def context(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
-        x = client.create_container(key="x", metadata=md, flat=True)
+        x = client.create_composite(key="x", metadata=md)
         x.write_array(arr1, key="arr1", metadata={"md_key": "md_for_arr1"})
         x.write_array(arr2, key="arr2", metadata={"md_key": "md_for_arr2"})
         x.write_dataframe(
@@ -213,7 +213,7 @@ def test_external_assets(context, tiff_sequence, csv_file):
         management=Management.external,
     )
 
-    y = client.create_container(key="y", flat=True)
+    y = client.create_composite(key="y")
     y.new(
         structure_family=StructureFamily.array,
         data_sources=[tiff_data_source],

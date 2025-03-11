@@ -432,10 +432,10 @@ async def construct_resource(
             # for ease of going between dataclass and pydantic.
             specs.append(schemas.Spec(**spec.model_dump()))
         attributes["specs"] = specs
-    if (entry is not None) and entry.structure_family in [
+    if (entry is not None) and entry.structure_family in {
         StructureFamily.container,
         StructureFamily.composite,
-    ]:
+    }:
         attributes["structure_family"] = entry.structure_family
 
         if schemas.EntryFields.structure in fields:

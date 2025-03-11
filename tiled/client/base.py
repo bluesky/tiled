@@ -133,7 +133,7 @@ class BaseClient:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family in [StructureFamily.container, StructureFamily.composite]:
+        elif structure_family in {StructureFamily.container, StructureFamily.composite}:
             self._structure = None
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]

@@ -907,7 +907,7 @@ async def node_full(
                 "request a smaller chunks."
             ),
         )
-    if entry.structure_family in [StructureFamily.container, StructureFamily.composite]:
+    if entry.structure_family in {StructureFamily.container, StructureFamily.composite}:
         curried_filter = partial(
             filter_for_access,
             principal=principal,
@@ -1169,7 +1169,7 @@ async def _create_node(
         body.structure_family,
         body.specs,
     )
-    if structure_family in [StructureFamily.container, StructureFamily.composite]:
+    if structure_family in {StructureFamily.container, StructureFamily.composite}:
         structure = None
     else:
         if len(body.data_sources) != 1:
