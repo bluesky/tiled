@@ -980,7 +980,7 @@ async def revoke_session(
 async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
-    principal: schemas.Principal = Security(get_current_principal, scopes=[]),
+    principal: schemas.Principal = Depends(get_current_principal),
     db=Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
@@ -1154,7 +1154,7 @@ async def revoke_apikey(
 )
 async def whoami(
     request: Request,
-    principal=Security(get_current_principal, scopes=[]),
+    principal=Depends(get_current_principal),
     db=Depends(get_database_session),
 ):
     # TODO Permit filtering the fields of the response.
