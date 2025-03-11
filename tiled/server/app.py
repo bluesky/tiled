@@ -10,7 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import anyio
 import packaging.version
@@ -34,15 +34,18 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.query_registration import QueryRegistry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
-    compression_registry as default_compression_registry,
+    CompressionRegistry,
+    SerializationRegistry,
+    default_compression_registry,
 )
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
-from ..validation_registration import validation_registry as default_validation_registry
+from ..validation_registration import ValidationRegistry, default_validation_registry
 from . import schemas
 from .compression import CompressionMiddleware
 from .dependencies import (
@@ -113,10 +116,11 @@ def build_app(
     tree,
     authentication=None,
     server_settings=None,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-    validation_registry=None,
+    query_registry: Optional[QueryRegistry] = None,
+    serialization_registry: Optional[SerializationRegistry] = None,
+    deserialization_registry: Optional[SerializationRegistry] = None,
+    compression_registry: Optional[CompressionRegistry] = None,
+    validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
     scalable=False,
 ):

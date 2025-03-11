@@ -1,6 +1,6 @@
 import io
 
-from ..media_type_registration import serialization_registry
+from ..media_type_registration import default_serialization_registry
 from ..utils import ensure_awaitable, modules_available
 from .container import walk
 from .table import (
@@ -49,7 +49,7 @@ class _BytesIOThatIgnoresClose(io.BytesIO):
 if modules_available("scipy"):
     # Both application/netcdf and application/x-netcdf are used.
     # https://en.wikipedia.org/wiki/NetCDF
-    @serialization_registry.register(
+    @default_serialization_registry.register(
         "xarray_dataset", ["application/netcdf", "application/x-netcdf"]
     )
     async def serialize_netcdf(node, metadata, filter_for_access):
@@ -65,29 +65,29 @@ if modules_available("scipy"):
 # 1-dimensional variables it is useful.
 
 
-@serialization_registry.register("xarray_dataset", APACHE_ARROW_FILE_MIME_TYPE)
+@default_serialization_registry.register("xarray_dataset", APACHE_ARROW_FILE_MIME_TYPE)
 async def serialize_dataset_arrow(node, metadata, filter_for_access):
     return serialize_arrow((await as_dataset(node)).to_dataframe(), metadata)
 
 
-@serialization_registry.register("xarray_dataset", "application/x-parquet")
+@default_serialization_registry.register("xarray_dataset", "application/x-parquet")
 async def serialize_dataset_parquet(node, metadata, filter_for_access):
     return serialize_parquet((await as_dataset(node)).to_dataframe(), metadata)
 
 
-@serialization_registry.register(
+@default_serialization_registry.register(
     "xarray_dataset", ["text/csv", "text/comma-separated-values", "text/plain"]
 )
 async def serialize_dataset_csv(node, metadata, filter_for_access):
     return serialize_csv((await as_dataset(node)).to_dataframe(), metadata)
 
 
-@serialization_registry.register("xarray_dataset", "text/html")
+@default_serialization_registry.register("xarray_dataset", "text/html")
 async def serialize_dataset_html(node, metadata, filter_for_access):
     return serialize_html((await as_dataset(node)).to_dataframe(), metadata)
 
 
-@serialization_registry.register("xarray_dataset", XLSX_MIME_TYPE)
+@default_serialization_registry.register("xarray_dataset", XLSX_MIME_TYPE)
 async def serialize_dataset_excel(node, metadata, filter_for_access):
     return serialize_excel((await as_dataset(node)).to_dataframe(), metadata)
 
@@ -95,7 +95,7 @@ async def serialize_dataset_excel(node, metadata, filter_for_access):
 if modules_available("orjson"):
     import orjson
 
-    @serialization_registry.register("xarray_dataset", "application/json")
+    @default_serialization_registry.register("xarray_dataset", "application/json")
     async def serialize_json(node, metadata, filter_for_access):
         df = (await as_dataset(node)).to_dataframe()
         return orjson.dumps(
@@ -105,7 +105,7 @@ if modules_available("orjson"):
 
 if modules_available("h5py"):
 
-    @serialization_registry.register("xarray_dataset", "application/x-hdf5")
+    @default_serialization_registry.register("xarray_dataset", "application/x-hdf5")
     async def serialize_hdf5(node, metadata, filter_for_access):
         """
         Like for node, but encode everything under 'attrs' in attrs.
