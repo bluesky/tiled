@@ -16,7 +16,7 @@ import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -34,6 +34,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from ..config import construct_build_app_kwargs
@@ -43,7 +44,6 @@ from ..media_type_registration import (
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import validation_registry as default_validation_registry
 from . import schemas
-from .authentication import get_current_principal
 from .compression import CompressionMiddleware
 from .dependencies import (
     get_query_registry,
@@ -215,7 +215,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, dependencies=[Depends(move_api_key)])
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -265,9 +265,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         @app.get("/", response_class=HTMLResponse)
         async def index(
             request: Request,
-            # This dependency is here because it runs the code that moves
-            # API key from the query parameter to a cookie (if it is valid).
-            principal=Security(get_current_principal, scopes=[]),
         ):
             return templates.TemplateResponse(
                 request,

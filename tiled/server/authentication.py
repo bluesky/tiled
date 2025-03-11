@@ -17,13 +17,12 @@ from fastapi import (
     Response,
     Security,
 )
-from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.security import (
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
     SecurityScopes,
 )
-from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
+from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.future import select
@@ -93,33 +92,14 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
-class APIKeyAuthorizationHeader(APIKeyBase):
-    """
-    Expect a header like
-
-    Authorization: Apikey SECRET
-
-    where Apikey is case-insensitive.
-    """
-
-    def __init__(
-        self,
-        *,
-        name: str,
-        scheme_name: Optional[str] = None,
-        description: Optional[str] = None,
-    ):
-        self.model: APIKey = APIKey(
-            **{"in": APIKeyIn.header}, name=name, description=description
-        )
-        self.scheme_name = scheme_name or self.__class__.__name__
-
+# TODO: remove custom subclass https://github.com/bluesky/tiled/issues/921
+class StrictAPIKeyHeader(APIKeyHeader):
     async def __call__(self, request: Request) -> Optional[str]:
-        authorization: str = request.headers.get("Authorization")
-        scheme, param = get_authorization_scheme_param(authorization)
-        if not authorization or scheme.lower() == "bearer":
-            return None
-        if scheme.lower() != "apikey":
+        api_key: Optional[str] = request.headers.get(self.model.name)
+        scheme, param = get_authorization_scheme_param(api_key)
+        if not scheme or scheme.lower() == "bearer":
+            return self.check_api_key(None, self.auto_error)
+        if scheme.lower() != self.scheme_name.lower():
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(
@@ -128,17 +108,11 @@ class APIKeyAuthorizationHeader(APIKeyBase):
                     "'Bearer SECRET' or 'Apikey SECRET'. "
                 ),
             )
-        return param
+        return self.check_api_key(param, self.auto_error)
 
 
 # The tokenUrl below is patched at app startup when we know it.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="PLACEHOLDER", auto_error=False)
-api_key_query = APIKeyQuery(name="api_key", auto_error=False)
-api_key_header = APIKeyAuthorizationHeader(
-    name="Authorization",
-    description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'",
-)
-api_key_cookie = APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
 
 
 def create_access_token(data, secret_key, expires_delta):
@@ -185,10 +159,21 @@ def decode_token(token, secret_keys):
 
 
 async def get_api_key(
-    api_key_query: str = Security(api_key_query),
-    api_key_header: str = Security(api_key_header),
-    api_key_cookie: str = Security(api_key_cookie),
-):
+    api_key_query: Optional[str] = Depends(
+        APIKeyQuery(name="api_key", auto_error=False)
+    ),
+    api_key_header: Optional[str] = Depends(
+        StrictAPIKeyHeader(
+            name="Authorization",
+            description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'",
+            scheme_name="Apikey",
+            auto_error=False,
+        )
+    ),
+    api_key_cookie: Optional[str] = Depends(
+        APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
+    ),
+) -> str | None:
     for api_key in [api_key_query, api_key_header, api_key_cookie]:
         if api_key is not None:
             return api_key
@@ -231,6 +216,15 @@ async def get_decoded_access_token(
 async def get_session_state(decoded_access_token=Depends(get_decoded_access_token)):
     if decoded_access_token:
         return decoded_access_token.get("state")
+
+
+async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
+    if ("api_key" in request.query_params) and (
+        request.cookies.get(API_KEY_COOKIE_NAME) != api_key
+    ):
+        request.state.cookies_to_set.append(
+            {"key": API_KEY_COOKIE_NAME, "value": api_key}
+        )
 
 
 async def get_current_principal(
@@ -314,15 +308,6 @@ async def get_current_principal(
                     detail="Invalid API key",
                     headers=headers_for_401(request, security_scopes),
                 )
-        # If we made it to this point, we have a valid API key.
-        # If the API key was given in query param, move to cookie.
-        # This is convenient for browser-based access.
-        if ("api_key" in request.query_params) and (
-            request.cookies.get(API_KEY_COOKIE_NAME) != api_key
-        ):
-            request.state.cookies_to_set.append(
-                {"key": API_KEY_COOKIE_NAME, "value": api_key}
-            )
     elif decoded_access_token is not None:
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
@@ -875,7 +860,7 @@ async def create_service_principal(
 async def principal(
     request: Request,
     uuid: uuid_module.UUID,
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    _=Security(lambda: None, scopes=["read:principals"]),
     db=Depends(get_database_session),
 ):
     "Get information about one Principal (user or service)."
@@ -911,7 +896,7 @@ async def revoke_apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
     first_eight: str,
-    principal=Security(get_current_principal, scopes=["admin:apikeys"]),
+    _=Security(lambda: None, scopes=["admin:apikeys"]),
     db=Depends(get_database_session),
 ):
     "Allow Tiled Admins to delete any user's apikeys e.g."
@@ -1205,7 +1190,6 @@ async def whoami(
 async def logout(
     request: Request,
     response: Response,
-    principal=Security(get_current_principal, scopes=[]),
 ):
     "Deprecated. See revoke_session: POST /session/revoke."
     request.state.endpoint = "auth"

@@ -10,7 +10,7 @@ from typing import Any, List, Optional
 
 import anyio
 import packaging
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
@@ -77,9 +77,6 @@ async def about(
     authenticators=Depends(get_authenticators),
     serialization_registry=Depends(get_serialization_registry),
     query_registry=Depends(get_query_registry),
-    # This dependency is here because it runs the code that moves
-    # API key from the query parameter to a cookie (if it is valid).
-    principal=Security(get_current_principal, scopes=[]),
 ):
     # TODO The lazy import of entry modules and serializers means that the
     # lists of formats are not populated until they are first used. Not very
