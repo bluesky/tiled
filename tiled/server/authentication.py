@@ -92,8 +92,14 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
-# TODO: remove custom subclass https://github.com/bluesky/tiled/issues/921
 class StrictAPIKeyHeader(APIKeyHeader):
+    # TODO: remove custom subclass https://github.com/bluesky/tiled/issues/921
+    """
+    APIKeyHeader does not enforce that the scheme matches the expected, potentially
+    leading to the case where Bearer tokens are treated as API keys.
+    Additionally strips the scheme, as expected by current handling.
+    """
+
     async def __call__(self, request: Request) -> Optional[str]:
         api_key: Optional[str] = request.headers.get(self.model.name)
         scheme, param = get_authorization_scheme_param(api_key)
