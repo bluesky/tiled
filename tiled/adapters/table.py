@@ -146,7 +146,7 @@ class TableAdapter:
             array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
 
         # Construct the metadata for the array: assume that relevant metadata is in the `key` field
-        metadata = {
+        metadata: dict[str, Any] = {
             k: v
             for k, v in self.metadata().items()
             if k not in self.structure().columns

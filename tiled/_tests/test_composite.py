@@ -69,7 +69,11 @@ def context(tree):
         x.write_dataframe(
             df1,
             key="df1",
-            metadata={"md_key": "md_for_df1", "A": {"md_key": "md_for_A"}, "B": {"md_key": "md_for_B"}},
+            metadata={
+                "md_key": "md_for_df1",
+                "A": {"md_key": "md_for_A"},
+                "B": {"md_key": "md_for_B"},
+            },
         )
         x.write_dataframe(
             df2,
@@ -163,7 +167,7 @@ def test_metadata(context):
 
     # Check metadata for each part
     for part in client["x"].parts:
-        c = client["x"].parts[part].refresh()
+        c = client["x"].parts[part]
         assert c.metadata["md_key"] == f"md_for_{part}"
 
     # Check metadata for each item (column or array)

@@ -1083,7 +1083,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
-    def _get_contents(self, maxlen=None):
+    def _get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
         while (next_page_url is not None) or (
@@ -1096,8 +1096,8 @@ class Composite(Container):
                     params={
                         **parse_qs(urlparse(next_page_url).query),
                         **self._queries_as_params,
-                        # "select_metadata": False,  # Remove this param to select ALL metadata (or pick necessary)
-                    },
+                    }
+                    | ({} if include_metadata else {"select_metadata": False}),
                 )
             ).json()
             result.update({item["id"]: item for item in content["data"]})
@@ -1116,6 +1116,8 @@ class Composite(Container):
             else:
                 result[item["id"]] = item["id"]
 
+        self._cached_len = (len(result), time.monotonic() + LENGTH_CACHE_TTL)
+
         return result
 
     @property
@@ -1130,6 +1132,12 @@ class Composite(Container):
             yield key, self[key]
 
     def __len__(self):
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if time.monotonic() < deadline:
+                # Used the cached value and do not make any request.
+                return length
+
         return len(self._flat_keys_mapping)
 
     def __getitem__(self, key: str, _ignore_inlined_contents=False):
@@ -1155,7 +1163,7 @@ class Composite(Container):
 
 class CompositeContents:
     def __init__(self, node):
-        self._contents = node._get_contents()
+        self._contents = node._get_contents(include_metadata=True)
         self.context = node.context
         self.structure_clients = node.structure_clients
         self._include_data_sources = node._include_data_sources
