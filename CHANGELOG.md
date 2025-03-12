@@ -2,6 +2,9 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+### Fixed
+
+- Ensured that stale sessions that can no longer be refreshed are purged from the auth database prior to the expiration time (default 1 year) to avoid bloat. Updated tests accordingly and fixed related SQLite bugs for the purge_expired function.
 
 ## 0.1.0-b20 (2025-03-07)
 
