@@ -10,8 +10,6 @@ from functools import cache
 from fastapi import APIRouter, Request, Response, Security
 from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 
-from .authentication import get_current_principal
-
 router = APIRouter()
 
 REQUEST_DURATION = Histogram(
@@ -156,10 +154,8 @@ def prometheus_registry():
     return registry
 
 
-@router.get("/metrics")
-async def metrics(
-    request: Request, principal=Security(get_current_principal, scopes=["metrics"])
-):
+@router.get("/metrics", dependencies=[Security(lambda: None, scopes=["metrics"])])
+async def metrics(request: Request):
     """
     Prometheus metrics
     """

@@ -112,7 +112,7 @@ if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
 # docker run --name tiled-test-postgres -p 5432:5432 -e POSTGRES_PASSWORD=secret -d docker.io/postgres:16
 # and set this env var like:
 #
-# TILED_TEST_POSTGRESQL_URI=postgresql+asyncpg://postgres:secret@localhost:5432
+# TILED_TEST_POSTGRESQL_URI=postgresql://postgres:secret@localhost:5432
 
 TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
