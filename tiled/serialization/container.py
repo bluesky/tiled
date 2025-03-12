@@ -30,6 +30,9 @@ async def walk(node, filter_for_access, pre=None):
             ).items_range(0, None):
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
+        elif node.structure_family == StructureFamily.table:
+            for key in node.structure().columns:
+                yield (pre + [key], await filter_for_access(node, path_parts=[key]))
         else:
             for key, value in (await filter_for_access(node, path_parts=[])).items():
                 async for d in walk(value, filter_for_access, pre + [key]):
