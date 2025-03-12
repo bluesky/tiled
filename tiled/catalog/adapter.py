@@ -453,9 +453,11 @@ class CatalogNodeAdapter:
                             break
                     return adapter
                 elif (
-                    isinstance(catalog_adapter, CatalogCompositeAdapter) and len(segments[i:]) == 1):
+                    isinstance(catalog_adapter, CatalogCompositeAdapter)
+                    and len(segments[i:]) == 1
+                ):
                     # Trying to access a table column or an array in a composite node
-                    _segm = await catalog_adapter._resolve_flat_key(segments[i])
+                    _segm = await catalog_adapter.resolve_flat_key(segments[i])
                     return await catalog_adapter.lookup_adapter(_segm.split("/"))
             return None
 
@@ -1026,7 +1028,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogCompositeAdapter(CatalogContainerAdapter):
-    async def _resolve_flat_key(self, key):
+    async def resolve_flat_key(self, key):
         for _key, item in await self.items_range(offset=0, limit=None):
             if key == _key:
                 return _key
@@ -1045,7 +1047,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
     ):
         key = key or self.context.key_maker()
 
-        # Check for column name collisions in a Composite node
+        # List all new keys that would be added to the flattened namespace
         assert len(data_sources) == 1
         if data_sources[0].structure_family == StructureFamily.table:
             new_keys = data_sources[0].structure.columns
@@ -1060,16 +1062,22 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 f"Unsupported structure family: {data_sources[0].structure_family}"
             )
 
-        # Get all keys and columns names in the Composite node
+        # Get all keys and columns names already in the Composite node
         flat_keys = []
         for _key, item in await self.items_range(offset=0, limit=None):
             flat_keys.append(_key)
             if item.structure_family == StructureFamily.table:
                 flat_keys.extend(item.structure().columns)
 
+        # Check for column name collisions
         key_conflicts = set(new_keys) & set(flat_keys)
         if key_conflicts:
             raise Collision(f"Column name collision: {key_conflicts}")
+
+        # Ensure that child tables are marked with the 'flattened' spec
+        if structure_family == StructureFamily.table:
+            if not specs or "flattened" not in (s.name for s in specs):
+                specs = [Spec(name="flattened")] + (specs or [])
 
         return await super().create_node(
             structure_family, metadata, key=key, specs=specs, data_sources=data_sources

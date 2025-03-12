@@ -288,7 +288,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 raise KeyError(key)
             assert (
                 len(data) == 1
-            ), "The key lookup query must never result more than one result."
+            ), "The key lookup query must never return more than one result."
             (item,) = data
             result = client_for_item(
                 self.context,
@@ -341,6 +341,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             raise KeyError(err_arg)
                         raise
                     item = content["data"]
+
+                    # Tables that belong to composite nodes can not be addressed directly
+                    if (
+                        item["attributes"]["structure_family"] == StructureFamily.table
+                    ) and (
+                        "flattened" in (s["name"] for s in item["attributes"]["specs"])
+                    ):
+                        raise KeyError(
+                            f"Attempting to access a table in a composite container; use .parts['{keys[-1]}'] instead."  # noqa
+                        )
+
                     break
             result = client_for_item(
                 self.context,
@@ -1122,10 +1133,14 @@ class Composite(Container):
         return len(self._flat_keys_mapping)
 
     def __getitem__(self, key: str, _ignore_inlined_contents=False):
+        if isinstance(key, tuple):
+            key = "/".join(key)
         if key in self._flat_keys_mapping:
             key = self._flat_keys_mapping[key]
         else:
-            raise KeyError(key)
+            raise KeyError(
+                f"Key '{key}' not found. If it refers to a table, use .parts['{key}'] instead."
+            )
 
         return super().__getitem__(key, _ignore_inlined_contents)
 

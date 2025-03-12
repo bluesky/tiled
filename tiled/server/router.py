@@ -351,7 +351,6 @@ async def metadata(
     request.state.endpoint = "metadata"
     base_url = get_base_url(request)
     path_parts = [segment for segment in path.split("/") if segment]
-    print(f"metadata path_parts: {path_parts}")
     try:
         resource = await construct_resource(
             base_url,
