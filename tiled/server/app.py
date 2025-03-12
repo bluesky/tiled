@@ -783,9 +783,9 @@ Back up the database, and then run:
         def override_get_serialization_registry():
             return serialization_registry
 
-        app.dependency_overrides[get_serialization_registry] = (
-            override_get_serialization_registry
-        )
+        app.dependency_overrides[
+            get_serialization_registry
+        ] = override_get_serialization_registry
 
     if validation_registry is not None:
 
@@ -793,9 +793,9 @@ Back up the database, and then run:
         def override_get_validation_registry():
             return validation_registry
 
-        app.dependency_overrides[get_validation_registry] = (
-            override_get_validation_registry
-        )
+        app.dependency_overrides[
+            get_validation_registry
+        ] = override_get_validation_registry
 
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):
