@@ -1,6 +1,7 @@
 import hashlib
 import uuid as uuid_module
 from datetime import datetime, timedelta, timezone
+from math import exp
 
 from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,24 +77,44 @@ async def initialize_database(engine):
             await create_default_roles(db)
 
 
+def lt_expiration_filter(dialect_name, exp_time, ref_time):
+    """Dialect dependent timestamp comparison (less than) for expiration filter."""
+    if dialect_name == "postgresql":
+        # Use func.timezone() for PostgreSQL, but remove for SQLite
+        return func.timezone("UTC", exp_time) < ref_time
+    else:
+        # SQLite handles timestamps differently
+        return exp_time < ref_time
+
+
 async def purge_expired(db, cls, refresh_token_max_age: timedelta = None):
     """
     Remove expired entries.
     """
     now = datetime.now(timezone.utc)
     num_expired = 0
-
-    if (cls.__name__ == "Session") and (refresh_token_max_age is not None):
+    # Check the database dialect (SQLite vs PostgreSQL)
+    dialect_name = db.bind.dialect.name
+    if cls.__name__ == "Session":
         statement = select(cls).filter(
             or_(
                 and_(
                     cls.expiration_time.is_not(None),
-                    cls.expiration_time.replace(tzinfo=timezone.utc) < now,
+                    lt_expiration_filter(dialect_name, cls.expiration_time, now),
                 ),
                 and_(
                     cls.time_last_refreshed.is_not(None),
-                    cls.time_last_refreshed.replace(tzinfo=timezone.utc)
-                    < (now - refresh_token_max_age),
+                    lt_expiration_filter(
+                        dialect_name,
+                        cls.time_last_refreshed,
+                        now - refresh_token_max_age,
+                    ),
+                ),
+                and_(
+                    cls.time_last_refreshed.is_(None),
+                    lt_expiration_filter(
+                        dialect_name, cls.time_created, now - refresh_token_max_age
+                    ),
                 ),
             )
         )
@@ -101,11 +122,11 @@ async def purge_expired(db, cls, refresh_token_max_age: timedelta = None):
         statement = (
             select(cls)
             .filter(cls.expiration_time.is_not(None))
-            .filter(cls.expiration_time.replace(tzinfo=timezone.utc) < now)
+            .filter(lt_expiration_filter(dialect_name, cls.expiration_time, now))
         )
-
     result = await db.execute(statement)
-    for obj in result.scalars():
+    rows_to_delete = result.unique().scalars()
+    for obj in rows_to_delete:
         num_expired += 1
         await db.delete(obj)
     if num_expired:
