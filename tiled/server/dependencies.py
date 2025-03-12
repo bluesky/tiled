@@ -1,4 +1,3 @@
-from functools import cache
 from typing import Optional, Tuple, Union
 
 import pydantic_settings
@@ -9,12 +8,6 @@ from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 from tiled.adapters.mapping import MapAdapter
 from tiled.structures.core import StructureFamily
 
-from ..media_type_registration import (
-    default_deserialization_registry,
-    default_serialization_registry,
-)
-from ..query_registration import default_query_registry
-from ..validation_registration import default_validation_registry
 from .authentication import check_scopes, get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
@@ -24,30 +17,6 @@ slice_func = slice
 
 DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
-
-
-@cache
-def get_query_registry():
-    "This may be overridden via dependency_overrides."
-    return default_query_registry
-
-
-@cache
-def get_deserialization_registry():
-    "This may be overridden via dependency_overrides."
-    return default_deserialization_registry
-
-
-@cache
-def get_serialization_registry():
-    "This may be overridden via dependency_overrides."
-    return default_serialization_registry
-
-
-@cache
-def get_validation_registry():
-    "This may be overridden via dependency_overrides."
-    return default_validation_registry
 
 
 def get_root_tree():
@@ -65,7 +34,7 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         principal: str = Depends(get_current_principal),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _ = Security(check_scopes)
+        _=Security(check_scopes),
     ) -> MapAdapter:
         """
         Obtain a node in the tree from its path.
