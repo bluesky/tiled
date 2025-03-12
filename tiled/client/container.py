@@ -1096,7 +1096,7 @@ class Composite(Container):
                     params={
                         **parse_qs(urlparse(next_page_url).query),
                         **self._queries_as_params,
-                        "select_metadata": False,
+                        # "select_metadata": False,  # Remove this param to select ALL metadata (or pick necessary)
                     },
                 )
             ).json()

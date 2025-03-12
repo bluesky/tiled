@@ -227,7 +227,11 @@ class SQLAdapter:
             for k, v in self.metadata().items()
             if k not in self.structure().columns
         }
-        metadata.update(self.metadata().get(key, {}))  # type: ignore
+        if column_metadata := self.metadata().get(key):
+            if isinstance(column_metadata, dict):
+                metadata.update(column_metadata)
+            else:
+                metadata[key] = column_metadata
 
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values, metadata=metadata)

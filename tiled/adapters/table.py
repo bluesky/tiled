@@ -151,7 +151,11 @@ class TableAdapter:
             for k, v in self.metadata().items()
             if k not in self.structure().columns
         }
-        metadata.update(self.metadata().get(key, {}))  # type: ignore
+        if column_metadata := self.metadata().get(key):
+            if isinstance(column_metadata, dict):
+                metadata.update(column_metadata)
+            else:
+                metadata[key] = column_metadata
 
         return ArrayAdapter.from_array(array, metadata=metadata)
 

@@ -69,16 +69,16 @@ def context(tree):
         x.write_dataframe(
             df1,
             key="df1",
-            metadata={"md_key": "md_for_df1", "A": "md_for_col_A", "B": "md_for_col_B"},
+            metadata={"md_key": "md_for_df1", "A": {"md_key": "md_for_A"}, "B": {"md_key": "md_for_B"}},
         )
         x.write_dataframe(
             df2,
             key="df2",
             metadata={
                 "md_key": "md_for_df2",
-                "C": "md_for_col_C",
-                "D": "md_for_col_D",
-                "E": "md_for_col_E",
+                "C": {"md_key": "md_for_C"},
+                "D": {"md_key": "md_for_D"},
+                "E": {"md_key": "md_for_E"},
             },
         )
         x.write_awkward(awk_arr, key="awk", metadata={"md_key": "md_for_awk"})
@@ -160,9 +160,15 @@ def test_iterate_columns(context):
 def test_metadata(context):
     client = from_context(context)
     assert client["x"].metadata == md
+
+    # Check metadata for each part
     for part in client["x"].parts:
         c = client["x"].parts[part].refresh()
         assert c.metadata["md_key"] == f"md_for_{part}"
+
+    # Check metadata for each item (column or array)
+    for name, _client in client["x"].items():
+        assert _client.metadata["md_key"] == f"md_for_{name}"
 
 
 def test_parts_not_direclty_accessible(context):
