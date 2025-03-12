@@ -1,7 +1,8 @@
 import hashlib
 import uuid as uuid_module
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -75,17 +76,34 @@ async def initialize_database(engine):
             await create_default_roles(db)
 
 
-async def purge_expired(db, cls):
+async def purge_expired(db, cls, refresh_token_max_age: timedelta = None):
     """
     Remove expired entries.
     """
     now = datetime.now(timezone.utc)
     num_expired = 0
-    statement = (
-        select(cls)
-        .filter(cls.expiration_time.is_not(None))
-        .filter(cls.expiration_time.replace(tzinfo=timezone.utc) < now)
-    )
+
+    if (cls.__name__ == "Session") and (refresh_token_max_age is not None):
+        statement = select(cls).filter(
+            or_(
+                and_(
+                    cls.expiration_time.is_not(None),
+                    cls.expiration_time.replace(tzinfo=timezone.utc) < now,
+                ),
+                and_(
+                    cls.time_last_refreshed.is_not(None),
+                    cls.time_last_refreshed.replace(tzinfo=timezone.utc)
+                    < (now - refresh_token_max_age),
+                ),
+            )
+        )
+    else:
+        statement = (
+            select(cls)
+            .filter(cls.expiration_time.is_not(None))
+            .filter(cls.expiration_time.replace(tzinfo=timezone.utc) < now)
+        )
+
     result = await db.execute(statement)
     for obj in result.scalars():
         num_expired += 1
