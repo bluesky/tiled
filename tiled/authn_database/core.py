@@ -1,7 +1,6 @@
 import hashlib
 import uuid as uuid_module
 from datetime import datetime, timedelta, timezone
-from math import exp
 
 from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
