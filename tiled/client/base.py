@@ -189,14 +189,16 @@ class BaseClient:
         return self._context
 
     def refresh(self):
+        params = {
+            **parse_qs(urlparse(self.uri).query),
+        }
+        if self._include_data_sources:
+            params["include_data_sources"] = self._include_data_sources
         content = handle_error(
             self.context.http_client.get(
                 self.uri,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **parse_qs(urlparse(self.uri).query),
-                    "include_data_sources": self._include_data_sources,
-                },
+                params=params,
             )
         ).json()
         self._item = content["data"]
