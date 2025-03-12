@@ -52,7 +52,7 @@ from .dependencies import (
     get_validation_registry,
 )
 from .router import distinct, patch_route_signature, router, search
-from .settings import get_settings
+from .settings import Settings, get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
     CSRF_COOKIE_NAME,
@@ -469,21 +469,23 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         database = server_settings.get("database", {})
-        if database.get("uri"):
-            settings.database_uri = database["uri"]
-        if database.get("pool_size"):
-            settings.database_pool_size = database["pool_size"]
-        if database.get("pool_pre_ping"):
-            settings.database_pool_pre_ping = database["pool_pre_ping"]
-        if database.get("max_overflow"):
-            settings.database_max_overflow = database["max_overflow"]
-        if database.get("init_if_not_exists"):
-            settings.database_init_if_not_exists = database["init_if_not_exists"]
+        if uri := database.get("uri"):
+            settings.database_settings.uri = uri
+        if pool_size := database.get("pool_size"):
+            settings.database_settings.pool_size = pool_size
+        if pool_pre_ping := database.get("pool_pre_ping"):
+            settings.database_settings.pool_pre_ping = pool_pre_ping
+        if max_overflow := database.get("max_overflow"):
+            settings.database_settings.max_overflow = max_overflow
+        if init_if_not_exists := database.get("init_if_not_exists"):
+            settings.database_init_if_not_exists = init_if_not_exists
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in memory. Horizontally scaled deployments
             # must specify a persistent database.
-            settings.database_uri = settings.database_uri or "sqlite://"
+            settings.database_settings.uri = (
+                settings.database_settings.uri or "sqlite://"
+            )
         return settings
 
     async def startup_event():
@@ -491,7 +493,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
         logger.info(f"Tiled version {__version__}")
         # Validate the single-user API key.
-        settings = app.dependency_overrides[get_settings]()
+        settings: Settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
         API_KEY_MSG = """
 Here are two ways to generate a good API key:
@@ -543,7 +545,7 @@ confusing behavior due to ambiguous encodings.
         # client.context.app.state.root_tree
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
-        if settings.database_uri is not None:
+        if settings.database_settings.uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
 
             from ..alembic_utils import (
@@ -668,8 +670,8 @@ Back up the database, and then run:
         for task in tasks.get("shutdown", []):
             await task()
 
-        settings = app.dependency_overrides[get_settings]()
-        if settings.database_uri is not None:
+        settings: Settings = app.dependency_overrides[get_settings]()
+        if settings.database_settings.uri is not None:
             from ..authn_database.connection_pool import close_database_connection_pool
 
             for task in app.state.tasks:
