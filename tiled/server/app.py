@@ -640,7 +640,6 @@ Back up the database, and then run:
                     )
 
             async def purge_expired_sessions_and_api_keys():
-
                 while True:
                     async with AsyncSession(
                         engine, autoflush=False, expire_on_commit=False
