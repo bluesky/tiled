@@ -191,10 +191,10 @@ async def search(
     **filters,
 ):
     request.state.endpoint = "search"
-    if entry.structure_family not in [
+    if entry.structure_family not in {
         StructureFamily.container,
         StructureFamily.composite,
-    ]:
+    }:
         raise WrongTypeForRoute("This is not a Node; it cannot be searched or listed.")
     try:
         resource, metadata_stale_at, must_revalidate = await construct_entries_response(

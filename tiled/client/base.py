@@ -200,10 +200,10 @@ class BaseClient:
             )
         ).json()
         self._item = content["data"]
-        if self.structure_family not in [
+        if self.structure_family not in {
             StructureFamily.container,
             StructureFamily.composite,
-        ]:
+        }:
             structure_type = STRUCTURE_TYPES[self.structure_family]
             self._structure = structure_type.from_json(
                 self._item["attributes"]["structure"]

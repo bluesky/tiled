@@ -672,7 +672,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # to dispense with this.
         if (
             structure_family
-            not in [StructureFamily.container, StructureFamily.composite]
+            not in {StructureFamily.container, StructureFamily.composite}
         ) and isinstance(structure, dict):
             structure_type = STRUCTURE_TYPES[structure_family]
             structure = structure_type.from_json(structure)

@@ -411,7 +411,6 @@ class CatalogNodeAdapter:
     async def lookup_adapter(
         self, segments
     ):  # TODO: Accept filter for predicate-pushdown.
-        print(f"lookup_adapter in {self.__class__} ({segments})")
         if not segments:
             return self
         *ancestors, key = segments
@@ -454,14 +453,12 @@ class CatalogNodeAdapter:
                             break
                     return adapter
                 elif (
-                    isinstance(catalog_adapter, CatalogCompositeAdapter)
-                    and len(segments[i:]) == 1
-                ):
-                    _segm = (
-                        await catalog_adapter._resolve_flat_key(segments[i])
-                    ).split("/")
-                    return await catalog_adapter.lookup_adapter(_segm)
+                    isinstance(catalog_adapter, CatalogCompositeAdapter) and len(segments[i:]) == 1):
+                    # Trying to access a table column or an array in a composite node
+                    _segm = await catalog_adapter._resolve_flat_key(segments[i])
+                    return await catalog_adapter.lookup_adapter(_segm.split("/"))
             return None
+
         return STRUCTURES[node.structure_family](self.context, node)
 
     async def get_adapter(self):
