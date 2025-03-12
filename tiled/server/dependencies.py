@@ -3,7 +3,11 @@ from typing import Optional, Tuple, Union
 
 import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
+from fastapi.security import SecurityScopes
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+
+from tiled.adapters.mapping import MapAdapter
+from tiled.structures.core import StructureFamily
 
 from ..media_type_registration import (
     default_deserialization_registry,
@@ -11,7 +15,7 @@ from ..media_type_registration import (
 )
 from ..query_registration import default_query_registry
 from ..validation_registration import default_validation_registry
-from .authentication import get_current_principal, get_session_state
+from .authentication import check_scopes, get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
@@ -53,14 +57,16 @@ def get_root_tree():
     )
 
 
-def SecureEntry(scopes, structure_families=None):
+def get_entry(structure_families: Optional[set[StructureFamily]] = None):
     async def inner(
         path: str,
         request: Request,
+        security_scopes: SecurityScopes,
         principal: str = Depends(get_current_principal),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-    ):
+        _ = Security(check_scopes)
+    ) -> MapAdapter:
         """
         Obtain a node in the tree from its path.
 
@@ -131,7 +137,7 @@ def SecureEntry(scopes, structure_families=None):
                     allowed_scopes = await access_policy.allowed_scopes(
                         entry_with_access_policy, principal, path_parts_relative
                     )
-                    if not set(scopes).issubset(allowed_scopes):
+                    if not set(security_scopes.scopes).issubset(allowed_scopes):
                         if "read:metadata" not in allowed_scopes:
                             # If you can't read metadata, it does not exist for you.
                             raise NoEntry(path_parts)
@@ -142,7 +148,7 @@ def SecureEntry(scopes, structure_families=None):
                                 status_code=HTTP_403_FORBIDDEN,
                                 detail=(
                                     "Not enough permissions to perform this action on this node. "
-                                    f"Requires scopes {scopes}. "
+                                    f"Requires scopes {security_scopes.scopes}. "
                                     f"Principal had scopes {list(allowed_scopes)} on this node."
                                 ),
                             )
@@ -164,7 +170,7 @@ def SecureEntry(scopes, structure_families=None):
             ),
         )
 
-    return Security(inner, scopes=scopes)
+    return inner
 
 
 def block(
