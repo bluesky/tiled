@@ -575,7 +575,6 @@ def get_router(
             column=(column or field),
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
             settings=settings,
         )
 
@@ -605,18 +604,16 @@ def get_router(
             column=column,
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
             settings=settings,
         )
 
     async def table_partition(
         request: Request,
         partition: int,
-        entry,
+        entry: MapAdapter,
         column: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
-        serialization_registry,
         settings: Settings,
     ):
         """
@@ -685,7 +682,6 @@ def get_router(
             column=column,
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
             settings=settings,
         )
 
@@ -713,17 +709,15 @@ def get_router(
             column=column,
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
             settings=settings,
         )
 
     async def table_full(
         request: Request,
-        entry,
+        entry: MapAdapter,
         column: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
-        serialization_registry,
         settings: Settings,
     ):
         """
@@ -788,7 +782,6 @@ def get_router(
             field=field,
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
         )
 
     @router.post(
@@ -816,7 +809,6 @@ def get_router(
             field=field,
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
         )
 
     async def container_full(
@@ -826,7 +818,6 @@ def get_router(
         field: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
-        serialization_registry,
     ):
         """
         Fetch the data for the given container.
@@ -961,7 +952,6 @@ def get_router(
             form_key=form_key,
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
             settings=settings,
         )
 
@@ -996,7 +986,6 @@ def get_router(
             form_key=body,
             format=format,
             filename=filename,
-            serialization_registry=serialization_registry,
             settings=settings,
         )
 
@@ -1006,7 +995,6 @@ def get_router(
         form_key: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
-        serialization_registry,
         settings: Settings,
     ):
         structure_family = entry.structure_family
@@ -1118,7 +1106,6 @@ def get_router(
             request=request,
             path=path,
             body=body,
-            validation_registry=validation_registry,
             settings=settings,
             entry=entry,
         )
@@ -1137,7 +1124,6 @@ def get_router(
             request=request,
             path=path,
             body=body,
-            validation_registry=validation_registry,
             settings=settings,
             entry=entry,
         )
@@ -1146,7 +1132,6 @@ def get_router(
         request: Request,
         path: str,
         body: schemas.PostMetadataRequest,
-        validation_registry,
         settings: Settings,
         entry,
     ):
