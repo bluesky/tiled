@@ -10,6 +10,8 @@ from functools import cache
 from fastapi import APIRouter, Request, Response, Security
 from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 
+from tiled.server.authentication import check_scopes
+
 router = APIRouter()
 
 REQUEST_DURATION = Histogram(
@@ -155,7 +157,7 @@ def prometheus_registry():
 
 
 @router.get("/metrics")
-async def metrics(request: Request, _=Security(lambda: None, scopes=["metrics"])):
+async def metrics(request: Request, _=Security(check_scopes, scopes=["metrics"])):
     """
     Prometheus metrics
     """
