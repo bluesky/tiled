@@ -203,6 +203,11 @@ def test_file_with_broken_links(example_file_with_links):
     with pytest.raises(KeyError):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/c/d")
 
+    tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a")
+    with fail_with_status_code(HTTP_410_GONE):
+        with Context.from_app(build_app(tree)) as context:
+            client = from_context(context)
+
     # Case 2. Broken children of an external link
     # KeyError when accessing 'x'; 'y' is still accessible (but empty)
     with h5py.File(child_file_path, "r+") as file:
@@ -243,8 +248,3 @@ def test_file_with_broken_links(example_file_with_links):
     with fail_with_status_code(HTTP_410_GONE):
         with Context.from_app(build_app(tree)) as context:
             client = from_context(context)
-
-    # Case 5. Hard link is still working
-
-    # with Context.from_app(build_app(tree)) as context:
-    #     client = from_context(context)
