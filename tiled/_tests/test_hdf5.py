@@ -1,13 +1,17 @@
+import os
+
 import numpy
 import pytest
+from starlette.status import HTTP_410_GONE
 
 from ..adapters import hdf5 as hdf5_adapters
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, record_history
 from ..server.app import build_app
-from ..utils import ensure_uri
+from ..utils import BrokenLink, ensure_uri
 from ..utils import tree as tree_util
+from .utils import fail_with_status_code
 
 
 @pytest.fixture(scope="module")
@@ -35,6 +39,26 @@ def example_file_with_vlen_str_in_dataset(tmp_path_factory):
         dset = c.create_dataset("d", (100,), dtype=dt)
         assert dset.dtype == "object"
         dset[0] = b"test"
+    return ensure_uri(file_path)
+
+
+@pytest.fixture(scope="function")
+def example_file_with_links(tmp_path_factory):
+    h5py = pytest.importorskip("h5py")
+    file_path = tmp_path_factory.mktemp("data").joinpath("example.h5")
+    with h5py.File(file_path.with_name("linked.h5"), "w") as file:
+        z = file.create_group("z")
+        y = z.create_group("y")
+        y.create_dataset("x", data=2 * numpy.ones((5, 5)))
+    with h5py.File(file_path, "w") as file:
+        a = file.create_group("a")
+        b = a.create_group("b")
+        c = b.create_group("c")
+        c.create_dataset("d", data=numpy.ones((3, 3)))
+        b["hard_link"] = c["d"]
+        b["soft_link"] = h5py.SoftLink("/a/b/c/d")
+        b["extr_link"] = h5py.ExternalLink("linked.h5", "/z/y")
+
     return ensure_uri(file_path)
 
 
@@ -121,3 +145,106 @@ def test_inlined_contents(example_file):
             assert len(h0.requests) > len(h1.requests) > len(hN.requests)
     finally:
         hdf5_adapters.INLINED_DEPTH = original
+
+
+def test_file_with_links(example_file_with_links, buffer):
+    """Serve an HDF5 file with internal and external links."""
+
+    h5py = pytest.importorskip("h5py")
+    tree = HDF5Adapter.from_uris(example_file_with_links)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+    # Read the original array
+    arr = client["a"]["b"]["c/d"].read()
+    assert isinstance(arr, numpy.ndarray)
+    assert numpy.allclose(arr, numpy.ones((3, 3)))
+
+    # Read the hard link
+    arr = client["a"]["b"]["hard_link"].read()
+    assert isinstance(arr, numpy.ndarray)
+    assert numpy.allclose(arr, numpy.ones((3, 3)))
+
+    # Read the soft link
+    arr = client["a"]["b"]["soft_link"].read()
+    assert isinstance(arr, numpy.ndarray)
+    assert numpy.allclose(arr, numpy.ones((3, 3)))
+
+    # Read the external link
+    arr = client["a"]["b"]["extr_link/x"].read()
+    assert isinstance(arr, numpy.ndarray)
+    assert numpy.allclose(arr, 2 * numpy.ones((5, 5)))
+
+    # Export the tree into another file/buffer
+    client.export(buffer, format="application/x-hdf5")
+    file = h5py.File(buffer, "r")
+    assert numpy.allclose(numpy.array(file["a/b/c/d"]), numpy.ones((3, 3)))
+    assert numpy.allclose(numpy.array(file["a/b/hard_link"]), numpy.ones((3, 3)))
+    assert numpy.allclose(numpy.array(file["a/b/soft_link"]), numpy.ones((3, 3)))
+    assert numpy.allclose(numpy.array(file["a/b/extr_link/x"]), 2 * numpy.ones((5, 5)))
+
+
+def test_file_with_broken_links(example_file_with_links):
+    """Raise an error when accessing non-existing keys."""
+
+    # Break the links
+    h5py = pytest.importorskip("h5py")
+    main_file_path = example_file_with_links.replace("file://localhost", "")
+    child_file_path = main_file_path.replace("example.h5", "linked.h5")
+
+    # Case 1. Broken soft link
+    # KeyError: 'Unable to synchronously open object (component not found)'
+    with h5py.File(main_file_path, "r+") as file:
+        file["a/b/c"].pop("d")
+
+    with pytest.raises(BrokenLink):
+        tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/soft_link")
+
+    with pytest.raises(KeyError):
+        tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/c/d")
+
+    # Case 2. Broken children of an external link
+    # KeyError when accessing 'x'; 'y' is still accessible (but empty)
+    with h5py.File(child_file_path, "r+") as file:
+        file["z/y"].pop("x")
+
+    with pytest.raises(KeyError):
+        tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link/x")
+
+    tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+    assert len(client) == 0
+    with pytest.raises(KeyError):
+        client["x"]
+
+    # Case 3. Broken external link -- the referenced object is missing
+    # KeyError: "Unable to synchronously open object (object 'y' doesn't exist)"
+    with h5py.File(child_file_path, "r+") as file:
+        file["z"].pop("y")
+
+    with pytest.raises(KeyError):
+        tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
+
+    # A client can't be instantiated at all
+    tree = HDF5Adapter.from_uris(example_file_with_links)
+    with pytest.raises(KeyError):
+        with Context.from_app(build_app(tree)) as context:
+            client = from_context(context)
+
+    # Case 4. Broken external link -- the file is missing
+    # KeyError: "Unable to synchronously open object (unable to open external file, external link file name = 'linked.h5')"  # noqa
+    os.remove(child_file_path)
+
+    with pytest.raises(BrokenLink):
+        tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
+
+    tree = HDF5Adapter.from_uris(example_file_with_links)
+    with fail_with_status_code(HTTP_410_GONE):
+        with Context.from_app(build_app(tree)) as context:
+            client = from_context(context)
+
+    # Case 5. Hard link is still working
+
+    # with Context.from_app(build_app(tree)) as context:
+    #     client = from_context(context)

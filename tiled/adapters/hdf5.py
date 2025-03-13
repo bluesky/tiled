@@ -1,5 +1,6 @@
 import copy
 import os
+import sys
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
@@ -19,7 +20,7 @@ from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
-from ..utils import node_repr, path_from_uri
+from ..utils import BrokenLink, node_repr, path_from_uri
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
@@ -45,6 +46,10 @@ def parse_hdf5_tree(
     """
     res: dict[str, Union[Any, None]] = {}
 
+    # If a file has broken links, iterating through items() will return None
+    if tree is None:
+        return None
+
     if isinstance(tree, h5py.Dataset):
         return None
 
@@ -63,14 +68,56 @@ def get_hdf5_attrs(
 ) -> JSON:
     """Get attributes of an HDF5 dataset"""
     file_path = path_from_uri(file_uri)
-    with h5py.File(file_path, "r", swmr=swmr, libver=libver, **kwargs) as _file:
-        node = _file[dataset] if dataset else _file
+    with h5open(file_path, dataset=dataset, swmr=swmr, libver=libver, **kwargs) as node:
         d = dict(getattr(node, "attrs", {}))
         for k, v in d.items():
             # Convert any bytes to str.
             if isinstance(v, bytes):
                 d[k] = v.decode()
     return d
+
+
+class h5open(h5py.File):  # type: ignore
+    """A context manager for reading datasets from HDF5 files
+
+    This class is a subclass of h5py.File that allows for reading datasets from HDF5 files using a context manager.
+    It raises a BrokenLink exception if a key referencing a dataset (or a group) exists in the file, but the
+    referenced object can not be accessed (e.g. if an externally linked file has been removed). In these cases,
+    h5py raises a KeyError with following messages:
+    KeyError: 'Unable to synchronously open object (component not found)'
+    or
+    KeyError: "Unable to synchronously open object (unable to open external file, external link file name = '...')"
+    if a soft link or an external link is broken, respectively.
+
+    This message is distinct from the case when a key does not exist in the file, in which case h5py raises:
+    KeyError: "Unable to synchronously open object (object 'y' doesn't exist)"
+    """
+
+    def __init__(
+        self, filename: Union[str, Path], dataset: Optional[str] = None, **kwargs: Any
+    ) -> None:
+        super().__init__(filename, mode="r", **kwargs)
+        self.dataset = dataset
+
+    def __enter__(self) -> Union[h5py.File, h5py.Group, h5py.Dataset]:
+        super().__enter__()
+        try:
+            return self[self.dataset] if self.dataset else self
+        except Exception:
+            self.__exit__(*sys.exc_info())
+            raise
+
+    def __exit__(self, exc_type, exc_value, exc_tb) -> None:  # type: ignore
+        super().__exit__(exc_type, exc_value, exc_tb)
+
+        if exc_type == KeyError:
+            if "unable to open external file" in str(exc_value):
+                # External link is broken
+                raise BrokenLink(exc_value.args[0]) from exc_value
+
+            elif "component not found" in str(exc_value):
+                # Soft link is broken
+                raise BrokenLink(exc_value.args[0]) from exc_value
 
 
 class HDF5ArrayAdapter(ArrayAdapter):
@@ -111,9 +158,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         def _get_hdf5_specs(
             fpath: Union[str, Path]
         ) -> Tuple[Tuple[int, ...], Union[Tuple[int, ...], None], numpy.dtype]:
-            with h5py.File(fpath, "r", swmr=swmr, libver=libver) as f:
-                f = f[dataset] if dataset else f
-                return f.shape, f.chunks, f.dtype
+            with h5open(fpath, dataset, swmr=swmr, libver=libver) as ds:
+                result = ds.shape, ds.chunks, ds.dtype
+            return result
 
         # Need to know shapes/dtypes of constituent arrays to load them lazily
         shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
@@ -137,9 +184,10 @@ class HDF5ArrayAdapter(ArrayAdapter):
             check_str_dtype = h5py.check_string_dtype(dtype)
             if check_str_dtype.length is None:
                 # TODO: refactor and test
-                with h5py.File(file_paths[0], "r", swmr=swmr, libver=libver) as f:
-                    value = f[dataset] if dataset else f
-                    dataset_names = value.file[f.name + "/" + dataset][...][()]
+                with h5open(
+                    file_paths[0], dataset=dataset, swmr=swmr, libver=libver
+                ) as value:
+                    dataset_names = value.file[value.file.name + "/" + dataset][...][()]
                     if value.size == 1:
                         arr = dask.array.from_array(numpy.array(dataset_names))
                     else:
@@ -342,12 +390,12 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
             assets[0].data_uri
         ]
         file_path = path_from_uri(data_uris[0])
-        with h5py.File(file_path, "r", swmr=swmr, libver=libver) as file:
-            tree = parse_hdf5_tree(file[dataset] if dataset else file)
+        with h5open(file_path, dataset, swmr=swmr, libver=libver) as file:
+            tree = parse_hdf5_tree(file)
 
         if tree is None:
             raise ValueError(
-                "Data source pointing to an HDF5 Dataset should have an array structure"
+                "DataSource is pointing to an HDF5 Dataset; it should have an array structure, not a container."
             )
 
         return cls(
@@ -371,8 +419,8 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         libver: str = "latest",
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
-        with h5py.File(fpath, "r", swmr=swmr, libver=libver) as file:
-            tree = parse_hdf5_tree(file[dataset] if dataset else file)
+        with h5open(fpath, dataset, swmr=swmr, libver=libver) as file:
+            tree = parse_hdf5_tree(file)
 
         if tree is None:
             return HDF5ArrayAdapter.from_uris(
