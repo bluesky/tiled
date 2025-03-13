@@ -28,10 +28,8 @@ def upgrade():
 
 
 def downgrade():
-    connection = op.get_bind()
-
-    if connection.engine.dialect.name == "postgresql":
-        with op.get_context().autocommit_block():
-            op.execute(
-                sa.text("ALTER TYPE structurefamily DROP VALUE IF EXISTS 'composite'")
-            )
+    # PostgreSQL does not support dropping values from enums.
+    # (The enum would need to be destroyed and recreated, migrating
+    # the data in the process.) Fortunately, an extra unused values does
+    # not interfere with operation of older versions of Tiled.
+    pass
