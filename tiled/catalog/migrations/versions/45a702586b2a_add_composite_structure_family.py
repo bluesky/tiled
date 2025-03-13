@@ -28,4 +28,10 @@ def upgrade():
 
 
 def downgrade():
-    raise NotImplementedError
+    connection = op.get_bind()
+
+    if connection.engine.dialect.name == "postgresql":
+        with op.get_context().autocommit_block():
+            op.execute(
+                sa.text("ALTER TYPE structurefamily DROP VALUE IF EXISTS 'composite'")
+            )
