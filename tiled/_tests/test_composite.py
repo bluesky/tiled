@@ -190,7 +190,7 @@ def test_external_assets(context, tiff_sequence, csv_file):
     client = from_context(context)
     tiff_assets = [
         Asset(
-            data_uri=f"file://localhost{fpath}",
+            data_uri=f"file://localhost/{fpath}",
             is_directory=False,
             parameter="data_uris",
             num=i + 1,
@@ -212,7 +212,7 @@ def test_external_assets(context, tiff_sequence, csv_file):
 
     csv_assets = [
         Asset(
-            data_uri=f"file://localhost{csv_file}",
+            data_uri=f"file://localhost/{csv_file}",
             is_directory=False,
             parameter="data_uris",
         )
