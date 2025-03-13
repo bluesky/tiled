@@ -81,7 +81,7 @@ jobs:
       run: |
         set -vxeuo pipefail
         coverage run -m pytest -v
-        coverage report
+        coverage report -m
       env:
         # Provide test suite with a PostgreSQL database to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432

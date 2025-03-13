@@ -661,6 +661,28 @@ class Context:
         auth.sync_set_token("refresh_token", tokens["refresh_token"])
         self.http_client.auth = auth
 
+    @property
+    def authenticated(self) -> bool:
+        """
+        Boolean indicated whether session is authenticated (true) or anonymous (false)
+
+        Examples
+        --------
+
+        An anonymous session at first, after login, is authenticated.
+
+        >>> client.context.authenticated
+        False
+        >>> client.login()
+        Username: USERNAME
+        Password: <input is hidden>
+        >>> client.context.authenticated
+        True
+
+        """
+        # Confirm the state of properties that authentication consists of
+        return (self.api_key is not None) or (self.http_client.auth is not None)
+
     def _token_directory(self):
         # e.g. ~/.config/tiled/tokens/{host:port}
         # with the templated element URL-encoded so it is a valid filename.

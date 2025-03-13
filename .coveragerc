@@ -8,6 +8,7 @@ omit =
     # ignore _version.py and versioneer.py
     .*version.*
     *_version.py
+    */_tests/*
 
 exclude_lines =
     if __name__ == '__main__':
