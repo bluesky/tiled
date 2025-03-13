@@ -259,7 +259,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         for key in keys:
             if not isinstance(key, str):
                 raise TypeError("Containers can only be indexed by strings")
-        keys = "/".join(keys).strip("/").split("/")
+        keys = tuple("/".join(keys).strip("/").split("/"))  # Remove any slashes
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
