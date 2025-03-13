@@ -32,8 +32,6 @@ class EntryBasedAccessPolicy(SimpleAccessPolicy):
         # If this is being called, filter_access has let us get this far.
         if principal is SpecialUsers.public:
             allowed = PUBLIC_SCOPES
-        elif principal.type == "service":
-            allowed = self.scopes
         else:
             allowed = self.scopes
 
@@ -60,7 +58,7 @@ class EntryBasedAccessPolicy(SimpleAccessPolicy):
                 )
             remove_scope = node.metadata().get("remove_scope", None)
             if remove_scope in allowed:
-                allowed = allowed.copy()
+                allowed = set(allowed)
                 allowed.remove(remove_scope)
         return allowed
 
