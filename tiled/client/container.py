@@ -342,7 +342,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         raise
                     item = content["data"]
 
-                    # Tables that belong to composite nodes can not be addressed directly
+                    # Tables that belong to composite nodes cannot be addressed directly
                     if (
                         item["attributes"]["structure_family"] == StructureFamily.table
                     ) and (
