@@ -43,7 +43,12 @@ class NDSlice(tuple):
         result = []
         for s in self:
             if isinstance(s, builtins.slice):
-                result.append({"start": s.start, "stop": s.stop, "step": s.step})
+                json_slice = (
+                    ({} if s.start is None else {"start": s.start})
+                    | ({} if s.stop is None else {"stop": s.stop})
+                    | ({} if s.step is None else {"step": s.step})
+                )
+                result.append(json_slice or "ellipsis")
             elif isinstance(s, int):
                 result.append(s)
             elif s is Ellipsis:
@@ -68,13 +73,13 @@ class NDSlice(tuple):
 
         result = []
         for part in arg[1:-1].split(","):
-            if part.strip() == ":":
-                result.append(builtins.slice(None))
+            if part.strip() in {":", "...", ""}:
+                result.append(Ellipsis)
             elif m := re.match(r"^(\d+):$", part.strip()):
                 start, stop = int(m.group(1)), None
                 result.append(builtins.slice(start, stop))
             elif m := re.match(r"^:(\d+)$", part.strip()):
-                start, stop = 0, int(m.group(1))
+                start, stop = None, int(m.group(1))
                 result.append(builtins.slice(start, stop))
             elif m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
                 start, stop, step = map(int, m.groups())
@@ -84,8 +89,6 @@ class NDSlice(tuple):
                 result.append(builtins.slice(start, stop))
             elif m := re.match(r"^(\d+)$", part.strip()):
                 result.append(int(m.group()))
-            elif part.strip() == "...":
-                result.append(Ellipsis)
             else:
                 raise ValueError(f"Invalid slice part: {part}")
             # TODO: cases like "::n" or ":4:"
