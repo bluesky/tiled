@@ -28,7 +28,6 @@ from .utils import (
     handle_error,
 )
 
-
 if TYPE_CHECKING:
     import pandas
     import pyarrow

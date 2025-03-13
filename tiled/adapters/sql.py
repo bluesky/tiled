@@ -238,7 +238,12 @@ class SQLAdapter:
 
     def append_partition(
         self,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame, pyarrow.Table],
+        data: Union[
+            List[pyarrow.record_batch],
+            pyarrow.record_batch,
+            pandas.DataFrame,
+            pyarrow.Table,
+        ],
         partition: int,
     ) -> None:
         """Write the data as arrow format
