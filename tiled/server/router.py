@@ -66,35 +66,30 @@ from .links import links_for_node
 from .settings import Settings, get_settings
 from .utils import filter_for_access, get_base_url, record_timing
 
+T = TypeVar("T")
 
-def get_router(
+
+def _patch_route_signature(
     query_registry: QueryRegistry,
-    serialization_registry: SerializationRegistry,
-    deserialization_registry: SerializationRegistry,
-    validation_registry: ValidationRegistry,
-) -> APIRouter:
-    router = APIRouter()
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """
+    This is done dynamically at router startup.
 
-    T = TypeVar("T")
+    We check the registry of known search query types, which is user
+    configurable, and use that to define the allowed HTTP query parameters for
+    this route.
 
-    def patch_route_signature(route: Callable[..., T]) -> Callable[..., T]:
-        """
-        This is done dynamically at router startup.
+    Take a route that accept unspecified search queries as **filters.
+    Return a wrapped version of the route that has the supported
+    search queries explicitly spelled out in the function signature.
 
-        We check the registry of known search query types, which is user
-        configurable, and use that to define the allowed HTTP query parameters for
-        this route.
+    This has no change in the actual behavior of the function,
+    but it enables FastAPI to generate good OpenAPI documentation
+    showing the supported search queries.
 
-        Take a route that accept unspecified search queries as **filters.
-        Return a wrapped version of the route that has the supported
-        search queries explicitly spelled out in the function signature.
+    """
 
-        This has no change in the actual behavior of the function,
-        but it enables FastAPI to generate good OpenAPI documentation
-        showing the supported search queries.
-
-        """
-
+    def inner(route: Callable[..., T]) -> Callable[..., T]:
         # Build a wrapper so that we can modify the signature
         # without mutating the wrapped original.
 
@@ -138,6 +133,17 @@ def get_router(
         # End black magic
 
         return route_with_sig
+
+    return inner
+
+
+def get_router(
+    query_registry: QueryRegistry,
+    serialization_registry: SerializationRegistry,
+    deserialization_registry: SerializationRegistry,
+    validation_registry: ValidationRegistry,
+) -> APIRouter:
+    router = APIRouter()
 
     @router.get("/", response_model=About)
     async def about(
@@ -243,7 +249,7 @@ def get_router(
             dict,
         ],
     )
-    @patch_route_signature
+    @_patch_route_signature(query_registry)
     async def search(
         request: Request,
         path: str,
@@ -318,7 +324,7 @@ def get_router(
         "/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
     )
-    @patch_route_signature
+    @_patch_route_signature(query_registry)
     async def distinct(
         request: Request,
         structure_families: bool = False,
