@@ -5,16 +5,12 @@ import pytest
 from fastapi import HTTPException
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
-from ..access_policies import (
-    ALL_SCOPES,
-    PUBLIC_SCOPES,
-    SimpleAccessPolicy,
-    SpecialUsers,
-)
+from ..access_policies import SimpleAccessPolicy, SpecialUsers
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.utils import ClientError
+from ..scopes import ALL_SCOPES, PUBLIC_SCOPES
 from ..server.app import build_app_from_config
 from ..server.core import NoEntry
 from .utils import enter_username_password, fail_with_status_code

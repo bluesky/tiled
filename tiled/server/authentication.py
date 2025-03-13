@@ -36,6 +36,8 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
+from tiled.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
 #     int_from_bytes is deprecated, use int.from_bytes instead
@@ -239,15 +241,7 @@ async def get_scopes_from_api_key(
     if not authenticators:
         # Tiled is in a "single user" mode with only one API key.
         return (
-            {
-                "read:metadata",
-                "read:data",
-                "write:metadata",
-                "write:data",
-                "create",
-                "register",
-                "metrics",
-            }
+            USER_SCOPES
             if secrets.compare_digest(api_key, settings.single_user_api_key)
             else set()
         )
@@ -260,10 +254,10 @@ async def get_scopes_from_api_key(
     try:
         secret = bytes.fromhex(api_key)
     except Exception:
-        return set()
+        return NO_SCOPES
     api_key_orm = await lookup_valid_api_key(db, secret)
     if api_key_orm is None:
-        return set()
+        return NO_SCOPES
     else:
         principal = api_key_orm.principal
         principal_scopes = set().union(*[role.scopes for role in principal.roles])
@@ -290,7 +284,7 @@ async def get_current_scopes(
     elif decoded_access_token is not None:
         return decoded_access_token["scp"]
     else:
-        return {"read:metadata", "read:data"} if settings.allow_anonymous_access else {}
+        return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
 
 async def check_scopes(
