@@ -1,7 +1,5 @@
-import builtins
 import copy
 import os
-import re
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
@@ -20,49 +18,12 @@ from ..iterviews import ItemsView, KeysView, ValuesView
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..type_aliases import JSON, EllipsisType
+from ..type_aliases import JSON, NDSlice
 from ..utils import node_repr, path_from_uri
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
-
-
-def ndslice_from_string(
-    arg: str,
-) -> Tuple[Union[int, builtins.slice, EllipsisType], ...]:
-    """Parse and convert a string representation of a slice
-
-    For example, '(1:3, 4, 1:5:2, ...)' is converted to (slice(1, 3), 4, slice(1, 5, 2), ...).
-    """
-    if not (arg.startswith("[") and arg.endswith("]")) and not (
-        arg.startswith("(") and arg.endswith(")")
-    ):
-        raise ValueError("Slice must be enclosed in square brackets or parentheses.")
-    result: list[Union[int, builtins.slice, EllipsisType]] = []
-    for part in arg[1:-1].split(","):
-        if part.strip() == ":":
-            result.append(builtins.slice(None))
-        elif m := re.match(r"^(\d+):$", part.strip()):
-            start, stop = int(m.group(1)), None
-            result.append(builtins.slice(start, stop))
-        elif m := re.match(r"^:(\d+)$", part.strip()):
-            start, stop = 0, int(m.group(1))
-            result.append(builtins.slice(start, stop))
-        elif m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
-            start, stop, step = map(int, m.groups())
-            result.append(builtins.slice(start, stop, step))
-        elif m := re.match(r"^(\d+):(\d+)$", part.strip()):
-            start, stop = map(int, m.groups())
-            result.append(builtins.slice(start, stop))
-        elif m := re.match(r"^(\d+)$", part.strip()):
-            result.append(int(m.group()))
-        elif part.strip() == "...":
-            result.append(Ellipsis)
-        else:
-            raise ValueError(f"Invalid slice part: {part}")
-        # TODO: cases like "::n" or ":4:"
-    return tuple(result)
 
 
 def parse_hdf5_tree(
@@ -204,9 +165,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         node: Node,
         /,
         dataset: Optional[str] = None,
-        slice: Optional[
-            Union[str, Tuple[Union[int, builtins.slice, EllipsisType], ...]]
-        ] = None,
+        slice: Optional[Union[str, NDSlice]] = None,
         squeeze: Optional[bool] = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
@@ -225,7 +184,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         if slice:
             if isinstance(slice, str):
-                slice = ndslice_from_string(slice)
+                slice = NDSlice.from_numpy_str(slice)
             array = array[slice]
         if squeeze:
             array = array.squeeze()
@@ -262,9 +221,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         cls,
         *data_uris: str,
         dataset: Optional[str] = None,
-        slice: Optional[
-            Union[str, Tuple[Union[int, builtins.slice, EllipsisType], ...]]
-        ] = None,
+        slice: Optional[Union[str, NDSlice]] = None,
         squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
@@ -279,7 +236,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # Apply slice and squeeze operations, if specified
         if slice:
             if isinstance(slice, str):
-                slice = ndslice_from_string(slice)
+                slice = NDSlice.from_numpy_str(slice)
             array = array[slice]
         if squeeze:
             array = array.squeeze()

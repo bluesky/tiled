@@ -12,7 +12,7 @@ from ..catalog.orm import Node
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..type_aliases import JSON, NDSlice
+from ..type_aliases import JSON, EllipsisType, NDSlice
 from ..utils import path_from_uri
 from .utils import init_adapter_from_catalog
 
@@ -145,7 +145,9 @@ class FileSequenceAdapter:
         # TODO How to deal with the many headers?
         return self._provided_metadata
 
-    def read(self, slice: Optional[NDSlice] = ...) -> NDArray[Any]:
+    def read(
+        self, slice: Union[NDSlice, EllipsisType, builtins.slice] = ...
+    ) -> NDArray[Any]:
         """Return a numpy array
 
         Receives a sequence of values to select from a collection of data files
@@ -200,7 +202,7 @@ class FileSequenceAdapter:
         return force_reshape(arr, sliced_shape)
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[NDSlice] = ...
+        self, block: Tuple[int, ...], slice: Optional[NDSlice] = None
     ) -> NDArray[Any]:
         """
 
@@ -216,7 +218,7 @@ class FileSequenceAdapter:
         if any(block[1:]):
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
-        return arr[slice]
+        return arr[slice] if slice else arr
 
     def structure(self) -> ArrayStructure:
         """
