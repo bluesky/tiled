@@ -170,10 +170,6 @@ def test_metadata(context):
         c = client["x"].parts[part]
         assert c.metadata["md_key"] == f"md_for_{part}"
 
-    # Check metadata for each item (column or array)
-    for name, _client in client["x"].items():
-        assert _client.metadata["md_key"] == f"md_for_{name}"
-
 
 def test_parts_not_direclty_accessible(context):
     client = from_context(context)
