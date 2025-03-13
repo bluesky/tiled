@@ -20,15 +20,17 @@ SCOPES = {
     },
 }
 
-ALL_SCOPES: set[str] = set(SCOPES)
-PUBLIC_SCOPES: set[str] = {"read:metadata", "read:data"}
-USER_SCOPES: set[str] = {
-    "read:metadata",
-    "read:data",
-    "write:metadata",
-    "write:data",
-    "create",
-    "register",
-    "metrics",
-}
-NO_SCOPES: set[str] = set()
+ALL_SCOPES: set[str] = frozenset(SCOPES)
+PUBLIC_SCOPES: set[str] = frozenset(("read:metadata", "read:data"))
+USER_SCOPES: set[str] = frozenset(
+    (
+        "read:metadata",
+        "read:data",
+        "write:metadata",
+        "write:data",
+        "create",
+        "register",
+        "metrics",
+    )
+)
+NO_SCOPES: set[str] = frozenset()
