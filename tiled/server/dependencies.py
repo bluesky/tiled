@@ -3,11 +3,12 @@ from typing import Optional, Tuple, Union
 import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
 from fastapi.security import SecurityScopes
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from tiled.adapters.mapping import MapAdapter
 from tiled.structures.core import StructureFamily
 
+from ..utils import BrokenLink
 from .authentication import check_scopes, get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
@@ -75,9 +76,8 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                     # New catalog adapter - only has access control at the top level
                     # Top level means the basename of the path as defined in the config
                     # This adapter can jump directly to the node of interest
+                    # Raises NoEntry or BrokenLink if the path is not found
                     entry = await entry.lookup_adapter(path_parts[i:])
-                    if entry is None:
-                        raise NoEntry(path_parts)
                     break
                 else:
                     # Old-style dict-like interface
@@ -121,6 +121,8 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                                     f"Principal had scopes {list(allowed_scopes)} on this node."
                                 ),
                             )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
         except NoEntry:
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND, detail=f"No such entry: {path_parts}"
