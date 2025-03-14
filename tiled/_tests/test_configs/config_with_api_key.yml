@@ -5,6 +5,5 @@ trees:
 uvicorn:
   host: 0.0.0.0
   port: 8000
-authentication:
-  allow_anonymous_access: false
-  single_user_api_key: SECRET
+allow_anonymous_access: false
+single_user_api_key: SECRET

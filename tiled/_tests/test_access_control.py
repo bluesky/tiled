@@ -74,23 +74,21 @@ def tree_b(access_policy=None):
 @pytest.fixture(scope="module")
 def context(tmpdir_module):
     config = {
-        "authentication": {
-            "allow_anonymous_access": True,
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {
-                            "alice": "secret1",
-                            "bob": "secret2",
-                            "admin": "admin",
-                        }
-                    },
-                }
-            ],
-        },
+        "allow_anonymous_access": True,
+        "secret_keys": ["SECRET"],
+        "providers": [
+            {
+                "provider": "toy",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {
+                    "users_to_passwords": {
+                        "alice": "secret1",
+                        "bob": "secret2",
+                        "admin": "admin",
+                    }
+                },
+            }
+        ],
         "database": {
             "uri": "sqlite://",  # in-memory
         },
@@ -356,21 +354,19 @@ def test_public_access(context):
 def test_service_principal_access(tmpdir):
     "Test that a service principal can work with SimpleAccessPolicy."
     config = {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {
-                            "admin": "admin",
-                        }
-                    },
-                }
-            ],
-            "tiled_admins": [{"id": "admin", "provider": "toy"}],
-        },
+        "secret_keys": ["SECRET"],
+        "providers": [
+            {
+                "provider": "toy",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {
+                    "users_to_passwords": {
+                        "admin": "admin",
+                    }
+                },
+            }
+        ],
+        "tiled_admins": [{"id": "admin", "provider": "toy"}],
         "database": {
             "uri": f"sqlite:///{tmpdir}/auth.db",
             "init_if_not_exists": True,

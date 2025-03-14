@@ -98,8 +98,7 @@ def test_serve_config(args, tmp_path):
     with open(config_filepath, "w") as file:
         file.write(
             f"""
-authentication:
-  allow_anonymous_access: false
+allow_anonymous_access: false
 trees:
   - path: /
     tree: catalog

@@ -39,18 +39,14 @@ def config(sqlite_or_postgresql_database_uri):
         capture_output=True,
     )
     return {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
-                    },
-                }
-            ],
-        },
+        "secret_keys": ["SECRET"],
+        "providers": [
+            {
+                "provider": "toy",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
+            }
+        ],
         "database": {
             "uri": database_uri,
         },

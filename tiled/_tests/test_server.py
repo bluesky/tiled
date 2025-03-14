@@ -88,18 +88,14 @@ def multiuser_server(tmpdir):
         capture_output=True,
     )
     config = {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
-                    },
-                }
-            ],
-        },
+        "secret_keys": ["SECRET"],
+        "providers": [
+            {
+                "provider": "toy",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
+            }
+        ],
         "database": {
             "uri": database_uri,
         },

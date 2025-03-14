@@ -3,7 +3,7 @@ from datetime import timedelta
 from functools import cache
 from typing import Any, List, Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic.dataclasses import dataclass
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +15,11 @@ class DatabaseSettings:
     pool_size: int = 5
     pool_pre_ping: bool = True
     max_overflow: int = 5
+
+
+class Uvicorn(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8000
 
 
 class Settings(BaseSettings):
@@ -46,6 +51,8 @@ class Settings(BaseSettings):
     )
     database_init_if_not_exists: bool = False
     expose_raw_assets: bool = True
+
+    uvicorn: Uvicorn = Field(Uvicorn())
 
     model_config = SettingsConfigDict(
         env_prefix="TILED_",

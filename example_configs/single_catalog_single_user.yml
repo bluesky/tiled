@@ -1,7 +1,6 @@
-authentication:
-  # The default is false. Set to true to enable any HTTP client that can
-  # connect to _read_. An API key is still required to write.
-  allow_anonymous_access: false
+# The default is false. Set to true to enable any HTTP client that can
+# connect to _read_. An API key is still required to write.
+allow_anonymous_access: false
 trees:
   - path: /
     tree: catalog

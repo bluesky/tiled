@@ -506,19 +506,18 @@ class LDAPAuthenticator(InternalAuthenticator):
         uvicorn:
             host: localhost
             port: 60610
-        authentication:
-            providers:
-                - provider: ldap_local
-                authenticator: bluesky_httpserver.authenticators:LDAPAuthenticator
-                args:
-                    server_address: localhost
-                    server_port: 1389
-                    bind_dn_template: "cn={username},ou=users,dc=example,dc=org"
-                    use_tls: false
-                    use_ssl: false
-            tiled_admins:
-                - provider: ldap_local
-                id: user02
+        providers:
+            - provider: ldap_local
+            authenticator: bluesky_httpserver.authenticators:LDAPAuthenticator
+            args:
+                server_address: localhost
+                server_port: 1389
+                bind_dn_template: "cn={username},ou=users,dc=example,dc=org"
+                use_tls: false
+                use_ssl: false
+        tiled_admins:
+            - provider: ldap_local
+            id: user02
     """
 
     def __init__(

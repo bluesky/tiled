@@ -4,9 +4,7 @@ from ..client import Context
 from ..server.app import build_app_from_config
 
 strict_config = {
-    "authentication": {
-        "allow_anonymous_access": True,
-    },
+    "allow_anonymous_access": True,
     "trees": [
         {
             "tree": "tiled.examples.generated_minimal:tree",

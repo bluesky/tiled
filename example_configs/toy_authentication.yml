@@ -1,16 +1,15 @@
-authentication:
-  providers:
+providers:
+- provider: toy
+  authenticator: tiled.authenticators:DictionaryAuthenticator
+  args:
+    users_to_passwords:
+      alice: ${ALICE_PASSWORD}
+      bob: ${BOB_PASSWORD}
+      cara: ${CARA_PASSWORD}
+    confirmation_message: "You have logged in as {id}."
+tiled_admins:
   - provider: toy
-    authenticator: tiled.authenticators:DictionaryAuthenticator
-    args:
-      users_to_passwords:
-        alice: ${ALICE_PASSWORD}
-        bob: ${BOB_PASSWORD}
-        cara: ${CARA_PASSWORD}
-      confirmation_message: "You have logged in as {id}."
-  tiled_admins:
-    - provider: toy
-      id: alice
+    id: alice
 access_control:
   access_policy: tiled.access_policies:SimpleAccessPolicy
   args:

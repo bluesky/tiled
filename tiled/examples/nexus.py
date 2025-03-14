@@ -7,8 +7,7 @@ To serve a different URL from the example hard-coded here, use the config:
 
 ```
 # config.yml
-authentication:
-    allow_anonymous_access: true
+allow_anonymous_access: true
 trees:
     - path: /
       tree: tiled.examples.nexus:MapAdapter

@@ -115,8 +115,7 @@ See {doc}`../explanations/structures` for more context.
 .. autosummary::
    :toctree: generated
 
-   tiled.config.parse_configs
-   tiled.config.construct_build_app_kwargs
+   tiled.config.parse_config
 ```
 ## HTTP Server Application
 

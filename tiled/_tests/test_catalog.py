@@ -370,23 +370,21 @@ async def test_delete_tree(tmpdir):
 @pytest.mark.asyncio
 async def test_access_control(tmpdir):
     config = {
-        "authentication": {
-            "allow_anonymous_access": True,
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {
-                            "alice": "secret1",
-                            "bob": "secret2",
-                            "admin": "admin",
-                        }
-                    },
-                }
-            ],
-        },
+        "allow_anonymous_access": True,
+        "secret_keys": ["SECRET"],
+        "providers": [
+            {
+                "provider": "toy",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {
+                    "users_to_passwords": {
+                        "alice": "secret1",
+                        "bob": "secret2",
+                        "admin": "admin",
+                    }
+                },
+            }
+        ],
         "database": {
             "uri": "sqlite://",  # in-memory
         },

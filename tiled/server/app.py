@@ -10,7 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import anyio
 import packaging.version
@@ -23,6 +23,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import TypeAdapter
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -34,11 +35,12 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.adapters.mapping import MapAdapter
+from tiled.config import parse_configs
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
-from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -120,11 +122,7 @@ def build_app(
     Parameters
     ----------
     tree : Tree
-    authentication: dict, optional
-        Dict of authentication configuration.
-    authenticators: list, optional
-        List of authenticator classes (one per support identity provider)
-    server_settings: dict, optional
+    server_settings: Settings, optional
         Dict of other server configuration.
     """
     authentication = authentication or {}
@@ -164,9 +162,8 @@ def build_app(
 In a scaled (multi-process) deployment, when Tiled is configured with an
 Authenticator, secret keys must be provided via configuration like
 
-authentication:
-  secret_keys:
-    - SECRET
+secret_keys:
+- SECRET
   ...
 
 or via the environment variable TILED_SECRET_KEYS.""",
@@ -198,9 +195,7 @@ In a scaled (multi-process) deployment, when Tiled is configured for
 single-user access (i.e. without an Authenticator) a single-user API key must
 be provided via configuration like
 
-authentication:
-  single_user_api_key: SECRET
-  ...
+single_user_api_key: SECRET
 
 or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
@@ -820,10 +815,10 @@ Back up the database, and then run:
     return app
 
 
-def build_app_from_config(config, source_filepath=None, scalable=False):
+def build_app_from_config(config: dict[str, Any], scalable: bool = False):
     "Convenience function that calls build_app(...) given config as dict."
-    kwargs = construct_build_app_kwargs(config, source_filepath=source_filepath)
-    return build_app(scalable=scalable, **kwargs)
+    settings: Settings = TypeAdapter(Settings).validate_python(config)
+    return build_app(scalable=scalable, server_settings=settings)
 
 
 def app_factory():
@@ -839,17 +834,10 @@ def app_factory():
     config_path = os.getenv("TILED_CONFIG", "config.yml")
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    from ..config import construct_build_app_kwargs, parse_configs
+    settings: Settings = parse_configs(config_path)
 
-    parsed_config = parse_configs(config_path)
-
-    # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
-    web_app = build_app(**kwargs)
-    uvicorn_config = parsed_config.get("uvicorn", {})
-    print_server_info(
-        web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
-    )
+    web_app = build_app(server_settings=settings)
+    print_server_info(web_app, host=settings.uvicorn.host, port=settings.uvicorn.port)
     return web_app
 
 
