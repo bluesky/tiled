@@ -86,7 +86,7 @@ class AuthenticatedAdapter:
     async def items_range(self, offset, limit):
         # Ideally this would be a batched request to the external service.
         result = []
-        for key in await self.keys_range(offset, limit):
+        for key in self._keys_range(offset, limit):
             try:
                 result.append((key, self.lookup_adapter([key])))
             except KeyError:
