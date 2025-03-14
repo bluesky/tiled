@@ -34,6 +34,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.adapters.mapping import MapAdapter
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
@@ -49,7 +50,6 @@ from ..media_type_registration import (
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
-from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
@@ -103,7 +103,7 @@ def custom_openapi(app):
 
 
 def build_app(
-    tree,
+    tree: MapAdapter,
     authentication=None,
     server_settings=None,
     query_registry: Optional[QueryRegistry] = None,
@@ -344,6 +344,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
 
     router = get_router(
+        tree,
         query_registry,
         serialization_registry,
         deserialization_registry,
@@ -359,7 +360,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/api/v1")
 
-    if authentication.get("providers", []):
+    if authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
         from .authentication import (
@@ -396,10 +397,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
         app.state.authenticated = True
-
-    @cache
-    def override_get_root_tree():
-        return tree
+    else:
+        app.state.authenticated = False
 
     @cache
     def override_get_settings():
@@ -494,10 +493,6 @@ confusing behavior due to ambiguous encodings.
             app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
-        # Expose the root_tree here to make it easier to access it from tests,
-        # in usages like:
-        # client.context.app.state.root_tree
-        app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_settings.uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
@@ -722,7 +717,6 @@ Back up the database, and then run:
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")

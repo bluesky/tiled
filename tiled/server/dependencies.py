@@ -1,6 +1,5 @@
 from typing import Optional, Tuple, Union
 
-import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
 from fastapi.security import SecurityScopes
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
@@ -21,20 +20,14 @@ DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
 
-def get_root_tree():
-    raise NotImplementedError(
-        "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.build_app()."
-    )
-
-
-def get_entry(structure_families: Optional[set[StructureFamily]] = None):
+def get_entry(
+    root_tree: MapAdapter, structure_families: Optional[set[StructureFamily]] = None
+):
     async def inner(
         path: str,
         request: Request,
         security_scopes: SecurityScopes,
         principal: Principal | SpecialUsers | str = Depends(get_current_principal),
-        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
     ) -> MapAdapter:
