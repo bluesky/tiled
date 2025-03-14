@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Union
 
 import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from ..media_type_registration import (
     deserialization_registry as default_deserialization_registry,
@@ -12,6 +12,7 @@ from ..media_type_registration import (
     serialization_registry as default_serialization_registry,
 )
 from ..query_registration import query_registry as default_query_registry
+from ..utils import BrokenLink
 from ..validation_registration import validation_registry as default_validation_registry
 from .authentication import get_current_principal, get_session_state
 from .core import NoEntry
@@ -102,9 +103,8 @@ def SecureEntry(scopes, structure_families=None):
                     # New catalog adapter - only has access control at the top level
                     # Top level means the basename of the path as defined in the config
                     # This adapter can jump directly to the node of interest
+                    # Raises NoEntry or BrokenLink if the path is not found
                     entry = await entry.lookup_adapter(path_parts[i:])
-                    if entry is None:
-                        raise NoEntry(path_parts)
                     break
                 else:
                     # Old-style dict-like interface
@@ -148,6 +148,8 @@ def SecureEntry(scopes, structure_families=None):
                                     f"Principal had scopes {list(allowed_scopes)} on this node."
                                 ),
                             )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
         except NoEntry:
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND, detail=f"No such entry: {path_parts}"

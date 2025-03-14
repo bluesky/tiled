@@ -70,7 +70,10 @@ def handle_error(response):
     except httpx.RequestError:
         raise  # Nothing to add in this case; just raise it.
     except httpx.HTTPStatusError as exc:
-        if response.status_code < httpx.codes.INTERNAL_SERVER_ERROR:
+        if response.status_code == httpx.codes.GONE:
+            detail = response.reason_phrase
+            raise KeyError(f"Unable to open object: likely a broken link. {detail}")
+        elif response.status_code < httpx.codes.INTERNAL_SERVER_ERROR:
             # Include more detail that httpx does by default.
             if response.headers["Content-Type"] == "application/json":
                 detail = response.json().get("detail", "")

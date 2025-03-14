@@ -28,6 +28,7 @@ from ..serialization import register_builtin_serializers
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
+    BrokenLink,
     SerializationError,
     UnsupportedShape,
     ensure_awaitable,
@@ -151,11 +152,12 @@ async def apply_search(tree, filters, query_registry):
             tree = MapAdapter({})
         else:
             if hasattr(tree, "lookup_adapter"):
-                entry = await tree.lookup_adapter([key_lookup])
-                if entry is None:
-                    tree = MapAdapter({})
-                else:
+                try:
+                    entry = await tree.lookup_adapter([key_lookup])
                     tree = MapAdapter({key_lookup: entry}, must_revalidate=False)
+                except KeyError:
+                    # If caught NoEntry or BrokenLink
+                    tree = MapAdapter({})
             else:
                 try:
                     tree = MapAdapter(
@@ -453,7 +455,7 @@ async def construct_resource(
                     # The size may change as we are walking the entry.
                     # Keep a *true* count separately from est_count.
                     count = 0
-                    for key, adapter in entry.items():
+                    for key in entry.keys():
                         count += 1
                         if count > INLINED_CONTENTS_LIMIT:
                             # The est_count was inaccurate or else the entry has grown
@@ -461,6 +463,13 @@ async def construct_resource(
                             count = await len_or_approx(entry)
                             contents = None
                             break
+                        try:
+                            adapter = entry[key]
+                        except BrokenLink:
+                            # If there are any broken links, just list the keys
+                            contents[key] = None
+                            continue
+
                         contents[key] = await construct_resource(
                             base_url,
                             path_parts + [key],

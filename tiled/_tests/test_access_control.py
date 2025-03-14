@@ -49,9 +49,6 @@ class EntryBasedAccessPolicy(SimpleAccessPolicy):
                 for i, segment in enumerate(path_parts):
                     if hasattr(node, "lookup_adapter"):
                         node = await node.lookup_adapter(path_parts[i:])
-                        if node is None:
-                            raise NoEntry(path_parts)
-                        break
                     else:
                         try:
                             node = node[segment]

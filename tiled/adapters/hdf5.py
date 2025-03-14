@@ -16,20 +16,24 @@ from numpy._typing import NDArray
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
+from ..server.core import NoEntry
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON, NDSlice
-from ..utils import BrokenLink, node_repr, path_from_uri
+from ..utils import BrokenLink, Sentinel, node_repr, path_from_uri
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
+HDF5_DATASET = Sentinel("HDF5_DATASET")
+HDF5_BROKEN_LINK = Sentinel("HDF5_BROKEN_LINK")
+
 
 def parse_hdf5_tree(
     tree: Union[h5py.File, h5py.Group, h5py.Dataset]
-) -> Union[dict[str, Union[Any, None]], None]:
+) -> Union[dict[str, Union[Any, Sentinel]], Sentinel]:
     """Parse an HDF5 file or group into a nested dictionary structure
 
     the resulting tree structure represenets any groups as nested dictionaries ans datasets as None.
@@ -46,15 +50,11 @@ def parse_hdf5_tree(
     """
     res: dict[str, Union[Any, None]] = {}
 
-    # If a file has broken links, iterating through items() will return None
-    if tree is None:
-        return None
-
     if isinstance(tree, h5py.Dataset):
-        return None
+        return HDF5_DATASET
 
     for key, val in tree.items():
-        res[key] = parse_hdf5_tree(val)
+        res[key] = HDF5_BROKEN_LINK if val is None else parse_hdf5_tree(val)
 
     return res
 
@@ -309,7 +309,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         A dictionary representing the HDF5 file or group. The keys are the names of the groups or datasets,
         and the values are either dictionaries (representing groups) or None (representing datasets).
         HDF5 datasets will be mapped to HDF5ArrayAdapter instances, and groups will be mapped to HDF5Adapter
-        instances.
+        instances. The tree is rooted at the 'dataset' node.
     data_uris : str
         The URI of the file, or a list of URIs if the dataset spans multiple files.
     dataset : str
@@ -336,7 +336,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
 
     def __init__(
         self,
-        tree: dict[str, Any],
+        tree: Union[dict[str, Any], Sentinel],
         *data_uris: str,
         dataset: Optional[str] = None,
         structure: Optional[ArrayStructure] = None,
@@ -344,10 +344,14 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Any],
     ) -> None:
-        # Traverse the tree to the desired HDF5 group
-        self._tree = tree
+        if tree == HDF5_BROKEN_LINK:
+            raise BrokenLink(
+                f"Unable to open object at {data_uris[0]}"
+                + (f"/{dataset}" if dataset else "")
+            )
+        self._tree: dict[str, Any] = tree  # type: ignore
         self.uris = data_uris
-        self.dataset = dataset
+        self.dataset = dataset  # Referenced to the root of the file
         self.specs = specs or []
         self._metadata = metadata or {}
         self._kwargs = kwargs  # e.g. swmr, libver, etc.
@@ -393,9 +397,9 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         with h5open(file_path, dataset, swmr=swmr, libver=libver) as file:
             tree = parse_hdf5_tree(file)
 
-        if tree is None:
+        if tree == HDF5_DATASET:
             raise ValueError(
-                "DataSource is pointing to an HDF5 Dataset; it should have an array structure, not a container."
+                "Erroneous structure (container) of a DataSource pointing to an HDF5 Dataset (array)."
             )
 
         return cls(
@@ -422,7 +426,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         with h5open(fpath, dataset, swmr=swmr, libver=libver) as file:
             tree = parse_hdf5_tree(file)
 
-        if tree is None:
+        if tree == HDF5_DATASET:
             return HDF5ArrayAdapter.from_uris(
                 *data_uris, dataset=dataset, swmr=swmr, libver=libver
             )
@@ -441,14 +445,22 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         return d
 
     def __iter__(self) -> Iterator[Any]:
-        yield from self._tree  # Iterate over the keys of the tree
+        """Iterate over the keys of the tree"""
+        yield from self._tree
 
     def __getitem__(self, key: str) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+        dataset = f"{self.dataset or ''}/{key.strip('/')}"  # Referenced to the root of the file
         node = copy.deepcopy(self._tree)
         for segment in key.strip("/").split("/"):
+            if segment not in node:
+                raise NoEntry(
+                    f"Can not access dataset {dataset} in {self.uris[0]}: {key} not found"
+                )
             node = node[segment]
-        dataset = f"{self.dataset or ''}/{key.strip('/')}"  # Referenced to the root of the file
+            if node == HDF5_BROKEN_LINK:  # type: ignore
+                raise BrokenLink(f"Unable to open object at {self.uris[0]}/{dataset}")
         if isinstance(node, dict):
+            # It is an HDF5 group
             return HDF5Adapter(
                 node,
                 *self.uris,
@@ -458,9 +470,14 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
                 **self._kwargs,
             )
         else:
+            # It is an HDF5 dataset
             return HDF5ArrayAdapter.from_uris(
                 *self.uris, dataset=dataset, **self._kwargs
             )
+
+    def get(self, key: str, *args: Any) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+        """Overwrite to always raise KeyErrors for broken links and missing items"""
+        return self[key]
 
     def __len__(self) -> int:
         return len(self._tree)

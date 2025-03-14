@@ -340,8 +340,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             if len(err_arg) == 1:
                                 (err_arg,) = err_arg
                             raise KeyError(err_arg)
-                        elif err.response.status_code == httpx.codes.GONE:
-                            return Sentinel("GONE")
                         raise
                     item = content["data"]
                     break

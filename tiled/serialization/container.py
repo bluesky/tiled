@@ -3,6 +3,7 @@ import io
 from ..media_type_registration import serialization_registry
 from ..structures.core import StructureFamily
 from ..utils import (
+    BrokenLink,
     SerializationError,
     ensure_awaitable,
     modules_available,
@@ -61,7 +62,10 @@ if modules_available("h5py"):
                 node = root_node
                 for key in key_path[:-1]:
                     if hasattr(node, "lookup_adapter"):
-                        node = await node.lookup_adapter([key])
+                        try:
+                            node = await node.lookup_adapter([key])
+                        except BrokenLink:
+                            continue
                     else:
                         node = node[key]
                     if key in group:
@@ -93,7 +97,10 @@ if modules_available("orjson"):
             node = root_node
             for key in key_path:
                 if hasattr(node, "lookup_adapter"):
-                    node = await node.lookup_adapter([key])
+                    try:
+                        node = await node.lookup_adapter([key])
+                    except BrokenLink:
+                        continue
                 else:
                     node = node[key]
                 if key not in d:

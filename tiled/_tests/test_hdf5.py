@@ -2,16 +2,28 @@ import os
 
 import numpy
 import pytest
-from starlette.status import HTTP_410_GONE
 
 from ..adapters import hdf5 as hdf5_adapters
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.mapping import MapAdapter
+from ..catalog import in_memory
 from ..client import Context, from_context, record_history
 from ..server.app import build_app
+from ..structures.core import StructureFamily
+from ..structures.data_source import Asset, DataSource, Management
 from ..utils import BrokenLink, ensure_uri
 from ..utils import tree as tree_util
-from .utils import fail_with_status_code
+
+
+@pytest.fixture(scope="module")
+def tree(tmp_path_factory):
+    return in_memory(writable_storage=tmp_path_factory.getbasetemp())
+
+
+@pytest.fixture(scope="module")
+def context(tree):
+    with Context.from_app(build_app(tree)) as context:
+        yield context
 
 
 @pytest.fixture(scope="module")
@@ -187,7 +199,6 @@ def test_file_with_links(example_file_with_links, buffer):
 def test_file_with_broken_links(example_file_with_links):
     """Raise an error when accessing non-existing keys."""
 
-    # Break the links
     h5py = pytest.importorskip("h5py")
     main_file_path = example_file_with_links.replace("file://localhost", "")
     child_file_path = main_file_path.replace("example.h5", "linked.h5")
@@ -204,9 +215,11 @@ def test_file_with_broken_links(example_file_with_links):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/c/d")
 
     tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a")
-    with fail_with_status_code(HTTP_410_GONE):
-        with Context.from_app(build_app(tree)) as context:
-            client = from_context(context)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+    assert len(client["b"]) == 4  # All keys are there
+    with pytest.raises(KeyError):
+        client["b/soft_link"]
 
     # Case 2. Broken children of an external link
     # KeyError when accessing 'x'; 'y' is still accessible (but empty)
@@ -231,11 +244,10 @@ def test_file_with_broken_links(example_file_with_links):
     with pytest.raises(KeyError):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
 
-    # A client can't be instantiated at all
+    # A client can still be instantiated
     tree = HDF5Adapter.from_uris(example_file_with_links)
-    with pytest.raises(KeyError):
-        with Context.from_app(build_app(tree)) as context:
-            client = from_context(context)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
 
     # Case 4. Broken external link -- the file is missing
     # KeyError: "Unable to synchronously open object (unable to open external file, external link file name = 'linked.h5')"  # noqa
@@ -245,6 +257,121 @@ def test_file_with_broken_links(example_file_with_links):
         tree = HDF5Adapter.from_uris(example_file_with_links, dataset="a/b/extr_link")
 
     tree = HDF5Adapter.from_uris(example_file_with_links)
-    with fail_with_status_code(HTTP_410_GONE):
-        with Context.from_app(build_app(tree)) as context:
-            client = from_context(context)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+    with pytest.raises(KeyError):
+        client["a/b/extr_link"]
+
+
+def test_register_broken_hdf5_file(context, example_file_with_links):
+    """Test that a broken HDF5 file can be registered and accessed."""
+
+    client = from_context(context)
+
+    h5py = pytest.importorskip("h5py")
+    main_file_path = example_file_with_links.replace("file://localhost", "")
+    child_file_path = main_file_path.replace("example.h5", "linked.h5")
+
+    # Brake the soft link
+    with h5py.File(main_file_path, "r+") as file:
+        file["a/b/c"].pop("d")
+
+    # Brake the external link
+    os.remove(child_file_path)
+
+    asset = Asset(
+        data_uri=f"file://localhost/{main_file_path}",
+        is_directory=False,
+        parameter="data_uris",
+        num=0,
+    )
+
+    data_source_from_root = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[asset],
+        structure_family=StructureFamily.container,
+        structure=None,
+        management=Management.external,
+    )
+
+    data_source_from_node = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[asset],
+        structure_family=StructureFamily.container,
+        structure=None,
+        parameters={"dataset": "a/b"},
+        management=Management.external,
+    )
+
+    data_source_from_soft = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[asset],
+        structure_family=StructureFamily.container,
+        structure=None,
+        parameters={"dataset": "a/b/soft_link"},
+        management=Management.external,
+    )
+
+    data_source_from_extr = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[asset],
+        structure_family=StructureFamily.container,
+        structure=None,
+        parameters={"dataset": "a/b/extr_link"},
+        management=Management.external,
+    )
+
+    client.new(
+        structure_family=StructureFamily.container,
+        data_sources=[data_source_from_root],
+        key="ds_from_root",
+    )
+
+    client.new(
+        structure_family=StructureFamily.container,
+        data_sources=[data_source_from_node],
+        key="ds_from_node",
+    )
+
+    client.new(
+        structure_family=StructureFamily.container,
+        data_sources=[data_source_from_soft],
+        key="ds_from_soft",
+    )
+
+    client.new(
+        structure_family=StructureFamily.container,
+        data_sources=[data_source_from_extr],
+        key="ds_from_extr",
+    )
+
+    assert len(client) == 4  # All registered
+    assert set(client.keys()) == {
+        "ds_from_root",
+        "ds_from_node",
+        "ds_from_soft",
+        "ds_from_extr",
+    }
+    assert list(client["ds_from_root"].keys()) is not None
+    assert list(client["ds_from_node"].keys()) is not None
+
+    # Datasets referenced from the root of hdf5 file
+    with pytest.raises(KeyError):
+        client["ds_from_root"]["a/b/soft_link"]
+
+    with pytest.raises(KeyError):
+        client["ds_from_root"]["a/b/extr_link"]
+
+    # Datasets referenced from an internal node of hdf5 file
+    with pytest.raises(KeyError):
+        client["ds_from_node"]["soft_link"]
+
+    with pytest.raises(KeyError):
+        client["ds_from_node"]["extr_link"]
+
+    # Datasets referenced from links directly
+    with pytest.raises(KeyError):
+        list(client["ds_from_soft"].keys())
+
+    with pytest.raises(KeyError):
+        list(client["ds_from_extr"].keys())

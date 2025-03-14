@@ -577,7 +577,7 @@ class Conflicts(Exception):
     pass
 
 
-class BrokenLink(KeyError):
+class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
     pass
 

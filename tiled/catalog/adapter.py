@@ -64,6 +64,7 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.core import StructureFamily
 from ..structures.data_source import Storage
@@ -420,8 +421,7 @@ class CatalogNodeAdapter:
             # control policy queries. Look up first the _direct_ child of this
             # node, if it exists within the filtered results.
             first_level = await self.lookup_adapter(segments[:1])
-            if first_level is None:
-                return None
+
             # Now proceed to traverse further down the tree, if needed.
             # Search queries and access controls apply only at the top level.
             assert not first_level.conditions
@@ -450,9 +450,9 @@ class CatalogNodeAdapter:
                     for segment in segments[i:]:
                         adapter = await anyio.to_thread.run_sync(adapter.get, segment)
                         if adapter is None:
-                            break
+                            raise NoEntry(segments)
                     return adapter
-            return None
+            raise NoEntry(segments)
         return STRUCTURES[node.structure_family](self.context, node)
 
     async def get_adapter(self):
