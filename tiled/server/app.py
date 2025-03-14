@@ -370,7 +370,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         from .authentication import (
             add_external_routes,
             add_internal_routes,
-            base_authentication_router,
+            authentication_router,
             oauth2_scheme,
         )
 
@@ -381,10 +381,10 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
-        authentication_router = APIRouter()
+        authentication_router = authentication_router()
         # This adds the universal routes like /session/refresh and /session/revoke.
         # Below we will add routes specific to our authentication providers.
-        authentication_router.include_router(base_authentication_router)
+
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
