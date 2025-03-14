@@ -9,6 +9,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - `Composite` structure family to enable direct access to table columns in a single namespace.
 
+### Changed
+
+- Adjust arguments of `print_admin_api_key_if_generated` and rename `print_server_info`
+
 ### Maintenance
 
 - Extract API key handling
@@ -18,7 +22,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   - This is a breaking change if setting TILED_SERVER_SECRET_KEYS or TILED_ALLOW_ORIGINS,
     TILED_SERVER_SECRET_KEYS is now TILED_SECRET_KEYS and these fields now require passing a json
     list e.g. ``TILED_SECRET_KEYS='["one", "two"]'``
-
+- More type hinting
 
 ## 0.1.0-b20 (2025-03-07)
 

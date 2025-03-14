@@ -1,4 +1,3 @@
-import os
 import secrets
 from datetime import timedelta
 from functools import cache
@@ -30,7 +29,6 @@ class Settings(BaseSettings):
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key: str = secrets.token_hex(32)
-    single_user_api_key_generated: bool = "TILED_SINGLE_USER_API_KEY" not in os.environ
     # The first key will be used for encryption. Each key will be tried in turn for decryption.
     secret_keys: List[str] = [secrets.token_hex(32)]
     access_token_max_age: timedelta = 15 * 60  # 15 minutes

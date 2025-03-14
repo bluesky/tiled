@@ -36,7 +36,7 @@ def serve_directory(
             "this option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -55,7 +55,7 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
-    ext: List[str] = typer.Option(
+    ext: Optional[List[str]] = typer.Option(
         None,
         "--ext",
         help=(
@@ -64,7 +64,7 @@ def serve_directory(
             "extension."
         ),
     ),
-    mimetype_detection_hook: str = typer.Option(
+    mimetype_detection_hook: Optional[str] = typer.Option(
         None,
         "--mimetype-hook",
         help=(
@@ -73,7 +73,7 @@ def serve_directory(
             "Specify here as 'package.module:function'"
         ),
     ),
-    adapters: List[str] = typer.Option(
+    adapters: Optional[List[str]] = typer.Option(
         None,
         "--adapter",
         help=(
@@ -81,7 +81,7 @@ def serve_directory(
             "Specify here as 'mimetype=package.module:function'"
         ),
     ),
-    walkers: List[str] = typer.Option(
+    walkers: Optional[List[str]] = typer.Option(
         None,
         "--walker",
         help=(
@@ -138,7 +138,7 @@ def serve_directory(
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
     from ..catalog import from_uri as catalog_from_uri
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
 
     server_settings = {}
     if keep_ext:
@@ -212,7 +212,7 @@ def serve_directory(
 
     from ..client import from_uri as client_from_uri
 
-    print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
+    print_server_info(web_app, host=host, port=port, include_api_key=generated)
     log_config = _setup_log_config(log_config, log_timestamps)
     config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
     server = uvicorn.Server(config)
@@ -287,16 +287,16 @@ def serve_directory(
 
 
 def serve_catalog(
-    database: str = typer.Argument(
+    database: Optional[str] = typer.Argument(
         None, help="A filepath or database URI, e.g. 'catalog.db'"
     ),
-    read: List[str] = typer.Option(
+    read: Optional[List[str]] = typer.Option(
         None,
         "--read",
         "-r",
         help="Locations that the server may read from",
     ),
-    write: List[str] = typer.Option(
+    write: Optional[List[str]] = typer.Option(
         None,
         "--write",
         "-w",
@@ -321,7 +321,7 @@ def serve_catalog(
             "this option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -363,7 +363,7 @@ def serve_catalog(
 
     from ..catalog import from_uri
     from ..catalog.utils import classify_writable_storage
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
 
     parsed_database = urllib.parse.urlparse(database)
     if parsed_database.scheme in ("", "file"):
@@ -477,7 +477,9 @@ or use an existing one:
         server_settings,
         scalable=scalable,
     )
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+    print_server_info(
+        web_app, host=host, port=port, include_api_key=api_key is not None
+    )
 
     import uvicorn
 
@@ -502,7 +504,7 @@ def serve_pyobject(
             "option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -534,7 +536,7 @@ def serve_pyobject(
     ),
 ):
     "Serve a Tree instance from a Python module."
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
     from ..utils import import_object
 
     tree = import_object(object_path)
@@ -548,7 +550,7 @@ def serve_pyobject(
         server_settings,
         scalable=scalable,
     )
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+    print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)
 
     import uvicorn
 
@@ -569,13 +571,13 @@ def serve_demo(
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
 ):
     "Start a public server with example data."
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
     from ..utils import import_object
 
     EXAMPLE = "tiled.examples.generated:tree"
     tree = import_object(EXAMPLE)
     web_app = build_app(tree, {"allow_anonymous_access": True}, {})
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+    print_server_info(web_app, host=host, port=port, include_api_key=True)
 
     import uvicorn
 
@@ -584,7 +586,7 @@ def serve_demo(
 
 @serve_app.command("config")
 def serve_config(
-    config_path: Path = typer.Argument(
+    config_path: Optional[Path] = typer.Argument(
         None,
         help=(
             "Path to a config file or directory of config files. "
@@ -601,7 +603,7 @@ def serve_config(
             "option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -609,7 +611,7 @@ def serve_config(
             "By default, a random key is generated at startup and printed."
         ),
     ),
-    host: str = typer.Option(
+    host: Optional[str] = typer.Option(
         None,
         help=(
             "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
@@ -617,7 +619,7 @@ def serve_config(
             "example: --host `'::'`. Uses value in config by default."
         ),
     ),
-    port: int = typer.Option(
+    port: Optional[int] = typer.Option(
         None, help="Bind to a socket with this port. Uses value in config by default."
     ),
     scalable: bool = typer.Option(
@@ -659,11 +661,7 @@ def serve_config(
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
-    from ..server.app import (
-        build_app_from_config,
-        logger,
-        print_admin_api_key_if_generated,
-    )
+    from ..server.app import build_app_from_config, logger, print_server_info
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
@@ -684,8 +682,11 @@ def serve_config(
     web_app = build_app_from_config(
         parsed_config, source_filepath=config_path, scalable=scalable
     )
-    print_admin_api_key_if_generated(
-        web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
+    print_server_info(
+        web_app,
+        host=uvicorn_kwargs["host"],
+        port=uvicorn_kwargs["port"],
+        include_api_key=api_key is None,
     )
 
     # Likewise, delay this import.
