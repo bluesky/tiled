@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
 import sqlalchemy.exc
 from fastapi import (
@@ -312,7 +312,9 @@ async def get_current_principal(
     settings: Settings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
     db=Depends(get_database_session),
-):
+    # TODO: https://github.com/bluesky/tiled/issues/923
+    # Remove non-Princiapl return types
+) -> Union[schemas.Principal, SpecialUsers, str]:
     """
     Get current Principal from:
     - API key in 'api_key' query parameter
@@ -824,7 +826,9 @@ async def principal_list(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["read:principals"]),
     db=Depends(get_database_session),
 ):
@@ -863,7 +867,9 @@ async def principal_list(
 )
 async def create_service_principal(
     request: Request,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["write:principals"]),
     db=Depends(get_database_session),
     role: str = Query(...),
@@ -964,7 +970,9 @@ async def apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
     apikey_params: schemas.APIKeyRequestParams,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["admin:apikeys"]),
     db=Depends(get_database_session),
 ):
@@ -1020,7 +1028,9 @@ async def revoke_session(
 async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
-    principal: schemas.Principal = Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     db=Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
@@ -1111,7 +1121,9 @@ async def slide_session(refresh_token, settings, db):
 async def new_apikey(
     request: Request,
     apikey_params: schemas.APIKeyRequestParams,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["apikeys"]),
     db=Depends(get_database_session),
 ):
@@ -1165,7 +1177,9 @@ async def current_apikey_info(
 async def revoke_apikey(
     request: Request,
     first_eight: str,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["apikeys"]),
     db=Depends(get_database_session),
 ):
@@ -1196,7 +1210,9 @@ async def revoke_apikey(
 )
 async def whoami(
     request: Request,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     db=Depends(get_database_session),
 ):
     # TODO Permit filtering the fields of the response.

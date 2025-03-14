@@ -34,7 +34,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
-from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import SpecialUsers, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import get_authenticators, get_current_principal
@@ -777,7 +777,9 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: schemas.Principal
+        | SpecialUsers
+        | str = Depends(get_current_principal),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -805,7 +807,9 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: schemas.Principal
+        | SpecialUsers
+        | str = Depends(get_current_principal),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -883,7 +887,9 @@ def get_router(
             ),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: schemas.Principal
+        | SpecialUsers
+        | str = Depends(get_current_principal),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
