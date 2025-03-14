@@ -267,8 +267,10 @@ def get_router(
         **filters,
     ):
         request.state.endpoint = "search"
-        if entry.if entry.structure_family not in {
-            StructureFamily.container, StructureFamily.composite}:
+        if entry.structure_family not in {
+            StructureFamily.container,
+            StructureFamily.composite,
+        }:
             raise WrongTypeForRoute(
                 "This is not a Node; it cannot be searched or listed."
             )
@@ -772,7 +774,8 @@ def get_router(
     async def get_container_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.container, StructureFamily.composite}), scopes=["read:data"]
+            get_entry({StructureFamily.container, StructureFamily.composite}),
+            scopes=["read:data"],
         ),
         principal: str = Depends(get_current_principal),
         field: Optional[List[str]] = Query(None, min_length=1),
@@ -799,7 +802,8 @@ def get_router(
     async def post_container_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.container, StructureFamily.composite}), scopes=["read:data"]
+            get_entry({StructureFamily.container, StructureFamily.composite}),
+            scopes=["read:data"],
         ),
         principal: str = Depends(get_current_principal),
         field: Optional[List[str]] = Body(None, min_length=1),
@@ -870,7 +874,13 @@ def get_router(
     async def node_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.table, StructureFamily.container, StructureFamily.composite}),
+            get_entry(
+                {
+                    StructureFamily.table,
+                    StructureFamily.container,
+                    StructureFamily.composite,
+                }
+            ),
             scopes=["read:data"],
         ),
         principal: str = Depends(get_current_principal),
@@ -901,7 +911,10 @@ def get_router(
                     "request a smaller chunks."
                 ),
             )
-        if entry.structure_family in {StructureFamily.container, StructureFamily.composite}:
+        if entry.structure_family in {
+            StructureFamily.container,
+            StructureFamily.composite,
+        }:
             curried_filter = partial(
                 filter_for_access,
                 principal=principal,
