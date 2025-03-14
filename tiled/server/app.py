@@ -10,7 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import anyio
 import packaging.version
@@ -128,7 +128,7 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators: dict[str, ExternalAuthenticator | InternalAuthenticator] = {
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }

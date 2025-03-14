@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar
+from typing import Callable, List, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -143,7 +143,7 @@ def get_router(
     serialization_registry: SerializationRegistry,
     deserialization_registry: SerializationRegistry,
     validation_registry: ValidationRegistry,
-    authenticators: dict[str, ExternalAuthenticator | InternalAuthenticator],
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]],
 ) -> APIRouter:
     router = APIRouter()
 
