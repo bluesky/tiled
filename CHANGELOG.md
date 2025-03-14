@@ -11,7 +11,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
-- Environment variable parsing for Settings object adjusted
+- Environment variable parsing method modified
 
 ### Maintenance
 
