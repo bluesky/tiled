@@ -12,6 +12,8 @@ from urllib.parse import quote_plus, urlparse
 
 import uvicorn
 
+from tiled.server.settings import Settings
+
 _server_is_running = False
 
 
@@ -125,7 +127,7 @@ class SimpleTiledServer:
             init_if_not_exists=True,
         )
         self.app = build_app(
-            self.catalog, authentication={"single_user_api_key": api_key}
+            self.catalog, server_settings=Settings(single_user_api_key=api_key)
         )
         self._cm = ThreadedServer(
             uvicorn.Config(self.app, port=port, loop="asyncio", log_config=log_config)

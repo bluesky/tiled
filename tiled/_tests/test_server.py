@@ -11,6 +11,8 @@ import uvicorn
 from fastapi import APIRouter
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
+from tiled.server.settings import Settings
+
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..catalog import in_memory
@@ -52,7 +54,7 @@ API_KEY = "secret"
 @pytest.fixture
 def server(tmpdir):
     catalog = in_memory(writable_storage=str(tmpdir))
-    app = build_app(catalog, {"single_user_api_key": API_KEY})
+    app = build_app(catalog, server_settings=Settings(single_user_api_key=API_KEY))
     app.include_router(router)
     config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
     server = Server(config)

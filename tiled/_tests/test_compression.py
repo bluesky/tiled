@@ -3,6 +3,8 @@ import pytest
 from starlette.status import HTTP_200_OK
 from starlette.testclient import TestClient
 
+from tiled.server.settings import Settings
+
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..server.app import build_app
@@ -18,7 +20,7 @@ def app():
             )
         },
     )
-    return build_app(tree, authentication={"single_user_api_key": "secret"})
+    return build_app(tree, server_settings=Settings(single_user_api_key="secret"))
     # In this module we use a raw TestClient instead of tiled.client to omit
     # tiled.client's default headers and other configuration.
 

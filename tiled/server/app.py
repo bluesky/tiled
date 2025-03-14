@@ -105,7 +105,7 @@ def custom_openapi(app):
 def build_app(
     tree,
     authentication=None,
-    server_settings=None,
+    server_settings: Optional[Settings] = None,
     query_registry: Optional[QueryRegistry] = None,
     serialization_registry: Optional[SerializationRegistry] = None,
     deserialization_registry: Optional[SerializationRegistry] = None,
