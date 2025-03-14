@@ -1,21 +1,21 @@
-providers:
+authenticators:
 - provider: one
-  authenticator: tiled.authenticators:DictionaryAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:DictionaryAuthenticator
     users_to_passwords:
       alice: ${ALICE_PASSWORD}
       bob: ${BOB_PASSWORD}
       cara: ${CARA_PASSWORD}
 - provider: two
-  authenticator: tiled.authenticators:DictionaryAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:DictionaryAuthenticator
     users_to_passwords:
       alice: ${ALICE_PASSWORD}
       bob: ${BOB_PASSWORD}
       cara: ${CARA_PASSWORD}
 - provider: three
-  authenticator: tiled.authenticators:DictionaryAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:DictionaryAuthenticator
     users_to_passwords:
       alice: ${ALICE_PASSWORD}
       bob: ${BOB_PASSWORD}

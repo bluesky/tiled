@@ -169,18 +169,13 @@ using a username and password. It requires one additional dependency:
 pip install pamela
 ```
 
-The configuration file(s) should include:
-
-```yaml
-authenticator: tiled.authenticators:PAMAuthenticator
-```
-
 Here is a complete working example:
 
 ```yaml
 # pam_config.yml
-providers:
-  - authenticator: tiled.authenticators:PAMAuthenticator
+authenticators:
+  - authenticator:
+      type: tiled.authenticators:PAMAuthenticator
     # This 'provider' can be any string; it is used to differentiate
     # authentication providers when multiple ones are supported.
     provider: local
@@ -243,10 +238,10 @@ pip install httpx
 The configuration file(s) must include the following.
 
 ```yaml
-providers:
+authenticators:
 - provider: example.com
-  authenticator: tiled.authenticators:OIDCAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:OIDCAuthenticator
     # Values should come from your OIDC provider configuration
     # The audience claim is checked by the OIDC Client (Tiled)
     # It checks that the Authentication header that you are passed has not been intercepted
@@ -273,10 +268,10 @@ should only for used for development and demos.
 
 ```yaml
 # dictionary_config.yml
-providers:
+authenticators:
 - provider: toy
-  authenticator: tiled.authenticators:DictionaryAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:DictionaryAuthenticator
     users_to_passwords:
       alice: ${ALICE_PASSWORD}
       bob: ${BOB_PASSWORD}
@@ -294,9 +289,10 @@ The ``DummyAuthenticator`` accepts *any* username and password combination.
 
 ```yaml
 # dummy_config.yml
-providers:
+authenticators:
 - provider: toy
-  authenticator: tiled.authenticators:DummyAuthenticator
+  authenticator:
+    type: tiled.authenticators:DummyAuthenticator
 trees:
   - path: /
     tree: tiled.examples.generated_minimal:tree

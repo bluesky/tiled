@@ -1,13 +1,13 @@
 import secrets
 from datetime import timedelta
 from functools import cache
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.dataclasses import dataclass
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+from tiled.server.protocols import Authenticator, _get_authenticator
 
 
 class Admin(BaseModel):
@@ -17,7 +17,12 @@ class Admin(BaseModel):
 
 class AuthenticatorInfo(BaseModel):
     provider: str
-    authenticator: InternalAuthenticator | ExternalAuthenticator
+    authenticator: Annotated[Authenticator, BeforeValidator(_get_authenticator)]
+
+
+class UnscalableConfig(Exception):
+    pass
+
 
 
 # hashable cache key for use in tiled.authn_database.connection_pool
@@ -71,6 +76,27 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
         env_nested_delimiter="_",
     )
+
+    def check_scalable(self):
+        if self.authenticators:
+            if not self.secret_keys:
+                raise UnscalableConfig(
+                    "In a multi-process deployment configured with Authenticator(s), secret keys must be provided"
+                )
+            # Multi-user authentication requires a database. We cannot fall
+            # back to the default of an in-memory SQLite database in a
+            # horizontally scaled deployment.
+            if not self.database_settings.uri:
+                raise UnscalableConfig(
+                    "In a multi-process deployment configured with Authenticator(s) a database must be provided"
+                )
+        else:
+            # No authentication provider is configured, so no secret keys are
+            # needed, but a single-user API key must be set.
+            if not self.single_user_api_key:
+                raise UnscalableConfig(
+                    "In a multi-process deployment without an Authenticator configured an API key must be provided"
+                )
 
 
 @cache

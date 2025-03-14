@@ -1,10 +1,10 @@
 # Use this configuration with this demo docker container as the idp.
 
 # docker run --name=testsamlidp_idp -p 8080:8080 -p 8443:8443 -e SIMPLESAMLPHP_SP_ENTITY_ID=http://localhost:8000 -e SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE=http://localhost:8000/auth/provider/saml/code -e SIMPLESAMLPHP_SP_SINGLE_LOGOUT_SERVICE=http://localhost:8000/ -d kristophjunge/test-saml-idp
-providers:
+authenticators:
 - provider: saml
-  authenticator: tiled.authenticators:SAMLAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:SAMLAuthenticator
     attribute_name: "email"
     saml_settings:
       strict: False

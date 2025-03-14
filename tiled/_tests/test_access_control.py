@@ -79,13 +79,13 @@ def context(tmpdir_module):
         "authenticators": [
             {
                 "provider": "toy",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
                     "users_to_passwords": {
                         "alice": "secret1",
                         "bob": "secret2",
                         "admin": "admin",
-                    }
+                    },
                 },
             }
         ],
@@ -358,11 +358,11 @@ def test_service_principal_access(tmpdir):
         "authenticators": [
             {
                 "provider": "toy",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
                     "users_to_passwords": {
                         "admin": "admin",
-                    }
+                    },
                 },
             }
         ],

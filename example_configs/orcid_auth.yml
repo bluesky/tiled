@@ -1,8 +1,8 @@
 # Must set environment variables ORCID_CLIENT_ID and ORCID_CLIENT_SECRET to run.
-providers:
+authenticators:
 - provider: orcid
-  authenticator: tiled.authenticators:OIDCAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:OIDCAuthenticator
     audience: tiled  # something unique to ensure received headers are for you
     # These values come from https://orcid.org/developer-tools
     client_id: ${ORCID_CLIENT_ID}

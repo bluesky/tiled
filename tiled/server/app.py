@@ -10,7 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import anyio
 import packaging.version
@@ -144,56 +144,7 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
-        if authentication.get("providers"):
-            # Even if the deployment allows public, anonymous access, secret
-            # keys are needed to generate JWTs for any users that do log in.
-            if (
-                "secret_keys" not in authentication
-                and "TILED_SECRET_KEYS" not in os.environ
-            ):
-                raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, secret keys must be provided via configuration like
-
-secret_keys:
-- SECRET
-  ...
-
-or via the environment variable TILED_SECRET_KEYS.""",
-                )
-            # Multi-user authentication requires a database. We cannot fall
-            # back to the default of an in-memory SQLite database in a
-            # horizontally scaled deployment.
-            if not server_settings.get("database", {}).get("uri"):
-                raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, a persistent database must be provided via configuration like
-
-database:
-  uri: sqlite:////path/to/database.sqlite
-
-"""
-                )
-        else:
-            # No authentication provider is configured, so no secret keys are
-            # needed, but a single-user API key must be set.
-            if not (
-                ("single_user_api_key" in authentication)
-                or ("TILED_SINGLE_USER_API_KEY" in os.environ)
-            ):
-                raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured for
-single-user access (i.e. without an Authenticator) a single-user API key must
-be provided via configuration like
-
-single_user_api_key: SECRET
-
-or via the environment variable TILED_SINGLE_USER_API_KEY.""",
-                )
-        # If we reach here, the no configuration problems were found.
+        server_settings.check_scalable()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -369,9 +320,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # This adds the universal routes like /session/refresh and /session/revoke.
         # Below we will add routes specific to our authentication providers.
 
-        for spec in authentication["providers"]:
-            provider = spec["provider"]
-            authenticator = spec["authenticator"]
+        for provider, authenticator in server_settings.authenticators:
             if isinstance(authenticator, InternalAuthenticator):
                 add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
@@ -478,8 +427,10 @@ confusing behavior due to ambiguous encodings.
         # Trees and Authenticators can run tasks in the background.
         background_tasks = []
         background_tasks.extend(tasks.get("background_tasks", []))
-        for authenticator in authenticators:
-            background_tasks.extend(getattr(authenticator, "background_tasks", []))
+        for authenticator in server_settings.authenticators:
+            background_tasks.extend(
+                getattr(authenticator.authenticator, "background_tasks", [])
+            )
         for task in background_tasks or []:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
@@ -882,7 +833,3 @@ def print_server_info(
 """,
             file=sys.stderr,
         )
-
-
-class UnscalableConfig(Exception):
-    pass

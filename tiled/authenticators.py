@@ -32,9 +32,6 @@ class DummyAuthenticator(InternalAuthenticator):
 
     """
 
-    def __init__(self, confirmation_message: str = ""):
-        self.confirmation_message = confirmation_message
-
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         return UserSessionState(username, {})
 
@@ -46,26 +43,7 @@ class DictionaryAuthenticator(InternalAuthenticator):
     Check passwords from a dictionary of usernames mapped to passwords.
     """
 
-    configuration_schema = """
-$schema": http://json-schema.org/draft-07/schema#
-type: object
-additionalProperties: false
-properties:
-  users_to_password:
-    type: object
-    description: |
-      Mapping usernames to password. Environment variable expansion should be
-      used to avoid placing passwords directly in configuration.
-  confirmation_message:
-    type: string
-    description: May be displayed by client after successful login.
-"""
-
-    def __init__(
-        self, users_to_passwords: Mapping[str, str], confirmation_message: str = ""
-    ):
-        self._users_to_passwords = users_to_passwords
-        self.confirmation_message = confirmation_message
+    users_to_passwords: dict[str, str]
 
     async def authenticate(
         self, username: str, password: str
@@ -79,26 +57,13 @@ properties:
 
 
 class PAMAuthenticator(InternalAuthenticator):
-    configuration_schema = """
-$schema": http://json-schema.org/draft-07/schema#
-type: object
-additionalProperties: false
-properties:
-  service:
-    type: string
-    description: PAM service. Default is 'login'.
-  confirmation_message:
-    type: string
-    description: May be displayed by client after successful login.
-"""
+    service: str = "login"
 
-    def __init__(self, service: str = "login", confirmation_message: str = ""):
+    def model_post_init(self, __context: Any) -> None:
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
             )
-        self.service = service
-        self.confirmation_message = confirmation_message
         # TODO Try to open a PAM session.
 
     async def authenticate(
@@ -115,46 +80,16 @@ properties:
 
 
 class OIDCAuthenticator(ExternalAuthenticator):
-    configuration_schema = """
-$schema": http://json-schema.org/draft-07/schema#
-type: object
-additionalProperties: false
-properties:
-  audience:
-    type: string
-  client_id:
-    type: string
-  client_secret:
-    type: string
-  well_known_uri:
-    type: string
-  confirmation_message:
-    type: string
-"""
-
-    def __init__(
-        self,
-        audience: str,
-        client_id: str,
-        client_secret: str,
-        well_known_uri: str,
-        confirmation_message: str = "",
-    ):
-        self._audience = audience
-        self._client_id = client_id
-        self._client_secret = Secret(client_secret)
-        self._well_known_url = well_known_uri
-        self.confirmation_message = confirmation_message
+    audience: str
+    client_id: str
+    client_secret: Secret[str]
+    well_known_uri: str
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
-        response: httpx.Response = httpx.get(self._well_known_url)
+        response: httpx.Response = httpx.get(self.well_known_uri)
         response.raise_for_status()
         return response.json()
-
-    @functools.cached_property
-    def client_id(self) -> str:
-        return self._client_id
 
     @functools.cached_property
     def id_token_signing_alg_values_supported(self) -> list[str]:
@@ -190,8 +125,8 @@ properties:
         response = await exchange_code(
             self.token_endpoint,
             code,
-            self._client_id,
-            self._client_secret.get_secret_value(),
+            self.client_id,
+            self.client_secret.get_secret_value(),
             redirect_uri,
         )
         response_body = response.json()
@@ -207,7 +142,7 @@ properties:
                 token=id_token,
                 key=keys,
                 algorithms=self.id_token_signing_alg_values_supported,
-                audience=self._audience,
+                audience=self.audience,
                 access_token=access_token,
             )
         except JWTError:

@@ -43,8 +43,10 @@ def config(sqlite_or_postgresql_database_uri):
         "authenticators": [
             {
                 "provider": "toy",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
+                    "users_to_passwords": {"alice": "secret1", "bob": "secret2"},
+                },
             }
         ],
         "database": {
@@ -260,15 +262,17 @@ def test_multiple_providers(enter_username_password, config, monkeypatch):
         [
             {
                 "provider": "second",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
+                    "users_to_passwords": {"cara": "secret3", "doug": "secret4"},
+                },
             },
             {
                 "provider": "third",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
                     # Duplicate 'cara' username.
-                    "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
+                    "users_to_passwords": {"cara": "secret5", "emilia": "secret6"},
                 },
             },
         ],
@@ -292,15 +296,17 @@ def test_multiple_providers_name_collision(config):
     config["authenticators"] = [
         {
             "provider": "some_name",
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-            "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
+            "authenticator": {
+                "type": "tiled.authenticators:DictionaryAuthenticator",
+                "users_to_passwords": {"cara": "secret3", "doug": "secret4"},
+            },
         },
         {
             "provider": "some_name",  # duplicate!
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-            "args": {
+            "authenticator": {
+                "type": "tiled.authenticators:DictionaryAuthenticator",
                 # Duplicate 'cara' username.
-                "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
+                "users_to_passwords": {"cara": "secret5", "emilia": "secret6"},
             },
         },
     ]

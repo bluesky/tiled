@@ -375,13 +375,13 @@ async def test_access_control(tmpdir):
         "authenticators": [
             {
                 "provider": "toy",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
                     "users_to_passwords": {
                         "alice": "secret1",
                         "bob": "secret2",
                         "admin": "admin",
-                    }
+                    },
                 },
             }
         ],

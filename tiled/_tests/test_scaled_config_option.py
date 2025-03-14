@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from tiled.server.settings import Settings
+from tiled.server.settings import Settings, UnscalableConfig
 
 from ..config import parse_configs
-from ..server.app import UnscalableConfig, build_app
+from ..server.app import build_app
 
 here = Path(__file__).parent.absolute()
 

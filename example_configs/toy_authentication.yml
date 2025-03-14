@@ -1,7 +1,7 @@
-providers:
+authenticators:
 - provider: toy
-  authenticator: tiled.authenticators:DictionaryAuthenticator
-  args:
+  authenticator:
+    type: tiled.authenticators:DictionaryAuthenticator
     users_to_passwords:
       alice: ${ALICE_PASSWORD}
       bob: ${BOB_PASSWORD}
