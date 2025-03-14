@@ -2,6 +2,14 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+
+## Unreleased
+
+### Added
+
+- `Composite` structure family to enable direct access to table columns in a single namespace.
+
+
 ## 0.1.0-b20 (2025-03-07)
 
 ### Added
@@ -14,6 +22,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
 - Removed no-op `?include_data_sources=false` (which is the default) from some
   requests issued by the Python client.
+- Added a try-except statement to gracefully skip over broken external links in HDF5 files.
 
 ### Maintenance
 

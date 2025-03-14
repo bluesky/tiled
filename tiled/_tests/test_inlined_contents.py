@@ -117,10 +117,6 @@ def test_too_wide_for_inline():
     It is fetched in pages on demand, as usual with nodes.
     """
 
-    class Adapter(MapAdapter):
-        def inlined_contents_enabled(self):
-            return True
-
     a = numpy.array([1])
     tree = MapAdapter(
         {
