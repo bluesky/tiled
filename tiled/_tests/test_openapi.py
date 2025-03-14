@@ -9,7 +9,7 @@ from ..server.app import build_app_from_config
 tree = MapAdapter({})
 config = {
     "secret_keys": ["SECRET"],
-    "providers": [
+    "authenticators": [
         {
             "provider": "toy",
             "authenticator": "tiled.authenticators:DictionaryAuthenticator",

@@ -372,7 +372,7 @@ async def test_access_control(tmpdir):
     config = {
         "allow_anonymous_access": True,
         "secret_keys": ["SECRET"],
-        "providers": [
+        "authenticators": [
             {
                 "provider": "toy",
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",

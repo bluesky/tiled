@@ -89,7 +89,7 @@ def multiuser_server(tmpdir):
     )
     config = {
         "secret_keys": ["SECRET"],
-        "providers": [
+        "authenticators": [
             {
                 "provider": "toy",
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",
@@ -152,17 +152,17 @@ def test_internal_authentication_mode_with_password_clients(multiuser_server):
     response = httpx.get(
         multiuser_server + "/api/v1/", headers={"user-agent": "python-tiled/0.1.0b16"}
     )
-    actual_mode = response.json()["authentication"]["providers"][0]["mode"]
+    actual_mode = response.json()["authenticators"][0]["mode"]
     assert actual_mode == "password"
 
     # Mock new client
     response = httpx.get(
         multiuser_server + "/api/v1/", headers={"user-agent": "python-tiled/0.1.0b17"}
     )
-    actual_mode = response.json()["authentication"]["providers"][0]["mode"]
+    actual_mode = response.json()["authenticators"][0]["mode"]
     assert actual_mode == "internal"
 
     # Mock unknown client
     response = httpx.get(multiuser_server + "/api/v1/", headers={})
-    actual_mode = response.json()["authentication"]["providers"][0]["mode"]
+    actual_mode = response.json()["authenticators"][0]["mode"]
     assert actual_mode == "internal"

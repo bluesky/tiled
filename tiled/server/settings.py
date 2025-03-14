@@ -7,6 +7,18 @@ from pydantic import BaseModel, Field
 from pydantic.dataclasses import dataclass
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+
+
+class Admin(BaseModel):
+    provider: str
+    id: str
+
+
+class AuthenticatorInfo(BaseModel):
+    provider: str
+    authenticator: InternalAuthenticator | ExternalAuthenticator
+
 
 # hashable cache key for use in tiled.authn_database.connection_pool
 @dataclass(unsafe_hash=True)
@@ -31,7 +43,7 @@ class Settings(BaseSettings):
     tree: Any = None
     allow_anonymous_access: bool = False
     allow_origins: List[str] = Field(default_factory=list)
-    authenticator: Any = None
+    authenticators: list[AuthenticatorInfo] = Field(default_factory=list)
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key: str = secrets.token_hex(32)
     # The first key will be used for encryption. Each key will be tried in turn for decryption.

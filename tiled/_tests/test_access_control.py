@@ -76,7 +76,7 @@ def context(tmpdir_module):
     config = {
         "allow_anonymous_access": True,
         "secret_keys": ["SECRET"],
-        "providers": [
+        "authenticators": [
             {
                 "provider": "toy",
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",
@@ -355,7 +355,7 @@ def test_service_principal_access(tmpdir):
     "Test that a service principal can work with SimpleAccessPolicy."
     config = {
         "secret_keys": ["SECRET"],
-        "providers": [
+        "authenticators": [
             {
                 "provider": "toy",
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",

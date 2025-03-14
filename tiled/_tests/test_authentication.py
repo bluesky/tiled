@@ -40,7 +40,7 @@ def config(sqlite_or_postgresql_database_uri):
     )
     return {
         "secret_keys": ["SECRET"],
-        "providers": [
+        "authenticators": [
             {
                 "provider": "toy",
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",
@@ -256,7 +256,7 @@ def test_multiple_providers(enter_username_password, config, monkeypatch):
 
     This mechanism is used to support "Login with ORCID or Google or ...."
     """
-    config["authentication"]["providers"].extend(
+    config["authenticators"].extend(
         [
             {
                 "provider": "second",
@@ -289,7 +289,7 @@ def test_multiple_providers_name_collision(config):
     """
     Check that we enforce unique provider names.
     """
-    config["authentication"]["providers"] = [
+    config["authenticators"] = [
         {
             "provider": "some_name",
             "authenticator": "tiled.authenticators:DictionaryAuthenticator",

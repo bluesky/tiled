@@ -105,8 +105,7 @@ def custom_openapi(app):
 
 
 def build_app(
-    tree,
-    authentication=None,
+    tree: MapAdapter,
     server_settings: Optional[Settings] = None,
     query_registry: Optional[QueryRegistry] = None,
     serialization_registry: Optional[SerializationRegistry] = None,
@@ -114,7 +113,7 @@ def build_app(
     compression_registry: Optional[CompressionRegistry] = None,
     validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
-    scalable=False,
+    scalable: bool = False,
 ):
     """
     Serve a Tree
@@ -125,12 +124,7 @@ def build_app(
     server_settings: Settings, optional
         Dict of other server configuration.
     """
-    authentication = authentication or {}
-    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
-        spec["provider"]: spec["authenticator"]
-        for spec in authentication.get("providers", [])
-    }
-    server_settings = server_settings or {}
+    server_settings = server_settings or get_settings()
     query_registry = query_registry or default_query_registry
     serialization_registry = serialization_registry or default_serialization_registry
     deserialization_registry = (
