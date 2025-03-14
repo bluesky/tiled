@@ -112,3 +112,25 @@ client.new(
     specs=[],
 )
 ```
+
+#### Writing a composite structure
+
+A Composite structure allows the user to acess the columns of contained tables in
+a flat namespace along with other sibling arrays. Writing new data to a Composite container
+is analoguous to the usual containers, however exceptions will be raised if there are
+any name collisions.
+
+```python
+import pandas
+
+rng = numpy.random.default_rng(12345)
+arr = rng.random(size=(3, 5), dtype="float64")
+df = pandas.DataFrame({"A": ["one", "two", "three"], "B": [1, 2, 3]})
+
+# Create a Composite node
+node = client.create_composite(key="x")
+
+# Write the data
+node.write_array(arr, key="C")
+node.write_dataframe(df, key="table1")
+```

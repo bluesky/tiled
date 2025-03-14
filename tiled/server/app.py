@@ -10,13 +10,13 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import List
+from typing import Optional
 
 import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -34,24 +34,23 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.query_registration import QueryRegistry, default_query_registry
+from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
-    compression_registry as default_compression_registry,
+    CompressionRegistry,
+    SerializationRegistry,
+    default_compression_registry,
+    default_deserialization_registry,
+    default_serialization_registry,
 )
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
-from ..validation_registration import validation_registry as default_validation_registry
-from . import schemas
-from .authentication import get_current_principal
+from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
-from .dependencies import (
-    get_query_registry,
-    get_root_tree,
-    get_serialization_registry,
-    get_validation_registry,
-)
-from .router import distinct, patch_route_signature, router, search
+from .dependencies import get_root_tree
+from .router import get_router
 from .settings import get_settings
 from .utils import (
     API_KEY_COOKIE_NAME,
@@ -113,10 +112,11 @@ def build_app(
     tree,
     authentication=None,
     server_settings=None,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-    validation_registry=None,
+    query_registry: Optional[QueryRegistry] = None,
+    serialization_registry: Optional[SerializationRegistry] = None,
+    deserialization_registry: Optional[SerializationRegistry] = None,
+    compression_registry: Optional[CompressionRegistry] = None,
+    validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
     scalable=False,
 ):
@@ -139,7 +139,11 @@ def build_app(
         for spec in authentication.get("providers", [])
     }
     server_settings = server_settings or {}
-    query_registry = query_registry or get_query_registry()
+    query_registry = query_registry or default_query_registry
+    serialization_registry = serialization_registry or default_serialization_registry
+    deserialization_registry = (
+        deserialization_registry or default_deserialization_registry
+    )
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
     tasks = tasks or {}
@@ -215,7 +219,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, dependencies=[Depends(move_api_key)])
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -265,9 +269,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         @app.get("/", response_class=HTMLResponse)
         async def index(
             request: Request,
-            # This dependency is here because it runs the code that moves
-            # API key from the query parameter to a cookie (if it is valid).
-            principal=Security(get_current_principal, scopes=[]),
         ):
             return templates.TemplateResponse(
                 request,
@@ -348,6 +349,12 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             ),
         )
 
+    router = get_router(
+        query_registry,
+        serialization_registry,
+        deserialization_registry,
+        validation_registry,
+    )
     app.include_router(router, prefix="/api/v1")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
@@ -421,21 +428,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
-
-    # The /search route is defined after import time so that the user has the
-    # opporunity to register custom query types before startup.
-    app.get(
-        "/api/v1/search/{path:path}",
-        response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-            schemas.PaginationLinks,
-            dict,
-        ],
-    )(patch_route_signature(search, query_registry))
-    app.get(
-        "/api/v1/distinct/{path:path}",
-        response_model=schemas.GetDistinctResponse,
-    )(patch_route_signature(distinct, query_registry))
 
     @cache
     def override_get_authenticators():
@@ -769,32 +761,6 @@ Back up the database, and then run:
     app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
-    if query_registry is not None:
-
-        @cache
-        def override_get_query_registry():
-            return query_registry
-
-        app.dependency_overrides[get_query_registry] = override_get_query_registry
-    if serialization_registry is not None:
-
-        @cache
-        def override_get_serialization_registry():
-            return serialization_registry
-
-        app.dependency_overrides[
-            get_serialization_registry
-        ] = override_get_serialization_registry
-
-    if validation_registry is not None:
-
-        @cache
-        def override_get_validation_registry():
-            return validation_registry
-
-        app.dependency_overrides[
-            get_validation_registry
-        ] = override_get_validation_registry
 
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):

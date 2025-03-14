@@ -15,7 +15,7 @@ import httpx
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
-from ..query_registration import query_registry
+from ..query_registration import default_query_registry
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
@@ -258,7 +258,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             keys = (keys,)
         for key in keys:
             if not isinstance(key, str):
-                raise TypeError("Containers can only be indexed strings")
+                raise TypeError("Containers can only be indexed by strings")
+        keys = tuple("/".join(keys).strip("/").split("/"))  # Remove any slashes
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
@@ -287,7 +288,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 raise KeyError(key)
             assert (
                 len(data) == 1
-            ), "The key lookup query must never result more than one result."
+            ), "The key lookup query must never return more than one result."
             (item,) = data
             result = client_for_item(
                 self.context,
@@ -319,9 +320,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     # or because it was added after we fetched the inlined contents.
                     # Make a request for it.
                     try:
-                        self_link = self.item["links"]["self"]
-                        if self_link.endswith("/"):
-                            self_link = self_link[:-1]
+                        self_link = self.item["links"]["self"].rstrip("/")
                         params = {}
                         if self._include_data_sources:
                             params["include_data_sources"] = True
@@ -342,6 +341,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             raise KeyError(err_arg)
                         raise
                     item = content["data"]
+
+                    # Tables that belong to composite nodes cannot be addressed directly
+                    if (
+                        item["attributes"]["structure_family"] == StructureFamily.table
+                    ) and (
+                        "flattened" in (s["name"] for s in item["attributes"]["specs"])
+                    ):
+                        raise KeyError(
+                            f"Attempting to access a table in a composite container; use .parts['{keys[-1]}'] instead."  # noqa
+                        )
+
                     break
             result = client_for_item(
                 self.context,
@@ -648,7 +658,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         ).json()
 
-        if structure_family == StructureFamily.container:
+        if structure_family in {StructureFamily.container, StructureFamily.composite}:
             structure = {"contents": None, "count": None}
         else:
             # Only containers can have multiple data_sources right now.
@@ -671,9 +681,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Ensure this is a dataclass, not a dict.
         # When we apply type hints and mypy to the client it should be possible
         # to dispense with this.
-        if (structure_family != StructureFamily.container) and isinstance(
-            structure, dict
-        ):
+        if (
+            structure_family
+            not in {StructureFamily.container, StructureFamily.composite}
+        ) and isinstance(structure, dict):
             structure_type = STRUCTURE_TYPES[structure_family]
             structure = structure_type.from_json(structure)
 
@@ -689,9 +700,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_container(self, key=None, *, metadata=None, dims=None, specs=None):
-        """
-        EXPERIMENTAL: Create a new, empty container.
+    def create_composite(self, key=None, *, metadata=None, specs=None):
+        """Create a new, empty composite container.
 
         Parameters
         ----------
@@ -700,8 +710,29 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        dims : List[str], optional
-            A label for each dimension of the array.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+
+        """
+        return self.new(
+            StructureFamily.composite,
+            [],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+        )
+
+    def create_container(self, key=None, *, metadata=None, specs=None):
+        """Create a new, empty container.
+
+        Parameters
+        ----------
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
@@ -1051,11 +1082,130 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return client
 
 
+class Composite(Container):
+    def get_contents(self, maxlen=None, include_metadata=False):
+        result = {}
+        next_page_url = f"{self.item['links']['search']}"
+        while (next_page_url is not None) or (
+            maxlen is not None and len(result) < maxlen
+        ):
+            content = handle_error(
+                self.context.http_client.get(
+                    next_page_url,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params={
+                        **parse_qs(urlparse(next_page_url).query),
+                        **self._queries_as_params,
+                    }
+                    | ({} if include_metadata else {"select_metadata": False}),
+                )
+            ).json()
+            result.update({item["id"]: item for item in content["data"]})
+
+            next_page_url = content["links"]["next"]
+
+        return result
+
+    @property
+    def _flat_keys_mapping(self):
+        result = {}
+        for key, item in self.get_contents().items():
+            if item["attributes"]["structure_family"] == StructureFamily.table:
+                for col in item["attributes"]["structure"]["columns"]:
+                    result[col] = item["id"] + "/" + col
+            else:
+                result[item["id"]] = item["id"]
+
+        self._cached_len = (len(result), time.monotonic() + LENGTH_CACHE_TTL)
+
+        return result
+
+    @property
+    def parts(self):
+        return CompositeParts(self)
+
+    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+        yield from self._flat_keys_mapping.keys()
+
+    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+        for key in self._flat_keys_mapping.keys():
+            yield key, self[key]
+
+    def __len__(self):
+        if self._cached_len is not None:
+            length, deadline = self._cached_len
+            if time.monotonic() < deadline:
+                # Used the cached value and do not make any request.
+                return length
+
+        return len(self._flat_keys_mapping)
+
+    def __getitem__(self, key: str, _ignore_inlined_contents=False):
+        if isinstance(key, tuple):
+            key = "/".join(key)
+        if key in self._flat_keys_mapping:
+            key = self._flat_keys_mapping[key]
+        else:
+            raise KeyError(
+                f"Key '{key}' not found. If it refers to a table, use .parts['{key}'] instead."
+            )
+
+        return super().__getitem__(key, _ignore_inlined_contents)
+
+    def create_container(self, key=None, *, metadata=None, specs=None):
+        """Composite nodes can not include nested containers by design."""
+        raise NotImplementedError("Cannot create a container within a composite node.")
+
+    def create_composite(self, key=None, *, metadata=None, specs=None):
+        """Ccomposite nodes can not include nested composites by design."""
+        raise NotImplementedError("Cannot create a composite within a composite node.")
+
+
+class CompositeParts:
+    def __init__(self, node):
+        self.contents = node.get_contents(include_metadata=True)
+        self.context = node.context
+        self.structure_clients = node.structure_clients
+        self._include_data_sources = node._include_data_sources
+
+    def __repr__(self):
+        return (
+            f"<{type(self).__name__} {{"
+            + ", ".join(f"'{item}'" for item in self.contents)
+            + "}>"
+        )
+
+    def __getitem__(self, key):
+        key, *tail = key.split("/")
+
+        if key not in self.contents:
+            raise KeyError(key)
+
+        client = client_for_item(
+            self.context,
+            self.structure_clients,
+            self.contents[key],
+            include_data_sources=self._include_data_sources,
+        )
+
+        if tail:
+            return client["/".join(tail)]
+        else:
+            return client
+
+    def __iter__(self):
+        for key in self.contents:
+            yield key
+
+    def __len__(self) -> int:
+        return len(self.contents)
+
+
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
     params = collections.defaultdict(list)
     for query in queries:
-        name = query_registry.query_type_to_name[type(query)]
+        name = default_query_registry.query_type_to_name[type(query)]
         for field, value in query.encode().items():
             if value is not None:
                 params[f"filter[{name}][condition][{field}]"].append(value)
@@ -1115,6 +1265,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
             "container": _Wrap(Container),
+            "composite": _Wrap(Composite),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
             "awkward": _LazyLoad(("..awkward", Container.__module__), "AwkwardClient"),
             "dataframe": _LazyLoad(
@@ -1132,6 +1283,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "dask": OneShotCachedMap(
         {
             "container": _Wrap(Container),
+            "composite": _Wrap(Composite),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
             # TODO Create DaskAwkwardClient
             # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),

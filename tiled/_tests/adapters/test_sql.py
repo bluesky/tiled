@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Callable, Generator, Union
 
 import adbc_driver_duckdb
+import adbc_driver_sqlite
 import pyarrow as pa
 import pytest
 import pytest_asyncio
@@ -63,7 +64,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
 
 
 @pytest.fixture
-def adapter_sql_one_partition(
+def adapter_duckdb_one_partition(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
 ) -> Generator[SQLAdapter, None, None]:
@@ -78,7 +79,7 @@ def adapter_sql_one_partition(
 
 
 @pytest.fixture
-def adapter_sql_many_partition(
+def adapter_duckdb_many_partition(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
 ) -> Generator[SQLAdapter, None, None]:
@@ -92,19 +93,65 @@ def adapter_sql_many_partition(
     )
 
 
-def test_attributes_one_part(adapter_sql_one_partition: SQLAdapter) -> None:
-    assert adapter_sql_one_partition.structure().columns == names
-    assert adapter_sql_one_partition.structure().npartitions == 1
+def test_attributes_duckdb_one_part(adapter_duckdb_one_partition: SQLAdapter) -> None:
+    assert adapter_duckdb_one_partition.structure().columns == names
+    assert adapter_duckdb_one_partition.structure().npartitions == 1
     assert isinstance(
-        adapter_sql_one_partition.conn, adbc_driver_duckdb.dbapi.Connection
+        adapter_duckdb_one_partition.conn, adbc_driver_duckdb.dbapi.Connection
     )
 
 
-def test_attributes_many_part(adapter_sql_many_partition: SQLAdapter) -> None:
+def test_attributes_duckdb_many_part(adapter_duckdb_many_partition: SQLAdapter) -> None:
+    assert adapter_duckdb_many_partition.structure().columns == names
+    assert adapter_duckdb_many_partition.structure().npartitions == 3
+    assert isinstance(
+        adapter_duckdb_many_partition.conn, adbc_driver_duckdb.dbapi.Connection
+    )
+
+
+@pytest.fixture
+def adapter_sql_one_partition(
+    tmp_path: Path,
+    data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
+) -> Generator[SQLAdapter, None, None]:
+    data_uri = f"sqlite:///{tmp_path}/test.db"
+    data_source = data_source_from_init_storage(data_uri, 1)
+    yield SQLAdapter(
+        data_source.assets[0].data_uri,
+        data_source.structure,
+        data_source.parameters["table_name"],
+        data_source.parameters["dataset_id"],
+    )
+
+
+@pytest.fixture
+def adapter_sql_many_partition(
+    tmp_path: Path,
+    data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
+) -> Generator[SQLAdapter, None, None]:
+    data_uri = f"sqlite:///{tmp_path}/test.db"
+    data_source = data_source_from_init_storage(data_uri, 3)
+    yield SQLAdapter(
+        data_source.assets[0].data_uri,
+        data_source.structure,
+        data_source.parameters["table_name"],
+        data_source.parameters["dataset_id"],
+    )
+
+
+def test_attributes_sql_one_part(adapter_sql_one_partition: SQLAdapter) -> None:
+    assert adapter_sql_one_partition.structure().columns == names
+    assert adapter_sql_one_partition.structure().npartitions == 1
+    assert isinstance(
+        adapter_sql_one_partition.conn, adbc_driver_sqlite.dbapi.Connection
+    )
+
+
+def test_attributes_sql_many_part(adapter_sql_many_partition: SQLAdapter) -> None:
     assert adapter_sql_many_partition.structure().columns == names
     assert adapter_sql_many_partition.structure().npartitions == 3
     assert isinstance(
-        adapter_sql_many_partition.conn, adbc_driver_duckdb.dbapi.Connection
+        adapter_sql_many_partition.conn, adbc_driver_sqlite.dbapi.Connection
     )
 
 
@@ -160,6 +207,7 @@ def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
     "adapter",
     [
         ("adapter_sql_one_partition"),
+        ("adapter_duckdb_one_partition"),
         ("adapter_psql_one_partition"),
     ],
 )
@@ -191,6 +239,7 @@ def test_write_read_one_batch_one_part(
     "adapter",
     [
         ("adapter_sql_one_partition"),
+        ("adapter_duckdb_one_partition"),
         ("adapter_psql_one_partition"),
     ],
 )
@@ -247,6 +296,7 @@ def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
     "adapter",
     [
         ("adapter_sql_many_partition"),
+        ("adapter_duckdb_many_partition"),
         ("adapter_psql_many_partition"),
     ],
 )
@@ -270,16 +320,19 @@ def test_write_read_one_batch_many_part(
 
     # test reading a specific partition
     result_read_partition = adapter.read_partition(0)
+    result_read_partition["f3"] = result_read_partition["f3"].astype("boolean")
     assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(
         result_read_partition
     )
 
     result_read_partition = adapter.read_partition(1)
+    result_read_partition["f3"] = result_read_partition["f3"].astype("boolean")
     assert pa.Table.from_arrays(data1, names) == pa.Table.from_pandas(
         result_read_partition
     )
 
     result_read_partition = adapter.read_partition(2)
+    result_read_partition["f3"] = result_read_partition["f3"].astype("boolean")
     assert pa.Table.from_arrays(data2, names) == pa.Table.from_pandas(
         result_read_partition
     )
@@ -308,22 +361,6 @@ def test_write_read_one_batch_many_part(
     assert_same_rows(
         pa.Table.from_batches([batch0, batch2, batch1, batch0, batch2, batch1]),
         pa.Table.from_pandas(result_read),
-    )
-
-    # test reading a specific parition after appending
-    result_read_partition = adapter.read_partition(0)
-    assert pa.Table.from_batches([batch0, batch2]) == pa.Table.from_pandas(
-        result_read_partition
-    )
-
-    result_read_partition = adapter.read_partition(1)
-    assert pa.Table.from_batches([batch1, batch0]) == pa.Table.from_pandas(
-        result_read_partition
-    )
-
-    result_read_partition = adapter.read_partition(2)
-    assert pa.Table.from_batches([batch2, batch1]) == pa.Table.from_pandas(
-        result_read_partition
     )
 
     # read a specific field

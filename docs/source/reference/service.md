@@ -79,7 +79,6 @@ When registering new types, make reference to the
 .. autosummary::
    :toctree: generated
 
-   tiled.media_type_registration.serialization_registry
    tiled.media_type_registration.SerializationRegistry
    tiled.media_type_registration.SerializationRegistry.register
    tiled.media_type_registration.SerializationRegistry.media_types

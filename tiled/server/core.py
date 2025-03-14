@@ -262,6 +262,7 @@ DEFAULT_MEDIA_TYPES = {
     StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
+    StructureFamily.composite: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
@@ -433,8 +434,11 @@ async def construct_resource(
             # for ease of going between dataclass and pydantic.
             specs.append(schemas.Spec(**spec.model_dump()))
         attributes["specs"] = specs
-    if (entry is not None) and entry.structure_family == StructureFamily.container:
-        attributes["structure_family"] = StructureFamily.container
+    if (entry is not None) and entry.structure_family in {
+        StructureFamily.container,
+        StructureFamily.composite,
+    }:
+        attributes["structure_family"] = entry.structure_family
 
         if schemas.EntryFields.structure in fields:
             if (

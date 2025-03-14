@@ -10,6 +10,7 @@ import dask
 import dask.array
 import dask.delayed
 import h5py
+import hdf5plugin  # noqa: F401
 import numpy
 from numpy._typing import NDArray
 

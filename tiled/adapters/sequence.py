@@ -197,7 +197,6 @@ class FileSequenceAdapter:
                 arr = np.atleast_1d(arr[tuple(the_rest)])
         else:
             raise RuntimeError(f"Unsupported slice type, {type(slice)} in {slice}")
-
         sliced_shape = ndindex(slice).newshape(self.structure().shape)
         return force_reshape(arr, sliced_shape)
 
