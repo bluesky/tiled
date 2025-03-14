@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar
+from typing import Callable, List, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -34,10 +34,10 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
-from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import SpecialUsers, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from .authentication import get_authenticators, get_current_principal
+from .authentication import get_current_principal
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -138,10 +138,12 @@ def _patch_route_signature(
 
 
 def get_router(
+    root_tree: MapAdapter,
     query_registry: QueryRegistry,
     serialization_registry: SerializationRegistry,
     deserialization_registry: SerializationRegistry,
     validation_registry: ValidationRegistry,
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -149,7 +151,6 @@ def get_router(
     async def about(
         request: Request,
         settings: Settings = Depends(get_settings),
-        authenticators=Depends(get_authenticators),
     ):
         # TODO The lazy import of entry modules and serializers means that the
         # lists of formats are not populated until they are first used. Not very
@@ -263,7 +264,7 @@ def get_router(
         max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
-        entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["read:metadata"]),
         **filters,
     ):
         request.state.endpoint = "search"
@@ -334,7 +335,7 @@ def get_router(
         specs: bool = False,
         metadata: Optional[List[str]] = Query(default=[]),
         counts: bool = False,
-        entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["read:metadata"]),
         **filters,
     ):
         if hasattr(entry, "get_distinct"):
@@ -368,7 +369,7 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         root_path: bool = Query(False),
-        entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["read:metadata"]),
     ):
         """Fetch the metadata and structure information for one entry"""
 
@@ -406,7 +407,7 @@ def get_router(
     async def array_block(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.array, StructureFamily.sparse}),
+            get_entry(root_tree, {StructureFamily.array, StructureFamily.sparse}),
             scopes=["read:data"],
         ),
         block=Depends(block),
@@ -483,7 +484,7 @@ def get_router(
     async def array_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.array, StructureFamily.sparse}),
+            get_entry(root_tree, {StructureFamily.array, StructureFamily.sparse}),
             scopes=["read:data"],
         ),
         slice=Depends(slice_),
@@ -547,7 +548,7 @@ def get_router(
         request: Request,
         partition: int,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.table}), scopes=["read:data"]
+            get_entry(root_tree, {StructureFamily.table}), scopes=["read:data"]
         ),
         column: Optional[List[str]] = Query(None, min_length=1),
         field: Optional[List[str]] = Query(None, min_length=1, deprecated=True),
@@ -596,7 +597,7 @@ def get_router(
         request: Request,
         partition: int,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.table}), scopes=["read:data"]
+            get_entry(root_tree, {StructureFamily.table}), scopes=["read:data"]
         ),
         column: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
@@ -675,7 +676,7 @@ def get_router(
     async def get_table_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.table}), scopes=["read:data"]
+            get_entry(root_tree, {StructureFamily.table}), scopes=["read:data"]
         ),
         column: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
@@ -702,7 +703,7 @@ def get_router(
     async def post_table_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.table}), scopes=["read:data"]
+            get_entry(root_tree, {StructureFamily.table}), scopes=["read:data"]
         ),
         column: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
@@ -774,10 +775,14 @@ def get_router(
     async def get_container_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.container, StructureFamily.composite}),
+            get_entry(
+                root_tree, {StructureFamily.container, StructureFamily.composite}
+            ),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -802,10 +807,14 @@ def get_router(
     async def post_container_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.container, StructureFamily.composite}),
+            get_entry(
+                root_tree, {StructureFamily.container, StructureFamily.composite}
+            ),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -875,15 +884,18 @@ def get_router(
         request: Request,
         entry: MapAdapter = Security(
             get_entry(
+                root_tree,
                 {
                     StructureFamily.table,
                     StructureFamily.container,
                     StructureFamily.composite,
-                }
+                },
             ),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -949,7 +961,7 @@ def get_router(
     async def get_awkward_buffers(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.awkward}), scopes=["read:data"]
+            get_entry(root_tree, {StructureFamily.awkward}), scopes=["read:data"]
         ),
         form_key: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
@@ -987,7 +999,7 @@ def get_router(
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.awkward}), scopes=["read:data"]
+            get_entry(root_tree, {StructureFamily.awkward}), scopes=["read:data"]
         ),
     ):
         """
@@ -1059,7 +1071,7 @@ def get_router(
     async def awkward_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.awkward}), scopes=["read:data"]
+            get_entry(root_tree, {StructureFamily.awkward}), scopes=["read:data"]
         ),
         # slice=Depends(slice_),
         format: Optional[str] = None,
@@ -1109,7 +1121,9 @@ def get_router(
         path: str,
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
-        entry: MapAdapter = Security(get_entry(), scopes=["write:metadata", "create"]),
+        entry: MapAdapter = Security(
+            get_entry(root_tree), scopes=["write:metadata", "create"]
+        ),
     ):
         for data_source in body.data_sources:
             if data_source.assets:
@@ -1137,7 +1151,7 @@ def get_router(
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(
-            get_entry(), scopes=["write:metadata", "create", "register"]
+            get_entry(root_tree), scopes=["write:metadata", "create", "register"]
         ),
     ):
         return await _create_node(
@@ -1203,7 +1217,7 @@ def get_router(
         body: schemas.PutDataSourceRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(
-            get_entry(), scopes=["write:metadata", "register"]
+            get_entry(root_tree), scopes=["write:metadata", "register"]
         ),
     ):
         await entry.put_data_source(
@@ -1214,7 +1228,7 @@ def get_router(
     async def delete(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry(), scopes=["write:data", "write:metadata"]
+            get_entry(root_tree), scopes=["write:data", "write:metadata"]
         ),
     ):
         if hasattr(entry, "delete"):
@@ -1230,7 +1244,7 @@ def get_router(
     async def bulk_delete(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry(), scopes=["write:data", "write:metadata"]
+            get_entry(root_tree), scopes=["write:data", "write:metadata"]
         ),
     ):
         if hasattr(entry, "delete_tree"):
@@ -1246,7 +1260,7 @@ def get_router(
     async def put_array_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.array, StructureFamily.sparse}),
+            get_entry(root_tree, {StructureFamily.array, StructureFamily.sparse}),
             scopes=["write:data"],
         ),
     ):
@@ -1274,7 +1288,7 @@ def get_router(
     async def put_array_block(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.array, StructureFamily.sparse}),
+            get_entry(root_tree, {StructureFamily.array, StructureFamily.sparse}),
             scopes=["write:data"],
         ),
         block=Depends(block),
@@ -1310,7 +1324,7 @@ def get_router(
         shape=Depends(shape_param),
         extend: bool = False,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.array}),
+            get_entry(root_tree, {StructureFamily.array}),
             scopes=["write:data"],
         ),
     ):
@@ -1333,7 +1347,7 @@ def get_router(
     async def put_node_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.table}),
+            get_entry(root_tree, {StructureFamily.table}),
             scopes=["write:data"],
         ),
     ):
@@ -1355,7 +1369,7 @@ def get_router(
     async def put_table_partition(
         partition: int,
         request: Request,
-        entry: MapAdapter = Security(get_entry(), scopes=["write:data"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["write:data"]),
     ):
         if not hasattr(entry, "write_partition"):
             raise HTTPException(
@@ -1375,7 +1389,7 @@ def get_router(
     async def patch_table_partition(
         partition: int,
         request: Request,
-        entry: MapAdapter = Security(get_entry(), scopes=["write:data"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["write:data"]),
     ):
         if not hasattr(entry, "write_partition"):
             raise HTTPException(
@@ -1395,7 +1409,7 @@ def get_router(
     async def put_awkward_full(
         request: Request,
         entry: MapAdapter = Security(
-            get_entry({StructureFamily.awkward}), scopes=["write:data"]
+            get_entry(root_tree, {StructureFamily.awkward}), scopes=["write:data"]
         ),
     ):
         body = await request.body()
@@ -1420,7 +1434,7 @@ def get_router(
         request: Request,
         body: schemas.PatchMetadataRequest,
         settings: Settings = Depends(get_settings),
-        entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["write:metadata"]),
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1480,7 +1494,7 @@ def get_router(
         request: Request,
         body: schemas.PutMetadataRequest,
         settings: Settings = Depends(get_settings),
-        entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["write:metadata"]),
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1518,7 +1532,7 @@ def get_router(
         limit: Optional[int] = Query(
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),
-        entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["read:metadata"]),
     ):
         if not hasattr(entry, "revisions"):
             raise HTTPException(
@@ -1542,7 +1556,7 @@ def get_router(
     async def delete_revision(
         request: Request,
         number: int,
-        entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        entry: MapAdapter = Security(get_entry(root_tree), scopes=["write:metadata"]),
     ):
         if not hasattr(entry, "revisions"):
             raise HTTPException(
@@ -1564,7 +1578,7 @@ def get_router(
         id: int,
         relative_path: Optional[Path] = None,
         entry: MapAdapter = Security(
-            get_entry(), scopes=["read:data"]
+            get_entry(root_tree), scopes=["read:data"]
         ),  # TODO: Separate scope for assets?
         settings: Settings = Depends(get_settings),
     ):
@@ -1662,7 +1676,7 @@ def get_router(
         request: Request,
         id: int,
         entry: MapAdapter = Security(
-            get_entry(), scopes=["read:data"]
+            get_entry(root_tree), scopes=["read:data"]
         ),  # TODO: Separate scope for assets?
         settings: Settings = Depends(get_settings),
     ):
