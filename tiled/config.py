@@ -10,19 +10,21 @@ from collections import defaultdict
 from datetime import timedelta
 from functools import cache
 from pathlib import Path
+from typing import Optional
 
 import jsonschema
 
 from .adapters.mapping import MapAdapter
 from .media_type_registration import (
-    compression_registry as default_compression_registry,
+    CompressionRegistry,
+    SerializationRegistry,
+    default_compression_registry,
+    default_deserialization_registry,
+    default_serialization_registry,
 )
-from .media_type_registration import (
-    serialization_registry as default_serialization_registry,
-)
-from .query_registration import query_registry as default_query_registry
+from .query_registration import QueryRegistry, default_query_registry
 from .utils import import_object, parse, prepend_to_sys_path
-from .validation_registration import validation_registry as default_validation_registry
+from .validation_registration import ValidationRegistry, default_validation_registry
 
 
 @cache
@@ -40,10 +42,11 @@ def construct_build_app_kwargs(
     config,
     *,
     source_filepath=None,
-    query_registry=None,
-    compression_registry=None,
-    serialization_registry=None,
-    validation_registry=None,
+    query_registry: Optional[QueryRegistry] = None,
+    compression_registry: Optional[CompressionRegistry] = None,
+    serialization_registry: Optional[SerializationRegistry] = None,
+    deserialization_registry: Optional[SerializationRegistry] = None,
+    validation_registry: Optional[ValidationRegistry] = None,
 ):
     """
     Given parsed configuration, construct arguments for build_app(...).
@@ -61,6 +64,8 @@ def construct_build_app_kwargs(
         query_registry = default_query_registry
     if serialization_registry is None:
         serialization_registry = default_serialization_registry
+    if deserialization_registry is None:
+        deserialization_registry = default_deserialization_registry
     if compression_registry is None:
         compression_registry = default_compression_registry
     if validation_registry is None:
@@ -220,6 +225,7 @@ See documentation section "Serve a Directory of Files"."""
         "server_settings": server_settings,
         "query_registry": query_registry,
         "serialization_registry": serialization_registry,
+        "deserialization_registry": deserialization_registry,
         "compression_registry": compression_registry,
         "validation_registry": validation_registry,
         "tasks": {

@@ -1,6 +1,6 @@
 import io
 
-from ..media_type_registration import serialization_registry
+from ..media_type_registration import default_serialization_registry
 from ..structures.core import StructureFamily
 from ..utils import (
     SerializationError,
@@ -81,10 +81,10 @@ if modules_available("h5py"):
                     dataset.attrs.create(k, v)
         return buffer.getbuffer()
 
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.container, "application/x-hdf5", serialize_hdf5
     )
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.composite, "application/x-hdf5", serialize_hdf5
     )
 
@@ -107,9 +107,9 @@ if modules_available("orjson"):
                 d = d[key]["contents"]
         return safe_json_dump(to_serialize)
 
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.container, "application/json", serialize_json
     )
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.composite, "application/json", serialize_json
     )

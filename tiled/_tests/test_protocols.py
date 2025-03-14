@@ -9,7 +9,7 @@ import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
-from tiled.access_policies import ALL_ACCESS, ALL_SCOPES
+from tiled.access_policies import ALL_ACCESS
 from tiled.adapters.awkward_directory_container import DirectoryContainer
 from tiled.adapters.protocols import (
     AccessPolicy,
@@ -19,6 +19,7 @@ from tiled.adapters.protocols import (
     SparseAdapter,
     TableAdapter,
 )
+from tiled.scopes import ALL_SCOPES
 from tiled.server.schemas import Principal, PrincipalType
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
