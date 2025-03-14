@@ -28,4 +28,8 @@ def upgrade():
 
 
 def downgrade():
-    raise NotImplementedError
+    # PostgreSQL does not support dropping values from enums.
+    # (The enum would need to be destroyed and recreated, migrating
+    # the data in the process.) Fortunately, an extra unused values does
+    # not interfere with operation of older versions of Tiled.
+    pass

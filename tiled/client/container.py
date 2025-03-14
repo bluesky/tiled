@@ -15,7 +15,7 @@ import httpx
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
-from ..query_registration import query_registry
+from ..query_registration import default_query_registry
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
@@ -339,7 +339,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         raise
                     item = content["data"]
 
-                    # Tables that belong to composite nodes can not be addressed directly
+                    # Tables that belong to composite nodes cannot be addressed directly
                     if (
                         item["attributes"]["structure_family"] == StructureFamily.table
                     ) and (
@@ -1080,7 +1080,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
 
 class Composite(Container):
-    def _get_contents(self, maxlen=None, include_metadata=False):
+    def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
         while (next_page_url is not None) or (
@@ -1106,7 +1106,7 @@ class Composite(Container):
     @property
     def _flat_keys_mapping(self):
         result = {}
-        for key, item in self._get_contents().items():
+        for key, item in self.get_contents().items():
             if item["attributes"]["structure_family"] == StructureFamily.table:
                 for col in item["attributes"]["structure"]["columns"]:
                     result[col] = item["id"] + "/" + col
@@ -1119,7 +1119,7 @@ class Composite(Container):
 
     @property
     def parts(self):
-        return CompositeContents(self)
+        return CompositeParts(self)
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
         yield from self._flat_keys_mapping.keys()
@@ -1158,9 +1158,9 @@ class Composite(Container):
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
 
-class CompositeContents:
+class CompositeParts:
     def __init__(self, node):
-        self._contents = node._get_contents(include_metadata=True)
+        self.contents = node.get_contents(include_metadata=True)
         self.context = node.context
         self.structure_clients = node.structure_clients
         self._include_data_sources = node._include_data_sources
@@ -1168,20 +1168,20 @@ class CompositeContents:
     def __repr__(self):
         return (
             f"<{type(self).__name__} {{"
-            + ", ".join(f"'{item}'" for item in self._contents)
+            + ", ".join(f"'{item}'" for item in self.contents)
             + "}>"
         )
 
     def __getitem__(self, key):
         key, *tail = key.split("/")
 
-        if key not in self._contents:
+        if key not in self.contents:
             raise KeyError(key)
 
         client = client_for_item(
             self.context,
             self.structure_clients,
-            self._contents[key],
+            self.contents[key],
             include_data_sources=self._include_data_sources,
         )
 
@@ -1191,18 +1191,18 @@ class CompositeContents:
             return client
 
     def __iter__(self):
-        for key in self._contents:
+        for key in self.contents:
             yield key
 
     def __len__(self) -> int:
-        return len(self._contents)
+        return len(self.contents)
 
 
 def _queries_to_params(*queries):
     "Compute GET params from the queries."
     params = collections.defaultdict(list)
     for query in queries:
-        name = query_registry.query_type_to_name[type(query)]
+        name = default_query_registry.query_type_to_name[type(query)]
         for field, value in query.encode().items():
             if value is not None:
                 params[f"filter[{name}][condition][{field}]"].append(value)

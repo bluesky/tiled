@@ -1,12 +1,10 @@
 from functools import partial
 
 from .queries import In, KeysFilter
-from .scopes import SCOPES
+from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 from .utils import Sentinel, SpecialUsers, import_object
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
-ALL_SCOPES = set(SCOPES)
-PUBLIC_SCOPES = {"read:metadata", "read:data"}
 NO_ACCESS = Sentinel("NO_ACCESS")
 
 

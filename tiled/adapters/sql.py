@@ -221,20 +221,8 @@ class SQLAdapter:
         The column for the associated key.
         """
 
-        # Construct the metadata for the array: assume that relevant metadata is in the `key` field
-        metadata: dict[str, Any] = {
-            k: v
-            for k, v in self.metadata().items()
-            if k not in self.structure().columns
-        }
-        if column_metadata := self.metadata().get(key):
-            if isinstance(column_metadata, dict):
-                metadata.update(column_metadata)
-            else:
-                metadata[key] = column_metadata
-
         # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read([key])[key].values, metadata=metadata)
+        return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         """Iterate over the SQLAdapter data.

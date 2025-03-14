@@ -9,6 +9,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - `Composite` structure family to enable direct access to table columns in a single namespace.
 
+### Maintenance
+
+- Extract API key handling
+- Extract scope fetching and checking
+- Refactor router construction
+
 
 ## 0.1.0-b20 (2025-03-07)
 

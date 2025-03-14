@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, Sequence
 
 import sqlalchemy.exc
 from fastapi import (
@@ -17,13 +17,12 @@ from fastapi import (
     Response,
     Security,
 )
-from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.security import (
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
     SecurityScopes,
 )
-from fastapi.security.api_key import APIKeyBase, APIKeyCookie, APIKeyQuery
+from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.future import select
@@ -36,6 +35,8 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
 )
+
+from tiled.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -93,33 +94,20 @@ class TokenData(BaseModel):
     username: Optional[str] = None
 
 
-class APIKeyAuthorizationHeader(APIKeyBase):
+class StrictAPIKeyHeader(APIKeyHeader):
+    # TODO: remove custom subclass https://github.com/bluesky/tiled/issues/921
     """
-    Expect a header like
-
-    Authorization: Apikey SECRET
-
-    where Apikey is case-insensitive.
+    APIKeyHeader does not enforce that the scheme matches the expected, potentially
+    leading to the case where Bearer tokens are treated as API keys.
+    Additionally strips the scheme, as expected by current handling.
     """
-
-    def __init__(
-        self,
-        *,
-        name: str,
-        scheme_name: Optional[str] = None,
-        description: Optional[str] = None,
-    ):
-        self.model: APIKey = APIKey(
-            **{"in": APIKeyIn.header}, name=name, description=description
-        )
-        self.scheme_name = scheme_name or self.__class__.__name__
 
     async def __call__(self, request: Request) -> Optional[str]:
-        authorization: str = request.headers.get("Authorization")
-        scheme, param = get_authorization_scheme_param(authorization)
-        if not authorization or scheme.lower() == "bearer":
-            return None
-        if scheme.lower() != "apikey":
+        api_key: Optional[str] = request.headers.get(self.model.name)
+        scheme, param = get_authorization_scheme_param(api_key)
+        if not scheme or scheme.lower() == "bearer":
+            return self.check_api_key(None, self.auto_error)
+        if scheme.lower() != self.scheme_name.lower():
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(
@@ -128,17 +116,11 @@ class APIKeyAuthorizationHeader(APIKeyBase):
                     "'Bearer SECRET' or 'Apikey SECRET'. "
                 ),
             )
-        return param
+        return self.check_api_key(param, self.auto_error)
 
 
 # The tokenUrl below is patched at app startup when we know it.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="PLACEHOLDER", auto_error=False)
-api_key_query = APIKeyQuery(name="api_key", auto_error=False)
-api_key_header = APIKeyAuthorizationHeader(
-    name="Authorization",
-    description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'",
-)
-api_key_cookie = APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
 
 
 def create_access_token(data, secret_key, expires_delta):
@@ -185,10 +167,21 @@ def decode_token(token, secret_keys):
 
 
 async def get_api_key(
-    api_key_query: str = Security(api_key_query),
-    api_key_header: str = Security(api_key_header),
-    api_key_cookie: str = Security(api_key_cookie),
-):
+    api_key_query: Optional[str] = Depends(
+        APIKeyQuery(name="api_key", auto_error=False)
+    ),
+    api_key_header: Optional[str] = Depends(
+        StrictAPIKeyHeader(
+            name="Authorization",
+            description="Prefix value with 'Apikey ' as in, 'Apikey SECRET'",
+            scheme_name="Apikey",
+            auto_error=False,
+        )
+    ),
+    api_key_cookie: Optional[str] = Depends(
+        APIKeyCookie(name=API_KEY_COOKIE_NAME, auto_error=False)
+    ),
+) -> Optional[str]:
     for api_key in [api_key_query, api_key_header, api_key_cookie]:
         if api_key is not None:
             return api_key
@@ -231,6 +224,84 @@ async def get_decoded_access_token(
 async def get_session_state(decoded_access_token=Depends(get_decoded_access_token)):
     if decoded_access_token:
         return decoded_access_token.get("state")
+
+
+async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
+    if ("api_key" in request.query_params) and (
+        request.cookies.get(API_KEY_COOKIE_NAME) != api_key
+    ):
+        request.state.cookies_to_set.append(
+            {"key": API_KEY_COOKIE_NAME, "value": api_key}
+        )
+
+
+async def get_scopes_from_api_key(
+    api_key: str, settings: Settings, authenticators, db
+) -> Sequence[str]:
+    if not authenticators:
+        # Tiled is in a "single user" mode with only one API key.
+        return (
+            USER_SCOPES
+            if secrets.compare_digest(api_key, settings.single_user_api_key)
+            else set()
+        )
+    # Tiled is in a multi-user configuration with authentication providers.
+    # We store the hashed value of the API key secret.
+    # By comparing hashes we protect against timing attacks.
+    # By storing only the hash of the (high-entropy) secret
+    # we reduce the value of that an attacker can extracted from a
+    # stolen database backup.
+    try:
+        secret = bytes.fromhex(api_key)
+    except Exception:
+        return NO_SCOPES
+    api_key_orm = await lookup_valid_api_key(db, secret)
+    if api_key_orm is None:
+        return NO_SCOPES
+    else:
+        principal = api_key_orm.principal
+        principal_scopes = set().union(*[role.scopes for role in principal.roles])
+        # This intersection addresses the case where the Principal has
+        # lost a scope that they had when this key was created.
+        scopes = set(api_key_orm.scopes).intersection(principal_scopes | {"inherit"})
+        if "inherit" in scopes:
+            # The scope "inherit" is a metascope that confers all the
+            # scopes for the Principal associated with this API,
+            # resolved at access time.
+            scopes.update(principal_scopes)
+        return scopes
+
+
+async def get_current_scopes(
+    decoded_access_token: Optional[dict[str, Any]] = Depends(get_decoded_access_token),
+    api_key: Optional[str] = Depends(get_api_key),
+    settings: Settings = Depends(get_settings),
+    authenticators=Depends(get_authenticators),
+    db=Depends(get_database_session),
+) -> set[str]:
+    if api_key is not None:
+        return await get_scopes_from_api_key(api_key, settings, authenticators, db)
+    elif decoded_access_token is not None:
+        return decoded_access_token["scp"]
+    else:
+        return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
+
+
+async def check_scopes(
+    request: Request,
+    security_scopes: SecurityScopes,
+    scopes: set[str] = Depends(get_current_scopes),
+) -> None:
+    if not set(security_scopes.scopes).issubset(scopes):
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail=(
+                "Not enough permissions. "
+                f"Requires scopes {security_scopes.scopes}. "
+                f"Request had scopes {list(scopes)}"
+            ),
+            headers=headers_for_401(request, security_scopes),
+        )
 
 
 async def get_current_principal(
@@ -299,30 +370,12 @@ async def get_current_principal(
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
                 principal = SpecialUsers.admin
-                scopes = {
-                    "read:metadata",
-                    "read:data",
-                    "write:metadata",
-                    "write:data",
-                    "create",
-                    "register",
-                    "metrics",
-                }
             else:
                 raise HTTPException(
                     status_code=HTTP_401_UNAUTHORIZED,
                     detail="Invalid API key",
                     headers=headers_for_401(request, security_scopes),
                 )
-        # If we made it to this point, we have a valid API key.
-        # If the API key was given in query param, move to cookie.
-        # This is convenient for browser-based access.
-        if ("api_key" in request.query_params) and (
-            request.cookies.get(API_KEY_COOKIE_NAME) != api_key
-        ):
-            request.state.cookies_to_set.append(
-                {"key": API_KEY_COOKIE_NAME, "value": api_key}
-            )
     elif decoded_access_token is not None:
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
@@ -332,40 +385,9 @@ async def get_current_principal(
                 for identity in decoded_access_token["ids"]
             ],
         )
-        scopes = decoded_access_token["scp"]
     else:
         # No form of authentication is present.
         principal = SpecialUsers.public
-        # Is anonymous public access permitted?
-        if settings.allow_anonymous_access:
-            # Any user who can see the server can make unauthenticated requests.
-            # This is a sentinel that has special meaning to the authorization
-            # code (the access control policies).
-            scopes = {"read:metadata", "read:data"}
-        else:
-            # In this mode, there may still be entries that are visible to all,
-            # but users have to authenticate as *someone* to see anything.
-            # They can still access the /  and /docs routes.
-            scopes = {}
-    # Scope enforcement happens here.
-    # https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/
-    if not set(security_scopes.scopes).issubset(scopes):
-        # Include a link to the root page which provides a list of
-        # authenticators. The use case here is:
-        # 1. User is emailed a link like https://example.com/subpath//metadata/a/b/c
-        # 2. Tiled Client tries to connect to that and gets 401.
-        # 3. Client can use this header to find its way to
-        #    https://examples.com/subpath/ and obtain a list of
-        #    authentication providers and endpoints.
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail=(
-                "Not enough permissions. "
-                f"Requires scopes {security_scopes.scopes}. "
-                f"Request had scopes {list(scopes)}"
-            ),
-            headers=headers_for_401(request, security_scopes),
-        )
     # This is used to pass the currently-authenticated principal into the logger.
     request.state.principal = principal
     return principal
@@ -802,7 +824,8 @@ async def principal_list(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    principal=Depends(get_current_principal),
+    _=Security(check_scopes, scopes=["read:principals"]),
     db=Depends(get_database_session),
 ):
     "List Principals (users and services)."
@@ -840,7 +863,8 @@ async def principal_list(
 )
 async def create_service_principal(
     request: Request,
-    principal=Security(get_current_principal, scopes=["write:principals"]),
+    principal=Depends(get_current_principal),
+    _=Security(check_scopes, scopes=["write:principals"]),
     db=Depends(get_database_session),
     role: str = Query(...),
 ):
@@ -875,7 +899,7 @@ async def create_service_principal(
 async def principal(
     request: Request,
     uuid: uuid_module.UUID,
-    principal=Security(get_current_principal, scopes=["read:principals"]),
+    _=Security(check_scopes, scopes=["read:principals"]),
     db=Depends(get_database_session),
 ):
     "Get information about one Principal (user or service)."
@@ -911,7 +935,7 @@ async def revoke_apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
     first_eight: str,
-    principal=Security(get_current_principal, scopes=["admin:apikeys"]),
+    _=Security(check_scopes, scopes=["admin:apikeys"]),
     db=Depends(get_database_session),
 ):
     "Allow Tiled Admins to delete any user's apikeys e.g."
@@ -940,7 +964,8 @@ async def apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
     apikey_params: schemas.APIKeyRequestParams,
-    principal=Security(get_current_principal, scopes=["admin:apikeys"]),
+    principal=Depends(get_current_principal),
+    _=Security(check_scopes, scopes=["admin:apikeys"]),
     db=Depends(get_database_session),
 ):
     "Generate an API key for a Principal."
@@ -995,7 +1020,7 @@ async def revoke_session(
 async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
-    principal: schemas.Principal = Security(get_current_principal, scopes=[]),
+    principal: schemas.Principal = Depends(get_current_principal),
     db=Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
@@ -1086,7 +1111,8 @@ async def slide_session(refresh_token, settings, db):
 async def new_apikey(
     request: Request,
     apikey_params: schemas.APIKeyRequestParams,
-    principal=Security(get_current_principal, scopes=["apikeys"]),
+    principal=Depends(get_current_principal),
+    _=Security(check_scopes, scopes=["apikeys"]),
     db=Depends(get_database_session),
 ):
     """
@@ -1139,7 +1165,8 @@ async def current_apikey_info(
 async def revoke_apikey(
     request: Request,
     first_eight: str,
-    principal=Security(get_current_principal, scopes=["apikeys"]),
+    principal=Depends(get_current_principal),
+    _=Security(check_scopes, scopes=["apikeys"]),
     db=Depends(get_database_session),
 ):
     """
@@ -1169,7 +1196,7 @@ async def revoke_apikey(
 )
 async def whoami(
     request: Request,
-    principal=Security(get_current_principal, scopes=[]),
+    principal=Depends(get_current_principal),
     db=Depends(get_database_session),
 ):
     # TODO Permit filtering the fields of the response.
@@ -1205,7 +1232,6 @@ async def whoami(
 async def logout(
     request: Request,
     response: Response,
-    principal=Security(get_current_principal, scopes=[]),
 ):
     "Deprecated. See revoke_session: POST /session/revoke."
     request.state.endpoint = "auth"
