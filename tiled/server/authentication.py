@@ -814,9 +814,9 @@ def authentication_router() -> APIRouter:
         limit: Optional[int] = Query(
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         _=Security(check_scopes, scopes=["read:principals"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -854,9 +854,9 @@ def authentication_router() -> APIRouter:
     )
     async def create_service_principal(
         request: Request,
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         _=Security(check_scopes, scopes=["write:principals"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
         role: str = Query(...),
@@ -954,9 +954,9 @@ def authentication_router() -> APIRouter:
         request: Request,
         uuid: uuid_module.UUID,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         _=Security(check_scopes, scopes=["admin:apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1007,9 +1007,9 @@ def authentication_router() -> APIRouter:
     async def revoke_session_by_id(
         session_id: str,  # from path parameter
         request: Request,
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
@@ -1100,9 +1100,9 @@ def authentication_router() -> APIRouter:
     async def new_apikey(
         request: Request,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         _=Security(check_scopes, scopes=["apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1160,9 +1160,9 @@ def authentication_router() -> APIRouter:
     async def revoke_apikey(
         request: Request,
         first_eight: str,
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         _=Security(check_scopes, scopes=["apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1192,9 +1192,9 @@ def authentication_router() -> APIRouter:
     )
     async def whoami(
         request: Request,
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         # TODO Permit filtering the fields of the response.
