@@ -1,7 +1,6 @@
-import builtins
 import copy
 import os
-import re
+import sys
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
@@ -18,57 +17,24 @@ from numpy._typing import NDArray
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
+from ..server.core import NoEntry
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..type_aliases import JSON, EllipsisType
-from ..utils import node_repr, path_from_uri
+from ..type_aliases import JSON, NDSlice
+from ..utils import BrokenLink, Sentinel, node_repr, path_from_uri
 from .array import ArrayAdapter
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
-
-def ndslice_from_string(
-    arg: str,
-) -> Tuple[Union[int, builtins.slice, EllipsisType], ...]:
-    """Parse and convert a string representation of a slice
-
-    For example, '(1:3, 4, 1:5:2, ...)' is converted to (slice(1, 3), 4, slice(1, 5, 2), ...).
-    """
-    if not (arg.startswith("[") and arg.endswith("]")) and not (
-        arg.startswith("(") and arg.endswith(")")
-    ):
-        raise ValueError("Slice must be enclosed in square brackets or parentheses.")
-    result: list[Union[int, builtins.slice, EllipsisType]] = []
-    for part in arg[1:-1].split(","):
-        if part.strip() == ":":
-            result.append(builtins.slice(None))
-        elif m := re.match(r"^(\d+):$", part.strip()):
-            start, stop = int(m.group(1)), None
-            result.append(builtins.slice(start, stop))
-        elif m := re.match(r"^:(\d+)$", part.strip()):
-            start, stop = 0, int(m.group(1))
-            result.append(builtins.slice(start, stop))
-        elif m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
-            start, stop, step = map(int, m.groups())
-            result.append(builtins.slice(start, stop, step))
-        elif m := re.match(r"^(\d+):(\d+)$", part.strip()):
-            start, stop = map(int, m.groups())
-            result.append(builtins.slice(start, stop))
-        elif m := re.match(r"^(\d+)$", part.strip()):
-            result.append(int(m.group()))
-        elif part.strip() == "...":
-            result.append(Ellipsis)
-        else:
-            raise ValueError(f"Invalid slice part: {part}")
-        # TODO: cases like "::n" or ":4:"
-    return tuple(result)
+HDF5_DATASET = Sentinel("HDF5_DATASET")
+HDF5_BROKEN_LINK = Sentinel("HDF5_BROKEN_LINK")
 
 
 def parse_hdf5_tree(
     tree: Union[h5py.File, h5py.Group, h5py.Dataset]
-) -> Union[dict[str, Union[Any, None]], None]:
+) -> Union[dict[str, Union[Any, Sentinel]], Sentinel]:
     """Parse an HDF5 file or group into a nested dictionary structure
 
     the resulting tree structure represenets any groups as nested dictionaries ans datasets as None.
@@ -86,10 +52,10 @@ def parse_hdf5_tree(
     res: dict[str, Union[Any, None]] = {}
 
     if isinstance(tree, h5py.Dataset):
-        return None
+        return HDF5_DATASET
 
     for key, val in tree.items():
-        res[key] = parse_hdf5_tree(val)
+        res[key] = HDF5_BROKEN_LINK if val is None else parse_hdf5_tree(val)
 
     return res
 
@@ -103,14 +69,56 @@ def get_hdf5_attrs(
 ) -> JSON:
     """Get attributes of an HDF5 dataset"""
     file_path = path_from_uri(file_uri)
-    with h5py.File(file_path, "r", swmr=swmr, libver=libver, **kwargs) as _file:
-        node = _file[dataset] if dataset else _file
+    with h5open(file_path, dataset=dataset, swmr=swmr, libver=libver, **kwargs) as node:
         d = dict(getattr(node, "attrs", {}))
-        for k, v in list(d.items()):
+        for k, v in d.items():
             # Convert any bytes to str.
             if isinstance(v, bytes):
                 d[k] = v.decode()
     return d
+
+
+class h5open(h5py.File):  # type: ignore
+    """A context manager for reading datasets from HDF5 files
+
+    This class is a subclass of h5py.File that allows for reading datasets from HDF5 files using a context manager.
+    It raises a BrokenLink exception if a key referencing a dataset (or a group) exists in the file, but the
+    referenced object can not be accessed (e.g. if an externally linked file has been removed). In these cases,
+    h5py raises a KeyError with following messages:
+    KeyError: 'Unable to synchronously open object (component not found)'
+    or
+    KeyError: "Unable to synchronously open object (unable to open external file, external link file name = '...')"
+    if a soft link or an external link is broken, respectively.
+
+    This message is distinct from the case when a key does not exist in the file, in which case h5py raises:
+    KeyError: "Unable to synchronously open object (object 'y' doesn't exist)"
+    """
+
+    def __init__(
+        self, filename: Union[str, Path], dataset: Optional[str] = None, **kwargs: Any
+    ) -> None:
+        super().__init__(filename, mode="r", **kwargs)
+        self.dataset = dataset
+
+    def __enter__(self) -> Union[h5py.File, h5py.Group, h5py.Dataset]:
+        super().__enter__()
+        try:
+            return self[self.dataset] if self.dataset else self
+        except Exception:
+            self.__exit__(*sys.exc_info())
+            raise
+
+    def __exit__(self, exc_type, exc_value, exc_tb) -> None:  # type: ignore
+        super().__exit__(exc_type, exc_value, exc_tb)
+
+        if exc_type == KeyError:
+            if "unable to open external file" in str(exc_value):
+                # External link is broken
+                raise BrokenLink(exc_value.args[0]) from exc_value
+
+            elif "component not found" in str(exc_value):
+                # Soft link is broken
+                raise BrokenLink(exc_value.args[0]) from exc_value
 
 
 class HDF5ArrayAdapter(ArrayAdapter):
@@ -151,9 +159,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         def _get_hdf5_specs(
             fpath: Union[str, Path]
         ) -> Tuple[Tuple[int, ...], Union[Tuple[int, ...], None], numpy.dtype]:
-            with h5py.File(fpath, "r", swmr=swmr, libver=libver) as f:
-                f = f[dataset] if dataset else f
-                return f.shape, f.chunks, f.dtype
+            with h5open(fpath, dataset, swmr=swmr, libver=libver) as ds:
+                result = ds.shape, ds.chunks, ds.dtype
+            return result
 
         # Need to know shapes/dtypes of constituent arrays to load them lazily
         shapes_chunks_dtypes = [_get_hdf5_specs(fpath) for fpath in file_paths]
@@ -177,9 +185,10 @@ class HDF5ArrayAdapter(ArrayAdapter):
             check_str_dtype = h5py.check_string_dtype(dtype)
             if check_str_dtype.length is None:
                 # TODO: refactor and test
-                with h5py.File(file_paths[0], "r", swmr=swmr, libver=libver) as f:
-                    value = f[dataset] if dataset else f
-                    dataset_names = value.file[f.name + "/" + dataset][...][()]
+                with h5open(
+                    file_paths[0], dataset=dataset, swmr=swmr, libver=libver
+                ) as value:
+                    dataset_names = value.file[value.file.name + "/" + dataset][...][()]
                     if value.size == 1:
                         arr = dask.array.from_array(numpy.array(dataset_names))
                     else:
@@ -205,9 +214,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         node: Node,
         /,
         dataset: Optional[str] = None,
-        slice: Optional[
-            Union[str, Tuple[Union[int, builtins.slice, EllipsisType], ...]]
-        ] = None,
+        slice: Optional[Union[str, NDSlice]] = None,
         squeeze: Optional[bool] = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
@@ -226,7 +233,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         if slice:
             if isinstance(slice, str):
-                slice = ndslice_from_string(slice)
+                slice = NDSlice.from_numpy_str(slice)
             array = array[slice]
         if squeeze:
             array = array.squeeze()
@@ -263,9 +270,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         cls,
         *data_uris: str,
         dataset: Optional[str] = None,
-        slice: Optional[
-            Union[str, Tuple[Union[int, builtins.slice, EllipsisType], ...]]
-        ] = None,
+        slice: Optional[Union[str, NDSlice]] = None,
         squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
@@ -280,7 +285,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # Apply slice and squeeze operations, if specified
         if slice:
             if isinstance(slice, str):
-                slice = ndslice_from_string(slice)
+                slice = NDSlice.from_numpy_str(slice)
             array = array[slice]
         if squeeze:
             array = array.squeeze()
@@ -305,7 +310,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         A dictionary representing the HDF5 file or group. The keys are the names of the groups or datasets,
         and the values are either dictionaries (representing groups) or None (representing datasets).
         HDF5 datasets will be mapped to HDF5ArrayAdapter instances, and groups will be mapped to HDF5Adapter
-        instances.
+        instances. The tree is rooted at the 'dataset' node.
     data_uris : str
         The URI of the file, or a list of URIs if the dataset spans multiple files.
     dataset : str
@@ -332,7 +337,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
 
     def __init__(
         self,
-        tree: dict[str, Any],
+        tree: Union[dict[str, Any], Sentinel],
         *data_uris: str,
         dataset: Optional[str] = None,
         structure: Optional[ArrayStructure] = None,
@@ -340,10 +345,14 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Any],
     ) -> None:
-        # Traverse the tree to the desired HDF5 group
-        self._tree = tree
+        if tree == HDF5_BROKEN_LINK:
+            raise BrokenLink(
+                f"Unable to open object at {data_uris[0]}"
+                + (f"/{dataset}" if dataset else "")
+            )
+        self._tree: dict[str, Any] = tree  # type: ignore
         self.uris = data_uris
-        self.dataset = dataset
+        self.dataset = dataset  # Referenced to the root of the file
         self.specs = specs or []
         self._metadata = metadata or {}
         self._kwargs = kwargs  # e.g. swmr, libver, etc.
@@ -386,12 +395,12 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
             assets[0].data_uri
         ]
         file_path = path_from_uri(data_uris[0])
-        with h5py.File(file_path, "r", swmr=swmr, libver=libver) as file:
-            tree = parse_hdf5_tree(file[dataset] if dataset else file)
+        with h5open(file_path, dataset, swmr=swmr, libver=libver) as file:
+            tree = parse_hdf5_tree(file)
 
-        if tree is None:
+        if tree == HDF5_DATASET:
             raise ValueError(
-                "Data source pointing to an HDF5 Dataset should have an array structure"
+                "Erroneous structure (container) of a DataSource pointing to an HDF5 Dataset (array)."
             )
 
         return cls(
@@ -415,10 +424,10 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         libver: str = "latest",
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
-        with h5py.File(fpath, "r", swmr=swmr, libver=libver) as file:
-            tree = parse_hdf5_tree(file[dataset] if dataset else file)
+        with h5open(fpath, dataset, swmr=swmr, libver=libver) as file:
+            tree = parse_hdf5_tree(file)
 
-        if tree is None:
+        if tree == HDF5_DATASET:
             return HDF5ArrayAdapter.from_uris(
                 *data_uris, dataset=dataset, swmr=swmr, libver=libver
             )
@@ -437,14 +446,22 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         return d
 
     def __iter__(self) -> Iterator[Any]:
-        yield from self._tree  # Iterate over the keys of the tree
+        """Iterate over the keys of the tree"""
+        yield from self._tree
 
-    def __getitem__(self, key: str) -> "HDF5Adapter":
+    def __getitem__(self, key: str) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+        dataset = f"{self.dataset or ''}/{key.strip('/')}"  # Referenced to the root of the file
         node = copy.deepcopy(self._tree)
         for segment in key.strip("/").split("/"):
+            if segment not in node:
+                raise NoEntry(
+                    f"Can not access dataset {dataset} in {self.uris[0]}: {key} not found"
+                )
             node = node[segment]
-        dataset = f"{self.dataset or ''}/{key.strip('/')}"  # Referenced to the root of the file
+            if node == HDF5_BROKEN_LINK:  # type: ignore
+                raise BrokenLink(f"Unable to open object at {self.uris[0]}/{dataset}")
         if isinstance(node, dict):
+            # It is an HDF5 group
             return HDF5Adapter(
                 node,
                 *self.uris,
@@ -454,9 +471,14 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
                 **self._kwargs,
             )
         else:
+            # It is an HDF5 dataset
             return HDF5ArrayAdapter.from_uris(
                 *self.uris, dataset=dataset, **self._kwargs
             )
+
+    def get(self, key: str, *args: Any) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
+        """Overwrite to always raise KeyErrors for broken links and missing items"""
+        return self[key]
 
     def __len__(self) -> int:
         return len(self._tree)

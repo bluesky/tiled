@@ -141,7 +141,8 @@ async def test_search(a):
     # Looking up "d" inside search results should find nothing when
     # "d" is filtered out by a search query first.
     assert await a.lookup_adapter(["d"]) is not None
-    assert await a.search(Eq("letter", "c")).lookup_adapter(["d"]) is None
+    with pytest.raises(KeyError):
+        await a.search(Eq("letter", "c")).lookup_adapter(["d"])
 
     # Search on nested key.
     assert await a.search(Eq("x.y.z", "c")).keys_range(0, 5) == ["c"]
