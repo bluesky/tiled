@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
 from fastapi import (
     APIRouter,
@@ -316,7 +316,7 @@ async def get_current_principal(
     db: Optional[AsyncSession] = Depends(get_database_session),
     # TODO: https://github.com/bluesky/tiled/issues/923
     # Remove non-Princiapl return types
-) -> schemas.Principal | SpecialUsers | str:
+) -> Union[schemas.Principal, SpecialUsers, str]:
     """
     Get current Principal from:
     - API key in 'api_key' query parameter
