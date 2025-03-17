@@ -133,7 +133,7 @@ class BaseClient:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family in [StructureFamily.container, StructureFamily.composite]:
+        elif structure_family in {StructureFamily.container, StructureFamily.composite}:
             self._structure = None
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
@@ -189,18 +189,23 @@ class BaseClient:
         return self._context
 
     def refresh(self):
+        params = {
+            **parse_qs(urlparse(self.uri).query),
+        }
+        if self._include_data_sources:
+            params["include_data_sources"] = self._include_data_sources
         content = handle_error(
             self.context.http_client.get(
                 self.uri,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **parse_qs(urlparse(self.uri).query),
-                    "include_data_sources": self._include_data_sources,
-                },
+                params=params,
             )
         ).json()
         self._item = content["data"]
-        if self.structure_family not in [StructureFamily.container, StructureFamily.composite]:
+        if self.structure_family not in {
+            StructureFamily.container,
+            StructureFamily.composite,
+        }:
             structure_type = STRUCTURE_TYPES[self.structure_family]
             self._structure = structure_type.from_json(
                 self._item["attributes"]["structure"]

@@ -15,6 +15,7 @@ from ..utils import OneShotCachedMap
 class StructureFamily(str, enum.Enum):
     array = "array"
     awkward = "awkward"
+    composite = "composite"
     container = "container"
     composite = "composite"
     sparse = "sparse"

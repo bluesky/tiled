@@ -221,10 +221,6 @@ class SQLAdapter:
         The column for the associated key.
         """
 
-        # Construct the metadata for the array: assume that relevant metadata is in the `key` field
-        metadata = {k:v for k, v in self.metadata().items() if k not in self.structure().columns}
-        metadata.update(self.metadata().get(key, {}))
-
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values, metadata=metadata)
 
@@ -385,23 +381,23 @@ def _ensure_writable_location(uri: str) -> Path:
 # Mapping between Arrow types and PostgreSQL column type name.
 ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
     # Boolean
-    pyarrow.bool_(): "bool",
+    pyarrow.bool_(): "BOOLEAN",
     # Integers
-    pyarrow.int8(): "int2",
-    pyarrow.uint8(): "int2",
-    pyarrow.int16(): "int2",
-    pyarrow.uint16(): "int4",
-    pyarrow.int32(): "int4",
-    pyarrow.uint32(): "int8",
-    pyarrow.int64(): "int8",
-    pyarrow.uint64(): "int8",
+    pyarrow.int8(): "SMALLINT",
+    pyarrow.uint8(): "SMALLINT",
+    pyarrow.int16(): "SMALLINT",
+    pyarrow.uint16(): "SMALLINT",
+    pyarrow.int32(): "INTEGER",
+    pyarrow.uint32(): "INTEGER",
+    pyarrow.int64(): "BIGINT",
+    pyarrow.uint64(): "BIGINT",
     # Floating Point
-    pyarrow.float16(): "float4",
-    pyarrow.float32(): "float4",
-    pyarrow.float64(): "float8",
+    pyarrow.float16(): "REAL",
+    pyarrow.float32(): "REAL",
+    pyarrow.float64(): "DOUBLE PRECISION",
     # String Types
-    pyarrow.string(): "text",
-    pyarrow.large_string(): "text",
+    pyarrow.string(): "TEXT",
+    pyarrow.large_string(): "TEXT",
     # TODO Consider adding support for these types, with testing.
     # # Binary Types
     # pyarrow.binary(): "bytea",

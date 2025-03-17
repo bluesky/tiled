@@ -1,12 +1,17 @@
 import io
 import mimetypes
 
-from ..media_type_registration import deserialization_registry, serialization_registry
+from ..media_type_registration import (
+    default_deserialization_registry,
+    default_serialization_registry,
+)
 from ..structures.core import StructureFamily
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
 
 
-@serialization_registry.register(StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE)
+@default_serialization_registry.register(
+    StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE
+)
 def serialize_arrow(df, metadata, preserve_index=True):
     import pyarrow
 
@@ -22,7 +27,9 @@ def serialize_arrow(df, metadata, preserve_index=True):
     return memoryview(sink.getvalue())
 
 
-@deserialization_registry.register(StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE)
+@default_deserialization_registry.register(
+    StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE
+)
 def deserialize_arrow(buffer):
     import pyarrow
 
@@ -31,7 +38,7 @@ def deserialize_arrow(buffer):
 
 # There seems to be no official Parquet MIME type.
 # https://issues.apache.org/jira/browse/PARQUET-1889
-@serialization_registry.register(StructureFamily.table, "application/x-parquet")
+@default_serialization_registry.register(StructureFamily.table, "application/x-parquet")
 def serialize_parquet(df, metadata, preserve_index=True):
     import pyarrow.parquet
 
@@ -48,21 +55,25 @@ def serialize_csv(df, metadata, preserve_index=False):
     return file.getvalue().encode()
 
 
-@deserialization_registry.register(StructureFamily.table, "text/csv")
+@default_deserialization_registry.register(StructureFamily.table, "text/csv")
 def deserialize_csv(buffer):
     import pandas
 
     return pandas.read_csv(io.BytesIO(buffer), header=None)
 
 
-serialization_registry.register(StructureFamily.table, "text/csv", serialize_csv)
-serialization_registry.register(
+default_serialization_registry.register(
+    StructureFamily.table, "text/csv", serialize_csv
+)
+default_serialization_registry.register(
     StructureFamily.table, "text/x-comma-separated-values", serialize_csv
 )
-serialization_registry.register(StructureFamily.table, "text/plain", serialize_csv)
+default_serialization_registry.register(
+    StructureFamily.table, "text/plain", serialize_csv
+)
 
 
-@serialization_registry.register(StructureFamily.table, "text/html")
+@default_serialization_registry.register(StructureFamily.table, "text/html")
 def serialize_html(df, metadata, preserve_index=False):
     file = io.StringIO()
     df.to_html(file, index=preserve_index)
@@ -73,20 +84,20 @@ if modules_available("openpyxl", "pandas"):
     # The optional pandas dependency openpyxel is required for Excel read/write.
     import pandas
 
-    @serialization_registry.register(StructureFamily.table, XLSX_MIME_TYPE)
+    @default_serialization_registry.register(StructureFamily.table, XLSX_MIME_TYPE)
     def serialize_excel(df, metadata, preserve_index=False):
         file = io.BytesIO()
         df.to_excel(file, index=preserve_index)
         return file.getbuffer()
 
-    deserialization_registry.register(
+    default_deserialization_registry.register(
         StructureFamily.table, XLSX_MIME_TYPE, pandas.read_excel
     )
     mimetypes.types_map.setdefault(".xlsx", XLSX_MIME_TYPE)
 if modules_available("orjson"):
     import orjson
 
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.table,
         "application/json",
         lambda df, metadata: orjson.dumps(
@@ -103,7 +114,7 @@ if modules_available("orjson"):
     # {'a': 1, 'b': 4}
     # {'a': 2, 'b': 5}
     # {'a': 3, 'b': 6}
-    @serialization_registry.register(
+    @default_serialization_registry.register(
         StructureFamily.table,
         "application/json-seq",  # official mimetype for newline-delimited JSON
     )
@@ -126,6 +137,6 @@ if modules_available("orjson"):
 if modules_available("h5py"):
     from .container import serialize_hdf5
 
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.table, "application/x-hdf5", serialize_hdf5
     )
