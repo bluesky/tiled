@@ -24,7 +24,6 @@ class UnscalableConfig(Exception):
     pass
 
 
-
 # hashable cache key for use in tiled.authn_database.connection_pool
 @dataclass(unsafe_hash=True)
 class DatabaseSettings:
@@ -68,6 +67,7 @@ class Settings(BaseSettings):
     )
     database_init_if_not_exists: bool = False
     expose_raw_assets: bool = True
+    admins: list[Admin] = Field(default_factory=list)
 
     uvicorn: Uvicorn = Field(Uvicorn())
 

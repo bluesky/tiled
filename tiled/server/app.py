@@ -8,7 +8,7 @@ import sys
 import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
-from functools import cache, partial
+from functools import partial
 from pathlib import Path
 from typing import Any, Optional
 
@@ -288,7 +288,7 @@ def build_app(
         serialization_registry,
         deserialization_registry,
         validation_registry,
-        authenticators,
+        server_settings.authenticators,
     )
     app.include_router(router, prefix="/api/v1")
 
@@ -299,7 +299,7 @@ def build_app(
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/api/v1")
 
-    if authentication.get("providers", []):
+    if server_settings.authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
         from .authentication import (
@@ -310,7 +310,7 @@ def build_app(
         )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
-        first_provider = authentication["providers"][0]["provider"]
+        first_provider = list(server_settings.authenticators)[0]
         oauth2_scheme.model.flows.password.tokenUrl = (
             f"/api/v1/auth/provider/{first_provider}/token"
         )
@@ -336,51 +336,6 @@ def build_app(
         app.state.authenticated = True
     else:
         app.state.authenticated = False
-
-    @cache
-    def override_get_root_tree():
-        return tree
-
-    @cache
-    def override_get_settings():
-        settings = get_settings()
-        for item in [
-            "allow_anonymous_access",
-            "secret_keys",
-            "single_user_api_key",
-            "access_token_max_age",
-            "refresh_token_max_age",
-            "session_max_age",
-        ]:
-            if authentication.get(item) is not None:
-                setattr(settings, item, authentication[item])
-        for item in [
-            "allow_origins",
-            "response_bytesize_limit",
-            "reject_undeclared_specs",
-            "expose_raw_assets",
-        ]:
-            if server_settings.get(item) is not None:
-                setattr(settings, item, server_settings[item])
-        database = server_settings.get("database", {})
-        if uri := database.get("uri"):
-            settings.database_settings.uri = uri
-        if pool_size := database.get("pool_size"):
-            settings.database_settings.pool_size = pool_size
-        if pool_pre_ping := database.get("pool_pre_ping"):
-            settings.database_settings.pool_pre_ping = pool_pre_ping
-        if max_overflow := database.get("max_overflow"):
-            settings.database_settings.max_overflow = max_overflow
-        if init_if_not_exists := database.get("init_if_not_exists"):
-            settings.database_init_if_not_exists = init_if_not_exists
-        if authentication.get("providers"):
-            # If we support authentication providers, we need a database, so if one is
-            # not set, use a SQLite database in memory. Horizontally scaled deployments
-            # must specify a persistent database.
-            settings.database_settings.uri = (
-                settings.database_settings.uri or "sqlite://"
-            )
-        return settings
 
     async def startup_event():
         from .. import __version__
@@ -522,17 +477,17 @@ Back up the database, and then run:
                     raise err from None
                 else:
                     logger.info(f"Connected to existing database at {redacted_url}.")
-            for admin in authentication.get("tiled_admins", []):
+            for admin in server_settings.admins:
                 logger.info(
-                    f"Ensuring that principal with identity {admin} has role 'admin'"
+                    f"Ensuring that principal with identity {admin.id} has role 'admin'"
                 )
                 async with AsyncSession(
                     engine, autoflush=False, expire_on_commit=False
                 ) as session:
                     await make_admin_by_identity(
                         session,
-                        identity_provider=admin["provider"],
-                        id=admin["id"],
+                        identity_provider=admin.provider,
+                        id=admin.id,
                     )
 
             async def purge_expired_sessions_and_api_keys():
@@ -664,8 +619,6 @@ Back up the database, and then run:
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_root_tree] = override_get_root_tree
-    app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):
