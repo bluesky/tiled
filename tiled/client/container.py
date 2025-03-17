@@ -324,9 +324,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         include_data_sources=self._include_data_sources,
                     )
                     return (
-                        result[keys[i + 1 :]]  # noqa: E203
-                        if len(keys[i + 1 :]) > 0  # noqa: E203
-                        else result
+                        result[keys[i + 1 :]] if keys[i + 1 :] else result  # noqa: E203
                     )
                 else:
                     # The item was not inlined, either because nothing was inlined
