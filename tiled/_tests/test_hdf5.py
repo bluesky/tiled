@@ -168,7 +168,11 @@ def test_file_with_links(example_file_with_links, buffer):
         client = from_context(context)
 
     # Read the original array
+    arr = client["a/b/c/d"].read()
+    arr = client["a"]["b/c/d"].read()
     arr = client["a"]["b"]["c/d"].read()
+    arr = client["a"]["b"]["c"]["d"].read()
+    arr = client["a/b/c"]["d"].read()
     assert isinstance(arr, numpy.ndarray)
     assert numpy.allclose(arr, numpy.ones((3, 3)))
 

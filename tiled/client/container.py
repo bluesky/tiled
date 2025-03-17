@@ -315,7 +315,16 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # intermediate parents.
             for i, key in enumerate(keys):
                 item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
-                if (item is None) or _ignore_inlined_contents:
+                if item is not None and not _ignore_inlined_contents:
+                    # The item was inlined, and we should return it as is
+                    result = client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    )
+                    return result[keys[i+1 :]] if len(keys[i+1 :]) > 0 else result
+                else:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
                     # Make a request for it.
