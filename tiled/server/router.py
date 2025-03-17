@@ -23,6 +23,7 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
+    HTTP_410_GONE,
     HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
@@ -35,7 +36,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
-from ..utils import ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import get_authenticators, get_current_principal
@@ -315,6 +316,8 @@ def get_router(
                 expires=expires,
                 headers=headers,
             )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
         except NoEntry:
             raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
         except WrongTypeForRoute as err:
@@ -389,6 +392,8 @@ def get_router(
                 resolve_media_type(request),
                 max_depth=max_depth,
             )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
         except JMESPathError as err:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
