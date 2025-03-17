@@ -88,6 +88,7 @@ class h5open(h5py.File):  # type: ignore
     KeyError: 'Unable to synchronously open object (component not found)'
     or
     KeyError: "Unable to synchronously open object (unable to open external file, external link file name = '...')"
+    KeyError: "Unable to synchronously open object (can't open file)"
     if a soft link or an external link is broken, respectively.
 
     This message is distinct from the case when a key does not exist in the file, in which case h5py raises:
@@ -112,7 +113,7 @@ class h5open(h5py.File):  # type: ignore
         super().__exit__(exc_type, exc_value, exc_tb)
 
         if exc_type == KeyError:
-            if "unable to open external file" in str(exc_value):
+            if "file" in str(exc_value):
                 # External link is broken
                 raise BrokenLink(exc_value.args[0]) from exc_value
 
