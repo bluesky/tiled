@@ -1,4 +1,31 @@
+from abc import ABC
+from pathlib import Path
+from typing import Annotated, Any, Optional
+
 import typer
+from pydantic import BaseModel
+
+from tiled.client.context import Context
+from tiled.profiles import load_profiles
+
+
+class ContextCommand(ABC, BaseModel):
+    profile_name: Annotated[
+        Optional[str],
+        "Specify a profile to use when talking to one of multiple Tiled instances.",
+    ] = None
+
+    def profile_contents(self) -> tuple[Path, dict[str, Any]]:
+        profiles = load_profiles()
+        if self.profile_name not in profiles:
+            raise KeyError(
+                f"The profile {self.profile_name!r} could not be found. "
+                "Use tiled profile list to see profile names.",
+            )
+        return profiles[self.profile_name]
+
+    def context(self) -> Context:
+        return get_context(self.profile_name)
 
 
 def get_profile(name):
