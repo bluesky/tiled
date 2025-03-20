@@ -195,7 +195,7 @@ class SQLAdapter:
         return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
-        """Get the data for a specific key
+        """Get the array adapter for a specific column (key)
 
         Parameters
         ----------
@@ -210,7 +210,7 @@ class SQLAdapter:
         return self[key]
 
     def __getitem__(self, key: str) -> ArrayAdapter:
-        """Get the data for a specific key.
+        """Get the array adapter for a specific column (key)
 
         Parameters
         ----------
@@ -222,7 +222,7 @@ class SQLAdapter:
         """
 
         # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read([key])[key].values, metadata=metadata)
+        return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         """Iterate over the SQLAdapter data.

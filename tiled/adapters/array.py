@@ -1,6 +1,8 @@
 from typing import Any, List, Optional, Tuple
 
 import dask.array
+import numpy
+import pandas
 from numpy.typing import NDArray
 
 from ..structures.array import ArrayStructure
@@ -73,6 +75,11 @@ class ArrayAdapter:
         -------
 
         """
+        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+        if isinstance(array.dtype, pandas.StringDtype):
+            max_size = max((len(i) for i in array.ravel()))
+            array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
+
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims
         )
