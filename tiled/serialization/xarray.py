@@ -36,7 +36,9 @@ async def as_dataset(node):
                 "'xarray_coord' or 'xarray_data_var'."
             )
     return xarray.Dataset(
-        data_vars=data_vars, coords=coords, attrs=node.metadata()["attrs"]
+        data_vars=data_vars,
+        coords=coords,
+        attrs=getattr(node, "metadata", lambda: {})().get("attrs"),
     )
 
 
