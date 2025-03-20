@@ -10,13 +10,14 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
-from typing import Any
+from typing import Any, Optional
 
 import anyio
 import dateutil.tz
 import jmespath
 import msgpack
 from fastapi import HTTPException, Response
+from ndindex import ndindex
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
@@ -25,6 +26,7 @@ from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
+from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -257,12 +259,99 @@ async def construct_entries_response(
     )
 
 
+async def construct_dynamic_resource(
+    base_url,
+    path_parts,
+    structure,
+    specs: Optional[list[Spec]] = None,
+    slice=None,
+):
+    if not isinstance(structure, ArrayStructure):
+        raise ValueError(f"Only ArrayStructure is supported, not {type(structure)}.")
+    structure_family = StructureFamily.array
+    path_str = "/".join(path_parts)
+    attributes = {"ancestors": path_parts[:-1]}
+    attributes["specs"] = specs or [schemas.Spec(name="xarray_data_var")]
+    attributes["structure_family"] = structure_family
+
+    structure = asdict(structure)
+    if slice is not None:
+        sliced_shape = ndindex(slice).newshape(structure["shape"])
+        structure["shape"] = sliced_shape
+    attributes["structure"] = structure
+    attributes["metadata"] = {"attrs": {}}
+
+    links = {"self": f"{base_url}/metadata/{path_str}"}
+    ResourceLinksT = schemas.resource_links_type_by_structure_family[structure_family]
+    links.update(
+        links_for_node(
+            structure_family,
+            ArrayStructure.from_json(structure),
+            base_url,
+            path_str,
+        )
+    )
+    d = {
+        "id": path_parts[-1],
+        "attributes": schemas.NodeAttributes(**attributes),
+        "links": links,
+    }
+    return schemas.Resource[schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict](
+        **d
+    )
+
+
+async def construct_dynamic_dataset_response(
+    entry,
+    parts,
+    path,
+    base_url,
+):
+    structures = await entry.get_dataset_structures(parts)
+    specs = await entry.get_dataset_specs(parts)
+
+    path_parts = [segment for segment in path.split("/") if segment]
+    contents = {}
+    for key, item in structures.items():
+        resource = await construct_dynamic_resource(
+            base_url,
+            path_parts + key.split("/"),
+            item,
+            specs=specs.get(key),
+            slice=None,
+        )
+        contents[resource.id] = resource
+
+    # Construct response for the main dataset
+    attributes = {"ancestors": []}
+    attributes["structure_family"] = StructureFamily.composite
+    attributes["specs"] = [schemas.Spec(name="xarray_dataset")]
+    attributes["structure"] = schemas.NodeStructure(
+        count=len(contents),
+        contents=contents,
+    )
+    attributes["metadata"] = {"attrs": {}}
+
+    parts_query = "?" + "&".join((f"parts={p}" for p in parts)) if parts else ""
+    data = schemas.Resource(
+        attributes=schemas.NodeAttributes(**attributes),
+        links={
+            "self": f"{base_url}/dataset/meta/{path}{parts_query}",
+            "full": f"{base_url}/dataset/full/{path}{parts_query}",
+        },
+        meta={"count": len(contents)},
+        id=path_parts[-1],
+    )
+
+    return schemas.Response(data=data, links={}, meta={"count": len(contents)})
+
+
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
     StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
-    StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.composite: {"*/*": "application/x-hdf5"},
+    StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 

@@ -48,6 +48,7 @@ from .core import (
     WrongTypeForRoute,
     apply_search,
     construct_data_response,
+    construct_dynamic_dataset_response,
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
@@ -767,6 +768,96 @@ def get_router(
                     expires=getattr(entry, "content_stale_at", None),
                     filename=filename,
                     filter_for_access=None,
+                )
+        except UnsupportedMediaTypes as err:
+            raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
+
+    @router.get(
+        "/dataset/meta/{path:path}",
+        response_model=schemas.Response,
+        name="virtual dataset metadata",
+    )
+    async def get_dataset_meta(
+        request: Request,
+        path: str,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data", "read:metadata"],
+        ),
+        parts: Optional[List[str]] = Query(None),
+    ):
+        try:
+            resource = await construct_dynamic_dataset_response(
+                entry,
+                parts,
+                path,
+                get_base_url(request),
+            )
+            return json_or_msgpack(
+                request,
+                resource.model_dump(),
+                expires=getattr(entry, "metadata_stale_at", None),
+                headers={},
+            )
+        except NoEntry:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
+        except WrongTypeForRoute as err:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
+
+    @router.get(
+        "/dataset/full/{path:path}",
+        response_model=schemas.Response,
+        name="full virtual dataset as xarray",
+    )
+    async def get_dataset_full(
+        request: Request,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data"],
+        ),
+        parts: Optional[List[str]] = Query(None),
+        field: Optional[List[str]] = Query(None, min_length=1),
+        format: Optional[str] = None,
+        filename: Optional[str] = None,
+    ):
+        return await dataset_full(
+            request=request,
+            entry=entry,
+            parts=parts,
+            field=field,
+            format=format,
+            filename=filename,
+        )
+
+    async def dataset_full(
+        request: Request,
+        entry,
+        parts: Optional[List[str]],
+        field: Optional[List[str]],
+        format: Optional[str],
+        filename: Optional[str],
+    ):
+        try:
+            with record_timing(request.state.metrics, "read"):
+                data = await entry.get_dataset_adapters(parts, select_keys=field)
+        except KeyError as err:
+            (key,) = err.args
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST, detail=f"No such field {key}."
+            )
+
+        # TODO Determine the size of the dataset before handing off to serializer.
+        try:
+            with record_timing(request.state.metrics, "pack"):
+                return await construct_data_response(
+                    entry.structure_family,
+                    serialization_registry,
+                    payload=data,
+                    metadata=entry.metadata(),
+                    request=request,
+                    format=format,
+                    specs=[Spec(name="xarray_dataset")],
+                    filename=filename,
                 )
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])

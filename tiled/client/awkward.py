@@ -10,6 +10,27 @@ class AwkwardClient(BaseClient):
     def __repr__(self):
         # TODO Include some summary of the structure. Probably
         # lift __repr__ code from awkward itself here.
+        form = awkward.forms.from_dict(self.structure().form)
+        if isinstance(form, awkward.forms.recordform.RecordForm):
+            out = f"<{type(self).__name__} {{"
+            # Always show at least one field
+            if form.fields:
+                out += form.fields[0]
+            # And then show as many more as we can fit on one line.
+            counter = 1
+            for sample_repr in form.fields[1:]:
+                if len(out) + len(sample_repr) > 60:  # character count
+                    break
+                out += ", " + sample_repr
+                counter += 1
+            # Are there more fields that what we displayed above?
+            if len(form.fields) > counter:
+                out += f", ...}} ~{len(form.fields)} fields, "
+            else:
+                out += "}, "
+            out += f" {self.structure().length} items>"
+            return out
+
         return f"<{type(self).__name__}>"
 
     def write(self, container):
