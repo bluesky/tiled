@@ -1207,14 +1207,14 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             result = {}
             for _key, item in await self.items_range(offset=0, limit=None):
                 if item.structure_family == StructureFamily.table:
-                    if column_specs := item.metadata().get("column_specs", {}):
-                        for col in item.structure().columns:
-                            if keys and col not in keys:
-                                continue
-                            result[col] = [
-                                Spec(name=s)
-                                for s in column_specs.get(col, []) + ["table_column"]
-                            ]
+                    column_specs = item.metadata().get("column_specs", {})
+                    for col in item.structure().columns:
+                        if keys and col not in keys:
+                            continue
+                        result[col] = [
+                            Spec(name=s)
+                            for s in column_specs.get(col, []) + ["table_column"]
+                        ]
                 else:
                     if keys and _key not in keys:
                         continue
