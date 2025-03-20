@@ -747,12 +747,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        flat : bool, optional
-            If True, the container will be flat (composite), otherwise -- a usual container.
 
         """
         return self.new(
-            StructureFamily.container if not flat else StructureFamily.composite,
+            StructureFamily.container,
             [],
             key=key,
             metadata=metadata,
@@ -1172,9 +1170,13 @@ class Composite(Container):
     def create_composite(self, key=None, *, metadata=None, specs=None):
         """Ccomposite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
-    
+
     def to_dataset(self, *keys):
-        link = self.item["links"]["full"].replace('container/full', 'dataset').rstrip('/')
+        link = (
+            self.item["links"]["full"]
+            .replace("container/full", "dataset/meta")
+            .rstrip("/")
+        )
         content = handle_error(
             self.context.http_client.get(
                 link,
@@ -1205,17 +1207,24 @@ class Composite(Container):
         else:
             expected_shape = "scalar"
 
-        link = self.item["links"]["full"].replace('container/full', 'zipped/array/block').rstrip('/')
+        link = (
+            self.item["links"]["full"]
+            .replace("container/full", "zipped/array/block")
+            .rstrip("/")
+        )
         # link = link + "".join(f"/{key}" for key in keys)
         content = handle_error(
-                self.context.http_client.get(
-                    link,
-                    headers={"Accept": "application/octet-stream"},
-                    params={**parse_qs(urlparse(link).query), "block": ",".join(map(str, block)),
+            self.context.http_client.get(
+                link,
+                headers={"Accept": "application/octet-stream"},
+                params={
+                    **parse_qs(urlparse(link).query),
+                    "block": ",".join(map(str, block)),
                     "expected_shape": expected_shape,
-                    "parts": keys},
-                )
-            ).read()
+                    "parts": keys,
+                },
+            )
+        ).read()
         return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
 

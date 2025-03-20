@@ -4,7 +4,6 @@ import os
 import re
 import warnings
 from datetime import datetime, timedelta, timezone
-from math import prod
 from functools import partial
 from pathlib import Path
 from typing import Callable, List, Optional, TypeVar
@@ -773,31 +772,25 @@ def get_router(
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
-
     @router.get(
-        "/dataset/{path:path}",
+        "/dataset/meta/{path:path}",
         response_model=schemas.Response,
-        name="full 'container' metadata and data",
+        name="virtual dataset metadata",
     )
-    async def get_dataset(
+    async def get_dataset_meta(
         request: Request,
         path: str,
-        entry: Any = SecureEntry(
-            scopes=["read:data", "read:metadata"], structure_families={StructureFamily.composite}
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data", "read:metadata"],
         ),
         parts: Optional[List[str]] = Query(None),
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
     ):
         try:
             resource = await construct_dynamic_dataset_response(
                 entry,
                 parts,
                 path,
-                offset,
-                limit,
                 get_base_url(request),
             )
             return json_or_msgpack(
@@ -811,98 +804,62 @@ def get_router(
         except WrongTypeForRoute as err:
             raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
 
-
     @router.get(
-        "/zipped/array/block/{path:path}", response_model=schemas.Response, name="zipped array block"
+        "/dataset/full/{path:path}",
+        response_model=schemas.Response,
+        name="full virtual dataset as xarray",
     )
-    async def zipped_array_block(
+    async def get_dataset_full(
         request: Request,
-        entry=SecureEntry(
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
             scopes=["read:data"],
-            structure_families={StructureFamily.composite},
         ),
         parts: Optional[List[str]] = Query(None),
-        block=Depends(block),
-        slice=Depends(slice_),
-        expected_shape=Depends(expected_shape),
+        field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
-        serialization_registry=Depends(get_serialization_registry),
-        settings: Settings = Depends(get_settings),
     ):
-        """Fetch a chunk of array-like data.
-        """
-        import dask.array
+        return await dataset_full(
+            request=request,
+            entry=entry,
+            parts=parts,
+            field=field,
+            format=format,
+            filename=filename,
+        )
 
-        if parts is None:
-            # parts = await entry.keys_range(offset=0, limit=None)
-            # TODO: pull columns from tables
-            adapters = {key : val for (key, val) in await entry.items_range(offset=0, limit=None)}
-        else:
-            adapters = {key : await entry.lookup_adapter(key.split('/')) for key in parts}
-        shapes = [adapter.structure().shape for adapter in adapters.values()]
-        # Check that the arrays are 0 or 1 dimensional
-        for shp in shapes:
-            if len(shp) > 2 or (len(shp)==2 and (1 not in shp)):
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Composite array parts must be 0 or 1 dimensional arrays."
-                    ),
-                )
-
-        # Find if arrays need to be subsampled
-        # TODO
-        sizes = [prod(shp) for shp in shapes]
-        ratios = [size/min(sizes) for size in sizes]
-
-        assert len(set(sizes)) == 1, "All parts must have the same size"
-
-        shape = (sizes[0], len(adapters))
-        # Check that block dimensionality matches array dimensionality.
-        ndim = len(shape)
-        if block and len(block) != ndim:
+    async def dataset_full(
+        request: Request,
+        entry,
+        parts: Optional[List[str]],
+        field: Optional[List[str]],
+        format: Optional[str],
+        filename: Optional[str],
+    ):
+        try:
+            with record_timing(request.state.metrics, "read"):
+                data = await entry.get_dataset_adapters(parts, select_keys=field)
+        except KeyError as err:
+            (key,) = err.args
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Block parameter must have {ndim} comma-separated parameters, "
-                    f"corresponding to the dimensions of this {ndim}-dimensional array."
-                ),
+                status_code=HTTP_400_BAD_REQUEST, detail=f"No such field {key}."
             )
-        
-        # Read th eentire arrays and concatenate them
-        with record_timing(request.state.metrics, "read"):
-            array = [(await ensure_awaitable(adapter.read)).reshape(-1, 1) for adapter in adapters.values()]
-        array = dask.array.concatenate(array, axis=1)
 
-        # if (expected_shape is not None) and (expected_shape != array.shape):
-        #     raise HTTPException(
-        #         status_code=HTTP_400_BAD_REQUEST,
-        #         detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
-        #     )
-        if array.nbytes > settings.response_bytesize_limit:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Response would exceed {settings.response_bytesize_limit}. "
-                    "Use slicing ('?slice=...') to request smaller chunks."
-                ),
-            )
+        # TODO Determine the size of the dataset before handing off to serializer.
         try:
             with record_timing(request.state.metrics, "pack"):
                 return await construct_data_response(
-                    StructureFamily.array,
+                    entry.structure_family,
                     serialization_registry,
-                    array,
-                    entry.metadata(),
-                    request,
-                    format,
-                    specs=getattr(entry, "specs", []),
-                    expires=getattr(entry, "content_stale_at", None),
+                    payload=data,
+                    metadata=entry.metadata(),
+                    request=request,
+                    format=format,
+                    specs=[Spec(name="xarray_dataset")],
                     filename=filename,
                 )
         except UnsupportedMediaTypes as err:
-            # raise HTTPException(status_code=406, detail=", ".join(err.supported))
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.get(

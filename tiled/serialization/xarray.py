@@ -40,24 +40,16 @@ async def as_dataset(node):
     )
 
 
-class _BytesIOThatIgnoresClose(io.BytesIO):
-    def close(self):
-        # When the netcdf writer tells us to close(), ignore it.
-        pass
-
-
 if modules_available("scipy"):
     # Both application/netcdf and application/x-netcdf are used.
     # https://en.wikipedia.org/wiki/NetCDF
     @default_serialization_registry.register(
         "xarray_dataset", ["application/netcdf", "application/x-netcdf"]
     )
-    async def serialize_netcdf(node, metadata, filter_for_access):
-        file = _BytesIOThatIgnoresClose()
+    async def serialize_netcdf(node, metadata, filter_for_access=None):
         # Per the xarray.Dataset.to_netcdf documentation,
-        # file-like objects are only supported by the scipy engine.
-        (await as_dataset(node)).to_netcdf(file, engine="scipy")
-        return file.getbuffer()
+        # return a byte stream, which is only supported by the scipy engine.
+        return (await as_dataset(node)).to_netcdf(path=None, engine="scipy")
 
 
 # Support DataFrame formats by first converting to DataFrame.
@@ -66,29 +58,29 @@ if modules_available("scipy"):
 
 
 @default_serialization_registry.register("xarray_dataset", APACHE_ARROW_FILE_MIME_TYPE)
-async def serialize_dataset_arrow(node, metadata, filter_for_access):
+async def serialize_dataset_arrow(node, metadata, filter_for_access=None):
     return serialize_arrow((await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register("xarray_dataset", "application/x-parquet")
-async def serialize_dataset_parquet(node, metadata, filter_for_access):
+async def serialize_dataset_parquet(node, metadata, filter_for_access=None):
     return serialize_parquet((await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register(
     "xarray_dataset", ["text/csv", "text/comma-separated-values", "text/plain"]
 )
-async def serialize_dataset_csv(node, metadata, filter_for_access):
+async def serialize_dataset_csv(node, metadata, filter_for_access=None):
     return serialize_csv((await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register("xarray_dataset", "text/html")
-async def serialize_dataset_html(node, metadata, filter_for_access):
+async def serialize_dataset_html(node, metadata, filter_for_access=None):
     return serialize_html((await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register("xarray_dataset", XLSX_MIME_TYPE)
-async def serialize_dataset_excel(node, metadata, filter_for_access):
+async def serialize_dataset_excel(node, metadata, filter_for_access=None):
     return serialize_excel((await as_dataset(node)).to_dataframe(), metadata)
 
 
@@ -96,7 +88,7 @@ if modules_available("orjson"):
     import orjson
 
     @default_serialization_registry.register("xarray_dataset", "application/json")
-    async def serialize_json(node, metadata, filter_for_access):
+    async def serialize_json(node, metadata, filter_for_access=None):
         df = (await as_dataset(node)).to_dataframe()
         return orjson.dumps(
             {column: df[column].tolist() for column in df},

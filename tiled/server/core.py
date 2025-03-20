@@ -10,14 +10,14 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
-from typing import Any
-from ndindex import ndindex
+from typing import Any, Optional
 
 import anyio
 import dateutil.tz
 import jmespath
 import msgpack
 from fastapi import HTTPException, Response
+from ndindex import ndindex
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
@@ -26,8 +26,8 @@ from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
-from ..structures.core import Spec, StructureFamily
 from ..structures.array import ArrayStructure
+from ..structures.core import Spec, StructureFamily
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     BrokenLink,
@@ -262,118 +262,96 @@ async def construct_entries_response(
 async def construct_dynamic_resource(
     base_url,
     path_parts,
-    entry,
+    structure,
+    specs: Optional[list[Spec]] = None,
     slice=None,
 ):
+    if not isinstance(structure, ArrayStructure):
+        raise ValueError(f"Only ArrayStructure is supported, not {type(structure)}.")
+    structure_family = StructureFamily.array
     path_str = "/".join(path_parts)
     attributes = {"ancestors": path_parts[:-1]}
-    attributes["specs"] = [schemas.Spec(**Spec("xarray_data_var").model_dump())]
-    attributes["structure_family"] = entry.structure_family
+    attributes["specs"] = specs or [schemas.Spec(name="xarray_data_var")]
+    attributes["structure_family"] = structure_family
 
-    if entry.structure_family == StructureFamily.array:
-        structure = asdict(entry.structure())
-        if slice is not None:
-            sliced_shape = ndindex(slice).newshape(structure['shape'])
-            structure['shape'] = sliced_shape
-        attributes["structure"] = structure
+    structure = asdict(structure)
+    if slice is not None:
+        sliced_shape = ndindex(slice).newshape(structure["shape"])
+        structure["shape"] = sliced_shape
+    attributes["structure"] = structure
+    attributes["metadata"] = {"attrs": {}}
 
-        links = {"self": f"{base_url}/metadata/{path_str}"}
-        ResourceLinksT = schemas.resource_links_type_by_structure_family[
-            entry.structure_family
-        ]
-        links.update(
-            links_for_node(
-                entry.structure_family,
-                ArrayStructure.from_json(structure),
-                base_url,
-                path_str,
-            )
+    links = {"self": f"{base_url}/metadata/{path_str}"}
+    ResourceLinksT = schemas.resource_links_type_by_structure_family[structure_family]
+    links.update(
+        links_for_node(
+            structure_family,
+            ArrayStructure.from_json(structure),
+            base_url,
+            path_str,
         )
-        d = {
-            "id": path_parts[-1],
-            "attributes": schemas.NodeAttributes(**attributes),
-            "links": links,
-        }
-        return schemas.Resource[schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict](**d)
-
-    else:
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Composite array parts must be arrays."
-            ),
-        )
+    )
+    d = {
+        "id": path_parts[-1],
+        "attributes": schemas.NodeAttributes(**attributes),
+        "links": links,
+    }
+    return schemas.Resource[schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict](
+        **d
+    )
 
 
 async def construct_dynamic_dataset_response(
     entry,
     parts,
     path,
-    offset,
-    limit,
     base_url,
 ):
-
-    if parts is None:
-        adapters = {key : val for (key, val) in await entry.items_range(offset=0, limit=None)}
-        # TODO: pull columns from tables
-    else:
-        adapters = {key : await entry.lookup_adapter(key.split('/')) for key in parts}
-
-    
-    # Check shapes and dtypes of constituent arrays
-    shapes = [adapter.structure().shape for adapter in adapters.values()]
-    # Check that the arrays are 0 or 1 dimensional
-    for shp in shapes:
-        if len(shp) > 2 or (len(shp)==2 and (1 not in shp)):
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Composite array parts must be 0 or 1 dimensional arrays."
-                ),
-            )
-
-    # Find if arrays need to be subsampled
-    # TODO
-    sizes = [math.prod(shp) for shp in shapes]
-    ratios = [size/min(sizes) for size in sizes]
-    assert len(set(sizes)) == 1, "All parts must have the same size"
-
-
-
+    structures = await entry.get_dataset_structures(parts)
+    specs = await entry.get_dataset_specs(parts)
 
     path_parts = [segment for segment in path.split("/") if segment]
     contents = {}
-
-    for key, entry in adapters.items():
+    for key, item in structures.items():
         resource = await construct_dynamic_resource(
             base_url,
-            path_parts + key.split('/'),
-            entry,
+            path_parts + key.split("/"),
+            item,
+            specs=specs.get(key),
             slice=None,
         )
         contents[resource.id] = resource
 
     # Construct response for the main dataset
     attributes = {"ancestors": []}
-    attributes["structure_family"] = StructureFamily.container
-    attributes["specs"] = [schemas.Spec(**Spec("xarray_dataset").model_dump())]
+    attributes["structure_family"] = StructureFamily.composite
+    attributes["specs"] = [schemas.Spec(name="xarray_dataset")]
     attributes["structure"] = schemas.NodeStructure(
         count=len(contents),
         contents=contents,
     )
+    attributes["metadata"] = {"attrs": {}}
 
-    data = schemas.Resource(attributes=schemas.NodeAttributes(**attributes), links={}, meta={"count": len(contents)}, id=path_parts[-1])
+    parts_query = "?" + "&".join((f"parts={p}" for p in parts)) if parts else ""
+    data = schemas.Resource(
+        attributes=schemas.NodeAttributes(**attributes),
+        links={
+            "self": f"{base_url}/dataset/meta/{path}{parts_query}",
+            "full": f"{base_url}/dataset/full/{path}{parts_query}",
+        },
+        meta={"count": len(contents)},
+        id=path_parts[-1],
+    )
 
-    return schemas.Response(data=data, links=[], meta={"count": len(contents)})
+    return schemas.Response(data=data, links={}, meta={"count": len(contents)})
 
 
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
     StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
-    StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.composite: {"*/*": "application/x-hdf5"},
+    StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 

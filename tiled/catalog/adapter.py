@@ -66,6 +66,7 @@ from ..mimetypes import (
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
+from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..structures.data_source import Storage
 from ..utils import (
@@ -1083,6 +1084,138 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             structure_family, metadata, key=key, specs=specs, data_sources=data_sources
         )
 
+    async def get_dataset_adapters(self, construct_keys=None, select_keys=None):
+        """Returns all individual ArrayAdapters for dataset members"""
+        # List keys of composite parts and columns separately
+        all_parts_keys = await self.keys_range(offset=0, limit=None)
+        keys_from_columns = set(construct_keys or {}).difference(all_parts_keys)
+        # keys_from_parts = set(construct_keys or {}).intersection(all_parts_keys)
+        if (not construct_keys) or keys_from_columns:
+            # Requested all keys or some table columns -- loop over all items and filter
+            from ..adapters.array import ArrayAdapter
+
+            result = {}
+            for _key, item in await self.items_range(offset=0, limit=None):
+                if item.structure_family == StructureFamily.table:
+                    matching_columns = sorted(
+                        set(construct_keys or {}).intersection(item.structure().columns)
+                    )
+                    if construct_keys and not matching_columns:
+                        # Shortcut: None of this table columns is requested
+                        continue
+                    df = await ensure_awaitable(
+                        item.read,
+                        fields=None if construct_keys is None else matching_columns,
+                    )
+                    column_specs = item.metadata().get("column_specs", {})
+                    dims = (item.metadata().get("rows_dim", "time"),)
+                    for col in df.columns:
+                        specs = column_specs.get(col, ["xarray_data_var"]) + [
+                            "table_column"
+                        ]
+                        result[col] = ArrayAdapter.from_array(
+                            df[col].values,
+                            specs=[Spec(name=s) for s in specs],
+                            dims=dims,
+                        )
+                else:
+                    if construct_keys and _key not in construct_keys:
+                        continue
+                    result[_key] = item
+        else:
+            # All keys are from individual arrays -- select them right away
+            result = {key: (await self.lookup_adapter([key])) for key in construct_keys}
+
+        return result
+
+    async def get_dataset_structures(self, keys=None):
+        # List keys of composite parts and columns separately
+        all_parts_keys = await self.keys_range(offset=0, limit=None)
+        keys_from_columns = set(keys or {}).difference(all_parts_keys)
+        # keys_from_parts = set(keys or {}).intersection(all_parts_keys)
+        if (not keys) or keys_from_columns:
+            # Requested all keys or some table columns -- loop over all items and filter
+            result = {}
+            for _key, item in await self.items_range(offset=0, limit=None):
+                if item.structure_family == StructureFamily.table:
+                    columns = item.structure().columns
+                    if keys and not set(keys).intersection(columns):
+                        # Shortcut: None of this table columns is requested
+                        continue
+                    dtypes = item.structure().meta.dtypes.to_dict()
+                    column_adapter = await item.lookup_adapter(columns[:1])
+                    shape = column_adapter.structure().shape
+                    chunks = column_adapter.structure().chunks
+                    dims = (item.metadata().get("rows_dim", "time"),)
+                    for col, dtype in dtypes.items():
+                        if keys and col not in keys:
+                            continue
+                        if dtype == "object":
+                            result[col] = (await item.lookup_adapter([col])).structure()
+                            result[col].dims = dims
+                        else:
+                            result[col] = ArrayStructure(
+                                data_type=BuiltinDtype.from_numpy_dtype(dtype),
+                                shape=shape,
+                                chunks=chunks,
+                                dims=dims,
+                            )
+                else:
+                    if keys and _key not in keys:
+                        continue
+                    result[_key] = item.structure()
+        else:
+            # All keys are from individual arrays -- select them right away
+            result = {
+                key: (await self.lookup_adapter(key.split("/"))).structure()
+                for key in keys
+            }
+
+        # # Check shapes and dtypes of constituent arrays
+        # shapes = [structure.shape for structure in result.values()]
+        # # Check that the arrays are 0 or 1 dimensional
+        # for shp in shapes:
+        #     if len(shp) > 2 or (len(shp) == 2 and (1 not in shp)):
+        #         raise Exception
+        #         #     HTTPException(
+        #         #     status_code=HTTP_400_BAD_REQUEST,
+        #         #     detail=(f"Composite array parts must be 0 or 1 dimensional arrays."),
+        #         # )
+
+        # # Find if arrays need to be subsampled
+        # # TODO
+        # sizes = [math.prod(shp) for shp in shapes]
+        # ratios = [size / min(sizes) for size in sizes]
+        # # assert len(set(sizes)) == 1, "All parts must have the same size"
+
+        return result
+
+    async def get_dataset_specs(self, keys=None):
+        all_parts_keys = await self.keys_range(offset=0, limit=None)
+        keys_from_columns = set(keys or {}).difference(all_parts_keys)
+        if (not keys) or keys_from_columns:
+            # Requested all keys or some table columns -- loop over all items and filter
+            result = {}
+            for _key, item in await self.items_range(offset=0, limit=None):
+                if item.structure_family == StructureFamily.table:
+                    if column_specs := item.metadata().get("column_specs", {}):
+                        for col in item.structure().columns:
+                            if keys and col not in keys:
+                                continue
+                            result[col] = [
+                                Spec(name=s)
+                                for s in column_specs.get(col, ["xarray_data_var"])
+                                + ["table_column"]
+                            ]
+                else:
+                    if keys and _key not in keys:
+                        continue
+                    result[_key] = item.specs
+            return result
+        else:
+            # All keys are from individual arrays -- select them right away
+            return {key: (await self.lookup_adapter([key])).specs for key in keys}
+
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
@@ -1574,5 +1707,4 @@ STRUCTURES = {
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
-    StructureFamily.composite: CatalogContainerAdapter,
 }
