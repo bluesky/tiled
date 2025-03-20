@@ -829,6 +829,31 @@ def get_router(
             filename=filename,
         )
 
+    @router.post(
+        "/dataset/full/{path:path}",
+        response_model=schemas.Response,
+        name="full virtual dataset as xarray",
+    )
+    async def post_dataset_full(
+        request: Request,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data"],
+        ),
+        parts: Optional[List[str]] = Query(None),
+        field: Optional[List[str]] = Body(None, min_length=1),
+        format: Optional[str] = None,
+        filename: Optional[str] = None,
+    ):
+        return await dataset_full(
+            request=request,
+            entry=entry,
+            parts=parts,
+            field=field,
+            format=format,
+            filename=filename,
+        )
+
     async def dataset_full(
         request: Request,
         entry,
