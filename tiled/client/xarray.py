@@ -66,23 +66,27 @@ class DaskDatasetClient(Container):
             shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
 
-            if optimize_wide_table and (
-                (not shape)  # empty
-                or (
-                    (shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
-                    and (len(shape) < 2)
+            if (
+                optimize_wide_table
+                and ("table_column" in spec_names)
+                and (
+                    (not shape)  # empty
+                    or (
+                        (shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
+                        and (len(shape) < 2)
+                    )
                 )
             ):
                 if "xarray_coord" in spec_names:
                     coords[name] = (
                         array_client.dims,
-                        coords_fetcher.register(name, array_client, array_structure),
+                        coords_fetcher.register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 elif "xarray_data_var" in spec_names:
                     data_vars[name] = (
                         array_client.dims,
-                        data_vars_fetcher.register(name, array_client, array_structure),
+                        data_vars_fetcher.register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 else:
@@ -140,7 +144,7 @@ class _WideTableFetcher:
         # to ask for the data should trigger a request.
         self._lock = threading.Lock()
 
-    def register(self, name, array_client, array_structure):
+    def register(self, name, array_structure):
         if self._dataframe is not None:
             raise RuntimeError("Cannot add variables; already fetched.")
         self.variables.append(name)

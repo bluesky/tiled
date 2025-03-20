@@ -1110,9 +1110,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                     column_specs = item.metadata().get("column_specs", {})
                     dims = (item.metadata().get("rows_dim", "time"),)
                     for col in df.columns:
-                        specs = column_specs.get(col, ["xarray_data_var"]) + [
-                            "table_column"
-                        ]
+                        specs = column_specs.get(col, []) + ["table_column"]
                         result[col] = ArrayAdapter.from_array(
                             df[col].values,
                             specs=[Spec(name=s) for s in specs],
@@ -1125,6 +1123,17 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         else:
             # All keys are from individual arrays -- select them right away
             result = {key: (await self.lookup_adapter([key])) for key in construct_keys}
+
+        # Limit the results to only selected keys
+        if select_keys:
+            result = {key: adp for key, adp in result.items() if key in select_keys}
+
+        # Ensure that all adapters are marked at least as 'xarray_data_var'
+        for adp in result.values():
+            if not set(s.name for s in adp.specs).intersection(
+                ("xarray_data_var", "xarray_coords")
+            ):
+                adp.specs.append(Spec(name="xarray_data_var"))
 
         return result
 
@@ -1204,17 +1213,22 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                                 continue
                             result[col] = [
                                 Spec(name=s)
-                                for s in column_specs.get(col, ["xarray_data_var"])
-                                + ["table_column"]
+                                for s in column_specs.get(col, []) + ["table_column"]
                             ]
                 else:
                     if keys and _key not in keys:
                         continue
                     result[_key] = item.specs
-            return result
         else:
             # All keys are from individual arrays -- select them right away
-            return {key: (await self.lookup_adapter([key])).specs for key in keys}
+            result = {key: (await self.lookup_adapter([key])).specs for key in keys}
+
+        # Ensure that all adapters are marked at least as 'xarray_data_var'
+        for specs in result.values():
+            if not set(specs).intersection(("xarray_data_var", "xarray_coords")):
+                specs.append(Spec(name="xarray_data_var"))
+
+        return result
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
