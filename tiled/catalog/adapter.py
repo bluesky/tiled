@@ -1,9 +1,11 @@
+import builtins
 import collections
 import copy
 import dataclasses
 import importlib
 import itertools as it
 import logging
+import math
 import operator
 import os
 import re
@@ -12,7 +14,7 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable, Dict, Literal, Optional
 from urllib.parse import urlparse
 
 import anyio
@@ -54,6 +56,7 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
+from ..adapters.array import ArrayAdapter, ArrayTransforms
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -69,6 +72,7 @@ from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..structures.data_source import Storage
+from ..type_aliases import NDSlice
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -1028,6 +1032,15 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
 
+@dataclasses.dataclass
+class VirtualDatasetItem:
+    key: str
+    structure: ArrayStructure
+    adapter: ArrayAdapter = None
+    specs: list[Spec] = dataclasses.field(default_factory=list)
+    transforms: ArrayTransforms = dataclasses.field(default_factory=ArrayTransforms)
+
+
 class CatalogCompositeAdapter(CatalogContainerAdapter):
     async def resolve_flat_key(self, key):
         for _key, item in await self.items_range(offset=0, limit=None):
@@ -1084,149 +1097,193 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             structure_family, metadata, key=key, specs=specs, data_sources=data_sources
         )
 
-    async def get_dataset_adapters(self, construct_keys=None, select_keys=None):
-        """Returns all individual ArrayAdapters for dataset members"""
-        # List keys of composite parts and columns separately
-        all_parts_keys = await self.keys_range(offset=0, limit=None)
-        keys_from_columns = set(construct_keys or {}).difference(all_parts_keys)
-        # keys_from_parts = set(construct_keys or {}).intersection(all_parts_keys)
-        if (not construct_keys) or keys_from_columns:
-            # Requested all keys or some table columns -- loop over all items and filter
-            from ..adapters.array import ArrayAdapter
+    async def get_dataset_items(
+        self,
+        keys=None,
+        return_adapters=False,
+        adapter_keys=None,
+        default_dim0="time",
+        align: Optional[Literal["zip_shortest", "zip_longest", "resample"]] = None,
+    ):
+        """Return all ArrayStructures, specs, and possibly (some) adapters for dataset
 
-            result = {}
-            for _key, item in await self.items_range(offset=0, limit=None):
-                if item.structure_family == StructureFamily.table:
-                    matching_columns = sorted(
-                        set(construct_keys or {}).intersection(item.structure().columns)
-                    )
-                    if construct_keys and not matching_columns:
-                        # Shortcut: None of this table columns is requested
-                        continue
-                    df = await ensure_awaitable(
-                        item.read,
-                        fields=None if construct_keys is None else matching_columns,
-                    )
-                    column_specs = item.metadata().get("column_specs", {})
-                    dims = (item.metadata().get("rows_dim", "time"),)
-                    for col in df.columns:
-                        specs = column_specs.get(col, []) + ["table_column"]
-                        result[col] = ArrayAdapter.from_array(
-                            df[col].values,
-                            specs=[Spec(name=s) for s in specs],
-                            dims=dims,
-                        )
-                else:
-                    if construct_keys and _key not in construct_keys:
-                        continue
-                    result[_key] = item
-        else:
-            # All keys are from individual arrays -- select them right away
-            result = {key: (await self.lookup_adapter([key])) for key in construct_keys}
+        This method returns ArrayStructures and specs for all dataset memebers, but alllows
+        one to select a subset of Adapters. This is faster when querying tables with many
+        columns.
 
-        # Limit the results to only selected keys
-        if select_keys:
-            result = {key: adp for key, adp in result.items() if key in select_keys}
+        The returned structures are aligned and reshaped to be compatible with each other.
 
-        # Ensure that all adapters are marked at least as 'xarray_data_var'
-        for adp in result.values():
-            if not set(s.name for s in adp.specs).intersection(
-                ("xarray_data_var", "xarray_coords")
-            ):
-                adp.specs.append(Spec(name="xarray_data_var"))
+        Parameters
+        ----------
+        keys : list of str, optional
+            List of keys to consider when building the dataset. If None, all keys are used.
+        return_adapters : bool, optional
+            If True, return also the ArrayAdapters for each key in select_keys.
+        adapter_keys : list of str, optional
+            List of keys for which to return the adapters. This is a subset of keys; any key
+            not included in this list will determine the reshaping and alignemnt of the
+            dataset, but its Adapter will not be included in the result. This is useful when
+            calling the .read() method selectively.
+            If None (default), all keys are included.
+        default_dim0 : str, optional
+            Name of the first (leftmost) dimension. Default is 'time'.
+        align : str, optional
+            If not None, align the arrays in the dataset. Options are:
+            - 'zip_shortest': Trim all arrays to the length of the shortest one.
+            - 'zip_longest': Pad all arrays to the length of the longest one.
+            - 'resample': Resample all arrays.
+        """
 
-        return result
+        # Passing empty typles for keys is not allowed
+        assert keys is None or len(keys) > 0
+        if adapter_keys is not None and len(adapter_keys) == 0:
+            return_adapters, adapter_keys = False, None
 
-    async def get_dataset_structures(self, keys=None):
         # List keys of composite parts and columns separately
         all_parts_keys = await self.keys_range(offset=0, limit=None)
         keys_from_columns = set(keys or {}).difference(all_parts_keys)
-        # keys_from_parts = set(keys or {}).intersection(all_parts_keys)
+
+        result = {}
         if (not keys) or keys_from_columns:
             # Requested all keys or some table columns -- loop over all items and filter
-            result = {}
             for _key, item in await self.items_range(offset=0, limit=None):
                 if item.structure_family == StructureFamily.table:
                     columns = item.structure().columns
-                    if keys and not set(keys).intersection(columns):
-                        # Shortcut: None of this table columns is requested
+
+                    # Shortcut: None of this table columns is requested
+                    if not set(columns).intersection(keys or columns):
                         continue
+
                     dtypes = item.structure().meta.dtypes.to_dict()
-                    column_adapter = await item.lookup_adapter(columns[:1])
-                    shape = column_adapter.structure().shape
-                    chunks = column_adapter.structure().chunks
-                    dims = (item.metadata().get("rows_dim", "time"),)
-                    for col, dtype in dtypes.items():
-                        if keys and col not in keys:
-                            continue
-                        if dtype == "object":
-                            result[col] = (await item.lookup_adapter([col])).structure()
-                            result[col].dims = dims
+                    column_specs = item.metadata().get("column_specs", {})
+                    dims = (item.metadata().get("rows_dim", default_dim0),)
+
+                    # Check if we need adapters for any of this table's columns.
+                    # If so, load the (possibly entire) table and construct the adapters.
+                    # If not, load at least one column to determine the shape and chunks.
+                    keys_to_keep = set(columns).intersection(keys or columns)
+                    keys_to_keep = keys_to_keep.intersection(
+                        adapter_keys or keys_to_keep
+                    )
+                    keys_to_keep = keys_to_keep or columns[:1]
+                    df = await ensure_awaitable(item.read, fields=list(keys_to_keep))
+                    shape, chunks = (df.shape[0],), ((df.shape[0],),)  # num of rows
+
+                    # Loop over all columns and define the structures
+                    for col in set(columns).intersection(keys or columns):
+                        specs = column_specs.get(col, []) + ["table_column"]
+                        if dtypes[col] == "object":
+                            # Could be a structured array or a string
+                            adapter = await item.lookup_adapter([col])
+                            structure = adapter.structure()
+                            structure.dims = dims
+                            adapter.specs = [Spec(name=s) for s in specs]
+                            adapter = adapter if return_adapters else None
                         else:
-                            result[col] = ArrayStructure(
-                                data_type=BuiltinDtype.from_numpy_dtype(dtype),
+                            structure = ArrayStructure(
+                                data_type=BuiltinDtype.from_numpy_dtype(dtypes[col]),
                                 shape=shape,
                                 chunks=chunks,
                                 dims=dims,
                             )
+                            if return_adapters and col in df.columns:
+                                adapter = ArrayAdapter.from_array(
+                                    df[col].values,
+                                    specs=[Spec(name=s) for s in specs],
+                                    dims=dims,
+                                )
+                            else:
+                                adapter = None
+                        result[col] = VirtualDatasetItem(
+                            key=col,
+                            structure=structure,
+                            specs=[Spec(name=s) for s in specs],
+                            adapter=adapter,
+                        )
                 else:
                     if keys and _key not in keys:
                         continue
-                    result[_key] = item.structure()
+                    keep_adapter = return_adapters and (
+                        _key in adapter_keys or adapter_keys is None
+                    )
+                    result[_key] = VirtualDatasetItem(
+                        key=_key,
+                        structure=item.structure(),
+                        specs=item.specs,
+                        adapter=item if keep_adapter else None,
+                    )
         else:
-            # All keys are from individual arrays -- select them right away
-            result = {
-                key: (await self.lookup_adapter(key.split("/"))).structure()
-                for key in keys
-            }
+            # All keys are from individual arrays, not tables -- get them right away
+            for key in keys:
+                adapter = await self.lookup_adapter([key])
+                keep_adapter = return_adapters and (
+                    key in adapter_keys or adapter_keys is None
+                )
+                result[key] = VirtualDatasetItem(
+                    key=key,
+                    structure=adapter.structure(),
+                    specs=adapter.specs,
+                    adapter=adapter if keep_adapter else None,
+                )
 
-        # # Check shapes and dtypes of constituent arrays
-        # shapes = [structure.shape for structure in result.values()]
-        # # Check that the arrays are 0 or 1 dimensional
-        # for shp in shapes:
-        #     if len(shp) > 2 or (len(shp) == 2 and (1 not in shp)):
-        #         raise Exception
-        #         #     HTTPException(
-        #         #     status_code=HTTP_400_BAD_REQUEST,
-        #         #     detail=(f"Composite array parts must be 0 or 1 dimensional arrays."),
-        #         # )
+        # Check if we need to align the arrays and determine the resulting shape
+        num_rows = [item.structure.shape[0] for item in result.values()]
+        if len(set(num_rows)) == 1:
+            align = None  # arrays are already aligned
+        elif align == "zip_shortest":
+            num_rows = min(num_rows)
+        elif align == "zip_longest":
+            num_rows = max(num_rows)
+        elif align == "resample":
+            num_rows = math.gcd(*num_rows)
 
-        # # Find if arrays need to be subsampled
-        # # TODO
-        # sizes = [math.prod(shp) for shp in shapes]
-        # ratios = [size / min(sizes) for size in sizes]
-        # # assert len(set(sizes)) == 1, "All parts must have the same size"
+        # Check and normalize shapes of constituent arrays
+        for item in result.values():
+            structure = item.structure
 
-        return result
+            # Align the leading dimension, if needed
+            if align and structure.shape[0] != num_rows:
+                if align == "zip_shortest":
+                    item.transforms.reslice = NDSlice(builtins.slice(0, num_rows))
+                elif align == "resample":
+                    step = structure.shape[0] // num_rows
+                    item.transforms.reslice = NDSlice(builtins.slice(0, None, step))
+                elif align == "zip_longest":
+                    raise NotImplementedError("zip_longest is not supported yet")
 
-    async def get_dataset_specs(self, keys=None):
-        all_parts_keys = await self.keys_range(offset=0, limit=None)
-        keys_from_columns = set(keys or {}).difference(all_parts_keys)
-        if (not keys) or keys_from_columns:
-            # Requested all keys or some table columns -- loop over all items and filter
-            result = {}
-            for _key, item in await self.items_range(offset=0, limit=None):
-                if item.structure_family == StructureFamily.table:
-                    column_specs = item.metadata().get("column_specs", {})
-                    for col in item.structure().columns:
-                        if keys and col not in keys:
-                            continue
-                        result[col] = [
-                            Spec(name=s)
-                            for s in column_specs.get(col, []) + ["table_column"]
-                        ]
-                else:
-                    if keys and _key not in keys:
-                        continue
-                    result[_key] = item.specs
-        else:
-            # All keys are from individual arrays -- select them right away
-            result = {key: (await self.lookup_adapter([key])).specs for key in keys}
+            # If all trailing dimensions are singletons -- reshape to 1D
+            if set(structure.shape[1:]) in ({1}, {0}, {0, 1}):
+                item.transforms.reshape = (-1,)
 
-        # Ensure that all adapters are marked at least as 'xarray_data_var'
-        for specs in result.values():
-            if not set(specs).intersection(("xarray_data_var", "xarray_coords")):
-                specs.append(Spec(name="xarray_data_var"))
+            # Update the structure according to the transforms
+            if item.transforms:
+                item.transforms.rechunk = "auto"
+                structure = item.transforms.update_structure(structure)
+
+            # Add missing dimension names, if any
+            structure.dims = structure.dims or (default_dim0,)
+            structure.dims = structure.dims[: len(structure.shape)] + tuple(
+                f"dim{i}" for i in range(len(structure.dims), len(structure.shape))
+            )
+
+            # Ensure that all adapters are marked at least as 'xarray_data_var'
+            # The oredr of specs here does not matter
+            specs_names = set([s.name for s in item.specs])
+            if not specs_names.intersection(("xarray_data_var", "xarray_coord")):
+                item.specs.append(Spec(name="xarray_data_var"))
+            if item.adapter and item.adapter.specs != item.specs:
+                specs = set(item.adapter.specs).union(item.specs)
+                item.adapter.specs = item.specs = list(specs)
+
+            # Apply the transforms to the array if needed
+            if item.transforms and item.adapter:
+                array = await ensure_awaitable(item.adapter.read)
+                array = item.transforms.apply(array)
+                item.adapter = ArrayAdapter.from_array(
+                    array, specs=item.specs, dims=structure.dims
+                )
+
+            item.structure = structure
 
         return result
 

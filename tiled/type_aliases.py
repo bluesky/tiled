@@ -36,7 +36,7 @@ class NDSlice(tuple):
                 result.append(...)
             else:
                 raise ValueError("Can not intialize NDSlice from %s", s)
-        return tuple(result)
+        return cls(*result)
 
     def to_json(self) -> list[JSON]:
         "Convert NDSlice into a JSON-serializable representation"
@@ -48,7 +48,7 @@ class NDSlice(tuple):
                     | ({} if s.stop is None else {"stop": s.stop})
                     | ({} if s.step is None else {"step": s.step})
                 )
-                result.append(json_slice or "ellipsis")
+                result.append(json_slice)
             elif isinstance(s, int):
                 result.append(s)
             elif s is Ellipsis:
@@ -64,39 +64,66 @@ class NDSlice(tuple):
         For example, '(1:3, 4, 1:5:2, ...)' is converted to (slice(1, 3), 4, slice(1, 5, 2), ...).
         """
 
-        if not (arg.startswith("[") and arg.endswith("]")) and not (
-            arg.startswith("(") and arg.endswith(")")
-        ):
-            raise ValueError(
-                "Slice must be enclosed in square brackets or parentheses."
-            )
+        arg = arg.strip("(][)").replace(" ", "")
 
         result = []
-        for part in arg[1:-1].split(","):
-            if part.strip() in {":", "...", ""}:
+        for part in arg.split(","):
+            if part.strip() == "...":
                 result.append(Ellipsis)
-            elif m := re.match(r"^(\d+):$", part.strip()):
+            elif part.strip() == ":":
+                result.append(builtins.slice(None))
+            elif m := re.match(r"^(\d+)::?$", part.strip()):
+                # "start:" or "start::"
                 start, stop = int(m.group(1)), None
                 result.append(builtins.slice(start, stop))
-            elif m := re.match(r"^:(\d+)$", part.strip()):
+            elif m := re.match(r"^:(\d+):?$", part.strip()):
+                # ":stop" or ":stop:"
                 start, stop = None, int(m.group(1))
                 result.append(builtins.slice(start, stop))
             elif m := re.match(r"^(\d+):(\d+):(\d+)$", part.strip()):
+                # "start:stop:step"
                 start, stop, step = map(int, m.groups())
                 result.append(builtins.slice(start, stop, step))
-            elif m := re.match(r"^(\d+):(\d+)$", part.strip()):
+            elif m := re.match(r"^(\d+):(\d+):*$", part.strip()):
+                # "start:stop" or "start:stop:"
                 start, stop = map(int, m.groups())
                 result.append(builtins.slice(start, stop))
+            elif m := re.match(r"^:(\d+):(\d+)$", part.strip()):
+                # ":stop:step"
+                stop, step = map(int, m.groups())
+                result.append(builtins.slice(None, stop, step))
+            elif m := re.match(r"^::(\d+)$", part.strip()):
+                # "::step"
+                step = int(m.group(1))
+                result.append(builtins.slice(None, None, step))
+            elif m := re.match(r"^(\d+)::(\d+)$", part.strip()):
+                # "start::step"
+                start, step = map(int, m.groups())
+                result.append(builtins.slice(start, None, step))
             elif m := re.match(r"^(\d+)$", part.strip()):
                 result.append(int(m.group()))
             else:
                 raise ValueError(f"Invalid slice part: {part}")
-            # TODO: cases like "::n" or ":4:"
-        return tuple(result)
+        return cls(*result)
 
     def to_numpy_str(self) -> str:
-        "Convert NDSlice into a numpy-style string representation"
-        raise NotImplementedError("Not yet implemented")
+        "Convert NDSlice to a numpy-style string representation"
+        result = []
+        for s in self:
+            if isinstance(s, builtins.slice):
+                string_slice = (
+                    f"{(s.start or '')}:"
+                    + ("" if s.stop is None else f"{s.stop}")
+                    + (f":{str(s.step)}" if s.step else "")
+                )
+                result.append(string_slice)
+            elif isinstance(s, int):
+                result.append(str(s))
+            elif s is Ellipsis:
+                result.append("...")
+            else:
+                raise ValueError("Unprocessable entry in NDSlice, %s", s)
+        return ",".join(result)
 
 
 Scopes = Set[str]

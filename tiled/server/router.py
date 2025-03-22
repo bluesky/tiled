@@ -27,6 +27,7 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
+from tiled.adapters.array import ArrayTransforms
 from tiled.adapters.mapping import MapAdapter
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
@@ -266,6 +267,7 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
         **filters,
     ):
         request.state.endpoint = "search"
@@ -297,6 +299,7 @@ def get_router(
                 get_base_url(request),
                 resolve_media_type(request),
                 max_depth=max_depth,
+                transforms=transforms,
             )
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
@@ -372,6 +375,7 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         root_path: bool = Query(False),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
         entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
     ):
         """Fetch the metadata and structure information for one entry"""
@@ -390,6 +394,7 @@ def get_router(
                 include_data_sources,
                 resolve_media_type(request),
                 max_depth=max_depth,
+                transforms=transforms,
             )
         except BrokenLink as err:
             raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
@@ -421,13 +426,21 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
     ):
-        """
-        Fetch a chunk of array-like data.
-        """
-        shape = entry.structure().shape
+        """Fetch a chunk of array-like data."""
+
+        if transforms and entry.structure_family == StructureFamily.sparse:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Transforms are not supported for sparse arrays yet.",
+            )
+
         # Check that block dimensionality matches array dimensionality.
-        ndim = len(shape)
+        structure = entry.structure()
+        if transforms:
+            structure = transforms.update_structure(structure)
+        ndim = len(structure.shape)
         if len(block) != ndim:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -438,17 +451,30 @@ def get_router(
             )
         if block == ():
             # Handle special case of numpy scalar.
-            if shape != ():
+            if structure.shape != ():
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"Requested scalar but shape is {entry.structure().shape}",
+                    detail=f"Requested scalar but shape is {structure.shape}",
                 )
             with record_timing(request.state.metrics, "read"):
                 array = await ensure_awaitable(entry.read)
+                if transforms:
+                    array = transforms.apply(array)
         else:
             try:
                 with record_timing(request.state.metrics, "read"):
-                    array = await ensure_awaitable(entry.read_block, block, slice)
+                    if not transforms:
+                        array = await ensure_awaitable(entry.read_block, block, slice)
+                    else:
+                        from tiled.adapters.array import (
+                            slice_and_shape_from_block_and_chunks,
+                        )
+
+                        array = await ensure_awaitable(entry.read)
+                        block_slice, _ = slice_and_shape_from_block_and_chunks(
+                            block, structure.chunks
+                        )
+                        array = transforms.apply(array)[block_slice][slice]
             except IndexError:
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
@@ -497,6 +523,7 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
     ):
         """
         Fetch a slice of array-like data.
@@ -506,15 +533,25 @@ def get_router(
         # for some use cases.
         import numpy
 
+        if transforms and structure_family == StructureFamily.sparse:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Transforms are not supported for sparse arrays yet.",
+            )
+
         try:
             with record_timing(request.state.metrics, "read"):
-                array = await ensure_awaitable(entry.read, slice)
+                array = await ensure_awaitable(
+                    entry.read, slice if not transforms else None
+                )
             if structure_family == StructureFamily.array:
                 array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
         except IndexError:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
             )
+        if transforms:
+            array = transforms.apply(array)[slice]
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -785,11 +822,13 @@ def get_router(
             scopes=["read:data", "read:metadata"],
         ),
         parts: Optional[List[str]] = Query(None),
+        align: Optional[str] = Query(None),
     ):
         try:
             resource = await construct_dynamic_dataset_response(
                 entry,
                 parts,
+                align,
                 path,
                 get_base_url(request),
             )
@@ -816,6 +855,7 @@ def get_router(
             scopes=["read:data"],
         ),
         parts: Optional[List[str]] = Query(None),
+        align: Optional[str] = Query(None),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -824,6 +864,7 @@ def get_router(
             request=request,
             entry=entry,
             parts=parts,
+            align=align,
             field=field,
             format=format,
             filename=filename,
@@ -841,6 +882,7 @@ def get_router(
             scopes=["read:data"],
         ),
         parts: Optional[List[str]] = Query(None),
+        align: Optional[str] = Query(None),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -849,6 +891,7 @@ def get_router(
             request=request,
             entry=entry,
             parts=parts,
+            align=align,
             field=field,
             format=format,
             filename=filename,
@@ -858,13 +901,22 @@ def get_router(
         request: Request,
         entry,
         parts: Optional[List[str]],
+        align: Optional[str],
         field: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
     ):
         try:
             with record_timing(request.state.metrics, "read"):
-                data = await entry.get_dataset_adapters(parts, select_keys=field)
+                data = {}
+                for key, item in (
+                    await entry.get_dataset_items(
+                        parts, align=align, return_adapters=True, adapter_keys=field
+                    )
+                ).items():
+                    if item.adapter is not None:
+                        data[key] = item.adapter
+
         except KeyError as err:
             (key,) = err.args
             raise HTTPException(

@@ -1,3 +1,4 @@
+import builtins
 from typing import Optional, Tuple, Union
 
 import pydantic_settings
@@ -12,9 +13,6 @@ from ..utils import BrokenLink
 from .authentication import check_scopes, get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
-
-# saving slice() to rescue after using "slice" for FastAPI dependency injection of slice_(slice: str)
-slice_func = slice
 
 DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
@@ -182,7 +180,7 @@ def offset_param(
 
 
 def np_style_slicer(indices: tuple):
-    return indices[0] if len(indices) == 1 else slice_func(*indices)
+    return indices[0] if len(indices) == 1 else builtins.slice(*indices)
 
 
 def parse_slice_str(dim: str):
