@@ -87,8 +87,15 @@ class ArrayAdapter:
         -------
 
         """
+        # May be a list of something; convert to array
+        if not hasattr(array, "__array__"):
+            array = numpy.asanyarray(array)
+
         # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
-        if isinstance(array.dtype, pandas.StringDtype):
+        is_likely_string_dtype = isinstance(array.dtype, pandas.StringDtype) or (
+            array.dtype == "object" and array.dtype.fields is None
+        )
+        if is_likely_string_dtype:
             max_size = max((len(i) for i in array.ravel()))
             array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
 
