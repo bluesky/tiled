@@ -6,6 +6,7 @@ import operator
 import re
 import sys
 import types
+import urllib.parse
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -327,12 +328,17 @@ async def construct_dynamic_dataset_response(
     )
     attributes["metadata"] = {"attrs": {}}
 
-    parts_query = "?" + "&".join((f"parts={p}" for p in parts)) if parts else ""
+    query_dict = ({"parts": parts} if parts else {}) | (
+        {"align": align} if align else {}
+    )
+    query_str = urllib.parse.urlencode(query_dict, doseq=True)
+    query_str = urllib.parse.unquote(query_str)  # Make it human-readable
+    query_str = f"?{query_str}" if query_str else ""
     data = schemas.Resource(
         attributes=schemas.NodeAttributes(**attributes),
         links={
-            "self": f"{base_url}/dataset/meta/{path}{parts_query}",
-            "full": f"{base_url}/dataset/full/{path}{parts_query}",
+            "self": f"{base_url}/dataset/meta/{path}{query_str}",
+            "full": f"{base_url}/dataset/full/{path}{query_str}",
         },
         meta={"count": len(contents)},
         id=path_parts[-1],

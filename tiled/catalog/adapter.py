@@ -1206,9 +1206,12 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                     keep_adapter = return_adapters and (
                         _key in adapter_keys or adapter_keys is None
                     )
+                    structure = item.structure()
+                    if dims := item.metadata().get("dims"):
+                        structure.dims = tuple(dims)
                     result[_key] = VirtualDatasetItem(
                         key=_key,
-                        structure=item.structure(),
+                        structure=structure,
                         specs=item.specs,
                         adapter=item if keep_adapter else None,
                     )
@@ -1219,9 +1222,12 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 keep_adapter = return_adapters and (
                     key in adapter_keys or adapter_keys is None
                 )
+                structure = adapter.structure()
+                if dims := adapter.metadata().get("dims"):
+                    structure.dims = tuple(dims)
                 result[key] = VirtualDatasetItem(
                     key=key,
-                    structure=adapter.structure(),
+                    structure=structure,
                     specs=adapter.specs,
                     adapter=adapter if keep_adapter else None,
                 )
@@ -1284,7 +1290,6 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 )
 
             item.structure = structure
-
         return result
 
 
