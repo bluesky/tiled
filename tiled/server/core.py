@@ -17,7 +17,6 @@ import dateutil.tz
 import jmespath
 import msgpack
 from fastapi import HTTPException, Response
-from ndindex import ndindex
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
@@ -207,6 +206,7 @@ async def construct_entries_response(
     base_url,
     media_type,
     max_depth,
+    transforms,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     tree = await apply_search(tree, filters, query_registry)
@@ -242,6 +242,7 @@ async def construct_entries_response(
             include_data_sources,
             media_type,
             max_depth=max_depth,
+            transforms=transforms,
         )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
@@ -264,7 +265,7 @@ async def construct_dynamic_resource(
     path_parts,
     structure,
     specs: Optional[list[Spec]] = None,
-    slice=None,
+    transforms=None,
 ):
     if not isinstance(structure, ArrayStructure):
         raise ValueError(f"Only ArrayStructure is supported, not {type(structure)}.")
@@ -273,12 +274,7 @@ async def construct_dynamic_resource(
     attributes = {"ancestors": path_parts[:-1]}
     attributes["specs"] = specs or [schemas.Spec(name="xarray_data_var")]
     attributes["structure_family"] = structure_family
-
-    structure = asdict(structure)
-    if slice is not None:
-        sliced_shape = ndindex(slice).newshape(structure["shape"])
-        structure["shape"] = sliced_shape
-    attributes["structure"] = structure
+    attributes["structure"] = asdict(structure)
     attributes["metadata"] = {"attrs": {}}
 
     links = {"self": f"{base_url}/metadata/{path_str}"}
@@ -286,11 +282,12 @@ async def construct_dynamic_resource(
     links.update(
         links_for_node(
             structure_family,
-            ArrayStructure.from_json(structure),
+            structure,
             base_url,
             path_str,
         )
     )
+    links = transforms.update_links(links) if transforms else links
     d = {
         "id": path_parts[-1],
         "attributes": schemas.NodeAttributes(**attributes),
@@ -304,21 +301,19 @@ async def construct_dynamic_resource(
 async def construct_dynamic_dataset_response(
     entry,
     parts,
+    align,
     path,
     base_url,
 ):
-    structures = await entry.get_dataset_structures(parts)
-    specs = await entry.get_dataset_specs(parts)
-
     path_parts = [segment for segment in path.split("/") if segment]
     contents = {}
-    for key, item in structures.items():
+    for key, item in (await entry.get_dataset_items(parts, align=align)).items():
         resource = await construct_dynamic_resource(
             base_url,
-            path_parts + key.split("/"),
-            item,
-            specs=specs.get(key),
-            slice=None,
+            path_parts + item.key.split("/"),
+            item.structure,
+            specs=item.specs,
+            transforms=item.transforms,
         )
         contents[resource.id] = resource
 
@@ -499,6 +494,7 @@ async def construct_resource(
     media_type,
     max_depth,
     depth=0,
+    transforms=None,
 ):
     path_str = "/".join(path_parts)
     id_ = path_parts[-1] if path_parts else ""
@@ -574,6 +570,7 @@ async def construct_resource(
                             media_type,
                             max_depth,
                             depth=1 + depth,
+                            transforms=transforms,
                         )
             else:
                 count = await len_or_approx(entry)
@@ -617,22 +614,26 @@ async def construct_resource(
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Tree and not values.
+            structure = entry.structure()
+
+            if schemas.EntryFields.structure_family in fields:
+                attributes["structure_family"] = entry.structure_family
+            if schemas.EntryFields.structure in fields:
+                if transforms and entry.structure_family == StructureFamily.array:
+                    structure = transforms.update_structure(entry.structure())
+                attributes["structure"] = asdict(structure)
+
             ResourceLinksT = schemas.resource_links_type_by_structure_family[
                 entry.structure_family
             ]
             links.update(
                 links_for_node(
                     entry.structure_family,
-                    entry.structure(),
+                    structure,
                     base_url,
                     path_str,
                 )
             )
-            structure = asdict(entry.structure())
-            if schemas.EntryFields.structure_family in fields:
-                attributes["structure_family"] = entry.structure_family
-            if schemas.EntryFields.structure in fields:
-                attributes["structure"] = structure
 
         else:
             # We only have entry names, not structure_family, so
@@ -642,6 +643,8 @@ async def construct_resource(
             "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
+            if transforms and entry.structure_family == StructureFamily.array:
+                links = transforms.update_links(links)
             d["links"] = links
         resource = schemas.Resource[
             schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict

@@ -1171,7 +1171,7 @@ class Composite(Container):
         """Ccomposite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
-    def to_dataset(self, *keys):
+    def to_dataset(self, *keys, align=None):
         link = (
             self.item["links"]["full"]
             .replace("container/full", "dataset/meta")
@@ -1181,7 +1181,8 @@ class Composite(Container):
             self.context.http_client.get(
                 link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={**parse_qs(urlparse(link).query), "parts": keys},
+                params={**parse_qs(urlparse(link).query), "parts": keys}
+                | ({"align": align} if align else {}),
             )
         ).json()
         item = content["data"]
@@ -1191,41 +1192,6 @@ class Composite(Container):
             self.structure_clients,
             item,
         )
-
-    def zip_arrays(self, *keys, block=(), dtype=None, shape=None, slice=None):
-        import numpy
-
-        if shape:
-            # Check for special case of shape with 0 in it.
-            if 0 in shape:
-                # This is valid, and it has come up in the wild.  An array with
-                # 0 as one of the dimensions never contains data, so we can
-                # short-circuit here without any further information from the
-                # service.
-                return numpy.array([], dtype=dtype).reshape(shape)
-            expected_shape = ",".join(map(str, shape))
-        else:
-            expected_shape = "scalar"
-
-        link = (
-            self.item["links"]["full"]
-            .replace("container/full", "zipped/array/block")
-            .rstrip("/")
-        )
-        # link = link + "".join(f"/{key}" for key in keys)
-        content = handle_error(
-            self.context.http_client.get(
-                link,
-                headers={"Accept": "application/octet-stream"},
-                params={
-                    **parse_qs(urlparse(link).query),
-                    "block": ",".join(map(str, block)),
-                    "expected_shape": expected_shape,
-                    "parts": keys,
-                },
-            )
-        ).read()
-        return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
 
 class CompositeParts:
