@@ -11,7 +11,7 @@ from ..client import Context, from_context, record_history
 from ..server.app import build_app
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
-from ..utils import BrokenLink, ensure_uri
+from ..utils import BrokenLink, ensure_uri, path_from_uri
 from ..utils import tree as tree_util
 
 
@@ -204,7 +204,7 @@ def test_file_with_broken_links(example_file_with_links):
     """Raise an error when accessing non-existing keys."""
 
     h5py = pytest.importorskip("h5py")
-    main_file_path = example_file_with_links.replace("file://localhost", "")
+    main_file_path = path_from_uri(example_file_with_links)
     child_file_path = main_file_path.replace("example.h5", "linked.h5")
 
     # Case 1. Broken soft link
@@ -273,7 +273,7 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
     client = from_context(context)
 
     h5py = pytest.importorskip("h5py")
-    main_file_path = example_file_with_links.replace("file://localhost", "")
+    main_file_path = path_from_uri(example_file_with_links)
     child_file_path = main_file_path.replace("example.h5", "linked.h5")
 
     # Brake the soft link
