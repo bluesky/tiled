@@ -141,7 +141,7 @@ def test_refresh_expiration(config):
             username="alice", password="secret1", refresh_token_max_age=1
         )
         assert "authenticated as 'alice'" in repr(context)
-        time.sleep(1.5)
+        time.sleep(3)
         # Attempt to refresh the token should fail
         with pytest.raises(CannotRefreshAuthentication):
             context.force_auth_refresh()
