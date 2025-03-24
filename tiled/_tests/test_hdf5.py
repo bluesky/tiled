@@ -205,7 +205,7 @@ def test_file_with_broken_links(example_file_with_links):
 
     h5py = pytest.importorskip("h5py")
     main_file_path = path_from_uri(example_file_with_links)
-    child_file_path = main_file_path.replace("example.h5", "linked.h5")
+    child_file_path = main_file_path.with_name("linked.h5")
 
     # Case 1. Broken soft link
     # KeyError: 'Unable to synchronously open object (component not found)'
@@ -274,7 +274,7 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
 
     h5py = pytest.importorskip("h5py")
     main_file_path = path_from_uri(example_file_with_links)
-    child_file_path = main_file_path.replace("example.h5", "linked.h5")
+    child_file_path = main_file_path.with_name("linked.h5")
 
     # Brake the soft link
     with h5py.File(main_file_path, "r+") as file:
