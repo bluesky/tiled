@@ -15,6 +15,7 @@ class AwkwardStructure:
 
 def project_form(form, form_keys_touched):
     # See https://github.com/bluesky/tiled/issues/450
+    # breakpoint()
     if isinstance(form, awkward.forms.RecordForm):
         if form.fields is None:
             original_fields = [None] * len(form.contents)
@@ -56,17 +57,20 @@ def project_form(form, form_keys_touched):
                 form_key=form.form_key,
             )
 
-    elif isinstance(form, (awkward.forms.NumpyForm, awkward.forms.EmptyForm)):
+    elif isinstance(form, awkward.forms.NumpyForm):
         if form.form_key in form_keys_touched:
             return form.copy()
         else:
-            return awkward.forms.EmptyForm()
+            return None
 
     elif isinstance(form, (awkward.forms.RegularForm, awkward.forms.UnmaskedForm)):
         return form.copy(content=project_form(form.content, form_keys_touched))
+    
+    elif isinstance(form, awkward.forms.EmptyForm):
+        return form.copy()
 
     else:
         if form.form_key in form_keys_touched:
             return form.copy(content=project_form(form.content, form_keys_touched))
         else:
-            return awkward.forms.EmptyForm()
+            return None
