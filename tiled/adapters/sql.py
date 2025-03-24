@@ -73,8 +73,8 @@ class SQLAdapter:
         self.conn.close()
 
     def metadata(self) -> JSON:
-        """
-        The metadata representing the actual data.
+        """The metadata representing the actual data.
+
         Returns
         -------
         The metadata representing the actual data.
@@ -195,46 +195,43 @@ class SQLAdapter:
         return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
-        """
-        Get the data for a specific key
+        """Get the data for a specific key
 
         Parameters
         ----------
         key : a string to indicate which column to be retrieved
+
         Returns
         -------
         The column for the associated key.
         """
         if key not in self.structure().columns:
             return None
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        return self[key]
 
     def __getitem__(self, key: str) -> ArrayAdapter:
-        """
-        Get the data for a specific key.
+        """Get the data for a specific key.
 
         Parameters
         ----------
         key : a string to indicate which column to be retrieved
+
         Returns
         -------
         The column for the associated key.
         """
+
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
-        """
-        The function to iterate over the SQLAdapter data.
+        """Iterate over the SQLAdapter data.
 
         Returns
         -------
         An iterator for the data in the associated database.
         """
-        yield from (
-            (key, ArrayAdapter.from_array(self.read([key])[key].values))
-            for key in self._structure.columns
-        )
+        yield from ((key, self[key]) for key in self._structure.columns)
 
     def append_partition(
         self,
@@ -384,23 +381,23 @@ def _ensure_writable_location(uri: str) -> Path:
 # Mapping between Arrow types and PostgreSQL column type name.
 ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
     # Boolean
-    pyarrow.bool_(): "bool",
+    pyarrow.bool_(): "BOOLEAN",
     # Integers
-    pyarrow.int8(): "int2",
-    pyarrow.uint8(): "int2",
-    pyarrow.int16(): "int2",
-    pyarrow.uint16(): "int4",
-    pyarrow.int32(): "int4",
-    pyarrow.uint32(): "int8",
-    pyarrow.int64(): "int8",
-    pyarrow.uint64(): "int8",
+    pyarrow.int8(): "SMALLINT",
+    pyarrow.uint8(): "SMALLINT",
+    pyarrow.int16(): "SMALLINT",
+    pyarrow.uint16(): "SMALLINT",
+    pyarrow.int32(): "INTEGER",
+    pyarrow.uint32(): "INTEGER",
+    pyarrow.int64(): "BIGINT",
+    pyarrow.uint64(): "BIGINT",
     # Floating Point
-    pyarrow.float16(): "float4",
-    pyarrow.float32(): "float4",
-    pyarrow.float64(): "float8",
+    pyarrow.float16(): "REAL",
+    pyarrow.float32(): "REAL",
+    pyarrow.float64(): "DOUBLE PRECISION",
     # String Types
-    pyarrow.string(): "text",
-    pyarrow.large_string(): "text",
+    pyarrow.string(): "TEXT",
+    pyarrow.large_string(): "TEXT",
     # TODO Consider adding support for these types, with testing.
     # # Binary Types
     # pyarrow.binary(): "bytea",

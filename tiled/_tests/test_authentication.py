@@ -73,9 +73,19 @@ def test_password_auth(enter_username_password, config):
             from_context(context)
         # Reuse token from cache.
         client = from_context(context)
+        # Check user authentication status string
         assert "authenticated as 'alice'" in repr(client.context)
+        # Check authenticated property exists
+        assert "authenticated" in dir(client.context)
+        # Check authenticated property is True
+        assert client.context.authenticated
         client.logout()
+        # Check authentication status string
         assert "unauthenticated" in repr(client.context)
+        # Check authenticated property still exists
+        assert "authenticated" in dir(client.context)
+        # Check authenticated property is False
+        assert not client.context.authenticated
 
         # Log in as Bob.
         with enter_username_password("bob", "secret2"):
@@ -354,6 +364,10 @@ def test_api_key_activity(enter_username_password, config):
         context.api_key = key_info["secret"]
         assert "authenticated as 'alice'" in repr(context)
         assert "with API key" in repr(context)
+        # Check authenticated property exists
+        assert "authenticated" in dir(context)
+        # Check authenticated property is True
+        assert context.authenticated
         assert key_info["secret"][:8] in repr(context)
         assert key_info["secret"][8:] not in repr(context)
 
@@ -376,6 +390,10 @@ def test_api_key_activity(enter_username_password, config):
         context.api_key = None
         with pytest.raises(RuntimeError):
             context.which_api_key()
+        # Check authenticated property still exists
+        assert "authenticated" in dir(context)
+        # Check authenticated property is False
+        assert not context.authenticated
         # Set the API key.
         context.api_key = secret
         # Now this works again.

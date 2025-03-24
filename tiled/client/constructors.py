@@ -142,14 +142,13 @@ def from_context(
                 context.authenticate(remember_me=remember_me)
     # Context ensures that context.api_uri has a trailing slash.
     item_uri = f"{context.api_uri}metadata/{'/'.join(node_path_parts)}"
+    params = parse_qs(urlparse(item_uri).query)
+    if include_data_sources:
+        params["include_data_sources"] = include_data_sources
     content = handle_error(
         context.http_client.get(
             item_uri,
             headers={"Accept": MSGPACK_MIME_TYPE},
-            params={
-                **parse_qs(urlparse(item_uri).query),
-                "include_data_sources": include_data_sources,
-            },
         )
     ).json()
     item = content["data"]
