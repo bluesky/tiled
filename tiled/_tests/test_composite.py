@@ -55,7 +55,7 @@ md = {"md_key1": "md_val1", "md_key2": 2}
 
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
-    return in_memory(writable_storage=tmp_path_factory.getbasetemp())
+    return in_memory(writable_storage=tmp_path_factory.mktemp("test_composite"))
 
 
 @pytest.fixture(scope="module")
