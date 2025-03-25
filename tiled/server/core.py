@@ -6,11 +6,12 @@ import operator
 import re
 import sys
 import types
+import urllib.parse
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
-from typing import Any
+from typing import Any, Optional
 
 import anyio
 import dateutil.tz
@@ -25,9 +26,11 @@ from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
+from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
+    BrokenLink,
     SerializationError,
     UnsupportedShape,
     ensure_awaitable,
@@ -151,11 +154,12 @@ async def apply_search(tree, filters, query_registry):
             tree = MapAdapter({})
         else:
             if hasattr(tree, "lookup_adapter"):
-                entry = await tree.lookup_adapter([key_lookup])
-                if entry is None:
-                    tree = MapAdapter({})
-                else:
+                try:
+                    entry = await tree.lookup_adapter([key_lookup])
                     tree = MapAdapter({key_lookup: entry}, must_revalidate=False)
+                except KeyError:
+                    # If caught NoEntry or BrokenLink
+                    tree = MapAdapter({})
             else:
                 try:
                     tree = MapAdapter(
@@ -203,6 +207,7 @@ async def construct_entries_response(
     base_url,
     media_type,
     max_depth,
+    transforms,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     tree = await apply_search(tree, filters, query_registry)
@@ -238,6 +243,7 @@ async def construct_entries_response(
             include_data_sources,
             media_type,
             max_depth=max_depth,
+            transforms=transforms,
         )
         data.append(resource)
         # If any entry has emtry.metadata_stale_at = None, then there will
@@ -255,12 +261,98 @@ async def construct_entries_response(
     )
 
 
+async def construct_dynamic_resource(
+    base_url,
+    path_parts,
+    structure,
+    specs: Optional[list[Spec]] = None,
+    transforms=None,
+):
+    if not isinstance(structure, ArrayStructure):
+        raise ValueError(f"Only ArrayStructure is supported, not {type(structure)}.")
+    structure_family = StructureFamily.array
+    path_str = "/".join(path_parts)
+    attributes = {"ancestors": path_parts[:-1]}
+    attributes["specs"] = specs or [schemas.Spec(name="xarray_data_var")]
+    attributes["structure_family"] = structure_family
+    attributes["structure"] = asdict(structure)
+    attributes["metadata"] = {"attrs": {}}
+
+    links = {"self": f"{base_url}/metadata/{path_str}"}
+    ResourceLinksT = schemas.resource_links_type_by_structure_family[structure_family]
+    links.update(
+        links_for_node(
+            structure_family,
+            structure,
+            base_url,
+            path_str,
+        )
+    )
+    links = transforms.update_links(links) if transforms else links
+    d = {
+        "id": path_parts[-1],
+        "attributes": schemas.NodeAttributes(**attributes),
+        "links": links,
+    }
+    return schemas.Resource[schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict](
+        **d
+    )
+
+
+async def construct_dynamic_dataset_response(
+    entry,
+    parts,
+    align,
+    path,
+    base_url,
+):
+    path_parts = [segment for segment in path.split("/") if segment]
+    contents = {}
+    for key, item in (await entry.get_dataset_items(parts, align=align)).items():
+        resource = await construct_dynamic_resource(
+            base_url,
+            path_parts + item.key.split("/"),
+            item.structure,
+            specs=item.specs,
+            transforms=item.transforms,
+        )
+        contents[resource.id] = resource
+
+    # Construct response for the main dataset
+    attributes = {"ancestors": []}
+    attributes["structure_family"] = StructureFamily.composite
+    attributes["specs"] = [schemas.Spec(name="xarray_dataset")]
+    attributes["structure"] = schemas.NodeStructure(
+        count=len(contents),
+        contents=contents,
+    )
+    attributes["metadata"] = {"attrs": {}}
+
+    query_dict = ({"parts": parts} if parts else {}) | (
+        {"align": align} if align else {}
+    )
+    query_str = urllib.parse.urlencode(query_dict, doseq=True)
+    query_str = urllib.parse.unquote(query_str)  # Make it human-readable
+    query_str = f"?{query_str}" if query_str else ""
+    data = schemas.Resource(
+        attributes=schemas.NodeAttributes(**attributes),
+        links={
+            "self": f"{base_url}/dataset/meta/{path}{query_str}",
+            "full": f"{base_url}/dataset/full/{path}{query_str}",
+        },
+        meta={"count": len(contents)},
+        id=path_parts[-1],
+    )
+
+    return schemas.Response(data=data, links={}, meta={"count": len(contents)})
+
+
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
     StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
-    StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.composite: {"*/*": "application/x-hdf5"},
+    StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
@@ -408,6 +500,7 @@ async def construct_resource(
     media_type,
     max_depth,
     depth=0,
+    transforms=None,
 ):
     path_str = "/".join(path_parts)
     id_ = path_parts[-1] if path_parts else ""
@@ -457,7 +550,7 @@ async def construct_resource(
                     # The size may change as we are walking the entry.
                     # Keep a *true* count separately from est_count.
                     count = 0
-                    for key, adapter in entry.items():
+                    for key in entry.keys():
                         count += 1
                         if count > INLINED_CONTENTS_LIMIT:
                             # The est_count was inaccurate or else the entry has grown
@@ -465,6 +558,13 @@ async def construct_resource(
                             count = await len_or_approx(entry)
                             contents = None
                             break
+                        try:
+                            adapter = entry[key]
+                        except BrokenLink:
+                            # If there are any broken links, just list the keys
+                            contents[key] = None
+                            continue
+
                         contents[key] = await construct_resource(
                             base_url,
                             path_parts + [key],
@@ -476,6 +576,7 @@ async def construct_resource(
                             media_type,
                             max_depth,
                             depth=1 + depth,
+                            transforms=transforms,
                         )
             else:
                 count = await len_or_approx(entry)
@@ -519,22 +620,26 @@ async def construct_resource(
         if entry is not None:
             # entry is None when we are pulling just *keys* from the
             # Tree and not values.
+            structure = entry.structure()
+
+            if schemas.EntryFields.structure_family in fields:
+                attributes["structure_family"] = entry.structure_family
+            if schemas.EntryFields.structure in fields:
+                if transforms and entry.structure_family == StructureFamily.array:
+                    structure = transforms.update_structure(entry.structure())
+                attributes["structure"] = asdict(structure)
+
             ResourceLinksT = schemas.resource_links_type_by_structure_family[
                 entry.structure_family
             ]
             links.update(
                 links_for_node(
                     entry.structure_family,
-                    entry.structure(),
+                    structure,
                     base_url,
                     path_str,
                 )
             )
-            structure = asdict(entry.structure())
-            if schemas.EntryFields.structure_family in fields:
-                attributes["structure_family"] = entry.structure_family
-            if schemas.EntryFields.structure in fields:
-                attributes["structure"] = structure
 
         else:
             # We only have entry names, not structure_family, so
@@ -544,6 +649,8 @@ async def construct_resource(
             "attributes": schemas.NodeAttributes(**attributes),
         }
         if not omit_links:
+            if transforms and entry.structure_family == StructureFamily.array:
+                links = transforms.update_links(links)
             d["links"] = links
         resource = schemas.Resource[
             schemas.NodeAttributes, ResourceLinksT, schemas.EmptyDict

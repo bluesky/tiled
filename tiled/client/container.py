@@ -315,7 +315,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # intermediate parents.
             for i, key in enumerate(keys):
                 item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
-                if (item is None) or _ignore_inlined_contents:
+                if item is not None and not _ignore_inlined_contents:
+                    # The item was inlined, and we should return it as is
+                    result = client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    )
+                    return (
+                        result[keys[i + 1 :]] if keys[i + 1 :] else result  # noqa: E203
+                    )
+                else:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
                     # Make a request for it.
@@ -1159,6 +1170,28 @@ class Composite(Container):
     def create_composite(self, key=None, *, metadata=None, specs=None):
         """Ccomposite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
+
+    def to_dataset(self, *keys, align=None):
+        link = (
+            self.item["links"]["full"]
+            .replace("container/full", "dataset/meta")
+            .rstrip("/")
+        )
+        content = handle_error(
+            self.context.http_client.get(
+                link,
+                headers={"Accept": MSGPACK_MIME_TYPE},
+                params={**parse_qs(urlparse(link).query), "parts": keys}
+                | ({"align": align} if align else {}),
+            )
+        ).json()
+        item = content["data"]
+
+        return client_for_item(
+            self.context,
+            self.structure_clients,
+            item,
+        )
 
 
 class CompositeParts:

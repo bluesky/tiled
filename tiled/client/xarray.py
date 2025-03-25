@@ -1,4 +1,5 @@
 import threading
+from collections import defaultdict
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -37,13 +38,17 @@ class DaskDatasetClient(Container):
         coords = {}
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
-        coords_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
+        coords_fetchers = defaultdict(
+            lambda: _WideTableFetcher(
+                self.context.http_client,
+                self.item["links"]["full"],
+            )
         )
-        data_vars_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
+        data_vars_fetchers = defaultdict(
+            lambda: _WideTableFetcher(
+                self.context.http_client,
+                self.item["links"]["full"],
+            )
         )
         array_clients = {}
         array_structures = {}
@@ -65,6 +70,7 @@ class DaskDatasetClient(Container):
             array_structure = array_structures[name]
             shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
+            dim0 = array_client.dims[0]
 
             if optimize_wide_table and (
                 (not shape)  # empty
@@ -76,13 +82,13 @@ class DaskDatasetClient(Container):
                 if "xarray_coord" in spec_names:
                     coords[name] = (
                         array_client.dims,
-                        coords_fetcher.register(name, array_client, array_structure),
+                        coords_fetchers[dim0].register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 elif "xarray_data_var" in spec_names:
                     data_vars[name] = (
                         array_client.dims,
-                        data_vars_fetcher.register(name, array_client, array_structure),
+                        data_vars_fetchers[dim0].register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 else:
@@ -140,7 +146,7 @@ class _WideTableFetcher:
         # to ask for the data should trigger a request.
         self._lock = threading.Lock()
 
-    def register(self, name, array_client, array_structure):
+    def register(self, name, array_structure):
         if self._dataframe is not None:
             raise RuntimeError("Cannot add variables; already fetched.")
         self.variables.append(name)
