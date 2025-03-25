@@ -15,7 +15,6 @@ class AwkwardStructure:
 
 def project_form(form, form_keys_touched):
     # See https://github.com/bluesky/tiled/issues/450
-    # breakpoint()
     if isinstance(form, awkward.forms.RecordForm):
         if form.fields is None:
             original_fields = [None] * len(form.contents)
