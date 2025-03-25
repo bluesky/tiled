@@ -1,4 +1,5 @@
 import threading
+from collections import defaultdict
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -37,13 +38,17 @@ class DaskDatasetClient(Container):
         coords = {}
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
-        coords_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
+        coords_fetchers = defaultdict(
+            lambda: _WideTableFetcher(
+                self.context.http_client,
+                self.item["links"]["full"],
+            )
         )
-        data_vars_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
+        data_vars_fetchers = defaultdict(
+            lambda: _WideTableFetcher(
+                self.context.http_client,
+                self.item["links"]["full"],
+            )
         )
         array_clients = {}
         array_structures = {}
@@ -65,28 +70,25 @@ class DaskDatasetClient(Container):
             array_structure = array_structures[name]
             shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
+            dim0 = array_client.dims[0]
 
-            if (
-                optimize_wide_table
-                and ("table_column" in spec_names)
-                and (
-                    (not shape)  # empty
-                    or (
-                        (shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
-                        and (len(shape) < 2)
-                    )
+            if optimize_wide_table and (
+                (not shape)  # empty
+                or (
+                    (shape[0] < LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION)
+                    and (len(shape) < 2)
                 )
             ):
                 if "xarray_coord" in spec_names:
                     coords[name] = (
                         array_client.dims,
-                        coords_fetcher.register(name, array_structure),
+                        coords_fetchers[dim0].register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 elif "xarray_data_var" in spec_names:
                     data_vars[name] = (
                         array_client.dims,
-                        data_vars_fetcher.register(name, array_structure),
+                        data_vars_fetchers[dim0].register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 else:
