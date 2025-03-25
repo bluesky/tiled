@@ -31,7 +31,7 @@ df_arr2 = pandas.DataFrame(arr2)
 
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
-    return in_memory(writable_storage=tmp_path_factory.mktemp("test_csv"))
+    return in_memory(writable_storage=tmp_path_factory.getbasetemp())
 
 
 @pytest.fixture(scope="module")
