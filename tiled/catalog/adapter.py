@@ -1161,13 +1161,19 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                     # Check if we need adapters for any of this table's columns.
                     # If so, load the (possibly entire) table and construct the adapters.
                     # If not, load at least one column to determine the shape and chunks.
-                    keys_to_keep = set(columns).intersection(keys or columns)
-                    keys_to_keep = keys_to_keep.intersection(
-                        adapter_keys or keys_to_keep
+                    # All columns from df will be used to construct ArrayAdapters.
+                    if return_adapters:
+                        keys_to_keep = set(columns).intersection(keys or columns)
+                        keys_to_keep = keys_to_keep.intersection(
+                            adapter_keys or keys_to_keep
+                        )
+                    else:
+                        keys_to_keep = []
+                    df = await ensure_awaitable(
+                        item.read, fields=list(keys_to_keep or columns[:1])
                     )
-                    keys_to_keep = keys_to_keep or columns[:1]
-                    df = await ensure_awaitable(item.read, fields=list(keys_to_keep))
                     shape, chunks = (df.shape[0],), ((df.shape[0],),)  # num of rows
+                    df = df[list(keys_to_keep)]  # Remove the extra column, if added
 
                     # Loop over all columns and define the structures
                     for col in set(columns).intersection(keys or columns):
@@ -1178,7 +1184,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                             structure = adapter.structure()
                             structure.dims = dims
                             adapter.specs = [Spec(name=s) for s in specs]
-                            adapter = adapter if return_adapters else None
+                            adapter = adapter if col in df.columns else None
                         else:
                             structure = ArrayStructure(
                                 data_type=BuiltinDtype.from_numpy_dtype(dtypes[col]),
@@ -1186,7 +1192,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                                 chunks=chunks,
                                 dims=dims,
                             )
-                            if return_adapters and col in df.columns:
+                            if col in df.columns:
                                 adapter = ArrayAdapter.from_array(
                                     df[col].values,
                                     specs=[Spec(name=s) for s in specs],
@@ -1277,19 +1283,24 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             specs_names = set([s.name for s in item.specs])
             if not specs_names.intersection(("xarray_data_var", "xarray_coord")):
                 item.specs.append(Spec(name="xarray_data_var"))
-            if item.adapter and item.adapter.specs != item.specs:
-                specs = set(item.adapter.specs).union(item.specs)
-                item.adapter.specs = item.specs = list(specs)
 
-            # Apply the transforms to the array if needed
-            if item.transforms and item.adapter:
-                array = await ensure_awaitable(item.adapter.read)
-                array = item.transforms.apply(array)
-                item.adapter = ArrayAdapter.from_array(
-                    array, specs=item.specs, dims=structure.dims
-                )
+            # Update the adapter, if requested
+            if item.adapter:
+                if item.adapter.specs != item.specs:
+                    specs = set(item.adapter.specs).union(item.specs)
+                    item.adapter.specs = item.specs = list(specs)
 
-            item.structure = structure
+                # Apply the transforms to the array if needed or at least fix the dims
+                if item.transforms:
+                    array = await ensure_awaitable(item.adapter.read)
+                    array = item.transforms.apply(array)
+                    item.adapter = ArrayAdapter.from_array(
+                        array, specs=item.specs, dims=structure.dims
+                    )
+                elif item.adapter.structure() != structure:
+                    # Dirty hack to replace dims in the CatalogArrayAdapter
+                    item.adapter.structure = lambda s=structure: s
+
         return result
 
 
