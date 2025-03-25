@@ -17,7 +17,7 @@ from ..utils import tree as tree_util
 
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
-    return in_memory(writable_storage=tmp_path_factory.mktemp("test_hdf5"))
+    return in_memory(writable_storage=tmp_path_factory.getbasetemp())
 
 
 @pytest.fixture(scope="module")
