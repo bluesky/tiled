@@ -38,12 +38,18 @@ class Settings(BaseSettings):
     # we can raise this global limit.
     response_bytesize_limit: int = 300_000_000  # 300 MB
     reject_undeclared_specs: bool = False
-    database_settings: DatabaseSettings = Field(DatabaseSettings(), alias="database")
+    # "env_prefix does not apply to fields with alias"
+    # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#environment-variable-names
+    database_settings: DatabaseSettings = Field(
+        DatabaseSettings(), validation_alias="TILED_DATABASE"
+    )
     database_init_if_not_exists: bool = False
     expose_raw_assets: bool = True
 
     model_config = SettingsConfigDict(
-        env_prefix="TILED_", nested_model_default_partial_update=True
+        env_prefix="TILED_",
+        nested_model_default_partial_update=True,
+        env_nested_delimiter="_",
     )
 
 
