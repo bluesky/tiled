@@ -163,7 +163,7 @@ def build_app(
             # keys are needed to generate JWTs for any users that do log in.
             if not (
                 ("secret_keys" in authentication)
-                or ("TILED_SERVER_SECRET_KEYS" in os.environ)
+                or ("TILED_SECRET_KEYS" in os.environ)
             ):
                 raise UnscalableConfig(
                     """
@@ -175,7 +175,7 @@ authentication:
     - SECRET
   ...
 
-or via the environment variable TILED_SERVER_SECRET_KEYS.""",
+or via the environment variable TILED_SECRET_KEYS.""",
                 )
             # Multi-user authentication requires a database. We cannot fall
             # back to the default of an in-memory SQLite database in a
