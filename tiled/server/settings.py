@@ -26,9 +26,8 @@ class Settings(BaseSettings):
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key: str = secrets.token_hex(32)
     single_user_api_key_generated: bool = "TILED_SINGLE_USER_API_KEY" not in os.environ
-    # The TILED_SERVER_SECRET_KEYS may be a single key or a ;-separated list of
-    # keys to support key rotation. The first key will be used for encryption. Each
-    # key will be tried in turn for decryption.
+    # Must be a string representation of a json list, e.g. ["one", "two"]
+    # The first key will be used for encryption. Each key will be tried in turn for decryption.
     secret_keys: List[str] = [secrets.token_hex(32)]
     access_token_max_age: timedelta = 15 * 60  # 15 minutes
     refresh_token_max_age: timedelta = 7 * 24 * 60 * 60  # 7 days

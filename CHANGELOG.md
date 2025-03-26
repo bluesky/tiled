@@ -14,6 +14,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Extract API key handling
 - Extract scope fetching and checking
 - Refactor router construction
+- Adjust environment loading
+  - This is a breaking change if setting TILED_SERVER_SECRET_KEYS or TILED_ALLOW_ANONYMOUS_ACCESS,
+    these fields now require passing a json list e.g. ``TILED_SERVER_SECRET_KEYS=["one", "two"]``
 
 
 ## 0.1.0-b20 (2025-03-07)

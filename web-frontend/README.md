@@ -9,7 +9,7 @@ example of what is possible.
 Start a Tiled server in a way that allows connections from the React app. For example:
 
 ```
-TILED_ALLOW_ORIGINS=http://localhost:5173 tiled serve demo --public
+TILED_ALLOW_ORIGINS=["http://localhost:5173"] tiled serve demo --public
 ```
 
 ```
