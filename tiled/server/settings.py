@@ -19,6 +19,11 @@ class DatabaseSettings:
 
 
 class Settings(BaseSettings):
+    """A BaseSettings object defining configuration for the tiled instance.
+    For loading variables from the environment, prefix with TILED_ and see:
+    https://docs.pydantic.dev/latest/concepts/pydantic_settings/#parsing-environment-variable-values
+    """
+
     tree: Any = None
     allow_anonymous_access: bool = False
     allow_origins: List[str] = Field(default_factory=list)
@@ -26,7 +31,6 @@ class Settings(BaseSettings):
     # These 'single user' settings are only applicable if authenticator is None.
     single_user_api_key: str = secrets.token_hex(32)
     single_user_api_key_generated: bool = "TILED_SINGLE_USER_API_KEY" not in os.environ
-    # Must be a string representation of a json list, e.g. ["one", "two"]
     # The first key will be used for encryption. Each key will be tried in turn for decryption.
     secret_keys: List[str] = [secrets.token_hex(32)]
     access_token_max_age: timedelta = 15 * 60  # 15 minutes

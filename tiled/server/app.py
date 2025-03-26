@@ -161,9 +161,9 @@ def build_app(
         if authentication.get("providers"):
             # Even if the deployment allows public, anonymous access, secret
             # keys are needed to generate JWTs for any users that do log in.
-            if not (
-                ("secret_keys" in authentication)
-                or ("TILED_SECRET_KEYS" in os.environ)
+            if (
+                "secret_keys" not in authentication
+                and "TILED_SECRET_KEYS" not in os.environ
             ):
                 raise UnscalableConfig(
                     """

@@ -15,7 +15,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Extract scope fetching and checking
 - Refactor router construction
 - Adjust environment loading
-  - This is a breaking change if setting TILED_SERVER_SECRET_KEYS or TILED_ALLOW_ANONYMOUS_ACCESS,
+  - This is a breaking change if setting TILED_SERVER_SECRET_KEYS or TILED_ALLOW_ORIGINS,
     TILED_SERVER_SECRET_KEYS is now TILED_SECRET_KEYS and these fields now require passing a json
     list e.g. ``TILED_SECRET_KEYS='["one", "two"]'``
 
