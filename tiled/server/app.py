@@ -429,6 +429,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
         app.state.authenticated = True
+    else:
+        app.state.authenticated = False
 
     @cache
     def override_get_authenticators():
