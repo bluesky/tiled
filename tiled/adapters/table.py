@@ -138,13 +138,6 @@ class TableAdapter:
         # Must compute to determine shape
         array = self.read([key])[key].values
 
-        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
-        if isinstance(array.dtype, pandas.StringDtype):
-            import numpy
-
-            max_size = max((len(i) for i in array.ravel()))
-            array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
-
         return ArrayAdapter.from_array(array)
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:

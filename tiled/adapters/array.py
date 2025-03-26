@@ -1,6 +1,8 @@
 from typing import Any, List, Optional, Tuple
 
 import dask.array
+import numpy
+import pandas
 from numpy.typing import NDArray
 
 from ..structures.array import ArrayStructure
@@ -73,6 +75,18 @@ class ArrayAdapter:
         -------
 
         """
+        # May be a list of something; convert to array
+        if not hasattr(array, "__array__"):
+            array = numpy.asanyarray(array)
+
+        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+        is_likely_string_dtype = isinstance(array.dtype, pandas.StringDtype) or (
+            array.dtype == "object" and array.dtype.fields is None
+        )
+        if is_likely_string_dtype:
+            max_size = max((len(i) for i in array.ravel()))
+            array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
+
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims
         )
@@ -104,7 +118,7 @@ class ArrayAdapter:
 
     def read(
         self,
-        slice: NDSlice = ...,
+        slice: Optional[NDSlice] = None,
     ) -> NDArray[Any]:
         """
 
@@ -116,7 +130,7 @@ class ArrayAdapter:
         -------
 
         """
-        array = self._array[slice]
+        array = self._array[tuple(slice)] if slice else self._array
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
@@ -124,7 +138,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: NDSlice = ...,
+        slice: Optional[NDSlice] = None,
     ) -> NDArray[Any]:
         """
 
@@ -139,7 +153,8 @@ class ArrayAdapter:
         """
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
-        array = self._array[slice_]
+        # _array[...] requires a tuple, not just a subclass of tuple.
+        array = self._array[tuple(slice_)]
         # Slice within the block.
         if slice is not None:
             array = array[slice]
@@ -150,7 +165,7 @@ class ArrayAdapter:
 
 def slice_and_shape_from_block_and_chunks(
     block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
-) -> Tuple[NDSlice, Tuple[int, ...]]:
+) -> tuple[NDSlice, NDSlice]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
     Parameters
@@ -169,4 +184,4 @@ def slice_and_shape_from_block_and_chunks(
         dim = c[b]
         slice_.append(slice(start, start + dim))
         shape.append(dim)
-    return tuple(slice_), tuple(shape)
+    return NDSlice(*slice_), NDSlice(*shape)

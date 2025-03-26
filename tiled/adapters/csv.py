@@ -302,10 +302,8 @@ class CSVArrayAdapter(ArrayAdapter):
 
         Parameters
         ----------
-        data_uris : list of uris to csv files
-        structure :
-        metadata :
-        specs :
+        data_source :
+        node :
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
@@ -347,17 +345,11 @@ class CSVArrayAdapter(ArrayAdapter):
 
             array = array.reshape(structure.shape).rechunk(structure.chunks)
 
-        if node is not None:
-            metadata = node.metadata_
-            specs = node.specs
-        else:
-            metadata, specs = None, None
-
         return cls(
             array,
             structure,
-            metadata=metadata,
-            specs=specs,
+            metadata=node.metadata_,
+            specs=node.specs,
         )
 
     @classmethod
