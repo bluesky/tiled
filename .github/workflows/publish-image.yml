@@ -44,7 +44,7 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref_type == 'tag'
         with:
           context: .
           file: Dockerfile
@@ -53,22 +53,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Install Helm
-        uses: Azure/setup-helm@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: Azure/setup-helm@v4
         id: install
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref_type == 'tag'
+
+      - name: Lint Helm chart
+        run: helm lint helm/tiled
 
       - name: Log in to the Chart registry
         run: |
           echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --username ${{ github.repository_owner }} --password-stdin
 
       - name: Package and Push chart
+        if: github.ref_type == 'tag'
         run: |
           helm dependencies update helm/tiled
           helm package helm/tiled --version ${{ steps.meta.outputs.version }} --app-version ${{ steps.meta.outputs.version }} -d /tmp/
 
       - name: Publish Helm chart
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref_type == 'tag'
         run: |
           helm push /tmp/tiled-${{ steps.meta.outputs.version }}.tgz oci://ghcr.io/bluesky/charts
