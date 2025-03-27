@@ -1,99 +1,99 @@
-from typing import List, Optional
+from typing import Annotated, Optional
 
-import typer
+from pydantic import AfterValidator, BaseModel, Field
+from pydantic_settings import CliApp, CliSubCommand
 
-from ._utils import get_context
-
-api_key_app = typer.Typer()
-
-
-@api_key_app.command("create")
-def create_api_key(
-    profile: Optional[str] = typer.Option(
-        None, help="If you use more than one Tiled server, use this to specify which."
-    ),
-    expires_in: Optional[str] = typer.Option(
-        None,
-        help=(
-            "Number of seconds until API key expires, given as integer seconds "
-            "or a string like: '3y' (years), '3d' (days), '5m' (minutes), '1h' "
-            "(hours), '30s' (seconds). If None, it will never expire or it will "
-            "have the maximum lifetime allowed by the server. "
-        ),
-    ),
-    scopes: Optional[List[str]] = typer.Option(
-        None,
-        help=(
-            "Restrict the access available to this API key by listing scopes. "
-            "By default, it will inherit the scopes of its owner."
-        ),
-    ),
-    note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
-    no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
-):
-    context = get_context(profile)
-    if not scopes:
-        # This is how typer interprets unspecified scopes.
-        # Replace with None to get default scopes.
-        scopes = None
-    if expires_in.isdigit():
-        expires_in = int(expires_in)
-    info = context.create_api_key(scopes=scopes, expires_in=expires_in, note=note)
-    # TODO Print other info to the stderr?
-    typer.echo(info["secret"])
+from tiled.commandline._utils import ContextCommand
 
 
-@api_key_app.command("list")
-def list_api_keys(
-    profile: Optional[str] = typer.Option(
-        None, help="If you use more than one Tiled server, use this to specify which."
-    ),
-):
-    context = get_context(profile)
-    info = context.whoami()
-    if not info["api_keys"]:
-        typer.echo("No API keys found", err=True)
-        return
-    max_note_len = max(len(api_key["note"] or "") for api_key in info["api_keys"])
-    COLUMNS = f"First 8   Expires at (UTC)     Latest activity      Note{' ' * (max_note_len - 4)}  Scopes"
-    typer.echo(COLUMNS)
-    for api_key in info["api_keys"]:
-        note_padding = 2 + max_note_len - len(api_key["note"] or "")
-        if api_key["expiration_time"] is None:
-            expiration_time = "-"
-        else:
-            expiration_time = (
-                api_key["expiration_time"]
-                .replace(microsecond=0, tzinfo=None)
-                .isoformat()
-            )
-        if api_key["latest_activity"] is None:
-            latest_activity = "-"
-        else:
-            latest_activity = (
-                api_key["latest_activity"]
-                .replace(microsecond=0, tzinfo=None)
-                .isoformat()
-            )
-        typer.echo(
-            (
-                f"{api_key['first_eight']:10}"
-                f"{expiration_time:21}"
-                f"{latest_activity:21}"
-                f"{(api_key['note'] or '')}{' ' * note_padding}"
-                f"{' '.join(api_key['scopes']) or '-'}"
-            )
+def to_seconds(expires_in: Optional[str]) -> Optional[str]:
+    if expires_in is None:
+        return expires_in
+    return expires_in + "s" if expires_in.isdigit() else expires_in
+
+
+class Create(ContextCommand):
+    expires_in: Annotated[
+        Optional[str],
+        "Number of seconds until API key expires, given as integer seconds "
+        "or a string like: '3y' (years), '3d' (days), '5m' (minutes), '1h' "
+        "(hours), '30s' (seconds). If None, it will never expire or it will "
+        "have the maximum lifetime allowed by the server. ",
+        AfterValidator(to_seconds),
+    ] = None
+    scopes: Annotated[
+        Optional[set[str]],
+        "Restrict the access available to this API key by listing scopes. "
+        "By default, it will inherit the scopes of its owner.",
+    ] = None
+    note: Annotated[Optional[str], "Add a note to label this API key."] = None
+    no_verify: Annotated[bool, "Skip SSL verification."] = False
+
+    def cli_cmd(self) -> None:
+        context = self.context()
+        info = context.create_api_key(
+            scopes=self.scopes, expires_in=self.expires_in, note=self.note
         )
+        # TODO Print other info to the stderr?
+        print(info["secret"])
 
 
-@api_key_app.command("revoke")
-def revoke_api_key(
-    profile: Optional[str] = typer.Option(
-        None, help="If you use more than one Tiled server, use this to specify which."
-    ),
-    first_eight: str = typer.Argument(
-        ..., help="First eight characters of API key (or the whole key)"
-    ),
-):
-    context = get_context(profile)
-    context.revoke_api_key(first_eight[:8])
+class Revoke(ContextCommand):
+    first_eight: Annotated[
+        str,
+        "First eight characters of API key (or the whole key)",
+        AfterValidator(lambda string: string[:8]),
+    ]
+
+    async def cli_cmd(self) -> None:
+        context = self.context()
+        context.revoke_api_key(self.first_eight)
+
+
+class ListKeys(ContextCommand):
+    def cli_cmd(self) -> None:
+        context = self.context()
+        info = context.whoami()
+        if not info["api_keys"]:
+            print("No API keys found")
+            return
+        max_note_len = max(len(api_key.get("note", "") for api_key in info["api_keys"]))
+        print(
+            f"First 8   Expires at (UTC)     Latest activity      Note{' ' * (max_note_len - 4)}  Scopes"
+        )
+        for api_key in info["api_keys"]:
+            note_padding = 2 + max_note_len - len(api_key["note"] or "")
+            if api_key["expiration_time"] is None:
+                expiration_time = "-"
+            else:
+                expiration_time = (
+                    api_key["expiration_time"]
+                    .replace(microsecond=0, tzinfo=None)
+                    .isoformat()
+                )
+            if api_key["latest_activity"] is None:
+                latest_activity = "-"
+            else:
+                latest_activity = (
+                    api_key["latest_activity"]
+                    .replace(microsecond=0, tzinfo=None)
+                    .isoformat()
+                )
+            print(
+                (
+                    f"{api_key['first_eight']:10}"
+                    f"{expiration_time:21}"
+                    f"{latest_activity:21}"
+                    f"{(api_key['note'] or '')}{' ' * note_padding}"
+                    f"{' '.join(api_key['scopes']) or '-'}"
+                )
+            )
+
+
+class APIKeys(BaseModel):
+    list_keys: CliSubCommand[ListKeys] = Field(alias="list")
+    create: CliSubCommand[Create]
+    revoke: CliSubCommand[Revoke]
+
+    def cli_cmd(self) -> None:
+        CliApp.run_subcommand(self)

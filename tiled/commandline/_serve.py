@@ -1,725 +1,439 @@
+import asyncio
+import copy
+import functools
 import os
 import re
+import tempfile
+from abc import ABC
+from logging import StreamHandler
 from pathlib import Path
-from typing import List, Optional
+from typing import Annotated, List, Optional, Self
 
-import typer
+import anyio
+import uvicorn
+from pydantic import AfterValidator, BaseModel, model_validator
+from pydantic_settings import CliApp, CliSubCommand, SettingsError
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-serve_app = typer.Typer()
+from tiled.adapters.mapping import MapAdapter
+from tiled.alembic_utils import stamp_head
+from tiled.authn_database.alembic_constants import (
+    ALEMBIC_DIR,
+    ALEMBIC_INI_TEMPLATE_PATH,
+)
+from tiled.authn_database.core import initialize_database
+from tiled.catalog.adapter import logger as catalog_logger
+from tiled.catalog.utils import classify_writable_storage
+from tiled.client.constructors import from_uri
+from tiled.client.register import identity
+from tiled.client.register import logger as register_logger
+from tiled.client.register import register, watch
+from tiled.config import parse_configs
+from tiled.server.app import build_app, print_server_info
+from tiled.server.logging_config import LOGGING_CONFIG
+from tiled.server.settings import Settings
+from tiled.utils import ensure_specified_sql_driver, import_object
+
+from ..catalog import from_uri as catalog_from_uri
+from ..client import from_uri as client_from_uri
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
 DUCKDB_TABULAR_DATA_FILENAME = "data.duckdb"
 DATA_SUBDIRECTORY = "data"
 
 
-@serve_app.command("directory")
-def serve_directory(
-    directory: str = typer.Argument(..., help="A directory to serve"),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help=("Log details of directory traversal and file registration."),
-    ),
-    watch: bool = typer.Option(
-        False,
-        "--watch",
-        "-w",
-        help="Update catalog when files are added, removed, or changed.",
-    ),
-    public: bool = typer.Option(
-        False,
-        "--public",
-        help=(
-            "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with "
-            "this option selected."
-        ),
-    ),
-    api_key: Optional[str] = typer.Option(
-        None,
-        "--api-key",
-        help=(
-            "Set the single-user API key. "
-            "By default, a random key is generated at startup and printed."
-        ),
-    ),
-    keep_ext: bool = typer.Option(
-        False,
-        "--keep-ext",
-        help=(
-            "Serve a file like 'measurements.csv' as its full filepath with extension, "
-            "instead of the default which would serve it as 'measurements'. "
-            "This is discouraged because it leaks details about the storage "
-            "format to the client, such that changing the storage in the future "
-            "may break user (client-side) code."
-        ),
-    ),
-    ext: Optional[List[str]] = typer.Option(
-        None,
-        "--ext",
-        help=(
-            "Support custom file extension, mapping it to a known mimetype. "
-            "Spell like '.tif=image/tiff'. Include the leading '.' in the file "
-            "extension."
-        ),
-    ),
-    mimetype_detection_hook: Optional[str] = typer.Option(
-        None,
-        "--mimetype-hook",
-        help=(
-            "ADVANCED: Custom mimetype detection Python function. "
-            "Expected interface: detect_mimetype(filepath, mimetype) -> mimetype "
-            "Specify here as 'package.module:function'"
-        ),
-    ),
-    adapters: Optional[List[str]] = typer.Option(
-        None,
-        "--adapter",
-        help=(
-            "ADVANCED: Custom Tiled Adapter for reading a given format"
-            "Specify here as 'mimetype=package.module:function'"
-        ),
-    ),
-    walkers: Optional[List[str]] = typer.Option(
-        None,
-        "--walker",
-        help=(
-            "ADVANCED: Custom Tiled Walker for traversing directories and "
-            "grouping files. This is used in conjunction with Adapters that operate "
-            "on groups of files. "
-            "Specify here as 'package.module:function'"
-        ),
-    ),
-    host: str = typer.Option(
-        "127.0.0.1",
-        help=(
-            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
-            "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`."
-        ),
-    ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    log_config: Optional[str] = typer.Option(
-        None, help="Custom uvicorn logging configuration file"
-    ),
-    log_timestamps: bool = typer.Option(
-        False, help="Include timestamps in log output."
-    ),
-):
+class ServerCommand(ABC, BaseModel):
+    host: Annotated[
+        str,
+        "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+        "available on your local network. IPv6 addresses are supported, for "
+        "example: --host `'::'`.",
+    ] = "127.0.0.1"
+    port: Annotated[int, "Bind to a socket with this port."] = 8000
+
+    verbose: Annotated[
+        bool, "Log details of directory traversal and file registration."
+    ] = False
+    public: Annotated[
+        bool,
+        "Turns off requirement for API key authentication for reading. "
+        "However, the API key is still required for writing, so data cannot be modified even with "
+        "this option selected.",
+    ] = False
+    api_key: Annotated[
+        Optional[str],
+        "Set the single-user API key. "
+        "By default, a random key is generated at startup and printed.",
+    ] = None
+    keep_ext: Annotated[
+        bool,
+        "Serve a file like 'measurements.csv' as its full filepath with extension, "
+        "instead of the default which would serve it as 'measurements'. "
+        "This is discouraged because it leaks details about the storage "
+        "format to the client, such that changing the storage in the future "
+        "may break user (client-side) code.",
+    ] = False
+    ext: Annotated[
+        Optional[List[str]],
+        "Support custom file extension, mapping it to a known mimetype. "
+        "Spell like '.tif=image/tiff'. Include the leading '.' in the file "
+        "extension.",
+    ] = None
+    mimetype_detection_hook: Annotated[
+        Optional[str],
+        "ADVANCED: Custom mimetype detection Python function. "
+        "Expected interface: detect_mimetype(filepath, mimetype) -> mimetype "
+        "Specify here as 'package.module:function'",
+    ] = None
+    adapters: Annotated[
+        Optional[List[str]],
+        "ADVANCED: Custom Tiled Adapter for reading a given format"
+        "Specify here as 'mimetype=package.module:function'",
+    ] = None
+    walkers: Annotated[
+        Optional[List[str]],
+        "ADVANCED: Custom Tiled Walker for traversing directories and "
+        "grouping files. This is used in conjunction with Adapters that operate "
+        "on groups of files. "
+        "Specify here as 'package.module:function'",
+    ] = None
+    log_config: Annotated[
+        Optional[str], "Custom uvicorn logging configuration file"
+    ] = None
+    log_timestamps: Annotated[bool, "Include timestamps in log output."] = False
+    scalable: Annotated[
+        bool,
+        "This verifies that the configuration is compatible with scaled (multi-process) deployments.",
+    ] = False
+
+    def get_temporary_catalog_directory() -> Path:
+        temp_directory = Path(tempfile.TemporaryDirectory().name)
+        temp_directory.mkdir()
+        return temp_directory
+
+    def get_database(self, database_uri: str) -> AsyncEngine:
+        if database_uri is None:
+            database_uri = self.get_temporary_catalog_directory()
+            database_uri = ensure_specified_sql_driver(database_uri)
+
+        engine = create_async_engine(database_uri)
+        asyncio.run(initialize_database(engine))
+        stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_uri)
+        return engine
+
+    def setup_log_config(self):
+        if self.log_config is None:
+            log_config = LOGGING_CONFIG
+
+        if self.log_timestamps:
+            log_config = copy.deepcopy(log_config)
+            try:
+                log_config["formatters"]["access"]["format"] = (
+                    "[%(asctime)s.%(msecs)03dZ] "
+                    + log_config["formatters"]["access"]["format"]
+                )
+                log_config["formatters"]["default"]["format"] = (
+                    "[%(asctime)s.%(msecs)03dZ] "
+                    + log_config["formatters"]["default"]["format"]
+                )
+            except KeyError:
+                print(
+                    "The --log-timestamps option is only applicable with a logging "
+                    "configuration that, like the default logging configuration, has "
+                    "formatters 'access' and 'default'."
+                )
+                raise SettingsError()
+        return log_config
+
+    def build_server(self, tree: MapAdapter) -> uvicorn.Server:
+        log_config = self.setup_log_config()
+
+        web_app = build_app(
+            tree,
+            Settings(
+                allow_anonymous_access=self.public, single_user_api_key=self.api_key
+            ),
+            scalable=self.scalable,
+        )
+        print_server_info(
+            web_app,
+            host=self.host,
+            port=self.port,
+            include_api_key=self.api_key is None,
+        )
+
+        config = uvicorn.Config(
+            web_app, host=self.host, port=self.port, log_config=log_config
+        )
+        return uvicorn.Server(config)
+
+
+class Directory(ServerCommand):
+    directory: Annotated[str, "A directory to serve"]
+    watch: Annotated[
+        bool, "Update catalog when files are added, removed, or changed."
+    ] = False
     "Serve a Tree instance from a directory of files."
-    import tempfile
 
-    temp_directory = Path(tempfile.TemporaryDirectory().name)
-    temp_directory.mkdir()
-    typer.echo(
-        f"Creating catalog database at {temp_directory / SQLITE_CATALOG_FILENAME}",
-        err=True,
-    )
-    database = f"sqlite:///{Path(temp_directory, SQLITE_CATALOG_FILENAME)}"
+    def cli_cmd(self) -> None:
+        database_dir = self.get_temporary_catalog_directory()
+        engine = self.get_database(database_dir)
+        asyncio.run(initialize_database(engine))
+        stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database_dir)
 
-    # Because this is a tempfile we know this is a fresh database and we do not
-    # need to check its current state.
-    # We _will_ go ahead and stamp it with a revision because it is possible the
-    # user will copy it into a permanent location.
-
-    import asyncio
-
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    from ..alembic_utils import stamp_head
-    from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-    from ..catalog.core import initialize_database
-    from ..utils import ensure_specified_sql_driver
-
-    database = ensure_specified_sql_driver(database)
-    engine = create_async_engine(database)
-    asyncio.run(initialize_database(engine))
-    stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
-
-    from ..catalog import from_uri as catalog_from_uri
-    from ..server.app import build_app, print_server_info
-
-    server_settings = {}
-    if keep_ext:
-        from ..adapters.files import identity
-
-        key_from_filename = identity
-    else:
-        key_from_filename = None
-
-    from logging import StreamHandler
-
-    from ..client.register import logger as register_logger
-    from ..client.register import register
-    from ..client.register import watch as watch_
-
-    mimetypes_by_file_ext = {}
-    EXT_PATTERN = re.compile(r"(.*) *= *(.*)")
-    for item in ext or []:
-        match = EXT_PATTERN.match(item)
-        if match is None:
-            raise ValueError(
-                f"Failed parsing --ext option {item}, expected format '.ext=mimetype'"
-            )
-        ext, mimetype = match.groups()
-        mimetypes_by_file_ext[ext] = mimetype
-    adapters_by_mimetype = {}
-    ADAPTER_PATTERN = re.compile(r"(.*) *= *(.*)")
-    for item in adapters or []:
-        match = ADAPTER_PATTERN.match(item)
-        if match is None:
-            raise ValueError(
-                f"Failed parsing --adapter option {item}, expected format 'mimetype=package.module:obj'"
-            )
-        mimetype, obj_ref = match.groups()
-        adapters_by_mimetype[mimetype] = obj_ref
-    catalog_adapter = catalog_from_uri(
-        ensure_specified_sql_driver(database),
-        readable_storage=[directory],
-        adapters_by_mimetype=adapters_by_mimetype,
-    )
-    if verbose:
-        from tiled.catalog.adapter import logger as catalog_logger
-
-        catalog_logger.addHandler(StreamHandler())
-        catalog_logger.setLevel("INFO")
-        register_logger.addHandler(StreamHandler())
-        register_logger.setLevel("INFO")
-    # Set the API key manually here, rather than letting the server do it,
-    # so that we can pass it to the client.
-    generated = False
-    if api_key is None:
-        api_key = os.getenv("TILED_SINGLE_USER_API_KEY")
-        if api_key is None:
-            import secrets
-
-            api_key = secrets.token_hex(32)
-            generated = True
-
-    web_app = build_app(
-        catalog_adapter,
-        {
-            "allow_anonymous_access": public,
-            "single_user_api_key": api_key,
-        },
-        server_settings,
-    )
-    import functools
-
-    import anyio
-    import uvicorn
-
-    from ..client import from_uri as client_from_uri
-
-    print_server_info(web_app, host=host, port=port, include_api_key=generated)
-    log_config = _setup_log_config(log_config, log_timestamps)
-    config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
-    server = uvicorn.Server(config)
-
-    async def run_server():
-        await server.serve()
-
-    async def wait_for_server():
-        "Wait for server to start up, or raise TimeoutError."
-        for _ in range(100):
-            await asyncio.sleep(0.1)
-            if server.started:
-                break
+        if self.keep_ext:
+            key_from_filename = identity
         else:
-            raise TimeoutError("Server did not start in 10 seconds.")
-        host, port = server.servers[0].sockets[0].getsockname()
-        api_url = f"http://{host}:{port}/api/v1/"
-        return api_url
+            key_from_filename = None
 
-    if watch:
+        mimetypes_by_file_ext = {}
+        EXT_PATTERN = re.compile(r"(.*) *= *(.*)")
+        for item in self.ext or []:
+            match = EXT_PATTERN.match(item)
+            if match is None:
+                raise ValueError(
+                    f"Failed parsing --ext option {item}, expected format '.ext=mimetype'"
+                )
+            ext, mimetype = match.groups()
+            mimetypes_by_file_ext[ext] = mimetype
+        adapters_by_mimetype = {}
+        ADAPTER_PATTERN = re.compile(r"(.*) *= *(.*)")
+        for item in self.adapters or []:
+            match = ADAPTER_PATTERN.match(item)
+            if match is None:
+                raise ValueError(
+                    f"Failed parsing --adapter option {item}, expected format 'mimetype=package.module:obj'"
+                )
+            mimetype, obj_ref = match.groups()
+            adapters_by_mimetype[mimetype] = obj_ref
+        catalog_adapter = catalog_from_uri(
+            ensure_specified_sql_driver(database_dir),
+            readable_storage=[database_dir],
+            adapters_by_mimetype=adapters_by_mimetype,
+        )
+        if self.verbose:
+            catalog_logger.addHandler(StreamHandler())
+            catalog_logger.setLevel("INFO")
+            register_logger.addHandler(StreamHandler())
+            register_logger.setLevel("INFO")
 
-        async def serve_and_walk():
-            server_task = asyncio.create_task(run_server())
-            api_url = await wait_for_server()
-            # When we add an AsyncClient for Tiled, use that here.
-            client = await anyio.to_thread.run_sync(
-                functools.partial(client_from_uri, api_url, api_key=api_key)
-            )
+        server = self.build_server(catalog_adapter)
 
-            typer.echo(f"Server is up. Indexing files in {directory}...")
-            event = anyio.Event()
-            asyncio.create_task(
-                watch_(
+        async def run_server():
+            await server.serve()
+
+        async def wait_for_server():
+            "Wait for server to start up, or raise TimeoutError."
+            for _ in range(100):
+                await asyncio.sleep(0.1)
+                if server.started:
+                    break
+            else:
+                raise TimeoutError("Server did not start in 10 seconds.")
+            host, port = server.servers[0].sockets[0].getsockname()
+            api_url = f"http://{host}:{port}/api/v1/"
+            return api_url
+
+        if self.watch:
+
+            async def serve_and_walk():
+                server_task = asyncio.create_task(run_server())
+                api_url = await wait_for_server()
+                # When we add an AsyncClient for Tiled, use that here.
+                client = await anyio.to_thread.run_sync(
+                    functools.partial(client_from_uri, api_url, api_key=self.api_key)
+                )
+
+                print(f"Server is up. Indexing files in {self.directory}...")
+                event = anyio.Event()
+                asyncio.create_task(
+                    watch(
+                        client,
+                        self.directory,
+                        initial_walk_complete_event=event,
+                        mimetype_detection_hook=self.mimetype_detection_hook,
+                        mimetypes_by_file_ext=mimetypes_by_file_ext,
+                        adapters_by_mimetype=adapters_by_mimetype,
+                        walkers=self.walkers,
+                        key_from_filename=key_from_filename,
+                    )
+                )
+                await event.wait()
+                print("Initial indexing complete. Watching for changes...")
+                await server_task
+
+        else:
+
+            async def serve_and_walk():
+                server_task = asyncio.create_task(run_server())
+                api_url = await wait_for_server()
+                # When we add an AsyncClient for Tiled, use that here.
+                client = await anyio.to_thread.run_sync(
+                    functools.partial(client_from_uri, api_url, api_key=self.api_key)
+                )
+
+                print(f"Server is up. Indexing files in {self.directory}...")
+                await register(
                     client,
-                    directory,
-                    initial_walk_complete_event=event,
-                    mimetype_detection_hook=mimetype_detection_hook,
+                    self.directory,
+                    mimetype_detection_hook=self.mimetype_detection_hook,
                     mimetypes_by_file_ext=mimetypes_by_file_ext,
                     adapters_by_mimetype=adapters_by_mimetype,
-                    walkers=walkers,
+                    walkers=self.walkers,
                     key_from_filename=key_from_filename,
                 )
-            )
-            await event.wait()
-            typer.echo("Initial indexing complete. Watching for changes...")
-            await server_task
+                print("Indexing complete.")
+                await server_task
 
-    else:
-
-        async def serve_and_walk():
-            server_task = asyncio.create_task(run_server())
-            api_url = await wait_for_server()
-            # When we add an AsyncClient for Tiled, use that here.
-            client = await anyio.to_thread.run_sync(
-                functools.partial(client_from_uri, api_url, api_key=api_key)
-            )
-
-            typer.echo(f"Server is up. Indexing files in {directory}...")
-            await register(
-                client,
-                directory,
-                mimetype_detection_hook=mimetype_detection_hook,
-                mimetypes_by_file_ext=mimetypes_by_file_ext,
-                adapters_by_mimetype=adapters_by_mimetype,
-                walkers=walkers,
-                key_from_filename=key_from_filename,
-            )
-            typer.echo("Indexing complete.")
-            await server_task
-
-    asyncio.run(serve_and_walk())
+        asyncio.run(serve_and_walk())
 
 
-def serve_catalog(
-    database: Optional[str] = typer.Argument(
-        None, help="A filepath or database URI, e.g. 'catalog.db'"
-    ),
-    read: Optional[List[str]] = typer.Option(
-        None,
-        "--read",
-        "-r",
-        help="Locations that the server may read from",
-    ),
-    write: Optional[List[str]] = typer.Option(
-        None,
-        "--write",
-        "-w",
-        help="Locations that the server may write to",
-    ),
-    temp: bool = typer.Option(
-        False,
-        "--temp",
-        help="Make a new catalog in a temporary directory.",
-    ),
-    init: bool = typer.Option(
-        False,
-        "--init",
-        help="Initialize a new catalog database.",
-    ),
-    public: bool = typer.Option(
-        False,
-        "--public",
-        help=(
-            "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with "
-            "this option selected."
-        ),
-    ),
-    api_key: Optional[str] = typer.Option(
-        None,
-        "--api-key",
-        help=(
-            "Set the single-user API key. "
-            "By default, a random key is generated at startup and printed."
-        ),
-    ),
-    host: str = typer.Option(
-        "127.0.0.1",
-        help=(
-            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
-            "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`."
-        ),
-    ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    scalable: bool = typer.Option(
-        False,
-        "--scalable",
-        help=(
-            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
-        ),
-    ),
-    log_config: Optional[str] = typer.Option(
-        None, help="Custom uvicorn logging configuration file"
-    ),
-    log_timestamps: bool = typer.Option(
-        False, help="Include timestamps in log output."
-    ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help=("Log details of catalog creation."),
-    ),
-):
+class Catalog(ServerCommand):
+    database: Annotated[
+        Optional[str], "A filepath or database URI, e.g. 'catalog.db'"
+    ] = None
+    read: Annotated[
+        Optional[List[str]], "Locations that the server may read from"
+    ] = None
+    write: Annotated[
+        Optional[List[str]], "Locations that the server may write to"
+    ] = None
+    temp: Annotated[bool, "Make a new catalog in a temporary directory."] = False
+    init: Annotated[bool, "Initialize a new catalog database."] = False
+    scalable: Annotated[
+        bool,
+        "This verifies that the configuration is compatible with scaled (multi-process) deployments.",
+    ] = False
     "Serve a catalog."
-    import urllib.parse
 
-    from ..catalog import from_uri
-    from ..catalog.utils import classify_writable_storage
-    from ..server.app import build_app, print_server_info
-
-    parsed_database = urllib.parse.urlparse(database)
-    if parsed_database.scheme in ("", "file"):
-        database = f"sqlite:///{parsed_database.path}"
-
-    write = write or []
-    if temp:
-        if database is not None:
-            typer.echo(
-                "The option --temp was set but a database was also provided. "
-                "Do one or the other.",
-                err=True,
+    @model_validator(mode="after")
+    def temp_or_database(self) -> Self:
+        if self.database is not None and self.temp:
+            raise ValueError("Expected temp or a database uri but received both.")
+        if self.database is None and not self.temp:
+            raise ValueError(
+                "Database required if not temp- try `tiled admin database init`."
             )
-            raise typer.Abort()
-        import tempfile
+        return self
 
-        directory = Path(tempfile.TemporaryDirectory().name)
-        typer.echo(
-            f"Initializing temporary storage in {directory}",
-            err=True,
-        )
-        directory.mkdir()
-        database = f"sqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
-
-        # Because this is a tempfile we know this is a fresh database and we do not
-        # need to check its current state.
-        # We _will_ go ahead and stamp it with a revision because it is possible the
-        # user will copy it into a permanent location.
-
-        import asyncio
-
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        from ..alembic_utils import stamp_head
-        from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-        from ..catalog.core import initialize_database
-        from ..utils import ensure_specified_sql_driver
-
-        database = ensure_specified_sql_driver(database)
-        typer.echo(
-            f"  catalog database:          {directory / SQLITE_CATALOG_FILENAME}",
-            err=True,
-        )
-        engine = create_async_engine(database)
-        asyncio.run(initialize_database(engine))
-        stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
-
-        if not write:
-            typer.echo(
-                f"  writable file storage:     {directory / DATA_SUBDIRECTORY}",
-                err=True,
+    def cli_cmd(self) -> None:
+        write = self.write or []
+        if self.temp and not write:
+            temp_directory: Path = self.get_temporary_catalog_directory()
+            print(
+                f"  writable file storage:     {temp_directory / DATA_SUBDIRECTORY}",
             )
-            writable_dir = directory / DATA_SUBDIRECTORY
+            writable_dir = temp_directory / DATA_SUBDIRECTORY
             writable_dir.mkdir()
             write.append(writable_dir)
-            typer.echo(
-                f"  writable tabular storage:  {directory / DUCKDB_TABULAR_DATA_FILENAME}",
-                err=True,
+            print(
+                f"  writable tabular storage:  {temp_directory / DUCKDB_TABULAR_DATA_FILENAME}",
             )
             tabular_data_database = (
-                f"duckdb:///{Path(directory, DUCKDB_TABULAR_DATA_FILENAME)}"
+                f"duckdb:///{temp_directory / DUCKDB_TABULAR_DATA_FILENAME}"
             )
             write.append(tabular_data_database)
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
-    elif database is None:
-        typer.echo(
-            """A catalog must be specified. Either use a temporary catalog:
 
-    tiled serve catalog --temp
+        if self.verbose:
+            catalog_logger.addHandler(StreamHandler())
+            catalog_logger.setLevel("INFO")
 
-or initialize a new catalog, e.g.
+        if not write:
+            print(
+                "This catalog will be served as read-only. "
+                "To make it writable, specify a writable directory with --write.",
+            )
 
-    tiled catalog init catalog.db
-    tiled serve catalog catalog.db
-
-or use an existing one:
-
-    tiled serve catalog catalog.db
-""",
-            err=True,
+        tree = from_uri(
+            self.database,
+            writable_storage=classify_writable_storage(write),
+            readable_storage=self.read,
+            init_if_not_exists=self.init,
         )
-        raise typer.Abort()
-    elif verbose:
-        from logging import StreamHandler
-
-        from tiled.catalog.adapter import logger as catalog_logger
-
-        catalog_logger.addHandler(StreamHandler())
-        catalog_logger.setLevel("INFO")
-
-    if not write:
-        typer.echo(
-            "This catalog will be served as read-only. "
-            "To make it writable, specify a writable directory with --write.",
-            err=True,
-        )
-
-    server_settings = {}
-    tree = from_uri(
-        database,
-        writable_storage=classify_writable_storage(write),
-        readable_storage=read,
-        init_if_not_exists=init,
-    )
-    web_app = build_app(
-        tree,
-        {
-            "allow_anonymous_access": public,
-            "single_user_api_key": api_key,
-        },
-        server_settings,
-        scalable=scalable,
-    )
-    print_server_info(
-        web_app, host=host, port=port, include_api_key=api_key is not None
-    )
-
-    import uvicorn
-
-    log_config = _setup_log_config(log_config, log_timestamps)
-    uvicorn.run(web_app, host=host, port=port, log_config=log_config)
+        self.run_server(tree)
 
 
-serve_app.command("catalog")(serve_catalog)
+class PyObject(ServerCommand):
+    object_path: Annotated[
+        str, "Object path, as in 'package.subpackage.module:object_name'"
+    ]
 
-
-@serve_app.command("pyobject")
-def serve_pyobject(
-    object_path: str = typer.Argument(
-        ..., help="Object path, as in 'package.subpackage.module:object_name'"
-    ),
-    public: bool = typer.Option(
-        False,
-        "--public",
-        help=(
-            "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with this "
-            "option selected."
-        ),
-    ),
-    api_key: Optional[str] = typer.Option(
-        None,
-        "--api-key",
-        help=(
-            "Set the single-user API key. "
-            "By default, a random key is generated at startup and printed."
-        ),
-    ),
-    host: str = typer.Option(
-        "127.0.0.1",
-        help=(
-            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
-            "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`."
-        ),
-    ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
-    scalable: bool = typer.Option(
-        False,
-        "--scalable",
-        help=(
-            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
-        ),
-    ),
-    log_config: Optional[str] = typer.Option(
-        None, help="Custom uvicorn logging configuration file"
-    ),
-    log_timestamps: bool = typer.Option(
-        False, help="Include timestamps in log output."
-    ),
-):
     "Serve a Tree instance from a Python module."
-    from ..server.app import build_app, print_server_info
-    from ..utils import import_object
 
-    tree = import_object(object_path)
-    server_settings = {}
-    web_app = build_app(
-        tree,
-        {
-            "allow_anonymous_access": public,
-            "single_user_api_key": api_key,
-        },
-        server_settings,
-        scalable=scalable,
-    )
-    print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)
-
-    import uvicorn
-
-    log_config = _setup_log_config(log_config, log_timestamps)
-    uvicorn.run(web_app, host=host, port=port, log_config=log_config)
+    def cli_cmd(self) -> None:
+        tree = import_object(self.object_path)
+        self.run_server(tree)
 
 
-@serve_app.command("demo")
-def serve_demo(
-    host: str = typer.Option(
-        "127.0.0.1",
-        help=(
-            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
-            "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`."
-        ),
-    ),
-    port: int = typer.Option(8000, help="Bind to a socket with this port."),
-):
-    "Start a public server with example data."
-    from ..server.app import build_app, print_server_info
-    from ..utils import import_object
+class Demo(BaseModel):
+    host: Annotated[
+        str,
+        "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
+        "available on your local network. IPv6 addresses are supported, for "
+        "example: --host `'::'`.",
+    ] = "127.0.0.1"
+    port: Annotated[int, "Bind to a socket with this port."] = 8000
 
-    EXAMPLE = "tiled.examples.generated:tree"
-    tree = import_object(EXAMPLE)
-    web_app = build_app(tree, {"allow_anonymous_access": True}, {})
-    print_server_info(web_app, host=host, port=port, include_api_key=True)
+    """Start a public server with example data."""
 
-    import uvicorn
-
-    uvicorn.run(web_app, host=host, port=port)
+    def cli_cmd(self) -> None:
+        tree = import_object(self.object_path)
+        web_app = build_app(tree, Settings(allow_anonymous_access=True))
+        print_server_info(web_app, host=self.host, port=self.port, include_api_key=True)
+        uvicorn.run(web_app, host=self.host, port=self.port)
 
 
-@serve_app.command("config")
-def serve_config(
-    config_path: Optional[Path] = typer.Argument(
-        None,
-        help=(
-            "Path to a config file or directory of config files. "
-            "If None, check environment variable TILED_CONFIG. "
-            "If that is unset, try default location ./config.yml."
-        ),
-    ),
-    public: bool = typer.Option(
-        False,
-        "--public",
-        help=(
-            "Turns off requirement for API key authentication for reading. "
-            "However, the API key is still required for writing, so data cannot be modified even with this "
-            "option selected."
-        ),
-    ),
-    api_key: Optional[str] = typer.Option(
-        None,
-        "--api-key",
-        help=(
-            "Set the single-user API key. "
-            "By default, a random key is generated at startup and printed."
-        ),
-    ),
-    host: Optional[str] = typer.Option(
-        None,
-        help=(
-            "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
-            "available on your local network. IPv6 addresses are supported, for "
-            "example: --host `'::'`. Uses value in config by default."
-        ),
-    ),
-    port: Optional[int] = typer.Option(
-        None, help="Bind to a socket with this port. Uses value in config by default."
-    ),
-    scalable: bool = typer.Option(
-        False,
-        "--scalable",
-        help=(
-            "This verifies that the configuration is compatible with scaled (multi-process) deployments."
-        ),
-    ),
-    log_config: Optional[str] = typer.Option(
-        None, help="Custom uvicorn logging configuration file"
-    ),
-    log_timestamps: bool = typer.Option(
-        False, help="Include timestamps in log output."
-    ),
-):
-    "Serve a Tree as specified in configuration file(s)."
-    import os
-
-    from ..config import parse_configs
-
-    config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
-    try:
-        parsed_config = parse_configs(config_path)
-    except Exception as err:
-        typer.echo(str(err), err=True)
-        raise typer.Abort()
-
-    # Let --public flag override config.
-    if public:
-        if "authentication" not in parsed_config:
-            parsed_config["authentication"] = {}
-        parsed_config["authentication"]["allow_anonymous_access"] = True
-    # Let --api-key flag override config.
-    if api_key:
-        if "authentication" not in parsed_config:
-            parsed_config["authentication"] = {}
-        parsed_config["authentication"]["single_user_api_key"] = api_key
-
-    # Delay this import so that we can fail faster if config-parsing fails above.
-
-    from ..server.app import build_app_from_config, logger, print_server_info
-
-    # Extract config for uvicorn.
-    uvicorn_kwargs = parsed_config.pop("uvicorn", {})
-    # If --host is given, it overrides host in config. Same for --port and --log-config.
-    uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
-    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
-    uvicorn_kwargs["log_config"] = _setup_log_config(
-        log_config or uvicorn_kwargs.get("log_config"),
-        log_timestamps,
-    )
-
-    # This config was already validated when it was parsed. Do not re-validate.
-    logger.info(f"Using configuration from {Path(config_path).absolute()}")
-
-    if root_path := uvicorn_kwargs.get("root_path", ""):
-        parsed_config["root_path"] = root_path
-
-    web_app = build_app_from_config(
-        parsed_config, source_filepath=config_path, scalable=scalable
-    )
-    print_server_info(
-        web_app,
-        host=uvicorn_kwargs["host"],
-        port=uvicorn_kwargs["port"],
-        include_api_key=api_key is None,
-    )
-
-    # Likewise, delay this import.
-
-    import uvicorn
-
-    uvicorn.run(web_app, **uvicorn_kwargs)
+def get_config_path(config_path: Optional[Path]) -> Path:
+    if config_path is None:
+        return Path(os.getenv("TILED_CONFIG", "config.yml"))
+    return config_path
 
 
-def _setup_log_config(log_config, log_timestamps):
-    if log_config is None:
-        from ..server.logging_config import LOGGING_CONFIG
+class CheckConfig(BaseModel):
+    config_path: Annotated[
+        Optional[Path],
+        "Path to a config file or directory of config files. "
+        "If None, check environment variable TILED_CONFIG. "
+        "If that is unset, try default location ./config.yml.",
+        AfterValidator(get_config_path),
+    ] = None
+    "Check configuration file for syntax and validation errors."
 
-        log_config = LOGGING_CONFIG
-
-    if log_timestamps:
-        import copy
-
-        log_config = copy.deepcopy(log_config)
+    def cli_cmd(self) -> None:
         try:
-            log_config["formatters"]["access"]["format"] = (
-                "[%(asctime)s.%(msecs)03dZ] "
-                + log_config["formatters"]["access"]["format"]
-            )
-            log_config["formatters"]["default"]["format"] = (
-                "[%(asctime)s.%(msecs)03dZ] "
-                + log_config["formatters"]["default"]["format"]
-            )
-        except KeyError:
-            typer.echo(
-                "The --log-timestamps option is only applicable with a logging "
-                "configuration that, like the default logging configuration, has "
-                "formatters 'access' and 'default'."
-            )
-            raise typer.Abort()
-    return log_config
+            parse_configs(self.config_path)
+            print("No errors found in configuration.")
+        except Exception as err:
+            print(str(err), err=True)
+            raise SettingsError()
+
+
+class Config(ServerCommand):
+    config_path: Annotated[
+        Optional[Path],
+        "Path to a config file or directory of config files. "
+        "If None, check environment variable TILED_CONFIG. "
+        "If that is unset, try default location ./config.yml.",
+        AfterValidator(get_config_path),
+    ] = None
+    "Serve a Tree as specified in configuration file(s)."
+
+    def cli_cmd(self) -> None:
+        try:
+            settings: Settings = parse_configs(self.config_path)
+            self.build_server(settings.tree)
+        except Exception as err:
+            print(str(err), err=True)
+            raise SettingsError()
+
+
+class Serve(BaseModel):
+    directory: CliSubCommand[Directory]
+    catalog: CliSubCommand[Catalog]
+    demo: CliSubCommand[Demo]
+    pyobject: CliSubCommand[PyObject]
+    config: CliSubCommand[Config]
+
+    def cli_cmd(self) -> None:
+        CliApp.run_subcommand(self)
