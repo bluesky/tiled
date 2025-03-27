@@ -10,7 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import anyio
 import packaging.version
@@ -52,13 +52,7 @@ from .compression import CompressionMiddleware
 from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
-from .utils import (
-    API_KEY_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    get_authenticators,
-    get_root_url,
-    record_timing,
-)
+from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -134,7 +128,7 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = {
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }
@@ -354,6 +348,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         serialization_registry,
         deserialization_registry,
         validation_registry,
+        authenticators,
     )
     app.include_router(router, prefix="/api/v1")
 
@@ -403,10 +398,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         app.state.authenticated = True
     else:
         app.state.authenticated = False
-
-    @cache
-    def override_get_authenticators():
-        return authenticators
 
     @cache
     def override_get_root_tree():
@@ -733,7 +724,6 @@ Back up the database, and then run:
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
 

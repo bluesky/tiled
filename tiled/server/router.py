@@ -37,7 +37,7 @@ from ..structures.core import Spec, StructureFamily
 from ..utils import SpecialUsers, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from .authentication import get_authenticators, get_current_principal
+from .authentication import get_current_principal
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -142,6 +142,7 @@ def get_router(
     serialization_registry: SerializationRegistry,
     deserialization_registry: SerializationRegistry,
     validation_registry: ValidationRegistry,
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -149,7 +150,6 @@ def get_router(
     async def about(
         request: Request,
         settings: Settings = Depends(get_settings),
-        authenticators=Depends(get_authenticators),
     ):
         # TODO The lazy import of entry modules and serializers means that the
         # lists of formats are not populated until they are first used. Not very

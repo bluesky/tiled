@@ -64,7 +64,7 @@ from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
 from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
 from .settings import Settings, get_settings
-from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
+from .utils import API_KEY_COOKIE_NAME, get_base_url
 
 ALGORITHM = "HS256"
 UNIT_SECOND = timedelta(seconds=1)
@@ -237,9 +237,9 @@ async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_ap
 
 
 async def get_scopes_from_api_key(
-    api_key: str, settings: Settings, authenticators, db
+    api_key: str, settings: Settings, authenticated: bool, db: Optional[AsyncSession]
 ) -> Sequence[str]:
-    if not authenticators:
+    if not authenticated:
         # Tiled is in a "single user" mode with only one API key.
         return (
             USER_SCOPES
@@ -274,14 +274,16 @@ async def get_scopes_from_api_key(
 
 
 async def get_current_scopes(
+    request: Request,
     decoded_access_token: Optional[dict[str, Any]] = Depends(get_decoded_access_token),
     api_key: Optional[str] = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
-    authenticators=Depends(get_authenticators),
     db: Optional[AsyncSession] = Depends(get_database_session),
 ) -> set[str]:
     if api_key is not None:
-        return await get_scopes_from_api_key(api_key, settings, authenticators, db)
+        return await get_scopes_from_api_key(
+            api_key, settings, request.app.state.authenticated, db
+        )
     elif decoded_access_token is not None:
         return decoded_access_token["scp"]
     else:
@@ -311,7 +313,6 @@ async def get_current_principal(
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
-    authenticators=Depends(get_authenticators),
     db: Optional[AsyncSession] = Depends(get_database_session),
     # TODO: https://github.com/bluesky/tiled/issues/923
     # Remove non-Principal return types
@@ -329,7 +330,7 @@ async def get_current_principal(
     """
 
     if api_key is not None:
-        if authenticators:
+        if request.app.state.authenticated:
             # Tiled is in a multi-user configuration with authentication providers.
             # We store the hashed value of the API key secret.
             # By comparing hashes we protect against timing attacks.
