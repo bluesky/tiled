@@ -24,6 +24,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
     list e.g. ``TILED_SECRET_KEYS='["one", "two"]'``
 - More type hinting
 - Refactor authentication router construction
+- Set minimum version of FastAPI required.
 
 ## 0.1.0-b20 (2025-03-07)
 
