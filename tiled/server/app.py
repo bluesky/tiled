@@ -10,13 +10,13 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -52,13 +52,7 @@ from .compression import CompressionMiddleware
 from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
-from .utils import (
-    API_KEY_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    get_authenticators,
-    get_root_url,
-    record_timing,
-)
+from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -134,7 +128,7 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = {
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }
@@ -354,6 +348,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         serialization_registry,
         deserialization_registry,
         validation_registry,
+        authenticators,
     )
     app.include_router(router, prefix="/api/v1")
 
@@ -368,13 +363,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
         from .authentication import (
-            base_authentication_router,
-            build_auth_code_route,
-            build_device_code_authorize_route,
-            build_device_code_token_route,
-            build_device_code_user_code_form_route,
-            build_device_code_user_code_submit_route,
-            build_handle_credentials_route,
+            add_external_routes,
+            add_internal_routes,
+            authentication_router,
             oauth2_scheme,
         )
 
@@ -385,41 +376,17 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
-        authentication_router = APIRouter()
+        authentication_router = authentication_router()
         # This adds the universal routes like /session/refresh and /session/revoke.
         # Below we will add routes specific to our authentication providers.
-        authentication_router.include_router(base_authentication_router)
+
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
             if isinstance(authenticator, InternalAuthenticator):
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_handle_credentials_route(authenticator, provider)
-                )
+                add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
-                # Client starts here to create a PendingSession.
-                authentication_router.post(f"/provider/{provider}/authorize")(
-                    build_device_code_authorize_route(authenticator, provider)
-                )
-                # External OAuth redirects here with code, presenting form for user code.
-                authentication_router.get(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_form_route(authenticator, provider)
-                )
-                # User code and auth code are submitted here.
-                authentication_router.post(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_submit_route(authenticator, provider)
-                )
-                # Client polls here for token.
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_device_code_token_route(authenticator, provider)
-                )
-                # Normal code flow end point for web UIs
-                authentication_router.get(f"/provider/{provider}/code")(
-                    build_auth_code_route(authenticator, provider)
-                )
-                # authentication_router.post(f"/provider/{provider}/code")(
-                #     build_auth_code_route(authenticator, provider)
-                # )
+                add_external_routes(authentication_router, provider, authenticator)
             else:
                 raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
@@ -431,10 +398,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         app.state.authenticated = True
     else:
         app.state.authenticated = False
-
-    @cache
-    def override_get_authenticators():
-        return authenticators
 
     @cache
     def override_get_root_tree():
@@ -761,7 +724,6 @@ Back up the database, and then run:
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
 
