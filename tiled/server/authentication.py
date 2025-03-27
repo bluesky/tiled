@@ -62,7 +62,7 @@ from ..authn_database.core import (
 from ..utils import SHARE_TILED_PATH, SpecialUsers
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
-from .protocols import InternalAuthenticator, UserSessionState
+from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, get_authenticators, get_base_url
 
@@ -528,10 +528,20 @@ async def create_tokens_from_session(settings, db, session, provider):
     }
 
 
-def build_auth_code_route(authenticator, provider):
+def add_external_routes(
+    router: APIRouter, provider: str, authenticator: ExternalAuthenticator
+):
+    if not SHARE_TILED_PATH:
+        raise Exception(
+            "Static assets could not be found and are required for "
+            "setting up external OAuth authentication."
+        )
+    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
+
     "Build an auth_code route function for this Authenticator."
 
-    async def route(
+    @router.get(f"/provider/{provider}/code")
+    async def auth_code_route(
         request: Request,
         settings: Settings = Depends(get_settings),
         db: Optional[AsyncSession] = Depends(get_database_session),
@@ -552,13 +562,10 @@ def build_auth_code_route(authenticator, provider):
         tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
-    return route
-
-
-def build_device_code_authorize_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
-    async def route(
+    @router.post(f"/provider/{provider}/authorize")
+    async def device_code_authorize_route(
         request: Request,
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -586,18 +593,8 @@ def build_device_code_authorize_route(authenticator, provider):
             "user_code": pending_session["user_code"],
         }
 
-    return route
-
-
-def build_device_code_user_code_form_route(authentication, provider):
-    if not SHARE_TILED_PATH:
-        raise Exception(
-            "Static assets could not be found and are required for "
-            "setting up external OAuth authentication."
-        )
-    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
-
-    async def route(
+    @router.get(f"/provider/{provider}/device_code")
+    async def device_code_user_code_form_route(
         request: Request,
         code: str,
     ):
@@ -613,20 +610,10 @@ def build_device_code_user_code_form_route(authentication, provider):
             },
         )
 
-    return route
-
-
-def build_device_code_user_code_submit_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
-    if not SHARE_TILED_PATH:
-        raise Exception(
-            "Static assets could not be found and are required for "
-            "setting up external OAuth authentication."
-        )
-    templates = Jinja2Templates(Path(SHARE_TILED_PATH, "templates"))
-
-    async def route(
+    @router.post(f"/provider/{provider}/device_code")
+    async def device_code_user_code_submit_route(
         request: Request,
         code: str = Form(),
         user_code: str = Form(),
@@ -685,13 +672,10 @@ def build_device_code_user_code_submit_route(authenticator, provider):
             },
         )
 
-    return route
-
-
-def build_device_code_token_route(authenticator, provider):
     "Build an /authorize route function for this Authenticator."
 
-    async def route(
+    @router.post(f"/provider/{provider}/token")
+    async def device_code_token_route(
         request: Request,
         body: schemas.DeviceCode,
         settings: Settings = Depends(get_settings),
@@ -725,13 +709,14 @@ def build_device_code_token_route(authenticator, provider):
         tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
 
-    return route
 
-
-def build_handle_credentials_route(authenticator: InternalAuthenticator, provider):
+def add_internal_routes(
+    router: APIRouter, provider: str, authenticator: InternalAuthenticator
+):
     "Register a handle_credentials route function for this Authenticator."
 
-    async def route(
+    @router.post(f"/provider/{provider}/token")
+    async def handle_credentials_route(
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: Settings = Depends(get_settings),
@@ -756,8 +741,6 @@ def build_handle_credentials_route(authenticator: InternalAuthenticator, provide
         )
         tokens = await create_tokens_from_session(settings, db, session, provider)
         return tokens
-
-    return route
 
 
 async def generate_apikey(db, principal, apikey_params, request):
