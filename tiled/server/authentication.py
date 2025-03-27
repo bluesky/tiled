@@ -800,31 +800,105 @@ async def generate_apikey(db, principal, apikey_params, request):
     )
 
 
-base_authentication_router = APIRouter()
+def authentication_router() -> APIRouter:
+    router = APIRouter()
 
+    @router.get(
+        "/principal",
+        response_model=schemas.Principal,
+    )
+    async def principal_list(
+        request: Request,
+        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
+        limit: Optional[int] = Query(
+            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+        ),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        _=Security(check_scopes, scopes=["read:principals"]),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        "List Principals (users and services)."
+        request.state.endpoint = "auth"
+        principal_orms = (
+            (
+                await db.execute(
+                    select(orm.Principal)
+                    .offset(offset)
+                    .limit(limit)
+                    .options(
+                        selectinload(orm.Principal.identities),
+                        selectinload(orm.Principal.roles),
+                        selectinload(orm.Principal.api_keys),
+                        selectinload(orm.Principal.sessions),
+                    )
+                )
+            )
+            .unique()
+            .all()
+        )
+        principals = []
+        for (principal_orm,) in principal_orms:
+            latest_activity = await latest_principal_activity(db, principal_orm)
+            principal = schemas.Principal.from_orm(
+                principal_orm, latest_activity
+            ).model_dump()
+            principals.append(principal)
+        return json_or_msgpack(request, principals)
 
-@base_authentication_router.get(
-    "/principal",
-    response_model=schemas.Principal,
-)
-async def principal_list(
-    request: Request,
-    offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-    limit: Optional[int] = Query(
-        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-    ),
-    principal: Union[schemas.Principal, SpecialUsers] = Depends(get_current_principal),
-    _=Security(check_scopes, scopes=["read:principals"]),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    "List Principals (users and services)."
-    request.state.endpoint = "auth"
-    principal_orms = (
-        (
+    @router.post(
+        "/principal",
+        response_model=schemas.Principal,
+    )
+    async def create_service_principal(
+        request: Request,
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        _=Security(check_scopes, scopes=["write:principals"]),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+        role: str = Query(...),
+    ):
+        "Create a principal for a service account."
+
+        principal_orm = await create_service(db, role)
+
+        # Reload to select Principal and Identities.
+        fully_loaded_principal_orm = (
             await db.execute(
                 select(orm.Principal)
-                .offset(offset)
-                .limit(limit)
+                .options(
+                    selectinload(orm.Principal.identities),
+                    selectinload(orm.Principal.roles),
+                    selectinload(orm.Principal.api_keys),
+                    selectinload(orm.Principal.sessions),
+                )
+                .filter(orm.Principal.id == principal_orm.id)
+            )
+        ).scalar()
+
+        principal = schemas.Principal.from_orm(fully_loaded_principal_orm).model_dump()
+        request.state.endpoint = "auth"
+
+        return json_or_msgpack(request, principal)
+
+    @router.get(
+        "/principal/{uuid}",
+        response_model=schemas.Principal,
+    )
+    async def principal(
+        request: Request,
+        uuid: uuid_module.UUID,
+        _=Security(check_scopes, scopes=["read:principals"]),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        "Get information about one Principal (user or service)."
+        request.state.endpoint = "auth"
+        principal_orm = (
+            await db.execute(
+                select(orm.Principal)
+                .filter(orm.Principal.uuid == uuid)
                 .options(
                     selectinload(orm.Principal.identities),
                     selectinload(orm.Principal.roles),
@@ -832,397 +906,333 @@ async def principal_list(
                     selectinload(orm.Principal.sessions),
                 )
             )
-        )
-        .unique()
-        .all()
-    )
-    principals = []
-    for (principal_orm,) in principal_orms:
+        ).scalar()
+        if principal_orm is None:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND, detail=f"No such Principal {uuid}"
+            )
         latest_activity = await latest_principal_activity(db, principal_orm)
-        principal = schemas.Principal.from_orm(
-            principal_orm, latest_activity
-        ).model_dump()
-        principals.append(principal)
-    return json_or_msgpack(request, principals)
 
-
-@base_authentication_router.post(
-    "/principal",
-    response_model=schemas.Principal,
-)
-async def create_service_principal(
-    request: Request,
-    principal: Union[schemas.Principal, SpecialUsers] = Depends(get_current_principal),
-    _=Security(check_scopes, scopes=["write:principals"]),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-    role: str = Query(...),
-):
-    "Create a principal for a service account."
-
-    principal_orm = await create_service(db, role)
-
-    # Relaod to select Principal and Identiies.
-    fully_loaded_principal_orm = (
-        await db.execute(
-            select(orm.Principal)
-            .options(
-                selectinload(orm.Principal.identities),
-                selectinload(orm.Principal.roles),
-                selectinload(orm.Principal.api_keys),
-                selectinload(orm.Principal.sessions),
-            )
-            .filter(orm.Principal.id == principal_orm.id)
+        return json_or_msgpack(
+            request,
+            schemas.Principal.from_orm(principal_orm, latest_activity).model_dump(),
         )
-    ).scalar()
 
-    principal = schemas.Principal.from_orm(fully_loaded_principal_orm).model_dump()
-    request.state.endpoint = "auth"
-
-    return json_or_msgpack(request, principal)
-
-
-@base_authentication_router.get(
-    "/principal/{uuid}",
-    response_model=schemas.Principal,
-)
-async def principal(
-    request: Request,
-    uuid: uuid_module.UUID,
-    _=Security(check_scopes, scopes=["read:principals"]),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    "Get information about one Principal (user or service)."
-    request.state.endpoint = "auth"
-    principal_orm = (
-        await db.execute(
-            select(orm.Principal)
-            .filter(orm.Principal.uuid == uuid)
-            .options(
-                selectinload(orm.Principal.identities),
-                selectinload(orm.Principal.roles),
-                selectinload(orm.Principal.api_keys),
-                selectinload(orm.Principal.sessions),
-            )
-        )
-    ).scalar()
-    if principal_orm is None:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND, detail=f"No such Principal {uuid}"
-        )
-    latest_activity = await latest_principal_activity(db, principal_orm)
-    return json_or_msgpack(
-        request,
-        schemas.Principal.from_orm(principal_orm, latest_activity).model_dump(),
+    @router.delete(
+        "/principal/{uuid}/apikey",
+        response_model=schemas.Principal,
     )
-
-
-@base_authentication_router.delete(
-    "/principal/{uuid}/apikey",
-    response_model=schemas.Principal,
-)
-async def revoke_apikey_for_principal(
-    request: Request,
-    uuid: uuid_module.UUID,
-    first_eight: str,
-    _=Security(check_scopes, scopes=["admin:apikeys"]),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    "Allow Tiled Admins to delete any user's apikeys e.g."
-    request.state.endpoint = "auth"
-    api_key_orm = (
-        await db.execute(
-            select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
-        )
-    ).scalar()
-    if (api_key_orm is None) or (api_key_orm.principal.uuid != uuid):
-        raise HTTPException(
-            404,
-            f"The principal {uuid} has no such API key.",
-        )
-    await db.delete(api_key_orm)
-    await db.commit()
-
-    return Response(status_code=HTTP_204_NO_CONTENT)
-
-
-@base_authentication_router.post(
-    "/principal/{uuid}/apikey",
-    response_model=schemas.APIKeyWithSecret,
-)
-async def apikey_for_principal(
-    request: Request,
-    uuid: uuid_module.UUID,
-    apikey_params: schemas.APIKeyRequestParams,
-    principal: Union[schemas.Principal, SpecialUsers] = Depends(get_current_principal),
-    _=Security(check_scopes, scopes=["admin:apikeys"]),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    "Generate an API key for a Principal."
-    request.state.endpoint = "auth"
-    principal = (
-        await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
-    ).scalar()
-    if principal is None:
-        raise HTTPException(
-            404, f"Principal {uuid} does not exist or insufficient permissions."
-        )
-    return await generate_apikey(db, principal, apikey_params, request)
-
-
-@base_authentication_router.post(
-    "/session/refresh", response_model=schemas.AccessAndRefreshTokens
-)
-async def refresh_session(
-    request: Request,
-    refresh_token: schemas.RefreshToken,
-    settings: Settings = Depends(get_settings),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    "Obtain a new access token and refresh token."
-    request.state.endpoint = "auth"
-    new_tokens = await slide_session(refresh_token.refresh_token, settings, db)
-    return new_tokens
-
-
-@base_authentication_router.post("/session/revoke")
-async def revoke_session(
-    request: Request,
-    refresh_token: schemas.RefreshToken,
-    settings: Settings = Depends(get_settings),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    "Mark a Session as revoked so it cannot be refreshed again."
-    request.state.endpoint = "auth"
-    payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
-    session_id = payload["sid"]
-    # Find this session in the database.
-    session = await lookup_valid_session(db, session_id)
-    if session is None:
-        raise HTTPException(HTTP_409_CONFLICT, detail=f"No session {session_id}")
-    session.revoked = True
-    db.add(session)
-    await db.commit()
-    return Response(status_code=HTTP_204_NO_CONTENT)
-
-
-@base_authentication_router.delete("/session/revoke/{session_id}")
-async def revoke_session_by_id(
-    session_id: str,  # from path parameter
-    request: Request,
-    principal: Union[schemas.Principal, SpecialUsers] = Depends(get_current_principal),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    "Mark a Session as revoked so it cannot be refreshed again."
-    request.state.endpoint = "auth"
-    # Find this session in the database.
-    session = await lookup_valid_session(db, session_id)
-    if session is None:
-        raise HTTPException(404, detail=f"No session {session_id}")
-    if principal.uuid != session.principal.uuid:
-        # TODO Add a scope for doing this for other users.
-        raise HTTPException(
-            HTTP_404_NOT_FOUND,
-            detail="Sessions does not exist or requester has insufficient permissions",
-        )
-    session.revoked = True
-    db.add(session)
-    await db.commit()
-    return Response(status_code=HTTP_204_NO_CONTENT)
-
-
-async def slide_session(refresh_token, settings, db):
-    try:
-        payload = decode_token(refresh_token, settings.secret_keys)
-    except ExpiredSignatureError:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Session has expired. Please re-authenticate.",
-        )
-    # Find this session in the database.
-    session = await lookup_valid_session(db, payload["sid"])
-    now = utcnow()
-    # This token is *signed* so we know that the information came from us.
-    # If the Session is forgotten or revoked or expired, do not allow refresh.
-    if (
-        (session is None)
-        or session.revoked
-        or (session.expiration_time.replace(tzinfo=timezone.utc) < now)
+    async def revoke_apikey_for_principal(
+        request: Request,
+        uuid: uuid_module.UUID,
+        first_eight: str,
+        _=Security(check_scopes, scopes=["admin:apikeys"]),
+        db: Optional[AsyncSession] = Depends(get_database_session),
     ):
-        # Do not leak (to a potential attacker) whether this has been *revoked*
-        # specifically. Give the same error as if it had expired.
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Session has expired. Please re-authenticate.",
-        )
-    # Update Session info.
-    session.time_last_refreshed = now
-    # This increments in a way that avoids a race condition.
-    session.refresh_count = orm.Session.refresh_count + 1
-    # Update the database.
-    db.add(session)
-    await db.commit()
-    # Provide enough information in the access token to reconstruct Principal
-    # and its Identities sufficient for access policy enforcement without a
-    # database hit.
-    data = {
-        "sub": session.principal.uuid.hex,
-        "sub_typ": session.principal.type,  # Why is this str and not Enum?
-        "scp": list(set().union(*[role.scopes for role in session.principal.roles])),
-        "state": session.state,
-        "ids": [
-            {"id": identity.id, "idp": identity.provider}
-            for identity in session.principal.identities
-        ],
-    }
-    access_token = create_access_token(
-        data=data,
-        expires_delta=settings.access_token_max_age,
-        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-    )
-    new_refresh_token = create_refresh_token(
-        session_id=payload["sid"],
-        expires_delta=settings.refresh_token_max_age,
-        secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
-    )
-    return {
-        "access_token": access_token,
-        "expires_in": settings.access_token_max_age / UNIT_SECOND,
-        "refresh_token": new_refresh_token,
-        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
-        "token_type": "bearer",
-    }
-
-
-@base_authentication_router.post(
-    "/apikey",
-    response_model=schemas.APIKeyWithSecret,
-)
-async def new_apikey(
-    request: Request,
-    apikey_params: schemas.APIKeyRequestParams,
-    principal: Union[schemas.Principal, SpecialUsers] = Depends(get_current_principal),
-    _=Security(check_scopes, scopes=["apikeys"]),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    """
-    Generate an API for the currently-authenticated user or service."""
-    # TODO Permit filtering the fields of the response.
-    request.state.endpoint = "auth"
-    if principal is None:
-        return None
-    # The principal from get_current_principal tells us everything that the
-    # access_token carries around, but the database knows more than that.
-    principal_orm = (
-        await db.execute(
-            select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
-        )
-    ).scalar()
-    apikey = await generate_apikey(db, principal_orm, apikey_params, request)
-    return apikey
-
-
-@base_authentication_router.get("/apikey", response_model=schemas.APIKey)
-async def current_apikey_info(
-    request: Request,
-    api_key: str = Depends(get_api_key),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    """
-    Give info about the API key used to authentication the current request.
-
-    This provides a way to look up the API uuid, given the API secret.
-    """
-    # TODO Permit filtering the fields of the response.
-    request.state.endpoint = "auth"
-    if api_key is None:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="No API key was provided with this request.",
-        )
-    try:
-        secret = bytes.fromhex(api_key)
-    except Exception:
-        # Not valid hex, therefore not a valid API key
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-    api_key_orm = await lookup_valid_api_key(db, secret)
-    if api_key_orm is None:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-    return json_or_msgpack(request, schemas.APIKey.from_orm(api_key_orm).model_dump())
-
-
-@base_authentication_router.delete("/apikey")
-async def revoke_apikey(
-    request: Request,
-    first_eight: str,
-    principal: Union[schemas.Principal, SpecialUsers] = Depends(get_current_principal),
-    _=Security(check_scopes, scopes=["apikeys"]),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    """
-    Revoke an API belonging to the currently-authenticated user or service."""
-    # TODO Permit filtering the fields of the response.
-    request.state.endpoint = "auth"
-    if principal is None:
-        return None
-    api_key_orm = (
-        await db.execute(
-            select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
-        )
-    ).scalar()
-    if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
-        raise HTTPException(
-            404,
-            f"The currently-authenticated {principal.type} has no such API key.",
-        )
-    await db.delete(api_key_orm)
-    await db.commit()
-    return Response(status_code=HTTP_204_NO_CONTENT)
-
-
-@base_authentication_router.get(
-    "/whoami",
-    response_model=schemas.Principal,
-)
-async def whoami(
-    request: Request,
-    principal: Union[schemas.Principal, SpecialUsers] = Depends(get_current_principal),
-    db: Optional[AsyncSession] = Depends(get_database_session),
-):
-    # TODO Permit filtering the fields of the response.
-    request.state.endpoint = "auth"
-    if principal is SpecialUsers.public:
-        return json_or_msgpack(request, None)
-    # The principal from get_current_principal tells us everything that the
-    # access_token carries around, but the database knows more than that.
-    principal_orm = (
-        await db.execute(
-            select(orm.Principal)
-            .options(
-                selectinload(orm.Principal.identities),
-                selectinload(orm.Principal.roles),
-                selectinload(orm.Principal.api_keys),
-                selectinload(orm.Principal.sessions),
+        "Allow Tiled Admins to delete any user's apikeys e.g."
+        request.state.endpoint = "auth"
+        api_key_orm = (
+            await db.execute(
+                select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
             )
-            .filter(orm.Principal.uuid == principal.uuid)
-        )
-    ).scalar()
-    if principal_orm is None:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED, detail="Principal no longer exists."
-        )
-    latest_activity = await latest_principal_activity(db, principal_orm)
-    return json_or_msgpack(
-        request,
-        schemas.Principal.from_orm(principal_orm, latest_activity).model_dump(),
+        ).scalar()
+        if (api_key_orm is None) or (api_key_orm.principal.uuid != uuid):
+            raise HTTPException(
+                404,
+                f"The principal {uuid} has no such API key.",
+            )
+        await db.delete(api_key_orm)
+        await db.commit()
+
+        return Response(status_code=HTTP_204_NO_CONTENT)
+
+    @router.post(
+        "/principal/{uuid}/apikey",
+        response_model=schemas.APIKeyWithSecret,
     )
+    async def apikey_for_principal(
+        request: Request,
+        uuid: uuid_module.UUID,
+        apikey_params: schemas.APIKeyRequestParams,
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        _=Security(check_scopes, scopes=["admin:apikeys"]),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        "Generate an API key for a Principal."
+        request.state.endpoint = "auth"
+        principal = (
+            await db.execute(select(orm.Principal).filter(orm.Principal.uuid == uuid))
+        ).scalar()
+        if principal is None:
+            raise HTTPException(
+                404, f"Principal {uuid} does not exist or insufficient permissions."
+            )
+        return await generate_apikey(db, principal, apikey_params, request)
 
+    @router.post("/session/refresh", response_model=schemas.AccessAndRefreshTokens)
+    async def refresh_session(
+        request: Request,
+        refresh_token: schemas.RefreshToken,
+        settings: Settings = Depends(get_settings),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        "Obtain a new access token and refresh token."
+        request.state.endpoint = "auth"
+        new_tokens = await slide_session(refresh_token.refresh_token, settings, db)
+        return new_tokens
 
-@base_authentication_router.post("/logout", include_in_schema=False)
-async def logout(
-    request: Request,
-    response: Response,
-):
-    "Deprecated. See revoke_session: POST /session/revoke."
-    request.state.endpoint = "auth"
-    response.delete_cookie(API_KEY_COOKIE_NAME)
-    return {}
+    @router.post("/session/revoke")
+    async def revoke_session(
+        request: Request,
+        refresh_token: schemas.RefreshToken,
+        settings: Settings = Depends(get_settings),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        "Mark a Session as revoked so it cannot be refreshed again."
+        request.state.endpoint = "auth"
+        payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
+        session_id = payload["sid"]
+        # Find this session in the database.
+        session = await lookup_valid_session(db, session_id)
+        if session is None:
+            raise HTTPException(HTTP_409_CONFLICT, detail=f"No session {session_id}")
+        session.revoked = True
+        db.add(session)
+        await db.commit()
+        return Response(status_code=HTTP_204_NO_CONTENT)
+
+    @router.delete("/session/revoke/{session_id}")
+    async def revoke_session_by_id(
+        session_id: str,  # from path parameter
+        request: Request,
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        "Mark a Session as revoked so it cannot be refreshed again."
+        request.state.endpoint = "auth"
+        # Find this session in the database.
+        session = await lookup_valid_session(db, session_id)
+        if session is None:
+            raise HTTPException(404, detail=f"No session {session_id}")
+        if principal.uuid != session.principal.uuid:
+            # TODO Add a scope for doing this for other users.
+            raise HTTPException(
+                HTTP_404_NOT_FOUND,
+                detail="Sessions does not exist or requester has insufficient permissions",
+            )
+        session.revoked = True
+        db.add(session)
+        await db.commit()
+        return Response(status_code=HTTP_204_NO_CONTENT)
+
+    async def slide_session(refresh_token, settings, db):
+        try:
+            payload = decode_token(refresh_token, settings.secret_keys)
+        except ExpiredSignatureError:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="Session has expired. Please re-authenticate.",
+            )
+        # Find this session in the database.
+        session = await lookup_valid_session(db, payload["sid"])
+        now = utcnow()
+        # This token is *signed* so we know that the information came from us.
+        # If the Session is forgotten or revoked or expired, do not allow refresh.
+        if (
+            (session is None)
+            or session.revoked
+            or (session.expiration_time.replace(tzinfo=timezone.utc) < now)
+        ):
+            # Do not leak (to a potential attacker) whether this has been *revoked*
+            # specifically. Give the same error as if it had expired.
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="Session has expired. Please re-authenticate.",
+            )
+        # Update Session info.
+        session.time_last_refreshed = now
+        # This increments in a way that avoids a race condition.
+        session.refresh_count = orm.Session.refresh_count + 1
+        # Update the database.
+        db.add(session)
+        await db.commit()
+        # Provide enough information in the access token to reconstruct Principal
+        # and its Identities sufficient for access policy enforcement without a
+        # database hit.
+        data = {
+            "sub": session.principal.uuid.hex,
+            "sub_typ": session.principal.type,  # Why is this str and not Enum?
+            "scp": list(
+                set().union(*[role.scopes for role in session.principal.roles])
+            ),
+            "state": session.state,
+            "ids": [
+                {"id": identity.id, "idp": identity.provider}
+                for identity in session.principal.identities
+            ],
+        }
+        access_token = create_access_token(
+            data=data,
+            expires_delta=settings.access_token_max_age,
+            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+        )
+        new_refresh_token = create_refresh_token(
+            session_id=payload["sid"],
+            expires_delta=settings.refresh_token_max_age,
+            secret_key=settings.secret_keys[0],  # Use the *first* secret key to encode.
+        )
+        return {
+            "access_token": access_token,
+            "expires_in": settings.access_token_max_age / UNIT_SECOND,
+            "refresh_token": new_refresh_token,
+            "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+            "token_type": "bearer",
+        }
+
+    @router.post(
+        "/apikey",
+        response_model=schemas.APIKeyWithSecret,
+    )
+    async def new_apikey(
+        request: Request,
+        apikey_params: schemas.APIKeyRequestParams,
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        _=Security(check_scopes, scopes=["apikeys"]),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        """
+        Generate an API for the currently-authenticated user or service."""
+        # TODO Permit filtering the fields of the response.
+        request.state.endpoint = "auth"
+        if principal is None:
+            return None
+        # The principal from get_current_principal tells us everything that the
+        # access_token carries around, but the database knows more than that.
+        principal_orm = (
+            await db.execute(
+                select(orm.Principal).filter(orm.Principal.uuid == principal.uuid)
+            )
+        ).scalar()
+        apikey = await generate_apikey(db, principal_orm, apikey_params, request)
+        return apikey
+
+    @router.get("/apikey", response_model=schemas.APIKey)
+    async def current_apikey_info(
+        request: Request,
+        api_key: str = Depends(get_api_key),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        """
+        Give info about the API key used to authentication the current request.
+
+        This provides a way to look up the API uuid, given the API secret.
+        """
+        # TODO Permit filtering the fields of the response.
+        request.state.endpoint = "auth"
+        if api_key is None:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="No API key was provided with this request.",
+            )
+        try:
+            secret = bytes.fromhex(api_key)
+        except Exception:
+            # Not valid hex, therefore not a valid API key
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
+        api_key_orm = await lookup_valid_api_key(db, secret)
+        if api_key_orm is None:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
+        return json_or_msgpack(
+            request, schemas.APIKey.from_orm(api_key_orm).model_dump()
+        )
+
+    @router.delete("/apikey")
+    async def revoke_apikey(
+        request: Request,
+        first_eight: str,
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        _=Security(check_scopes, scopes=["apikeys"]),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        """
+        Revoke an API belonging to the currently-authenticated user or service."""
+        # TODO Permit filtering the fields of the response.
+        request.state.endpoint = "auth"
+        if principal is None:
+            return None
+        api_key_orm = (
+            await db.execute(
+                select(orm.APIKey).filter(orm.APIKey.first_eight == first_eight[:8])
+            )
+        ).scalar()
+        if (api_key_orm is None) or (api_key_orm.principal.uuid != principal.uuid):
+            raise HTTPException(
+                404,
+                f"The currently-authenticated {principal.type} has no such API key.",
+            )
+        await db.delete(api_key_orm)
+        await db.commit()
+        return Response(status_code=HTTP_204_NO_CONTENT)
+
+    @router.get(
+        "/whoami",
+        response_model=schemas.Principal,
+    )
+    async def whoami(
+        request: Request,
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        db: Optional[AsyncSession] = Depends(get_database_session),
+    ):
+        # TODO Permit filtering the fields of the response.
+        request.state.endpoint = "auth"
+        if principal is SpecialUsers.public:
+            return json_or_msgpack(request, None)
+        # The principal from get_current_principal tells us everything that the
+        # access_token carries around, but the database knows more than that.
+        principal_orm = (
+            await db.execute(
+                select(orm.Principal)
+                .options(
+                    selectinload(orm.Principal.identities),
+                    selectinload(orm.Principal.roles),
+                    selectinload(orm.Principal.api_keys),
+                    selectinload(orm.Principal.sessions),
+                )
+                .filter(orm.Principal.uuid == principal.uuid)
+            )
+        ).scalar()
+        if principal_orm is None:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Principal no longer exists."
+            )
+        latest_activity = await latest_principal_activity(db, principal_orm)
+        return json_or_msgpack(
+            request,
+            schemas.Principal.from_orm(principal_orm, latest_activity).model_dump(),
+        )
+
+    @router.post("/logout", include_in_schema=False, deprecated=True)
+    async def logout(
+        request: Request,
+        response: Response,
+    ):
+        "Deprecated. See revoke_session: POST /session/revoke."
+        request.state.endpoint = "auth"
+        response.delete_cookie(API_KEY_COOKIE_NAME)
+        return {}
+
+    return router
