@@ -478,7 +478,7 @@ or use an existing one:
         scalable=scalable,
     )
     print_server_info(
-        web_app, host=host, port=port, include_api_key=api_key is not None
+        web_app, host=host, port=port, include_api_key=api_key is None
     )
 
     import uvicorn

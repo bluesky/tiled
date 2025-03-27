@@ -314,8 +314,8 @@ async def get_current_principal(
     authenticators=Depends(get_authenticators),
     db: Optional[AsyncSession] = Depends(get_database_session),
     # TODO: https://github.com/bluesky/tiled/issues/923
-    # Remove non-Princiapl return types
-) -> Union[schemas.Principal, SpecialUsers, str]:
+    # Remove non-Principal return types
+) -> Union[schemas.Principal, SpecialUsers]:
     """
     Get current Principal from:
     - API key in 'api_key' query parameter
@@ -827,7 +827,7 @@ async def principal_list(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+    principal: Union[schemas.Principal, SpecialUsers] = Depends(
         get_current_principal
     ),
     _=Security(check_scopes, scopes=["read:principals"]),
@@ -868,7 +868,7 @@ async def principal_list(
 )
 async def create_service_principal(
     request: Request,
-    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+    principal: Union[schemas.Principal, SpecialUsers] = Depends(
         get_current_principal
     ),
     _=Security(check_scopes, scopes=["write:principals"]),
@@ -971,7 +971,7 @@ async def apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
     apikey_params: schemas.APIKeyRequestParams,
-    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+    principal: Union[schemas.Principal, SpecialUsers] = Depends(
         get_current_principal
     ),
     _=Security(check_scopes, scopes=["admin:apikeys"]),
@@ -1029,7 +1029,7 @@ async def revoke_session(
 async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
-    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+    principal: Union[schemas.Principal, SpecialUsers] = Depends(
         get_current_principal
     ),
     db: Optional[AsyncSession] = Depends(get_database_session),
@@ -1122,7 +1122,7 @@ async def slide_session(refresh_token, settings, db):
 async def new_apikey(
     request: Request,
     apikey_params: schemas.APIKeyRequestParams,
-    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+    principal: Union[schemas.Principal, SpecialUsers] = Depends(
         get_current_principal
     ),
     _=Security(check_scopes, scopes=["apikeys"]),
@@ -1178,7 +1178,7 @@ async def current_apikey_info(
 async def revoke_apikey(
     request: Request,
     first_eight: str,
-    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+    principal: Union[schemas.Principal, SpecialUsers] = Depends(
         get_current_principal
     ),
     _=Security(check_scopes, scopes=["apikeys"]),
@@ -1211,7 +1211,7 @@ async def revoke_apikey(
 )
 async def whoami(
     request: Request,
-    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+    principal: Union[schemas.Principal, SpecialUsers] = Depends(
         get_current_principal
     ),
     db: Optional[AsyncSession] = Depends(get_database_session),
