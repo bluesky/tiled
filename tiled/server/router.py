@@ -777,7 +777,7 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
         field: Optional[List[str]] = Query(None, min_length=1),
@@ -807,7 +807,7 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
         field: Optional[List[str]] = Body(None, min_length=1),
@@ -887,7 +887,7 @@ def get_router(
             ),
             scopes=["read:data"],
         ),
-        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
         field: Optional[List[str]] = Query(None, min_length=1),
