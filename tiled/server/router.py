@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar
+from typing import Callable, List, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -777,9 +777,9 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -807,9 +807,9 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -887,9 +887,9 @@ def get_router(
             ),
             scopes=["read:data"],
         ),
-        principal: schemas.Principal
-        | SpecialUsers
-        | str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
