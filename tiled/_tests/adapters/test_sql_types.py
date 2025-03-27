@@ -169,18 +169,8 @@ def test_duckdb_data_types(
             ["SMALLINT"],
         ),
         (
-            pa.schema([("some_uint8", pa.uint8())]),
-            pa.schema([("some_uint8", "int16")]),
-            ["SMALLINT"],
-        ),
-        (
             pa.schema([("some_int16", pa.int16())]),
             pa.schema([("some_int16", "int16")]),
-            ["SMALLINT"],
-        ),
-        (
-            pa.schema([("some_uint16", pa.uint16())]),
-            pa.schema([("some_uint16", "int16")]),
             ["SMALLINT"],
         ),
         (
@@ -189,18 +179,8 @@ def test_duckdb_data_types(
             ["INTEGER"],
         ),
         (
-            pa.schema([("some_uint32", pa.uint32())]),
-            pa.schema([("some_uint32", "int32")]),
-            ["INTEGER"],
-        ),
-        (
             pa.schema([("some_int64", pa.int64())]),
             pa.schema([("some_int64", "int64")]),
-            ["BIGINT"],
-        ),
-        (
-            pa.schema([("some_uint64", pa.uint64())]),
-            pa.schema([("some_uint64", "int64")]),
             ["BIGINT"],
         ),
         (
@@ -285,18 +265,8 @@ def test_psql_data_types(
             ["INTEGER"],
         ),
         (
-            pa.schema([("some_uint8", pa.uint8())]),
-            pa.schema([("some_uint8", "int64")]),
-            ["INTEGER"],
-        ),
-        (
             pa.schema([("some_int16", pa.int16())]),
             pa.schema([("some_int16", "int64")]),
-            ["INTEGER"],
-        ),
-        (
-            pa.schema([("some_uint16", pa.uint16())]),
-            pa.schema([("some_uint16", "int64")]),
             ["INTEGER"],
         ),
         (
@@ -305,18 +275,8 @@ def test_psql_data_types(
             ["INTEGER"],
         ),
         (
-            pa.schema([("some_uint32", pa.uint32())]),
-            pa.schema([("some_uint32", "int64")]),
-            ["INTEGER"],
-        ),
-        (
             pa.schema([("some_int64", pa.int64())]),
             pa.schema([("some_int64", "int64")]),
-            ["INTEGER"],
-        ),
-        (
-            pa.schema([("some_uint64", pa.uint64())]),
-            pa.schema([("some_uint64", "int64")]),
             ["INTEGER"],
         ),
         (

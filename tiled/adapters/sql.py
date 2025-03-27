@@ -384,13 +384,9 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
     pyarrow.bool_(): "BOOLEAN",
     # Integers
     pyarrow.int8(): "SMALLINT",
-    pyarrow.uint8(): "SMALLINT",
     pyarrow.int16(): "SMALLINT",
-    pyarrow.uint16(): "SMALLINT",
     pyarrow.int32(): "INTEGER",
-    pyarrow.uint32(): "INTEGER",
     pyarrow.int64(): "BIGINT",
-    pyarrow.uint64(): "BIGINT",
     # Floating Point
     pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",
@@ -420,7 +416,7 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
 
 def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
     """Get the PostgreSQL type name for a given PyArrow field.
-
+    Note that postgres does not support unsigned integer.
     Parameters
     ----------
     field : pyarrow.Field
@@ -645,13 +641,9 @@ ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
     pyarrow.bool_(): "INTEGER",
     # Integers - all stored as INTEGER
     pyarrow.int8(): "INTEGER",
-    pyarrow.uint8(): "INTEGER",
     pyarrow.int16(): "INTEGER",
-    pyarrow.uint16(): "INTEGER",
     pyarrow.int32(): "INTEGER",
-    pyarrow.uint32(): "INTEGER",
     pyarrow.int64(): "INTEGER",
-    pyarrow.uint64(): "INTEGER",  # Note: may exceed SQLite INTEGER range
     # Floating point - stored as REAL
     pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",
@@ -687,7 +679,7 @@ ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
 
 def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
     """Get the SQLite type name for a given PyArrow field.
-
+    Note that sqlite does not support unsigned integer.
     Parameters
     ----------
     field : Union[pyarrow.Field, pyarrow.DataType]
