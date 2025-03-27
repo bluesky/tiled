@@ -428,6 +428,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
+        app.state.authenticated = True
+    else:
+        app.state.authenticated = False
 
     @cache
     def override_get_authenticators():
@@ -450,8 +453,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        if authentication.get("single_user_api_key") is not None:
-            settings.single_user_api_key_generated = False
         for item in [
             "allow_origins",
             "response_bytesize_limit",
@@ -884,7 +885,7 @@ def app_factory():
     kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
     web_app = build_app(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
-    print_admin_api_key_if_generated(
+    print_server_info(
         web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
     )
     return web_app
@@ -902,16 +903,14 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
-def print_admin_api_key_if_generated(
-    web_app: FastAPI, host: str, port: int, force: bool = False
+def print_server_info(
+    web_app: FastAPI,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    include_api_key: bool = False,
 ):
-    "Print message to stderr with API key if server-generated (or force=True)."
-    host = host or "127.0.0.1"
-    port = port or 8000
-    settings = web_app.dependency_overrides.get(get_settings, get_settings)()
-    authenticators = web_app.dependency_overrides.get(
-        get_authenticators, get_authenticators
-    )()
+    settings = get_settings()
+
     if settings.allow_anonymous_access:
         print(
             """
@@ -921,7 +920,7 @@ def print_admin_api_key_if_generated(
 """,
             file=sys.stderr,
         )
-    if (not authenticators) and (force or settings.single_user_api_key_generated):
+    if not web_app.state.authenticated and include_api_key:
         print(
             f"""
     Navigate a web browser or connect a Tiled client to:

@@ -4,9 +4,8 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
 
-import sqlalchemy.exc
 from fastapi import (
     APIRouter,
     Depends,
@@ -25,6 +24,8 @@ from fastapi.security import (
 from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
@@ -277,7 +278,7 @@ async def get_current_scopes(
     api_key: Optional[str] = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ) -> set[str]:
     if api_key is not None:
         return await get_scopes_from_api_key(api_key, settings, authenticators, db)
@@ -311,8 +312,10 @@ async def get_current_principal(
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
     authenticators=Depends(get_authenticators),
-    db=Depends(get_database_session),
-):
+    db: Optional[AsyncSession] = Depends(get_database_session),
+    # TODO: https://github.com/bluesky/tiled/issues/923
+    # Remove non-Princiapl return types
+) -> Union[schemas.Principal, SpecialUsers, str]:
     """
     Get current Principal from:
     - API key in 'api_key' query parameter
@@ -406,7 +409,7 @@ async def create_pending_session(db):
         db.add(pending_session)
         try:
             await db.commit()
-        except sqlalchemy.exc.IntegrityError:
+        except IntegrityError:
             # Since the user_code is short, we cannot completely dismiss the
             # possibility of a collission. Retry.
             continue
@@ -531,7 +534,7 @@ def build_auth_code_route(authenticator, provider):
     async def route(
         request: Request,
         settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
+        db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         user_session_state = await authenticator.authenticate(request)
@@ -557,7 +560,7 @@ def build_device_code_authorize_route(authenticator, provider):
 
     async def route(
         request: Request,
-        db=Depends(get_database_session),
+        db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         pending_session = await create_pending_session(db)
@@ -629,7 +632,7 @@ def build_device_code_user_code_submit_route(authenticator, provider):
         user_code: str = Form(),
         state: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
+        db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         action = (
@@ -692,7 +695,7 @@ def build_device_code_token_route(authenticator, provider):
         request: Request,
         body: schemas.DeviceCode,
         settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
+        db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         device_code_hex = body.device_code
@@ -732,7 +735,7 @@ def build_handle_credentials_route(authenticator: InternalAuthenticator, provide
         request: Request,
         form_data: OAuth2PasswordRequestForm = Depends(),
         settings: Settings = Depends(get_settings),
-        db=Depends(get_database_session),
+        db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
         user_session_state = await authenticator.authenticate(
@@ -824,9 +827,11 @@ async def principal_list(
     limit: Optional[int] = Query(
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     ),
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["read:principals"]),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     "List Principals (users and services)."
     request.state.endpoint = "auth"
@@ -863,9 +868,11 @@ async def principal_list(
 )
 async def create_service_principal(
     request: Request,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["write:principals"]),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
     role: str = Query(...),
 ):
     "Create a principal for a service account."
@@ -900,7 +907,7 @@ async def principal(
     request: Request,
     uuid: uuid_module.UUID,
     _=Security(check_scopes, scopes=["read:principals"]),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     "Get information about one Principal (user or service)."
     request.state.endpoint = "auth"
@@ -936,7 +943,7 @@ async def revoke_apikey_for_principal(
     uuid: uuid_module.UUID,
     first_eight: str,
     _=Security(check_scopes, scopes=["admin:apikeys"]),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     "Allow Tiled Admins to delete any user's apikeys e.g."
     request.state.endpoint = "auth"
@@ -964,9 +971,11 @@ async def apikey_for_principal(
     request: Request,
     uuid: uuid_module.UUID,
     apikey_params: schemas.APIKeyRequestParams,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["admin:apikeys"]),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     "Generate an API key for a Principal."
     request.state.endpoint = "auth"
@@ -987,7 +996,7 @@ async def refresh_session(
     request: Request,
     refresh_token: schemas.RefreshToken,
     settings: Settings = Depends(get_settings),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     "Obtain a new access token and refresh token."
     request.state.endpoint = "auth"
@@ -1000,7 +1009,7 @@ async def revoke_session(
     request: Request,
     refresh_token: schemas.RefreshToken,
     settings: Settings = Depends(get_settings),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
@@ -1020,8 +1029,10 @@ async def revoke_session(
 async def revoke_session_by_id(
     session_id: str,  # from path parameter
     request: Request,
-    principal: schemas.Principal = Depends(get_current_principal),
-    db=Depends(get_database_session),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     "Mark a Session as revoked so it cannot be refreshed again."
     request.state.endpoint = "auth"
@@ -1111,9 +1122,11 @@ async def slide_session(refresh_token, settings, db):
 async def new_apikey(
     request: Request,
     apikey_params: schemas.APIKeyRequestParams,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["apikeys"]),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     """
     Generate an API for the currently-authenticated user or service."""
@@ -1136,7 +1149,7 @@ async def new_apikey(
 async def current_apikey_info(
     request: Request,
     api_key: str = Depends(get_api_key),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     """
     Give info about the API key used to authentication the current request.
@@ -1165,9 +1178,11 @@ async def current_apikey_info(
 async def revoke_apikey(
     request: Request,
     first_eight: str,
-    principal=Depends(get_current_principal),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
     _=Security(check_scopes, scopes=["apikeys"]),
-    db=Depends(get_database_session),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     """
     Revoke an API belonging to the currently-authenticated user or service."""
@@ -1196,8 +1211,10 @@ async def revoke_apikey(
 )
 async def whoami(
     request: Request,
-    principal=Depends(get_current_principal),
-    db=Depends(get_database_session),
+    principal: Union[schemas.Principal, SpecialUsers, str] = Depends(
+        get_current_principal
+    ),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     # TODO Permit filtering the fields of the response.
     request.state.endpoint = "auth"
