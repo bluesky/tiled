@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
 
@@ -128,7 +128,7 @@ AnyAdapter = Union[
 ]
 
 
-class AccessPolicy(Protocol):
+class AccessPolicy(ABC):
     @abstractmethod
     async def allowed_scopes(
         self, node: BaseAdapter, principal: Principal, path_parts: List[Any]

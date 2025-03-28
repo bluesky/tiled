@@ -45,7 +45,7 @@ config = {
     "trees": [
         {
              "path": "/",
-             "tree": "tiled.examples.generated_minimal:tree",
+             "tree": {"type": "tiled.examples.generated_minimal:tree"},
         }
 }
 app = build_app_from_config(config)

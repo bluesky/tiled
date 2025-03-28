@@ -74,7 +74,7 @@ media_types:
 # And provide some example data to try it with....
 trees:
   - path: /
-    tree: 
+    tree:
       type: tiled.examples.generated_minimal:tree
 ```
 
@@ -175,7 +175,7 @@ media_types:
     image/jpeg: custom_exporters:to_jpeg
 trees:
   - path: /
-    tree: 
+    tree:
       type: tiled.examples.generated_minimal:tree
 ```
 

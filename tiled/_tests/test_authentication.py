@@ -54,7 +54,7 @@ def config(sqlite_or_postgresql_database_uri):
         },
         "trees": [
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type": f"{__name__}:tree"},
                 "path": "/",
             },
         ],

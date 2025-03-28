@@ -11,23 +11,22 @@ tiled_admins:
   - provider: toy
     id: alice
 access_control:
-  access_policy: tiled.access_policies:SimpleAccessPolicy
-  args:
-    provider: toy  # matches provider above
-    access_lists:
-      alice:
-      - A
-      - B
-      bob:
-      - A
-      - C
-      cara: tiled.access_policies:SimpleAccessPolicy.ALL
-    scopes:
-    - "read:metadata"
-    - "read:data"
-    public:
-    - D
+  type: tiled.access_policies:SimpleAccessPolicy
+  provider: toy  # matches provider above
+  access_lists:
+    alice:
+    - A
+    - B
+    bob:
+    - A
+    - C
+    cara: tiled.access_policies:SimpleAccessPolicy.ALL
+  scopes:
+  - "read:metadata"
+  - "read:data"
+  public:
+  - D
 trees:
   - path: /
-    tree: 
+    tree:
       type: tiled.examples.toy_authentication:tree

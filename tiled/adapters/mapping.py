@@ -40,7 +40,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import UNCHANGED, Sentinel
-from .protocols import AccessPolicy, AnyAdapter
+from .protocols import AnyAdapter
 from .utils import IndexersMixin
 
 
@@ -50,7 +50,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
     """
 
     __slots__ = (
-        "_access_policy",
         "_mapping",
         "_metadata",
         "_sorting",
@@ -77,7 +76,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         metadata: Optional[JSON] = None,
         sorting: Optional[List[SortingItem]] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         entries_stale_after: Optional[timedelta] = None,
         metadata_stale_after: Optional[timedelta] = None,
         must_revalidate: bool = True,
@@ -92,7 +90,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         specs : List[str], optional
         sorting : List[Tuple[str, int]], optional
         specs : List[str], optional
-        access_policy : AccessPolicy, optional
         entries_stale_after: timedelta
             This server uses this to communicate to the client how long
             it should rely on a local cache before checking back for changes.
@@ -115,7 +112,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         self._sorting = sorting
         self._metadata = metadata or {}
         self.specs = specs or []
-        self._access_policy = access_policy
         self._must_revalidate = must_revalidate
         self.include_routers: List[APIRouter] = []
         self.background_tasks: List[Any] = []
@@ -147,30 +143,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
 
         """
         self._must_revalidate = value
-
-    @property
-    def access_policy(self) -> Optional[AccessPolicy]:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._access_policy
-
-    @access_policy.setter
-    def access_policy(self, value: AccessPolicy) -> None:
-        """
-
-        Parameters
-        ----------
-        value :
-
-        Returns
-        -------
-
-        """
-        self._access_policy = value
 
     def metadata(self) -> JSON:
         "Metadata about this Adapter."
@@ -329,7 +301,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
             sorting=cast(List[SortingItem], sorting),
             metadata=cast(JSON, self._metadata),
             specs=self.specs,
-            access_policy=self.access_policy,
             entries_stale_after=self.entries_stale_after,
             metadata_stale_after=self.entries_stale_after,
             must_revalidate=cast(bool, must_revalidate),

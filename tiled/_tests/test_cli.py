@@ -103,10 +103,9 @@ trees:
   - path: /
     tree:
       type: catalog
-      args:
-        uri: sqlite:///{tmp_path / 'catalog.db'}
-        writable_storage: {tmp_path / 'data'}
-        init_if_not_exists: true
+      uri: sqlite:///{tmp_path / 'catalog.db'}
+      writable_storage: {tmp_path / 'data'}
+      init_if_not_exists: true
 """
         )
     with run_cli(f"tiled serve config {config_filepath} --port 0 " + args) as process:

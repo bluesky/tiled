@@ -11,7 +11,7 @@ from ..server.app import build_app_from_config
 
 config = {
     "single_user_api_key": "secret",
-    "trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}],
+    "trees": [{"path": "/", "tree": {"type:" "tiled.examples.generated_minimal:tree"}}],
 }
 router = APIRouter()
 

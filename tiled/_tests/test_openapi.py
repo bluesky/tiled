@@ -20,7 +20,7 @@ config = {
     ],
     "trees": [
         {
-            "tree": f"{__name__}:tree",
+            "tree": {"type:" f"{__name__}:tree"},
             "path": "/",
         },
     ],

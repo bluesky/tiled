@@ -1,13 +1,36 @@
+import importlib
 import secrets
 from datetime import timedelta
-from functools import cache
-from typing import Annotated, Any, List, Optional
+from functools import cache, partial
+from pathlib import Path
+from typing import Annotated, Any, List, Optional, TypeVar
 
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 from pydantic.dataclasses import dataclass
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from tiled.server.protocols import Authenticator, _get_authenticator
+from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.protocols import AccessPolicy
+from tiled.server.protocols import Authenticator
+
+T = TypeVar("T")
+
+
+def _get(value: Any, typ: type[T], allow_none: bool = False) -> Optional[T]:
+    if isinstance(value, typ):
+        return value
+    if isinstance(value, dict) and "type" in value:
+        qualified_type = value.pop("type")
+        if isinstance(qualified_type, type) and issubclass(qualified_type, typ):
+            return qualified_type(**value)
+        module_name, type_name = str(qualified_type).split(":")
+        module = importlib.import_module(module_name)
+        if hasattr(module, type_name):
+            return getattr(module, type_name)(**value)
+        raise KeyError(f"Unable to find subclass for {typ} {qualified_type}")
+    if allow_none:
+        return None
+    raise KeyError(f"Unable to deserialize {typ} from {value}")
 
 
 class Admin(BaseModel):
@@ -17,7 +40,20 @@ class Admin(BaseModel):
 
 class AuthenticatorInfo(BaseModel):
     provider: str
-    authenticator: Annotated[Authenticator, BeforeValidator(_get_authenticator)]
+    authenticator: Annotated[
+        Authenticator, BeforeValidator(partial(_get, typ=Authenticator))
+    ]
+
+
+class PathedMapAdapter(BaseModel):
+    path: Path
+    tree: Annotated[MapAdapter, BeforeValidator(partial(_get, typ=MapAdapter))]
+    access_control: Annotated[
+        Optional[AccessPolicy],
+        BeforeValidator(partial(_get, typ=AccessPolicy, allow_none=True)),
+    ]
+
+    model_config: ConfigDict = ConfigDict(arbitrary_types_allowed=True)
 
 
 class UnscalableConfig(Exception):
@@ -44,7 +80,7 @@ class Settings(BaseSettings):
     https://docs.pydantic.dev/latest/concepts/pydantic_settings/#parsing-environment-variable-values
     """
 
-    tree: Any = None
+    trees: List[PathedMapAdapter] = Field(default_factory=list)
     allow_anonymous_access: bool = False
     allow_origins: List[str] = Field(default_factory=list)
     authenticators: list[AuthenticatorInfo] = Field(default_factory=list)
@@ -68,6 +104,10 @@ class Settings(BaseSettings):
     database_init_if_not_exists: bool = False
     expose_raw_assets: bool = True
     admins: list[Admin] = Field(default_factory=list)
+    access_control: Annotated[
+        Optional[AccessPolicy],
+        BeforeValidator(partial(_get, typ=AccessPolicy, allow_none=True)),
+    ]
 
     uvicorn: Uvicorn = Field(Uvicorn())
 

@@ -441,10 +441,10 @@ class LDAPAuthenticator(InternalAuthenticator):
         uvicorn:
             host: localhost
             port: 60610
-        providers:
+        authenticators:
             - provider: ldap_local
-            authenticator: bluesky_httpserver.authenticators:LDAPAuthenticator
-            args:
+              authenticator:
+                type: bluesky_httpserver.authenticators:LDAPAuthenticator
                 server_address: localhost
                 server_port: 1389
                 bind_dn_template: "cn={username},ou=users,dc=example,dc=org"

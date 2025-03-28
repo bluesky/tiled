@@ -171,10 +171,9 @@ my_profile:
   direct:
      trees:
        - path: /
-         tree: 
-            type: tiled.catalog:from_uri
-            args:
-               uri: "/path/to/catalog.db"
+         tree:
+           type: tiled.catalog:from_uri
+           uri: "/path/to/catalog.db"
 ```
 
 This takes the place of the `uri:` parameter. A profile must contain
@@ -187,11 +186,10 @@ usual client-side configuration, such as
 my_profile:
   direct:
     trees:
-      - path: /
-        tree: 
-      type: tiled.catalog:from_uri
-        args:
-          directory: "/path/to/catalog.db"
+    - path: /
+      tree:
+        type: tiled.catalog:from_uri
+        directory: "/path/to/catalog.db"
   cache:
     capacity: 2_000_000_000 # 2 GB
 ```

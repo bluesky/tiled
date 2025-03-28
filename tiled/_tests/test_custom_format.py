@@ -26,9 +26,8 @@ async def test_xdi_round_trip(tmpdir):
     config = {
         "trees": [
             {
-                "tree": "catalog",
-                "path": "/",
-                "args": {
+                "tree": {
+                    "type": "catalog",
                     "uri": tmpdir / "catalog.db",
                     "readable_storage": [tmpdir / "files"],
                     "init_if_not_exists": True,
@@ -36,6 +35,7 @@ async def test_xdi_round_trip(tmpdir):
                         "application/x-xdi": "tiled.examples.xdi:XDIAdapter"
                     },
                 },
+                "path": "/",
             }
         ],
         "media_types": {"xdi": {"application/x-xdi": "tiled.examples.xdi:write_xdi"}},

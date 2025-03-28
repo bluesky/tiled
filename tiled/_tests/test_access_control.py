@@ -63,12 +63,12 @@ class EntryBasedAccessPolicy(SimpleAccessPolicy):
         return allowed
 
 
-def tree_a(access_policy=None):
-    return MapAdapter({"A1": arr_ad, "A2": arr_ad}, access_policy=access_policy)
+def tree_a():
+    return MapAdapter({"A1": arr_ad, "A2": arr_ad})
 
 
-def tree_b(access_policy=None):
-    return MapAdapter({"B1": arr_ad, "B2": arr_ad}, access_policy=access_policy)
+def tree_b():
+    return MapAdapter({"B1": arr_ad, "B2": arr_ad})
 
 
 @pytest.fixture(scope="module")
@@ -93,114 +93,113 @@ def context(tmpdir_module):
             "uri": "sqlite://",  # in-memory
         },
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-            "args": {
-                "access_lists": {"alice": ["a", "c", "d", "e", "g", "h"]},
-                "provider": "toy",
-                "admins": ["admin"],
-                "public": ["f", "g"],
-            },
+            "type": "tiled.access_policies:SimpleAccessPolicy",
+            "access_lists": {"alice": ["a", "c", "d", "e", "g", "h"]},
+            "provider": "toy",
+            "admins": ["admin"],
+            "public": ["f", "g"],
         },
         "trees": [
             {
-                "tree": f"{__name__}:tree_a",
+                "tree": {"type": f"{__name__}:tree_a"},
                 "path": "/a",
                 "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": ["A2"],
-                            # This should have no effect because bob
-                            # cannot access the parent node.
-                            "bob": ["A1", "A2"],
-                        },
-                        "admins": ["admin"],
+                    "type": "tiled.access_policies:SimpleAccessPolicy",
+                    "provider": "toy",
+                    "access_lists": {
+                        "alice": ["A2"],
+                        # This should have no effect because bob
+                        # cannot access the parent node.
+                        "bob": ["A1", "A2"],
                     },
+                    "admins": ["admin"],
                 },
             },
-            {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
             {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "c")},
+                "tree": {"type": f"{__name__}:tree_b"},
+                "path": "/b",
+            },
+            {
+                "tree": {
+                    "type": "tiled.catalog:in_memory",
+                    "writable_storage": str(tmpdir_module / "c"),
+                },
                 "path": "/c",
                 "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": "tiled.access_policies:ALL_ACCESS",
-                        },
-                        "admins": ["admin"],
+                    "type": "tiled.access_policies:SimpleAccessPolicy",
+                    "provider": "toy",
+                    "access_lists": {
+                        "alice": "tiled.access_policies:ALL_ACCESS",
                     },
+                    "admins": ["admin"],
                 },
             },
             {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "d")},
+                "tree": {
+                    "type": "tiled.catalog:in_memory",
+                    "writable_storage": str(tmpdir_module / "d"),
+                },
                 "path": "/d",
                 "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": "tiled.access_policies:ALL_ACCESS",
-                        },
-                        "admins": ["admin"],
-                        # Block writing.
-                        "scopes": ["read:metadata", "read:data"],
+                    "type": "tiled.access_policies:SimpleAccessPolicy",
+                    "provider": "toy",
+                    "access_lists": {
+                        "alice": "tiled.access_policies:ALL_ACCESS",
                     },
+                    "admins": ["admin"],
+                    # Block writing.
+                    "scopes": ["read:metadata", "read:data"],
                 },
             },
             {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "e")},
+                "tree": {
+                    "type": "tiled.catalog:in_memory",
+                    "writable_storage": str(tmpdir_module / "e"),
+                },
                 "path": "/e",
                 "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": "tiled.access_policies:ALL_ACCESS",
-                        },
-                        "admins": ["admin"],
-                        # Block creation.
-                        "scopes": [
-                            "read:metadata",
-                            "read:data",
-                            "write:metadata",
-                            "write:data",
-                        ],
+                    "type": "tiled.access_policies:SimpleAccessPolicy",
+                    "provider": "toy",
+                    "access_lists": {
+                        "alice": "tiled.access_policies:ALL_ACCESS",
                     },
+                    "admins": ["admin"],
+                    # Block creation.
+                    "scopes": [
+                        "read:metadata",
+                        "read:data",
+                        "write:metadata",
+                        "write:data",
+                    ],
                 },
             },
             {"tree": ArrayAdapter.from_array(arr), "path": "/f"},
             {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "g")},
+                "tree": {
+                    "type": "tiled.catalog:in_memory",
+                    "writable_storage": str(tmpdir_module / "g"),
+                },
                 "path": "/g",
                 "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "key": "project",
-                        "access_lists": {"alice": ["projectA"], "bob": ["projectB"]},
-                        "admins": ["admin"],
-                        "public": ["projectC"],
-                    },
+                    "type": "tiled.access_policies:SimpleAccessPolicy",
+                    "provider": "toy",
+                    "key": "project",
+                    "access_lists": {"alice": ["projectA"], "bob": ["projectB"]},
+                    "admins": ["admin"],
+                    "public": ["projectC"],
                 },
             },
             {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "h")},
+                "tree": {
+                    "type": "tiled.catalog:in_memory",
+                    "writable_storage": str(tmpdir_module / "h"),
+                },
                 "path": "/h",
                 "access_control": {
-                    "access_policy": "tiled._tests.test_access_control:EntryBasedAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {"alice": ["x", "y"]},
-                        "admins": ["admin"],
-                    },
+                    "type": "tiled._tests.test_access_control:EntryBasedAccessPolicy",
+                    "provider": "toy",
+                    "access_lists": {"alice": ["x", "y"]},
+                    "admins": ["admin"],
                 },
             },
         ],
@@ -373,20 +372,18 @@ def test_service_principal_access(tmpdir):
         },
         "trees": [
             {
-                "tree": "catalog",
-                "args": {
+                "tree": {
+                    "type": "catalog",
                     "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": f"file://localhost{tmpdir}/data",
                     "init_if_not_exists": True,
                 },
                 "path": "/",
                 "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "access_lists": {},
-                        "provider": "toy",
-                        "admins": ["admin"],
-                    },
+                    "type": "tiled.access_policies:SimpleAccessPolicy",
+                    "access_lists": {},
+                    "provider": "toy",
+                    "admins": ["admin"],
                 },
             }
         ],

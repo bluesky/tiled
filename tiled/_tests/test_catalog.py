@@ -390,24 +390,22 @@ async def test_access_control(tmpdir):
         },
         "trees": [
             {
-                "tree": "catalog",
-                "path": "/",
-                "args": {
+                "tree": {
+                    "type": "catalog",
                     "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },
+                "path": "/",
                 "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": ["outer_x"],
-                            "bob": ["outer_y"],
-                        },
-                        "admins": ["admin"],
-                        "public": ["outer_z"],
+                    "type": "tiled.access_policies:SimpleAccessPolicy",
+                    "provider": "toy",
+                    "access_lists": {
+                        "alice": ["outer_x"],
+                        "bob": ["outer_y"],
                     },
+                    "admins": ["admin"],
+                    "public": ["outer_z"],
                 },
             },
         ],
@@ -538,13 +536,13 @@ async def test_init_db_logging(tmpdir, caplog):
         },
         "trees": [
             {
-                "tree": "catalog",
-                "path": "/",
-                "args": {
+                "tree": {
+                    "type": "catalog",
                     "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },
+                "path": "/",
             },
         ],
     }

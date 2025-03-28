@@ -7,7 +7,7 @@ strict_config = {
     "allow_anonymous_access": True,
     "trees": [
         {
-            "tree": "tiled.examples.generated_minimal:tree",
+            "tree": {"type": "tiled.examples.generated_minimal:tree"},
             "path": "/",
         },
     ],

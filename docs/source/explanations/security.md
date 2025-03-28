@@ -280,7 +280,7 @@ authenticators:
       cara: ${CARA_PASSWORD}
 trees:
   - path: /
-    tree: 
+    tree:
       type: tiled.examples.generated_minimal:tree
 ```
 
@@ -298,7 +298,7 @@ authenticators:
     type: tiled.authenticators:DummyAuthenticator
 trees:
   - path: /
-    tree: 
+    tree:
       type: tiled.examples.generated_minimal:tree
 ```
 

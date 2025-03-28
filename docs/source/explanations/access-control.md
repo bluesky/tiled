@@ -78,13 +78,12 @@ from tiled.scopes import PUBLIC_SCOPES
 response_cache = cachetools.TTLCache(maxsize=10_000, ttl=60)
 
 
-class PASSAccessPolicy:
+class PASSAccessPolicy(AccessPolicy):
     """
     access_control:
-      access_policy: pass_access_policy:PASSAccessPolicy
-      args:
-        url: ...
-        beamline: ...
+      type: pass_access_policy:PASSAccessPolicy
+      url: ...
+      beamline: ...
     """
 
     def __init__(self, url, beamline, provider):
