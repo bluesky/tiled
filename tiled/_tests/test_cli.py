@@ -101,11 +101,12 @@ def test_serve_config(args, tmp_path):
 allow_anonymous_access: false
 trees:
   - path: /
-    tree: catalog
-    args:
-      uri: sqlite:///{tmp_path / 'catalog.db'}
-      writable_storage: {tmp_path / 'data'}
-      init_if_not_exists: true
+    tree:
+      type: catalog
+      args:
+        uri: sqlite:///{tmp_path / 'catalog.db'}
+        writable_storage: {tmp_path / 'data'}
+        init_if_not_exists: true
 """
         )
     with run_cli(f"tiled serve config {config_filepath} --port 0 " + args) as process:

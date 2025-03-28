@@ -26,4 +26,5 @@ authenticators:
         x509cert: ""
 trees:
   - path: /
-    tree: tiled.examples.toy_authentication:tree
+    tree: 
+      type: tiled.examples.toy_authentication:tree

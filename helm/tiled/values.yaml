@@ -6,11 +6,12 @@ config:
   allow_anonymous_access: false
   trees:
     - path: /
-      tree: catalog
-      args:
-        uri: "sqlite:////storage/catalog.db"
-        writable_storage: "/storage/data"
-        init_if_not_exists: true
+      tree: 
+        type: catalog
+        args:
+          uri: "sqlite:////storage/catalog.db"
+          writable_storage: "/storage/data"
+          init_if_not_exists: true
 
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1

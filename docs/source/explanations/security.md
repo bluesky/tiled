@@ -111,7 +111,8 @@ This is a complete working example:
 allow_anonymous_access: true
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -181,7 +182,8 @@ authenticators:
     provider: local
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -278,7 +280,8 @@ authenticators:
       cara: ${CARA_PASSWORD}
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree: 
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -295,7 +298,8 @@ authenticators:
     type: tiled.authenticators:DummyAuthenticator
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree: 
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```

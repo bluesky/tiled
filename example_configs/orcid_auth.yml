@@ -12,5 +12,6 @@ authenticators:
 trees:
  # Just some arbitrary example data...
  # The point of this example is the authenticaiton above.
- - tree: tiled.examples.generated_minimal:tree
+ - tree: 
+      type: tiled.examples.generated_minimal:tree
    path: /

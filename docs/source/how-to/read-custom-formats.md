@@ -243,8 +243,9 @@ needed.
 ```yaml
 # config.yml
 trees:
-  - tree: catalog
-    path: /
+- path: /
+  tree: 
+    type: catalog
     args:
       uri: ./catalog.db
       readable_storage:
