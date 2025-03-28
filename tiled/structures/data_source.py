@@ -54,6 +54,8 @@ class Storage:
             self.filesystem = ensure_uri(self.filesystem)
         if self.sql is not None:
             self.sql = ensure_uri(self.sql)
+        if self.blob is not None:
+            self.blob = ensure_uri(self.blob)
 
     @classmethod
     def from_path(cls, path: Union[str, Path]):

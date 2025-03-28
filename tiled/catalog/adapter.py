@@ -170,6 +170,8 @@ class Context:
             self.readable_storage.add(storage.filesystem)
         if storage.sql is not None:
             self.readable_storage.add(storage.sql)
+        if storage.blob is not None:
+            self.readable_storage.add(storage.blob)
         self.writable_storage = storage
 
         self.key_maker = key_maker
