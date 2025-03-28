@@ -1,10 +1,10 @@
 # config.yml
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 uvicorn:
   host: 0.0.0.0
   port: 8000
-authentication:
-  allow_anonymous_access: true
-  single_user_api_key: SECRET
+allow_anonymous_access: true
+single_user_api_key: SECRET

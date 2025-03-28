@@ -1,11 +1,10 @@
-authentication:
-  # The default is false. Set to true to enable any HTTP client that can
-  # connect to _read_. An API key is still required to write.
-  allow_anonymous_access: false
+# The default is false. Set to true to enable any HTTP client that can
+# connect to _read_. An API key is still required to write.
+allow_anonymous_access: false
 trees:
   - path: /
-    tree: catalog
-    args:
+    tree:
+      type: catalog
       uri: "sqlite:////storage/catalog.db"
       writable_storage: "/storage/data"
       # This creates the database if it does not exist. This is convenient, but in

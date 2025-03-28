@@ -4,16 +4,15 @@
 # - OIDC_BASE_URL (e.g. http://localhost:9000)
 # and update 'public_keys' section below to match values at http://localhost:9000/certs
 #
-authentication:
-  providers:
-  - provider: simple_oidc
-    authenticator: tiled.authenticators:OIDCAuthenticator
-    args:
-      audience: ${OIDC_CLIENT_ID}
-      client_id: ${OIDC_CLIENT_ID}
-      client_secret: ${OIDC_CLIENT_SECRET}
-      well_known_uri: "${OIDC_BASE_URL}/.well-known/openid-configuration"
-      confirmation_message: "You have logged in with Simple OIDC as {id}."
+authenticators:
+- provider: simple_oidc
+  authenticator:
+    type: tiled.authenticators:OIDCAuthenticator
+    audience: ${OIDC_CLIENT_ID}
+    client_id: ${OIDC_CLIENT_ID}
+    client_secret: ${OIDC_CLIENT_SECRET}
+    well_known_uri: "${OIDC_BASE_URL}/.well-known/openid-configuration"
+    confirmation_message: "You have logged in with Simple OIDC as {id}."
 trees:
  # Just some arbitrary example data...
  # The point of this example is the authenticaiton above.

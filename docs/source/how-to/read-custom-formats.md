@@ -243,14 +243,14 @@ needed.
 ```yaml
 # config.yml
 trees:
-  - tree: catalog
-    path: /
-    args:
-      uri: ./catalog.db
-      readable_storage:
-        - path/to/directory
-      adapters_by_mimetype:
-        application/x-stuff: custom:read_custom_format
+- path: /
+  tree:
+    type: catalog
+    uri: ./catalog.db
+    readable_storage:
+      - path/to/directory
+    adapters_by_mimetype:
+      application/x-stuff: custom:read_custom_format
 ```
 
 We then use the configuration file like this:
