@@ -424,6 +424,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         dataset: Optional[str] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
+        **kwargs: Optional[Any],
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
         with h5open(fpath, dataset, swmr=swmr, libver=libver) as file:
@@ -431,10 +432,12 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
 
         if tree == HDF5_DATASET:
             return HDF5ArrayAdapter.from_uris(
-                *data_uris, dataset=dataset, swmr=swmr, libver=libver
+                *data_uris, dataset=dataset, swmr=swmr, libver=libver, **kwargs  # type: ignore
             )
 
-        return cls(tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver)
+        return cls(
+            tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver, **kwargs
+        )
 
     def __repr__(self) -> str:
         return node_repr(self, list(self))

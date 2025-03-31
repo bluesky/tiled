@@ -36,7 +36,13 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from .. import __version__
 from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
-from ..utils import BrokenLink, SpecialUsers, ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import (
+    BrokenLink,
+    SpecialUsers,
+    ensure_awaitable,
+    patch_mimetypes,
+    path_from_uri,
+)
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import get_current_principal
