@@ -3,7 +3,7 @@
 ## Design Principles
 
 Many institutions are building tools for structured data access.
-Tiled's particular approach to this problem is tuned to the needs its users.
+Tiled's particular approach to this problem is tuned to the needs of its users.
 Our users are opinionated scientists with highly varied data scales, access
 patterns, and conventions. From their requirements flow Tiled's design.
 
