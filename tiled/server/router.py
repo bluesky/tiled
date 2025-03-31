@@ -6,7 +6,7 @@ import warnings
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar
+from typing import Callable, List, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -35,11 +35,12 @@ from tiled.schemas import About
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from .. import __version__
+from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
-from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import BrokenLink, SpecialUsers, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from .authentication import get_authenticators, get_current_principal
+from .authentication import get_current_principal
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -56,14 +57,7 @@ from .core import (
     json_or_msgpack,
     resolve_media_type,
 )
-from .dependencies import (
-    block,
-    expected_shape,
-    get_entry,
-    offset_param,
-    shape_param,
-    slice_,
-)
+from .dependencies import block, expected_shape, get_entry, offset_param, shape_param
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
 from .settings import Settings, get_settings
@@ -145,6 +139,7 @@ def get_router(
     serialization_registry: SerializationRegistry,
     deserialization_registry: SerializationRegistry,
     validation_registry: ValidationRegistry,
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -152,7 +147,6 @@ def get_router(
     async def about(
         request: Request,
         settings: Settings = Depends(get_settings),
-        authenticators=Depends(get_authenticators),
     ):
         # TODO The lazy import of entry modules and serializers means that the
         # lists of formats are not populated until they are first used. Not very
@@ -421,7 +415,7 @@ def get_router(
             scopes=["read:data"],
         ),
         block=Depends(block),
-        slice=Depends(slice_),
+        slice=Depends(NDSlice.from_query),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -518,7 +512,7 @@ def get_router(
             get_entry({StructureFamily.array, StructureFamily.sparse}),
             scopes=["read:data"],
         ),
-        slice=Depends(slice_),
+        slice=Depends(NDSlice.from_query),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -950,7 +944,9 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -978,7 +974,9 @@ def get_router(
             get_entry({StructureFamily.container, StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -1056,7 +1054,9 @@ def get_router(
             ),
             scopes=["read:data"],
         ),
-        principal: str = Depends(get_current_principal),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -1234,7 +1234,7 @@ def get_router(
         entry: MapAdapter = Security(
             get_entry({StructureFamily.awkward}), scopes=["read:data"]
         ),
-        # slice=Depends(slice_),
+        # slice=Depends(NDSlice.from_query),
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),

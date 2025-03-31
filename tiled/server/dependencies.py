@@ -1,5 +1,4 @@
-import builtins
-from typing import Optional, Tuple, Union
+from typing import Optional
 
 import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
@@ -7,15 +6,14 @@ from fastapi.security import SecurityScopes
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from tiled.adapters.mapping import MapAdapter
+from tiled.server.schemas import Principal
 from tiled.structures.core import StructureFamily
+from tiled.utils import SpecialUsers
 
 from ..utils import BrokenLink
 from .authentication import check_scopes, get_current_principal, get_session_state
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
-
-DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
-SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
 
 def get_root_tree():
@@ -30,7 +28,7 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         path: str,
         request: Request,
         security_scopes: SecurityScopes,
-        principal: str = Depends(get_current_principal),
+        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
@@ -177,19 +175,3 @@ def offset_param(
 ):
     "Specify and parse an offset parameter."
     return tuple(map(int, offset.split(",")))
-
-
-def np_style_slicer(indices: tuple):
-    return indices[0] if len(indices) == 1 else builtins.slice(*indices)
-
-
-def parse_slice_str(dim: str):
-    return np_style_slicer(tuple(int(idx) if idx else None for idx in dim.split(":")))
-
-
-def slice_(
-    slice: Optional[str] = Query(None, pattern=SLICE_REGEX),
-) -> Tuple[Union[slice, int], ...]:
-    "Specify and parse a block index parameter."
-
-    return tuple(parse_slice_str(dim) for dim in (slice or "").split(",") if dim)

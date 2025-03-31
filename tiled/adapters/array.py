@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 
 from ..structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from ..structures.core import Spec, StructureFamily
-from ..type_aliases import JSON, NDSlice
+from ..type_aliases import JSON
 
 DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
@@ -130,7 +130,7 @@ class ArrayAdapter:
 
     def read(
         self,
-        slice: Optional[NDSlice] = None,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -142,6 +142,7 @@ class ArrayAdapter:
         -------
 
         """
+        # _array[...] requires an actual tuple, not just a subclass of tuple
         array = self._array[tuple(slice)] if slice else self._array
         if isinstance(self._array, dask.array.Array):
             return array.compute()
@@ -150,7 +151,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: Optional[NDSlice] = None,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -165,11 +166,10 @@ class ArrayAdapter:
         """
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
-        # _array[...] requires a tuple, not just a subclass of tuple.
+        # _array[...] requires an actual tuple, not just a subclass of tuple
         array = self._array[tuple(slice_)]
         # Slice within the block.
-        if slice is not None:
-            array = array[slice]
+        array = array[slice] if slice else array
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array

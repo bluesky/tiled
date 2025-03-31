@@ -6,10 +6,11 @@ from numpy._typing import NDArray
 from PIL import Image
 
 from ..catalog.orm import Node
+from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..type_aliases import JSON, NDSlice
+from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
@@ -87,10 +88,9 @@ class JPEGAdapter:
     def metadata(self) -> JSON:
         return self._provided_metadata.copy()
 
-    def read(self, slice: Optional[NDSlice] = None) -> NDArray[Any]:
+    def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         arr = np.asarray(self._file)
-        if slice is not None:
-            arr = arr[slice]
+        arr = arr[slice] if slice else arr
         return arr
 
     def read_block(
