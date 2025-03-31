@@ -9,9 +9,9 @@ import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
-from tiled.access_policies import ALL_ACCESS
-from tiled.adapters.awkward_directory_container import DirectoryContainer
-from tiled.adapters.protocols import (
+from ..access_policies import ALL_ACCESS
+from ..adapters.awkward_directory_container import DirectoryContainer
+from ..adapters.protocols import (
     AccessPolicy,
     ArrayAdapter,
     AwkwardAdapter,
@@ -19,14 +19,15 @@ from tiled.adapters.protocols import (
     SparseAdapter,
     TableAdapter,
 )
-from tiled.scopes import ALL_SCOPES
-from tiled.server.schemas import Principal, PrincipalType
-from tiled.structures.array import ArrayStructure, BuiltinDtype
-from tiled.structures.awkward import AwkwardStructure
-from tiled.structures.core import Spec, StructureFamily
-from tiled.structures.sparse import COOStructure
-from tiled.structures.table import TableStructure
-from tiled.type_aliases import JSON, Filters, NDSlice, Scopes
+from ..ndslice import NDSlice
+from ..scopes import ALL_SCOPES
+from ..server.schemas import Principal, PrincipalType
+from ..structures.array import ArrayStructure, BuiltinDtype
+from ..structures.awkward import AwkwardStructure
+from ..structures.core import Spec, StructureFamily
+from ..structures.sparse import COOStructure
+from ..structures.table import TableStructure
+from ..type_aliases import JSON, Filters, Scopes
 
 
 class CustomArrayAdapter:

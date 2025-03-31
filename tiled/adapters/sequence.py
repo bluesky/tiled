@@ -9,10 +9,11 @@ from ndindex import ndindex
 from numpy._typing import NDArray
 
 from ..catalog.orm import Node
+from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..type_aliases import JSON, EllipsisType, NDSlice
+from ..type_aliases import JSON, EllipsisType
 from ..utils import path_from_uri
 from .utils import init_adapter_from_catalog
 
@@ -201,7 +202,7 @@ class FileSequenceAdapter:
         return force_reshape(arr, sliced_shape)
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[NDSlice] = None
+        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
     ) -> NDArray[Any]:
         """
 

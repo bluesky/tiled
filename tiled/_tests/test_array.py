@@ -14,7 +14,6 @@ from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..serialization.array import as_buffer
 from ..server.app import build_app
-from ..type_aliases import NDSlice
 from .utils import fail_with_status_code
 
 array_cases = {
@@ -171,35 +170,3 @@ def test_array_interface(context):
 def test_as_buffer(kind):
     output = as_buffer(array_cases[kind], {})
     assert len(output) == len(bytes(output))
-
-
-slice_cases = [
-    ("[0:5:2]", (slice(0, 5, 2),), [{"start": 0, "stop": 5, "step": 2}]),
-    ("(1:3)", (slice(1, 3),), [{"start": 1, "stop": 3}]),
-    ("1:", (slice(1, None),), [{"start": 1}]),
-    ("[0:3]", (slice(0, 3),), [{"start": 0, "stop": 3}]),
-    ("[:]", (slice(None, None, None),), [{}]),
-    ("[...]", (Ellipsis,), ["ellipsis"]),
-    ("::2", (slice(None, None, 2),), [{"step": 2}]),
-    ("[1::2]", (slice(1, None, 2),), [{"start": 1, "step": 2}]),
-    ("[1 : : 2]", (slice(1, None, 2),), [{"start": 1, "step": 2}]),
-    ("[:3:2]", (slice(None, 3, 2),), [{"stop": 3, "step": 2}]),
-    ("[1:3:]", (slice(1, 3),), [{"start": 1, "stop": 3}]),
-    (
-        "[1:5:2, ..., :5]",
-        (slice(1, 5, 2), Ellipsis, slice(None, 5)),
-        [{"start": 1, "stop": 5, "step": 2}, "ellipsis", {"stop": 5}],
-    ),
-]
-
-
-@pytest.mark.parametrize("as_string, as_tuple, as_json", slice_cases)
-def test_ndslice(as_string, as_tuple, as_json):
-    assert NDSlice.from_numpy_str(as_string) == as_tuple
-    assert NDSlice.from_json(as_json) == as_tuple
-    assert NDSlice(*as_tuple).to_json() == as_json
-
-    # Normalize the string representations before comparing them
-    norm_string = as_string.strip("(][)").replace(" ", "").lstrip("0")
-    norm_string = "1:3" if norm_string == "1:3:" else norm_string
-    assert NDSlice(*as_tuple).to_numpy_str() == norm_string

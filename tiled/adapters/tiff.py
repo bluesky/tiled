@@ -5,10 +5,11 @@ import tifffile
 from numpy._typing import NDArray
 
 from ..catalog.orm import Node
+from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
-from ..type_aliases import JSON, NDSlice
+from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
@@ -92,15 +93,13 @@ class TiffAdapter:
         d.update(self._provided_metadata)
         return d
 
-    def read(self, slice: Optional[NDSlice] = None) -> NDArray[Any]:
+    def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         # TODO Is there support for reading less than the whole array
         # if we only want a slice? I do not think that is possible with a
         # single-page TIFF but I'm not sure. Certainly it *is* possible for
         # multi-page TIFFs.
         arr = self._file.asarray()
-        if slice is not None:
-            arr = arr[slice]
-        return arr
+        return arr[slice] if slice else arr
 
     def read_block(
         self, block: Tuple[int, ...], slice: Optional[slice] = None
