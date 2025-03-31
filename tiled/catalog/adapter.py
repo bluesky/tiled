@@ -72,7 +72,7 @@ from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..structures.data_source import Storage
-from ..type_aliases import NDSlice
+from ..ndslice import NDSlice
 from ..utils import (
     UNCHANGED,
     Conflicts,
