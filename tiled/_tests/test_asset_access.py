@@ -9,6 +9,8 @@ from starlette.status import (
     HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
 )
 
+from tiled.server.settings import Settings
+
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.utils import get_asset_filepaths
@@ -118,7 +120,7 @@ def test_get_asset_filepaths(client):
 
 def test_do_not_expose_raw_assets(tmpdir):
     catalog = in_memory(writable_storage=str(tmpdir / "data"))
-    app = build_app(catalog, server_settings={"expose_raw_assets": False})
+    app = build_app(catalog, server_settings=Settings(expose_raw_assets=False))
     with Context.from_app(app) as context:
         client = from_context(context, include_data_sources=True)
         client.write_array([1, 2, 3], key="x")

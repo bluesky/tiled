@@ -30,7 +30,11 @@ from tiled.adapters.mapping import MapAdapter
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
 from tiled.schemas import About
-from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+from tiled.server.protocols import (
+    Authenticator,
+    ExternalAuthenticator,
+    InternalAuthenticator,
+)
 
 from .. import __version__
 from ..structures.core import Spec, StructureFamily
@@ -142,7 +146,7 @@ def get_router(
     serialization_registry: SerializationRegistry,
     deserialization_registry: SerializationRegistry,
     validation_registry: ValidationRegistry,
-    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]],
+    authenticators: dict[str, Authenticator],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -184,9 +188,7 @@ def get_router(
                     "links": {
                         "auth_endpoint": f"{base_url}/auth/provider/{provider}/token"
                     },
-                    "confirmation_message": getattr(
-                        authenticator, "confirmation_message", None
-                    ),
+                    "confirmation_message": authenticator.confirmation_message,
                 }
             elif isinstance(authenticator, ExternalAuthenticator):
                 spec = {
@@ -195,9 +197,7 @@ def get_router(
                     "links": {
                         "auth_endpoint": f"{base_url}/auth/provider/{provider}/authorize"
                     },
-                    "confirmation_message": getattr(
-                        authenticator, "confirmation_message", None
-                    ),
+                    "confirmation_message": authenticator.confirmation_message,
                 }
             else:
                 # It should be impossible to reach here.

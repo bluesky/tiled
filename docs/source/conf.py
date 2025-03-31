@@ -80,6 +80,7 @@ author = "Bluesky Collaboration"
 # built documents.
 #
 import tiled
+from tiled.server.settings import Settings
 
 # The short X.Y version.
 version = tiled.__version__
@@ -287,7 +288,9 @@ from tiled.adapters.mapping import MapAdapter
 from tiled.authenticators import DummyAuthenticator
 from tiled.server.app import build_app
 
-app = build_app(MapAdapter({}), authentication={"authenticator": DummyAuthenticator()})
+app = build_app(
+    MapAdapter({}), server_settings=Settings(authenticator=DummyAuthenticator())
+)
 api = app.openapi()
 
 with open("reference/api.yml", "w") as file:

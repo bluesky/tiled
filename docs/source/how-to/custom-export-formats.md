@@ -74,7 +74,8 @@ media_types:
 # And provide some example data to try it with....
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 The term `application/x-smileys` is a "media type", also known as "MIME type".
@@ -174,7 +175,8 @@ media_types:
     image/jpeg: custom_exporters:to_jpeg
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 Start the server again

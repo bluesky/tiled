@@ -8,9 +8,9 @@ import sys
 import urllib.parse
 import warnings
 from contextlib import asynccontextmanager
-from functools import cache, partial
+from functools import partial
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional
 
 import anyio
 import packaging.version
@@ -23,6 +23,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import TypeAdapter
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -34,11 +35,12 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.adapters.mapping import MapAdapter
+from tiled.config import parse_configs
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
-from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -103,16 +105,15 @@ def custom_openapi(app):
 
 
 def build_app(
-    tree,
-    authentication=None,
-    server_settings=None,
+    tree: MapAdapter,
+    server_settings: Optional[Settings] = None,
     query_registry: Optional[QueryRegistry] = None,
     serialization_registry: Optional[SerializationRegistry] = None,
     deserialization_registry: Optional[SerializationRegistry] = None,
     compression_registry: Optional[CompressionRegistry] = None,
     validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
-    scalable=False,
+    scalable: bool = False,
 ):
     """
     Serve a Tree
@@ -120,19 +121,10 @@ def build_app(
     Parameters
     ----------
     tree : Tree
-    authentication: dict, optional
-        Dict of authentication configuration.
-    authenticators: list, optional
-        List of authenticator classes (one per support identity provider)
-    server_settings: dict, optional
+    server_settings: Settings, optional
         Dict of other server configuration.
     """
-    authentication = authentication or {}
-    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
-        spec["provider"]: spec["authenticator"]
-        for spec in authentication.get("providers", [])
-    }
-    server_settings = server_settings or {}
+    server_settings = server_settings or get_settings()
     query_registry = query_registry or default_query_registry
     serialization_registry = serialization_registry or default_serialization_registry
     deserialization_registry = (
@@ -152,59 +144,7 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
-        if authentication.get("providers"):
-            # Even if the deployment allows public, anonymous access, secret
-            # keys are needed to generate JWTs for any users that do log in.
-            if (
-                "secret_keys" not in authentication
-                and "TILED_SECRET_KEYS" not in os.environ
-            ):
-                raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, secret keys must be provided via configuration like
-
-authentication:
-  secret_keys:
-    - SECRET
-  ...
-
-or via the environment variable TILED_SECRET_KEYS.""",
-                )
-            # Multi-user authentication requires a database. We cannot fall
-            # back to the default of an in-memory SQLite database in a
-            # horizontally scaled deployment.
-            if not server_settings.get("database", {}).get("uri"):
-                raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, a persistent database must be provided via configuration like
-
-database:
-  uri: sqlite:////path/to/database.sqlite
-
-"""
-                )
-        else:
-            # No authentication provider is configured, so no secret keys are
-            # needed, but a single-user API key must be set.
-            if not (
-                ("single_user_api_key" in authentication)
-                or ("TILED_SINGLE_USER_API_KEY" in os.environ)
-            ):
-                raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured for
-single-user access (i.e. without an Authenticator) a single-user API key must
-be provided via configuration like
-
-authentication:
-  single_user_api_key: SECRET
-  ...
-
-or via the environment variable TILED_SINGLE_USER_API_KEY.""",
-                )
-        # If we reach here, the no configuration problems were found.
+        server_settings.check_scalable()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -348,7 +288,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         serialization_registry,
         deserialization_registry,
         validation_registry,
-        authenticators,
+        server_settings.authenticators,
     )
     app.include_router(router, prefix="/api/v1")
 
@@ -359,7 +299,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/api/v1")
 
-    if authentication.get("providers", []):
+    if server_settings.authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
         from .authentication import (
@@ -370,7 +310,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
-        first_provider = authentication["providers"][0]["provider"]
+        first_provider = list(server_settings.authenticators)[0]
         oauth2_scheme.model.flows.password.tokenUrl = (
             f"/api/v1/auth/provider/{first_provider}/token"
         )
@@ -380,9 +320,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # This adds the universal routes like /session/refresh and /session/revoke.
         # Below we will add routes specific to our authentication providers.
 
-        for spec in authentication["providers"]:
-            provider = spec["provider"]
-            authenticator = spec["authenticator"]
+        for provider, authenticator in server_settings.authenticators:
             if isinstance(authenticator, InternalAuthenticator):
                 add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
@@ -398,51 +336,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         app.state.authenticated = True
     else:
         app.state.authenticated = False
-
-    @cache
-    def override_get_root_tree():
-        return tree
-
-    @cache
-    def override_get_settings():
-        settings = get_settings()
-        for item in [
-            "allow_anonymous_access",
-            "secret_keys",
-            "single_user_api_key",
-            "access_token_max_age",
-            "refresh_token_max_age",
-            "session_max_age",
-        ]:
-            if authentication.get(item) is not None:
-                setattr(settings, item, authentication[item])
-        for item in [
-            "allow_origins",
-            "response_bytesize_limit",
-            "reject_undeclared_specs",
-            "expose_raw_assets",
-        ]:
-            if server_settings.get(item) is not None:
-                setattr(settings, item, server_settings[item])
-        database = server_settings.get("database", {})
-        if uri := database.get("uri"):
-            settings.database_settings.uri = uri
-        if pool_size := database.get("pool_size"):
-            settings.database_settings.pool_size = pool_size
-        if pool_pre_ping := database.get("pool_pre_ping"):
-            settings.database_settings.pool_pre_ping = pool_pre_ping
-        if max_overflow := database.get("max_overflow"):
-            settings.database_settings.max_overflow = max_overflow
-        if init_if_not_exists := database.get("init_if_not_exists"):
-            settings.database_init_if_not_exists = init_if_not_exists
-        if authentication.get("providers"):
-            # If we support authentication providers, we need a database, so if one is
-            # not set, use a SQLite database in memory. Horizontally scaled deployments
-            # must specify a persistent database.
-            settings.database_settings.uri = (
-                settings.database_settings.uri or "sqlite://"
-            )
-        return settings
 
     async def startup_event():
         from .. import __version__
@@ -489,8 +382,10 @@ confusing behavior due to ambiguous encodings.
         # Trees and Authenticators can run tasks in the background.
         background_tasks = []
         background_tasks.extend(tasks.get("background_tasks", []))
-        for authenticator in authenticators:
-            background_tasks.extend(getattr(authenticator, "background_tasks", []))
+        for authenticator in server_settings.authenticators:
+            background_tasks.extend(
+                getattr(authenticator.authenticator, "background_tasks", [])
+            )
         for task in background_tasks or []:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
@@ -582,17 +477,17 @@ Back up the database, and then run:
                     raise err from None
                 else:
                     logger.info(f"Connected to existing database at {redacted_url}.")
-            for admin in authentication.get("tiled_admins", []):
+            for admin in server_settings.admins:
                 logger.info(
-                    f"Ensuring that principal with identity {admin} has role 'admin'"
+                    f"Ensuring that principal with identity {admin.id} has role 'admin'"
                 )
                 async with AsyncSession(
                     engine, autoflush=False, expire_on_commit=False
                 ) as session:
                     await make_admin_by_identity(
                         session,
-                        identity_provider=admin["provider"],
-                        id=admin["id"],
+                        identity_provider=admin.provider,
+                        id=admin.id,
                     )
 
             async def purge_expired_sessions_and_api_keys():
@@ -724,8 +619,6 @@ Back up the database, and then run:
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_root_tree] = override_get_root_tree
-    app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):
@@ -820,10 +713,10 @@ Back up the database, and then run:
     return app
 
 
-def build_app_from_config(config, source_filepath=None, scalable=False):
+def build_app_from_config(config: dict[str, Any], scalable: bool = False):
     "Convenience function that calls build_app(...) given config as dict."
-    kwargs = construct_build_app_kwargs(config, source_filepath=source_filepath)
-    return build_app(scalable=scalable, **kwargs)
+    settings: Settings = TypeAdapter(Settings).validate_python(config)
+    return build_app(scalable=scalable, server_settings=settings)
 
 
 def app_factory():
@@ -839,17 +732,10 @@ def app_factory():
     config_path = os.getenv("TILED_CONFIG", "config.yml")
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    from ..config import construct_build_app_kwargs, parse_configs
+    settings: Settings = parse_configs(config_path)
 
-    parsed_config = parse_configs(config_path)
-
-    # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
-    web_app = build_app(**kwargs)
-    uvicorn_config = parsed_config.get("uvicorn", {})
-    print_server_info(
-        web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
-    )
+    web_app = build_app(server_settings=settings)
+    print_server_info(web_app, host=settings.uvicorn.host, port=settings.uvicorn.port)
     return web_app
 
 
@@ -900,7 +786,3 @@ def print_server_info(
 """,
             file=sys.stderr,
         )
-
-
-class UnscalableConfig(Exception):
-    pass

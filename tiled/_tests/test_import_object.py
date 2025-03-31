@@ -19,7 +19,9 @@ def test_config_imports_custom_python_module():
 
 def test_direct_profile(tmpdir):
     profile_content = {
-        "test": {"direct": {"trees": [{"path": "/", "tree": "custom_module:tree"}]}}
+        "test": {
+            "direct": {"trees": [{"path": "/", "tree": {"type": "custom_module:tree"}}]}
+        }
     }
     with open(tmpdir / "example.yml", "w") as yaml_file:
         yaml_file.write(yaml.dump(profile_content))
