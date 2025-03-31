@@ -10,6 +10,7 @@ from fastapi import Query
 from ndindex import ndindex
 from numpy.typing import NDArray
 
+from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
