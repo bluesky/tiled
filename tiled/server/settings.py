@@ -16,7 +16,7 @@ from tiled.server.protocols import Authenticator
 T = TypeVar("T")
 
 
-def _get(value: Any, typ: type[T], allow_none: bool = False) -> Optional[T]:
+def _get(value: Any, typ: type[T]) -> T:
     if isinstance(value, typ):
         return value
     if isinstance(value, dict) and "type" in value:
@@ -28,9 +28,14 @@ def _get(value: Any, typ: type[T], allow_none: bool = False) -> Optional[T]:
         if hasattr(module, type_name):
             return getattr(module, type_name)(**value)
         raise KeyError(f"Unable to find subclass for {typ} {qualified_type}")
-    if allow_none:
+    raise ValueError(f"Unable to deserialize {typ} from {value}")
+
+
+def _optional_get(value: Any, typ: type[T]) -> Optional[T]:
+    try:
+        return _get(value, typ)
+    except ValueError:
         return None
-    raise KeyError(f"Unable to deserialize {typ} from {value}")
 
 
 class Admin(BaseModel):
@@ -50,7 +55,7 @@ class PathedMapAdapter(BaseModel):
     tree: Annotated[MapAdapter, BeforeValidator(partial(_get, typ=MapAdapter))]
     access_control: Annotated[
         Optional[AccessPolicy],
-        BeforeValidator(partial(_get, typ=AccessPolicy, allow_none=True)),
+        BeforeValidator(partial(_optional_get, typ=AccessPolicy)),
     ]
 
     model_config: ConfigDict = ConfigDict(arbitrary_types_allowed=True)
@@ -105,8 +110,8 @@ class Settings(BaseSettings):
     expose_raw_assets: bool = True
     admins: list[Admin] = Field(default_factory=list)
     access_control: Annotated[
-        Optional[AccessPolicy],
-        BeforeValidator(partial(_get, typ=AccessPolicy, allow_none=True)),
+        Optional[AccessPolicy], "AccessPolicy to apply to all Trees",
+        BeforeValidator(partial(_optional_get, typ=AccessPolicy)),
     ]
 
     uvicorn: Uvicorn = Field(Uvicorn())

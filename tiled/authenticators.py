@@ -452,7 +452,7 @@ class LDAPAuthenticator(InternalAuthenticator):
                 use_ssl: false
         tiled_admins:
             - provider: ldap_local
-            id: user02
+              id: user02
     """
 
     def __init__(
