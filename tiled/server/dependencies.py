@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import pydantic_settings
 from fastapi import Depends, HTTPException, Query, Request, Security
