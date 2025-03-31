@@ -66,13 +66,13 @@ from ..mimetypes import (
     TILED_SQL_TABLE_MIMETYPE,
     ZARR_MIMETYPE,
 )
+from ..ndslice import NDSlice
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..structures.data_source import Storage
-from ..ndslice import NDSlice
 from ..utils import (
     UNCHANGED,
     Conflicts,

@@ -241,7 +241,7 @@ class ArrayTransforms:
         todense: Annotated[Optional[bool], Query()] = None,
     ) -> "ArrayTransforms":
         if reslice:
-            reslice = NDSlice.from_numpy_str(reslice)
+            reslice = NDSlice.from_numpy_str(reslice)  # type: ignore
         if reshape:
             reshape = tuple(map(int, reshape.strip("[]()").split(",")))  # type: ignore
         if asdtype:
