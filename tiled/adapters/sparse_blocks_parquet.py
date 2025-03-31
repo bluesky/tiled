@@ -12,10 +12,11 @@ from numpy._typing import NDArray
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..catalog.orm import Node
+from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
 from ..structures.sparse import COOStructure, SparseStructure
-from ..type_aliases import JSON, NDSlice
+from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .utils import init_adapter_from_catalog
 
@@ -129,9 +130,9 @@ class SparseBlocksParquetAdapter:
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
-        slice: Optional[NDSlice] = None,
+        slice: NDSlice = NDSlice(...),
     ) -> None:
-        if slice is not None:
+        if slice:
             raise NotImplementedError(
                 "Writing into a slice of a sparse block is not yet supported."
             )
@@ -155,7 +156,7 @@ class SparseBlocksParquetAdapter:
         uri = self.blocks[(0,) * len(self._structure.shape)]
         data.to_parquet(path_from_uri(uri))
 
-    def read(self, slice: Optional[NDSlice] = None) -> sparse.COO:
+    def read(self, slice: NDSlice = NDSlice(...)) -> sparse.COO:
         """
 
         Parameters
@@ -185,7 +186,7 @@ class SparseBlocksParquetAdapter:
         return arr[slice] if slice else arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[NDSlice] = None
+        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
     ) -> sparse.COO:
         """
 
