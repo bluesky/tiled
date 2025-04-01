@@ -303,7 +303,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
         Asset(
             data_uri=ensure_uri(filepath),
             is_directory=False,
-            parameter="data_uri",
+            parameter="data_uris",
         )
     )
     catalog = in_memory(writable_storage=str(tmpdir))
