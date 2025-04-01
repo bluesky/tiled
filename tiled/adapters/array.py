@@ -85,8 +85,7 @@ class ArrayAdapter:
             array.dtype == "object" and array.dtype.fields is None
         )
         if is_likely_string_dtype:
-            max_size = max((len(i) for i in array.ravel()))
-            array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
+            array = numpy.array([str(x) for x in array])  # becomes "<Un" dtype
 
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims

@@ -224,9 +224,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
     ) -> "HDF5ArrayAdapter":
         structure = data_source.structure
         assets = data_source.assets
-        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uris"] or [
-            assets[0].data_uri
-        ]
+        data_uris = [
+            ast.data_uri for ast in assets if ast.parameter == "data_uris"
+        ] or [assets[0].data_uri]
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = cls.lazy_load_hdf5_array(
@@ -392,9 +392,9 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         # will be kept in case we need to read an array that spans all of them.
         assets = data_source.assets
         assert len(assets) > 0, "No assets found in data source"
-        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uris"] or [
-            assets[0].data_uri
-        ]
+        data_uris = [
+            ast.data_uri for ast in assets if ast.parameter == "data_uris"
+        ] or [assets[0].data_uri]
         file_path = path_from_uri(data_uris[0])
         with h5open(file_path, dataset, swmr=swmr, libver=libver) as file:
             tree = parse_hdf5_tree(file)
