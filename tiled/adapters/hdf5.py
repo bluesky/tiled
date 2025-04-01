@@ -384,7 +384,6 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
                 dataset=dataset,
                 swmr=swmr,
                 libver=libver,
-                squeeze=False,
                 **kwargs,
             )
 
