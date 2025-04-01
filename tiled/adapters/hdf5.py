@@ -156,7 +156,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # Define helper functions for reading and getting specs of HDF5 arrays with dask.delayed
         def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
             f = h5py.File(fpath, "r", swmr=swmr, libver=libver)
-            return f[dataset][()] if dataset else f[()]
+            return f[dataset] if dataset else f
 
         def _get_hdf5_specs(
             fpath: Union[str, Path]
