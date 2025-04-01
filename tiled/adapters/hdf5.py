@@ -224,7 +224,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
     ) -> "HDF5ArrayAdapter":
         structure = data_source.structure
         assets = data_source.assets
-        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uri"] or [
+        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uris"] or [
             assets[0].data_uri
         ]
         file_paths = [path_from_uri(uri) for uri in data_uris]
