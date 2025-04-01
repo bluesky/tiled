@@ -392,7 +392,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         # will be kept in case we need to read an array that spans all of them.
         assets = data_source.assets
         assert len(assets) > 0, "No assets found in data source"
-        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uri"] or [
+        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uris"] or [
             assets[0].data_uri
         ]
         file_path = path_from_uri(data_uris[0])
