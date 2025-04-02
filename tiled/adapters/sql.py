@@ -396,14 +396,16 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
     # Boolean
     pyarrow.bool_(): "BOOLEAN",
     # Integers
-    pyarrow.int8(): "SMALLINT",
-    pyarrow.uint8(): "SMALLINT",
+    pyarrow.int8(): "SMALLINT",  # no native int8, use int16
     pyarrow.int16(): "SMALLINT",
-    pyarrow.uint16(): "SMALLINT",
     pyarrow.int32(): "INTEGER",
-    pyarrow.uint32(): "INTEGER",
     pyarrow.int64(): "BIGINT",
-    pyarrow.uint64(): "BIGINT",
+    # Since PG has not native unsigned int,
+    # use signed int one size up.
+    pyarrow.uint8(): "SMALLINT",
+    pyarrow.uint16(): "INTEGER",
+    pyarrow.uint32(): "BIGINT",
+    # pyarrow.uint64() not supported
     # Floating Point
     pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",

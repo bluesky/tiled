@@ -91,6 +91,9 @@ INT8_INFO = numpy.iinfo(numpy.int8)
 INT16_INFO = numpy.iinfo(numpy.int16)
 INT32_INFO = numpy.iinfo(numpy.int32)
 INT64_INFO = numpy.iinfo(numpy.int64)
+UINT8_INFO = numpy.iinfo(numpy.uint8)
+UINT16_INFO = numpy.iinfo(numpy.uint16)
+UINT32_INFO = numpy.iinfo(numpy.uint32)
 # Map schemas (testing different data types or combinations of data types)
 # to an inner mapping. The inner mapping maps each dialect to a tuple,
 # (SQL type definition, Arrow type read back).
@@ -147,6 +150,36 @@ TEST_CASES = {
         ),
         {
             "duckdb": (["BIGINT NULL"], pa.schema([("x", "int64")])),
+            "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
+            "postgresql": (["BIGINT NULL"], pa.schema([("x", "int64")])),
+        },
+    ),
+    "uint8": (
+        pa.Table.from_arrays(
+            [pa.array([UINT8_INFO.min, UINT8_INFO.max], "uint8")], names=["x"]
+        ),
+        {
+            "duckdb": (["UTINYINT NULL"], pa.schema([("x", "uint8")])),
+            "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
+            "postgresql": (["SMALLINT NULL"], pa.schema([("x", "int16")])),
+        },
+    ),
+    "uint16": (
+        pa.Table.from_arrays(
+            [pa.array([UINT16_INFO.min, UINT16_INFO.max], "uint16")], names=["x"]
+        ),
+        {
+            "duckdb": (["USMALLINT NULL"], pa.schema([("x", "uint16")])),
+            "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
+            "postgresql": (["INTEGER NULL"], pa.schema([("x", "int32")])),
+        },
+    ),
+    "uint32": (
+        pa.Table.from_arrays(
+            [pa.array([UINT32_INFO.min, UINT32_INFO.max], "uint32")], names=["x"]
+        ),
+        {
+            "duckdb": (["UINTEGER NULL"], pa.schema([("x", "uint32")])),
             "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
             "postgresql": (["BIGINT NULL"], pa.schema([("x", "int64")])),
         },
