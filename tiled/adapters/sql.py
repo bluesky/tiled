@@ -762,24 +762,33 @@ DIALECT_TO_TYPE_CONVERTER: dict[
 }
 
 
-def arrow_schema_to_create_table(
-    schema: pyarrow.Schema, table_name: str, dialect: DIALECTS
-) -> str:
-    # Build column definitions
-    columns = []
+def arrow_schema_to_column_defns(
+    schema: pyarrow.Schema, dialect: DIALECTS
+) -> dict[str, str]:
+    """
+    Given Arrow schema, return mapping of column names to type definitions.
 
+    Example output: {'x': 'INTEGER NOT NULL'}
+    """
+    columns = {}
     converter = DIALECT_TO_TYPE_CONVERTER[dialect]
     for field in schema:
         sql_type = converter(field)
         nullable = "NULL" if field.nullable else "NOT NULL"
-        columns.append(f"{field.name} {sql_type} {nullable}")
+        columns[field.name] = f"{sql_type} {nullable}"
+    return columns
 
+
+def arrow_schema_to_create_table(
+    schema: pyarrow.Schema, table_name: str, dialect: DIALECTS
+) -> str:
+    columns = arrow_schema_to_column_defns(schema, dialect)
     # Construct the CREATE TABLE statement
     create_statement = (
         f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
         """
-        + ",\n        ".join(columns)
+        + ",\n        ".join(f"{name} {type_}" for name, type_ in columns.items())
         + """)
     """
     )
