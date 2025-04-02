@@ -12,7 +12,11 @@ import pytest
 import pytest_asyncio
 
 from tiled._tests.utils import temp_postgres
-from tiled.adapters.sql import arrow_schema_to_create_table, create_connection
+from tiled.adapters.sql import (
+    arrow_schema_to_column_defns,
+    arrow_schema_to_create_table,
+    create_connection,
+)
 
 
 @pytest_asyncio.fixture
@@ -37,110 +41,110 @@ def duckdb_uri(tmp_path: Path) -> Generator[str, None, None]:
 
 
 @pytest.mark.parametrize(
-    "actual_schema, expected_schema, expected_keywords",
+    "actual_schema, expected_schema, expected_typedefs",
     [
         (
             pa.schema([("some_bool", pa.bool_())]),
             pa.schema([("some_bool", "bool")]),
-            ["BOOLEAN"],
+            ["BOOLEAN NULL"],
         ),
         (
             pa.schema([("some_int8", pa.int8())]),
             pa.schema([("some_int8", "int8")]),
-            ["TINYINT"],
+            ["TINYINT NULL"],
         ),
         (
             pa.schema([("some_uint8", pa.uint8())]),
             pa.schema([("some_uint8", "uint8")]),
-            ["UTINYINT"],
+            ["UTINYINT NULL"],
         ),
         (
             pa.schema([("some_int16", pa.int16())]),
             pa.schema([("some_int16", "int16")]),
-            ["SMALLINT"],
+            ["SMALLINT NULL"],
         ),
         (
             pa.schema([("some_uint16", pa.uint16())]),
             pa.schema([("some_uint16", "uint16")]),
-            ["USMALLINT"],
+            ["USMALLINT NULL"],
         ),
         (
             pa.schema([("some_int32", pa.int32())]),
             pa.schema([("some_int32", "int32")]),
-            ["INTEGER"],
+            ["INTEGER NULL"],
         ),
         (
             pa.schema([("some_uint32", pa.uint32())]),
             pa.schema([("some_uint32", "uint32")]),
-            ["UINTEGER"],
+            ["UINTEGER NULL"],
         ),
         (
             pa.schema([("some_int64", pa.int64())]),
             pa.schema([("some_int64", "int64")]),
-            ["BIGINT"],
+            ["BIGINT NULL"],
         ),
         (
             pa.schema([("some_uint64", pa.uint64())]),
             pa.schema([("some_uint64", "uint64")]),
-            ["UBIGINT"],
+            ["UBIGINT NULL"],
         ),
         (
             pa.schema([("some_float16", pa.float16())]),
             pa.schema([("some_float16", "float")]),
-            ["REAL"],
+            ["REAL NULL"],
         ),
         (
             pa.schema([("some_float32", pa.float32())]),
             pa.schema([("some_float32", "float")]),
-            ["REAL"],
+            ["REAL NULL"],
         ),
         (
             pa.schema([("some_float64", pa.float64())]),
             pa.schema([("some_float64", "double")]),
-            ["DOUBLE"],
+            ["DOUBLE NULL"],
         ),
         (
             pa.schema([("some_string", pa.string())]),
             pa.schema([("some_string", "string")]),
-            ["VARCHAR"],
+            ["VARCHAR NULL"],
         ),
         (
             pa.schema([("some_large_string", pa.large_string())]),
             pa.schema([("some_large_string", "string")]),
-            ["VARCHAR"],
+            ["VARCHAR NULL"],
         ),
         (
             pa.schema([("some_integer_array", pa.list_(pa.int32()))]),
             pa.schema([("some_integer_array", pa.list_(pa.int32()))]),
-            ["INTEGER[]"],
+            ["INTEGER[] NULL"],
         ),
         (
             pa.schema([("some_large_integer_array", pa.list_(pa.int64()))]),
             pa.schema([("some_large_integer_array", pa.list_(pa.int64()))]),
-            ["BIGINT[]"],
+            ["BIGINT[] NULL"],
         ),
         (
             pa.schema([("some_fixed_size_integer_array", pa.list_(pa.int64(), 2))]),
             pa.schema([("some_fixed_size_integer_array", pa.list_(pa.int64()))]),
-            ["BIGINT[]"],
+            ["BIGINT[] NULL"],
         ),
         (
             pa.schema([("some_decimal", pa.decimal128(precision=38, scale=9))]),
             pa.schema([("some_decimal", pa.decimal128(precision=38, scale=9))]),
-            ["DECIMAL"],
+            ["DECIMAL(38, 9) NULL"],
         ),
     ],
 )
 def test_duckdb_data_types(
     actual_schema: pa.Schema,
     expected_schema: pa.Schema,
-    expected_keywords: List[str],
+    expected_typedefs: List[str],
     duckdb_uri: str,
 ) -> None:
-    query = arrow_schema_to_create_table(actual_schema, "random_test_table", "duckdb")
+    columns = arrow_schema_to_column_defns(actual_schema, "duckdb")
+    assert expected_typedefs == list(columns.values())
 
-    for keyword in expected_keywords:
-        assert keyword in query
+    query = arrow_schema_to_create_table(actual_schema, "random_test_table", "duckdb")
 
     conn = create_connection(duckdb_uri)
     assert isinstance(conn, adbc_driver_duckdb.dbapi.Connection)
