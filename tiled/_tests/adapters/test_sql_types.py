@@ -131,7 +131,18 @@ def test_data_types(
             cursor.execute(query)
         conn.commit()
 
-        # assert conn.adbc_get_table_schema("random_test_table") == expected_schema
+        # For SQLite specifically, some inference is needed by ADBC to get the type
+        # and on an empty table the value is not defined. As of this writing it is
+        # int64 by default; in the future it may be null.
+        # https://github.com/apache/arrow-adbc/issues/581
+        if dialect != "sqlite":
+            assert conn.adbc_get_table_schema("random_test_table") == expected_schema
+
+        with conn.cursor() as cursor:
+            cursor.adbc_ingest("random_test_table", table, mode="append")
+
+        assert conn.adbc_get_table_schema("random_test_table") == expected_schema
+
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM random_test_table")
             result = cursor.fetch_arrow_table()
