@@ -10,7 +10,7 @@ from functools import cache
 from fastapi import APIRouter, Request, Response, Security
 from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 
-from .authentication import get_current_principal
+from tiled.server.authentication import check_scopes
 
 router = APIRouter()
 
@@ -157,9 +157,7 @@ def prometheus_registry():
 
 
 @router.get("/metrics")
-async def metrics(
-    request: Request, principal=Security(get_current_principal, scopes=["metrics"])
-):
+async def metrics(request: Request, _=Security(check_scopes, scopes=["metrics"])):
     """
     Prometheus metrics
     """

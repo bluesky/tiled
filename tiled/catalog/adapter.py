@@ -452,7 +452,15 @@ class CatalogNodeAdapter:
                         if adapter is None:
                             break
                     return adapter
+                elif (
+                    isinstance(catalog_adapter, CatalogCompositeAdapter)
+                    and len(segments[i:]) == 1
+                ):
+                    # Trying to access a table column or an array in a composite node
+                    _segm = await catalog_adapter.resolve_flat_key(segments[i])
+                    return await catalog_adapter.lookup_adapter(_segm.split("/"))
             return None
+
         return STRUCTURES[node.structure_family](self.context, node)
 
     async def get_adapter(self):
@@ -634,7 +642,10 @@ class CatalogNodeAdapter:
             await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
-                    if structure_family == StructureFamily.container:
+                    if structure_family in {
+                        StructureFamily.container,
+                        StructureFamily.composite,
+                    }:
                         raise NotImplementedError(structure_family)
                     if data_source.mimetype is None:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
@@ -1000,7 +1011,9 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return [
                 (
                     node.key,
-                    type(self)(self.context, node, access_policy=self.access_policy),
+                    STRUCTURES[node.structure_family](
+                        self.context, node, access_policy=self.access_policy
+                    ),
                 )
                 for node in nodes
             ]
@@ -1012,6 +1025,63 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 return self.search(KeysFilter(fields))
             return self
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
+
+
+class CatalogCompositeAdapter(CatalogContainerAdapter):
+    async def resolve_flat_key(self, key):
+        for _key, item in await self.items_range(offset=0, limit=None):
+            if key == _key:
+                return _key
+            if item.structure_family == StructureFamily.table:
+                if key in item.structure().columns:
+                    return f"{_key}/{key}"
+        raise KeyError(key)
+
+    async def create_node(
+        self,
+        structure_family,
+        metadata,
+        key=None,
+        specs=None,
+        data_sources=None,
+    ):
+        key = key or self.context.key_maker()
+
+        # List all new keys that would be added to the flattened namespace
+        assert len(data_sources) == 1
+        if data_sources[0].structure_family == StructureFamily.table:
+            new_keys = data_sources[0].structure.columns
+        elif data_sources[0].structure_family in {
+            StructureFamily.array,
+            StructureFamily.awkward,
+            StructureFamily.sparse,
+        }:
+            new_keys = [key]
+        else:
+            raise ValueError(
+                f"Unsupported structure family: {data_sources[0].structure_family}"
+            )
+
+        # Get all keys and columns names already in the Composite node
+        flat_keys = []
+        for _key, item in await self.items_range(offset=0, limit=None):
+            flat_keys.append(_key)
+            if item.structure_family == StructureFamily.table:
+                flat_keys.extend(item.structure().columns)
+
+        # Check for column name collisions
+        key_conflicts = set(new_keys) & set(flat_keys)
+        if key_conflicts:
+            raise Collision(f"Column name collision: {key_conflicts}")
+
+        # Ensure that child tables are marked with the 'flattened' spec
+        if structure_family == StructureFamily.table:
+            if not specs or "flattened" not in (s.name for s in specs):
+                specs = [Spec(name="flattened")] + (specs or [])
+
+        return await super().create_node(
+            structure_family, metadata, key=key, specs=specs, data_sources=data_sources
+        )
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
@@ -1500,6 +1570,7 @@ def specs_array_to_json(specs):
 STRUCTURES = {
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
+    StructureFamily.composite: CatalogCompositeAdapter,
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,

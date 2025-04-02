@@ -10,13 +10,13 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import List
+from typing import Optional, Union
 
 import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, Security
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -34,32 +34,25 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.query_registration import QueryRegistry, default_query_registry
+from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
-    compression_registry as default_compression_registry,
+    CompressionRegistry,
+    SerializationRegistry,
+    default_compression_registry,
+    default_deserialization_registry,
+    default_serialization_registry,
 )
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
-from ..validation_registration import validation_registry as default_validation_registry
-from . import schemas
-from .authentication import get_current_principal
+from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
-from .dependencies import (
-    get_query_registry,
-    get_root_tree,
-    get_serialization_registry,
-    get_validation_registry,
-)
-from .router import distinct, patch_route_signature, router, search
-from .settings import get_settings
-from .utils import (
-    API_KEY_COOKIE_NAME,
-    CSRF_COOKIE_NAME,
-    get_authenticators,
-    get_root_url,
-    record_timing,
-)
+from .dependencies import get_root_tree
+from .router import get_router
+from .settings import Settings, get_settings
+from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -113,10 +106,11 @@ def build_app(
     tree,
     authentication=None,
     server_settings=None,
-    query_registry=None,
-    serialization_registry=None,
-    compression_registry=None,
-    validation_registry=None,
+    query_registry: Optional[QueryRegistry] = None,
+    serialization_registry: Optional[SerializationRegistry] = None,
+    deserialization_registry: Optional[SerializationRegistry] = None,
+    compression_registry: Optional[CompressionRegistry] = None,
+    validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
     scalable=False,
 ):
@@ -134,12 +128,16 @@ def build_app(
         Dict of other server configuration.
     """
     authentication = authentication or {}
-    authenticators = {
+    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
         spec["provider"]: spec["authenticator"]
         for spec in authentication.get("providers", [])
     }
     server_settings = server_settings or {}
-    query_registry = query_registry or get_query_registry()
+    query_registry = query_registry or default_query_registry
+    serialization_registry = serialization_registry or default_serialization_registry
+    deserialization_registry = (
+        deserialization_registry or default_deserialization_registry
+    )
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
     tasks = tasks or {}
@@ -157,9 +155,9 @@ def build_app(
         if authentication.get("providers"):
             # Even if the deployment allows public, anonymous access, secret
             # keys are needed to generate JWTs for any users that do log in.
-            if not (
-                ("secret_keys" in authentication)
-                or ("TILED_SERVER_SECRET_KEYS" in os.environ)
+            if (
+                "secret_keys" not in authentication
+                and "TILED_SECRET_KEYS" not in os.environ
             ):
                 raise UnscalableConfig(
                     """
@@ -171,7 +169,7 @@ authentication:
     - SECRET
   ...
 
-or via the environment variable TILED_SERVER_SECRET_KEYS.""",
+or via the environment variable TILED_SECRET_KEYS.""",
                 )
             # Multi-user authentication requires a database. We cannot fall
             # back to the default of an in-memory SQLite database in a
@@ -215,7 +213,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, dependencies=[Depends(move_api_key)])
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -265,9 +263,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         @app.get("/", response_class=HTMLResponse)
         async def index(
             request: Request,
-            # This dependency is here because it runs the code that moves
-            # API key from the query parameter to a cookie (if it is valid).
-            principal=Security(get_current_principal, scopes=[]),
         ):
             return templates.TemplateResponse(
                 request,
@@ -348,6 +343,13 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             ),
         )
 
+    router = get_router(
+        query_registry,
+        serialization_registry,
+        deserialization_registry,
+        validation_registry,
+        authenticators,
+    )
     app.include_router(router, prefix="/api/v1")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
@@ -361,13 +363,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
         from .authentication import (
-            base_authentication_router,
-            build_auth_code_route,
-            build_device_code_authorize_route,
-            build_device_code_token_route,
-            build_device_code_user_code_form_route,
-            build_device_code_user_code_submit_route,
-            build_handle_credentials_route,
+            add_external_routes,
+            add_internal_routes,
+            authentication_router,
             oauth2_scheme,
         )
 
@@ -378,41 +376,17 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
-        authentication_router = APIRouter()
+        authentication_router = authentication_router()
         # This adds the universal routes like /session/refresh and /session/revoke.
         # Below we will add routes specific to our authentication providers.
-        authentication_router.include_router(base_authentication_router)
+
         for spec in authentication["providers"]:
             provider = spec["provider"]
             authenticator = spec["authenticator"]
             if isinstance(authenticator, InternalAuthenticator):
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_handle_credentials_route(authenticator, provider)
-                )
+                add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
-                # Client starts here to create a PendingSession.
-                authentication_router.post(f"/provider/{provider}/authorize")(
-                    build_device_code_authorize_route(authenticator, provider)
-                )
-                # External OAuth redirects here with code, presenting form for user code.
-                authentication_router.get(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_form_route(authenticator, provider)
-                )
-                # User code and auth code are submitted here.
-                authentication_router.post(f"/provider/{provider}/device_code")(
-                    build_device_code_user_code_submit_route(authenticator, provider)
-                )
-                # Client polls here for token.
-                authentication_router.post(f"/provider/{provider}/token")(
-                    build_device_code_token_route(authenticator, provider)
-                )
-                # Normal code flow end point for web UIs
-                authentication_router.get(f"/provider/{provider}/code")(
-                    build_auth_code_route(authenticator, provider)
-                )
-                # authentication_router.post(f"/provider/{provider}/code")(
-                #     build_auth_code_route(authenticator, provider)
-                # )
+                add_external_routes(authentication_router, provider, authenticator)
             else:
                 raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):
@@ -421,25 +395,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
                 )
         # And add this authentication_router itself to the app.
         app.include_router(authentication_router, prefix="/api/v1/auth")
-
-    # The /search route is defined after import time so that the user has the
-    # opporunity to register custom query types before startup.
-    app.get(
-        "/api/v1/search/{path:path}",
-        response_model=schemas.Response[
-            List[schemas.Resource[schemas.NodeAttributes, dict, dict]],
-            schemas.PaginationLinks,
-            dict,
-        ],
-    )(patch_route_signature(search, query_registry))
-    app.get(
-        "/api/v1/distinct/{path:path}",
-        response_model=schemas.GetDistinctResponse,
-    )(patch_route_signature(distinct, query_registry))
-
-    @cache
-    def override_get_authenticators():
-        return authenticators
+        app.state.authenticated = True
+    else:
+        app.state.authenticated = False
 
     @cache
     def override_get_root_tree():
@@ -458,8 +416,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         ]:
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
-        if authentication.get("single_user_api_key") is not None:
-            settings.single_user_api_key_generated = False
         for item in [
             "allow_origins",
             "response_bytesize_limit",
@@ -469,21 +425,23 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
         database = server_settings.get("database", {})
-        if database.get("uri"):
-            settings.database_uri = database["uri"]
-        if database.get("pool_size"):
-            settings.database_pool_size = database["pool_size"]
-        if database.get("pool_pre_ping"):
-            settings.database_pool_pre_ping = database["pool_pre_ping"]
-        if database.get("max_overflow"):
-            settings.database_max_overflow = database["max_overflow"]
-        if database.get("init_if_not_exists"):
-            settings.database_init_if_not_exists = database["init_if_not_exists"]
+        if uri := database.get("uri"):
+            settings.database_settings.uri = uri
+        if pool_size := database.get("pool_size"):
+            settings.database_settings.pool_size = pool_size
+        if pool_pre_ping := database.get("pool_pre_ping"):
+            settings.database_settings.pool_pre_ping = pool_pre_ping
+        if max_overflow := database.get("max_overflow"):
+            settings.database_settings.max_overflow = max_overflow
+        if init_if_not_exists := database.get("init_if_not_exists"):
+            settings.database_init_if_not_exists = init_if_not_exists
         if authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in memory. Horizontally scaled deployments
             # must specify a persistent database.
-            settings.database_uri = settings.database_uri or "sqlite://"
+            settings.database_settings.uri = (
+                settings.database_settings.uri or "sqlite://"
+            )
         return settings
 
     async def startup_event():
@@ -491,7 +449,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
         logger.info(f"Tiled version {__version__}")
         # Validate the single-user API key.
-        settings = app.dependency_overrides[get_settings]()
+        settings: Settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
         API_KEY_MSG = """
 Here are two ways to generate a good API key:
@@ -543,7 +501,7 @@ confusing behavior due to ambiguous encodings.
         # client.context.app.state.root_tree
         app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
-        if settings.database_uri is not None:
+        if settings.database_settings.uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
 
             from ..alembic_utils import (
@@ -668,8 +626,8 @@ Back up the database, and then run:
         for task in tasks.get("shutdown", []):
             await task()
 
-        settings = app.dependency_overrides[get_settings]()
-        if settings.database_uri is not None:
+        settings: Settings = app.dependency_overrides[get_settings]()
+        if settings.database_settings.uri is not None:
             from ..authn_database.connection_pool import close_database_connection_pool
 
             for task in app.state.tasks:
@@ -766,35 +724,8 @@ Back up the database, and then run:
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_authenticators] = override_get_authenticators
     app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
-    if query_registry is not None:
-
-        @cache
-        def override_get_query_registry():
-            return query_registry
-
-        app.dependency_overrides[get_query_registry] = override_get_query_registry
-    if serialization_registry is not None:
-
-        @cache
-        def override_get_serialization_registry():
-            return serialization_registry
-
-        app.dependency_overrides[
-            get_serialization_registry
-        ] = override_get_serialization_registry
-
-    if validation_registry is not None:
-
-        @cache
-        def override_get_validation_registry():
-            return validation_registry
-
-        app.dependency_overrides[
-            get_validation_registry
-        ] = override_get_validation_registry
 
     @app.middleware("http")
     async def capture_metrics(request: Request, call_next):
@@ -916,7 +847,7 @@ def app_factory():
     kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
     web_app = build_app(**kwargs)
     uvicorn_config = parsed_config.get("uvicorn", {})
-    print_admin_api_key_if_generated(
+    print_server_info(
         web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
     )
     return web_app
@@ -934,16 +865,14 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
-def print_admin_api_key_if_generated(
-    web_app: FastAPI, host: str, port: int, force: bool = False
+def print_server_info(
+    web_app: FastAPI,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    include_api_key: bool = False,
 ):
-    "Print message to stderr with API key if server-generated (or force=True)."
-    host = host or "127.0.0.1"
-    port = port or 8000
-    settings = web_app.dependency_overrides.get(get_settings, get_settings)()
-    authenticators = web_app.dependency_overrides.get(
-        get_authenticators, get_authenticators
-    )()
+    settings = get_settings()
+
     if settings.allow_anonymous_access:
         print(
             """
@@ -953,7 +882,7 @@ def print_admin_api_key_if_generated(
 """,
             file=sys.stderr,
         )
-    if (not authenticators) and (force or settings.single_user_api_key_generated):
+    if not web_app.state.authenticated and include_api_key:
         print(
             f"""
     Navigate a web browser or connect a Tiled client to:

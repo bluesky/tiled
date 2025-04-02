@@ -1,6 +1,9 @@
 import io
 
-from ..media_type_registration import deserialization_registry, serialization_registry
+from ..media_type_registration import (
+    default_deserialization_registry,
+    default_serialization_registry,
+)
 from ..utils import modules_available
 
 if modules_available("h5py"):
@@ -19,7 +22,9 @@ if modules_available("h5py"):
                 file.attrs.create(k, v)
         return buffer.getbuffer()
 
-    serialization_registry.register("sparse", "application/x-hdf5", serialize_hdf5)
+    default_serialization_registry.register(
+        "sparse", "application/x-hdf5", serialize_hdf5
+    )
 
 if modules_available("pandas", "pyarrow"):
     import pandas
@@ -37,7 +42,7 @@ if modules_available("pandas", "pyarrow"):
     if modules_available("openpyxl"):
         from .table import serialize_excel
 
-        serialization_registry.register(
+        default_serialization_registry.register(
             "sparse",
             XLSX_MIME_TYPE,
             lambda sparse_arr, metadata: serialize_excel(
@@ -52,38 +57,38 @@ if modules_available("pandas", "pyarrow"):
         d["data"] = sparse_arr.data
         return pandas.DataFrame(d)
 
-    deserialization_registry.register(
+    default_deserialization_registry.register(
         "sparse", APACHE_ARROW_FILE_MIME_TYPE, deserialize_arrow
     )
-    serialization_registry.register(
+    default_serialization_registry.register(
         "sparse",
         APACHE_ARROW_FILE_MIME_TYPE,
         lambda sparse_arr, metadata: serialize_arrow(
             to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
-    serialization_registry.register(
+    default_serialization_registry.register(
         "sparse",
         "application/x-parquet",
         lambda sparse_arr, metadata: serialize_parquet(
             to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
-    serialization_registry.register(
+    default_serialization_registry.register(
         "sparse",
         "text/csv",
         lambda sparse_arr, metadata: serialize_csv(
             to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
-    serialization_registry.register(
+    default_serialization_registry.register(
         "sparse",
         "text/plain",
         lambda sparse_arr, metadata: serialize_csv(
             to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
-    serialization_registry.register(
+    default_serialization_registry.register(
         "sparse",
         "text/html",
         lambda sparse_arr, metadata: serialize_html(
@@ -99,7 +104,7 @@ if modules_available("pandas", "pyarrow"):
                 {column: df[column].tolist() for column in df},
             )
 
-        serialization_registry.register(
+        default_serialization_registry.register(
             "sparse",
             "application/json",
             serialize_json,

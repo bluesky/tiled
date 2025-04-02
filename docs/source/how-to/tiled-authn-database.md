@@ -2,7 +2,7 @@
 # Set up a database for a scaled authenticated deloyment
 
 When Tiled is configured to use authentication provider(s), it employs a SQL
-database to store authenticaiton-related state, such as identities, sessions,
+database to store authentication-related state, such as identities, sessions,
 and API keys. In single-process deployments, it creates a SQLite database
 automatically at startup. For scaled deployments, a proper scalable database
 should be used. Tiled supports any SQL dialect support by
