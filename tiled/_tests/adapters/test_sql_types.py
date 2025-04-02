@@ -89,6 +89,8 @@ def duckdb_uri(tmp_path: Path) -> Generator[str, None, None]:
 
 INT8_INFO = numpy.iinfo(numpy.int8)
 INT16_INFO = numpy.iinfo(numpy.int16)
+INT32_INFO = numpy.iinfo(numpy.int32)
+INT64_INFO = numpy.iinfo(numpy.int64)
 # Map schemas (testing different data types or combinations of data types)
 # to an inner mapping. The inner mapping maps each dialect to a tuple,
 # (SQL type definition, Arrow type read back).
@@ -127,6 +129,26 @@ TEST_CASES = {
             "duckdb": (["SMALLINT NULL"], pa.schema([("x", "int16")])),
             "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
             "postgresql": (["SMALLINT NULL"], pa.schema([("x", "int16")])),
+        },
+    ),
+    "int32": (
+        pa.Table.from_arrays(
+            [pa.array([INT32_INFO.min, INT32_INFO.max], "int32")], names=["x"]
+        ),
+        {
+            "duckdb": (["INTEGER NULL"], pa.schema([("x", "int32")])),
+            "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
+            "postgresql": (["INTEGER NULL"], pa.schema([("x", "int32")])),
+        },
+    ),
+    "int64": (
+        pa.Table.from_arrays(
+            [pa.array([INT64_INFO.min, INT64_INFO.max], "int64")], names=["x"]
+        ),
+        {
+            "duckdb": (["BIGINT NULL"], pa.schema([("x", "int64")])),
+            "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
+            "postgresql": (["BIGINT NULL"], pa.schema([("x", "int64")])),
         },
     ),
 }
