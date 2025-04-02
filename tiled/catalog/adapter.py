@@ -860,21 +860,19 @@ class CatalogNodeAdapter:
         Any DataSources belonging to those Nodes and any Assets associated (only) with
         those DataSources will also be deleted.
         """
-        conditions = []
         segments = self.ancestors + [self.key]
-        for generation in range(len(segments)):
-            conditions.append(orm.Node.ancestors[generation] == segments[0])
+        condition = orm.Node.ancestors == segments
         async with self.context.session() as db:
             if external_only:
-                count_int_asset_statement = select(
-                    func.count(orm.Asset.data_uri)
-                ).filter(
-                    orm.Asset.data_sources.any(
-                        orm.DataSource.management != Management.external
+                count_int_asset_statement = (
+                    select(func.count(orm.Asset.data_uri))
+                    .filter(
+                        orm.Asset.data_sources.any(
+                            orm.DataSource.management != Management.external
+                        )
                     )
+                    .filter(condition)
                 )
-                for condition in conditions:
-                    count_int_asset_statement.filter(condition)
                 count_int_assets = (
                     await db.execute(count_int_asset_statement)
                 ).scalar()
@@ -885,26 +883,26 @@ class CatalogNodeAdapter:
                         "If you want to delete them, pass external_only=False."
                     )
             else:
-                sel_int_asset_statement = select(
-                    orm.Asset.data_uri, orm.Asset.is_directory
-                ).filter(
-                    orm.Asset.data_sources.any(
-                        orm.DataSource.management != Management.external
-                    )
-                )
-                for condition in conditions:
-                    sel_int_asset_statement.filter(condition)
-                int_assets = (await db.execute(sel_int_asset_statement)).all()
-                for data_uri, is_directory in int_assets:
-                    delete_asset(data_uri, is_directory)
+                raise NotImplementedError
             # TODO Deal with Assets belonging to multiple DataSources.
-            del_asset_statement = delete(orm.Asset)
-            for condition in conditions:
-                del_asset_statement.filter(condition)
+            asset_ids_to_delete = (
+                select(orm.Asset.id)
+                .join(
+                    orm.DataSourceAssetAssociation,
+                    orm.DataSourceAssetAssociation.asset_id == orm.Asset.id,
+                )
+                .join(
+                    orm.DataSource,
+                    orm.DataSource.id == orm.DataSourceAssetAssociation.data_source_id,
+                )
+                .join(orm.Node, orm.Node.id == orm.DataSource.node_id)
+                .filter(condition)
+            )
+            del_asset_statement = delete(orm.Asset).where(
+                orm.Asset.id.in_(asset_ids_to_delete)
+            )
             await db.execute(del_asset_statement)
-            del_node_statement = delete(orm.Node)
-            for condition in conditions:
-                del_node_statement.filter(condition)
+            del_node_statement = delete(orm.Node).filter(condition)
             result = await db.execute(del_node_statement)
             await db.commit()
         return result.rowcount
