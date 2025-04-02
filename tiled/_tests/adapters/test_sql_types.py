@@ -217,7 +217,10 @@ def test_data_types(
 ) -> None:
     table, dialect_results = TEST_CASES[test_case_id]
     if dialect not in dialect_results:
-        raise pytest.skip(f"{dialect} does not support schema '{test_case_id}'")
+        with pytest.raises(ValueError, match="Unsupported PyArrow type"):
+            arrow_schema_to_column_defns(table.schema, dialect)
+        return
+
     expected_typedefs, expected_schema = dialect_results[dialect]
     db_uri = request.getfixturevalue(f"{dialect}_uri")
     columns = arrow_schema_to_column_defns(table.schema, dialect)

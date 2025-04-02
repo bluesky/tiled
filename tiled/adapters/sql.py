@@ -666,7 +666,7 @@ ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
     pyarrow.int32(): "INTEGER",
     pyarrow.uint32(): "INTEGER",
     pyarrow.int64(): "INTEGER",
-    pyarrow.uint64(): "INTEGER",  # Note: may exceed SQLite INTEGER range
+    # pyarrow.uint64() not supported, may exceed SQLite INTEGER range
     # Floating point - stored as REAL
     pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",
