@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Generator, List, Literal
 
 import adbc_driver_postgresql
 import adbc_driver_sqlite
+import numpy
 import pyarrow as pa
 import pytest
 import pytest_asyncio
@@ -86,7 +87,8 @@ def duckdb_uri(tmp_path: Path) -> Generator[str, None, None]:
     ),
 ],
 
-
+INT8_INFO = numpy.iinfo(numpy.int8)
+INT16_INFO = numpy.iinfo(numpy.int16)
 # Map schemas (testing different data types or combinations of data types)
 # to an inner mapping. The inner mapping maps each dialect to a tuple,
 # (SQL type definition, Arrow type read back).
@@ -107,6 +109,26 @@ TEST_CASES = {
             "postgresql": (["TEXT NULL"], pa.schema([("x", "string")])),
         },
     ),
+    "int8": (
+        pa.Table.from_arrays(
+            [pa.array([INT8_INFO.min, INT8_INFO.max], "int8")], names=["x"]
+        ),
+        {
+            "duckdb": (["TINYINT NULL"], pa.schema([("x", "int8")])),
+            "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
+            "postgresql": (["SMALLINT NULL"], pa.schema([("x", "int16")])),
+        },
+    ),
+    "int16": (
+        pa.Table.from_arrays(
+            [pa.array([INT16_INFO.min, INT16_INFO.max], "int16")], names=["x"]
+        ),
+        {
+            "duckdb": (["SMALLINT NULL"], pa.schema([("x", "int16")])),
+            "sqlite": (["INTEGER NULL"], pa.schema([("x", "int64")])),
+            "postgresql": (["SMALLINT NULL"], pa.schema([("x", "int16")])),
+        },
+    ),
 }
 
 
@@ -121,7 +143,7 @@ def test_data_types(
     expected_typedefs, expected_schema = dialect_results[dialect]
     db_uri = request.getfixturevalue(f"{dialect}_uri")
     columns = arrow_schema_to_column_defns(table.schema, dialect)
-    assert expected_typedefs == list(columns.values())
+    assert list(columns.values()) == expected_typedefs
 
     query = arrow_schema_to_create_table(table.schema, "random_test_table", dialect)
 
@@ -146,7 +168,15 @@ def test_data_types(
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM random_test_table")
             result = cursor.fetch_arrow_table()
+
+        # The result will match expected_schema, which may not be the same as
+        # the schema the data was uploaded as, if the databases does not support
+        # that precise type.
         assert result.schema == expected_schema
+
+        # Before comparing the Tables, we cast the Table into the original schema,
+        # which might use finer types.
+        assert result.cast(table.schema) == table
 
 
 @pytest.mark.parametrize(
