@@ -10,13 +10,6 @@ API_KEY_QUERY_PARAMETER = "api_key"
 CSRF_COOKIE_NAME = "tiled_csrf"
 
 
-def get_authenticators():
-    raise NotImplementedError(
-        "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.build_app()."
-    )
-
-
 @contextlib.contextmanager
 def record_timing(metrics, key):
     """
