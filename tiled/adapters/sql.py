@@ -301,7 +301,10 @@ class SQLAdapter:
         table = table.drop("_partition_id", axis=1)
         if fields is not None:
             table = table[fields]
-        return table
+        # The database may have stored this in a coarser type, such as
+        # storing uint8 data as int16. Cast it to the original type.
+        schema = self.structure().arrow_schema_decoded
+        return table.cast(schema)
 
     def read_partition(
         self, partition: int, fields: Optional[List[str]] = None
@@ -333,7 +336,10 @@ class SQLAdapter:
         table = table.drop("_partition_id", axis=1)
         if fields is not None:
             table = table[fields]
-        return table
+        # The database may have stored this in a coarser type, such as
+        # storing uint8 data as int16. Cast it to the original type.
+        schema = self.structure().arrow_schema_decoded
+        return table.cast(schema)
 
 
 def create_connection(
