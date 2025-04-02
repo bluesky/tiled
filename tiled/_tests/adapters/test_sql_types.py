@@ -94,6 +94,7 @@ INT64_INFO = numpy.iinfo(numpy.int64)
 UINT8_INFO = numpy.iinfo(numpy.uint8)
 UINT16_INFO = numpy.iinfo(numpy.uint16)
 UINT32_INFO = numpy.iinfo(numpy.uint32)
+UINT64_INFO = numpy.iinfo(numpy.uint64)
 # Map schemas (testing different data types or combinations of data types)
 # to an inner mapping. The inner mapping maps each dialect to a tuple,
 # (SQL type definition, Arrow type read back).
@@ -184,6 +185,26 @@ TEST_CASES = {
             "postgresql": (["BIGINT NULL"], pa.schema([("x", "int64")])),
         },
     ),
+    "uint64": (
+        pa.Table.from_arrays(
+            [pa.array([UINT64_INFO.min, UINT64_INFO.max], "uint64")], names=["x"]
+        ),
+        {
+            "duckdb": (["UBIGINT NULL"], pa.schema([("x", "uint64")])),
+        },
+    ),
+    "list_of_ints": (
+        pa.Table.from_arrays(
+            [pa.array([[1, 2], [3, 4]], pa.list_(pa.int32()))], names=["x"]
+        ),
+        {
+            "duckdb": (["INTEGER[] NULL"], pa.schema([("x", pa.list_(pa.int32()))])),
+            "postgresql": (
+                ["INTEGER ARRAY NULL"],
+                pa.schema([("x", pa.list_(pa.int32()))]),
+            ),
+        },
+    ),
 }
 
 
@@ -195,6 +216,8 @@ def test_data_types(
     request: pytest.FixtureRequest,
 ) -> None:
     table, dialect_results = TEST_CASES[test_case_id]
+    if dialect not in dialect_results:
+        raise pytest.skip(f"{dialect} does not support schema '{test_case_id}'")
     expected_typedefs, expected_schema = dialect_results[dialect]
     db_uri = request.getfixturevalue(f"{dialect}_uri")
     columns = arrow_schema_to_column_defns(table.schema, dialect)
