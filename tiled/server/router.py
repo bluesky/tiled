@@ -22,6 +22,7 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
+    HTTP_410_GONE,
     HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
@@ -33,8 +34,15 @@ from tiled.schemas import About
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from .. import __version__
+from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
-from ..utils import SpecialUsers, ensure_awaitable, patch_mimetypes, path_from_uri
+from ..utils import (
+    BrokenLink,
+    SpecialUsers,
+    ensure_awaitable,
+    patch_mimetypes,
+    path_from_uri,
+)
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import get_current_principal
@@ -53,14 +61,7 @@ from .core import (
     json_or_msgpack,
     resolve_media_type,
 )
-from .dependencies import (
-    block,
-    expected_shape,
-    get_entry,
-    offset_param,
-    shape_param,
-    slice_,
-)
+from .dependencies import block, expected_shape, get_entry, offset_param, shape_param
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
 from .settings import Settings, get_settings
@@ -313,6 +314,8 @@ def get_router(
                 expires=expires,
                 headers=headers,
             )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
         except NoEntry:
             raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
         except WrongTypeForRoute as err:
@@ -387,6 +390,8 @@ def get_router(
                 resolve_media_type(request),
                 max_depth=max_depth,
             )
+        except BrokenLink as err:
+            raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
         except JMESPathError as err:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -410,7 +415,7 @@ def get_router(
             scopes=["read:data"],
         ),
         block=Depends(block),
-        slice=Depends(slice_),
+        slice=Depends(NDSlice.from_query),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -486,7 +491,7 @@ def get_router(
             get_entry({StructureFamily.array, StructureFamily.sparse}),
             scopes=["read:data"],
         ),
-        slice=Depends(slice_),
+        slice=Depends(NDSlice.from_query),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -1067,7 +1072,7 @@ def get_router(
         entry: MapAdapter = Security(
             get_entry({StructureFamily.awkward}), scopes=["read:data"]
         ),
-        # slice=Depends(slice_),
+        # slice=Depends(NDSlice.from_query),
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),

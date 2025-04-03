@@ -13,10 +13,11 @@ from numpy._typing import NDArray
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
+from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Storage
-from ..type_aliases import JSON, NDSlice
+from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 
@@ -76,7 +77,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
     def read(
         self,
-        slice: NDSlice = ...,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -88,12 +89,12 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        return self._array[self._stencil()][slice]
+        return self._array[self._stencil()][slice or ...]
 
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: NDSlice = ...,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -111,12 +112,12 @@ class ZarrArrayAdapter(ArrayAdapter):
         )
         # Slice the block out of the whole array,
         # and optionally a sub-slice therein.
-        return self._array[self._stencil()][block_slice][slice]
+        return self._array[self._stencil()][block_slice][slice or ...]
 
     def write(
         self,
         data: NDArray[Any],
-        slice: NDSlice = ...,
+        slice: NDSlice = NDSlice(...),
     ) -> None:
         """
 
@@ -129,7 +130,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         -------
 
         """
-        if slice is not ...:
+        if slice:
             raise NotImplementedError
         self._array[self._stencil()] = data
 

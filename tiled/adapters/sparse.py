@@ -6,9 +6,10 @@ import pandas
 import sparse
 from numpy._typing import NDArray
 
+from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
-from ..type_aliases import JSON, NDSlice
+from ..type_aliases import JSON
 from .array import slice_and_shape_from_block_and_chunks
 
 
@@ -174,7 +175,7 @@ class COOAdapter:
         return self._structure
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[NDSlice] = None
+        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
     ) -> sparse.COO:
         """
 
@@ -190,11 +191,9 @@ class COOAdapter:
         coords, data = self.blocks[block]
         _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
-        if slice:
-            arr = arr[slice]
-        return arr
+        return arr[slice] if slice else arr
 
-    def read(self, slice: Optional[NDSlice] = None) -> sparse.COO:
+    def read(self, slice: NDSlice = NDSlice(...)) -> sparse.COO:
         """
 
         Parameters
@@ -220,6 +219,4 @@ class COOAdapter:
             coords=numpy.concatenate(all_coords, axis=-1),
             shape=self._structure.shape,
         )
-        if slice:
-            return arr[slice]
-        return arr
+        return arr[slice] if slice else arr

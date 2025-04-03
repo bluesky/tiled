@@ -7,13 +7,14 @@ import pandas
 import sparse
 from numpy.typing import NDArray
 
+from ..ndslice import NDSlice
 from ..server.schemas import Principal
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
-from ..type_aliases import JSON, Filters, NDSlice, Scopes
+from ..type_aliases import JSON, Filters, Scopes
 from .awkward_directory_container import DirectoryContainer
 
 

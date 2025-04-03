@@ -10,15 +10,21 @@ if sys.version_info < (3, 10):
 else:
     from types import EllipsisType
 
-from typing import Any, Dict, List, Set, Tuple, Union
+from typing import Any, Dict, List, Set, Union
 
 JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
-NDSlice = Union[
-    int, slice, Tuple[Union[int, slice, EllipsisType], ...], EllipsisType
-]  # TODO Replace this with our Union for a slice/tuple/.../etc.
 
 Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
 
 AnyStructure = Union[TableStructure, ArrayStructure, SparseStructure, AwkwardStructure]
+
+__all__ = [
+    "AnyStructure",
+    "EllipsisType",
+    "JSON",
+    "Scopes",
+    "Query",
+    "Filters",
+]
