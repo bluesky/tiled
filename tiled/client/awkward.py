@@ -25,9 +25,9 @@ class AwkwardClient(BaseClient):
                 counter += 1
             # Are there more fields that what we displayed above?
             if len(form.fields) > counter:
-                out += f", ...}} ~{len(form.fields)} fields, "
+                out += f", ...}} ~{len(form.fields)} fields,"
             else:
-                out += "}, "
+                out += "}"
             out += f" {self.structure().length} items>"
             return out
 
