@@ -194,3 +194,60 @@ def test_more_slicing_3(client):
         assert awkward.almost_equal(aac.read(), array)
         assert awkward.almost_equal(aac[:], array[:])
         assert awkward.almost_equal(aac["good"], array["good"])
+
+
+record_arrays_examples = [
+    (
+        "simple_forms",
+        [
+            {"a": 1, "b": "val_1", "c": 0.1, "d": True},
+            {"a": 2, "b": "val_2", "c": 0.2, "d": False},
+            {"a": 3, "b": "val_3", "c": 0.3, "d": True},
+        ],
+    ),
+    (
+        "nested_forms",
+        [
+            {"a": [1, 2, 3], "b": {"x": 1, "y": 2}},
+            {"a": [4, 5, 6], "b": {"x": 1, "y": 2}},
+            {"a": [7, 8, 9], "b": {"x": 1, "y": 2}},
+        ],
+    ),
+    (
+        "empty_forms",
+        [
+            {"a": [], "b": {}, "c": None, "d": 0.1},
+            {"a": [], "b": {}, "c": None},
+            {"a": [], "b": {}, "c": None},
+        ],
+    ),
+    (
+        "union_forms",
+        [
+            {"a": 1, "b": True, "c": None},
+            {"a": 0.2, "b": [1, 2, 3]},
+            {"a": "three", "b": {"x": 1, "y": 2}},
+        ],
+    ),
+    (
+        "numpy_forms",
+        [
+            {"a": numpy.ones(5), "b": numpy.empty(0), "c": numpy.zeros(1)},
+            {"a": numpy.ones(5), "b": numpy.empty(1), "c": numpy.zeros((2, 2))},
+            {"a": numpy.ones(5), "b": numpy.empty(2), "c": numpy.zeros((3, 3, 3))},
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("name, data", record_arrays_examples)
+def test_record_arrays(client, name, data):
+    array = awkward.Array(data)
+    returned = client.write_awkward(array, key=f"test_{name}")
+
+    # Test with client returned, and with client from lookup.
+    for aac in [returned, client[f"test_{name}"]]:
+        assert awkward.almost_equal(aac.read(), array)
+        assert awkward.almost_equal(aac[:], array[:])
+        for field in array.fields:
+            assert awkward.almost_equal(aac[field], array[field])
