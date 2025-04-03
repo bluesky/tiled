@@ -156,7 +156,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # Define helper functions for reading and getting specs of HDF5 arrays with dask.delayed
         def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
             f = h5py.File(fpath, "r", swmr=swmr, libver=libver)
-            return f[dataset][()] if dataset else f[()]
+            return f[dataset] if dataset else f
 
         def _get_hdf5_specs(
             fpath: Union[str, Path]
@@ -224,9 +224,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
     ) -> "HDF5ArrayAdapter":
         structure = data_source.structure
         assets = data_source.assets
-        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uri"] or [
-            assets[0].data_uri
-        ]
+        data_uris = [
+            ast.data_uri for ast in assets if ast.parameter == "data_uris"
+        ] or [assets[0].data_uri]
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = cls.lazy_load_hdf5_array(
@@ -384,7 +384,6 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
                 dataset=dataset,
                 swmr=swmr,
                 libver=libver,
-                squeeze=False,
                 **kwargs,
             )
 
@@ -393,9 +392,9 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         # will be kept in case we need to read an array that spans all of them.
         assets = data_source.assets
         assert len(assets) > 0, "No assets found in data source"
-        data_uris = [ast.data_uri for ast in assets if ast.parameter == "data_uri"] or [
-            assets[0].data_uri
-        ]
+        data_uris = [
+            ast.data_uri for ast in assets if ast.parameter == "data_uris"
+        ] or [assets[0].data_uri]
         file_path = path_from_uri(data_uris[0])
         with h5open(file_path, dataset, swmr=swmr, libver=libver) as file:
             tree = parse_hdf5_tree(file)
@@ -424,6 +423,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         dataset: Optional[str] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
+        **kwargs: Optional[Any],
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
         with h5open(fpath, dataset, swmr=swmr, libver=libver) as file:
@@ -431,10 +431,12 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
 
         if tree == HDF5_DATASET:
             return HDF5ArrayAdapter.from_uris(
-                *data_uris, dataset=dataset, swmr=swmr, libver=libver
+                *data_uris, dataset=dataset, swmr=swmr, libver=libver, **kwargs  # type: ignore
             )
 
-        return cls(tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver)
+        return cls(
+            tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver, **kwargs
+        )
 
     def __repr__(self) -> str:
         return node_repr(self, list(self))

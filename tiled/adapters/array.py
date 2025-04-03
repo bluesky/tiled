@@ -10,13 +10,11 @@ from fastapi import Query
 from ndindex import ndindex
 from numpy.typing import NDArray
 
-from ..ndslice import NDSlice
+from ..ndslice import NDSlice, SLICE_REGEX
 from ..structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
 
-DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
-SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 RESHAPE_REGEX = r"^((?:-1)|\d+)(?:,((?:-1)|\d+))*$"  # NOTE: not strict (-1, 0)
 RECHUNK_REGEX = r"^((?:auto)|\d+)(?:,((?:auto)|\d+))*$"
 
@@ -97,8 +95,7 @@ class ArrayAdapter:
             array.dtype == "object" and array.dtype.fields is None
         )
         if is_likely_string_dtype:
-            max_size = max((len(i) for i in array.ravel()))
-            array = array.astype(dtype=numpy.dtype(f"<U{max_size}"))
+            array = numpy.array([str(x) for x in array])  # becomes "<Un" dtype
 
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims

@@ -235,20 +235,26 @@ class SQLAdapter:
 
     def append_partition(
         self,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
+        data: Union[
+            List[pyarrow.record_batch],
+            pyarrow.record_batch,
+            pandas.DataFrame,
+            pyarrow.Table,
+        ],
         partition: int,
     ) -> None:
-        """
-        "Function to write the data as arrow format."
+        """Write the data as arrow format
 
         Parameters
         ----------
-        data : data to append into the database. Can be a list of record batch, or pandas dataframe.
+        data : data to append to the database. Can be a record_batch, a list of record batches, pyarrow table, or a
+            pandas dataframe.
         partition : the partition index to write.
-        Returns
-        -------
         """
-        if isinstance(data, pandas.DataFrame):
+        # Convert the data to pyarrow table
+        if isinstance(data, pyarrow.Table):
+            table = data
+        elif isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
         else:
             if not isinstance(data, list):
@@ -256,6 +262,7 @@ class SQLAdapter:
             else:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
+
         # Prepend columns for internal dataset_id and partition number.
         dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int32)
         partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)
