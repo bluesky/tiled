@@ -312,11 +312,11 @@ def test_append_single_partition(
 
     result_read = adapter.read()
     result_read["f3"] = result_read["f3"].astype("boolean")
-
     assert table == pa.Table.from_pandas(result_read)
 
     # test reading a specific partition
     result_read_partition = adapter.read_partition(0)
+    result_read_partition["f3"] = result_read_partition["f3"].astype("boolean")
     assert table == pa.Table.from_pandas(result_read_partition)
 
 
