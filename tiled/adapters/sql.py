@@ -732,23 +732,25 @@ def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
     """
 
     def _resolve_type(arrow_type: pyarrow.DataType) -> str:
+        # TODO Consider adding support for these, with tests.
+
         # Handle dictionary types - use value type
-        if pyarrow.types.is_dictionary(arrow_type):
-            return _resolve_type(arrow_type.value_type)
+        # if pyarrow.types.is_dictionary(arrow_type):
+        #     return _resolve_type(arrow_type.value_type)
 
         # Handle timestamp with timezone - store as TEXT
-        if pyarrow.types.is_timestamp(arrow_type) and arrow_type.tz is not None:
-            return "TEXT"
+        # if pyarrow.types.is_timestamp(arrow_type) and arrow_type.tz is not None:
+        #     return "TEXT"
 
         # Handle nested types (lists, structs, maps) - store as JSON TEXT
-        if (
-            pyarrow.types.is_list(arrow_type)
-            or pyarrow.types.is_struct(arrow_type)
-            or pyarrow.types.is_map(arrow_type)
-            or pyarrow.types.is_fixed_size_list(arrow_type)
-            or pyarrow.types.is_large_list(arrow_type)
-        ):
-            return "TEXT"  # JSON encoded
+        # if (
+        #     pyarrow.types.is_list(arrow_type)
+        #     or pyarrow.types.is_struct(arrow_type)
+        #     or pyarrow.types.is_map(arrow_type)
+        #     or pyarrow.types.is_fixed_size_list(arrow_type)
+        #     or pyarrow.types.is_large_list(arrow_type)
+        # ):
+        #     return "TEXT"  # JSON encoded
 
         # Look up base type
         for pa_type, sqlite_type in ARROW_TO_SQLITE_TYPES.items():
