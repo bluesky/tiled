@@ -23,8 +23,8 @@ async def postgresql_uri() -> AsyncGenerator[str, None]:
         pytest.skip("TILED_TEST_POSTGRESQL_URI is not set")
 
     async with temp_postgres(uri) as uri_with_database_name:
-        # yield uri_with_database_name
-        yield uri_with_database_name.rsplit("/", 1)[0]
+        yield uri_with_database_name
+        # yield uri_with_database_name.rsplit("/", 1)[0]
 
 
 @pytest_asyncio.fixture

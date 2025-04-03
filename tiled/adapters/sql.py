@@ -298,14 +298,11 @@ class SQLAdapter:
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
+        data = data.drop_columns(["_partition_id", "_dataset_id"])
         schema = self.structure().arrow_schema_decoded
-        schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
-        schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
         data.cast(schema)
 
         table = data.to_pandas()
-        table = table.drop("_dataset_id", axis=1)
-        table = table.drop("_partition_id", axis=1)
         if fields is not None:
             table = table[fields]
         return table
@@ -337,14 +334,11 @@ class SQLAdapter:
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
+        data = data.drop_columns(["_partition_id", "_dataset_id"])
         schema = self.structure().arrow_schema_decoded
-        schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
-        schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
         data.cast(schema)
 
         table = data.to_pandas()
-        table = table.drop("_dataset_id", axis=1)
-        table = table.drop("_partition_id", axis=1)
         if fields is not None:
             table = table[fields]
         return table
