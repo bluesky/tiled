@@ -1,7 +1,7 @@
 import decimal
 import os
 from pathlib import Path
-from typing import AsyncGenerator, Generator, Literal
+from typing import AsyncGenerator, Generator, Literal, cast
 
 import numpy
 import pyarrow as pa
@@ -170,6 +170,12 @@ TEST_CASES = {
             ),
         },
     ),
+    "float16": (
+        pa.Table.from_arrays(
+            [pa.array([FLOAT16_INFO.min, FLOAT16_INFO.max], "float16")], names=["x"]
+        ),
+        {},  # not supported by any backend
+    ),
     "float32": (
         pa.Table.from_arrays(
             [pa.array([FLOAT32_INFO.min, FLOAT32_INFO.max], "float32")], names=["x"]
@@ -187,7 +193,7 @@ TEST_CASES = {
         {
             "duckdb": (["DOUBLE NULL"], pa.schema([("x", "float64")])),
             "sqlite": (["REAL NULL"], pa.schema([("x", "double")])),
-            "postgresql": (["DOUBLE NULL"], pa.schema([("x", "float64")])),
+            "postgresql": (["DOUBLE PRECISION NULL"], pa.schema([("x", "float64")])),
         },
     ),
     "decimal": (
@@ -209,12 +215,13 @@ def test_data_types(
     request: pytest.FixtureRequest,
 ) -> None:
     table, dialect_results = TEST_CASES[test_case_id]
-    if dialect not in dialect_results:
+
+    if dialect not in cast(dict, dialect_results):  # type: ignore
         with pytest.raises(ValueError, match="Unsupported PyArrow type"):
             arrow_schema_to_column_defns(table.schema, dialect)
         return
 
-    expected_typedefs, expected_schema = dialect_results[dialect]
+    expected_typedefs, expected_schema = dialect_results[dialect]  # type: ignore
     db_uri = request.getfixturevalue(f"{dialect}_uri")
     columns = arrow_schema_to_column_defns(table.schema, dialect)
     assert list(columns.values()) == expected_typedefs

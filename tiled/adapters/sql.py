@@ -407,7 +407,7 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
     pyarrow.uint32(): "BIGINT",
     # pyarrow.uint64() not supported
     # Floating Point
-    pyarrow.float16(): "REAL",
+    # pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",
     pyarrow.float64(): "DOUBLE PRECISION",
     # String Types
@@ -532,7 +532,7 @@ ARROW_TO_DUCKDB_TYPES = {
     pyarrow.int64(): "BIGINT",
     pyarrow.uint64(): "UBIGINT",
     # Floating point
-    pyarrow.float16(): "REAL",  # Note: gets converted to float32 internally
+    # pyarrow.float16(): "REAL",  # Note: gets converted to float32 internally
     pyarrow.float32(): "REAL",
     pyarrow.float64(): "DOUBLE",
     # Decimal
@@ -668,7 +668,7 @@ ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
     pyarrow.int64(): "INTEGER",
     # pyarrow.uint64() not supported, may exceed SQLite INTEGER range
     # Floating point - stored as REAL
-    pyarrow.float16(): "REAL",
+    # pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",
     pyarrow.float64(): "REAL",
     # Decimal - stored as TEXT to preserve precision
