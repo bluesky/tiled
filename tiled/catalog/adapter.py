@@ -1051,6 +1051,30 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                     return f"{_key}/{key}"
         raise KeyError(key)
 
+    async def _all_keys(self):
+        """Return all keys in the composite node, including table columns"""
+        all_keys = []
+        for _key, item in await self.items_range(offset=0, limit=None):
+            if item.structure_family == StructureFamily.table:
+                all_keys.extend(item.structure().columns)
+            else:
+                all_keys.append(_key)
+
+        return sorted(all_keys)
+
+    async def encode_keys(self, keys):
+        """Encode a subset of keys of the composite node as an integer"""
+        code = [str(int(k in keys)) for k in await self._all_keys()]
+
+        return int("".join(code), 2)
+
+    async def decode_keys(self, code):
+        """Decode an integer as a subset of keys of the composite node"""
+        all_keys = await self._all_keys()
+        code = f"{code:0{len(all_keys)}b}"
+
+        return [k for k, v in zip(all_keys, code) if v == "1"]
+
     async def create_node(
         self,
         structure_family,
@@ -1134,7 +1158,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             - 'resample': Resample all arrays.
         """
 
-        # Passing empty typles for keys is not allowed
+        # Passing empty tuples for keys is not allowed
         assert keys is None or len(keys) > 0
         if adapter_keys is not None and len(adapter_keys) == 0:
             return_adapters, adapter_keys = False, None

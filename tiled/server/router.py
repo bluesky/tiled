@@ -814,15 +814,61 @@ def get_router(
         response_model=schemas.Response,
         name="virtual dataset metadata",
     )
-    async def get_dataset_meta(
+    async def get_composite_meta(
         request: Request,
         path: str,
         entry: MapAdapter = Security(
             get_entry({StructureFamily.composite}),
             scopes=["read:data", "read:metadata"],
         ),
-        part: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None, min_length=1),
+        code: Optional[int] = Query(None),
         align: Optional[str] = Query(None),
+    ):
+        if part and code:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Cannot specify both part and code.",
+            )
+        if code:
+            part = await entry.decode_keys(code)
+        return await build_dataset_metadata(
+            request=request,
+            path=path,
+            entry=entry,
+            part=part,
+            align=align,
+        )
+
+    @router.post(
+        "/composite/meta/{path:path}",
+        response_model=schemas.Response,
+        name="virtual dataset metadata",
+    )
+    async def post_composite_meta(
+        request: Request,
+        path: str,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data", "read:metadata"],
+        ),
+        part: Optional[List[str]] = Body(None, min_length=1),
+        align: Optional[str] = Query(None),
+    ):
+        return await build_dataset_metadata(
+            request=request,
+            path=path,
+            entry=entry,
+            part=part,
+            align=align,
+        )
+
+    async def build_dataset_metadata(
+        request: Request,
+        path: str,
+        entry,
+        part: Optional[List[str]],
+        align: Optional[str],
     ):
         try:
             resource = await construct_dynamic_dataset_response(
@@ -848,19 +894,28 @@ def get_router(
         response_model=schemas.Response,
         name="full virtual dataset as xarray",
     )
-    async def get_dataset_full(
+    async def get_composite_full(
         request: Request,
         entry: MapAdapter = Security(
             get_entry({StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        part: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None, min_length=1),
+        code: Optional[int] = Query(None),
         align: Optional[str] = Query(None),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
     ):
-        return await dataset_full(
+        if part and code:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Cannot specify both part and code.",
+            )
+        if code:
+            part = await entry.decode_keys(code)
+
+        return await build_dataset_from_composite(
             request=request,
             entry=entry,
             part=part,
@@ -875,19 +930,28 @@ def get_router(
         response_model=schemas.Response,
         name="full virtual dataset as xarray",
     )
-    async def post_dataset_full(
+    async def post_composite_full(
         request: Request,
         entry: MapAdapter = Security(
             get_entry({StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        part: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None, min_length=1),
+        code: Optional[int] = Query(None),
         align: Optional[str] = Query(None),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
     ):
-        return await dataset_full(
+        if part and code:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Cannot specify both part and code.",
+            )
+        if code:
+            part = await entry.decode_keys(code)
+
+        return await build_dataset_from_composite(
             request=request,
             entry=entry,
             part=part,
@@ -897,7 +961,7 @@ def get_router(
             filename=filename,
         )
 
-    async def dataset_full(
+    async def build_dataset_from_composite(
         request: Request,
         entry,
         part: Optional[List[str]],

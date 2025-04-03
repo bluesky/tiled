@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -6,7 +8,7 @@ import sparse
 from tiled.client.metadata_update import DELETE_KEY
 
 from ..catalog import in_memory
-from ..client import Context, from_context
+from ..client import Context, from_context, record_history
 from ..client.xarray import DatasetClient
 from ..server.app import build_app
 
@@ -165,6 +167,39 @@ def test_create_partial_dataset(context):
     ds = x.to_dataset(*keys)
     assert len(ds) == len(keys)
     assert set(ds.keys()) == set(keys)
+
+
+def test_large_dataset(context):
+    y = from_context(context).create_composite(key="y")
+
+    col_keys = [f"colum_with_a_very_long_name_{i:010d}" for i in range(100)]
+    large_table = pd.DataFrame({k: rng.random(10, dtype="float64") for k in col_keys})
+    y.write_array(time_1x, key="time")
+    y.write_dataframe(large_table, key="large_table")
+    for i in range(100):
+        y.write_array(
+            rng.random(size=(10,), dtype="float64"),
+            key=f"array_with_a_very_long_name_{i:010d}",
+        )
+
+    # Build dataset from all keys, no query parameters are passed
+    with record_history() as history:
+        ds = y.to_dataset()
+        assert len(history.requests) == 1
+        assert history.requests[0].method == "GET"
+        assert "part" not in history.requests[0].url.params
+
+    # Build dataset from only the column of the table
+    with record_history() as history:
+        ds = y.to_dataset(*col_keys)
+        assert len(history.requests) == 1
+        assert history.requests[0].method == "POST"
+
+        ds.read()
+        assert len(history.requests) == 2
+        assert history.requests[1].method == "POST"
+        assert history.requests[1].url.path == urlparse(ds.item["links"]["full"]).path
+        assert "code" in history.requests[1].url.params
 
 
 @pytest.mark.parametrize("name, expected", data)
