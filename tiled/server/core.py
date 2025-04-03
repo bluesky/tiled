@@ -328,7 +328,7 @@ async def construct_dynamic_dataset_response(
     )
     attributes["metadata"] = {"attrs": {}}
 
-    query_dict = ({"parts": parts} if parts else {}) | (
+    query_dict = ({"part": parts} if parts else {}) | (
         {"align": align} if align else {}
     )
     query_str = urllib.parse.urlencode(query_dict, doseq=True)
@@ -337,8 +337,8 @@ async def construct_dynamic_dataset_response(
     data = schemas.Resource(
         attributes=schemas.NodeAttributes(**attributes),
         links={
-            "self": f"{base_url}/dataset/meta/{path}{query_str}",
-            "full": f"{base_url}/dataset/full/{path}{query_str}",
+            "self": f"{base_url}/composite/meta/{path}{query_str}",
+            "full": f"{base_url}/composite/full/{path}{query_str}",
         },
         meta={"count": len(contents)},
         id=path_parts[-1],
@@ -612,8 +612,11 @@ async def construct_resource(
                 path_str,
             )
 
+        ResourceLinksT = schemas.resource_links_type_by_structure_family[
+            entry.structure_family
+        ]
         resource = schemas.Resource[
-            schemas.NodeAttributes, schemas.ContainerLinks, schemas.ContainerMeta
+            schemas.NodeAttributes, ResourceLinksT, schemas.ContainerMeta
         ](**d)
     else:
         links = {"self": f"{base_url}/metadata/{path_str}"}

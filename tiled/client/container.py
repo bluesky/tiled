@@ -1172,16 +1172,12 @@ class Composite(Container):
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
     def to_dataset(self, *keys, align=None):
-        link = (
-            self.item["links"]["full"]
-            .replace("container/full", "dataset/meta")
-            .rstrip("/")
-        )
+        link = self.item["links"]["meta"].rstrip("/")
         content = handle_error(
             self.context.http_client.get(
                 link,
                 headers={"Accept": MSGPACK_MIME_TYPE},
-                params={**parse_qs(urlparse(link).query), "parts": keys}
+                params={**parse_qs(urlparse(link).query), "part": keys}
                 | ({"align": align} if align else {}),
             )
         ).json()

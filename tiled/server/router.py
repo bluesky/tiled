@@ -810,7 +810,7 @@ def get_router(
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.get(
-        "/dataset/meta/{path:path}",
+        "/composite/meta/{path:path}",
         response_model=schemas.Response,
         name="virtual dataset metadata",
     )
@@ -821,13 +821,13 @@ def get_router(
             get_entry({StructureFamily.composite}),
             scopes=["read:data", "read:metadata"],
         ),
-        parts: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None),
         align: Optional[str] = Query(None),
     ):
         try:
             resource = await construct_dynamic_dataset_response(
                 entry,
-                parts,
+                part,
                 align,
                 path,
                 get_base_url(request),
@@ -844,7 +844,7 @@ def get_router(
             raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
 
     @router.get(
-        "/dataset/full/{path:path}",
+        "/composite/full/{path:path}",
         response_model=schemas.Response,
         name="full virtual dataset as xarray",
     )
@@ -854,7 +854,7 @@ def get_router(
             get_entry({StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        parts: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None),
         align: Optional[str] = Query(None),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
@@ -863,7 +863,7 @@ def get_router(
         return await dataset_full(
             request=request,
             entry=entry,
-            parts=parts,
+            part=part,
             align=align,
             field=field,
             format=format,
@@ -871,7 +871,7 @@ def get_router(
         )
 
     @router.post(
-        "/dataset/full/{path:path}",
+        "/composite/full/{path:path}",
         response_model=schemas.Response,
         name="full virtual dataset as xarray",
     )
@@ -881,7 +881,7 @@ def get_router(
             get_entry({StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        parts: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None),
         align: Optional[str] = Query(None),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
@@ -890,7 +890,7 @@ def get_router(
         return await dataset_full(
             request=request,
             entry=entry,
-            parts=parts,
+            part=part,
             align=align,
             field=field,
             format=format,
@@ -900,7 +900,7 @@ def get_router(
     async def dataset_full(
         request: Request,
         entry,
-        parts: Optional[List[str]],
+        part: Optional[List[str]],
         align: Optional[str],
         field: Optional[List[str]],
         format: Optional[str],
@@ -911,7 +911,7 @@ def get_router(
                 data = {}
                 for key, item in (
                     await entry.get_dataset_items(
-                        parts, align=align, return_adapters=True, adapter_keys=field
+                        part, align=align, return_adapters=True, adapter_keys=field
                     )
                 ).items():
                     if item.adapter is not None:
