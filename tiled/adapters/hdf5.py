@@ -205,7 +205,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
             )
             for (val, (shape, chunk_shape, dtype)) in zip(delayed, shapes_chunks_dtypes)
         ]
-        array = dask.array.concatenate(arrs, axis=0)
+        array = dask.array.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
 
         return array
 
