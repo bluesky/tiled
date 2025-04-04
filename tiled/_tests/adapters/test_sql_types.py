@@ -51,6 +51,7 @@ FLOAT64_INFO = numpy.finfo(numpy.float64)
 # Map schemas (testing different data types or combinations of data types)
 # to an inner mapping. The inner mapping maps each dialect to a tuple,
 # (SQL type definition, Arrow type read back).
+# { test_case_id:  (input_table, {dialect: (expected_typedefs, expected_schema)})}
 TEST_CASES = {
     "bool": (
         pa.Table.from_arrays([pa.array([True, False], "bool")], names=["x"]),
