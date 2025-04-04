@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - `Composite` structure family to enable direct access to table columns in a single namespace.
+- New CLI flag `tiled --version` shows the current version and exits.
 
 ### Changed
 
