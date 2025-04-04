@@ -149,6 +149,30 @@ def tree(
 cli_app.command("register")(register)
 
 
+@cli_app.callback(invoke_without_command=True)
+def callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", "-V", help="Show version and exit."
+    ),
+):
+    if version:
+        from .. import __version__
+
+        typer.echo(f"{__version__}")
+        raise typer.Exit()
+
+    # Only show this if no subcommand was invoked and --version wasn't used
+    if ctx.invoked_subcommand is None and not version:
+        typer.echo(
+            typer.style(
+                "Missing command. Use --help for available commands.",
+                fg=typer.colors.RED,
+            )
+        )
+        raise typer.Exit(1)
+
+
 main = cli_app
 
 
