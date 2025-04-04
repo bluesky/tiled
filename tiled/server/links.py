@@ -37,6 +37,14 @@ def links_for_container(structure_family, structure, base_url, path_str):
     return links
 
 
+def links_for_composite(structure_family, structure, base_url, path_str):
+    links = {}
+    links["full"] = f"{base_url}/composite/full/{path_str}"
+    links["meta"] = f"{base_url}/composite/meta/{path_str}"
+    links["search"] = f"{base_url}/search/{path_str}"
+    return links
+
+
 def links_for_table(structure_family, structure, base_url, path_str):
     links = {}
     links["partition"] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
@@ -47,8 +55,8 @@ def links_for_table(structure_family, structure, base_url, path_str):
 LINKS_BY_STRUCTURE_FAMILY = {
     StructureFamily.array: links_for_array,
     StructureFamily.awkward: links_for_awkward,
+    StructureFamily.composite: links_for_composite,
     StructureFamily.container: links_for_container,
-    StructureFamily.composite: links_for_container,
     StructureFamily.sparse: links_for_array,  # spare and array are the same
     StructureFamily.table: links_for_table,
 }

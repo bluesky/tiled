@@ -27,6 +27,7 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
+from tiled.adapters.array import ArrayTransforms
 from tiled.adapters.mapping import MapAdapter
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
@@ -55,6 +56,7 @@ from .core import (
     WrongTypeForRoute,
     apply_search,
     construct_data_response,
+    construct_dynamic_dataset_response,
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
@@ -265,6 +267,7 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
         **filters,
     ):
         request.state.endpoint = "search"
@@ -296,6 +299,7 @@ def get_router(
                 get_base_url(request),
                 resolve_media_type(request),
                 max_depth=max_depth,
+                transforms=transforms,
             )
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
@@ -371,6 +375,7 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         root_path: bool = Query(False),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
         entry: MapAdapter = Security(get_entry(), scopes=["read:metadata"]),
     ):
         """Fetch the metadata and structure information for one entry"""
@@ -389,6 +394,7 @@ def get_router(
                 include_data_sources,
                 resolve_media_type(request),
                 max_depth=max_depth,
+                transforms=transforms,
             )
         except BrokenLink as err:
             raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
@@ -420,13 +426,21 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
     ):
-        """
-        Fetch a chunk of array-like data.
-        """
-        shape = entry.structure().shape
+        """Fetch a chunk of array-like data."""
+
+        if transforms and entry.structure_family == StructureFamily.sparse:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Transforms are not supported for sparse arrays yet.",
+            )
+
         # Check that block dimensionality matches array dimensionality.
-        ndim = len(shape)
+        structure = entry.structure()
+        if transforms:
+            structure = transforms.update_structure(structure)
+        ndim = len(structure.shape)
         if len(block) != ndim:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -437,17 +451,30 @@ def get_router(
             )
         if block == ():
             # Handle special case of numpy scalar.
-            if shape != ():
+            if structure.shape != ():
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"Requested scalar but shape is {entry.structure().shape}",
+                    detail=f"Requested scalar but shape is {structure.shape}",
                 )
             with record_timing(request.state.metrics, "read"):
                 array = await ensure_awaitable(entry.read)
+                if transforms:
+                    array = transforms.apply(array)
         else:
             try:
                 with record_timing(request.state.metrics, "read"):
-                    array = await ensure_awaitable(entry.read_block, block, slice)
+                    if not transforms:
+                        array = await ensure_awaitable(entry.read_block, block, slice)
+                    else:
+                        from tiled.adapters.array import (
+                            slice_and_shape_from_block_and_chunks,
+                        )
+
+                        array = await ensure_awaitable(entry.read)
+                        block_slice, _ = slice_and_shape_from_block_and_chunks(
+                            block, structure.chunks
+                        )
+                        array = transforms.apply(array)[block_slice][slice]
             except IndexError:
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
@@ -496,6 +523,7 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
+        transforms: ArrayTransforms = Depends(ArrayTransforms.from_query),
     ):
         """
         Fetch a slice of array-like data.
@@ -505,15 +533,25 @@ def get_router(
         # for some use cases.
         import numpy
 
+        if transforms and structure_family == StructureFamily.sparse:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="Transforms are not supported for sparse arrays yet.",
+            )
+
         try:
             with record_timing(request.state.metrics, "read"):
-                array = await ensure_awaitable(entry.read, slice)
+                array = await ensure_awaitable(
+                    entry.read, slice if not transforms else None
+                )
             if structure_family == StructureFamily.array:
                 array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
         except IndexError:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
             )
+        if transforms:
+            array = transforms.apply(array)[slice]
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -767,6 +805,176 @@ def get_router(
                     expires=getattr(entry, "content_stale_at", None),
                     filename=filename,
                     filter_for_access=None,
+                )
+        except UnsupportedMediaTypes as err:
+            raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
+
+    @router.get(
+        "/composite/meta/{path:path}",
+        response_model=schemas.Response,
+        name="virtual dataset metadata",
+    )
+    async def get_composite_meta(
+        request: Request,
+        path: str,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data", "read:metadata"],
+        ),
+        part: Optional[List[str]] = Query(None, min_length=1),
+        align: Optional[str] = Query(None),
+    ):
+        return await build_dataset_metadata(
+            request=request,
+            path=path,
+            entry=entry,
+            part=part,
+            align=align,
+        )
+
+    @router.post(
+        "/composite/meta/{path:path}",
+        response_model=schemas.Response,
+        name="virtual dataset metadata",
+    )
+    async def post_composite_meta(
+        request: Request,
+        path: str,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data", "read:metadata"],
+        ),
+        part: Optional[List[str]] = Body(None, min_length=1),
+        align: Optional[str] = Query(None),
+    ):
+        return await build_dataset_metadata(
+            request=request,
+            path=path,
+            entry=entry,
+            part=part,
+            align=align,
+        )
+
+    async def build_dataset_metadata(
+        request: Request,
+        path: str,
+        entry,
+        part: Optional[List[str]],
+        align: Optional[str],
+    ):
+        try:
+            resource = await construct_dynamic_dataset_response(
+                entry,
+                part,
+                align,
+                path,
+                get_base_url(request),
+            )
+            return json_or_msgpack(
+                request,
+                resource.model_dump(),
+                expires=getattr(entry, "metadata_stale_at", None),
+                headers={},
+            )
+        except NoEntry:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="No such entry.")
+        except WrongTypeForRoute as err:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
+
+    @router.get(
+        "/composite/full/{path:path}",
+        response_model=schemas.Response,
+        name="full virtual dataset as xarray",
+    )
+    async def get_composite_full(
+        request: Request,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data"],
+        ),
+        part: Optional[List[str]] = Query(None, min_length=1),
+        align: Optional[str] = Query(None),
+        field: Optional[List[str]] = Query(None, min_length=1),
+        format: Optional[str] = None,
+        filename: Optional[str] = None,
+    ):
+        return await build_dataset_from_composite(
+            request=request,
+            entry=entry,
+            part=part,
+            align=align,
+            field=field,
+            format=format,
+            filename=filename,
+        )
+
+    @router.post(
+        "/composite/full/{path:path}",
+        response_model=schemas.Response,
+        name="full virtual dataset as xarray",
+    )
+    async def post_composite_full(
+        request: Request,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data"],
+        ),
+        align: Optional[str] = Query(None),
+        body: Optional[dict[str, list[str]]] = Body(default_factory=dict),
+        format: Optional[str] = None,
+        filename: Optional[str] = None,
+    ):
+        part = body.get("part")
+        field = body.get("field")
+
+        return await build_dataset_from_composite(
+            request=request,
+            entry=entry,
+            part=part,
+            align=align,
+            field=field,
+            format=format,
+            filename=filename,
+        )
+
+    async def build_dataset_from_composite(
+        request: Request,
+        entry,
+        part: Optional[List[str]],
+        align: Optional[str],
+        field: Optional[List[str]],
+        format: Optional[str],
+        filename: Optional[str],
+    ):
+        try:
+            with record_timing(request.state.metrics, "read"):
+                data = {}
+                for key, item in (
+                    await entry.get_dataset_items(
+                        part, align=align, return_adapters=True, adapter_keys=field
+                    )
+                ).items():
+                    if item.adapter is not None:
+                        data[key] = item.adapter
+
+        except KeyError as err:
+            (key,) = err.args
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST, detail=f"No such field {key}."
+            )
+
+        # TODO Determine the size of the dataset before handing off to serializer.
+        try:
+            with record_timing(request.state.metrics, "pack"):
+                return await construct_data_response(
+                    entry.structure_family,
+                    serialization_registry,
+                    payload=data,
+                    metadata=entry.metadata(),
+                    request=request,
+                    format=format,
+                    specs=[Spec(name="xarray_dataset")],
+                    filename=filename,
                 )
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])

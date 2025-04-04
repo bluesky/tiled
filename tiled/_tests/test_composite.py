@@ -48,8 +48,7 @@ awk_form, awk_length, awk_container = awkward.to_buffers(awk_packed)
 
 # A sparse array
 arr = rng.random(size=(10, 20, 30), dtype="float64")
-arr[arr < 0.95] = 0  # Fill half of the array with zeros.
-sps_arr = sparse.COO(arr)
+sps_arr = sparse.COO(numpy.where(arr > 0.95, arr, 0))
 
 md = {"md_key1": "md_val1", "md_key2": 2}
 
