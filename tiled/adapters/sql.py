@@ -296,9 +296,13 @@ class SQLAdapter:
             data = cursor.fetch_arrow_table()
         self.conn.commit()
 
+        # The database may have stored this in a coarser type, such as
+        # storing uint8 data as int16. Cast it to the original type.
+        data = data.drop_columns(["_partition_id", "_dataset_id"])
+        schema = self.structure().arrow_schema_decoded
+        data.cast(schema)
+
         table = data.to_pandas()
-        table = table.drop("_dataset_id", axis=1)
-        table = table.drop("_partition_id", axis=1)
         if fields is not None:
             table = table[fields]
         return table
@@ -328,9 +332,13 @@ class SQLAdapter:
             data = cursor.fetch_arrow_table()
         self.conn.commit()
 
+        # The database may have stored this in a coarser type, such as
+        # storing uint8 data as int16. Cast it to the original type.
+        data = data.drop_columns(["_partition_id", "_dataset_id"])
+        schema = self.structure().arrow_schema_decoded
+        data.cast(schema)
+
         table = data.to_pandas()
-        table = table.drop("_dataset_id", axis=1)
-        table = table.drop("_partition_id", axis=1)
         if fields is not None:
             table = table[fields]
         return table
@@ -390,16 +398,18 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
     # Boolean
     pyarrow.bool_(): "BOOLEAN",
     # Integers
-    pyarrow.int8(): "SMALLINT",
-    pyarrow.uint8(): "SMALLINT",
+    pyarrow.int8(): "SMALLINT",  # no native int8, use int16
     pyarrow.int16(): "SMALLINT",
-    pyarrow.uint16(): "SMALLINT",
     pyarrow.int32(): "INTEGER",
-    pyarrow.uint32(): "INTEGER",
     pyarrow.int64(): "BIGINT",
-    pyarrow.uint64(): "BIGINT",
+    # Since PG has not native unsigned int,
+    # use signed int one size up.
+    pyarrow.uint8(): "SMALLINT",
+    pyarrow.uint16(): "INTEGER",
+    pyarrow.uint32(): "BIGINT",
+    # pyarrow.uint64() not supported
     # Floating Point
-    pyarrow.float16(): "REAL",
+    # pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",
     pyarrow.float64(): "DOUBLE PRECISION",
     # String Types
@@ -487,9 +497,9 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         #     return "timestamptz"
 
         # Look up base type
-        for pa_type, pg_type in ARROW_TO_PG_TYPES.items():
-            if arrow_type == pa_type:
-                return pg_type
+        pg_type = ARROW_TO_PG_TYPES.get(arrow_type)
+        if pg_type is None:
+            raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
 
         # TODO Consider adding support for these types, with testing.
 
@@ -505,7 +515,7 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         # if pyarrow.types.is_duration(arrow_type):
         #     return "interval"
 
-        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        return pg_type
 
     return _resolve_type(field.type)
 
@@ -524,7 +534,7 @@ ARROW_TO_DUCKDB_TYPES = {
     pyarrow.int64(): "BIGINT",
     pyarrow.uint64(): "UBIGINT",
     # Floating point
-    pyarrow.float16(): "REAL",  # Note: gets converted to float32 internally
+    # pyarrow.float16(): "REAL",  # Note: gets converted to float32 internally
     pyarrow.float32(): "REAL",
     pyarrow.float64(): "DOUBLE",
     # Decimal
@@ -637,11 +647,10 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
         #     return f'MAP({key_type}, {item_type})'
 
         # Look up base type
-        for pa_type, duck_type in ARROW_TO_DUCKDB_TYPES.items():
-            if arrow_type == pa_type:
-                return duck_type
-
-        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        duckdb_type = ARROW_TO_DUCKDB_TYPES.get(arrow_type)
+        if duckdb_type is None:
+            raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        return duckdb_type
 
     arrow_type = field.type if isinstance(field, pyarrow.Field) else field
     return _resolve_type(arrow_type)
@@ -658,9 +667,9 @@ ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
     pyarrow.int32(): "INTEGER",
     pyarrow.uint32(): "INTEGER",
     pyarrow.int64(): "INTEGER",
-    pyarrow.uint64(): "INTEGER",  # Note: may exceed SQLite INTEGER range
+    # pyarrow.uint64() not supported, may exceed SQLite INTEGER range
     # Floating point - stored as REAL
-    pyarrow.float16(): "REAL",
+    # pyarrow.float16(): "REAL",
     pyarrow.float32(): "REAL",
     pyarrow.float64(): "REAL",
     # Decimal - stored as TEXT to preserve precision
@@ -724,30 +733,31 @@ def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
     """
 
     def _resolve_type(arrow_type: pyarrow.DataType) -> str:
+        # TODO Consider adding support for these, with tests.
+
         # Handle dictionary types - use value type
-        if pyarrow.types.is_dictionary(arrow_type):
-            return _resolve_type(arrow_type.value_type)
+        # if pyarrow.types.is_dictionary(arrow_type):
+        #     return _resolve_type(arrow_type.value_type)
 
         # Handle timestamp with timezone - store as TEXT
-        if pyarrow.types.is_timestamp(arrow_type) and arrow_type.tz is not None:
-            return "TEXT"
+        # if pyarrow.types.is_timestamp(arrow_type) and arrow_type.tz is not None:
+        #     return "TEXT"
 
         # Handle nested types (lists, structs, maps) - store as JSON TEXT
-        if (
-            pyarrow.types.is_list(arrow_type)
-            or pyarrow.types.is_struct(arrow_type)
-            or pyarrow.types.is_map(arrow_type)
-            or pyarrow.types.is_fixed_size_list(arrow_type)
-            or pyarrow.types.is_large_list(arrow_type)
-        ):
-            return "TEXT"  # JSON encoded
+        # if (
+        #     pyarrow.types.is_list(arrow_type)
+        #     or pyarrow.types.is_struct(arrow_type)
+        #     or pyarrow.types.is_map(arrow_type)
+        #     or pyarrow.types.is_fixed_size_list(arrow_type)
+        #     or pyarrow.types.is_large_list(arrow_type)
+        # ):
+        #     return "TEXT"  # JSON encoded
 
         # Look up base type
-        for pa_type, sqlite_type in ARROW_TO_SQLITE_TYPES.items():
-            if arrow_type == pa_type:
-                return sqlite_type
-
-        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        sqlite_type = ARROW_TO_SQLITE_TYPES.get(arrow_type)
+        if sqlite_type is None:
+            raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        return sqlite_type
 
     arrow_type = field.type if isinstance(field, pyarrow.Field) else field
     return _resolve_type(arrow_type)
@@ -762,24 +772,33 @@ DIALECT_TO_TYPE_CONVERTER: dict[
 }
 
 
-def arrow_schema_to_create_table(
-    schema: pyarrow.Schema, table_name: str, dialect: DIALECTS
-) -> str:
-    # Build column definitions
-    columns = []
+def arrow_schema_to_column_defns(
+    schema: pyarrow.Schema, dialect: DIALECTS
+) -> dict[str, str]:
+    """
+    Given Arrow schema, return mapping of column names to type definitions.
 
+    Example output: {'x': 'INTEGER NOT NULL'}
+    """
+    columns = {}
     converter = DIALECT_TO_TYPE_CONVERTER[dialect]
     for field in schema:
         sql_type = converter(field)
         nullable = "NULL" if field.nullable else "NOT NULL"
-        columns.append(f"{field.name} {sql_type} {nullable}")
+        columns[field.name] = f"{sql_type} {nullable}"
+    return columns
 
+
+def arrow_schema_to_create_table(
+    schema: pyarrow.Schema, table_name: str, dialect: DIALECTS
+) -> str:
+    columns = arrow_schema_to_column_defns(schema, dialect)
     # Construct the CREATE TABLE statement
     create_statement = (
         f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
         """
-        + ",\n        ".join(columns)
+        + ",\n        ".join(f"{name} {type_}" for name, type_ in columns.items())
         + """)
     """
     )
