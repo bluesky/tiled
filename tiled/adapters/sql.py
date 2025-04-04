@@ -497,9 +497,9 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         #     return "timestamptz"
 
         # Look up base type
-        for pa_type, pg_type in ARROW_TO_PG_TYPES.items():
-            if arrow_type == pa_type:
-                return pg_type
+        pg_type = ARROW_TO_PG_TYPES.get(arrow_type)
+        if pg_type is None:
+            raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
 
         # TODO Consider adding support for these types, with testing.
 
@@ -515,7 +515,7 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         # if pyarrow.types.is_duration(arrow_type):
         #     return "interval"
 
-        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        return pg_type
 
     return _resolve_type(field.type)
 
@@ -647,11 +647,10 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
         #     return f'MAP({key_type}, {item_type})'
 
         # Look up base type
-        for pa_type, duck_type in ARROW_TO_DUCKDB_TYPES.items():
-            if arrow_type == pa_type:
-                return duck_type
-
-        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        duckdb_type = ARROW_TO_DUCKDB_TYPES.get(arrow_type)
+        if duckdb_type is None:
+            raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        return duckdb_type
 
     arrow_type = field.type if isinstance(field, pyarrow.Field) else field
     return _resolve_type(arrow_type)
@@ -755,11 +754,10 @@ def arrow_field_to_sqlite_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
         #     return "TEXT"  # JSON encoded
 
         # Look up base type
-        for pa_type, sqlite_type in ARROW_TO_SQLITE_TYPES.items():
-            if arrow_type == pa_type:
-                return sqlite_type
-
-        raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        sqlite_type = ARROW_TO_SQLITE_TYPES.get(arrow_type)
+        if sqlite_type is None:
+            raise ValueError(f"Unsupported PyArrow type: {arrow_type}")
+        return sqlite_type
 
     arrow_type = field.type if isinstance(field, pyarrow.Field) else field
     return _resolve_type(arrow_type)
