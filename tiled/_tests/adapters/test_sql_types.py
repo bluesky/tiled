@@ -215,7 +215,7 @@ def test_data_types(
     dialect: Literal["postgresql", "sqlite", "duckdb"],
     request: pytest.FixtureRequest,
 ) -> None:
-    test_table_name = "random_test_table"
+    test_table_name = f"test_{test_case_id}"
     table, dialect_results = TEST_CASES[test_case_id]
 
     if dialect not in cast(dict, dialect_results):  # type: ignore
@@ -232,7 +232,6 @@ def test_data_types(
 
     with create_connection(db_uri) as conn:
         with conn.cursor() as cursor:
-            cursor.execute(f"DROP TABLE IF EXISTS {test_table_name}")
             cursor.execute(query)
         conn.commit()
 
