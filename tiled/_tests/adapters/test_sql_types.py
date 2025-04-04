@@ -227,11 +227,11 @@ def test_data_types(
     columns = arrow_schema_to_column_defns(table.schema, dialect)
     assert list(columns.values()) == expected_typedefs
 
-    query = arrow_schema_to_create_table(table.schema, "random_test_table", dialect)
+    query = arrow_schema_to_create_table(table.schema, test_table_name, dialect)
 
     with create_connection(db_uri) as conn:
         with conn.cursor() as cursor:
-            cursor.execute("DROP TABLE IF EXISTS random_test_table")
+            cursor.execute(f"DROP TABLE IF EXISTS {test_table_name}")
             cursor.execute(query)
         conn.commit()
 
@@ -240,15 +240,15 @@ def test_data_types(
         # int64 by default; in the future it may be null.
         # https://github.com/apache/arrow-adbc/issues/581
         if dialect != "sqlite":
-            assert conn.adbc_get_table_schema("random_test_table") == expected_schema
+            assert conn.adbc_get_table_schema(test_table_name) == expected_schema
 
         with conn.cursor() as cursor:
-            cursor.adbc_ingest("random_test_table", table, mode="append")
+            cursor.adbc_ingest(test_table_name, table, mode="append")
 
-        assert conn.adbc_get_table_schema("random_test_table") == expected_schema
+        assert conn.adbc_get_table_schema(test_table_name) == expected_schema
 
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM random_test_table")
+            cursor.execute(f"SELECT * FROM {test_table_name}")
             result = cursor.fetch_arrow_table()
 
         # The result will match expected_schema, which may not be the same as
