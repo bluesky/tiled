@@ -39,6 +39,39 @@ def example_file(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def example_file_with_empty_data(tmp_path_factory):
+    h5py = pytest.importorskip("h5py")
+    file_path = tmp_path_factory.mktemp("data").joinpath("example_with_empty.h5")
+    with h5py.File(file_path, "w") as file:
+        a = file.create_group("a")
+        b = a.create_group("b")
+        c = b.create_group("c")
+        c.create_dataset("d", data=numpy.empty(shape=0))
+        c.create_dataset("e", data=numpy.empty(shape=(5, 7)))
+        c.create_dataset("f", data=numpy.empty(shape=1, dtype="S0"))
+        c.create_dataset("g", data=[])
+        c.create_dataset("h", data="")
+        c.create_dataset("i", data=numpy.empty(shape=()))
+    return ensure_uri(file_path)
+
+
+@pytest.fixture(scope="module")
+def example_file_with_scalars(tmp_path_factory):
+    h5py = pytest.importorskip("h5py")
+    file_path = tmp_path_factory.mktemp("data").joinpath("example_with_scalars.h5")
+    with h5py.File(file_path, "w") as file:
+        a = file.create_group("a")
+        b = a.create_group("b")
+        c = b.create_group("c")
+        c.create_dataset("int", data=42)
+        c.create_dataset("float", data=3.14)
+        c.create_dataset("str", data="hello")
+        c.create_dataset("bytes", data=b"hello")
+        c.create_dataset("bool", data=True)
+    return ensure_uri(file_path)
+
+
+@pytest.fixture(scope="module")
 def example_file_with_vlen_str_in_dataset(tmp_path_factory):
     h5py = pytest.importorskip("h5py")
     file_path = tmp_path_factory.mktemp("data").joinpath("example_with_vlen_str.h5")
@@ -85,6 +118,34 @@ def test_from_file(example_file, buffer):
         client.export(buffer, format="application/x-hdf5")
         file = h5py.File(buffer, "r")
         file["a"]["b"]["c"]["d"]
+
+
+@pytest.mark.parametrize("key", ["d", "e", "f", "g", "h", "i"])
+def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
+    """Serve a single HDF5 file at top level."""
+    h5py = pytest.importorskip("h5py")
+    tree = HDF5Adapter.from_uris(example_file_with_empty_data)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        arr = client["a"]["b"]["c"][key].read()
+        assert isinstance(arr, numpy.ndarray)
+        client.export(buffer, format="application/x-hdf5")
+        file = h5py.File(buffer, "r")
+        file["a"]["b"]["c"][key]
+
+
+@pytest.mark.parametrize("key", ["int", "float", "str", "bytes", "bool"])
+def test_from_file_with_scalars(example_file_with_scalars, buffer, key):
+    """Serve a single HDF5 file at top level."""
+    h5py = pytest.importorskip("h5py")
+    tree = HDF5Adapter.from_uris(example_file_with_scalars)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        arr = client["a"]["b"]["c"][key].read()
+        assert isinstance(arr, numpy.ndarray)
+        client.export(buffer, format="application/x-hdf5")
+        file = h5py.File(buffer, "r")
+        file["a"]["b"]["c"][key]
 
 
 def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
