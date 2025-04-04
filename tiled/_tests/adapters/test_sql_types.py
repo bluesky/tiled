@@ -215,6 +215,7 @@ def test_data_types(
     dialect: Literal["postgresql", "sqlite", "duckdb"],
     request: pytest.FixtureRequest,
 ) -> None:
+    test_table_name = "random_test_table"
     table, dialect_results = TEST_CASES[test_case_id]
 
     if dialect not in cast(dict, dialect_results):  # type: ignore
