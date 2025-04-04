@@ -822,16 +822,8 @@ def get_router(
             scopes=["read:data", "read:metadata"],
         ),
         part: Optional[List[str]] = Query(None, min_length=1),
-        code: Optional[int] = Query(None),
         align: Optional[str] = Query(None),
     ):
-        if part and code:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail="Cannot specify both part and code.",
-            )
-        if code:
-            part = await entry.decode_keys(code)
         return await build_dataset_metadata(
             request=request,
             path=path,
@@ -901,20 +893,11 @@ def get_router(
             scopes=["read:data"],
         ),
         part: Optional[List[str]] = Query(None, min_length=1),
-        code: Optional[int] = Query(None),
         align: Optional[str] = Query(None),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
     ):
-        if part and code:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail="Cannot specify both part and code.",
-            )
-        if code:
-            part = await entry.decode_keys(code)
-
         return await build_dataset_from_composite(
             request=request,
             entry=entry,
@@ -936,20 +919,13 @@ def get_router(
             get_entry({StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        part: Optional[List[str]] = Query(None, min_length=1),
-        code: Optional[int] = Query(None),
         align: Optional[str] = Query(None),
-        field: Optional[List[str]] = Body(None, min_length=1),
+        body: Optional[dict[str, list[str]]] = Body(default_factory=dict),
         format: Optional[str] = None,
         filename: Optional[str] = None,
     ):
-        if part and code:
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail="Cannot specify both part and code.",
-            )
-        if code:
-            part = await entry.decode_keys(code)
+        part = body.get("part")
+        field = body.get("field")
 
         return await build_dataset_from_composite(
             request=request,

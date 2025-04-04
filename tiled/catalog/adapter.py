@@ -1127,7 +1127,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         return_adapters=False,
         adapter_keys=None,
         default_dim0="time",
-        align: Optional[Literal["zip_shortest", "zip_longest", "resample"]] = None,
+        align: Optional[Literal["zip_shortest", "resample"]] = None,
     ):
         """Return all ArrayStructures, specs, and possibly (some) adapters for dataset
 
@@ -1154,7 +1154,6 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         align : str, optional
             If not None, align the arrays in the dataset. Options are:
             - 'zip_shortest': Trim all arrays to the length of the shortest one.
-            - 'zip_longest': Pad all arrays to the length of the longest one.
             - 'resample': Resample all arrays.
         """
 
@@ -1268,8 +1267,6 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             align = None  # arrays are already aligned
         elif align == "zip_shortest":
             num_rows = min(num_rows)
-        elif align == "zip_longest":
-            num_rows = max(num_rows)
         elif align == "resample":
             num_rows = math.gcd(*num_rows)
 
@@ -1284,8 +1281,6 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 elif align == "resample":
                     step = structure.shape[0] // num_rows
                     item.transforms.reslice = NDSlice(builtins.slice(0, None, step))
-                elif align == "zip_longest":
-                    raise NotImplementedError("zip_longest is not supported yet")
 
             # If all trailing dimensions are singletons -- reshape to 1D
             if set(structure.shape[1:]) in ({1}, {0}, {0, 1}):

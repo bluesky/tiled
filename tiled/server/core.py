@@ -328,11 +328,9 @@ async def construct_dynamic_dataset_response(
     )
     attributes["metadata"] = {"attrs": {}}
 
-    query_dict = {"align": align} if align else {}
-    # Encode the parts in the query sring
-    if parts is not None:
-        query_dict["code"] = await entry.encode_keys(parts)
-
+    query_dict = ({"align": align} if align else {}) | (
+        {"part": parts} if parts else {}
+    )
     query_str = urllib.parse.urlencode(query_dict, doseq=True)
     query_str = urllib.parse.unquote(query_str)  # Make it human-readable
     query_str = f"?{query_str}" if query_str else ""

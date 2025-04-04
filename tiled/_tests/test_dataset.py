@@ -199,7 +199,8 @@ def test_large_dataset(context):
         assert len(history.requests) == 2
         assert history.requests[1].method == "POST"
         assert history.requests[1].url.path == urlparse(ds.item["links"]["full"]).path
-        assert "code" in history.requests[1].url.params
+        assert "part" not in history.requests[1].url.params
+        assert "field" not in history.requests[1].url.params
 
 
 @pytest.mark.parametrize("name, expected", data)
