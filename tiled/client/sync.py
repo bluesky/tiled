@@ -147,7 +147,7 @@ def _copy_container(source, dest, on_conflict):
             and (original_data_sources[0].management != Management.external)
         ) or (
             child_node.structure_family
-            in [StructureFamily.container, StructureFamily.composite]
+            in {StructureFamily.container, StructureFamily.composite}
             and (not original_data_sources)
         ):
             _DISPATCH[child_node.structure_family](

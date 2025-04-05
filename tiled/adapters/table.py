@@ -137,7 +137,6 @@ class TableAdapter:
     def __getitem__(self, key: str) -> ArrayAdapter:
         # Must compute to determine shape
         array = self.read([key])[key].values
-
         return ArrayAdapter.from_array(array)
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:

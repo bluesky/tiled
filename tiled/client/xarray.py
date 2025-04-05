@@ -1,5 +1,6 @@
 import threading
-from urllib.parse import parse_qs, urlparse
+import urllib
+from collections import defaultdict
 
 import dask
 import dask.array
@@ -37,13 +38,17 @@ class DaskDatasetClient(Container):
         coords = {}
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
-        coords_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
+        coords_fetchers = defaultdict(
+            lambda: _WideTableFetcher(
+                self.context.http_client,
+                self.item["links"]["full"],
+            )
         )
-        data_vars_fetcher = _WideTableFetcher(
-            self.context.http_client,
-            self.item["links"]["full"],
+        data_vars_fetchers = defaultdict(
+            lambda: _WideTableFetcher(
+                self.context.http_client,
+                self.item["links"]["full"],
+            )
         )
         array_clients = {}
         array_structures = {}
@@ -65,6 +70,7 @@ class DaskDatasetClient(Container):
             array_structure = array_structures[name]
             shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
+            dim0 = array_client.dims[0]
 
             if optimize_wide_table and (
                 (not shape)  # empty
@@ -76,13 +82,13 @@ class DaskDatasetClient(Container):
                 if "xarray_coord" in spec_names:
                     coords[name] = (
                         array_client.dims,
-                        coords_fetcher.register(name, array_client, array_structure),
+                        coords_fetchers[dim0].register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 elif "xarray_data_var" in spec_names:
                     data_vars[name] = (
                         array_client.dims,
-                        data_vars_fetcher.register(name, array_client, array_structure),
+                        data_vars_fetchers[dim0].register(name, array_structure),
                         array_client.metadata["attrs"],
                     )
                 else:
@@ -140,7 +146,7 @@ class _WideTableFetcher:
         # to ask for the data should trigger a request.
         self._lock = threading.Lock()
 
-    def register(self, name, array_client, array_structure):
+    def register(self, name, array_structure):
         if self._dataframe is not None:
             raise RuntimeError("Cannot add variables; already fetched.")
         self.variables.append(name)
@@ -161,25 +167,40 @@ class _WideTableFetcher:
                     _EXTRA_CHARS_PER_ITEM + len(variable) for variable in self.variables
                 )
                 if url_length_for_get_request > BaseClient.URL_CHARACTER_LIMIT:
-                    dataframe = self._fetch_variables(self.variables, "POST")
+                    parsed = urllib.parse.urlparse(self.link)
+                    # If this dataset is produced from a composite node, send "part"
+                    # parameters in the body of the request.
+                    if "/composite/full" in parsed.path and "part=" in parsed.query:
+                        json_body = {"field": self.variables}
+                        query_dict = urllib.parse.parse_qs(parsed.query)
+                        if parts := query_dict.pop("part", None):
+                            json_body["part"] = parts
+                        query_str = urllib.parse.urlencode(query_dict, doseq=True)
+                        query_str = urllib.parse.unquote(
+                            query_str
+                        )  # Make it human-readable
+                        link = urllib.parse.urlunparse(parsed._replace(query=query_str))
+                    else:
+                        link, json_body = self.link, self.variables
+                    dataframe = self._fetch_variables(link, json_body, "POST")
                 else:
-                    dataframe = self._fetch_variables(self.variables, "GET")
+                    dataframe = self._fetch_variables(self.link, self.variables, "GET")
                 self._dataframe = dataframe.reset_index()
         return self._dataframe
 
-    def _fetch_variables(self, variables, method="GET"):
+    def _fetch_variables(self, link, variables, method="GET"):
         if method == "GET":
-            return self._fetch_variables__get(variables)
+            return self._fetch_variables__get(link, variables)
         if method == "POST":
-            return self._fetch_variables__post(variables)
+            return self._fetch_variables__post(link, variables)
         raise NotImplementedError(f"Method {method} is not supported")
 
-    def _fetch_variables__get(self, variables):
+    def _fetch_variables__get(self, link, variables):
         content = handle_error(
             self.http_client.get(
                 self.link,
                 params={
-                    **parse_qs(urlparse(self.link).query),
+                    **urllib.parse.parse_qs(urllib.parse.urlparse(link).query),
                     "format": APACHE_ARROW_FILE_MIME_TYPE,
                     "field": variables,
                 },
@@ -187,13 +208,13 @@ class _WideTableFetcher:
         ).read()
         return deserialize_arrow(content)
 
-    def _fetch_variables__post(self, variables):
+    def _fetch_variables__post(self, link, variables):
         content = handle_error(
             self.http_client.post(
                 self.link,
                 json=variables,
                 params={
-                    **parse_qs(urlparse(self.link).query),
+                    **urllib.parse.parse_qs(urllib.parse.urlparse(link).query),
                     "format": APACHE_ARROW_FILE_MIME_TYPE,
                 },
             )

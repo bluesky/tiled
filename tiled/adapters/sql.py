@@ -195,7 +195,7 @@ class SQLAdapter:
         return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
-        """Get the data for a specific key
+        """Get the array adapter for a specific column (key)
 
         Parameters
         ----------
@@ -210,7 +210,7 @@ class SQLAdapter:
         return self[key]
 
     def __getitem__(self, key: str) -> ArrayAdapter:
-        """Get the data for a specific key.
+        """Get the array adapter for a specific column (key)
 
         Parameters
         ----------
@@ -395,6 +395,8 @@ def _ensure_writable_location(uri: str) -> Path:
 
 # Mapping between Arrow types and PostgreSQL column type name.
 ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
+    # Null type
+    pyarrow.null(): "TEXT",
     # Boolean
     pyarrow.bool_(): "BOOLEAN",
     # Integers
@@ -522,6 +524,8 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
 
 # Mapping between Arrow types and DuckDB column type names
 ARROW_TO_DUCKDB_TYPES = {
+    # Null type
+    pyarrow.null(): "VARCHAR",
     # Boolean
     pyarrow.bool_(): "BOOLEAN",
     # Integers
@@ -657,6 +661,8 @@ def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) ->
 
 
 ARROW_TO_SQLITE_TYPES: dict[pyarrow.Field, str] = {
+    # Null type
+    pyarrow.null(): "TEXT",
     # Boolean - stored as INTEGER
     pyarrow.bool_(): "INTEGER",
     # Integers - all stored as INTEGER

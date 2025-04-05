@@ -199,6 +199,13 @@ class SelfLinkOnly(pydantic.BaseModel):
     self: str
 
 
+class CompositeLinks(pydantic.BaseModel):
+    self: str
+    search: str
+    full: str
+    meta: str
+
+
 class ContainerLinks(pydantic.BaseModel):
     self: str
     search: str
@@ -232,7 +239,7 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
-    StructureFamily.composite: ContainerLinks,
+    StructureFamily.composite: CompositeLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
