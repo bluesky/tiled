@@ -479,6 +479,8 @@ def get_router(
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
                 )
+            except KeyError as err:
+                raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST,
@@ -550,6 +552,8 @@ def get_router(
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
             )
+        except KeyError as err:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
         if transforms:
             array = transforms.apply(array)[slice]
         if (expected_shape is not None) and (expected_shape != array.shape):
