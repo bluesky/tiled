@@ -1051,6 +1051,30 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                     return f"{_key}/{key}"
         raise KeyError(key)
 
+    async def _all_keys(self):
+        """Return all keys in the composite node, including table columns"""
+        all_keys = []
+        for _key, item in await self.items_range(offset=0, limit=None):
+            if item.structure_family == StructureFamily.table:
+                all_keys.extend(item.structure().columns)
+            else:
+                all_keys.append(_key)
+
+        return sorted(all_keys)
+
+    async def encode_keys(self, keys):
+        """Encode a subset of keys of the composite node as an integer"""
+        code = [str(int(k in keys)) for k in await self._all_keys()]
+
+        return int("".join(code), 2)
+
+    async def decode_keys(self, code):
+        """Decode an integer as a subset of keys of the composite node"""
+        all_keys = await self._all_keys()
+        code = f"{code:0{len(all_keys)}b}"
+
+        return [k for k, v in zip(all_keys, code) if v == "1"]
+
     async def create_node(
         self,
         structure_family,
@@ -1103,7 +1127,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         return_adapters=False,
         adapter_keys=None,
         default_dim0="time",
-        align: Optional[Literal["zip_shortest", "zip_longest", "resample"]] = None,
+        align: Optional[Literal["zip_shortest", "resample"]] = None,
     ):
         """Return all ArrayStructures, specs, and possibly (some) adapters for dataset
 
@@ -1130,11 +1154,10 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         align : str, optional
             If not None, align the arrays in the dataset. Options are:
             - 'zip_shortest': Trim all arrays to the length of the shortest one.
-            - 'zip_longest': Pad all arrays to the length of the longest one.
             - 'resample': Resample all arrays.
         """
 
-        # Passing empty typles for keys is not allowed
+        # Passing empty tuples for keys is not allowed
         assert keys is None or len(keys) > 0
         if adapter_keys is not None and len(adapter_keys) == 0:
             return_adapters, adapter_keys = False, None
@@ -1244,8 +1267,6 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             align = None  # arrays are already aligned
         elif align == "zip_shortest":
             num_rows = min(num_rows)
-        elif align == "zip_longest":
-            num_rows = max(num_rows)
         elif align == "resample":
             num_rows = math.gcd(*num_rows)
 
@@ -1260,8 +1281,6 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 elif align == "resample":
                     step = structure.shape[0] // num_rows
                     item.transforms.reslice = NDSlice(builtins.slice(0, None, step))
-                elif align == "zip_longest":
-                    raise NotImplementedError("zip_longest is not supported yet")
 
             # If all trailing dimensions are singletons -- reshape to 1D
             if set(structure.shape[1:]) in ({1}, {0}, {0, 1}):

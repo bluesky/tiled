@@ -1169,19 +1169,31 @@ class Composite(Container):
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
     def to_dataset(self, *keys, align=None):
-        link = (
-            self.item["links"]["full"]
-            .replace("container/full", "dataset/meta")
-            .rstrip("/")
+        link = self.item["links"]["meta"].rstrip("/")
+        params = httpx.QueryParams(
+            {**parse_qs(urlparse(link).query), "part": keys}
+            | ({"align": align} if align else {})
         )
-        content = handle_error(
-            self.context.http_client.get(
-                link,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={**parse_qs(urlparse(link).query), "parts": keys}
-                | ({"align": align} if align else {}),
-            )
-        ).json()
+
+        # If the URL is too long, we need to use POST instead of GET
+        if len(link) + len(str(params)) > BaseClient.URL_CHARACTER_LIMIT:
+            content = handle_error(
+                self.context.http_client.post(
+                    link,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    json=keys,
+                    params=params.remove("part"),
+                )
+            ).json()
+        else:
+            content = handle_error(
+                self.context.http_client.get(
+                    link,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                    params=params,
+                )
+            ).json()
+
         item = content["data"]
 
         return client_for_item(

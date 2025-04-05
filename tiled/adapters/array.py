@@ -10,13 +10,11 @@ from fastapi import Query
 from ndindex import ndindex
 from numpy.typing import NDArray
 
-from ..ndslice import NDSlice
+from ..ndslice import SLICE_REGEX, NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
 
-DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
-SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 RESHAPE_REGEX = r"^((?:-1)|\d+)(?:,((?:-1)|\d+))*$"  # NOTE: not strict (-1, 0)
 RECHUNK_REGEX = r"^((?:auto)|\d+)(?:,((?:auto)|\d+))*$"
 

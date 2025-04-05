@@ -479,6 +479,8 @@ def get_router(
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
                 )
+            except KeyError as err:
+                raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST,
@@ -550,6 +552,8 @@ def get_router(
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
             )
+        except KeyError as err:
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
         if transforms:
             array = transforms.apply(array)[slice]
         if (expected_shape is not None) and (expected_shape != array.shape):
@@ -810,24 +814,62 @@ def get_router(
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.get(
-        "/dataset/meta/{path:path}",
+        "/composite/meta/{path:path}",
         response_model=schemas.Response,
         name="virtual dataset metadata",
     )
-    async def get_dataset_meta(
+    async def get_composite_meta(
         request: Request,
         path: str,
         entry: MapAdapter = Security(
             get_entry({StructureFamily.composite}),
             scopes=["read:data", "read:metadata"],
         ),
-        parts: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None, min_length=1),
         align: Optional[str] = Query(None),
+    ):
+        return await build_dataset_metadata(
+            request=request,
+            path=path,
+            entry=entry,
+            part=part,
+            align=align,
+        )
+
+    @router.post(
+        "/composite/meta/{path:path}",
+        response_model=schemas.Response,
+        name="virtual dataset metadata",
+    )
+    async def post_composite_meta(
+        request: Request,
+        path: str,
+        entry: MapAdapter = Security(
+            get_entry({StructureFamily.composite}),
+            scopes=["read:data", "read:metadata"],
+        ),
+        part: Optional[List[str]] = Body(None, min_length=1),
+        align: Optional[str] = Query(None),
+    ):
+        return await build_dataset_metadata(
+            request=request,
+            path=path,
+            entry=entry,
+            part=part,
+            align=align,
+        )
+
+    async def build_dataset_metadata(
+        request: Request,
+        path: str,
+        entry,
+        part: Optional[List[str]],
+        align: Optional[str],
     ):
         try:
             resource = await construct_dynamic_dataset_response(
                 entry,
-                parts,
+                part,
                 align,
                 path,
                 get_base_url(request),
@@ -844,26 +886,26 @@ def get_router(
             raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=err.args[0])
 
     @router.get(
-        "/dataset/full/{path:path}",
+        "/composite/full/{path:path}",
         response_model=schemas.Response,
         name="full virtual dataset as xarray",
     )
-    async def get_dataset_full(
+    async def get_composite_full(
         request: Request,
         entry: MapAdapter = Security(
             get_entry({StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        parts: Optional[List[str]] = Query(None),
+        part: Optional[List[str]] = Query(None, min_length=1),
         align: Optional[str] = Query(None),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
     ):
-        return await dataset_full(
+        return await build_dataset_from_composite(
             request=request,
             entry=entry,
-            parts=parts,
+            part=part,
             align=align,
             field=field,
             format=format,
@@ -871,36 +913,38 @@ def get_router(
         )
 
     @router.post(
-        "/dataset/full/{path:path}",
+        "/composite/full/{path:path}",
         response_model=schemas.Response,
         name="full virtual dataset as xarray",
     )
-    async def post_dataset_full(
+    async def post_composite_full(
         request: Request,
         entry: MapAdapter = Security(
             get_entry({StructureFamily.composite}),
             scopes=["read:data"],
         ),
-        parts: Optional[List[str]] = Query(None),
         align: Optional[str] = Query(None),
-        field: Optional[List[str]] = Body(None, min_length=1),
+        body: Optional[dict[str, list[str]]] = Body(default_factory=dict),
         format: Optional[str] = None,
         filename: Optional[str] = None,
     ):
-        return await dataset_full(
+        part = body.get("part")
+        field = body.get("field")
+
+        return await build_dataset_from_composite(
             request=request,
             entry=entry,
-            parts=parts,
+            part=part,
             align=align,
             field=field,
             format=format,
             filename=filename,
         )
 
-    async def dataset_full(
+    async def build_dataset_from_composite(
         request: Request,
         entry,
-        parts: Optional[List[str]],
+        part: Optional[List[str]],
         align: Optional[str],
         field: Optional[List[str]],
         format: Optional[str],
@@ -911,7 +955,7 @@ def get_router(
                 data = {}
                 for key, item in (
                     await entry.get_dataset_items(
-                        parts, align=align, return_adapters=True, adapter_keys=field
+                        part, align=align, return_adapters=True, adapter_keys=field
                     )
                 ).items():
                     if item.adapter is not None:
