@@ -1,11 +1,11 @@
 import builtins
+import inspect
 import uuid
 from collections.abc import Hashable
 from pathlib import Path
 from threading import Lock
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
-import inspect
 
 import httpx
 import msgpack
@@ -183,7 +183,7 @@ def client_for_item(
     specs = item["attributes"].get("specs", []) or []
     for spec in specs:
         class_ = structure_clients.get(spec["name"])
-        if set(inspect.signature(class_ or (lambda: _)).parameters) == {"version"}:
+        if set(inspect.signature(class_ or (lambda: None)).parameters) == {"version"}:
             # This is a versioned client, so we need to pass the version.
             class_ = class_(spec["version"])
         if class_ is not None:
