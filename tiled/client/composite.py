@@ -111,7 +111,7 @@ class Composite(Container):
                 if (variables is None) or (part in variables):
                     data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
             elif item["attributes"]["structure_family"] == StructureFamily.awkward:
-                if variables is None or part in variables:
+                if (variables is None) or (part in variables):
                     try:
                         data_vars[part] = self.parts[part].read().to_numpy()
                     except ValueError as e:
