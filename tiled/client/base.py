@@ -232,7 +232,7 @@ class BaseClient:
         return constructors.from_context(
             context=self.context,
             structure_clients=self.structure_clients,
-            node_path_parts=self._item["attributes"]["ancestors"]
+            node_path_parts=self._item["attributes"]["ancestors"],
             )
 
     def metadata_copy(self):
