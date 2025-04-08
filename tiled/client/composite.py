@@ -87,12 +87,16 @@ class Composite(Container):
     def read(self, variables=None, dim0=None):
         """Download the contents of a composite node as an xarray.Dataset.
 
-        Args:
-            variables (list, optional): List of variable names to read. If None, all
-                variables are read. Defaults to None.
+        Parameters
+        ----------
+        variables (list, optional) : List of variable names to read. If None, all
+            variables are read. Defaults to None.
+        dim0 (str, optional) : Name of the dimension to use for the first dimension;
+            if None (default), each array will have its own dimension name.
 
-        Returns:
-            xarray.Dataset: The dataset containing the requested variables.
+        Returns
+        -------
+        xarray.Dataset: The dataset containing the requested variables.
         """
         import pandas
         import xarray
@@ -104,10 +108,10 @@ class Composite(Container):
                 StructureFamily.array,
                 StructureFamily.sparse,
             }:
-                if variables is None or part in variables:
+                if (variables is None) or (part in variables):
                     data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
             elif item["attributes"]["structure_family"] == StructureFamily.awkward:
-                if variables is None or part in variables:
+                if (variables is None) or (part in variables):
                     try:
                         data_vars[part] = self.parts[part].read().to_numpy()
                     except ValueError as e:
