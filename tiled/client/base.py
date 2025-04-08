@@ -16,6 +16,7 @@ from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error
+from . import constructors # dependency injection to get from_context
 
 
 class MetadataRevisions:
@@ -224,6 +225,15 @@ class BaseClient:
         # getting the wrong impression that editing this would update anything
         # persistent.
         return DictView(self._item["attributes"]["metadata"])
+
+    @property
+    def parent(self):
+        "Returns a client for the parent of this node."
+        return constructors.from_context(
+            context = self.context,
+            structure_clients=self.structure_clients,
+            node_path_parts=self._item['attributes']['ancestors']
+            )
 
     def metadata_copy(self):
         """
