@@ -84,7 +84,7 @@ class Composite(Container):
         """Composite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
-    def read(self, variables=None):
+    def read(self, variables=None, dim0=None):
         """Download the contents of a composite node as an xarray.Dataset.
 
         Args:
@@ -94,15 +94,27 @@ class Composite(Container):
         Returns:
             xarray.Dataset: The dataset containing the requested variables.
         """
+        import pandas
         import xarray
 
         data_vars = {}
         for part, item in self.get_contents().items():
             # Read all or selective arrays/columns.
-            if item["attributes"]["structure_family"] != StructureFamily.table:
+            if item["attributes"]["structure_family"] in {
+                StructureFamily.array,
+                StructureFamily.sparse,
+            }:
                 if variables is None or part in variables:
                     data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
-            else:
+            elif item["attributes"]["structure_family"] == StructureFamily.awkward:
+                if variables is None or part in variables:
+                    try:
+                        data_vars[part] = self.parts[part].read().to_numpy()
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Failed to convert awkward array to numpy: {e}"
+                        ) from e
+            elif item["attributes"]["structure_family"] == StructureFamily.table:
                 # For now, greedily load tabular data. We cannot know the shape
                 # of the columns without reading them. Future work may enable
                 # this to be lazy.
@@ -113,6 +125,32 @@ class Composite(Container):
                 df = table_client.read(list(columns))
                 for column in columns:
                     data_vars[column] = df[column].values
+                    # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+                    if isinstance(data_vars[column].dtype, pandas.StringDtype):
+                        data_vars[column] = data_vars[column].astype("U")
+            else:
+                raise ValueError(
+                    f"Unsupported structure family: {item['attributes']['structure_family']}"
+                )
+
+        # Create xarray.Dataset from the data_vars dictionary
+        dim0_all = [arr.shape[0] for arr in data_vars.values() if arr.ndim > 0]
+        if dim0 is not None and len(set(dim0_all)) > 1:
+            raise ValueError(
+                "Cannot specify dim0 when the arrays have different first dimensions."
+            )
+
+        for var_name in data_vars.keys():
+            arr = data_vars[var_name]
+            if len(set(dim0_all)) == 1:
+                data_vars[var_name] = (dim0 or "dim0",) + tuple(
+                    f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
+                ), arr
+            else:
+                data_vars[var_name] = (
+                    tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape))),
+                    arr,
+                )
 
         return xarray.Dataset(data_vars=data_vars)
 
