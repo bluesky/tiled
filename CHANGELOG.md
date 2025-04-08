@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - `Composite` structure family to enable direct access to table columns in a single namespace.
+- Added a `parent` property to BaseClass that returns a client pointing to the parent node
 
 ### Changed
 

@@ -225,6 +225,18 @@ class BaseClient:
         # persistent.
         return DictView(self._item["attributes"]["metadata"])
 
+    @property
+    def parent(self):
+        "Returns a client for the parent of this node."
+        # this import takes about 230 ns.
+        from .constructors import from_context
+
+        return from_context(
+            context=self.context,
+            structure_clients=self.structure_clients,
+            node_path_parts=self._item["attributes"]["ancestors"],
+        )
+
     def metadata_copy(self):
         """
         Generate a mutable copy of metadata and specs for validating metadata
