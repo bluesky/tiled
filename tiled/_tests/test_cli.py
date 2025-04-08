@@ -1,4 +1,5 @@
 import contextlib
+import os
 import re
 import subprocess
 import sys
@@ -118,4 +119,4 @@ def test_cli_version():
 
     with run_cli("tiled --version") as process:
         line = process.stdout.readline()
-    assert line.decode() == f"{__version__}\n"
+    assert line.decode() == f"{__version__}{os.linesep}"
