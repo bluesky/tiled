@@ -81,7 +81,7 @@ class DaskComposite(Container):
         raise NotImplementedError("Cannot create a container within a composite node.")
 
     def create_composite(self, key=None, *, metadata=None, specs=None):
-        """Ccomposite nodes can not include nested composites by design."""
+        """Composite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
     def read(self, variables=None):
