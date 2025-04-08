@@ -6,7 +6,7 @@ from .container import LENGTH_CACHE_TTL, Container
 from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error
 
 
-class DaskComposite(Container):
+class Composite(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
@@ -87,7 +87,38 @@ class DaskComposite(Container):
     def read(self, variables=None):
         import xarray
 
-        return xarray.Dataset(...)
+        if variables is None:
+            # Read all.
+            data_vars = {}
+            for part, item in self.get_contents().items():
+                if item["attributes"]["structure_family"] != StructureFamily.table:
+                    data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
+                else:
+                    # For now, greedily load tabular data. We cannot know the shape
+                    # of the columns without reading them. Future work may enable
+                    # this to be lazy.
+                    table_client = self.parts[part]
+                    df = table_client.read()
+                    for column in table_client.columns:
+                        data_vars[column] = df[column].values
+        else:
+            # Read selective arrays/columns.
+            data_vars = {}
+            for part, item in self.get_contents().items():
+                if item["attributes"]["structure_family"] != StructureFamily.table:
+                    if part in variables:
+                        data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
+                else:
+                    # For now, greedily load tabular data. We cannot know the shape
+                    # of the columns without reading them. Future work may enable
+                    # this to be lazy.
+                    table_client = self.parts[part]
+                    columns = set(variables).intersection(table_client.columns)
+                    df = table_client.read(list(columns))
+                    for column in columns:
+                        data_vars[column] = df[column].values
+
+        return xarray.Dataset(data_vars=data_vars)
 
 
 class CompositeParts:
@@ -128,8 +159,3 @@ class CompositeParts:
 
     def __len__(self) -> int:
         return len(self.contents)
-
-
-class Composite(DaskComposite):
-    def read(self, variables=None):
-        return super().read(variables=variables).load()

@@ -1172,9 +1172,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "dask": OneShotCachedMap(
         {
             "container": _Wrap(Container),
-            "composite": _LazyLoad(
-                ("..composite", Container.__module__), "DaskComposite"
-            ),
+            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
             # TODO Create DaskAwkwardClient
             # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),
