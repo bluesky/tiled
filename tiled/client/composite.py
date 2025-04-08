@@ -85,38 +85,34 @@ class Composite(Container):
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
     def read(self, variables=None):
+        """Download the contents of a composite node as an xarray.Dataset.
+
+        Args:
+            variables (list, optional): List of variable names to read. If None, all
+                variables are read. Defaults to None.
+
+        Returns:
+            xarray.Dataset: The dataset containing the requested variables.
+        """
         import xarray
 
-        if variables is None:
-            # Read all.
-            data_vars = {}
-            for part, item in self.get_contents().items():
-                if item["attributes"]["structure_family"] != StructureFamily.table:
+        data_vars = {}
+        for part, item in self.get_contents().items():
+            # Read all or selective arrays/columns.
+            if item["attributes"]["structure_family"] != StructureFamily.table:
+                if variables is None or part in variables:
                     data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
-                else:
-                    # For now, greedily load tabular data. We cannot know the shape
-                    # of the columns without reading them. Future work may enable
-                    # this to be lazy.
-                    table_client = self.parts[part]
-                    df = table_client.read()
-                    for column in table_client.columns:
-                        data_vars[column] = df[column].values
-        else:
-            # Read selective arrays/columns.
-            data_vars = {}
-            for part, item in self.get_contents().items():
-                if item["attributes"]["structure_family"] != StructureFamily.table:
-                    if part in variables:
-                        data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
-                else:
-                    # For now, greedily load tabular data. We cannot know the shape
-                    # of the columns without reading them. Future work may enable
-                    # this to be lazy.
-                    table_client = self.parts[part]
-                    columns = set(variables).intersection(table_client.columns)
-                    df = table_client.read(list(columns))
-                    for column in columns:
-                        data_vars[column] = df[column].values
+            else:
+                # For now, greedily load tabular data. We cannot know the shape
+                # of the columns without reading them. Future work may enable
+                # this to be lazy.
+                table_client = self.parts[part]
+                columns = set(variables or table_client.columns).intersection(
+                    table_client.columns
+                )
+                df = table_client.read(list(columns))
+                for column in columns:
+                    data_vars[column] = df[column].values
 
         return xarray.Dataset(data_vars=data_vars)
 
