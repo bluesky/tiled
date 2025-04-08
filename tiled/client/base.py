@@ -228,7 +228,7 @@ class BaseClient:
     @property
     def parent(self):
         "Returns a client for the parent of this node."
-        # this import takes about 230 ns. 
+        # this import takes about 230 ns.
         from .constructors import from_context
         return from_context(
             context=self.context,
