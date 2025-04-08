@@ -14,9 +14,9 @@ from tiled.client.context import Context
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
+from . import constructors  # dependency injection to get from_context
 from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error
-from . import constructors # dependency injection to get from_context
 
 
 class MetadataRevisions:
@@ -230,7 +230,7 @@ class BaseClient:
     def parent(self):
         "Returns a client for the parent of this node."
         return constructors.from_context(
-            context = self.context,
+            context=self.context,
             structure_clients=self.structure_clients,
             node_path_parts=self._item['attributes']['ancestors']
             )
