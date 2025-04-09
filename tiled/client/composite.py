@@ -92,7 +92,8 @@ class Composite(Container):
         variables (list, optional) : List of variable names to read. If None, all
             variables are read. Defaults to None.
         dim0 (str, optional) : Name of the dimension to use for the first dimension;
-            if None (default), each array will have its own dimension name.
+            if None (default), each array will have its own dimension name. The dims tuple,
+            if specified in the structure, takes precedence over this.
 
         Returns
         -------
@@ -138,23 +139,31 @@ class Composite(Container):
                 )
 
         # Create xarray.Dataset from the data_vars dictionary
-        dim0_all = [arr.shape[0] for arr in data_vars.values() if arr.ndim > 0]
-        if dim0 is not None and len(set(dim0_all)) > 1:
+        is_dim0_consistent = (
+            len(
+                set(
+                    [
+                        arr.shape[0]
+                        for arr in data_vars.values()
+                        if arr.ndim > 0 and not arr.dims
+                    ]
+                )
+            )
+            <= 1
+        )
+        if dim0 is not None and not is_dim0_consistent:
             raise ValueError(
-                "Cannot specify dim0 when the arrays have different first dimensions."
+                "Cannot specify dim0 when the arrays have different left-most dimensions."
             )
 
-        for var_name in data_vars.keys():
-            arr = data_vars[var_name]
-            if len(set(dim0_all)) == 1:
-                data_vars[var_name] = (dim0 or "dim0",) + tuple(
+        for var_name, arr in data_vars.items():
+            if is_dim0_consistent:
+                dims = (dim0 or "dim0",) + tuple(
                     f"{var_name}_dim{i+1}" for i in range(len(arr.shape) - 1)
-                ), arr
-            else:
-                data_vars[var_name] = (
-                    tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape))),
-                    arr,
                 )
+            else:
+                dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))
+            data_vars[var_name] = arr.dims or dims, arr
 
         return xarray.Dataset(data_vars=data_vars)
 
