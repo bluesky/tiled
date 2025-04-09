@@ -27,7 +27,7 @@ which installs *everything* you might want. For other options, see:
     ) from err
 
 
-cli_app = typer.Typer()
+cli_app = typer.Typer(no_args_is_help=True)
 
 from ._admin import admin_app  # noqa: E402
 from ._api_key import api_key_app  # noqa: E402
@@ -147,6 +147,19 @@ def tree(
 
 
 cli_app.command("register")(register)
+
+
+@cli_app.callback(invoke_without_command=True)
+def version_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", "-V", help="Show version and exit."
+    ),
+):
+    if version:
+        from .. import __version__
+
+        typer.echo(f"{__version__}")
 
 
 main = cli_app

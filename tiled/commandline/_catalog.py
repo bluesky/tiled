@@ -6,7 +6,7 @@ import typer
 
 from ._serve import serve_catalog
 
-catalog_app = typer.Typer()
+catalog_app = typer.Typer(no_args_is_help=True)
 # Support both `tiled serve catalog` and `tiled catalog serve` as synonyms
 # because I cannot decide which is right.
 catalog_app.command("serve")(serve_catalog)
