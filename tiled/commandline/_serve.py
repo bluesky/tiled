@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import typer
 
-serve_app = typer.Typer()
+serve_app = typer.Typer(no_args_is_help=True)
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
 DUCKDB_TABULAR_DATA_FILENAME = "data.duckdb"
