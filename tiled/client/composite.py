@@ -102,6 +102,7 @@ class Composite(Container):
         import pandas
         import xarray
 
+        array_dims = {}
         data_vars = {}
         for part, item in self.get_contents().items():
             # Read all or selective arrays/columns.
@@ -110,7 +111,9 @@ class Composite(Container):
                 StructureFamily.sparse,
             }:
                 if (variables is None) or (part in variables):
-                    data_vars[part] = self.parts[part].read()  # [Dask]ArrayClient
+                    array_client = self.parts[part]
+                    data_vars[part] = array_client.read()  # [Dask]ArrayClient
+                    array_dims[part] = array_client.dims
             elif item["attributes"]["structure_family"] == StructureFamily.awkward:
                 if (variables is None) or (part in variables):
                     try:
@@ -144,8 +147,8 @@ class Composite(Container):
                 set(
                     [
                         arr.shape[0]
-                        for arr in data_vars.values()
-                        if arr.ndim > 0 and not arr.dims
+                        for var_name, arr in data_vars.items()
+                        if arr.ndim > 0 and not array_dims.get(var_name)
                     ]
                 )
             )
@@ -163,7 +166,7 @@ class Composite(Container):
                 )
             else:
                 dims = tuple(f"{var_name}_dim{i}" for i in range(len(arr.shape)))
-            data_vars[var_name] = arr.dims or dims, arr
+            data_vars[var_name] = array_dims.get(var_name) or dims, arr
 
         return xarray.Dataset(data_vars=data_vars)
 
