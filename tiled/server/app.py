@@ -63,6 +63,8 @@ CSRF_QUERY_PARAMETER = "csrf"
 
 MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
 
+PURGE_INTERVAL = 600  # seconds
+
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 handler = logging.StreamHandler()
@@ -596,13 +598,12 @@ Back up the database, and then run:
                     )
 
             async def purge_expired_sessions_and_api_keys():
-                PURGE_INTERVAL = 600  # seconds
                 while True:
                     async with AsyncSession(
                         engine, autoflush=False, expire_on_commit=False
                     ) as db_session:
                         num_expired_sessions = await purge_expired(
-                            db_session, orm.Session
+                            db_session, orm.Session, settings.refresh_token_max_age
                         )
                         if num_expired_sessions:
                             logger.info(

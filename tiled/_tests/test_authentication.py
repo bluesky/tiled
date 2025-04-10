@@ -512,6 +512,57 @@ def test_session_limit(enter_username_password, config):
         authentication.SESSION_LIMIT = original_limit
 
 
+def test_expired_refresh(enter_username_password, config):
+    # Pathological configuration: refresh tokens do not last
+    # Case where the refresh token is never used. (time_last_refreshed < refresh_max_age)
+    import tiled.server.app
+    import tiled.server.authentication
+
+    try:
+        _purge_interval = tiled.server.app.PURGE_INTERVAL
+        _session_limit = tiled.server.authentication.SESSION_LIMIT
+        tiled.server.app.PURGE_INTERVAL = 0.1
+        tiled.server.authentication.SESSION_LIMIT = 3
+        config["authentication"]["refresh_token_max_age"] = 1
+        with Context.from_app(build_app_from_config(config)) as context:
+            with enter_username_password("alice", "secret1"):
+                for _ in range(authentication.SESSION_LIMIT):
+                    context.authenticate()
+                    context.force_auth_refresh()
+                    context.logout()
+                time.sleep(1.2)
+                # Stale refresh tokens should have been purged by now
+                context.authenticate()
+    finally:
+        tiled.server.app.PURGE_INTERVAL = _purge_interval
+        tiled.server.authentication.SESSION_LIMIT = _session_limit
+
+
+def test_expired_refresh_unused(enter_username_password, config):
+    # Pathological configuration: refresh tokens do not last
+    # Case where the refresh token is never used. (time_last_refreshed is None)
+    import tiled.server.app
+    import tiled.server.authentication
+
+    try:
+        _purge_interval = tiled.server.app.PURGE_INTERVAL
+        _session_limit = tiled.server.authentication.SESSION_LIMIT
+        tiled.server.app.PURGE_INTERVAL = 0.1
+        tiled.server.authentication.SESSION_LIMIT = 3
+        config["authentication"]["refresh_token_max_age"] = 1
+        with Context.from_app(build_app_from_config(config)) as context:
+            with enter_username_password("alice", "secret1"):
+                for _ in range(authentication.SESSION_LIMIT):
+                    context.authenticate()
+                    context.logout()
+                time.sleep(1.2)
+                # Stale refresh tokens should have been purged by now
+                context.authenticate()
+    finally:
+        tiled.server.app.PURGE_INTERVAL = _purge_interval
+        tiled.server.authentication.SESSION_LIMIT = _session_limit
+
+
 @pytest.fixture
 def principals_context(enter_username_password, config):
     """
