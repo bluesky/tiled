@@ -774,7 +774,7 @@ def ensure_dict(dct):
     Returns
     -------
     dict
-        "uri", "key", and "secret"
+        "uri", ("key" and "secret" are optional)
 
     Raises
     ------
@@ -784,7 +784,7 @@ def ensure_dict(dct):
     if not isinstance(dct, dict):
         raise ValueError("Input must be a dictionary.")
 
-    required_keys = {"uri", "key", "secret"}
+    required_keys = {"uri"}
     missing_keys = required_keys - dct.keys()
     if missing_keys:
         raise ValueError(f"Missing required keys: {', '.join(missing_keys)}")
