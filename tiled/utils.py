@@ -574,6 +574,7 @@ class UnsupportedQueryType(TypeError):
 
 class Conflicts(Exception):
     "Prompts the server to send 409 Conflicts with message"
+
     pass
 
 
@@ -754,6 +755,44 @@ def ensure_uri(uri_or_path) -> str:
             mutable[1] = "localhost"
             uri_str = urlunparse(mutable)
     return str(uri_str)
+
+
+def ensure_dict(dct):
+    """
+    Ensure a dictionary has the correct params for blob storage configurations.
+
+    Parameters
+    ----------
+    dct : dict
+        Input dictionary to validate or convert.
+
+    Returns
+    -------
+    dict
+        "uri", "key", and "secret"
+
+    Raises
+    ------
+    ValueError
+        If the input is not a dictionary or does not contain the required keys.
+    """
+    if not isinstance(dct, dict):
+        raise ValueError("Input must be a dictionary.")
+
+    required_keys = {"uri", "key", "secret"}
+    missing_keys = required_keys - dct.keys()
+    if missing_keys:
+        raise ValueError(f"Missing required keys: {', '.join(missing_keys)}")
+    else:
+        uri_str = dct["uri"]
+        parsed = urlparse(uri_str)
+        if parsed.netloc == "":
+            mutable = list(parsed)
+            mutable[1] = "localhost"
+            uri_str = urlunparse(mutable)
+        dct["uri"] = str(uri_str)
+
+    return {key: dct[key] for key in required_keys}
 
 
 SCHEME_TO_SCHEME_PLUS_DRIVER = {

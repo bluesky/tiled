@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Generic, List, Optional, TypeVar, Union
 from urllib.parse import urlparse
 
-from ..utils import ensure_uri
+from ..utils import ensure_uri, ensure_dict
 from .core import StructureFamily
 
 
@@ -55,7 +55,7 @@ class Storage:
         if self.sql is not None:
             self.sql = ensure_uri(self.sql)
         if self.blob is not None:
-            self.blob = ensure_uri(self.blob)
+            self.blob = ensure_dict(self.blob)
 
     @classmethod
     def from_path(cls, path: Union[str, Path]):
