@@ -8,6 +8,7 @@ from weakref import WeakValueDictionary
 
 import httpx
 import msgpack
+import stamina.instrumentation
 
 from ..utils import path_from_uri
 
@@ -92,6 +93,19 @@ def handle_error(response):
 class ClientError(httpx.HTTPStatusError):
     def __init__(self, message, request, response):
         super().__init__(message=message, request=request, response=response)
+
+
+def should_retry(exc: Exception) -> bool:
+    # If the error is an HTTP status error, only retry on 5xx errors.
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+
+    # Otherwise retry on all httpx errors.
+    return isinstance(exc, httpx.HTTPError)
+
+
+# Retries are logged at WARNING level.
+stamina.instrumentation.set_on_retry_hooks([stamina.instrumentation.LoggingOnRetryHook])
 
 
 class TiledResponse(httpx.Response):
