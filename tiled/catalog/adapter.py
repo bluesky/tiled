@@ -144,6 +144,7 @@ class RootNode:
         self.ancestors = []
         self.key = None
         self.data_sources = None
+        self.id = None
 
 
 class Context:
@@ -621,6 +622,7 @@ class CatalogNodeAdapter:
 
         node = orm.Node(
             key=key,
+            parent_id=self.node.id,
             ancestors=self.segments,
             metadata_=metadata,
             structure_family=structure_family,
