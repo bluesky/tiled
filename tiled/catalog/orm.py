@@ -64,6 +64,9 @@ class Node(Timestamped, Base):
 
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    parent_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("nodes.id"), nullable=True
+    )
 
     key = Column(Unicode(1023), nullable=False)
     ancestors = Column(JSONVariant, nullable=True)
@@ -84,13 +87,17 @@ class Node(Timestamped, Base):
         passive_deletes=True,
     )
 
+    # This a self-referencing relationship between parent and children
+    parent = relationship("Node", remote_side=[id], back_populates="children")
+    children = relationship("Node", back_populates="parent")
+
     __table_args__ = (
-        UniqueConstraint("key", "ancestors", name="key_ancestors_unique_constraint"),
+        UniqueConstraint("key", "parent_id", name="key_parent_id_unique_constraint"),
         # This index supports comparison operations (==, <, ...).
         # For key-existence operations we will need a GIN index additionally.
         Index(
             "top_level_metadata",
-            "ancestors",
+            "parent_id",
             # include the keys of the default sorting ('time_created', 'id'),
             # used to avoid creating a temp sort index
             "time_created",
@@ -100,6 +107,24 @@ class Node(Timestamped, Base):
         ),
         # This is used by ORDER BY with the default sorting.
         # Index("ancestors_time_created", "ancestors", "time_created"),
+    )
+
+
+class NodesClosure(Base):
+    """
+    This describes the closure table for Node.
+
+    It is used to support the "ancestors" field in the Node table.
+    """
+
+    __tablename__ = "nodes_closure"
+
+    parent = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
+    child = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
+    depth = Column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("parent", "child", name="parent_child_unique_constraint"),
     )
 
 
@@ -256,6 +281,42 @@ WHEN (NEW.num IS NOT NULL)
 EXECUTE FUNCTION raise_if_null_parameter_exists();"""
             )
         )
+
+
+@event.listens_for(Node.__table__, "after_create")
+def update_closure_table(target, connection, **kw):
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER update_closure_table_when_inserting
+AFTER INSERT ON nodes
+BEGIN
+    INSERT INTO nodes_closure(parent, child, depth)
+    SELECT NEW.id, NEW.id, 0;
+    INSERT INTO nodes_closure(parent, child, depth)
+    SELECT p.parent, c.child, p.depth+c.depth+1
+    FROM nodes_closure p, nodes_closure c
+    WHERE p.child=NEW.parent_id and c.parent=NEW.id;
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER update_closure_table_when_deleting
+BEFORE DELETE ON nodes
+BEGIN
+    DELETE FROM nodes_closure
+    WHERE (parent, child) IN (
+    SELECT p.parent, c.child
+    FROM nodes_closure p, nodes_closure c
+    WHERE (p.child=OLD.parent_id OR p.child=OLD.id) AND c.parent=OLD.id);
+END"""
+            )
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        pass
 
 
 @event.listens_for(Node.__table__, "after_create")
