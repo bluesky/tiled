@@ -8,10 +8,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - `Composite` structure family to enable direct access to table columns in a single namespace.
+- Added a `parent` property to BaseClass that returns a client pointing to the parent node
+- New CLI flag `tiled --version` shows the current version and exits.
 
 ### Changed
 
 - Adjust arguments of `print_admin_api_key_if_generated` and rename `print_server_info`
+- Allow `SQLAdapter.append_partition` to accept `pyarrow.Table` as its argument
 
 ### Maintenance
 

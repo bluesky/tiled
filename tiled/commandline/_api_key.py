@@ -4,7 +4,7 @@ import typer
 
 from ._utils import get_context
 
-api_key_app = typer.Typer()
+api_key_app = typer.Typer(no_args_is_help=True)
 
 
 @api_key_app.command("create")

@@ -82,10 +82,13 @@ class AuthenticatedAdapter:
     async def keys_range(self, offset, limit):
         url = ...  # based on self._segments
         return await self._client.get_contents(url, token=self._token)
-        return ["a", "b", "c"]
 
     async def items_range(self, offset, limit):
         # Ideally this would be a batched request to the external service.
-        return [
-            (key, self.lookup_adapter([key])) for key in self._keys_range(offset, limit)
-        ]
+        result = []
+        for key in self._keys_range(offset, limit):
+            try:
+                result.append((key, self.lookup_adapter([key])))
+            except KeyError:
+                result.append((key, None))  # for backcompatibility
+        return result

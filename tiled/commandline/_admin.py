@@ -5,7 +5,7 @@ import typer
 
 from ._utils import get_context, get_profile  # noqa E402
 
-admin_app = typer.Typer()
+admin_app = typer.Typer(no_args_is_help=True)
 
 
 @admin_app.command("initialize-database")
