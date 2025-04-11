@@ -110,7 +110,42 @@ def retry_context():
 
 
 # Retries are logged at WARNING level.
-stamina.instrumentation.set_on_retry_hooks([stamina.instrumentation.LoggingOnRetryHook])
+def init_retry_logging(log_level: int = 30) -> stamina.instrumentation.RetryHook:
+    """
+    Initialize logging using the standard library.
+
+    Returned hook logs scheduled retries at *log_level*.
+
+    .. versionadded:: 23.2.0
+    """
+    import logging
+
+    logger = logging.getLogger("stamina")
+
+    # Avoid Tiled-specific language here, because this hook will apply to any
+    # applications in this process that happen to use stamina.
+
+    def log_retries(details: stamina.instrumentation.RetryDetails) -> None:
+        logger.log(
+            logging.WARNING,
+            f"Scheduled retry in {details.wait_for:.2} seconds due to "
+            f"{details.caused_by!r} (attempt {details.retry_num})",
+            extra={
+                "stamina.callable": details.name,
+                "stamina.args": tuple(repr(a) for a in details.args),
+                "stamina.kwargs": dict(details.kwargs.items()),
+                "stamina.retry_num": details.retry_num,
+                "stamina.caused_by": repr(details.caused_by),
+                "stamina.wait_for": round(details.wait_for, 2),
+                "stamina.waited_so_far": round(details.waited_so_far, 2),
+            },
+        )
+
+    return log_retries
+
+
+LoggingOnRetryHook = stamina.instrumentation.RetryHookFactory(init_retry_logging)
+stamina.instrumentation.set_on_retry_hooks([LoggingOnRetryHook])
 
 
 class TiledResponse(httpx.Response):
