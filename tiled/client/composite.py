@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
-from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error
+from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
 
 
 class Composite(Container):
@@ -13,17 +13,19 @@ class Composite(Container):
         while (next_page_url is not None) or (
             maxlen is not None and len(result) < maxlen
         ):
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        **parse_qs(urlparse(next_page_url).query),
-                        **self._queries_as_params,
-                    }
-                    | ({} if include_metadata else {"select_metadata": False}),
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                **self._queries_as_params,
+                            }
+                            | ({} if include_metadata else {"select_metadata": False}),
+                        )
+                    ).json()
             result.update({item["id"]: item for item in content["data"]})
 
             next_page_url = content["links"]["next"]

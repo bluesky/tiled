@@ -104,6 +104,11 @@ def should_retry(exc: Exception) -> bool:
     return isinstance(exc, httpx.HTTPError)
 
 
+def retry_context():
+    "Iterable that yields a context manager per retry attempt"
+    return stamina.retry_context(on=should_retry)
+
+
 # Retries are logged at WARNING level.
 stamina.instrumentation.set_on_retry_hooks([stamina.instrumentation.LoggingOnRetryHook])
 
@@ -157,12 +162,18 @@ def export_util(file, format, get, link, params):
             format = ".".join(
                 suffix[1:] for suffix in Path(file).suffixes
             )  # e.g. "csv"
-        content = handle_error(
-            get(
-                link,
-                params={**parse_qs(urlparse(link).query), "format": format, **params},
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    get(
+                        link,
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "format": format,
+                            **params,
+                        },
+                    )
+                ).read()
         with open(file, "wb") as buffer:
             buffer.write(content)
     else:
@@ -170,12 +181,18 @@ def export_util(file, format, get, link, params):
         if format is None:
             # We have no filepath to infer to format from.
             raise ValueError("format must be specified when file is writeable buffer")
-        content = handle_error(
-            get(
-                link,
-                params={**parse_qs(urlparse(link).query), "format": format, **params},
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    get(
+                        link,
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "format": format,
+                            **params,
+                        },
+                    )
+                ).read()
         file.write(content)
 
 

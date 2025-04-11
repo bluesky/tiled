@@ -14,6 +14,7 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
+    retry_context,
 )
 
 _EXTRA_CHARS_PER_ITEM = len("&column=")
@@ -113,26 +114,30 @@ class _DaskDataFrameClient(BaseClient):
             _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
         )
         if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
-            content = handle_error(
-                self.context.http_client.post(
-                    URL_PATH,
-                    headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                    json=columns,
-                    params=params,
-                )
-            ).read()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.post(
+                            URL_PATH,
+                            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                            json=columns,
+                            params=params,
+                        )
+                    ).read()
         else:
             if columns:
                 # Note: The singular/plural inconsistency here is because
                 # ["A", "B"] will be encoded in the URL as column=A&column=B
                 params["column"] = columns
-            content = handle_error(
-                self.context.http_client.get(
-                    URL_PATH,
-                    headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                    params=params,
-                )
-            ).read()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            URL_PATH,
+                            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                            params=params,
+                        )
+                    ).read()
         return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):
@@ -190,12 +195,14 @@ class _DaskDataFrameClient(BaseClient):
             self_link = self.item["links"]["self"]
             if self_link.endswith("/"):
                 self_link = self_link[:-1]
-            content = handle_error(
-                self.context.http_client.get(
-                    self_link + f"/{column}",
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            self_link + f"/{column}",
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                        )
+                    ).json()
         except ClientError as err:
             if err.response.status_code == httpx.codes.NOT_FOUND:
                 raise KeyError(column)
@@ -210,33 +217,39 @@ class _DaskDataFrameClient(BaseClient):
     # of rows" which is expensive to compute.
 
     def write(self, dataframe):
-        handle_error(
-            self.context.http_client.put(
-                self.item["links"]["full"],
-                content=bytes(serialize_arrow(dataframe, {})),
-                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["full"],
+                        content=bytes(serialize_arrow(dataframe, {})),
+                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    )
+                )
 
     def write_partition(self, dataframe, partition):
-        handle_error(
-            self.context.http_client.put(
-                self.item["links"]["partition"].format(index=partition),
-                content=bytes(serialize_arrow(dataframe, {})),
-                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["partition"].format(index=partition),
+                        content=bytes(serialize_arrow(dataframe, {})),
+                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    )
+                )
 
     def append_partition(self, dataframe, partition):
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
-        handle_error(
-            self.context.http_client.patch(
-                self.item["links"]["partition"].format(index=partition),
-                content=bytes(serialize_arrow(dataframe, {})),
-                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.patch(
+                        self.item["links"]["partition"].format(index=partition),
+                        content=bytes(serialize_arrow(dataframe, {})),
+                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    )
+                )
 
     def export(self, filepath, columns=None, *, format=None):
         """
