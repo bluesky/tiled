@@ -95,13 +95,13 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
-def should_retry(exc: Exception) -> bool:
+def should_retry(exception: Exception) -> bool:
     # If the error is an HTTP status error, only retry on 5xx errors.
-    if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code >= 500
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code >= 500
 
     # Otherwise retry on all httpx errors.
-    return isinstance(exc, httpx.HTTPError)
+    return isinstance(exception, httpx.HTTPError)
 
 
 def retry_context():
