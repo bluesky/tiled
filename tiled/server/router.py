@@ -852,6 +852,7 @@ def get_router(
             )
         curried_filter = partial(
             filter_for_access,
+            access_policy=request.app.state.access_policy,
             principal=principal,
             scopes=["read:data"],
             metrics=request.state.metrics,
@@ -928,6 +929,7 @@ def get_router(
         }:
             curried_filter = partial(
                 filter_for_access,
+                access_policy=request.app.state.access_policy,
                 principal=principal,
                 scopes=["read:data"],
                 metrics=request.state.metrics,

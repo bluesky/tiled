@@ -82,7 +82,7 @@ def construct_build_app_kwargs(
         for age in ["refresh_token_max_age", "session_max_age", "access_token_max_age"]:
             if age in auth_spec:
                 auth_spec[age] = timedelta(seconds=auth_spec[age])
-        root_access_control = config.get("access_control", {}) or {}
+        access_control = config.get("access_control", {}) or {}
         auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
         providers = list(auth_spec.get("providers", []))
         provider_names = [p["provider"] for p in providers]
@@ -99,31 +99,22 @@ def construct_build_app_kwargs(
             authenticator = authenticator_class(**authenticator.get("args", {}))
             # Replace "package.module:Object" with live instance.
             auth_spec["providers"][i]["authenticator"] = authenticator
-        if root_access_control.get("access_policy") is not None:
-            root_policy_import_path = root_access_control["access_policy"]
-            root_policy_class = import_object(
-                root_policy_import_path, accept_live_object=True
+        if access_control.get("access_policy") is not None:
+            access_policy_import_path = access_control["access_policy"]
+            access_policy_class = import_object(
+                access_policy_import_path, accept_live_object=True
             )
-            root_access_policy = root_policy_class(
-                **root_access_control.get("args", {})
+            access_policy = access_policy_class(
+                **access_control.get("args", {})
             )
         else:
-            root_access_policy = None
+            access_policy = None
         # TODO Enable entrypoint to extend aliases?
         tree_aliases = {
             "catalog": "tiled.catalog:from_uri",
         }
         trees = {}
         for item in config.get("trees", []):
-            access_control = item.get("access_control", {}) or {}
-            if access_control.get("access_policy") is not None:
-                policy_import_path = access_control["access_policy"]
-                policy_class = import_object(
-                    policy_import_path, accept_live_object=True
-                )
-                access_policy = policy_class(**access_control.get("args", {}))
-            else:
-                access_policy = None
             segments = tuple(segment for segment in item["path"].split("/") if segment)
             tree_spec = item["tree"]
             if isinstance(tree_spec, str) and tree_spec == "files":
@@ -134,7 +125,7 @@ See documentation section "Serve a Directory of Files"."""
                 )
             import_path = tree_aliases.get(tree_spec, tree_spec)
             obj = import_object(import_path, accept_live_object=True)
-            if (("args" in item) or ("access_policy" in item)) and (not callable(obj)):
+            if ("args" in item) and (not callable(obj)):
                 raise ValueError(
                     f"Object imported from {import_path} cannot take args. "
                     "It is not callable."
@@ -143,15 +134,9 @@ See documentation section "Serve a Directory of Files"."""
                 # Interpret obj as a tree *factory*.
                 args = {}
                 args.update(item.get("args", {}))
-                if access_policy is not None:
-                    args["access_policy"] = access_policy
                 tree = obj(**args)
             else:
                 # Interpret obj as a tree *instance*.
-                if access_policy is not None:
-                    raise ValueError(
-                        f"Cannot apply access_policy to object {obj} which is already instantiated."
-                    )
                 tree = obj
             if segments in trees:
                 raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
@@ -164,8 +149,6 @@ See documentation section "Serve a Directory of Files"."""
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = tree
-            if root_access_policy is not None:
-                tree.access_policy = root_access_policy
         else:
             # There are one or more tree(s) to be served at
             # sub-paths. Merged them into one root MapAdapter.
@@ -186,7 +169,7 @@ See documentation section "Serve a Directory of Files"."""
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
-            root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
+            root_tree = MapAdapter(root_mapping)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         if root_path := config.get("root_path", ""):
@@ -221,6 +204,7 @@ See documentation section "Serve a Directory of Files"."""
     # TODO Make compression_registry extensible via configuration.
     return {
         "tree": root_tree,
+        "access_policy": access_policy,
         "authentication": auth_spec,
         "server_settings": server_settings,
         "query_registry": query_registry,

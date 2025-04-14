@@ -104,6 +104,7 @@ def custom_openapi(app):
 
 def build_app(
     tree,
+    access_policy=None,
     authentication=None,
     server_settings=None,
     query_registry: Optional[QueryRegistry] = None,
@@ -120,6 +121,8 @@ def build_app(
     Parameters
     ----------
     tree : Tree
+    access_policy:
+        AccessPolicy object encoding rules for which users can see which entries.
     authentication: dict, optional
         Dict of authentication configuration.
     authenticators: list, optional
@@ -358,6 +361,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     # are processed, so we cannot just inject this configuration via Depends.
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/api/v1")
+
+    app.state.access_policy = access_policy
 
     if authentication.get("providers", []):
         # Delay this imports to avoid delaying startup with the SQL and cryptography
