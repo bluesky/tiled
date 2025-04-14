@@ -145,6 +145,7 @@ class RootNode:
         self.key = None
         self.data_sources = None
         self.id = None
+        self.parent_id = None
 
 
 class Context:
@@ -305,22 +306,25 @@ class CatalogNodeAdapter:
         self.context = context
         self.engine = self.context.engine
         self.node = node
-        if node.key is None:
-            # Special case for RootNode
-            self.segments = []
-        else:
-            self.segments = node.ancestors + [node.key]
+        self.ancestors = node.ancestors
         self.sorting = sorting or [("", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
         self.specs = [Spec.model_validate(spec) for spec in node.specs]
-        self.ancestors = node.ancestors
         self.key = node.key
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
+
+    @property
+    def segments(self):
+        if self.node.key is None:
+            # Special case for RootNode
+            return []
+        # breakpoint()
+        return self.ancestors + [self.node.key]
 
     def metadata(self):
         return self.node.metadata_
@@ -346,7 +350,7 @@ class CatalogNodeAdapter:
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
 
     async def __aiter__(self):
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent_id == self.node.id)
         for condition in self.conditions:
             statement = statement.filter(condition)
         async with self.context.session() as db:
@@ -355,7 +359,7 @@ class CatalogNodeAdapter:
                 .scalars()
                 .all()
             )
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent_id == self.node.id)
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar().all()
 
@@ -404,7 +408,7 @@ class CatalogNodeAdapter:
 
     async def async_len(self):
         statement = select(func.count(orm.Node.key)).filter(
-            orm.Node.ancestors == self.segments
+            orm.Node.parent_id == self.node.id
         )
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
@@ -974,7 +978,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 offset,
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent_id == self.node.id)
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (
@@ -996,7 +1000,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 offset,
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
-        statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node).filter(orm.Node.parent_id == self.node.id)
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             nodes = (

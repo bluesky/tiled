@@ -64,9 +64,7 @@ class Node(Timestamped, Base):
 
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    parent_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("nodes.id"), nullable=True
-    )
+    parent_id = Column(Integer, ForeignKey("nodes.id"), nullable=True)
 
     key = Column(Unicode(1023), nullable=False)
     ancestors = Column(JSONVariant, nullable=True)
@@ -105,16 +103,12 @@ class Node(Timestamped, Base):
             "metadata",
             postgresql_using="gin",
         ),
-        # This is used by ORDER BY with the default sorting.
-        # Index("ancestors_time_created", "ancestors", "time_created"),
     )
 
 
 class NodesClosure(Base):
-    """
-    This describes the closure table for Node.
+    """This describes the closure table for Node.
 
-    It is used to support the "ancestors" field in the Node table.
     """
 
     __tablename__ = "nodes_closure"
@@ -123,10 +117,8 @@ class NodesClosure(Base):
     child = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
     depth = Column(Integer, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("parent", "child", name="parent_child_unique_constraint"),
+    __table_args__ = (UniqueConstraint("parent", "child", name="parent_child_unique_constraint"),
     )
-
 
 class DataSourceAssetAssociation(Base):
     """
@@ -286,6 +278,14 @@ EXECUTE FUNCTION raise_if_null_parameter_exists();"""
 @event.listens_for(Node.__table__, "after_create")
 def update_closure_table(target, connection, **kw):
     if connection.engine.dialect.name == "sqlite":
+#         connection.execute(
+#             text(
+#                 """
+# INSERT INTO nodes(id, key, structure_family, metadata, specs)
+#     SELECT 0, 'root', 'container', '{}', '[]';
+# """
+#             )
+#         )
         connection.execute(
             text(
                 """
