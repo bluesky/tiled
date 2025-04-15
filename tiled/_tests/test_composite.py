@@ -6,6 +6,7 @@ import pandas
 import pytest
 import sparse
 import tifffile as tf
+import xarray
 
 from ..catalog import in_memory
 from ..client import Context, from_context
@@ -48,8 +49,7 @@ awk_form, awk_length, awk_container = awkward.to_buffers(awk_packed)
 
 # A sparse array
 arr = rng.random(size=(10, 20, 30), dtype="float64")
-arr[arr < 0.95] = 0  # Fill half of the array with zeros.
-sps_arr = sparse.COO(arr)
+sps_arr = sparse.COO(numpy.where(arr > 0.95, arr, 0))
 
 md = {"md_key1": "md_val1", "md_key2": 2}
 
@@ -95,6 +95,24 @@ def context(tree):
         )
 
         yield context
+
+
+@pytest.fixture(scope="module")
+def context_for_read(context):
+    client = from_context(context)
+
+    # Awkward arrays are not supported when building xarray, in general
+    client["x"].delete("awk")
+    # Add an image array and a table with 5 rows
+    client["x"].write_array(img_data, key="img")
+    client["x"].write_dataframe(df3, key="df3")
+
+    yield context
+
+    # Restore the original context
+    client["x"].write_awkward(awk_arr, key="awk", metadata={"md_key": "md_for_awk"})
+    client["x"].delete("img")
+    client["x"].delete("df3")
 
 
 @pytest.fixture
@@ -241,3 +259,44 @@ def test_external_assets(context, tiff_sequence, csv_file):
         assert numpy.array_equal(df[col], df3[col])
 
     assert set(y.keys()) == {"image", "col1", "col2"}
+
+
+def test_read_full(context_for_read):
+    client = from_context(context_for_read)
+    ds = client["x"].read()
+
+    assert isinstance(ds, xarray.Dataset)
+    assert set(ds.data_vars) == {
+        "arr1",
+        "arr2",
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "sps",
+        "img",
+        "col1",
+        "col2",
+    }
+
+
+def test_read_selective(context_for_read):
+    client = from_context(context_for_read)
+    ds = client["x"].read(variables=["arr1", "arr2", "A", "B", "sps"])
+
+    assert isinstance(ds, xarray.Dataset)
+    assert set(ds.data_vars) == {"arr1", "arr2", "A", "B", "sps"}
+
+
+@pytest.mark.parametrize("dim0", ["time", "col1"])
+def test_read_selective_with_dim0(context, dim0):
+    client = from_context(context)
+    ds = client["x"].read(variables=["arr2", "img", "col1"], dim0=dim0)
+
+    assert isinstance(ds, xarray.Dataset)
+    assert set(ds.data_vars) == {"arr2", "img", "col1"}.difference([dim0])
+
+    # Check the dimension names
+    for var_name in ds.data_vars:
+        ds[var_name].dims[0] == dim0
