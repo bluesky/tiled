@@ -195,10 +195,9 @@ These are tuned, respectively, by the following configuration parameters,
 given in units of seconds. The default values are shown.
 
 ```yaml
-authentication:
-    refresh_token_max_age: 604800  # one week
-    session_max_age: 31536000  # 365 days
-    access_token_max_age: 900  # 15 minutes
+refresh_token_max_age: 604800  # one week
+session_max_age: 31536000  # 365 days
+access_token_max_age: 900  # 15 minutes
 ```
 
 and may also be set via the environment:
@@ -237,9 +236,8 @@ With ``python``:
 Apply it by including the configuration
 
 ```yaml
-authentication:
-    secret_keys:
-        - "SECRET"
+secret_keys:
+- "SECRET"
 ```
 
 or by setting the ``TILED_SECRET_KEYS`` environment variable.
@@ -247,18 +245,16 @@ or by setting the ``TILED_SECRET_KEYS`` environment variable.
 If you prefer, you can extract the keys from the environment like:
 
 ```yaml
-authentication:
-    secret_keys:
-        - "${SECRET}"  # will be replaced by the environment variable
+secret_keys:
+- "${SECRET}"  # will be replaced by the environment variable
 ```
 
 To rotate keys with a smooth transition, provide multiple keys
 
 ```yaml
-authentication:
-    secret_keys:
-        - "NEW_SECRET"
-        - "OLD_SECRET"
+secret_keys:
+- "NEW_SECRET"
+- "OLD_SECRET"
 ```
 
 or set ``TILED_SECRET_KEYS`` as a json list, e.g.

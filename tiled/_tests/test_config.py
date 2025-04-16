@@ -14,7 +14,7 @@ def test_root():
     config = {
         "trees": [
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/",
             },
         ]
@@ -29,7 +29,7 @@ def test_single_nested():
     config = {
         "trees": [
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/b",
             },
         ]
@@ -46,7 +46,7 @@ def test_single_deeply_nested():
     config = {
         "trees": [
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/b/c/d/e",
             },
         ]
@@ -65,27 +65,27 @@ def test_many_nested():
     config = {
         "trees": [
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/b",
             },
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/c",
             },
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/d/e",
             },
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/d/f",
             },
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/d/g/h",
             },
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/a/d/g/i",
             },
         ],
@@ -101,7 +101,11 @@ def test_many_nested():
 
 
 def test_extra_files(tmpdir):
-    config = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
+    config = {
+        "trees": [
+            {"path": "/", "tree": {"type": "tiled.examples.generated_minimal:tree"}}
+        ]
+    }
     with open(tmpdir / "config.yml", "w") as config_file:
         yaml.dump(config, config_file)
     with open(tmpdir / "README.md", "w") as extra_file:

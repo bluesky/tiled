@@ -11,6 +11,8 @@ import uvicorn
 from fastapi import APIRouter
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
+from tiled.server.settings import Settings
+
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..catalog import in_memory
@@ -52,7 +54,7 @@ API_KEY = "secret"
 @pytest.fixture
 def server(tmpdir):
     catalog = in_memory(writable_storage=str(tmpdir))
-    app = build_app(catalog, {"single_user_api_key": API_KEY})
+    app = build_app(catalog, server_settings=Settings(single_user_api_key=API_KEY))
     app.include_router(router)
     config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
     server = Server(config)
@@ -86,24 +88,22 @@ def multiuser_server(tmpdir):
         capture_output=True,
     )
     config = {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
-                    },
-                }
-            ],
-        },
+        "secret_keys": ["SECRET"],
+        "authenticators": [
+            {
+                "provider": "toy",
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
+                    "users_to_passwords": {"alice": "secret1", "bob": "secret2"},
+                },
+            }
+        ],
         "database": {
             "uri": database_uri,
         },
         "trees": [
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type:" f"{__name__}:tree"},
                 "path": "/",
             },
         ],
@@ -154,17 +154,17 @@ def test_internal_authentication_mode_with_password_clients(multiuser_server):
     response = httpx.get(
         multiuser_server + "/api/v1/", headers={"user-agent": "python-tiled/0.1.0b16"}
     )
-    actual_mode = response.json()["authentication"]["providers"][0]["mode"]
+    actual_mode = response.json()["authenticators"][0]["mode"]
     assert actual_mode == "password"
 
     # Mock new client
     response = httpx.get(
         multiuser_server + "/api/v1/", headers={"user-agent": "python-tiled/0.1.0b17"}
     )
-    actual_mode = response.json()["authentication"]["providers"][0]["mode"]
+    actual_mode = response.json()["authenticators"][0]["mode"]
     assert actual_mode == "internal"
 
     # Mock unknown client
     response = httpx.get(multiuser_server + "/api/v1/", headers={})
-    actual_mode = response.json()["authentication"]["providers"][0]["mode"]
+    actual_mode = response.json()["authenticators"][0]["mode"]
     assert actual_mode == "internal"

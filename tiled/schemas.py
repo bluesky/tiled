@@ -8,7 +8,7 @@ class AboutAuthenticationProvider(BaseModel):
     # "password" is a back-compat alias for "internal"; "internal should be preferred.
     mode: Literal["internal", "external", "password"]
     links: Dict[str, str]
-    confirmation_message: Optional[str] = None
+    confirmation_message: str
 
 
 class AboutAuthenticationLinks(BaseModel):

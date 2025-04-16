@@ -1,17 +1,17 @@
 # Must set environment variables GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to run.
-authentication:
-  providers:
-  - provider: google
-    authenticator: tiled.authenticators:OIDCAuthenticator
-    args:
-      audience: tiled  # something unique to ensure received headers are for you
-      # These values come from https://console.cloud.google.com/apis/credential
-      client_id: ${GOOGLE_CLIENT_ID}
-      client_secret: ${GOOGLE_CLIENT_SECRET}
-      well_known_uri: https://accounts.google.com/.well-known/openid-configuration
-      confirmation_message: "You have logged in with Google as {id}."
+authenticators:
+- provider: google
+  authenticator:
+    type: tiled.authenticators:OIDCAuthenticator
+    audience: tiled  # something unique to ensure received headers are for you
+    # These values come from https://console.cloud.google.com/apis/credential
+    client_id: ${GOOGLE_CLIENT_ID}
+    client_secret: ${GOOGLE_CLIENT_SECRET}
+    well_known_uri: https://accounts.google.com/.well-known/openid-configuration
+    confirmation_message: "You have logged in with Google as {id}."
 trees:
  # Just some arbitrary example data...
- # The point of this example is the authenticaiton above.
- - tree: tiled.examples.generated_minimal:tree
+ # The point of this example is the authentication above.
+ - tree:
+      type: tiled.examples.generated_minimal:tree
    path: /

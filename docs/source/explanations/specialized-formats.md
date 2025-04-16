@@ -85,11 +85,11 @@ Now take the following simple server configuration:
 # config.yml
 trees:
   - path: /
-    tree: tiled.catalog:from_uri
-    args:
+    tree:
+      type: tiled.catalog:from_uri
       uri: ./catalog.db
-        readable_storage:
-          - ./data/
+      readable_storage:
+        - ./data/
       adapters_by_mimetype:
         application/x-xdi: tiled.examples.xdi:read_xdi
 ```
@@ -206,11 +206,11 @@ Add new sections to the configuration as follows.
 ```yaml
 trees:
   - path: /
-    tree: tiled.catalog:from_uri
-    args:
+    tree:
+      type: tiled.catalog:from_uri
       uri: ./catalog.db
       readable_storage:
-        - ./data/
+      - ./data/
       adapters_by_mimetype:
         application/x-xdi: tiled.examples.xdi:read_xdi
 media_types:
