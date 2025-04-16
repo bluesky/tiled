@@ -5,12 +5,15 @@ import pytest
 from fastapi import HTTPException
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
-from ..access_policies import SimpleAccessPolicy, SpecialUsers
+from tiled.authenticators import DictionaryAuthenticator
+from tiled.server.protocols import UserSessionState
+
+from ..access_policies import NO_ACCESS, SimpleAccessPolicy, SpecialUsers
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.utils import ClientError
-from ..scopes import ALL_SCOPES, PUBLIC_SCOPES
+from ..scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
 from ..server.app import build_app_from_config
 from ..server.core import NoEntry
 from .utils import enter_username_password, fail_with_status_code
@@ -411,3 +414,261 @@ def test_service_principal_access(tmpdir):
     ) as context:
         sp_client = from_context(context)
         list(sp_client) == ["x"]
+
+
+class CustomAttributesAuthenticator(DictionaryAuthenticator):
+    """An example authenticator that enriches the stored user information."""
+
+    def __init__(self, users: dict, confirmation_message: str = ""):
+        self._users = users
+        super().__init__(
+            {username: user["password"] for username, user in users.items()},
+            confirmation_message,
+        )
+
+    async def authenticate(self, username, password):
+        state = await super().authenticate(username, password)
+        if isinstance(state, UserSessionState):
+            # enrich the auth state
+            state.state["attributes"] = self._users[username].get("attributes", {})
+        return state
+
+
+class CustomAttributesAccessPolicy:
+    """
+    A policy that demonstrates comparing metadata against user information stored at login-time.
+    """
+
+    READ_METADATA = ["read:metadata"]
+
+    def __init__(self):
+        pass
+
+    async def allowed_scopes(self, node, principal, path_parts):
+        if hasattr(principal, "sessions"):
+            if len(principal.sessions):
+                auth_state = principal.sessions[-1].state or {}
+                auth_attributes = auth_state.get("attributes", {})
+                if auth_attributes:
+                    if "admins" in auth_attributes.get("groups", []):
+                        return ALL_SCOPES
+
+                    if not path_parts:
+                        return self.READ_METADATA
+
+                    if node[path_parts[0]].metadata()[
+                        "beamline"
+                    ] in auth_attributes.get("beamlines", []) or node[
+                        path_parts[0]
+                    ].metadata()[
+                        "proposal"
+                    ] in auth_attributes.get(
+                        "proposals", []
+                    ):
+                        return USER_SCOPES
+
+            return self.READ_METADATA
+        return NO_SCOPES
+
+    async def filters(self, node, principal, scopes, path_parts):
+        if not scopes.issubset(await self.allowed_scopes(node, principal, path_parts)):
+            return NO_ACCESS
+        return []
+
+
+def tree_enriched_metadata():
+    return MapAdapter(
+        {
+            "A": ArrayAdapter.from_array(
+                numpy.ones(10), metadata={"beamline": "bl1", "proposal": "prop1"}
+            ),
+            "B": ArrayAdapter.from_array(
+                numpy.ones(10), metadata={"beamline": "bl1", "proposal": "prop2"}
+            ),
+            "C": ArrayAdapter.from_array(
+                numpy.ones(10), metadata={"beamline": "bl2", "proposal": "prop2"}
+            ),
+            "D": ArrayAdapter.from_array(
+                numpy.ones(10), metadata={"beamline": "bl2", "proposal": "prop3"}
+            ),
+        },
+    )
+
+
+@pytest.fixture(scope="module")
+def custom_attributes_context():
+    config = {
+        "authentication": {
+            "allow_anonymous_access": False,
+            "secret_keys": ["SECRET"],
+            "providers": [
+                {
+                    "provider": "toy",
+                    "authenticator": f"{__name__}:CustomAttributesAuthenticator",
+                    "args": {
+                        "users": {
+                            "alice": {
+                                "password": "secret1",
+                                "attributes": {"proposals": ["prop1"]},
+                            },
+                            "bob": {
+                                "password": "secret2",
+                                "attributes": {"beamlines": ["bl1"]},
+                            },
+                            "cara": {
+                                "password": "secret3",
+                                "attributes": {
+                                    "beamlines": ["bl2"],
+                                    "proposals": ["prop1"],
+                                },
+                            },
+                            "john": {"password": "secret4", "attributes": {}},
+                            "admin": {
+                                "password": "admin",
+                                "attributes": {"groups": ["admins"]},
+                            },
+                        }
+                    },
+                }
+            ],
+        },
+        "database": {
+            "uri": "sqlite://",  # in-memory
+        },
+        "access_control": {
+            "access_policy": f"{__name__}:CustomAttributesAccessPolicy",
+            "args": {},
+        },
+        "trees": [
+            {"tree": f"{__name__}:tree_enriched_metadata", "path": "/"},
+        ],
+    }
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        yield context
+
+
+def test_custom_attributes_admin_full_access(
+    enter_username_password, custom_attributes_context
+):
+    with enter_username_password("admin", "admin"):
+        custom_attributes_context.authenticate()
+    key_info = custom_attributes_context.create_api_key()
+    custom_attributes_context.logout()
+
+    try:
+        custom_attributes_context.api_key = key_info["secret"]
+        client = from_context(custom_attributes_context)
+
+        client["A"].read()
+        client["B"].read()
+        client["C"].read()
+        client["D"].read()
+
+    finally:
+        custom_attributes_context.api_key = None
+
+
+def test_custom_attributes_alice_partial_access(
+    enter_username_password, custom_attributes_context
+):
+    with enter_username_password("alice", "secret1"):
+        custom_attributes_context.authenticate()
+    key_info = custom_attributes_context.create_api_key()
+    custom_attributes_context.logout()
+
+    try:
+        custom_attributes_context.api_key = key_info["secret"]
+        client = from_context(custom_attributes_context)
+
+        # Alice should only have access to A (via proposal 'prop1')
+
+        client["A"].read()
+
+        with pytest.raises(ClientError):
+            client["B"].read()
+        with pytest.raises(ClientError):
+            client["C"].read()
+        with pytest.raises(ClientError):
+            client["D"].read()
+
+    finally:
+        custom_attributes_context.api_key = None
+
+
+def test_custom_attributes_bob_partial_access(
+    enter_username_password, custom_attributes_context
+):
+    with enter_username_password("bob", "secret2"):
+        custom_attributes_context.authenticate()
+    key_info = custom_attributes_context.create_api_key()
+    custom_attributes_context.logout()
+
+    try:
+        custom_attributes_context.api_key = key_info["secret"]
+        client = from_context(custom_attributes_context)
+
+        # Bob should have access to A and B (via beamline 'bl1')
+
+        client["A"].read()
+        client["B"].read()
+
+        with pytest.raises(ClientError):
+            client["C"].read()
+        with pytest.raises(ClientError):
+            client["D"].read()
+
+    finally:
+        custom_attributes_context.api_key = None
+
+
+def test_custom_attributes_cara_partial_access(
+    enter_username_password, custom_attributes_context
+):
+    with enter_username_password("cara", "secret3"):
+        custom_attributes_context.authenticate()
+    key_info = custom_attributes_context.create_api_key()
+    custom_attributes_context.logout()
+
+    try:
+        custom_attributes_context.api_key = key_info["secret"]
+        client = from_context(custom_attributes_context)
+
+        # Cara should have access to A (via proposal 'prop1'), and C and D (via beamline 'bl2')
+
+        client["A"].read()
+        client["C"].read()
+        client["D"].read()
+
+        with pytest.raises(ClientError):
+            client["B"].read()
+
+    finally:
+        custom_attributes_context.api_key = None
+
+
+def test_custom_attributes_john_no_access(
+    enter_username_password, custom_attributes_context
+):
+    with enter_username_password("john", "secret4"):
+        custom_attributes_context.authenticate()
+    key_info = custom_attributes_context.create_api_key()
+    custom_attributes_context.logout()
+
+    try:
+        custom_attributes_context.api_key = key_info["secret"]
+        client = from_context(custom_attributes_context)
+
+        # John should have no access to any datasets
+
+        with pytest.raises(ClientError):
+            client["A"].read()
+        with pytest.raises(ClientError):
+            client["B"].read()
+        with pytest.raises(ClientError):
+            client["C"].read()
+        with pytest.raises(ClientError):
+            client["D"].read()
+
+    finally:
+        custom_attributes_context.api_key = None
