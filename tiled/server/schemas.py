@@ -350,11 +350,15 @@ class Session(pydantic.BaseModel):
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
+    state: Optional[Dict[Any, Any]]
 
     @classmethod
     def from_orm(cls, orm: tiled.authn_database.orm.Session) -> Session:
         return cls(
-            uuid=orm.uuid, expiration_time=orm.expiration_time, revoked=orm.revoked
+            uuid=orm.uuid,
+            expiration_time=orm.expiration_time,
+            revoked=orm.revoked,
+            state=orm.state,
         )
 
 
