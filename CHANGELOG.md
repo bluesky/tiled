@@ -2,6 +2,13 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Exposed `Session.state` information from database to enhance custom access
+  control developments.
+
 ## 0.1.0-b22 (2025-04-21)
 
 ### Added
