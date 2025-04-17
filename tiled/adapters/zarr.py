@@ -52,12 +52,12 @@ class ZarrArrayAdapter(ArrayAdapter):
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
-        if storage.blob:
-            data_uri = storage.blob.uri
+        if storage.bucket:
+            data_uri = storage.bucket.uri
             s3 = s3fs.S3FileSystem(
                 client_kwargs={"endpoint_url": data_uri},
-                key=storage.blob.key,
-                secret=storage.blob.secret,
+                key=storage.bucket.key,
+                secret=storage.bucket.secret,
                 use_ssl=False,
             )
             store = s3fs.S3Map(root='/', s3=s3)

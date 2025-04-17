@@ -45,7 +45,7 @@ class DataSource(Generic[StructureT]):
 
 
 @dataclasses.dataclass
-class Bucket:
+class Blob:
     uri: str
     key: Optional[str]
     secret: Optional[str]
@@ -58,7 +58,7 @@ class Bucket:
 class Storage:
     filesystem: Optional[str] = None
     sql: Optional[str] = None
-    blob: Optional[Bucket] = None
+    bucket: Optional[Blob] = None
 
     def __post_init__(self):
         if self.filesystem is not None:

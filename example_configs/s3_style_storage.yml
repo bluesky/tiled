@@ -1,0 +1,13 @@
+authentication:
+  allow_anonymous_access: false
+trees:
+  - path: /
+    tree: catalog
+    args:
+      uri: "sqlite:////storage/catalog.db"
+      writable_storage:
+        bucket:
+          uri: "http://localhost:9000"
+          key: "minioadmin"
+          secret: "minioadmin"
+      init_if_not_exists: true
