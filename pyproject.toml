@@ -95,6 +95,7 @@ all = [
     "rich",
     "sparse",
     "sqlalchemy[asyncio] >=2",
+    "stamina",
     "starlette >=0.38.0",
     "tifffile",
     "uvicorn[standard]",
@@ -122,6 +123,7 @@ client = [
     "pyarrow",
     "rich",
     "sparse",
+    "stamina",
     "watchfiles",
     "xarray",
     "zstandard",
@@ -175,6 +177,7 @@ formats = [
 minimal-client = [
     "entrypoints",
     "rich",
+    "stamina",
     "watchfiles",
 ]
 # These are the requirements needed for basic server functionality.

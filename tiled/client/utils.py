@@ -1,4 +1,5 @@
 import builtins
+import os
 import uuid
 from collections.abc import Hashable
 from pathlib import Path
@@ -8,6 +9,7 @@ from weakref import WeakValueDictionary
 
 import httpx
 import msgpack
+import stamina.instrumentation
 
 from ..utils import path_from_uri
 
@@ -94,6 +96,71 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
+def should_retry(exception: Exception) -> bool:
+    # If the error is an HTTP status error, only retry on 5xx errors.
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code >= 500
+
+    # Otherwise retry on all httpx errors.
+    return isinstance(exception, httpx.HTTPError)
+
+
+# Expose the timeout and max attempts as configurable via env vars. The rest of
+# the parameters (wait_initial, wait_jitter, etc.) are intentionally not
+# included here, for simplicity and to make it more difficult to configure
+# clients to load the server too aggressively.
+TILED_RETRY_ATTEMPTS = int(os.getenv("TILED_RETRY_ATTEMPTS", "10"))
+TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_TIMEOUT", "45.0"))
+
+
+def retry_context():
+    "Iterable that yields a context manager per retry attempt"
+    return stamina.retry_context(
+        on=should_retry,
+        attempts=TILED_RETRY_ATTEMPTS,
+        timeout=TILED_RETRY_TIMEOUT,
+    )
+
+
+# Retries are logged at WARNING level.
+def init_retry_logging(log_level: int = 30) -> stamina.instrumentation.RetryHook:
+    """
+    Initialize logging using the standard library.
+
+    Returned hook logs scheduled retries at *log_level*.
+
+    .. versionadded:: 23.2.0
+    """
+    import logging
+
+    logger = logging.getLogger("stamina")
+
+    # Avoid Tiled-specific language here, because this hook will apply to any
+    # applications in this process that happen to use stamina.
+
+    def log_retries(details: stamina.instrumentation.RetryDetails) -> None:
+        logger.log(
+            logging.WARNING,
+            f"Scheduled retry in {details.wait_for:.2} seconds due to "
+            f"{details.caused_by!r} (attempt {details.retry_num})",
+            extra={
+                "stamina.callable": details.name,
+                "stamina.args": tuple(repr(a) for a in details.args),
+                "stamina.kwargs": dict(details.kwargs.items()),
+                "stamina.retry_num": details.retry_num,
+                "stamina.caused_by": repr(details.caused_by),
+                "stamina.wait_for": round(details.wait_for, 2),
+                "stamina.waited_so_far": round(details.waited_so_far, 2),
+            },
+        )
+
+    return log_retries
+
+
+LoggingOnRetryHook = stamina.instrumentation.RetryHookFactory(init_retry_logging)
+stamina.instrumentation.set_on_retry_hooks([LoggingOnRetryHook])
+
+
 class TiledResponse(httpx.Response):
     def json(self):
         if self.headers["Content-Type"] == MSGPACK_MIME_TYPE:
@@ -143,12 +210,18 @@ def export_util(file, format, get, link, params):
             format = ".".join(
                 suffix[1:] for suffix in Path(file).suffixes
             )  # e.g. "csv"
-        content = handle_error(
-            get(
-                link,
-                params={**parse_qs(urlparse(link).query), "format": format, **params},
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    get(
+                        link,
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "format": format,
+                            **params,
+                        },
+                    )
+                ).read()
         with open(file, "wb") as buffer:
             buffer.write(content)
     else:
@@ -156,12 +229,18 @@ def export_util(file, format, get, link, params):
         if format is None:
             # We have no filepath to infer to format from.
             raise ValueError("format must be specified when file is writeable buffer")
-        content = handle_error(
-            get(
-                link,
-                params={**parse_qs(urlparse(link).query), "format": format, **params},
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    get(
+                        link,
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "format": format,
+                            **params,
+                        },
+                    )
+                ).read()
         file.write(content)
 
 
