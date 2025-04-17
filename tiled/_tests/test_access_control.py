@@ -548,10 +548,20 @@ def custom_attributes_context():
         yield context
 
 
-def test_custom_attributes_admin_full_access(
-    enter_username_password, custom_attributes_context
+@pytest.mark.parametrize(
+    ("username", "password", "nodes"),
+    [
+        ("admin", "admin", ["A", "B", "C", "D"]),
+        ("alice", "secret1", ["A"]),
+        ("bob", "secret2", ["A", "B"]),
+        ("cara", "secret3", ["A", "C", "D"]),
+    ],
+)
+def test_custom_attributes_with_data_access(
+    enter_username_password, custom_attributes_context, username, password, nodes
 ):
-    with enter_username_password("admin", "admin"):
+    """Test that the user has access to the data based on their auth attributes."""
+    with enter_username_password(username, password):
         custom_attributes_context.authenticate()
     key_info = custom_attributes_context.create_api_key()
     custom_attributes_context.logout()
@@ -560,19 +570,27 @@ def test_custom_attributes_admin_full_access(
         custom_attributes_context.api_key = key_info["secret"]
         client = from_context(custom_attributes_context)
 
-        client["A"].read()
-        client["B"].read()
-        client["C"].read()
-        client["D"].read()
+        for node in nodes:
+            client[node].read()
 
     finally:
         custom_attributes_context.api_key = None
 
 
-def test_custom_attributes_alice_partial_access(
-    enter_username_password, custom_attributes_context
+@pytest.mark.parametrize(
+    ("username", "password", "nodes"),
+    [
+        ("alice", "secret1", ["B", "C", "D"]),
+        ("bob", "secret2", ["C", "D"]),
+        ("cara", "secret3", ["B"]),
+        ("john", "secret4", ["A", "B", "C", "D"]),
+    ],
+)
+def test_custom_attributes_without_data_access(
+    enter_username_password, custom_attributes_context, username, password, nodes
 ):
-    with enter_username_password("alice", "secret1"):
+    """Test that the user cannot access data due to missing auth attributes."""
+    with enter_username_password(username, password):
         custom_attributes_context.authenticate()
     key_info = custom_attributes_context.create_api_key()
     custom_attributes_context.logout()
@@ -581,94 +599,9 @@ def test_custom_attributes_alice_partial_access(
         custom_attributes_context.api_key = key_info["secret"]
         client = from_context(custom_attributes_context)
 
-        # Alice should only have access to A (via proposal 'prop1')
-
-        client["A"].read()
-
-        with pytest.raises(ClientError):
-            client["B"].read()
-        with pytest.raises(ClientError):
-            client["C"].read()
-        with pytest.raises(ClientError):
-            client["D"].read()
-
-    finally:
-        custom_attributes_context.api_key = None
-
-
-def test_custom_attributes_bob_partial_access(
-    enter_username_password, custom_attributes_context
-):
-    with enter_username_password("bob", "secret2"):
-        custom_attributes_context.authenticate()
-    key_info = custom_attributes_context.create_api_key()
-    custom_attributes_context.logout()
-
-    try:
-        custom_attributes_context.api_key = key_info["secret"]
-        client = from_context(custom_attributes_context)
-
-        # Bob should have access to A and B (via beamline 'bl1')
-
-        client["A"].read()
-        client["B"].read()
-
-        with pytest.raises(ClientError):
-            client["C"].read()
-        with pytest.raises(ClientError):
-            client["D"].read()
-
-    finally:
-        custom_attributes_context.api_key = None
-
-
-def test_custom_attributes_cara_partial_access(
-    enter_username_password, custom_attributes_context
-):
-    with enter_username_password("cara", "secret3"):
-        custom_attributes_context.authenticate()
-    key_info = custom_attributes_context.create_api_key()
-    custom_attributes_context.logout()
-
-    try:
-        custom_attributes_context.api_key = key_info["secret"]
-        client = from_context(custom_attributes_context)
-
-        # Cara should have access to A (via proposal 'prop1'), and C and D (via beamline 'bl2')
-
-        client["A"].read()
-        client["C"].read()
-        client["D"].read()
-
-        with pytest.raises(ClientError):
-            client["B"].read()
-
-    finally:
-        custom_attributes_context.api_key = None
-
-
-def test_custom_attributes_john_no_access(
-    enter_username_password, custom_attributes_context
-):
-    with enter_username_password("john", "secret4"):
-        custom_attributes_context.authenticate()
-    key_info = custom_attributes_context.create_api_key()
-    custom_attributes_context.logout()
-
-    try:
-        custom_attributes_context.api_key = key_info["secret"]
-        client = from_context(custom_attributes_context)
-
-        # John should have no access to any datasets
-
-        with pytest.raises(ClientError):
-            client["A"].read()
-        with pytest.raises(ClientError):
-            client["B"].read()
-        with pytest.raises(ClientError):
-            client["C"].read()
-        with pytest.raises(ClientError):
-            client["D"].read()
+        for node in nodes:
+            with pytest.raises(ClientError):
+                client[node].read()
 
     finally:
         custom_attributes_context.api_key = None
