@@ -45,9 +45,20 @@ class DataSource(Generic[StructureT]):
 
 
 @dataclasses.dataclass
+class Blob:
+    uri: str
+    key: Optional[str]
+    secret: Optional[str]
+
+    def __post_init__(self):
+        self.uri = ensure_uri(self.uri)
+
+
+@dataclasses.dataclass
 class Storage:
     filesystem: Optional[str] = None
     sql: Optional[str] = None
+    bucket: Optional[Blob] = None
 
     def __post_init__(self):
         if self.filesystem is not None:

@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
+import s3fs
 import zarr.core
 import zarr.hierarchy
 import zarr.storage
@@ -46,16 +47,27 @@ class ZarrArrayAdapter(ArrayAdapter):
 
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.get("filesystem") + "".join(
-            f"/{quote_plus(segment)}" for segment in path_parts
-        )
+
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
-        directory = path_from_uri(data_uri)
-        directory.mkdir(parents=True, exist_ok=True)
-        store = zarr.storage.DirectoryStore(str(directory))
+        if storage.bucket:
+            data_uri = storage.bucket.uri
+            s3 = s3fs.S3FileSystem(
+                client_kwargs={"endpoint_url": data_uri},
+                key=storage.bucket.key,
+                secret=storage.bucket.secret,
+                use_ssl=False,
+            )
+            store = s3fs.S3Map(root='/', s3=s3)
+        else:
+            data_uri = storage.get("filesystem") + "".join(
+                f"/{quote_plus(segment)}" for segment in path_parts
+            )
+            directory = path_from_uri(data_uri)
+            directory.mkdir(parents=True, exist_ok=True)
+            store = zarr.storage.DirectoryStore(str(directory))
         zarr.storage.init_array(
             store,
             shape=shape,
