@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
+import s3fs
 import zarr.core
 import zarr.hierarchy
 import zarr.storage
@@ -53,16 +54,13 @@ class ZarrArrayAdapter(ArrayAdapter):
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         if storage.blob:
             data_uri = storage.blob.uri
-            storage_options = {}
-            if storage.blob.key and storage.blob.secret:
-                storage_options.update(
-                    {"key": storage.blob.key, "secret": storage.blob.secret}
-                )
-            else:
-                storage_options.update({'anon': True})
-            store = zarr.storage.FsspecStore.from_url(
-                data_uri, storage_options=storage_options
+            s3 = s3fs.S3FileSystem(
+                client_kwargs={"endpoint_url": data_uri},
+                key=storage.blob.key,
+                secret=storage.blob.secret,
+                use_ssl=False,
             )
+            store = s3fs.S3Map(root='/', s3=s3)
         else:
             data_uri = storage.get("filesystem") + "".join(
                 f"/{quote_plus(segment)}" for segment in path_parts
