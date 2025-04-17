@@ -1,4 +1,5 @@
 import builtins
+import os
 import uuid
 from collections.abc import Hashable
 from pathlib import Path
@@ -104,9 +105,21 @@ def should_retry(exception: Exception) -> bool:
     return isinstance(exception, httpx.HTTPError)
 
 
+# Expose the timeout and max attempts as configurable via env vars. The rest of
+# the parameters (wait_initial, wait_jitter, etc.) are intentionally not
+# included here, for simplicity and to make it more difficult to configure
+# clients to load the server too aggressively.
+TILED_RETRY_ATTEMPTS = int(os.getenv("TILED_RETRY_ATTEMPTS", "10"))
+TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_ATTEMPTS", "45.0"))
+
+
 def retry_context():
     "Iterable that yields a context manager per retry attempt"
-    return stamina.retry_context(on=should_retry)
+    return stamina.retry_context(
+        on=should_retry,
+        attempts=TILED_RETRY_ATTEMPTS,
+        timeout=TILED_RETRY_TIMEOUT,
+    )
 
 
 # Retries are logged at WARNING level.
