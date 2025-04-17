@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Generic, List, Optional, TypeVar, Union
 from urllib.parse import urlparse
 
-from ..utils import ensure_uri, ensure_dict
+from ..utils import ensure_uri
 from .core import StructureFamily
 
 
@@ -45,17 +45,26 @@ class DataSource(Generic[StructureT]):
 
 
 @dataclasses.dataclass
+class Bucket:
+    uri: str
+    key: Optional[str]
+    secret: Optional[str]
+
+    def __post_init__(self):
+        self.uri = ensure_uri(self.uri)
+
+
+@dataclasses.dataclass
 class Storage:
     filesystem: Optional[str] = None
     sql: Optional[str] = None
+    blob: Optional[Bucket] = None
 
     def __post_init__(self):
         if self.filesystem is not None:
             self.filesystem = ensure_uri(self.filesystem)
         if self.sql is not None:
             self.sql = ensure_uri(self.sql)
-        if self.blob is not None:
-            self.blob = ensure_dict(self.blob)
 
     @classmethod
     def from_path(cls, path: Union[str, Path]):

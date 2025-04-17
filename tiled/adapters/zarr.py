@@ -46,16 +46,20 @@ class ZarrArrayAdapter(ArrayAdapter):
 
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.get("filesystem") + "".join(
-            f"/{quote_plus(segment)}" for segment in path_parts
-        )
+
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
-        directory = path_from_uri(data_uri)
-        directory.mkdir(parents=True, exist_ok=True)
-        store = zarr.storage.DirectoryStore(str(directory))
+        if storage.blob:
+            data_uri = storage.blob.uri
+        else:
+            data_uri = storage.get("filesystem") + "".join(
+                f"/{quote_plus(segment)}" for segment in path_parts
+            )
+            directory = path_from_uri(data_uri)
+            directory.mkdir(parents=True, exist_ok=True)
+            store = zarr.storage.DirectoryStore(str(directory))
         zarr.storage.init_array(
             store,
             shape=shape,

@@ -580,6 +580,7 @@ class Conflicts(Exception):
 
 class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
+
     pass
 
 
@@ -732,9 +733,13 @@ def path_from_uri(uri) -> Path:
     elif parsed.scheme in {"sqlite", "duckdb"}:
         # The path begins after the third slash.
         path = Path(parsed.path[1:])
+    elif parsed.scheme in {"http", "https", "s3"}:
+        # The URI is a URL which is inherently pre-validated and not tokenized
+        path = uri
     else:
         raise ValueError(
-            "Supported schemes are 'file', 'sqlite', and 'duckdb'. "
+            "Supported schemes are 'file', 'sqlite', and 'duckdb'."
+            "For bucket storage, 'http', 'https', and 's3' are supported."
             f"Did not recognize scheme {parsed.scheme!r}"
         )
     return path
@@ -760,44 +765,6 @@ def ensure_uri(uri_or_path) -> str:
             mutable[1] = "localhost"
             uri_str = urlunparse(mutable)
     return str(uri_str)
-
-
-def ensure_dict(dct):
-    """
-    Ensure a dictionary has the correct params for blob storage configurations.
-
-    Parameters
-    ----------
-    dct : dict
-        Input dictionary to validate or convert.
-
-    Returns
-    -------
-    dict
-        "uri", ("key" and "secret" are optional)
-
-    Raises
-    ------
-    ValueError
-        If the input is not a dictionary or does not contain the required keys.
-    """
-    if not isinstance(dct, dict):
-        raise ValueError("Input must be a dictionary.")
-
-    required_keys = {"uri"}
-    missing_keys = required_keys - dct.keys()
-    if missing_keys:
-        raise ValueError(f"Missing required keys: {', '.join(missing_keys)}")
-    else:
-        uri_str = dct["uri"]
-        parsed = urlparse(uri_str)
-        if parsed.netloc == "":
-            mutable = list(parsed)
-            mutable[1] = "localhost"
-            uri_str = urlunparse(mutable)
-        dct["uri"] = str(uri_str)
-
-    return {key: dct[key] for key in required_keys}
 
 
 SCHEME_TO_SCHEME_PLUS_DRIVER = {
