@@ -110,7 +110,7 @@ def should_retry(exception: Exception) -> bool:
 # included here, for simplicity and to make it more difficult to configure
 # clients to load the server too aggressively.
 TILED_RETRY_ATTEMPTS = int(os.getenv("TILED_RETRY_ATTEMPTS", "10"))
-TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_ATTEMPTS", "45.0"))
+TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_TIMEOUT", "45.0"))
 
 
 def retry_context():
