@@ -1,5 +1,6 @@
 import collections.abc
 import dataclasses
+import inspect
 import itertools
 import math
 import operator
@@ -388,7 +389,7 @@ async def construct_data_response(
         raise UnsupportedMediaTypes(
             f"This type is supported in general but there was an error packing this specific data: {err.args[0]}",
         )
-    if isinstance(content, types.GeneratorType):
+    if isinstance(content, types.GeneratorType) or inspect.isasyncgen(content):
         response_class = StreamingResponse
     else:
         response_class = Response
