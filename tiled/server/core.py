@@ -1,11 +1,11 @@
 import collections.abc
 import dataclasses
+import inspect
 import itertools
 import math
 import operator
 import re
 import sys
-import types
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -388,7 +388,7 @@ async def construct_data_response(
         raise UnsupportedMediaTypes(
             f"This type is supported in general but there was an error packing this specific data: {err.args[0]}",
         )
-    if isinstance(content, types.GeneratorType):
+    if inspect.isgenerator(content) or inspect.isasyncgen(content):
         response_class = StreamingResponse
     else:
         response_class = Response
