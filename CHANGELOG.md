@@ -4,11 +4,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
-## Added
+### Added
 
 - Tiled now retries HTTP requests that fail due to server-side (`5XX`) or
   connection-level problems.
 - Support for `async` streaming serializers (exporters)
+
+### Changed
+
+- Iteration over a `Composite` client yields its (flattened) keys, not its
+  internal parts. This makes `__iter__` and `__getitem__` consistent.
 
 ## 0.1.0-b21 (2025-04-15)
 
