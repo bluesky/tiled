@@ -24,7 +24,11 @@ class Composite(Container):
                                 **self._queries_as_params,
                             }
                             | ({} if include_metadata else {"select_metadata": False})
-                            | ({} if not self._include_data_sources else {"include_data_sources": True}),
+                            | (
+                                {}
+                                if not self._include_data_sources
+                                else {"include_data_sources": True}
+                            ),
                         )
                     ).json()
             result.update({item["id"]: item for item in content["data"]})
