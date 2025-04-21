@@ -4,7 +4,7 @@ trees:
   - path: /
     tree: catalog
     args:
-      uri: "sqlite:////storage/catalog.db"
+      uri: "sqlite:///storage/catalog.db"
       writable_storage:
         bucket:
           uri: "http://localhost:9000"

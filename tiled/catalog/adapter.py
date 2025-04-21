@@ -172,7 +172,7 @@ class Context:
         if storage.sql is not None:
             self.readable_storage.add(storage.sql)
         if storage.bucket is not None:
-            self.readable_storage.add(storage.bucket)
+            self.readable_storage.add(frozenset(storage.bucket.items()))
         self.writable_storage = storage
 
         self.key_maker = key_maker
@@ -481,7 +481,10 @@ class CatalogNodeAdapter:
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
                 for readable_storage in self.context.readable_storage:
-                    if Path(
+                    if isinstance(readable_storage, dict):
+                        # This is bucket storage.
+                        break
+                    elif Path(
                         os.path.commonpath(
                             [path_from_uri(readable_storage), asset_path]
                         )
