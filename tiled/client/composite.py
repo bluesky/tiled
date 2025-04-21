@@ -85,7 +85,7 @@ class Composite(Container):
             )
 
         return super().__getitem__(key, _ignore_inlined_contents)
-    
+
     def __contains__(self, key):
         return key in self._flat_keys_mapping.keys()
 
