@@ -85,6 +85,9 @@ class Composite(Container):
             )
 
         return super().__getitem__(key, _ignore_inlined_contents)
+    
+    def __contains__(self, key):
+        return key in self._flat_keys_mapping.keys()
 
     def create_container(self, key=None, *, metadata=None, specs=None):
         """Composite nodes can not include nested containers by design."""
