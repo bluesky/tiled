@@ -60,7 +60,9 @@ class ZarrArrayAdapter(ArrayAdapter):
                 secret=storage.bucket.secret,
                 use_ssl=False,
             )
-            store = s3fs.S3Map(root='/', s3=s3)
+            store = s3fs.S3Map(
+                root="".join(f"/{quote_plus(segment)}" for segment in path_parts), s3=s3
+            )
         else:
             data_uri = storage.get("filesystem") + "".join(
                 f"/{quote_plus(segment)}" for segment in path_parts
