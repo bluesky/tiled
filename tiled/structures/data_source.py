@@ -44,14 +44,14 @@ class DataSource(Generic[StructureT]):
         return cls(assets=assets, **d)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class Bucket:
     uri: str
     key: Optional[str]
     secret: Optional[str]
 
     def __post_init__(self):
-        self.uri = ensure_uri(self.uri)
+        object.__setattr__(self, "uri", ensure_uri(self.uri))
 
 
 @dataclasses.dataclass
@@ -65,6 +65,8 @@ class Storage:
             self.filesystem = ensure_uri(self.filesystem)
         if self.sql is not None:
             self.sql = ensure_uri(self.sql)
+        if self.bucket is not None:
+            self.bucket = Bucket(**self.bucket)
 
     @classmethod
     def from_path(cls, path: Union[str, Path]):
