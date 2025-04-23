@@ -52,6 +52,9 @@ class Bucket:
 
     def __post_init__(self):
         object.__setattr__(self, "uri", ensure_uri(self.uri))
+        parsed_uri = urlparse(self.uri)
+        if not parsed_uri.path or parsed_uri.path == "/":
+            raise ValueError(f"URI must contain a path attribute: {self.uri}")
 
 
 @dataclasses.dataclass

@@ -733,9 +733,6 @@ def path_from_uri(uri) -> Path:
     elif parsed.scheme in {"sqlite", "duckdb"}:
         # The path begins after the third slash.
         path = Path(parsed.path[1:])
-    elif parsed.scheme in {"http", "https", "s3"}:
-        # The URI is a URL which is inherently pre-validated and not tokenized
-        path = uri
     else:
         raise ValueError(
             "Supported schemes are 'file', 'sqlite', and 'duckdb'."
