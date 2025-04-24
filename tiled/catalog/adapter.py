@@ -631,6 +631,7 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
+        redis_client=None
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
@@ -756,6 +757,8 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
+            if redis_client:
+                redis_client.setnx(f"seq_num:{node.id}", 0)
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
