@@ -1280,13 +1280,9 @@ def binary_op(query, tree, operation):
 
 
 def like(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
-    if dialect_name == "sqlite":
-        condition = _get_value(attr, str).like(query.pattern)
-    else:
-        condition = attr.like(query.pattern)
+    condition = _get_value(attr, str).like(query.pattern)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
