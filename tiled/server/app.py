@@ -218,13 +218,6 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
 
     app = FastAPI(lifespan=lifespan, dependencies=[Depends(move_api_key)])
     
-    if redis_settings:=server_settings.get("redis"):
-        import redis
-        app.state.redis_client = redis.from_url(redis_settings["uri"])
-        app.state.redis_ttl = redis_settings.get("ttl", 3600)
-    else:
-        app.state.redis_client = None
-        app.state.redis_ttl = None
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
     @app.get("/healthz", status_code=200)
