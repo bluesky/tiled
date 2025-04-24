@@ -4,6 +4,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- New query type `Like` enables partial string match using SQL `LIKE`
+  condition.
+
 ### Changed
 
 - Exposed `Session.state` information from database to enhance custom access
