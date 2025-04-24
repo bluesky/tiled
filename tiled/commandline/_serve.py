@@ -475,16 +475,18 @@ or use an existing one:
         )
 
     server_settings = {}
+    redis_settings = {}
     if redis_uri:
-        server_settings["redis"] = {"uri": redis_uri}
+        redis_settings = {"uri": redis_uri}
     if redis_ttl:
-        server_settings["redis"]["ttl"] = redis_ttl
-        
+        redis_settings["ttl"] = redis_ttl
+            
     tree = from_uri(
         database,
         writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
+        redis_settings=redis_settings
     )
     web_app = build_app(
         tree,

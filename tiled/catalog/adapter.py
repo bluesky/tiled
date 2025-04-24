@@ -169,6 +169,8 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        redis_client=None,
+        redis_ttl=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
@@ -208,6 +210,8 @@ class Context:
             adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
+        self.redis_client = redis_client
+        self.redis_ttl = redis_ttl
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -757,7 +761,7 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            if redis_client:
+            if self.context.redis_client:
                 redis_client.setnx(f"seq_num:{node.id}", 0)
             return type(self)(self.context, refreshed_node)
 
@@ -1517,6 +1521,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    redis_settings=None
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1566,8 +1571,19 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    context = Context(engine, writable_storage, readable_storage, adapters_by_mimetype)
+    
+    if redis_settings:
+        import redis
+        redis_client = redis.from_url(redis_settings["uri"])
+        redis_ttl = redis_settings.get("ttl", 3600)
+    else:
+        redis_client = None
+    
+    context = Context(engine, writable_storage, readable_storage, redis_client, adapters_by_mimetype)
+    
+
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
+    
     return adapter
 
 
