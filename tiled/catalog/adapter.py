@@ -47,6 +47,7 @@ from tiled.queries import (
     FullText,
     In,
     KeysFilter,
+    Like,
     NotEq,
     NotIn,
     Operator,
@@ -1278,6 +1279,13 @@ def binary_op(query, tree, operation):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def like(query, tree):
+    keys = query.key.split(".")
+    attr = orm.Node.metadata_[keys]
+    condition = _get_value(attr, str).like(query.pattern)
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def comparison(query, tree):
     OPERATORS = {
         Operator.lt: operator.lt,
@@ -1408,7 +1416,7 @@ CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(FullText, full_text)
-# TODO: Regex
+CatalogNodeAdapter.register_query(Like, like)
 
 
 def in_memory(
