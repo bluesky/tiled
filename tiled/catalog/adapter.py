@@ -154,6 +154,8 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        redis_client=None,
+        redis_ttl=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
@@ -186,6 +188,8 @@ class Context:
             adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
+        self.redis_client = redis_client
+        self.redis_ttl = redis_ttl
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -616,7 +620,6 @@ class CatalogNodeAdapter:
         key=None,
         specs=None,
         data_sources=None,
-        redis_client=None
     ):
         key = key or self.context.key_maker()
         data_sources = data_sources or []
@@ -726,8 +729,8 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            if redis_client:
-                redis_client.setnx(f"seq_num:{node.id}", 0)
+            if self.context.redis_client:
+                self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
             
             return key, type(self)(
                 self.context, refreshed_node, access_policy=self.access_policy
@@ -1458,6 +1461,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    redis_settings=None
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1497,8 +1501,14 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
+
+    if redis_settings:
+        import redis
+        redis_client = redis.from_url(redis_settings["uri"])
+        redis_ttl = redis_settings.get("ttl", 3600)
+
     return CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
+        Context(engine, writable_storage, readable_storage, adapters_by_mimetype, redis_client, redis_ttl),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
     )
