@@ -616,6 +616,7 @@ class CatalogNodeAdapter:
         key=None,
         specs=None,
         data_sources=None,
+        redis_client=None
     ):
         key = key or self.context.key_maker()
         data_sources = data_sources or []
@@ -725,6 +726,9 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
+            if redis_client:
+                redis_client.setnx(f"seq_num:{node.id}", 0)
+            
             return key, type(self)(
                 self.context, refreshed_node, access_policy=self.access_policy
             )

@@ -101,6 +101,18 @@ properties:
               additionalProperties: true
             access_policy:
               type: string
+  redis:
+    description: |
+      Redis database
+    type: [object]
+    additionalProperties: false
+    properties:
+      uri:
+        type: string
+      ttl:
+        type: number
+    required:
+      - uri
   media_types:
     type: object
     additionalProperties: true
