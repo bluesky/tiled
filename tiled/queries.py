@@ -394,7 +394,12 @@ class Like(NoBool):
 
     Search for sample starting with "Ni"
 
-    >>> c.search(Like("sample", "Ni"))
+    >>> c.search(Like("sample", "Ni%"))
+
+    Search for detector ending with "image"
+
+    >>> c.search(Like("detector", "%image"))
+
     """
 
     key: str
