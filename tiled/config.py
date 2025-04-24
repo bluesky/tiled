@@ -183,6 +183,7 @@ See documentation section "Serve a Directory of Files"."""
         )
         server_settings["expose_raw_assets"] = config.get("expose_raw_assets")
         server_settings["metrics"] = config.get("metrics", {})
+        server_settings["redis"] = config.get("redis")
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)
