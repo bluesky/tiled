@@ -388,7 +388,12 @@ async def get_current_principal(
                 schemas.Identity(id=identity["id"], provider=identity["idp"])
                 for identity in decoded_access_token["ids"]
             ],
+            roles=[
+                schemas.Role(name=role["name"], scopes=role["scopes"])
+                for role in decoded_access_token["rls"]
+            ],
         )
+        print(principal.roles)
     else:
         # No form of authentication is present.
         principal = SpecialUsers.public
@@ -491,6 +496,9 @@ async def create_tokens_from_session(settings, db, session, provider):
         "sub": principal.uuid.hex,
         "sub_typ": principal.type,  # Why is this str and not Enum?
         "scp": list(set().union(*[role.scopes for role in principal.roles])),
+        "rls": list(
+            {"name": role.name, "scopes": role.scopes} for role in principal.roles
+        ),
         "state": session.state,
         "ids": [
             {"id": identity.id, "idp": identity.provider}
