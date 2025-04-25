@@ -1261,7 +1261,6 @@ def get_router(
             scopes=["write:data"],
         ),
     ):
-
         body = await request.body()
         if not hasattr(entry, "write"):
             raise HTTPException(

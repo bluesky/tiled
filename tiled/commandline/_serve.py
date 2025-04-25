@@ -330,18 +330,10 @@ def serve_catalog(
         ),
     ),
     redis_uri: Optional[str] = typer.Option(
-        None,
-        "--redis-uri",
-        help=(
-            "Provide redis URI"
-        )
+        None, "--redis-uri", help=("Provide redis URI")
     ),
     redis_ttl: Optional[float] = typer.Option(
-        None,
-        "--redis-ttl",
-        help=(
-            "Provide redis ttl"
-        )
+        None, "--redis-ttl", help=("Provide redis ttl")
     ),
     host: str = typer.Option(
         "127.0.0.1",
@@ -487,7 +479,7 @@ or use an existing one:
         writable_storage=classify_writable_storage(write),
         readable_storage=read,
         init_if_not_exists=init,
-        redis_settings=redis_settings
+        redis_settings=redis_settings,
     )
     web_app = build_app(
         tree,

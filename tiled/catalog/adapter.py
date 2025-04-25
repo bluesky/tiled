@@ -1461,7 +1461,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
-    redis_settings=None
+    redis_settings=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1504,11 +1504,19 @@ def from_uri(
 
     if redis_settings:
         import redis
+
         redis_client = redis.from_url(redis_settings["uri"])
         redis_ttl = redis_settings.get("ttl", 3600)
 
     return CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype, redis_client, redis_ttl),
+        Context(
+            engine,
+            writable_storage,
+            readable_storage,
+            adapters_by_mimetype,
+            redis_client,
+            redis_ttl,
+        ),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
     )
