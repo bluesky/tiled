@@ -255,12 +255,24 @@ class BaseClient:
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
         specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
-        return [metadata, specs]  # returning as list of mutable items
+        access_blob = deepcopy(self._item["attributes"]["access_blob"])
+        return [md for md in [metadata, specs, access_blob] if md is not None]  # returning as list of mutable items
 
     @property
     def specs(self):
         "List of specifications describing the structure of the metadata and/or data."
         return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
+
+    @property
+    def access_blob(self):
+        "Authorization information about this node, in blob form"
+        access_blob = self._item["attributes"]["access_blob"]
+        if access_blob is None:
+            raise AttributeError("Node has no attribute 'access_blob'")
+        # Ensure this is immutable (at the top level) to help the user avoid
+        # getting the wrong impression that editing this would update anything
+        # persistent.
+        return DictView(access_blob)
 
     @property
     def uri(self):

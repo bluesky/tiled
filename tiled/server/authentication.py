@@ -393,7 +393,6 @@ async def get_current_principal(
                 for role in decoded_access_token["rls"]
             ],
         )
-        print(principal.roles)
     else:
         # No form of authentication is present.
         principal = SpecialUsers.public
