@@ -773,7 +773,7 @@ class CatalogNodeAdapter:
                 )
             ).scalar()
             if self.context.redis_client:
-                redis_client.setnx(f"seq_num:{node.id}", 0)
+                self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
             return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db, asset):
