@@ -36,8 +36,8 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         """
         Obtain a node in the tree from its path.
 
-        Walk down the path from the root tree and ultimately filter
-        access by the specified scope.
+        Walk down the path starting from the root of the tree and filter
+        access by the specified scopes.
 
         session_state is an optional dictionary passed in the session token
         """
@@ -64,11 +64,12 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
             for i, segment in enumerate(path_parts):
                 if hasattr(entry, "lookup_adapter"):
                     # New catalog adapter
-                    # Top level means the basename of the path as defined in the config
-                    # This adapter can jump directly to the node of interest
+                    # This adapter can jump directly to the node of interest,
+                    # but currenty doesn't, to ensure access_policy is applied.
                     # Raises NoEntry or BrokenLink if the path is not found
-                    entry = await entry.lookup_adapter(path_parts[i:])
-                    break
+                    entry = await entry.lookup_adapter([segment])
+                    if (i + 1) == len(path_parts):
+                        break
                 else:
                     # Old-style dict-like interface
                     # Traverse into sub-tree(s) to reach the desired entry
@@ -76,6 +77,17 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                         entry = entry[segment]
                     except (KeyError, TypeError):
                         raise NoEntry(path_parts)
+
+                path_parts_relative = path_parts[i + 1 :]  # noqa: E203
+                # filter and keep only what we are allowed to see from here
+                entry = await filter_for_access(
+                    entry,
+                    access_policy,
+                    principal,
+                    ["read:metadata"],
+                    request.state.metrics,
+                    path_parts_relative,
+                )
 
             # Now check that we have the requested scope according to the access policy
             if access_policy is not None:
