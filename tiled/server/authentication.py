@@ -1077,6 +1077,9 @@ def authentication_router() -> APIRouter:
             "scp": list(
                 set().union(*[role.scopes for role in session.principal.roles])
             ),
+            "rls": list(
+                {"name": role.name, "scopes": role.scopes} for role in principal.roles
+            ),
             "state": session.state,
             "ids": [
                 {"id": identity.id, "idp": identity.provider}
