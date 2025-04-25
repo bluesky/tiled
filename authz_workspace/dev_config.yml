@@ -3,7 +3,7 @@ database:
   init_if_not_exists: true
 authentication:
   tiled_admins:
-  - provider: toy 
+  - provider: toy
     id: "nmaytan"
   providers:
   - provider: pam

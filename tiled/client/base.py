@@ -256,7 +256,9 @@ class BaseClient:
         metadata = deepcopy(self._item["attributes"]["metadata"])
         specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
         access_blob = deepcopy(self._item["attributes"]["access_blob"])
-        return [md for md in [metadata, specs, access_blob] if md is not None]  # returning as list of mutable items
+        return [
+            md for md in [metadata, specs, access_blob] if md is not None
+        ]  # returning as list of mutable items
 
     @property
     def specs(self):

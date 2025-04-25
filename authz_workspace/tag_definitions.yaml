@@ -77,4 +77,3 @@ tag_owners:
   n2sn_data_admin:
     groups:
       - name: n2sn-dataadmin
-

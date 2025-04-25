@@ -104,9 +104,7 @@ def construct_build_app_kwargs(
             access_policy_class = import_object(
                 access_policy_import_path, accept_live_object=True
             )
-            access_policy = access_policy_class(
-                **access_control.get("args", {})
-            )
+            access_policy = access_policy_class(**access_control.get("args", {}))
         else:
             access_policy = None
         # TODO Enable entrypoint to extend aliases?

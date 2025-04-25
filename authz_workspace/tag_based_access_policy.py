@@ -1,14 +1,13 @@
 import grp
 import warnings
-import yaml
-
 from pathlib import Path
 from sys import intern
 
+import yaml
 from access_blob_queries import AccessBlobFilter
+
 from tiled.access_policies import NO_ACCESS
 from tiled.scopes import ALL_SCOPES
-
 
 _MAX_TAG_NESTING = 5
 
@@ -26,7 +25,6 @@ InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
 
 
 class TagBasedAccessPolicy:
-
     def __init__(self, *, provider, tag_config, scopes=None):
         self.provider = provider
         self.tag_config_path = Path(tag_config)

@@ -1,14 +1,15 @@
 import json
-
 from dataclasses import dataclass
+from typing import List
+
 from sqlalchemy import false, func, or_, select
 from sqlalchemy.dialects.postgresql import ARRAY, TEXT
 from sqlalchemy.sql.expression import cast
+
 from tiled.catalog import orm
 from tiled.catalog.adapter import CatalogNodeAdapter
 from tiled.queries import JSONSerializable
 from tiled.query_registration import register
-from typing import List
 
 
 @register(name="access_blob_filter")
