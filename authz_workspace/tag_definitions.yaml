@@ -1,0 +1,80 @@
+roles:
+  facility_user:
+    scopes: ["read:data", "read:metadata"]
+  beamline_staff:
+    scopes: ["read:data", "read:metadata"]
+  facility_data_admin:
+    scopes: ["read:data", "read:metadata", "write:data", "write:metadata", "create", "register"]
+  beamline_data_admin:
+    scopes: ["read:data", "read:metadata", "write:data", "write:metadata", "create", "register"]
+  WRITING_SERVICE_ACCOUNT:
+    scopes: ["read:metadata", "write:data", "write:metadata", "create", "register"]
+  WORKFLOW_SERVICE_ACCOUNT:
+    scopes: ["read:data", "read:metadata"]
+
+tags:
+  pass-316367:
+    groups:
+      - name: pass-316367
+        role: facility_user
+    tags:
+      - name: sst_beamline
+  six_beamline:
+    groups:
+      - name: n2sn-inststaff-six
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  sst_beamline:
+    users:
+      - name: f3fa4c9d-1ca0-4997-b642-f093639140e1
+        role: WRITING_SERVICE_ACCOUNT
+      - name: de0e48e7-eaa7-45af-a8cf-fc68f3739bc1
+        role: WORKFLOW_SERVICE_ACCOUNT
+      # CI PyHyperScattering
+      - name: 5f027037-5b76-4317-9672-a177ecca0e0c
+        role: WORKFLOW_SERVICE_ACCOUNT
+    groups:
+      - name: n2sn-inststaff-sst
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  n2sn_data_admin:
+    groups:
+      - name: n2sn-dataadmin
+        role: facility_data_admin
+#  loop_tag1:
+#    users:
+#      - name: nmaytan
+#        role: facility_user
+#    tags:
+#      - name: loop_tag2
+#  loop_tag2:
+#    users:
+#      - name: nmaytan
+#        role: facility_user
+#    tags:
+#      - name: loop_tag3
+#  loop_tag3:
+#    users:
+#      - name: nmaytan
+#        role: facility_user
+#    tags:
+#      - name: loop_tag1
+
+tag_owners:
+  pass-316367:
+    users:
+      - name: f3fa4c9d-1ca0-4997-b642-f093639140e1
+    groups:
+      - name: pass-316367
+  six_beamline:
+    groups:
+      - name: n2sn-inststaff-six
+  sst_beamline:
+    groups:
+      - name: n2sn-inststaff-sst
+  n2sn_data_admin:
+    groups:
+      - name: n2sn-dataadmin
+

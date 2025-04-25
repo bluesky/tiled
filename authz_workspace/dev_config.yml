@@ -1,0 +1,36 @@
+database:
+  uri: "sqlite+aiosqlite:///./tiled.sqlite"
+  init_if_not_exists: true
+authentication:
+  tiled_admins:
+  - provider: toy 
+    id: "nmaytan"
+  providers:
+  - provider: pam
+    authenticator: tiled.authenticators:LDAPAuthenticator
+    args:
+      server_address: "duoproxy.nsls2.bnl.gov"
+      bind_dn_template:
+      - "BNL\\{username}"
+      use_tls: true
+      use_ssl: true
+      confirmation_message: "You have logged in as {id}."
+  - provider: toy
+    authenticator: tiled.authenticators:DictionaryAuthenticator
+    args:
+      users_to_passwords:
+        nmaytan: "nmaytan"
+        dallan: "dallan"
+      confirmation_message: "You have logged in."
+access_control:
+  access_policy: tag_based_access_policy:TagBasedAccessPolicy
+  args:
+    provider: "toy"
+    tag_config: "tag_definitions.yaml"
+trees:
+  - path: /test/raw
+    tree: catalog
+    args:
+      uri: "sqlite+aiosqlite:///./storage/catalog.db"
+      writable_storage: "./storage/data"
+      init_if_not_exists: true
