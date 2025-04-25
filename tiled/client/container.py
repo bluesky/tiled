@@ -639,6 +639,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
     ):
         """
         Create a new item within this Node.
@@ -653,6 +654,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         self._cached_len = None
         metadata = metadata or {}
+        access_tags = access_tags or []
         specs = specs or []
         normalized_specs = []
         for spec in specs:
@@ -666,6 +668,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
                 "data_sources": [asdict(data_source) for data_source in data_sources],
+                "access_tags": access_tags,
             }
         }
         body = dict(item["attributes"])
@@ -730,7 +733,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_composite(self, key=None, *, metadata=None, specs=None):
+    def create_composite(
+        self,
+        key=None,
+        *,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
         """Create a new, empty composite container.
 
         Parameters
@@ -743,6 +753,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            A list of tag names which are used to confer access to the new node
 
         """
         return self.new(
@@ -751,9 +763,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
 
-    def create_container(self, key=None, *, metadata=None, specs=None):
+    def create_container(
+        self,
+        key=None,
+        *,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
         """Create a new, empty container.
 
         Parameters
@@ -766,6 +786,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            A list of tag names which are used to confer access to the new node
 
         """
         return self.new(
@@ -774,9 +796,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
 
-    def write_array(self, array, *, key=None, metadata=None, dims=None, specs=None):
+    def write_array(
+        self,
+        array,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        access_tags=None,
+    ):
         """
         EXPERIMENTAL: Write an array.
 
@@ -793,6 +825,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            A list of tag names which are used to confer access to the new node
 
         """
         import dask.array
@@ -838,6 +872,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
@@ -870,6 +905,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
+        access_tags=None,
     ):
         """
         Write an AwkwardArray.
@@ -887,6 +923,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            A list of tag names which are used to confer access to the new node
         """
         import awkward
 
@@ -908,6 +946,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         client.write(container)
         return client
@@ -922,6 +961,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
+        access_tags=None,
     ):
         """
         EXPERIMENTAL: Write a sparse array.
@@ -941,6 +981,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            A list of tag names which are used to confer access to the new node
 
         Examples
         --------
@@ -982,6 +1024,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         client.write(coords, data)
         return client
@@ -994,6 +1037,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
         table_name: Optional[str] = None,
     ):
         """Initialize a table whose rows can be appended to a partition.
@@ -1011,6 +1055,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            A list of tag names which are used to confer access to the new node
         table_name : str, optional
             Optionally provide a name for the table this should be stored in.
             By default a name unique to the schema will be chosen.
@@ -1040,6 +1086,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
+            access_tags=access_tags or [],
         )
 
         return client
@@ -1051,6 +1098,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
     ):
         """Write a DataFrame.
 
@@ -1065,6 +1113,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            A list of tag names which are used to confer access to the new node
 
         See Also
         --------
@@ -1093,6 +1143,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
+            access_tags=access_tags or [],
         )
 
         if hasattr(dataframe, "partitions"):

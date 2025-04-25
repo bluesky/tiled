@@ -145,6 +145,7 @@ class RootNode:
         self.ancestors = []
         self.key = None
         self.data_sources = None
+        self.access_blob = {"tags": ["_PUBLIC_NODE"]}
 
 
 class Context:
@@ -321,6 +322,10 @@ class CatalogNodeAdapter:
         self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
+
+    @property
+    def access_blob(self):
+        return self.node.access_blob
 
     def metadata(self):
         return self.node.metadata_
@@ -613,16 +618,19 @@ class CatalogNodeAdapter:
         self,
         structure_family,
         metadata,
+        access_blob=None,
         key=None,
         specs=None,
         data_sources=None,
     ):
+        access_blob = access_blob or {}
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
         node = orm.Node(
             key=key,
             ancestors=self.segments,
+            access_blob=access_blob,
             metadata_=metadata,
             structure_family=structure_family,
             specs=[s.model_dump() for s in specs or []],
@@ -1042,6 +1050,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         self,
         structure_family,
         metadata,
+        access_blob=None,
         key=None,
         specs=None,
         data_sources=None,
@@ -1081,7 +1090,12 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 specs = [Spec(name="flattened")] + (specs or [])
 
         return await super().create_node(
-            structure_family, metadata, key=key, specs=specs, data_sources=data_sources
+            structure_family,
+            metadata,
+            access_blob=access_blob,
+            key=key,
+            specs=specs,
+            data_sources=data_sources,
         )
 
 

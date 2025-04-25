@@ -1123,6 +1123,9 @@ def get_router(
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata", "create"]),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
     ):
         for data_source in body.data_sources:
             if data_source.assets:
@@ -1141,6 +1144,7 @@ def get_router(
             body=body,
             settings=settings,
             entry=entry,
+            principal=principal,
         )
 
     @router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse)
@@ -1152,6 +1156,9 @@ def get_router(
         entry: MapAdapter = Security(
             get_entry(), scopes=["write:metadata", "create", "register"]
         ),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
     ):
         return await _create_node(
             request=request,
@@ -1159,6 +1166,7 @@ def get_router(
             body=body,
             settings=settings,
             entry=entry,
+            principal=principal,
         )
 
     async def _create_node(
@@ -1167,11 +1175,13 @@ def get_router(
         body: schemas.PostMetadataRequest,
         settings: Settings,
         entry,
+        principal: schemas.Principal,
     ):
-        metadata, structure_family, specs = (
+        metadata, structure_family, specs, access_tags = (
             body.metadata,
             body.structure_family,
             body.specs,
+            body.access_tags,
         )
         if structure_family in {StructureFamily.container, StructureFamily.composite}:
             structure = None
@@ -1179,6 +1189,15 @@ def get_router(
             if len(body.data_sources) != 1:
                 raise NotImplementedError
             structure = body.data_sources[0].structure
+
+        if hasattr(request.app.state, "access_policy") and hasattr(
+            request.app.state.access_policy, "init_node"
+        ):
+            access_blob = await request.app.state.access_policy.init_node(
+                principal, access_tags=access_tags
+            )
+        else:
+            access_blob = {}
 
         metadata_modified, metadata = await validate_metadata(
             metadata=metadata,
@@ -1194,6 +1213,7 @@ def get_router(
             key=body.id,
             specs=body.specs,
             data_sources=body.data_sources,
+            access_blob=access_blob,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{key}"
@@ -1205,6 +1225,8 @@ def get_router(
         }
         if metadata_modified:
             response_data["metadata"] = metadata
+        if access_blob:
+            response_data["access_blob"] = access_blob
 
         return json_or_msgpack(request, response_data)
 

@@ -68,6 +68,7 @@ class Node(Timestamped, Base):
     key = Column(Unicode(1023), nullable=False)
     ancestors = Column(JSONVariant, nullable=True)
     structure_family = Column(Enum(StructureFamily), nullable=False)
+    access_blob = Column("access_blob", JSONVariant, nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
 
@@ -96,6 +97,7 @@ class Node(Timestamped, Base):
             "time_created",
             "id",
             "metadata",
+            "access_blob",
             postgresql_using="gin",
         ),
         # This is used by ORDER BY with the default sorting.

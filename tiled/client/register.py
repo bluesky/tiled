@@ -167,6 +167,7 @@ async def register(
             await create_node_or_drop_collision(
                 node,
                 structure_family=StructureFamily.container,
+                access_blob={},
                 data_sources=[],
                 metadata={},
                 specs=[],
@@ -227,6 +228,7 @@ async def _walk(
             node,
             key=key,
             structure_family=StructureFamily.container,
+            access_blob={},
             data_sources=[],
             metadata={},
             specs=[],
