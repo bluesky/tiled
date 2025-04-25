@@ -235,7 +235,7 @@ def build_app(
         await shutdown_event()
 
     app = FastAPI(lifespan=lifespan, dependencies=[Depends(move_api_key)])
-    
+
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
     @app.get("/healthz", status_code=200)
