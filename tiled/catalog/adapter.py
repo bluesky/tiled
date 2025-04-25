@@ -1587,12 +1587,21 @@ def from_uri(
 
     if redis_settings:
         import redis
+
         redis_client = redis.from_url(redis_settings["uri"])
         redis_ttl = redis_settings.get("ttl", 3600)
     adapter = CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, redis_client, adapters_by_mimetype),
+        Context(
+            engine,
+            writable_storage,
+            readable_storage,
+            adapters_by_mimetype,
+            redis_client,
+            redis_ttl,
+        ),
         RootNode(metadata, specs, top_level_access_blob),
         mount_node=mount_node,
+    )
     return adapter
 
 
