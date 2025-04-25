@@ -731,7 +731,7 @@ class CatalogNodeAdapter:
             ).scalar()
             if self.context.redis_client:
                 self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
-            
+
             return key, type(self)(
                 self.context, refreshed_node, access_policy=self.access_policy
             )

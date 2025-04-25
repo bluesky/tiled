@@ -481,7 +481,7 @@ or use an existing one:
         redis_settings = {"uri": redis_uri}
     if redis_ttl:
         redis_settings["ttl"] = redis_ttl
-            
+
     tree = from_uri(
         database,
         writable_storage=classify_writable_storage(write),
