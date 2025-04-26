@@ -454,5 +454,6 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = self.compiled_users.get(identifier, set())
+        tag_list.add("_PUBLIC_NODE")
         queries.append(query_filter(identifier, tag_list))
         return queries
