@@ -3,6 +3,7 @@ import warnings
 from pathlib import Path
 from sys import intern
 
+import httpx
 import yaml
 from access_blob_queries import AccessBlobFilter
 
@@ -25,9 +26,10 @@ InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
 
 
 class TagBasedAccessPolicy:
-    def __init__(self, *, provider, tag_config, scopes=None):
+    def __init__(self, *, provider, tag_config, url, scopes=None):
         self.provider = provider
         self.tag_config_path = Path(tag_config)
+        self.client = httpx.Client(base_url=url)
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         self.read_metadata_scope = intern("read:metadata")
 
@@ -54,14 +56,177 @@ class TagBasedAccessPolicy:
                 f"The tag config path {self.tag_config_path!s} doesn't exist."
             ) from e
 
+    @property
+    def all_facilities(self):
+        return {
+            "nsls2": {
+                "beamlines": [
+                    "six",
+                    "hxn",
+                    "xfm",
+                    "isr",
+                    "srx",
+                    "bmm",
+                    "qas",
+                    "sst1",
+                    "sst2",
+                    "tes",
+                    "iss",
+                    "ixs",
+                    "cms",
+                    "chx",
+                    "smi",
+                    "lix",
+                    "xfp",
+                    "amx",
+                    "fmx",
+                    "fxi",
+                    "nyx",
+                    "esm",
+                    "fis",
+                    "met",
+                    "csx",
+                    "ios",
+                    "hex",
+                    "pdf",
+                    "xpd",
+                ],
+            },
+            "lbms": {
+                "beamlines": [
+                    "krios1",
+                    "talos1",
+                    "jeol1",
+                ],
+            },
+        }
+
+    async def get_current_cycle(self, facility):
+        cycle_response = self.client.get(f"/v1/facility/{facility}/cycles/current")
+        cycle = cycle_response.json()["cycle"]
+        return cycle
+
+    async def _load_facility_api(self, facility, cycles=[]):
+        if facility not in self.all_facilities:
+            raise ValueError()
+        valid_cycles_response = self.client.get(f"/v1/facility/{facility}/cycles")
+        valid_cycles = valid_cycles_response.json()["cycles"]
+        if not cycles:
+            cycles_response = self.client.get(f"/v1/facility/{facility}/cycles")
+            cycles = cycles_response.json()["cycles"]
+        elif not all(c in valid_cycles for c in cycles):
+            raise ValueError(
+                "Invalid cycles provided for {facility=}. Invalid cycles: {set(cycles).difference(valid_cycles)}"
+            )
+
+        proposals_from_api = {}
+        for beamline in self.all_facilities[facility]["beamlines"]:
+            proposals_from_api.setdefault(beamline, [])
+            for cycle in cycles:
+                count, page, page_size = 25, 1, 25
+                while count == page_size:
+                    response = self.client.get(
+                        f"/v1/proposals/?beamline={beamline.upper()}&cycle={cycle}&facility={facility}&page_size={page_size}&page={page}&include_directories=false"
+                    )
+                    response_json = response.json()
+                    for proposal in response_json["proposals"]:
+                        proposals_from_api[beamline].append(proposal["data_session"])
+                    count = response_json["count"]
+                    page = page + 1
+
+            response = self.client.get(
+                f"/v1/proposals/commissioning?beamline={beamline}&facility={facility}"
+            )
+            response_json = response.json()
+            proposals_from_api[beamline].extend(
+                [
+                    "pass-" + proposal_id
+                    for proposal_id in response_json["commissioning_proposals"]
+                ]
+            )
+
+        return proposals_from_api
+
+    def _generate_tags_from_api(self, proposal_info):
+        proposal_role = "facility_user"
+        for beamline, proposal_list in proposal_info.items():
+            beamline_tag = f"{beamline.lower()}_beamline"
+            if beamline in ("sst1", "sst2"):
+                beamline_tag = "sst_beamline"
+
+            for proposal in proposal_list:
+                if proposal in self.tags:
+                    self.tags[proposal].setdefault("groups", [])
+                    self.tags[proposal].setdefault("tags", [])
+                    # if group is already on tag, then the existing role takes precedence
+                    # this ensures that the tag definitions file takes precedence
+                    if not any(
+                        (group["name"] == proposal)
+                        for group in self.tags[proposal]["groups"]
+                    ):
+                        self.tags[proposal]["groups"].append(
+                            {"name": proposal, "roles": proposal_role}
+                        )
+                    self.tags[proposal]["tags"].append({"name": beamline_tag})
+                else:
+                    self.tags.update(
+                        {
+                            proposal: {
+                                "groups": [{"name": proposal, "role": proposal_role}],
+                                "tags": [{"name": beamline_tag}],
+                            }
+                        }
+                    )
+
+                WRITING_SERVICE_PRINCIPALS = {}
+                beamline_tag_owner = (
+                    WRITING_SERVICE_PRINCIPALS[beamline][0]
+                    if (beamline in WRITING_SERVICE_PRINCIPALS)
+                    and WRITING_SERVICE_PRINCIPALS[beamline]
+                    else None
+                )
+                if beamline_tag_owner is not None:
+                    if proposal in self.tag_owners:
+                        self.tag_owners[proposal].setdefault("users", [])
+                        self.tag_owners[proposal]["users"].append(
+                            {"name": beamline_tag_owner}
+                        )
+                    else:
+                        self.tag_owners.update(
+                            {proposal: {"users": [{"name": proposal}]}}
+                        )
+
+    async def load_proposals_all_cycles(self):
+        all_proposal_info = {}
+        for facility in self.all_facilities:
+            all_proposal_info.update(await self._load_facility_api(facility))
+        self._generate_tags_from_api(all_proposal_info)
+        return all_proposal_info
+
+    async def load_proposals_current_cycle(self):
+        current_proposal_info = {}
+        for facility in self.all_facilities:
+            current_cycle = await self.get_current_cycle(facility)
+            current_proposal_info.update(
+                await self._load_facility_api(facility, [current_cycle])
+            )
+        self._generate_tags_from_api(current_proposal_info)
+        return current_proposal_info
+
+    async def reload_tags_all_cycles(self):
+        self.load_tag_config()
+        await self.load_proposals_all_cycles()
+
+    async def reload_tags_current_cycle(self):
+        self.load_tag_config()
+        await self.load_proposals_current_cycle()
+
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
+        if current_tag in seen_tags:
+            return {}  # we've seen and processed this tag already
         if nested_level > self.max_tag_nesting:
             raise RecursionError(
                 f"Exceeded maximum tag nesting of {max_nesting} levels"
-            )
-        if current_tag in seen_tags:
-            raise ValueError(
-                f"Loop detected in nested tags! Looped tag: '{current_tag}'"
             )
 
         seen_tags.add(current_tag)

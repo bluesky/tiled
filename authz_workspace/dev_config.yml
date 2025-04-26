@@ -27,6 +27,7 @@ access_control:
   args:
     provider: "toy"
     tag_config: "tag_definitions.yaml"
+    url: "https://api.nsls2.bnl.gov"
 trees:
   - path: /test/raw
     tree: catalog
