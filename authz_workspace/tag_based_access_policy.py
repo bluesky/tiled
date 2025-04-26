@@ -222,8 +222,10 @@ class TagBasedAccessPolicy:
         await self.load_proposals_current_cycle()
 
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
+        if current_tag in self.compiled_tags:
+            return self.compiled_tags[current_tag]
         if current_tag in seen_tags:
-            return {}  # we've seen and processed this tag already
+            return {}
         if nested_level > self.max_tag_nesting:
             raise RecursionError(
                 f"Exceeded maximum tag nesting of {max_nesting} levels"
@@ -304,6 +306,7 @@ class TagBasedAccessPolicy:
                         users.setdefault(intern(username), set())
                         users[intern(username)].update(group_scopes)
 
+        self.compiled_tags[current_tag] = users
         return users
 
     def compile(self):
@@ -320,8 +323,6 @@ class TagBasedAccessPolicy:
 
         adjacent_tags = {}
         for tag, members in self.tags.items():
-            if tag in adjacent_tags:
-                raise ValueError("Duplicate tag definitions detected for {tag=}")
             adjacent_tags[tag] = set()
             if "tags" in members:
                 for member_tag in members["tags"]:
@@ -333,7 +334,7 @@ class TagBasedAccessPolicy:
 
         for tag in adjacent_tags:
             try:
-                self.compiled_tags[tag] = self._dfs(tag, adjacent_tags, set())
+                self._dfs(tag, adjacent_tags, set())
             except (RecursionError, ValueError) as e:
                 raise RuntimeError(f"Tag compilation failed at tag: {tag}") from e
 
