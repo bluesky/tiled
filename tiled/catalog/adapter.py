@@ -139,13 +139,13 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs):
+    def __init__(self, metadata, specs, top_level_access_blob):
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
         self.key = None
         self.data_sources = None
-        self.access_blob = {"tags": ["_PUBLIC_NODE"]}
+        self.access_blob = top_level_access_blob
 
 
 class Context:
@@ -1458,6 +1458,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    top_level_access_blob=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1499,7 +1500,7 @@ def from_uri(
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
-        RootNode(metadata, specs),
+        RootNode(metadata, specs, top_level_access_blob),
     )
 
 

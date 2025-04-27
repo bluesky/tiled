@@ -2,9 +2,9 @@ database:
   uri: "sqlite+aiosqlite:///./tiled.sqlite"
   init_if_not_exists: true
 authentication:
-  tiled_admins:
-  - provider: toy
-    id: "nmaytan"
+    #  tiled_admins:
+    #  - provider: toy
+    #    id: "nmaytan"
   providers:
   - provider: pam
     authenticator: tiled.authenticators:LDAPAuthenticator
@@ -21,6 +21,7 @@ authentication:
       users_to_passwords:
         nmaytan: "nmaytan"
         dallan: "dallan"
+        biff: "biff"
       confirmation_message: "You have logged in."
 access_control:
   access_policy: tag_based_access_policy:TagBasedAccessPolicy
@@ -35,3 +36,4 @@ trees:
       uri: "sqlite+aiosqlite:///./storage/catalog.db"
       writable_storage: "./storage/data"
       init_if_not_exists: true
+      top_level_access_blob: {"tags": ["_ROOT_NODE_SST"]}

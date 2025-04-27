@@ -44,6 +44,7 @@ class TagBasedAccessPolicy:
         self.compiled_tag_owners = {}
 
         self.load_tag_config()
+        self.create_root_tags()
         self.compile()
 
     def load_tag_config(self):
@@ -159,7 +160,8 @@ class TagBasedAccessPolicy:
         for beamline, proposal_list in proposal_info.items():
             beamline_tag = f"{beamline.lower()}_beamline"
             if beamline in ("sst1", "sst2"):
-                beamline_tag = intern("sst_beamline")
+                beamline_tag = "sst_beamline"
+            intern(beamline_tag)
 
             for proposal in proposal_list:
                 if proposal in self.tags:
@@ -176,14 +178,10 @@ class TagBasedAccessPolicy:
                         )
                     self.tags[proposal]["tags"].append({"name": beamline_tag})
                 else:
-                    self.tags.update(
-                        {
-                            proposal: {
-                                "groups": [{"name": proposal, "role": proposal_role}],
-                                "tags": [{"name": beamline_tag}],
-                            }
-                        }
-                    )
+                    self.tags[proposal] = {
+                        "groups": [{"name": proposal, "role": proposal_role}],
+                        "tags": [{"name": beamline_tag}],
+                    }
 
                 beamline_tag_owner = (
                     intern(WRITING_SERVICE_ACCOUNT_UUIDS[beamline])
@@ -197,9 +195,9 @@ class TagBasedAccessPolicy:
                             {"name": beamline_tag_owner}
                         )
                     else:
-                        self.tag_owners.update(
-                            {proposal: {"users": [{"name": beamline_tag_owner}]}}
-                        )
+                        self.tag_owners[proposal] = {
+                            "users": [{"name": beamline_tag_owner}]
+                        }
 
     async def load_proposals_all_cycles(self):
         all_proposal_info = {}
@@ -221,10 +219,38 @@ class TagBasedAccessPolicy:
     async def reload_tags_all_cycles(self):
         self.load_tag_config()
         await self.load_proposals_all_cycles()
+        self.create_root_tags()
 
     async def reload_tags_current_cycle(self):
         self.load_tag_config()
         await self.load_proposals_current_cycle()
+        self.create_root_tags()
+
+    def create_root_tags(self):
+        for facility in self.all_facilities:
+            for beamline in self.all_facilities[facility]["beamlines"]:
+                beamline_tag = f"{beamline.lower()}_beamline"
+                beamline_root_tag = f"_ROOT_NODE_{beamline.upper()}"
+                if beamline in ("sst1", "sst2"):
+                    beamline_tag = "sst_beamline"
+                    beamline_root_tag = "_ROOT_NODE_SST"
+                intern(beamline_tag)
+                intern(beamline_root_tag)
+                if beamline_tag in self.tags:
+                    self.tags[beamline_root_tag] = (
+                        {}
+                    )  # clear out to ensure root tag is not self-included
+                    self.tags[beamline_root_tag] = {
+                        "tags": [
+                            {"name": tag}
+                            for tag, members in self.tags.items()
+                            if any(
+                                member_tag["name"] == beamline_tag
+                                for member_tag in members.get("tags", [])
+                            )
+                        ]
+                    }
+                    self.tags[beamline_root_tag]["tags"].append({"name": beamline_tag})
 
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
         if current_tag in self.compiled_tags:
@@ -308,8 +334,9 @@ class TagBasedAccessPolicy:
                     continue
                 else:
                     for username in usernames:
-                        users.setdefault(intern(username), set())
-                        users[intern(username)].update(group_scopes)
+                        intern(username)
+                        users.setdefault(username, set())
+                        users[username].update(group_scopes)
 
         self.compiled_tags[current_tag] = users
         return users
@@ -368,7 +395,8 @@ class TagBasedAccessPolicy:
                         continue
                     else:
                         for username in usernames:
-                            self.compiled_tag_owners[tag].add(intern(username))
+                            intern(username)
+                            self.compiled_tag_owners[tag].add(username)
 
     def _get_id(self, principal):
         for identity in principal.identities:
@@ -429,9 +457,6 @@ class TagBasedAccessPolicy:
             elif "tags" in node.access_blob:
                 allowed = set()
                 for tag in node.access_blob["tags"]:
-                    # special public tag for catalog RootNode
-                    if tag == "_PUBLIC_NODE":
-                        allowed.add(self.read_metadata_scope)
                     if tag not in self.compiled_tags:
                         continue
                     tag_scopes = self.compiled_tags[tag].get(identifier, set())
@@ -458,7 +483,5 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = self.compiled_users.get(identifier, set())
-        # special public tag for catalog RootNode
-        tag_list.add("_PUBLIC_NODE")
         queries.append(query_filter(identifier, tag_list))
         return queries
