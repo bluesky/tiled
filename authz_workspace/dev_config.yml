@@ -2,9 +2,9 @@ database:
   uri: "sqlite+aiosqlite:///./tiled.sqlite"
   init_if_not_exists: true
 authentication:
-    #  tiled_admins:
-    #  - provider: toy
-    #    id: "nmaytan"
+#  tiled_admins:
+#  - provider: toy
+#    id: "nmaytan"
   providers:
   - provider: pam
     authenticator: tiled.authenticators:LDAPAuthenticator

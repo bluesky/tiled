@@ -34,18 +34,22 @@ class TagBasedAccessPolicy:
         self.client = httpx.Client(base_url=url)
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         self.read_metadata_scope = intern("read:metadata")
-
         self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
+
         self.roles = {}
         self.tags = {}
         self.tag_owners = {}
         self.compiled_tags = {}
         self.compiled_users = {}
         self.compiled_tag_owners = {}
+        self.loaded_tags = {}
+        self.loaded_users = {}
+        self.loaded_tag_owners = {}
 
         self.load_tag_config()
         self.create_root_tags()
         self.compile()
+        self.load_compiled_tags()
 
     def load_tag_config(self):
         try:
@@ -104,7 +108,7 @@ class TagBasedAccessPolicy:
             },
         }
 
-    async def get_current_cycle(self, facility):
+    async def _get_current_cycle(self, facility):
         cycle_response = self.client.get(f"/v1/facility/{facility}/cycles/current")
         cycle_response.raise_for_status()
         cycle = cycle_response.json()["cycle"]
@@ -209,22 +213,54 @@ class TagBasedAccessPolicy:
     async def load_proposals_current_cycle(self):
         current_proposal_info = {}
         for facility in self.all_facilities:
-            current_cycle = await self.get_current_cycle(facility)
+            current_cycle = await self._get_current_cycle(facility)
             current_proposal_info.update(
                 await self._load_facility_api(facility, [current_cycle])
             )
         self._generate_tags_from_api(current_proposal_info)
         return current_proposal_info
 
+    async def update_tags_all_cycles(self):
+        """
+        Fetch any newly added proposals and load their tags,
+        without changing the already-compiled tags
+        """
+        await self.load_proposals_all_cycles()
+        self.create_root_tags()
+        self.compile()
+        self.load_compiled_tags()
+
     async def reload_tags_all_cycles(self):
+        """
+        Fetch all proposals and reload all tags.
+        This is the same as fresh restart.
+        """
         self.load_tag_config()
         await self.load_proposals_all_cycles()
         self.create_root_tags()
+        self.recompile()
+        self.load_compiled_tags()
+
+    async def update_tags_current_cycle(self):
+        """
+        Fetch any newly added proposals and load their tags,
+        without changing the already-compiled tags
+        """
+        await self.load_proposals_current_cycle()
+        self.create_root_tags()
+        self.compile()
+        self.load_compiled_tags()
 
     async def reload_tags_current_cycle(self):
+        """
+        Fetch all proposals and reload all tags.
+        This is the same as fresh restart.
+        """
         self.load_tag_config()
         await self.load_proposals_current_cycle()
         self.create_root_tags()
+        self.recompile()
+        self.load_compiled_tags()
 
     def create_root_tags(self):
         for facility in self.all_facilities:
@@ -237,9 +273,8 @@ class TagBasedAccessPolicy:
                 intern(beamline_tag)
                 intern(beamline_root_tag)
                 if beamline_tag in self.tags:
-                    self.tags[beamline_root_tag] = (
-                        {}
-                    )  # clear out to ensure root tag is not self-included
+                    # clear out to ensure root tag is not self-included
+                    self.tags[beamline_root_tag] = {}
                     self.tags[beamline_root_tag] = {
                         "tags": [
                             {"name": tag}
@@ -398,6 +433,17 @@ class TagBasedAccessPolicy:
                             intern(username)
                             self.compiled_tag_owners[tag].add(username)
 
+    def recompile(self):
+        self.compiled_tags = {}
+        self.compiled_users = {}
+        self.compiled_tag_owners = {}
+        self.compile()
+
+    def load_compiled_tags(self):
+        self.loaded_tags = self.compiled_tags.copy()
+        self.loaded_users = self.compiled_users.copy()
+        self.loaded_tag_owners = self.compiled_tag_owners.copy()
+
     def _get_id(self, principal):
         for identity in principal.identities:
             if identity.provider == self.provider:
@@ -423,11 +469,11 @@ class TagBasedAccessPolicy:
         if access_tags:
             access_tags = set(access_tags)
             for tag in access_tags:
-                if tag not in self.compiled_tags:
+                if tag not in self.loaded_tags:
                     raise ValueError(
                         f"Cannot apply tag to dataset: {tag=} is not defined"
                     )
-                if identifier not in self.compiled_tag_owners.get(tag, set()):
+                if identifier not in self.loaded_tag_owners.get(tag, set()):
                     raise ValueError(
                         f"Cannot apply tag to dataset: you are not an owner of {tag=}"
                     )
@@ -459,7 +505,7 @@ class TagBasedAccessPolicy:
                 for tag in node.access_blob["tags"]:
                     if tag not in self.compiled_tags:
                         continue
-                    tag_scopes = self.compiled_tags[tag].get(identifier, set())
+                    tag_scopes = self.loaded_tags[tag].get(identifier, set())
                     allowed.update(
                         tag_scopes if tag_scopes.issubset(self.scopes) else set()
                     )
@@ -482,6 +528,6 @@ class TagBasedAccessPolicy:
         else:
             identifier = self._get_id(principal)
 
-        tag_list = self.compiled_users.get(identifier, set())
+        tag_list = self.loaded_users.get(identifier, set())
         queries.append(query_filter(identifier, tag_list))
         return queries

@@ -145,7 +145,7 @@ class RootNode:
         self.ancestors = []
         self.key = None
         self.data_sources = None
-        self.access_blob = top_level_access_blob
+        self.access_blob = top_level_access_blob or {}
 
 
 class Context:
