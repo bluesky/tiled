@@ -12,6 +12,8 @@ from tiled.scopes import ALL_SCOPES
 
 _MAX_TAG_NESTING = 5
 
+WRITING_SERVICE_ACCOUNT_UUIDS = {}
+
 
 class InterningLoader(yaml.loader.BaseLoader):
     pass
@@ -103,63 +105,68 @@ class TagBasedAccessPolicy:
 
     async def get_current_cycle(self, facility):
         cycle_response = self.client.get(f"/v1/facility/{facility}/cycles/current")
+        cycle_response.raise_for_status()
         cycle = cycle_response.json()["cycle"]
         return cycle
 
     async def _load_facility_api(self, facility, cycles=[]):
         if facility not in self.all_facilities:
-            raise ValueError()
+            raise ValueError(f"Invalid {facility=} is not a known facility.")
         valid_cycles_response = self.client.get(f"/v1/facility/{facility}/cycles")
+        valid_cycles_response.raise_for_status()
         valid_cycles = valid_cycles_response.json()["cycles"]
         if not cycles:
             cycles_response = self.client.get(f"/v1/facility/{facility}/cycles")
+            cycles_response.raise_for_status()
             cycles = cycles_response.json()["cycles"]
-        elif not all(c in valid_cycles for c in cycles):
+        elif not all(cycle in valid_cycles for cycle in cycles):
             raise ValueError(
-                "Invalid cycles provided for {facility=}. Invalid cycles: {set(cycles).difference(valid_cycles)}"
+                f"Invalid cycles provided for {facility=}. Invalid cycles: {set(cycles).difference(valid_cycles)}"
             )
 
         proposals_from_api = {}
         for beamline in self.all_facilities[facility]["beamlines"]:
             proposals_from_api.setdefault(beamline, [])
             for cycle in cycles:
-                count, page, page_size = 25, 1, 25
+                page, page_size = 1, 100
+                count = page_size
                 while count == page_size:
-                    response = self.client.get(
+                    proposals_response = self.client.get(
                         f"/v1/proposals/?beamline={beamline.upper()}&cycle={cycle}&facility={facility}&page_size={page_size}&page={page}&include_directories=false"
                     )
-                    response_json = response.json()
-                    for proposal in response_json["proposals"]:
-                        proposals_from_api[beamline].append(proposal["data_session"])
-                    count = response_json["count"]
+                    proposals_response.raise_for_status()
+                    proposals_response_json = proposals_response.json()
+                    for proposal in proposals_response_json["proposals"]:
+                        proposals_from_api[beamline].append(
+                            intern(proposal["data_session"])
+                        )
+                    count = proposals_response_json["count"]
                     page = page + 1
 
-            response = self.client.get(
+            proposals_response = self.client.get(
                 f"/v1/proposals/commissioning?beamline={beamline}&facility={facility}"
             )
-            response_json = response.json()
+            proposals_response.raise_for_status()
+            proposals = proposals_response.json()["commissioning_proposals"]
             proposals_from_api[beamline].extend(
-                [
-                    "pass-" + proposal_id
-                    for proposal_id in response_json["commissioning_proposals"]
-                ]
+                [intern("pass-" + proposal_id) for proposal_id in proposals]
             )
 
         return proposals_from_api
 
     def _generate_tags_from_api(self, proposal_info):
-        proposal_role = "facility_user"
+        proposal_role = intern("facility_user")
         for beamline, proposal_list in proposal_info.items():
             beamline_tag = f"{beamline.lower()}_beamline"
             if beamline in ("sst1", "sst2"):
-                beamline_tag = "sst_beamline"
+                beamline_tag = intern("sst_beamline")
 
             for proposal in proposal_list:
                 if proposal in self.tags:
                     self.tags[proposal].setdefault("groups", [])
                     self.tags[proposal].setdefault("tags", [])
-                    # if group is already on tag, then the existing role takes precedence
-                    # this ensures that the tag definitions file takes precedence
+                    # if group is already on tag then the existing role takes precedence,
+                    # so that the tag definitions file has priority
                     if not any(
                         (group["name"] == proposal)
                         for group in self.tags[proposal]["groups"]
@@ -178,11 +185,9 @@ class TagBasedAccessPolicy:
                         }
                     )
 
-                WRITING_SERVICE_PRINCIPALS = {}
                 beamline_tag_owner = (
-                    WRITING_SERVICE_PRINCIPALS[beamline][0]
-                    if (beamline in WRITING_SERVICE_PRINCIPALS)
-                    and WRITING_SERVICE_PRINCIPALS[beamline]
+                    intern(WRITING_SERVICE_ACCOUNT_UUIDS[beamline])
+                    if beamline in WRITING_SERVICE_ACCOUNT_UUIDS
                     else None
                 )
                 if beamline_tag_owner is not None:
@@ -193,7 +198,7 @@ class TagBasedAccessPolicy:
                         )
                     else:
                         self.tag_owners.update(
-                            {proposal: {"users": [{"name": proposal}]}}
+                            {proposal: {"users": [{"name": beamline_tag_owner}]}}
                         )
 
     async def load_proposals_all_cycles(self):
@@ -418,16 +423,15 @@ class TagBasedAccessPolicy:
             else:
                 identifier = self._get_id(principal)
 
-            allowed = set()
             if "user" in node.access_blob:
                 if identifier == node.access_blob["user"]:
                     allowed = self.scopes
             elif "tags" in node.access_blob:
+                allowed = set()
                 for tag in node.access_blob["tags"]:
                     # special public tag for catalog RootNode
                     if tag == "_PUBLIC_NODE":
-                        allowed = self.scopes
-                        break
+                        allowed.add(self.read_metadata_scope)
                     if tag not in self.compiled_tags:
                         continue
                     tag_scopes = self.compiled_tags[tag].get(identifier, set())
@@ -454,6 +458,7 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = self.compiled_users.get(identifier, set())
+        # special public tag for catalog RootNode
         tag_list.add("_PUBLIC_NODE")
         queries.append(query_filter(identifier, tag_list))
         return queries
