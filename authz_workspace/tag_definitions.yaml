@@ -13,15 +13,45 @@ roles:
     scopes: ["read:data", "read:metadata"]
 
 tags:
-  pass-316367:
-    groups:
-      - name: pass-316367
-        role: facility_user
-    tags:
-      - name: sst_beamline
   six_beamline:
     groups:
-      - name: n2sn-inststaff-six
+      - name: n2sn-right-dataadmin-six
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  hxn_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-hxn
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  xfm_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-xfm
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  isr_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-isr
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  srx_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-srx
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  bmm_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-bmm
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  qas_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-qas
         role: beamline_staff
     tags:
       - name: n2sn_data_admin
@@ -35,13 +65,151 @@ tags:
       - name: 5f027037-5b76-4317-9672-a177ecca0e0c
         role: WORKFLOW_SERVICE_ACCOUNT
     groups:
-      - name: n2sn-inststaff-sst
+      - name: n2sn-right-dataadmin-sst
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  tes_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-tes
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  iss_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-iss
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  ixs_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-ixs
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  cms_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-cms
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  chx_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-chx
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  smi_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-smi
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  lix_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-lix
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  xfp_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-xfp
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  amx_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-amx
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  fmx_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-fmx
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  fxi_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-fxi
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  nyx_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-nyx
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  esm_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-esm
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  fis_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-fis
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  met_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-met
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  csx_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-csx
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  ios_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-ios
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  hex_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-hex
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  pdf_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-pdf
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  xpd_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-xpd
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  krios1_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-cryoem
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  talos1_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-cryoem
+        role: beamline_staff
+    tags:
+      - name: n2sn_data_admin
+  jeol1_beamline:
+    groups:
+      - name: n2sn-right-dataadmin-cryoem
         role: beamline_staff
     tags:
       - name: n2sn_data_admin
   n2sn_data_admin:
     groups:
-      - name: n2sn-dataadmin
+      - name: n2sn-right-dataadmin
         role: facility_data_admin
 #  loop_tag1:
 #    users:
@@ -66,14 +234,13 @@ tag_owners:
   pass-316367:
     users:
       - name: f3fa4c9d-1ca0-4997-b642-f093639140e1
-    groups:
-      - name: pass-316367
+      - name: nmaytan
   six_beamline:
     groups:
-      - name: n2sn-inststaff-six
+      - name: n2sn-right-dataadmin-six
   sst_beamline:
     groups:
-      - name: n2sn-inststaff-sst
+      - name: n2sn-right-dataadmin-sst
   n2sn_data_admin:
     groups:
-      - name: n2sn-dataadmin
+      - name: n2sn-right-dataadmin
