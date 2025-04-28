@@ -2,6 +2,15 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- When using SQL-backed storage and file-backed storage, Tiled treated SQLite
+  or DuckDB files as if they were directories of readable files, and
+  included them superfluously in a check on whether assets were situated
+  in a readable area.
+
 ## 0.1.0-b23 (2025-04-24)
 
 ### Added
