@@ -2,6 +2,31 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+## 0.1.0-b23 (2025-04-24)
+
+### Added
+
+- New query type `Like` enables partial string match using SQL `LIKE`
+  condition.
+
+### Changed
+
+- Exposed `Session.state` information from database to enhance custom access
+  control developments.
+
+## 0.1.0-b22 (2025-04-21)
+
+### Added
+
+- Tiled now retries HTTP requests that fail due to server-side (`5XX`) or
+  connection-level problems.
+- Support for `async` streaming serializers (exporters)
+
+### Changed
+
+- Iteration over a `Composite` client yields its (flattened) keys, not its
+  internal parts. This makes `__iter__` and `__getitem__` consistent.
+
 ## 0.1.0-b21 (2025-04-15)
 
 ### Added
@@ -14,6 +39,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Adjust arguments of `print_admin_api_key_if_generated` and rename `print_server_info`
 - Allow `SQLAdapter.append_partition` to accept `pyarrow.Table` as its argument
+- Fix streaming serialization of tables keeping the dtypes of individual columns
 
 ### Maintenance
 

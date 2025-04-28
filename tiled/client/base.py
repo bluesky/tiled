@@ -15,7 +15,7 @@ from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error
+from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
 
 
 class MetadataRevisions:
@@ -34,17 +34,19 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        content = handle_error(
-            self.context.http_client.get(
-                self._link,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **parse_qs(urlparse(self._link).query),
-                    "page[offset]": 0,
-                    "page[limit]": 0,
-                },
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        self._link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(self._link).query),
+                            "page[offset]": 0,
+                            "page[limit]": 0,
+                        },
+                    )
+                ).json()
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
@@ -56,17 +58,19 @@ class MetadataRevisions:
             offset = item_
             limit = 1
 
-            content = handle_error(
-                self.context.http_client.get(
-                    self._link,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        **parse_qs(urlparse(self._link).query),
-                        "page[offset]": offset,
-                        "page[limit]": limit,
-                    },
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            self._link,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(self._link).query),
+                                "page[offset]": offset,
+                                "page[limit]": limit,
+                            },
+                        )
+                    ).json()
             (result,) = content["data"]
             return result
 
@@ -83,11 +87,13 @@ class MetadataRevisions:
             next_page_url = self._link + params
             result = []
             while next_page_url is not None:
-                content = handle_error(
-                    self.context.http_client.get(
-                        next_page_url, headers={"Accept": MSGPACK_MIME_TYPE}
-                    )
-                ).json()
+                for attempt in retry_context():
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.get(
+                                next_page_url, headers={"Accept": MSGPACK_MIME_TYPE}
+                            )
+                        ).json()
                 if len(result) == 0:
                     result = content.copy()
                 else:
@@ -97,11 +103,14 @@ class MetadataRevisions:
             return result["data"]
 
     def delete_revision(self, n):
-        handle_error(
-            self.context.http_client.delete(
-                self._link, params={**parse_qs(urlparse(self._link).query), "number": n}
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.delete(
+                        self._link,
+                        params={**parse_qs(urlparse(self._link).query), "number": n},
+                    )
+                )
 
 
 class BaseClient:
@@ -194,13 +203,15 @@ class BaseClient:
         }
         if self._include_data_sources:
             params["include_data_sources"] = self._include_data_sources
-        content = handle_error(
-            self.context.http_client.get(
-                self.uri,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params=params,
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        self.uri,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params=params,
+                    )
+                ).json()
         self._item = content["data"]
         if self.structure_family not in {
             StructureFamily.container,
@@ -326,15 +337,17 @@ class BaseClient:
             )
             for asset in data_source.assets:
                 if asset.is_directory:
-                    manifest = handle_error(
-                        self.context.http_client.get(
-                            manifest_link,
-                            params={
-                                **parse_qs(urlparse(manifest_link).query),
-                                "id": asset.id,
-                            },
-                        )
-                    ).json()["manifest"]
+                    for attempt in retry_context():
+                        with attempt:
+                            manifest = handle_error(
+                                self.context.http_client.get(
+                                    manifest_link,
+                                    params={
+                                        **parse_qs(urlparse(manifest_link).query),
+                                        "id": asset.id,
+                                    },
+                                )
+                            ).json()["manifest"]
                 else:
                     manifest = None
                 manifests[asset.id] = manifest
@@ -677,12 +690,14 @@ class BaseClient:
             "specs": normalized_specs_patch,
         }
 
-        content = handle_error(
-            self.context.http_client.patch(
-                self.item["links"]["self"],
-                content=safe_json_dump(data),
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.patch(
+                        self.item["links"]["self"],
+                        content=safe_json_dump(data),
+                    )
+                ).json()
 
         if metadata_patch is not None:
             if "metadata" in content:
@@ -737,11 +752,13 @@ class BaseClient:
             "specs": normalized_specs,
         }
 
-        content = handle_error(
-            self.context.http_client.put(
-                self.item["links"]["self"], content=safe_json_dump(data)
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["self"], content=safe_json_dump(data)
+                    )
+                ).json()
 
         if metadata is not None:
             if "metadata" in content:
@@ -766,7 +783,9 @@ class BaseClient:
 
     def delete_tree(self):
         endpoint = self.uri.replace("/metadata/", "/nodes/", 1)
-        handle_error(self.context.http_client.delete(endpoint))
+        for attempt in retry_context():
+            with attempt:
+                handle_error(self.context.http_client.delete(endpoint))
 
     def __dask_tokenize__(self):
         return (type(self), self.uri)

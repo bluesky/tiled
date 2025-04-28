@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
-from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error
+from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
 
 
 class Composite(Container):
@@ -13,17 +13,24 @@ class Composite(Container):
         while (next_page_url is not None) or (
             maxlen is not None and len(result) < maxlen
         ):
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        **parse_qs(urlparse(next_page_url).query),
-                        **self._queries_as_params,
-                    }
-                    | ({} if include_metadata else {"select_metadata": False}),
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                **self._queries_as_params,
+                            }
+                            | ({} if include_metadata else {"select_metadata": False})
+                            | (
+                                {}
+                                if not self._include_data_sources
+                                else {"include_data_sources": True}
+                            ),
+                        )
+                    ).json()
             result.update({item["id"]: item for item in content["data"]})
 
             next_page_url = content["links"]["next"]
@@ -55,6 +62,9 @@ class Composite(Container):
         for key in self._flat_keys_mapping.keys():
             yield key, self[key]
 
+    def __iter__(self):
+        yield from self._keys_slice(0, None, 1)
+
     def __len__(self):
         if self._cached_len is not None:
             length, deadline = self._cached_len
@@ -75,6 +85,9 @@ class Composite(Container):
             )
 
         return super().__getitem__(key, _ignore_inlined_contents)
+
+    def __contains__(self, key):
+        return key in self._flat_keys_mapping.keys()
 
     def create_container(self, key=None, *, metadata=None, specs=None):
         """Composite nodes can not include nested containers by design."""

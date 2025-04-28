@@ -21,6 +21,7 @@ from ..queries import (
     In,
     Key,
     KeysFilter,
+    Like,
     NotEq,
     NotIn,
     Regex,
@@ -328,4 +329,12 @@ def test_structure_families(client):
 def test_keys_filter(client):
     expected = ["a", "b", "c"]
     results = client.search(KeysFilter(keys=expected))
+    assert set(results) == set(expected)
+
+
+def test_like(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("No 'LIKE' support on MapAdapter")
+    expected = ["full_text_test_case", "full_text_test_case_urple"]
+    results = client.search(Like("color", "%urple"))
     assert set(results) == set(expected)
