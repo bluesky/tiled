@@ -1078,7 +1078,8 @@ def authentication_router() -> APIRouter:
                 set().union(*[role.scopes for role in session.principal.roles])
             ),
             "rls": list(
-                {"name": role.name, "scopes": role.scopes} for role in principal.roles
+                {"name": role.name, "scopes": role.scopes}
+                for role in session.principal.roles
             ),
             "state": session.state,
             "ids": [
