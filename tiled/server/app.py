@@ -104,7 +104,6 @@ def custom_openapi(app):
 
 def build_app(
     tree,
-    access_policy=None,
     authentication=None,
     server_settings=None,
     query_registry: Optional[QueryRegistry] = None,
@@ -114,6 +113,7 @@ def build_app(
     validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
     scalable=False,
+    access_policy=None,
 ):
     """
     Serve a Tree
@@ -121,14 +121,14 @@ def build_app(
     Parameters
     ----------
     tree : Tree
-    access_policy:
-        AccessPolicy object encoding rules for which users can see which entries.
     authentication: dict, optional
         Dict of authentication configuration.
     authenticators: list, optional
         List of authenticator classes (one per support identity provider)
     server_settings: dict, optional
         Dict of other server configuration.
+    access_policy:
+        AccessPolicy object encoding rules for which users can see which entries.
     """
     authentication = authentication or {}
     authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {

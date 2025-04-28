@@ -654,8 +654,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         self._cached_len = None
         metadata = metadata or {}
-        access_blob = access_blob or {}
         specs = specs or []
+        access_blob = access_blob or {}
         normalized_specs = []
         for spec in specs:
             if isinstance(spec, str):

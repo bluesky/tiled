@@ -1190,8 +1190,9 @@ def get_router(
                 raise NotImplementedError
             structure = body.data_sources[0].structure
 
-        if hasattr(request.app.state, "access_policy") and hasattr(
-            request.app.state.access_policy, "init_node"
+        if (
+            request.app.state.access_policy is not None
+            and getattr(request.app.state.access_policy, "init_node", None) is not None
         ):
             access_blob_from_policy = await request.app.state.access_policy.init_node(
                 principal, access_blob=access_blob

@@ -65,9 +65,9 @@ class EntryFields(str, enum.Enum):
     count = "count"
     sorting = "sorting"
     specs = "specs"
-    access_blob = "access_blob"
     data_sources = "data_sources"
     none = ""
+    access_blob = "access_blob"
 
 
 class NodeStructure(pydantic.BaseModel):
@@ -175,7 +175,6 @@ class NodeAttributes(pydantic.BaseModel):
     structure_family: Optional[StructureFamily] = None
     specs: Optional[Specs] = None
     metadata: Optional[Dict] = None  # free-form, user-specified dict
-    access_blob: Optional[Dict] = None  # free-form, access_policy-specified dict
     structure: Optional[
         Union[
             ArrayStructure,
@@ -185,6 +184,7 @@ class NodeAttributes(pydantic.BaseModel):
             TableStructure,
         ]
     ] = None
+    access_blob: Optional[Dict] = None  # free-form, access_policy-specified dict
 
     sorting: Optional[List[SortingItem]] = None
     data_sources: Optional[List[DataSource]] = None

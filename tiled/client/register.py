@@ -167,11 +167,11 @@ async def register(
             await create_node_or_drop_collision(
                 node,
                 structure_family=StructureFamily.container,
-                access_blob={},
                 data_sources=[],
                 metadata={},
                 specs=[],
                 key=key,
+                access_blob={},
             )
             # TODO When we have a tiled AsyncClient, use that.
             child_node = await anyio.to_thread.run_sync(node.get, segment)
@@ -228,10 +228,10 @@ async def _walk(
             node,
             key=key,
             structure_family=StructureFamily.container,
-            access_blob={},
             data_sources=[],
             metadata={},
             specs=[],
+            access_blob={},
         )
         # TODO When we have a tiled AsyncClient, use that.
         child_node = await anyio.to_thread.run_sync(node.get, key)

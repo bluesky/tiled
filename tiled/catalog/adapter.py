@@ -615,10 +615,10 @@ class CatalogNodeAdapter:
         self,
         structure_family,
         metadata,
-        access_blob=None,
         key=None,
         specs=None,
         data_sources=None,
+        access_blob=None,
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
@@ -627,10 +627,10 @@ class CatalogNodeAdapter:
         node = orm.Node(
             key=key,
             ancestors=self.segments,
-            access_blob=access_blob,
             metadata_=metadata,
             structure_family=structure_family,
             specs=[s.model_dump() for s in specs or []],
+            access_blob=access_blob,
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -1043,10 +1043,10 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         self,
         structure_family,
         metadata,
-        access_blob=None,
         key=None,
         specs=None,
         data_sources=None,
+        access_blob=None,
     ):
         key = key or self.context.key_maker()
 
@@ -1085,10 +1085,10 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         return await super().create_node(
             structure_family,
             metadata,
-            access_blob=access_blob,
             key=key,
             specs=specs,
             data_sources=data_sources,
+            access_blob=access_blob,
         )
 
 

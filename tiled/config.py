@@ -3,6 +3,7 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
+
 import copy
 import os
 import warnings
@@ -202,7 +203,6 @@ See documentation section "Serve a Directory of Files"."""
     # TODO Make compression_registry extensible via configuration.
     return {
         "tree": root_tree,
-        "access_policy": access_policy,
         "authentication": auth_spec,
         "server_settings": server_settings,
         "query_registry": query_registry,
@@ -215,6 +215,7 @@ See documentation section "Serve a Directory of Files"."""
             "shutdown": shutdown_tasks,
             "background": background_tasks,
         },
+        "access_policy": access_policy,
     }
 
 
