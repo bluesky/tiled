@@ -299,7 +299,6 @@ class TagBasedAccessPolicy:
     def _get_group_users(self, groupname):
         try:
             usernames = group_record_cache[groupname]
-            print("Cache hit!")
         except KeyError:
             # logger.debug("%s: Cache miss", username)
             usernames = grp.getgrnam(groupname).gr_mem
@@ -483,14 +482,19 @@ class TagBasedAccessPolicy:
                 return True
         return False
 
-    async def init_node(self, principal, access_tags=None):
+    async def init_node(self, principal, access_blob=None):
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
             identifier = self._get_id(principal)
 
-        if access_tags:
-            access_tags = set(access_tags)
+        if access_blob:
+            if not "tags" in access_blob:
+                raise ValueError(
+                    f'access_blob must be in the form \'{"tags": ["tag1", "tag2", ...]}\''
+                    f"Received {access_blob=}"
+                )
+            access_tags = set(access_blob["tags"])
             for tag in access_tags:
                 if tag not in self.loaded_tags:
                     raise ValueError(
@@ -498,13 +502,13 @@ class TagBasedAccessPolicy:
                     )
                 if identifier not in self.loaded_tag_owners.get(tag, set()):
                     raise ValueError(
-                        f"Cannot apply tag to dataset: you are not an owner of {tag=}"
+                        f"Cannot apply tag to dataset: user='{identifier}' is not an owner of {tag=}"
                     )
-            access_blob = {"tags": list(access_tags)}
+            access_blob_from_policy = {"tags": list(access_tags)}
         else:
-            access_blob = {"user": identifier}
+            access_blob_from_policy = {"user": identifier}
 
-        return access_blob
+        return access_blob_from_policy
 
     async def allowed_scopes(self, node, principal, path_parts):
         # If this is being called, filter_for_access has let us get this far.

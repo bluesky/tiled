@@ -1177,11 +1177,11 @@ def get_router(
         entry,
         principal: schemas.Principal,
     ):
-        metadata, structure_family, specs, access_tags = (
+        metadata, structure_family, specs, access_blob = (
             body.metadata,
             body.structure_family,
             body.specs,
-            body.access_tags,
+            body.access_blob,
         )
         if structure_family in {StructureFamily.container, StructureFamily.composite}:
             structure = None
@@ -1193,9 +1193,10 @@ def get_router(
         if hasattr(request.app.state, "access_policy") and hasattr(
             request.app.state.access_policy, "init_node"
         ):
-            access_blob = await request.app.state.access_policy.init_node(
-                principal, access_tags=access_tags
+            access_blob_from_policy = await request.app.state.access_policy.init_node(
+                principal, access_blob=access_blob
             )
+            access_blob = access_blob_from_policy
         else:
             access_blob = {}
 

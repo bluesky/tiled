@@ -639,7 +639,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
     ):
         """
         Create a new item within this Node.
@@ -654,7 +654,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         self._cached_len = None
         metadata = metadata or {}
-        access_tags = access_tags or []
+        access_blob = access_blob or {}
         specs = specs or []
         normalized_specs = []
         for spec in specs:
@@ -668,7 +668,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
                 "data_sources": [asdict(data_source) for data_source in data_sources],
-                "access_tags": access_tags,
+                "access_blob": access_blob,
             }
         }
         body = dict(item["attributes"])
@@ -739,7 +739,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         metadata=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
     ):
         """Create a new, empty composite container.
 
@@ -753,8 +753,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_tags: List[str], optional
-            A list of tag names which are used to confer access to the new node
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the new node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
         """
         return self.new(
@@ -763,7 +765,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            access_tags=access_tags,
+            access_blob=access_blob,
         )
 
     def create_container(
@@ -772,7 +774,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         metadata=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
     ):
         """Create a new, empty container.
 
@@ -786,8 +788,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_tags: List[str], optional
-            A list of tag names which are used to confer access to the new node
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the new node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
         """
         return self.new(
@@ -796,7 +800,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            access_tags=access_tags,
+            access_blob=access_blob,
         )
 
     def write_array(
@@ -807,7 +811,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
     ):
         """
         EXPERIMENTAL: Write an array.
@@ -825,8 +829,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_tags: List[str], optional
-            A list of tag names which are used to confer access to the new node
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the new node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
         """
         import dask.array
@@ -872,7 +878,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            access_tags=access_tags,
+            access_blob=access_blob,
         )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
@@ -905,7 +911,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
     ):
         """
         Write an AwkwardArray.
@@ -923,8 +929,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_tags: List[str], optional
-            A list of tag names which are used to confer access to the new node
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the new node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
         """
         import awkward
 
@@ -946,7 +954,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            access_tags=access_tags,
+            access_blob=access_blob,
         )
         client.write(container)
         return client
@@ -961,7 +969,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
     ):
         """
         EXPERIMENTAL: Write a sparse array.
@@ -981,8 +989,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_tags: List[str], optional
-            A list of tag names which are used to confer access to the new node
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the new node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
         Examples
         --------
@@ -1024,7 +1034,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
-            access_tags=access_tags,
+            access_blob=access_blob,
         )
         client.write(coords, data)
         return client
@@ -1037,7 +1047,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
         table_name: Optional[str] = None,
     ):
         """Initialize a table whose rows can be appended to a partition.
@@ -1055,8 +1065,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_tags: List[str], optional
-            A list of tag names which are used to confer access to the new node
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the new node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
         table_name : str, optional
             Optionally provide a name for the table this should be stored in.
             By default a name unique to the schema will be chosen.
@@ -1086,7 +1098,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
-            access_tags=access_tags or [],
+            access_blob=access_blob or {},
         )
 
         return client
@@ -1098,7 +1110,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
-        access_tags=None,
+        access_blob=None,
     ):
         """Write a DataFrame.
 
@@ -1113,8 +1125,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_tags: List[str], optional
-            A list of tag names which are used to confer access to the new node
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the new node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
         See Also
         --------
@@ -1143,7 +1157,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
-            access_tags=access_tags or [],
+            access_blob=access_blob or {},
         )
 
         if hasattr(dataframe, "partitions"):
