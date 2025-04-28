@@ -173,6 +173,9 @@ class Context:
         if storage.sql is not None:
             self.readable_storage.add(storage.sql)
         self.writable_storage = storage
+        self.readable_filesystem_storage = set(
+            item for item in self.readable_storage if urlparse(item).scheme == "file"
+        )
 
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -479,7 +482,7 @@ class CatalogNodeAdapter:
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
-                for readable_storage in self.context.readable_storage:
+                for readable_storage in self.context.readable_filesystem_storage:
                     if Path(
                         os.path.commonpath(
                             [path_from_uri(readable_storage), asset_path]
