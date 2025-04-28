@@ -3,6 +3,7 @@ import warnings
 from pathlib import Path
 from sys import intern
 
+import cachetools
 import httpx
 import yaml
 from access_blob_queries import AccessBlobFilter
@@ -13,6 +14,8 @@ from tiled.scopes import ALL_SCOPES
 _MAX_TAG_NESTING = 5
 
 WRITING_SERVICE_ACCOUNT_UUIDS = {}
+
+group_record_cache = cachetools.TTLCache(maxsize=50_000, ttl=14_400)
 
 
 class InterningLoader(yaml.loader.BaseLoader):
@@ -47,7 +50,7 @@ class TagBasedAccessPolicy:
         self.loaded_tag_owners = {}
 
         self.load_tag_config()
-        self.create_root_tags()
+        self.create_tags_root_node()
         self.compile()
         self.load_compiled_tags()
 
@@ -165,7 +168,7 @@ class TagBasedAccessPolicy:
             beamline_tag = f"{beamline.lower()}_beamline"
             if beamline in ("sst1", "sst2"):
                 beamline_tag = "sst_beamline"
-            intern(beamline_tag)
+            beamline_tag = intern(beamline_tag)
 
             for proposal in proposal_list:
                 if proposal in self.tags:
@@ -226,18 +229,19 @@ class TagBasedAccessPolicy:
         without changing the already-compiled tags
         """
         await self.load_proposals_all_cycles()
-        self.create_root_tags()
+        self.create_tags_root_node()
         self.compile()
         self.load_compiled_tags()
 
-    async def reload_tags_all_cycles(self):
+    async def reload_tags_all_cycles(self, clear_grp_cache=False):
         """
-        Fetch all proposals and reload all tags.
-        This is the same as fresh restart.
+        Fetch all proposals and reload all tags. This is the same as fresh restart.
+        Optionally, clear the group_record_cache to also force group membership
+        to be refreshed.
         """
         self.load_tag_config()
         await self.load_proposals_all_cycles()
-        self.create_root_tags()
+        self.create_tags_root_node()
         self.recompile()
         self.load_compiled_tags()
 
@@ -246,23 +250,28 @@ class TagBasedAccessPolicy:
         Fetch any newly added proposals and load their tags,
         without changing the already-compiled tags
         """
+        if clear_grp_cache:
+            group_record_cache.clear()
         await self.load_proposals_current_cycle()
-        self.create_root_tags()
+        self.create_tags_root_node()
         self.compile()
         self.load_compiled_tags()
 
-    async def reload_tags_current_cycle(self):
+    async def reload_tags_current_cycle(self, clear_grp_cache=False):
         """
-        Fetch all proposals and reload all tags.
-        This is the same as fresh restart.
+        Fetch all proposals and reload all tags.This is the same as fresh restart.
+        Optionally, clear the group_record_cache to also force group membership
+        to be refreshed.
         """
+        if clear_grp_cache:
+            group_record_cache.clear()
         self.load_tag_config()
         await self.load_proposals_current_cycle()
-        self.create_root_tags()
+        self.create_tags_root_node()
         self.recompile()
         self.load_compiled_tags()
 
-    def create_root_tags(self):
+    def create_tags_root_node(self):
         for facility in self.all_facilities:
             for beamline in self.all_facilities[facility]["beamlines"]:
                 beamline_tag = f"{beamline.lower()}_beamline"
@@ -270,10 +279,10 @@ class TagBasedAccessPolicy:
                 if beamline in ("sst1", "sst2"):
                     beamline_tag = "sst_beamline"
                     beamline_root_tag = "_ROOT_NODE_SST"
-                intern(beamline_tag)
-                intern(beamline_root_tag)
+                beamline_tag = intern(beamline_tag)
+                beamline_root_tag = intern(beamline_root_tag)
                 if beamline_tag in self.tags:
-                    # clear out to ensure root tag is not self-included
+                    # clear out to ensure RootNode tags are not self-included
                     self.tags[beamline_root_tag] = {}
                     self.tags[beamline_root_tag] = {
                         "tags": [
@@ -286,6 +295,20 @@ class TagBasedAccessPolicy:
                         ]
                     }
                     self.tags[beamline_root_tag]["tags"].append({"name": beamline_tag})
+
+    def _get_group_users(self, groupname):
+        try:
+            usernames = group_record_cache[groupname]
+            print("Cache hit!")
+        except KeyError:
+            # logger.debug("%s: Cache miss", username)
+            usernames = grp.getgrnam(groupname).gr_mem
+            group_record_cache[groupname] = usernames
+        else:
+            # logger.debug("%s: Cache hit", username)
+            pass
+
+        return usernames
 
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
         if current_tag in self.compiled_tags:
@@ -360,7 +383,7 @@ class TagBasedAccessPolicy:
                     )
 
                 try:
-                    usernames = grp.getgrnam(groupname).gr_mem
+                    usernames = self._get_group_users(groupname)
                 except KeyError:
                     warnings.warn(
                         f"Group with {groupname=} does not exist on the system - skipping",
@@ -369,7 +392,7 @@ class TagBasedAccessPolicy:
                     continue
                 else:
                     for username in usernames:
-                        intern(username)
+                        username = intern(username)
                         users.setdefault(username, set())
                         users[username].update(group_scopes)
 
@@ -421,7 +444,7 @@ class TagBasedAccessPolicy:
                 for group in self.tag_owners[tag]["groups"]:
                     groupname = group["name"]
                     try:
-                        usernames = grp.getgrnam(groupname).gr_mem
+                        usernames = self._get_group_users(groupname)
                     except KeyError:
                         warnings.warn(
                             f"Group with {groupname=} does not exist on the system - skipping",
@@ -430,7 +453,7 @@ class TagBasedAccessPolicy:
                         continue
                     else:
                         for username in usernames:
-                            intern(username)
+                            username = intern(username)
                             self.compiled_tag_owners[tag].add(username)
 
     def recompile(self):
@@ -503,7 +526,7 @@ class TagBasedAccessPolicy:
             elif "tags" in node.access_blob:
                 allowed = set()
                 for tag in node.access_blob["tags"]:
-                    if tag not in self.compiled_tags:
+                    if tag not in self.loaded_tags:
                         continue
                     tag_scopes = self.loaded_tags[tag].get(identifier, set())
                     allowed.update(
