@@ -491,8 +491,8 @@ class TagBasedAccessPolicy:
         if access_blob:
             if not "tags" in access_blob:
                 raise ValueError(
-                    f'access_blob must be in the form \'{"tags": ["tag1", "tag2", ...]}\''
-                    f"Received {access_blob=}"
+                    f"""access_blob must be in the form '{"tags": ["tag1", "tag2", ...]}'"""
+                    f"""Received {access_blob=}"""
                 )
             access_tags = set(access_blob["tags"])
             for tag in access_tags:
@@ -524,11 +524,11 @@ class TagBasedAccessPolicy:
             else:
                 identifier = self._get_id(principal)
 
+            allowed = set()
             if "user" in node.access_blob:
                 if identifier == node.access_blob["user"]:
                     allowed = self.scopes
             elif "tags" in node.access_blob:
-                allowed = set()
                 for tag in node.access_blob["tags"]:
                     if tag not in self.loaded_tags:
                         continue
