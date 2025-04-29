@@ -187,7 +187,7 @@ class TagBasedAccessPolicy:
             for proposal in proposal_list:
                 if proposal in self.tags:
                     self.tags[proposal].setdefault("groups", [])
-                    self.tags[proposal].setdefault("tags", [])
+                    self.tags[proposal].setdefault("auto_tags", [])
                     # if group is already on tag then the existing role takes precedence,
                     # so that the tag definitions file has priority
                     if not any(
@@ -197,11 +197,11 @@ class TagBasedAccessPolicy:
                         self.tags[proposal]["groups"].append(
                             {"name": proposal, "roles": proposal_role}
                         )
-                    self.tags[proposal]["tags"].append({"name": beamline_tag})
+                    self.tags[proposal]["auto_tags"].append({"name": beamline_tag})
                 else:
                     self.tags[proposal] = {
                         "groups": [{"name": proposal, "role": proposal_role}],
-                        "tags": [{"name": beamline_tag}],
+                        "auto_tags": [{"name": beamline_tag}],
                     }
 
                 beamline_tag_owner = (
@@ -299,16 +299,18 @@ class TagBasedAccessPolicy:
                     # clear out to ensure RootNode tags are not self-included
                     self.tags[beamline_root_tag] = {}
                     self.tags[beamline_root_tag] = {
-                        "tags": [
+                        "auto_tags": [
                             {"name": tag}
                             for tag, members in self.tags.items()
                             if any(
-                                member_tag["name"] == beamline_tag
-                                for member_tag in members.get("tags", [])
+                                auto_tag["name"] == beamline_tag
+                                for auto_tag in members.get("auto_tags", [])
                             )
                         ]
                     }
-                    self.tags[beamline_root_tag]["tags"].append({"name": beamline_tag})
+                    self.tags[beamline_root_tag]["auto_tags"].append(
+                        {"name": beamline_tag}
+                    )
 
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
         if current_tag in self.compiled_tags:
@@ -414,13 +416,13 @@ class TagBasedAccessPolicy:
         adjacent_tags = {}
         for tag, members in self.tags.items():
             adjacent_tags[tag] = set()
-            if "tags" in members:
-                for member_tag in members["tags"]:
-                    if member_tag["name"] not in self.tags:
+            if "auto_tags" in members:
+                for auto_tag in members["auto_tags"]:
+                    if auto_tag["name"] not in self.tags:
                         raise KeyError(
-                            f"Tag '{tag}' has nested tag '{member_tag}' which does not have a definition."
+                            f"Tag '{tag}' has nested tag '{auto_tag}' which does not have a definition."
                         )
-                    adjacent_tags[tag].add(member_tag["name"])
+                    adjacent_tags[tag].add(auto_tag["name"])
 
         for tag in adjacent_tags:
             try:
