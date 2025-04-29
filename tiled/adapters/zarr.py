@@ -3,7 +3,7 @@ import copy
 import os
 from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import s3fs
 import zarr.core
@@ -376,9 +376,12 @@ class ZarrAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
-        zarr_obj = zarr.open(
-            path_from_uri(data_source.assets[0].data_uri)
-        )  # Group or Array
+        parsed = urlparse(data_source.assets[0].data_uri)
+        if parsed.scheme in {"http", "https", "s3"}:
+            uri = data_source.assets[0].data_uri
+        else:
+            uri = path_from_uri(data_source.assets[0].data_uri)
+        zarr_obj = zarr.open(uri)  # Group or Array
         if node.structure_family == StructureFamily.container:
             return ZarrGroupAdapter(
                 zarr_obj,
