@@ -512,7 +512,7 @@ class TagBasedAccessPolicy:
                     )
             access_blob_from_policy = {"tags": list(access_tags)}
         else:
-            access_blob_from_policy = {"user": identifier}
+            access_blob_from_policy = {"user": identifier.lower()}
 
         return access_blob_from_policy
 
@@ -532,7 +532,7 @@ class TagBasedAccessPolicy:
 
             allowed = set()
             if "user" in node.access_blob:
-                if identifier == node.access_blob["user"]:
+                if identifier.lower() == node.access_blob["user"]:
                     allowed = self.scopes
             elif "tags" in node.access_blob:
                 for tag in node.access_blob["tags"]:
@@ -564,7 +564,10 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = set.intersection(
-            *[self.loaded_scopes[scope].get(identifier, set()) for scope in scopes]
+            *[
+                self.loaded_scopes[scope].get(identifier.lower(), set())
+                for scope in scopes
+            ]
         )
         queries.append(query_filter(identifier, tag_list))
         return queries

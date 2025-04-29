@@ -87,13 +87,12 @@ def access_blob_filter(query, tree):
                 .select_from(access_blob_json)
                 .where(access_blob_json.c.value.in_(query.value_tags))
             ).exists(),
-            func.lower(func.json_extract(func.json_quote(attr_id), "$"))
-            == query.value_id.lower(),
+            func.json_extract(func.json_quote(attr_id), "$") == query.value_id,
         )
     elif dialect_name == "postgresql":
         condition = or_(
             (attr_tags.op("?|")(cast(query.value_tags, ARRAY(TEXT)))),
-            func.lower(attr_id.astext) == query.value_id.lower(),
+            attr_id.astext == query.value_id,
         )
     else:
         raise UnsupportedQueryType("access_blob_filter")
