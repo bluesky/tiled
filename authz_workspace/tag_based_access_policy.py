@@ -50,7 +50,9 @@ class TagBasedAccessPolicy:
         self.tag_config_path = Path(tag_config)
         self.client = httpx.Client(base_url=url)
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
+        self.read_scopes = [intern("read:metadata"), intern("read:data")]
         self.reverse_lookup_scopes = [intern("read:metadata"), intern("read:data")]
+        self.public_tag = intern("public").casefold()
         self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
 
         self.roles = {}
@@ -501,18 +503,29 @@ class TagBasedAccessPolicy:
                     f"""Received {access_blob=}"""
                 )
             access_tags = set(access_blob["tags"])
+            include_public_tag = False
             for tag in access_tags:
-                if tag not in self.loaded_tags:
+                if tag.casefold() == self.public_tag:
+                    include_public_tag = True
+                    if not self._is_admin(principal):
+                        raise ValueError(
+                            f"Cannot apply 'public' tag to dataset: only Tiled admins can apply the 'public' tag."
+                        )
+                elif tag not in self.loaded_tags:
                     raise ValueError(
                         f"Cannot apply tag to dataset: {tag=} is not defined"
                     )
-                if identifier not in self.loaded_tag_owners.get(tag, set()):
+                elif identifier not in self.loaded_tag_owners.get(tag, set()):
                     raise ValueError(
                         f"Cannot apply tag to dataset: user='{identifier}' is not an owner of {tag=}"
                     )
-            access_blob_from_policy = {"tags": list(access_tags)}
+            access_blob_from_policy["tags"] = {
+                tag for tag in access_tags if tag.casefold() != self.public_tag
+            }
+            if include_public_tag:
+                access_blob_from_policy["tags"].add(self.public_tag)
         else:
-            access_blob_from_policy = {"user": identifier.lower()}
+            access_blob_from_policy["user"] = identifier
 
         return access_blob_from_policy
 
@@ -532,11 +545,14 @@ class TagBasedAccessPolicy:
 
             allowed = set()
             if "user" in node.access_blob:
-                if identifier.lower() == node.access_blob["user"]:
+                if identifier == node.access_blob["user"]:
                     allowed = self.scopes
             elif "tags" in node.access_blob:
                 for tag in node.access_blob["tags"]:
-                    if tag not in self.loaded_tags:
+                    if tag == self.public_tag:
+                        allowed.update(self.read_scopes)
+                        continue
+                    elif tag not in self.loaded_tags:
                         continue
                     tag_scopes = self.loaded_tags[tag].get(identifier, set())
                     allowed.update(
@@ -564,10 +580,11 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = set.intersection(
+            *[self.loaded_scopes[scope].get(identifier, set()) for scope in scopes],
             *[
-                self.loaded_scopes[scope].get(identifier.lower(), set())
+                self.public_tag if scope in self.read_scopes else set()
                 for scope in scopes
-            ]
+            ],
         )
         queries.append(query_filter(identifier, tag_list))
         return queries
