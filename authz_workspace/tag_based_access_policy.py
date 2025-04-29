@@ -18,6 +18,20 @@ WRITING_SERVICE_ACCOUNT_UUIDS = {}
 group_record_cache = cachetools.TTLCache(maxsize=50_000, ttl=14_400)
 
 
+def get_group_users(groupname):
+    try:
+        usernames = group_record_cache[groupname]
+    except KeyError:
+        # logger.debug("%s: Cache miss", username)
+        usernames = grp.getgrnam(groupname).gr_mem
+        group_record_cache[groupname] = usernames
+    else:
+        # logger.debug("%s: Cache hit", username)
+        pass
+
+    return usernames
+
+
 class InterningLoader(yaml.loader.BaseLoader):
     pass
 
@@ -36,17 +50,17 @@ class TagBasedAccessPolicy:
         self.tag_config_path = Path(tag_config)
         self.client = httpx.Client(base_url=url)
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
-        self.read_metadata_scope = intern("read:metadata")
+        self.reverse_lookup_scopes = [intern("read:metadata"), intern("read:data")]
         self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
 
         self.roles = {}
         self.tags = {}
         self.tag_owners = {}
         self.compiled_tags = {}
-        self.compiled_users = {}
+        self.compiled_scopes = {}
         self.compiled_tag_owners = {}
         self.loaded_tags = {}
-        self.loaded_users = {}
+        self.loaded_scopes = {}
         self.loaded_tag_owners = {}
 
         self.load_tag_config()
@@ -296,19 +310,6 @@ class TagBasedAccessPolicy:
                     }
                     self.tags[beamline_root_tag]["tags"].append({"name": beamline_tag})
 
-    def _get_group_users(self, groupname):
-        try:
-            usernames = group_record_cache[groupname]
-        except KeyError:
-            # logger.debug("%s: Cache miss", username)
-            usernames = grp.getgrnam(groupname).gr_mem
-            group_record_cache[groupname] = usernames
-        else:
-            # logger.debug("%s: Cache hit", username)
-            pass
-
-        return usernames
-
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
         if current_tag in self.compiled_tags:
             return self.compiled_tags[current_tag]
@@ -382,7 +383,7 @@ class TagBasedAccessPolicy:
                     )
 
                 try:
-                    usernames = self._get_group_users(groupname)
+                    usernames = get_group_users(groupname)
                 except KeyError:
                     warnings.warn(
                         f"Group with {groupname=} does not exist on the system - skipping",
@@ -427,11 +428,14 @@ class TagBasedAccessPolicy:
             except (RecursionError, ValueError) as e:
                 raise RuntimeError(f"Tag compilation failed at tag: {tag}") from e
 
+        for scope in self.reverse_lookup_scopes:
+            self.compiled_scopes.setdefault(scope, {})
         for tag, users in self.compiled_tags.items():
             for user, scopes in users.items():
-                if self.read_metadata_scope in scopes:
-                    self.compiled_users.setdefault(user, set())
-                    self.compiled_users[user].add(tag)
+                for scope in self.reverse_lookup_scopes:
+                    if scope in scopes:
+                        self.compiled_scopes[scope].setdefault(user, set())
+                        self.compiled_scopes[scope][user].add(tag)
 
         for tag in self.tag_owners:
             self.compiled_tag_owners.setdefault(tag, set())
@@ -443,7 +447,7 @@ class TagBasedAccessPolicy:
                 for group in self.tag_owners[tag]["groups"]:
                     groupname = group["name"]
                     try:
-                        usernames = self._get_group_users(groupname)
+                        usernames = get_group_users(groupname)
                     except KeyError:
                         warnings.warn(
                             f"Group with {groupname=} does not exist on the system - skipping",
@@ -457,13 +461,13 @@ class TagBasedAccessPolicy:
 
     def recompile(self):
         self.compiled_tags = {}
-        self.compiled_users = {}
+        self.compiled_scopes = {}
         self.compiled_tag_owners = {}
         self.compile()
 
     def load_compiled_tags(self):
         self.loaded_tags = self.compiled_tags.copy()
-        self.loaded_users = self.compiled_users.copy()
+        self.loaded_scopes = self.compiled_scopes.copy()
         self.loaded_tag_owners = self.compiled_tag_owners.copy()
 
     def _get_id(self, principal):
@@ -547,6 +551,8 @@ class TagBasedAccessPolicy:
             return queries
         if not scopes.issubset(self.scopes):
             return NO_ACCESS
+        if not scopes.issubset(self.reverse_lookup_scopes):
+            return NO_ACCESS
 
         if principal.type == "service":
             identifier = str(principal.uuid)
@@ -555,6 +561,8 @@ class TagBasedAccessPolicy:
         else:
             identifier = self._get_id(principal)
 
-        tag_list = self.loaded_users.get(identifier, set())
+        tag_list = set.intersection(
+            *[self.loaded_scopes[scope].get(identifier, set()) for scope in scopes]
+        )
         queries.append(query_filter(identifier, tag_list))
         return queries
