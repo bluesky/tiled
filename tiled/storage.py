@@ -90,7 +90,7 @@ def parse_storage(item: Union[Path, str]) -> Storage:
     scheme = urlparse(item).scheme
     if scheme == "file":
         result = FileStorage(item)
-    if scheme == "postgresql":
+    elif scheme == "postgresql":
         result = SQLStorage(item)
     elif scheme in {"sqlite", "duckdb"}:
         result = EmbeddedSQLStorage(item)
