@@ -457,9 +457,10 @@ def test_metadata_with_unsafe_objects(tree):
         ac = client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
+            key="x",
         )
-        ac.metadata
-        ac.read()
+        # Local copy matches copy fetched from remote.
+        assert ac.metadata == client["x"].metadata
 
 
 @pytest.mark.asyncio
