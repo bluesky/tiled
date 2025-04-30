@@ -298,21 +298,10 @@ class TagBasedAccessPolicy:
                 beamline_tag = intern(beamline_tag)
                 beamline_root_tag = intern(beamline_root_tag)
                 if beamline_tag in self.tags:
-                    # clear out to ensure RootNode tags are not self-included
-                    self.tags[beamline_root_tag] = {}
-                    self.tags[beamline_root_tag] = {
-                        "auto_tags": [
-                            {"name": tag}
-                            for tag, members in self.tags.items()
-                            if any(
-                                auto_tag["name"] == beamline_tag
-                                for auto_tag in members.get("auto_tags", [])
-                            )
-                        ]
-                    }
-                    self.tags[beamline_root_tag]["auto_tags"].append(
-                        {"name": beamline_tag}
-                    )
+                    self.tags[beamline_root_tag]["auto_tags"] = [
+                        {"name": beamline_tag},
+                        {"name": self.public_tag},
+                    ]
 
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
         if current_tag in self.compiled_tags:
@@ -519,15 +508,20 @@ class TagBasedAccessPolicy:
                     raise ValueError(
                         f"Cannot apply tag to dataset: user='{identifier}' is not an owner of {tag=}"
                     )
-            access_blob_from_policy["tags"] = {
+
+            access_tags_from_policy = {
                 tag for tag in access_tags if tag.casefold() != self.public_tag
             }
             if include_public_tag:
-                access_blob_from_policy["tags"].add(self.public_tag)
-        else:
-            access_blob_from_policy["user"] = identifier
+                access_tags_from_policy.add(self.public_tag)
 
-        return access_blob_from_policy
+            access_blob_from_policy = {"tags": list(access_tags_from_policy)}
+            access_blob_modified = access_tags != access_tags_from_policy
+        else:
+            access_blob_from_policy = {"user": identifier}
+            access_blob_modified = True
+
+        return access_blob_modified, access_blob_from_policy
 
     async def allowed_scopes(self, node, principal, path_parts):
         # If this is being called, filter_for_access has let us get this far.
