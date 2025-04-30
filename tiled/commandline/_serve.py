@@ -362,7 +362,6 @@ def serve_catalog(
     import urllib.parse
 
     from ..catalog import from_uri
-    from ..catalog.utils import classify_writable_storage
     from ..server.app import build_app, print_server_info
 
     parsed_database = urllib.parse.urlparse(database)
@@ -464,7 +463,7 @@ or use an existing one:
     server_settings = {}
     tree = from_uri(
         database,
-        writable_storage=classify_writable_storage(write),
+        writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
     )
