@@ -67,7 +67,7 @@ from ..mimetypes import (
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
-from ..storage import FileStorage, parse_storage
+from ..storage import FileStorage, parse_storage, register_storage
 from ..structures.core import StructureFamily
 from ..utils import (
     UNCHANGED,
@@ -176,6 +176,10 @@ class Context:
             self.readable_storage.add(parse_storage(item))
         # Writable storage should also be readable.
         self.readable_storage.update(self.writable_storage)
+        # Register all storage in a registry that enables Adapters to access
+        # credentials (if applicable).
+        for item in self.readable_storage:
+            register_storage(item)
         # Stash a copy of filesystem-based readable storage.
         self.readable_filesystem_storage = set(
             item for item in self.readable_storage if isinstance(item, FileStorage)

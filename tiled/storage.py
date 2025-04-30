@@ -1,7 +1,7 @@
 import dataclasses
 import functools
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 from urllib.parse import urlparse, urlunparse
 
 from .utils import ensure_uri, path_from_uri
@@ -23,7 +23,6 @@ class Storage:
 
     def __post_init__(self):
         ensure_uri(self.uri)
-        register_storage(self)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -43,8 +42,8 @@ class EmbeddedSQLStorage(Storage):
 @dataclasses.dataclass(frozen=True)
 class SQLStorage(Storage):
     "File-based SQL database storage location"
-    username: str
-    password: str
+    username: Optional[str] = None
+    password: Optional[str] = None
 
     def __post_init__(self):
         # Extract username, password from URI if given in URI.
@@ -69,6 +68,7 @@ class SQLStorage(Storage):
                 parsed_uri.fragment,
             )
             object.__setattr__(self, "uri", urlunparse(clean_components))
+        super().__post_init__()
 
     @functools.cached_property
     def authenticated_uri(self):
@@ -90,7 +90,9 @@ def parse_storage(item: Union[Path, str]) -> Storage:
     scheme = urlparse(item).scheme
     if scheme == "file":
         result = FileStorage(item)
-    elif scheme in {"postgresql", "sqlite", "duckdb"}:
+    if scheme == "postgresql":
+        result = SQLStorage(item)
+    elif scheme in {"sqlite", "duckdb"}:
         result = EmbeddedSQLStorage(item)
     else:
         raise ValueError(f"writable_storage item {item} has unrecognized scheme")
