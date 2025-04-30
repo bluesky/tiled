@@ -29,7 +29,6 @@ class Storage:
 @dataclasses.dataclass(frozen=True)
 class FileStorage(Storage):
     "Filesystem storage location"
-    schemes = {"file"}
 
     @functools.cached_property
     def path(self):
@@ -39,7 +38,6 @@ class FileStorage(Storage):
 @dataclasses.dataclass(frozen=True)
 class EmbeddedSQLStorage(Storage):
     "File-based SQL database storage location"
-    schemes = {"duckdb", "sqlite"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -47,7 +45,6 @@ class SQLStorage(Storage):
     "File-based SQL database storage location"
     username: str
     password: str
-    schemes = {"postgresql"}
 
     def __post_init__(self):
         # Extract username, password from URI if given in URI.
