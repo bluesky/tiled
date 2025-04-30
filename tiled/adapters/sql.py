@@ -23,7 +23,13 @@ import pyarrow.fs
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
-from ..storage import EmbeddedSQLStorage, SQLStorage, Storage, get_storage
+from ..storage import (
+    EmbeddedSQLStorage,
+    SQLStorage,
+    Storage,
+    get_storage,
+    parse_storage,
+)
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
@@ -62,7 +68,10 @@ class SQLAdapter:
         metadata : the optional metadata of the data.
         specs : the specs.
         """
-        data_uri = getattr(get_storage(data_uri), "authenticated_uri", data_uri)
+        storage = parse_storage(data_uri)
+        if isinstance(storage, SQLStorage):
+            # Obtain credentials
+            data_uri = cast(SQLStorage, get_storage(data_uri)).authenticated_uri
         self.uri = data_uri
         self.conn = create_connection(self.uri)
 
@@ -114,9 +123,15 @@ class SQLAdapter:
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
         check_table_name(table_name)
 
-        data_uri = getattr(storage, "authenticated_uri", storage.uri)
-        conn = create_connection(data_uri)
-        dialect, _ = data_uri.split(":", 1)
+        if isinstance(storage, SQLStorage):
+            uri = storage.authenticated_uri
+        elif isinstance(storage, EmbeddedSQLStorage):
+            # EmbeddedSQLStorage has no authentication.
+            uri = storage.uri
+        else:
+            raise ValueError(f"Unsupported storage {storage}")
+        conn = create_connection(uri)
+        dialect, _ = uri.split(":", 1)
         # Prefix columns with internal _dataset_id, _partition_id, ...
         schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
         schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
@@ -167,6 +182,7 @@ class SQLAdapter:
 
         data_source.assets.append(
             Asset(
+                # Store URI *without* credentials.
                 data_uri=storage.uri,
                 is_directory=False,
                 parameter="data_uri",
