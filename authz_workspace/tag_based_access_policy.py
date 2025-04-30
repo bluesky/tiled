@@ -499,15 +499,13 @@ class TagBasedAccessPolicy:
                     include_public_tag = True
                     if not self._is_admin(principal):
                         raise ValueError(
-                            f"Cannot apply 'public' tag to dataset: only Tiled admins can apply the 'public' tag."
+                            f"Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                         )
                 elif tag not in self.loaded_tags:
-                    raise ValueError(
-                        f"Cannot apply tag to dataset: {tag=} is not defined"
-                    )
+                    raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
                 elif identifier not in self.loaded_tag_owners.get(tag, set()):
                     raise ValueError(
-                        f"Cannot apply tag to dataset: user='{identifier}' is not an owner of {tag=}"
+                        f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                     )
 
             access_tags_from_policy = {
@@ -549,13 +547,13 @@ class TagBasedAccessPolicy:
                 include_public_tag = True
                 if not self._is_admin(principal):
                     raise ValueError(
-                        f"Cannot apply 'public' tag to dataset: only Tiled admins can apply the 'public' tag."
+                        f"Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                     )
             elif tag not in self.loaded_tags:
-                raise ValueError(f"Cannot apply tag to dataset: {tag=} is not defined")
+                raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
             elif identifier not in self.loaded_tag_owners.get(tag, set()):
                 raise ValueError(
-                    f"Cannot apply tag to dataset: user='{identifier}' is not an owner of {tag=}"
+                    f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                 )
 
         access_tags_from_policy = {
@@ -565,36 +563,40 @@ class TagBasedAccessPolicy:
             access_tags_from_policy.add(self.public_tag)
 
         # check for tags that need to be removed
-        tags_to_remove = access_tags.difference(acces_tags_from_policy)
         if "tags" in node.access_blob["tags"]:
-            for tag in tags_to_remove:
+            for tag in set(node.access_blob["tags"]).difference(
+                access_tags_from_policy
+            ):
                 if tag == self.public_tag:
                     if not self._is_admin(principal):
                         raise ValueError(
-                            f"Cannot remove 'public' tag from dataset: only Tiled admins can remove the 'public' tag."
+                            f"Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
                         )
                 elif tag not in self.loaded_tags:
                     raise ValueError(
-                        f"Cannot remove tag from dataset: {tag=} is not defined"
+                        f"Cannot remove tag from node: {tag=} is not defined"
                     )
                 elif identifier not in self.loaded_tag_owners.get(tag, set()):
                     raise ValueError(
-                        f"Cannot remove tag from dataset: user='{identifier}' is not an owner of {tag=}"
+                        f"Cannot remove tag from node: user='{identifier}' is not an owner of {tag=}"
                     )
 
-        # check that removal of tags would not result in invalid scopes for user
+        access_blob_from_policy = {"tags": list(access_tags_from_policy)}
+        access_blob_modified = access_tags != access_tags_from_policy
+
+        # check that the access_blob change would not result in invalid scopes for user.
+        # this applies when removing tags, but also must be done when
+        # switching from user-owned node to shared (tagged) node
         new_scopes = set()
         for tag in access_tags_from_policy:
             new_scopes.update(self.loaded_tags[tag][identifier])
         if not all(scope in new_scopes for scope in self.unremovable_scopes):
             raise ValueError(
-                f"Cannot remove tags from dataset: operation removes unremovable scopes."
-                f"These tags were slated for removal: {tags_to_remove}"
+                f"Cannot modify tags on node: operation removes unremovable scopes."
+                f"The current access_blob is: {node.access_blob}"
+                f"The new access_blob would be: {access_blob_from_policy}"
                 f"These scopes cannot be self-removed: {self.unremovable_scopes}"
             )
-
-        access_blob_from_policy = {"tags": list(access_tags_from_policy)}
-        access_blob_modified = access_tags != access_tags_from_policy
 
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
