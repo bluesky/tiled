@@ -460,7 +460,7 @@ class BaseClient:
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None):
+    def update_metadata(self, metadata=None, specs=None, access_blob=None):
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -475,6 +475,10 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
         See Also
         --------
@@ -510,19 +514,27 @@ class BaseClient:
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
-        if isinstance(metadata, list) and len(metadata) == 2:
+        if isinstance(metadata, list) and len(metadata) == 3:
             if specs is None:
                 # Likely [metadata, specs] form from node.metadata_copy()
-                metadata, specs = metadata
+                metadata, specs, access_blob = metadata
             else:
-                raise ValueError("Duplicate specs provided after [metadata, specs]")
+                raise ValueError(
+                    "Duplicate specs provided after [metadata, specs, access_blob]"
+                )
 
-        metadata_patch, specs_patch = self.build_metadata_patches(
-            metadata=metadata, specs=specs
+        metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
+            metadata=metadata,
+            specs=specs,
+            access_blob=acces_blob,
         )
-        self.patch_metadata(metadata_patch=metadata_patch, specs_patch=specs_patch)
+        self.patch_metadata(
+            metadata_patch=metadata_patch,
+            specs_patch=specs_patch,
+            access_blob_patch=access_blob_patch,
+        )
 
-    def build_metadata_patches(self, metadata=None, specs=None):
+    def build_metadata_patches(self, metadata=None, specs=None, access_blob=None):
         """
         Build valid JSON Patches (RFC6902) for metadata and metadata validation
         specs accepted by `patch_metadata`.
@@ -536,6 +548,11 @@ class BaseClient:
         specs : list[Spec], optional
             Metadata validation specifications.
 
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+
         Returns
         -------
         metadata_patch : list[dict]
@@ -544,6 +561,9 @@ class BaseClient:
         specs_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
             for metadata validation specifications.
+        access_blob_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for access control information stored in the access_blob.
 
         See Also
         --------
@@ -606,7 +626,17 @@ class BaseClient:
                 ).patch
             )
 
-        return metadata_patch, specs_patch
+        if access_blob is None:
+            access_blob_patch = []
+        else:
+            ab_copy = deepcopy(self._item["attributes"]["access_blob"])
+            access_blob_patch = jsonpach.JsonPatch.from_diff(
+                self._item["attributes"]["access_blob"],
+                apply_update_patch(ab_copy, access_blob),
+                dumps=orjson.dumps,
+            ).patch
+
+        return metadata_patch, specs_patch, access_blob_patch
 
     def _build_json_patch(self, origin, update_patch):
         """
@@ -632,6 +662,7 @@ class BaseClient:
         self,
         metadata_patch=None,
         specs_patch=None,
+        access_blob_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
     ):
         """
@@ -646,6 +677,8 @@ class BaseClient:
         specs_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata validation
             specifications list
+        access_blob : List[dict], optional
+            JSON-serializable patch to be applied to the access_blob
         content_type : str
             Mimetype of the patches. Acceptable values are:
 
@@ -702,6 +735,7 @@ class BaseClient:
             "content-type": content_type,
             "metadata": metadata_patch,
             "specs": normalized_specs_patch,
+            "access_blob": access_blob_patch,
         }
 
         for attempt in retry_context():
@@ -730,7 +764,15 @@ class BaseClient:
             patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
             self._item["attributes"]["specs"] = patched_specs
 
-    def replace_metadata(self, metadata=None, specs=None):
+        if access_blob_patch is not None:
+            if "access_blob" in content:
+                self._item["attributes"]["access_blob"] = content["access_blob"]
+            else:
+                self._item["attributes"]["access_blob"] = patcher(
+                    dict(self.access_blob), access_blob_patch, content_type
+                )
+
+    def replace_metadata(self, metadata=None, specs=None, access_blob=None):
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
@@ -744,6 +786,10 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_blob: dict, optional
+            Server-specific authZ info in blob form, used to confer access to the node.
+            May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
 
         See Also
         --------
@@ -764,6 +810,7 @@ class BaseClient:
         data = {
             "metadata": metadata,
             "specs": normalized_specs,
+            "access_blob": access_blob,
         }
 
         for attempt in retry_context():
@@ -780,12 +827,18 @@ class BaseClient:
                 # It is updated locally using the new version.
                 self._item["attributes"]["metadata"] = content["metadata"]
             else:
-                # Metadata was accepted as it si by the server.
-                # It is updated locally with the version submitted buy the client.
+                # Metadata was accepted as it is by the server.
+                # It is updated locally with the version submitted by the client.
                 self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
             self._item["attributes"]["specs"] = normalized_specs
+
+        if access_blob is not None:
+            if "access_blob" in content:
+                self._item["attributes"]["access_blob"] = content["access_blob"]
+            else:
+                self._item["attributes"]["access_blob"] = access_blob
 
     @property
     def metadata_revisions(self):

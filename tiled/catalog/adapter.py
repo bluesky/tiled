@@ -931,7 +931,7 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def replace_metadata(self, metadata=None, specs=None):
+    async def replace_metadata(self, metadata=None, specs=None, access_blob=None):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -939,6 +939,8 @@ class CatalogNodeAdapter:
             values["metadata_"] = metadata
         if specs is not None:
             values["specs"] = [s.model_dump() for s in specs]
+        if access_blob is not None:
+            values["access_blob"] = access_blob
         async with self.context.session() as db:
             current = (
                 await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
@@ -958,6 +960,7 @@ class CatalogNodeAdapter:
                 # SQLAlchemy reserved word 'metadata'.
                 metadata_=current.metadata_,
                 specs=current.specs,
+                access_blob=current.access_blob,
                 node_id=current.id,
                 revision_number=next_revision_number,
             )

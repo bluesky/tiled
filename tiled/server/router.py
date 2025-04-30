@@ -1190,15 +1190,16 @@ def get_router(
                 raise NotImplementedError
             structure = body.data_sources[0].structure
 
-        if (
-            request.app.state.access_policy is not None
-            and getattr(request.app.state.access_policy, "init_node", None) is not None
+        if request.app.state.access_policy is not None and hasattr(
+            request.app.state.access_policy, "init_node"
         ):
-            access_blob_from_policy = await request.app.state.access_policy.init_node(
-                principal, access_blob=access_blob
+            access_blob_modified, access_blob = (
+                await request.app.state.access_policy.init_node(
+                    principal, access_blob=access_blob
+                )
             )
-            access_blob = access_blob_from_policy
         else:
+            access_blob_modified = access_blob != {}
             access_blob = {}
 
         metadata_modified, metadata = await validate_metadata(
@@ -1227,7 +1228,7 @@ def get_router(
         }
         if metadata_modified:
             response_data["metadata"] = metadata
-        if access_blob:
+        if access_blob_modified:
             response_data["access_blob"] = access_blob
 
         return json_or_msgpack(request, response_data)
@@ -1458,6 +1459,9 @@ def get_router(
         body: schemas.PatchMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1467,6 +1471,7 @@ def get_router(
         if body.content_type == patch_mimetypes.JSON_PATCH:
             metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
             specs = apply_json_patch((entry.specs or []), (body.specs or []))
+            access_blob = apply_json_patch(entry.access_blob, (body.access_blob or []))
         elif body.content_type == patch_mimetypes.MERGE_PATCH:
             metadata = apply_merge_patch(entry.metadata(), (body.metadata or {}))
             # body.specs = [] clears specs, as per json merge patch specification
@@ -1474,6 +1479,7 @@ def get_router(
             current_specs = entry.specs or []
             target_specs = current_specs if body.specs is None else body.specs
             specs = apply_merge_patch(current_specs, target_specs)
+            access_blob = apply_merge_patch(entry.access_blob, (body.access_blob or []))
         else:
             raise HTTPException(
                 status_code=HTTP_406_NOT_ACCEPTABLE,
@@ -1505,11 +1511,26 @@ def get_router(
             settings=settings,
         )
 
-        await entry.replace_metadata(metadata=metadata, specs=specs)
+        if request.app.state.access_policy is not None and hasattr(
+            request.app.state.access_policy, "modify_node"
+        ):
+            access_blob_modified, access_blob = (
+                await request.app.state.access_policy.modify_node(
+                    entry, principal, access_blob
+                )
+            )
+        else:
+            access_blob_modified = False
+
+        await entry.replace_metadata(
+            metadata=metadata, specs=specs, access_blob=access_blob
+        )
 
         response_data = {"id": entry.key}
         if metadata_modified:
             response_data["metadata"] = metadata
+        if access_blob_modified:
+            response_data["access_blob"] = access_blob
         return json_or_msgpack(request, response_data)
 
     @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
@@ -1518,6 +1539,9 @@ def get_router(
         body: schemas.PutMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1525,11 +1549,12 @@ def get_router(
                 detail="This node does not support update of metadata.",
             )
 
-        metadata, structure_family, structure, specs = (
+        metadata, structure_family, structure, specs, access_blob = (
             body.metadata if body.metadata is not None else entry.metadata(),
             entry.structure_family,
             entry.structure(),
             body.specs if body.specs is not None else entry.specs,
+            body.access_blob if body.access_blob is not None else entry.access_blob,
         )
 
         metadata_modified, metadata = await validate_metadata(
@@ -1540,11 +1565,26 @@ def get_router(
             settings=settings,
         )
 
-        await entry.replace_metadata(metadata=metadata, specs=specs)
+        if request.app.state.access_policy is not None and hasattr(
+            request.app.state.access_policy, "modify_node"
+        ):
+            access_blob_modified, access_blob = (
+                await request.app.state.access_policy.modify_node(
+                    entry, principal, access_blob
+                )
+            )
+        else:
+            access_blob_modified = False
+
+        await entry.replace_metadata(
+            metadata=metadata, specs=specs, access_blob=access_blob
+        )
 
         response_data = {"id": entry.key}
         if metadata_modified:
             response_data["metadata"] = metadata
+        if access_blob_modified:
+            response_data["access_blob"] = access_blob
         return json_or_msgpack(request, response_data)
 
     @router.get("/revisions/{path:path}")

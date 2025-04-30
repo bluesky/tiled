@@ -52,6 +52,7 @@ class TagBasedAccessPolicy:
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         self.read_scopes = [intern("read:metadata"), intern("read:data")]
         self.reverse_lookup_scopes = [intern("read:metadata"), intern("read:data")]
+        self.unremovable_scopes = [intern("read:metadata"), intern("read:data")]
         self.public_tag = intern("public").casefold()
         self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
 
@@ -521,6 +522,81 @@ class TagBasedAccessPolicy:
             access_blob_from_policy = {"user": identifier}
             access_blob_modified = True
 
+        # modified means the blob to-be-used was changed in comparison to the user input
+        return access_blob_modified, access_blob_from_policy
+
+    async def modify_node(self, node, principal, access_blob):
+        if principal.type == "service":
+            identifier = str(principal.uuid)
+        else:
+            identifier = self._get_id(principal)
+
+        if not "tags" in access_blob:
+            raise ValueError(
+                f"""access_blob must be in the form '{"tags": ["tag1", "tag2", ...]}'"""
+                f"""Received {access_blob=}"""
+            )
+        access_tags = set(access_blob["tags"])
+        include_public_tag = False
+        # check for tags that need to be added
+        for tag in access_tags:
+            if tag in node.access_blob.get("tags", []):
+                # node already has this tag - no action.
+                # or: access_blob does not have "tags" key,
+                # so it must hvae a "user" key currently
+                continue
+            if tag.casefold() == self.public_tag:
+                include_public_tag = True
+                if not self._is_admin(principal):
+                    raise ValueError(
+                        f"Cannot apply 'public' tag to dataset: only Tiled admins can apply the 'public' tag."
+                    )
+            elif tag not in self.loaded_tags:
+                raise ValueError(f"Cannot apply tag to dataset: {tag=} is not defined")
+            elif identifier not in self.loaded_tag_owners.get(tag, set()):
+                raise ValueError(
+                    f"Cannot apply tag to dataset: user='{identifier}' is not an owner of {tag=}"
+                )
+
+        access_tags_from_policy = {
+            tag for tag in access_tags if tag.casefold() != self.public_tag
+        }
+        if include_public_tag:
+            access_tags_from_policy.add(self.public_tag)
+
+        # check for tags that need to be removed
+        tags_to_remove = access_tags.difference(acces_tags_from_policy)
+        if "tags" in node.access_blob["tags"]:
+            for tag in tags_to_remove:
+                if tag == self.public_tag:
+                    if not self._is_admin(principal):
+                        raise ValueError(
+                            f"Cannot remove 'public' tag from dataset: only Tiled admins can remove the 'public' tag."
+                        )
+                elif tag not in self.loaded_tags:
+                    raise ValueError(
+                        f"Cannot remove tag from dataset: {tag=} is not defined"
+                    )
+                elif identifier not in self.loaded_tag_owners.get(tag, set()):
+                    raise ValueError(
+                        f"Cannot remove tag from dataset: user='{identifier}' is not an owner of {tag=}"
+                    )
+
+        # check that removal of tags would not result in invalid scopes for user
+        new_scopes = set()
+        for tag in access_tags_from_policy:
+            new_scopes.update(self.loaded_tags[tag][identifier])
+        if not all(scope in new_scopes for scope in self.unremovable_scopes):
+            raise ValueError(
+                f"Cannot remove tags from dataset: operation removes unremovable scopes."
+                f"These tags were slated for removal: {tags_to_remove}"
+                f"These scopes cannot be self-removed: {self.unremovable_scopes}"
+            )
+
+        access_blob_from_policy = {"tags": list(access_tags_from_policy)}
+        access_blob_modified = access_tags != access_tags_from_policy
+
+        # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
     async def allowed_scopes(self, node, principal, path_parts):
