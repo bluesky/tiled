@@ -1,9 +1,10 @@
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Set, Tuple, Union
 
 import dask.base
 import dask.dataframe
 import pandas
 
+from ..storage import Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
@@ -23,6 +24,7 @@ class TableAdapter:
     """
 
     structure_family = StructureFamily.table
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,

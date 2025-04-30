@@ -23,8 +23,9 @@ import pyarrow.fs
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
+from ..storage import EmbeddedSQLStorage, SQLStorage, Storage, get_storage
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Storage
+from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -40,6 +41,7 @@ class SQLAdapter:
     """SQLAdapter Class"""
 
     structure_family = StructureFamily.table
+    supported_storage = {EmbeddedSQLStorage, SQLStorage}
 
     def __init__(
         self,
@@ -52,6 +54,7 @@ class SQLAdapter:
     ) -> None:
         """
         Construct the SQLAdapter object.
+
         Parameters
         ----------
         data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
@@ -59,8 +62,8 @@ class SQLAdapter:
         metadata : the optional metadata of the data.
         specs : the specs.
         """
+        data_uri = getattr(get_storage(data_uri), "authenticated_uri", data_uri)
         self.uri = data_uri
-
         self.conn = create_connection(self.uri)
 
         self._metadata = metadata or {}
@@ -111,8 +114,7 @@ class SQLAdapter:
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
         check_table_name(table_name)
 
-        data_uri = storage.get("sql")  # TODO scrub credential
-
+        data_uri = getattr(storage, "authenticated_uri", storage.uri)
         conn = create_connection(data_uri)
         dialect, _ = data_uri.split(":", 1)
         # Prefix columns with internal _dataset_id, _partition_id, ...
@@ -165,7 +167,7 @@ class SQLAdapter:
 
         data_source.assets.append(
             Asset(
-                data_uri=data_uri,
+                data_uri=storage.uri,
                 is_directory=False,
                 parameter="data_uri",
                 num=None,

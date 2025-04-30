@@ -43,10 +43,10 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 @pytest.fixture
 def tree(tmpdir):
     return in_memory(
-        writable_storage={
-            "filesystem": str(tmpdir / "data"),
-            "sql": f"duckdb:///{tmpdir / 'data.duckdb'}",
-        }
+        writable_storage=[
+            f"file://localhost{str(tmpdir / 'data')}",
+            f"duckdb:///{tmpdir / 'data.duckdb'}",
+        ]
     )
 
 

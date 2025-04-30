@@ -9,8 +9,9 @@ import pytest
 import pytest_asyncio
 
 from tiled.adapters.sql import SQLAdapter, check_table_name
+from tiled.storage import parse_storage
 from tiled.structures.core import StructureFamily
-from tiled.structures.data_source import DataSource, Management, Storage
+from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
 
 from ..utils import temp_postgres
@@ -55,7 +56,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
             assets=[],
         )
 
-        storage = Storage(filesystem=None, sql=data_uri)
+        storage = parse_storage(data_uri)
         return SQLAdapter.init_storage(
             data_source=data_source, storage=storage, path_parts=[]
         )
