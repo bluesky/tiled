@@ -89,6 +89,7 @@ class SQLStorage(Storage):
 
 
 def parse_storage(item: Union[Path, str]) -> Storage:
+    item = ensure_uri(item)
     scheme = urlparse(item).scheme
     if scheme == "file":
         result = FileStorage(item)

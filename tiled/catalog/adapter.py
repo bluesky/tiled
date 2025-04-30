@@ -76,7 +76,6 @@ from ..utils import (
     UnsupportedQueryType,
     ensure_awaitable,
     ensure_specified_sql_driver,
-    ensure_uri,
     import_object,
     path_from_uri,
     safe_json_dump,
@@ -167,7 +166,7 @@ class Context:
             writable_storage = list(writable_storage.values())
         # Back-compat: `writable_storage` used to be a filepath.
         if isinstance(writable_storage, (str, Path)):
-            writable_storage = [ensure_uri(writable_storage)]
+            writable_storage = [writable_storage]
         if isinstance(readable_storage, str):
             raise ValueError("readable_storage should be a list of URIs or paths")
 
