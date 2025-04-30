@@ -677,6 +677,13 @@ class CatalogNodeAdapter:
                     for storage in self.context.writable_storage:
                         if isinstance(storage, tuple(supported_storage)):
                             break
+                    else:
+                        raise RuntimeError(
+                            f"The adapter {adapter} supports storage types "
+                            f"{[cls.__name__ for cls in supported_storage]} "
+                            "but the only available storage types "
+                            f"are {self.context.writable_storage}."
+                        )
                     data_source = await ensure_awaitable(
                         adapter.init_storage,
                         storage,
