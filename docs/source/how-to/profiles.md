@@ -171,8 +171,8 @@ my_profile:
   direct:
      trees:
        - path: /
-         tree: tiled.catalog:from_uri
-         args:
+         tree:
+           type: tiled.catalog:from_uri
            uri: "/path/to/catalog.db"
 ```
 
@@ -186,10 +186,10 @@ usual client-side configuration, such as
 my_profile:
   direct:
     trees:
-      - path: /
-        tree: tiled.catalog:from_uri
-        args:
-          directory: "/path/to/catalog.db"
+    - path: /
+      tree:
+        type: tiled.catalog:from_uri
+        directory: "/path/to/catalog.db"
   cache:
     capacity: 2_000_000_000 # 2 GB
 ```

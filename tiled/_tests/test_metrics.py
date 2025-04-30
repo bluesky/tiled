@@ -10,8 +10,8 @@ from ..client.utils import handle_error
 from ..server.app import build_app_from_config
 
 config = {
-    "authentication": {"single_user_api_key": "secret"},
-    "trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}],
+    "single_user_api_key": "secret",
+    "trees": [{"path": "/", "tree": {"type:" "tiled.examples.generated_minimal:tree"}}],
 }
 router = APIRouter()
 

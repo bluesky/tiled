@@ -45,7 +45,7 @@ config = {
     "trees": [
         {
              "path": "/",
-             "tree": "tiled.examples.generated_minimal:tree",
+             "tree": {"type": "tiled.examples.generated_minimal:tree"},
         }
 }
 app = build_app_from_config(config)
@@ -56,7 +56,7 @@ client = from_context(context)
 From a configuration file:
 
 ```py
-config = parse_configs("path/to/config.yml")
+config: Settings = parse_config("path/to/config.yml")
 app = build_app_from_config(config)
 context = Context.from_app(app)
 client = from_context(context)

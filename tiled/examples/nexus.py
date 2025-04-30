@@ -7,13 +7,13 @@ To serve a different URL from the example hard-coded here, use the config:
 
 ```
 # config.yml
-authentication:
-    allow_anonymous_access: true
+allow_anonymous_access: true
 trees:
     - path: /
-      tree: tiled.examples.nexus:MapAdapter
-      args:
-          url: YOUR_URL_HERE
+      tree:
+        type: tiled.examples.nexus:MapAdapter
+        args:
+            url: YOUR_URL_HERE
 ```
 
 tiled serve config config.yml

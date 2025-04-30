@@ -1,17 +1,17 @@
 # Must set environment variables ORCID_CLIENT_ID and ORCID_CLIENT_SECRET to run.
-authentication:
-  providers:
-  - provider: orcid
-    authenticator: tiled.authenticators:OIDCAuthenticator
-    args:
-      audience: tiled  # something unique to ensure received headers are for you
-      # These values come from https://orcid.org/developer-tools
-      client_id: ${ORCID_CLIENT_ID}
-      client_secret: ${ORCID_CLIENT_SECRET}
-      well_known_uri: https://orcid.org/.well-known/openid-configuration
-      confirmation_message: "You have logged in with ORCID as {id}."
+authenticators:
+- provider: orcid
+  authenticator:
+    type: tiled.authenticators:OIDCAuthenticator
+    audience: tiled  # something unique to ensure received headers are for you
+    # These values come from https://orcid.org/developer-tools
+    client_id: ${ORCID_CLIENT_ID}
+    client_secret: ${ORCID_CLIENT_SECRET}
+    well_known_uri: https://orcid.org/.well-known/openid-configuration
+    confirmation_message: "You have logged in with ORCID as {id}."
 trees:
  # Just some arbitrary example data...
  # The point of this example is the authenticaiton above.
- - tree: tiled.examples.generated_minimal:tree
+ - tree:
+      type: tiled.examples.generated_minimal:tree
    path: /

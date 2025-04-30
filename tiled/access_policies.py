@@ -1,5 +1,7 @@
 from functools import partial
 
+from tiled.adapters.protocols import AccessPolicy
+
 from .queries import In, KeysFilter
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 from .utils import Sentinel, SpecialUsers, import_object
@@ -8,7 +10,7 @@ ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
 
 
-class DummyAccessPolicy:
+class DummyAccessPolicy(AccessPolicy):
     "Impose no access restrictions."
 
     async def allowed_scopes(self, node, principal, path_parts):
@@ -18,7 +20,7 @@ class DummyAccessPolicy:
         return []
 
 
-class SimpleAccessPolicy:
+class SimpleAccessPolicy(AccessPolicy):
     """
     A mapping of user names to lists of entries they have access to.
 

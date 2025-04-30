@@ -50,8 +50,7 @@ TILED_SINGLE_USER_API_KEY=YOUR_SECRET tiled serve ...
 or via the configuration parameter
 
 ```yaml
-authentication:
-  single_user_api_key: "..."
+single_user_api_key: "..."
 ```
 
 When the secret is set manually it this way, it is *not* logged in the terminal.
@@ -102,19 +101,18 @@ tiled serve config ...
 include the configuration:
 
 ```yaml
-authentication:
-  allow_anonymous_access: true
+allow_anonymous_access: true
 ```
 
 This is a complete working example:
 
 ```yaml
 # config.yml
-authentication:
-  allow_anonymous_access: true
+allow_anonymous_access: true
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -172,26 +170,20 @@ using a username and password. It requires one additional dependency:
 pip install pamela
 ```
 
-The configuration file(s) should include:
-
-```yaml
-authentication:
-  authenticator: tiled.authenticators:PAMAuthenticator
-```
-
 Here is a complete working example:
 
 ```yaml
 # pam_config.yml
-authentication:
-  providers:
-    - authenticator: tiled.authenticators:PAMAuthenticator
-      # This 'provider' can be any string; it is used to differentiate
-      # authentication providers when multiple ones are supported.
-      provider: local
+authenticators:
+  - authenticator:
+      type: tiled.authenticators:PAMAuthenticator
+    # This 'provider' can be any string; it is used to differentiate
+    # authentication providers when multiple ones are supported.
+    provider: local
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -248,19 +240,18 @@ pip install httpx
 The configuration file(s) must include the following.
 
 ```yaml
-authentication:
-  providers:
-  - provider: example.com
-    authenticator: tiled.authenticators:OIDCAuthenticator
-    args:
-      # Values should come from your OIDC provider configuration
-      # The audience claim is checked by the OIDC Client (Tiled)
-      # It checks that the Authentication header that you are passed has not been intercepted
-      # And that elevated claims from other services do not apply here
-      audience: tiled  # something unique to ensure received headers are for you
-      client_id: tiled_client
-      client_secret: ${OIDC_CLIENT_SECRET} # referencing an environment variable
-      well_known_uri: example.com/.well-known/openid-configuration
+authenticators:
+- provider: example.com
+  authenticator:
+    type: tiled.authenticators:OIDCAuthenticator
+    # Values should come from your OIDC provider configuration
+    # The audience claim is checked by the OIDC Client (Tiled)
+    # It checks that the Authentication header that you are passed has not been intercepted
+    # And that elevated claims from other services do not apply here
+    audience: tiled  # something unique to ensure received headers are for you
+    client_id: tiled_client
+    client_secret: ${OIDC_CLIENT_SECRET} # referencing an environment variable
+    well_known_uri: example.com/.well-known/openid-configuration
 ```
 
 There are example configurations for ORCID and Google in the directory
@@ -279,18 +270,18 @@ should only for used for development and demos.
 
 ```yaml
 # dictionary_config.yml
-authentication:
-  providers:
-  - provider: toy
-    authenticator: tiled.authenticators:DictionaryAuthenticator
-    args:
-      users_to_passwords:
-        alice: ${ALICE_PASSWORD}
-        bob: ${BOB_PASSWORD}
-        cara: ${CARA_PASSWORD}
+authenticators:
+- provider: toy
+  authenticator:
+    type: tiled.authenticators:DictionaryAuthenticator
+    users_to_passwords:
+      alice: ${ALICE_PASSWORD}
+      bob: ${BOB_PASSWORD}
+      cara: ${CARA_PASSWORD}
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -301,13 +292,14 @@ The ``DummyAuthenticator`` accepts *any* username and password combination.
 
 ```yaml
 # dummy_config.yml
-authentication:
-  providers:
-  - provider: toy
-    authenticator: tiled.authenticators:DummyAuthenticator
+authenticators:
+- provider: toy
+  authenticator:
+    type: tiled.authenticators:DummyAuthenticator
 trees:
   - path: /
-    tree: tiled.examples.generated_minimal:tree
+    tree:
+      type: tiled.examples.generated_minimal:tree
 ```
 
 ```
@@ -326,8 +318,7 @@ To make such entries visible to *anonymous*, unauthenticated users as well,
 include the configuration:
 
 ```yaml
-authentication:
-  allow_anonymous_access: true
+allow_anonymous_access: true
 ```
 
 See also {doc}`../reference/service-configuration`.

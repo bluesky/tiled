@@ -3,12 +3,11 @@
 # Declare variables to be passed into your templates.
 
 config:
-  authentication:
-    allow_anonymous_access: false
+  allow_anonymous_access: false
   trees:
     - path: /
-      tree: catalog
-      args:
+      tree:
+        type: catalog
         uri: "sqlite:////storage/catalog.db"
         writable_storage: "/storage/data"
         init_if_not_exists: true

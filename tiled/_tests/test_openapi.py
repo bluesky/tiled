@@ -8,19 +8,19 @@ from ..server.app import build_app_from_config
 # Basic authenticated server config
 tree = MapAdapter({})
 config = {
-    "authentication": {
-        "secret_keys": ["SECRET"],
-        "providers": [
-            {
-                "provider": "toy",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
-            }
-        ],
-    },
+    "secret_keys": ["SECRET"],
+    "authenticators": [
+        {
+            "provider": "toy",
+            "authenticator": {
+                "type": "tiled.authenticators:DictionaryAuthenticator",
+                "users_to_passwords": {"alice": "secret1", "bob": "secret2"},
+            },
+        }
+    ],
     "trees": [
         {
-            "tree": f"{__name__}:tree",
+            "tree": {"type:" f"{__name__}:tree"},
             "path": "/",
         },
     ],

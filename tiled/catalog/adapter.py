@@ -139,7 +139,7 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs, access_policy):
+    def __init__(self, metadata, specs):
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
@@ -303,7 +303,6 @@ class CatalogNodeAdapter:
         conditions=None,
         queries=None,
         sorting=None,
-        access_policy=None,
     ):
         self.context = context
         self.engine = self.context.engine
@@ -321,7 +320,6 @@ class CatalogNodeAdapter:
         self.specs = [Spec.model_validate(spec) for spec in node.specs]
         self.ancestors = node.ancestors
         self.key = node.key
-        self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
 
@@ -528,7 +526,6 @@ class CatalogNodeAdapter:
             node=self.node,
             conditions=conditions,
             sorting=sorting,
-            # access_policy=self.access_policy,
             # entries_stale_after=self.entries_stale_after,
             # metadata_stale_after=self.entries_stale_after,
             # must_revalidate=must_revalidate,
@@ -728,9 +725,7 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            return key, type(self)(
-                self.context, refreshed_node, access_policy=self.access_policy
-            )
+            return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db, asset):
         # Find an asset_id if it exists, otherwise create a new one
@@ -1015,9 +1010,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return [
                 (
                     node.key,
-                    STRUCTURES[node.structure_family](
-                        self.context, node, access_policy=self.access_policy
-                    ),
+                    STRUCTURES[node.structure_family](self.context, node),
                 )
                 for node in nodes
             ]
@@ -1426,7 +1419,6 @@ def in_memory(
     *,
     metadata=None,
     specs=None,
-    access_policy=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
@@ -1437,7 +1429,6 @@ def in_memory(
         uri=uri,
         metadata=metadata,
         specs=specs,
-        access_policy=access_policy,
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         init_if_not_exists=True,
@@ -1451,7 +1442,6 @@ def from_uri(
     *,
     metadata=None,
     specs=None,
-    access_policy=None,
     writable_storage=None,
     readable_storage=None,
     init_if_not_exists=False,
@@ -1498,8 +1488,7 @@ def from_uri(
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
-        RootNode(metadata, specs, access_policy),
-        access_policy=access_policy,
+        RootNode(metadata, specs),
     )
 
 

@@ -39,24 +39,22 @@ def config(sqlite_or_postgresql_database_uri):
         capture_output=True,
     )
     return {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
-                    },
-                }
-            ],
-        },
+        "secret_keys": ["SECRET"],
+        "authenticators": [
+            {
+                "provider": "toy",
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
+                    "users_to_passwords": {"alice": "secret1", "bob": "secret2"},
+                },
+            }
+        ],
         "database": {
             "uri": database_uri,
         },
         "trees": [
             {
-                "tree": f"{__name__}:tree",
+                "tree": {"type": f"{__name__}:tree"},
                 "path": "/",
             },
         ],
@@ -260,19 +258,21 @@ def test_multiple_providers(enter_username_password, config, monkeypatch):
 
     This mechanism is used to support "Login with ORCID or Google or ...."
     """
-    config["authentication"]["providers"].extend(
+    config["authenticators"].extend(
         [
             {
                 "provider": "second",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
+                    "users_to_passwords": {"cara": "secret3", "doug": "secret4"},
+                },
             },
             {
                 "provider": "third",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {
+                "authenticator": {
+                    "type": "tiled.authenticators:DictionaryAuthenticator",
                     # Duplicate 'cara' username.
-                    "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
+                    "users_to_passwords": {"cara": "secret5", "emilia": "secret6"},
                 },
             },
         ],
@@ -293,18 +293,20 @@ def test_multiple_providers_name_collision(config):
     """
     Check that we enforce unique provider names.
     """
-    config["authentication"]["providers"] = [
+    config["authenticators"] = [
         {
             "provider": "some_name",
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-            "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
+            "authenticator": {
+                "type": "tiled.authenticators:DictionaryAuthenticator",
+                "users_to_passwords": {"cara": "secret3", "doug": "secret4"},
+            },
         },
         {
             "provider": "some_name",  # duplicate!
-            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-            "args": {
+            "authenticator": {
+                "type": "tiled.authenticators:DictionaryAuthenticator",
                 # Duplicate 'cara' username.
-                "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
+                "users_to_passwords": {"cara": "secret5", "emilia": "secret6"},
             },
         },
     ]
