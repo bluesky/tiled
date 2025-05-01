@@ -159,7 +159,6 @@ class Context:
 
         self.writable_storage = []
         self.readable_storage = set()
-        self.readable_filesystem_storage = []
 
         # Back-compat: `writable_storage` used to be a dict: we want its values.
         if isinstance(writable_storage, dict):
@@ -180,10 +179,6 @@ class Context:
         # credentials (if applicable).
         for item in self.readable_storage:
             register_storage(item)
-        # Stash a copy of filesystem-based readable storage.
-        self.readable_filesystem_storage = set(
-            item for item in self.readable_storage if isinstance(item, FileStorage)
-        )
 
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -490,7 +485,11 @@ class CatalogNodeAdapter:
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
-                for readable_storage in self.context.readable_filesystem_storage:
+                for readable_storage in {
+                    item
+                    for item in self.context.readable_storage
+                    if isinstance(item, FileStorage)
+                }:
                     if (
                         Path(os.path.commonpath([readable_storage.path, asset_path]))
                         == readable_storage.path
