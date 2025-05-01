@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 
 from tiled.adapters.sql import SQLAdapter, check_table_name
-from tiled.storage import parse_storage
+from tiled.storage import parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
@@ -57,6 +57,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
         )
 
         storage = parse_storage(data_uri)
+        register_storage(storage)
         return SQLAdapter.init_storage(
             data_source=data_source, storage=storage, path_parts=[]
         )
@@ -173,7 +174,7 @@ def adapter_psql_one_partition(
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 1)
     adapter = SQLAdapter(
-        postgres_uri,
+        data_source.assets[0].data_uri,
         data_source.structure,
         data_source.parameters["table_name"],
         data_source.parameters["dataset_id"],
@@ -189,7 +190,7 @@ def adapter_psql_many_partition(
 ) -> SQLAdapter:
     data_source = data_source_from_init_storage(postgres_uri, 3)
     return SQLAdapter(
-        postgres_uri,
+        data_source.assets[0].data_uri,
         data_source.structure,
         data_source.parameters["table_name"],
         data_source.parameters["dataset_id"],
