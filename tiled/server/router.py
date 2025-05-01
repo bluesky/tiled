@@ -1193,11 +1193,17 @@ def get_router(
         if request.app.state.access_policy is not None and hasattr(
             request.app.state.access_policy, "init_node"
         ):
-            access_blob_modified, access_blob = (
-                await request.app.state.access_policy.init_node(
-                    principal, access_blob=access_blob
+            try:
+                access_blob_modified, access_blob = (
+                    await request.app.state.access_policy.init_node(
+                        principal, access_blob=access_blob
+                    )
                 )
-            )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=HTTP_403_FORBIDDEN,
+                    detail="Access policy rejects the provided access blob.\n{e}",
+                )
         else:
             access_blob_modified = access_blob != {}
             access_blob = {}
@@ -1514,11 +1520,17 @@ def get_router(
         if request.app.state.access_policy is not None and hasattr(
             request.app.state.access_policy, "modify_node"
         ):
-            access_blob_modified, access_blob = (
-                await request.app.state.access_policy.modify_node(
-                    entry, principal, access_blob
+            try:
+                access_blob_modified, access_blob = (
+                    await request.app.state.access_policy.modify_node(
+                        entry, principal, access_blob
+                    )
                 )
-            )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=HTTP_403_FORBIDDEN,
+                    detail="Access policy rejects the provided access blob.\n{e}",
+                )
         else:
             access_blob_modified = False
 
@@ -1568,11 +1580,17 @@ def get_router(
         if request.app.state.access_policy is not None and hasattr(
             request.app.state.access_policy, "modify_node"
         ):
-            access_blob_modified, access_blob = (
-                await request.app.state.access_policy.modify_node(
-                    entry, principal, access_blob
+            try:
+                access_blob_modified, access_blob = (
+                    await request.app.state.access_policy.modify_node(
+                        entry, principal, access_blob
+                    )
                 )
-            )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=HTTP_403_FORBIDDEN,
+                    detail="Access policy rejects the provided access blob.\n{e}",
+                )
         else:
             access_blob_modified = False
 
