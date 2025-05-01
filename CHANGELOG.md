@@ -4,6 +4,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Support for reading numpy's on-disk format, `.npy` files.
+
 ### Fixed
 
 - When using SQL-backed storage and file-backed storage, Tiled treated SQLite

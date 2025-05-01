@@ -347,14 +347,16 @@ IMG_SEQUENCE_STEM_PATTERNS = {
     ".tiff": re.compile(r"^(.*?)(\d+)\.(?:tif|tiff)$"),
     ".jpg": re.compile(r"^(.*?)(\d+)\.(?:jpg|jpeg)$"),
     ".jpeg": re.compile(r"^(.*?)(\d+)\.(?:jpg|jpeg)$"),
+    ".npy": re.compile(r"^(.*?)(\d+)\.npy$"),
 }
 IMG_SEQUENCE_EMPTY_NAME_ROOT = "_unnamed"
 
 IMG_SEQUENCE_MIMETYPES = {
     ".tif": "multipart/related;type=image/tiff",
     ".tiff": "multipart/related;type=image/tiff",
-    ".jpg": "multipart/related;type=image/jpeg",
+    ".jpg": "multipart/related;type=image/npy",
     ".jpeg": "multipart/related;type=image/jpeg",
+    ".npy": "multipart/related;type=application/x-npy",
 }
 
 

@@ -48,6 +48,12 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "application/x-netcdf": lambda: importlib.import_module(
             "..adapters.netcdf", __name__
         ).NetCDFAdapter,
+        "application/x-npy": lambda: importlib.import_module(
+            "..adapters.npy", __name__
+        ).NPYAdapter,
+        "multipart/related;type=application/x-npy": lambda: importlib.import_module(
+            "..adapters.npy", __name__
+        ).NPYSequenceAdapter,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "..adapters.parquet", __name__
         ).ParquetDatasetAdapter,
@@ -83,6 +89,8 @@ DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE.set(
 DEFAULT_MIMETYPES_BY_FILE_EXT = {
     # This is the "official" file extension.
     ".h5": "application/x-hdf5",
+    # This is the Numpy on-disk format.
+    ".npy": "application/x-npy",
     # This is NeXus. We may want to invent a special media type
     # like 'application/x-nexus' for this, but I'll punt that for now.
     # Needs thought about how to encode the various types of NeXus
