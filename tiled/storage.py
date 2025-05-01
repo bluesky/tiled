@@ -22,7 +22,7 @@ class Storage:
     uri: str
 
     def __post_init__(self):
-        ensure_uri(self.uri)
+        self.uri = ensure_uri(self.uri)
 
 
 @dataclasses.dataclass(frozen=True)
