@@ -14,8 +14,8 @@ from access_blob_queries import AccessBlobFilter
 from tiled.access_policies import NO_ACCESS
 from tiled.scopes import ALL_SCOPES
 
-TILED_TBAP_SYNC_CURRENT_CYCLE_PERIOD = 1  # minutes
-TILED_TBAP_SYNC_ALL_CYCLES_PERIOD = 5  # minutes
+TILED_TBAP_SYNC_CURRENT_CYCLE_PERIOD = 30  # minutes
+TILED_TBAP_SYNC_ALL_CYCLES_PERIOD = 480  # minutes
 
 TILED_TBAP_GROUP_CACHE_MAXSIZE = 55_000
 TILED_TBAP_GROUP_CACHE_TTL = 3600  # seconds
@@ -136,11 +136,11 @@ def get_group_users(groupname):
     try:
         usernames = group_record_cache[groupname]
     except KeyError:
-        logger.debug("%s: Cache miss", groupname)
+        # logger.debug("%s: Cache miss", groupname)
         usernames = grp.getgrnam(groupname).gr_mem
         group_record_cache[groupname] = usernames
     else:
-        logger.debug("%s: Cache hit", groupname)
+        # logger.debug("%s: Cache hit", groupname)
         pass
 
     return usernames
@@ -187,12 +187,12 @@ class TagBasedAccessPolicy:
         self.compile()
         self.load_compiled_tags()
 
-        create_sync_tags_tasks(
-            self.reload_tags_all_cycles, period=TILED_TBAP_SYNC_ALL_CYCLES_PERIOD
-        )
-        create_sync_tags_tasks(
-            self.reload_tags_current_cycle, period=TILED_TBAP_SYNC_CURRENT_CYCLE_PERIOD
-        )
+        # create_sync_tags_tasks(
+        #    self.reload_tags_all_cycles, period=TILED_TBAP_SYNC_ALL_CYCLES_PERIOD
+        # )
+        # create_sync_tags_tasks(
+        #    self.reload_tags_current_cycle, period=TILED_TBAP_SYNC_CURRENT_CYCLE_PERIOD
+        # )
 
     def load_tag_config(self):
         try:
@@ -663,7 +663,7 @@ class TagBasedAccessPolicy:
         if access_blob:
             if not "tags" in access_blob:
                 raise ValueError(
-                    f"""access_blob must be in the form '{"tags": ["tag1", "tag2", ...]}'"""
+                    f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'"""
                     f"""Received {access_blob=}"""
                 )
             access_tags = set(access_blob["tags"])
@@ -705,7 +705,7 @@ class TagBasedAccessPolicy:
 
         if not "tags" in access_blob:
             raise ValueError(
-                f"""access_blob must be in the form '{"tags": ["tag1", "tag2", ...]}'"""
+                f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'"""
                 f"""Received {access_blob=}"""
             )
         access_tags = set(access_blob["tags"])
@@ -737,7 +737,7 @@ class TagBasedAccessPolicy:
             access_tags_from_policy.add(self.public_tag)
 
         # check for tags that need to be removed
-        if "tags" in node.access_blob["tags"]:
+        if "tags" in node.access_blob:
             for tag in set(node.access_blob["tags"]).difference(
                 access_tags_from_policy
             ):
@@ -827,11 +827,16 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = set.intersection(
-            *[self.loaded_scopes[scope].get(identifier, set()) for scope in scopes],
-            *[
-                self.loaded_public if scope in self.read_scopes else set()
-                for scope in scopes
-            ],
+            *[self.loaded_scopes[scope].get(identifier, set()) for scope in scopes]
         )
+        tag_list.update(
+            set.intersection(
+                *[
+                    self.loaded_public if scope in self.read_scopes else set()
+                    for scope in scopes
+                ]
+            )
+        )
+
         queries.append(query_filter(identifier, tag_list))
         return queries

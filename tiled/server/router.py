@@ -1202,7 +1202,7 @@ def get_router(
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail="Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access blob.\n{e}",
                 )
         else:
             access_blob_modified = access_blob != {}
@@ -1529,7 +1529,7 @@ def get_router(
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail="Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access blob.\n{e}",
                 )
         else:
             access_blob_modified = False
@@ -1589,7 +1589,7 @@ def get_router(
             except ValueError as e:
                 raise HTTPException(
                     status_code=HTTP_403_FORBIDDEN,
-                    detail="Access policy rejects the provided access blob.\n{e}",
+                    detail=f"Access policy rejects the provided access blob.\n{e}",
                 )
         else:
             access_blob_modified = False

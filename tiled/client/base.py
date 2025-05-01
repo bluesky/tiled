@@ -526,7 +526,7 @@ class BaseClient:
         metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
             metadata=metadata,
             specs=specs,
-            access_blob=acces_blob,
+            access_blob=access_blob,
         )
         self.patch_metadata(
             metadata_patch=metadata_patch,
@@ -630,7 +630,7 @@ class BaseClient:
             access_blob_patch = []
         else:
             ab_copy = deepcopy(self._item["attributes"]["access_blob"])
-            access_blob_patch = jsonpach.JsonPatch.from_diff(
+            access_blob_patch = jsonpatch.JsonPatch.from_diff(
                 self._item["attributes"]["access_blob"],
                 apply_update_patch(ab_copy, access_blob),
                 dumps=orjson.dumps,
@@ -677,7 +677,7 @@ class BaseClient:
         specs_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata validation
             specifications list
-        access_blob : List[dict], optional
+        access_blob_patch : List[dict], optional
             JSON-serializable patch to be applied to the access_blob
         content_type : str
             Mimetype of the patches. Acceptable values are:

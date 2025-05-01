@@ -415,7 +415,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     metadata: Dict = {}
     data_sources: List[DataSource] = []
     specs: Specs = []
-    access_blob: Optional[Dict] = None
+    access_blob: Optional[Dict] = {}
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -462,6 +462,7 @@ class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     # May be None if not altered
     metadata: Optional[Dict] = None
     data_sources: Optional[List[DataSource]] = None
+    access_blob: Optional[Dict] = None
 
 
 class DistinctValueInfo(pydantic.BaseModel):
