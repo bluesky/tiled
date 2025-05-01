@@ -4,8 +4,10 @@ services:
     image: ghcr.io/bluesky/tiled:0.1.0-b24
     environment:
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
+    
+    # Note that the port mapping does not expose tiled externally.
     ports:
-      - 8000:8000
+      - "127.0.0.1:8000:8000" 
     restart: unless-stopped
     healthcheck:
       test: curl --fail http://localhost:8000/healthz || exit 1
@@ -34,8 +36,10 @@ services:
     image: docker.io/grafana/grafana:8.2.6
     depends_on:
       - prometheus
+
+    # Note that the port mapping does not expose grafana externally.
     ports:
-      - 3000:3000
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./monitoring_example/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./monitoring_example/grafana/main.yml:/etc/grafana/provisioning/dashboards/main.yml
