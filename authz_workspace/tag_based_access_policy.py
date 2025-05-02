@@ -82,19 +82,19 @@ def _sync_tags_run_tasks(loop: asyncio.AbstractEventLoop, now: datetime):
         if task["last_run"] is None:
             loop.create_task(coro(*args, **kwargs))
             task["last_run"] = now
-            logger.debug(f"Initial run of coroutine '{coro.__name__}' at {now}")
+            logger.debug(f"Initial run of coroutine '{coro.__qualname__}' at {now}")
         elif task["last_run"] >= task["next_run"]:
             # fell behind, skip ahead to next scheduled cycle
             task["next_run"] = calculate_next_cycle(now, task["next_run"], period)
             logger.debug(
-                "Task '{coro.__name__}' fell behind, skipping ahead to next scheduled cycle"
+                "Task '{coro.__qualname__}' fell behind, skipping ahead to next scheduled cycle"
             )
         elif now >= task["next_run"]:
             loop.create_task(coro(*args, **kwargs))
             task["next_run"] += timedelta(minutes=period)
             task["last_run"] = now
-        logger.debug(f"""Last run of '{coro.__name__}': {task["last_run"]}""")
-        logger.debug(f"""Next run of '{coro.__name__}': {task["next_run"]}""")
+        logger.debug(f"""Last run of '{coro.__qualname__}': {task["last_run"]}""")
+        logger.debug(f"""Next run of '{coro.__qualname__}': {task["next_run"]}""")
 
 
 async def _sync_tags_scheduler():
@@ -129,7 +129,20 @@ def _sync_tags_start_loop(loop: asyncio.AbstractEventLoop):
     loop.run_forever()
 
 
+def _sync_tags_exc_handler(loop, context):
+    task = context.get("task") or context.get("future")
+    if task is None:
+        msg = context.get("message")
+        logger.debug(f"Exception handler invoked, but there is no task: {msg}")
+
+    e = task.exception()
+    e_type = e.__class__.__name__
+    coro_name = task.get_coro().__qualname__
+    logger.debug(f"Caught '{e_type}' exception from '{coro_name}': {e}")
+
+
 sync_tags_loop = asyncio.new_event_loop()
+sync_tags_loop.set_exception_handler(_sync_tags_exc_handler)
 sync_tags_thread = threading.Thread(
     target=_sync_tags_start_loop, args=(sync_tags_loop,), daemon=True
 )
@@ -674,7 +687,7 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         if access_blob:
-            if not "tags" in access_blob:
+            if len(access_blob) != 1 or not "tags" in access_blob:
                 raise ValueError(
                     f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'"""
                     f"""Received {access_blob=}"""
@@ -716,10 +729,14 @@ class TagBasedAccessPolicy:
         else:
             identifier = self._get_id(principal)
 
-        if not "tags" in access_blob:
+        if access_blob == node.access_blob:
+            return False, node.access_blob
+
+        if len(access_blob) != 1 or not "tags" in access_blob:
             raise ValueError(
                 f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'"""
                 f"""Received {access_blob=}"""
+                f"""If this was a merge-patch on a user-owned node, use a json-patch instead."""
             )
         access_tags = set(access_blob["tags"])
         include_public_tag = False
@@ -728,7 +745,7 @@ class TagBasedAccessPolicy:
             if tag in node.access_blob.get("tags", []):
                 # node already has this tag - no action.
                 # or: access_blob does not have "tags" key,
-                # so it must hvae a "user" key currently
+                # so it must have a "user" key currently
                 continue
             if tag.casefold() == self.public_tag:
                 include_public_tag = True
@@ -773,10 +790,10 @@ class TagBasedAccessPolicy:
 
         # check that the access_blob change would not result in invalid scopes for user.
         # this applies when removing tags, but also must be done when
-        # switching from user-owned node to shared (tagged) node
+        # converting from user-owned node to shared (tagged) node
         new_scopes = set()
         for tag in access_tags_from_policy:
-            new_scopes.update(self.loaded_tags.tags[tag][identifier])
+            new_scopes.update(self.loaded_tags.tags[tag].get(identifier, set()))
         if not all(scope in new_scopes for scope in self.unremovable_scopes):
             raise ValueError(
                 f"Cannot modify tags on node: operation removes unremovable scopes."

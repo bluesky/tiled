@@ -3,6 +3,7 @@ import inspect
 import os
 import re
 import warnings
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -1474,6 +1475,7 @@ def get_router(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node does not support update of metadata.",
             )
+
         if body.content_type == patch_mimetypes.JSON_PATCH:
             metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
             specs = apply_json_patch((entry.specs or []), (body.specs or []))
@@ -1485,7 +1487,15 @@ def get_router(
             current_specs = entry.specs or []
             target_specs = current_specs if body.specs is None else body.specs
             specs = apply_merge_patch(current_specs, target_specs)
-            access_blob = apply_merge_patch(entry.access_blob, (body.access_blob or []))
+            # json_merge_patch applies merge in-place, which would
+            # otherwise modify the in-memory node and prevent the
+            # access policy from sanity checking the access blob.
+            # make a copy so we can compare the node against the
+            # proposed new access blob.
+            entry_access_blob_copy = deepcopy(entry.access_blob)
+            access_blob = apply_merge_patch(
+                entry_access_blob_copy, (body.access_blob or [])
+            )
         else:
             raise HTTPException(
                 status_code=HTTP_406_NOT_ACCEPTABLE,
@@ -1532,6 +1542,8 @@ def get_router(
                     detail=f"Access policy rejects the provided access blob.\n{e}",
                 )
         else:
+            # Cannot modify the access blob if there is no access policy
+            access_blob = entry.access_blob
             access_blob_modified = False
 
         await entry.replace_metadata(
@@ -1592,6 +1604,8 @@ def get_router(
                     detail=f"Access policy rejects the provided access blob.\n{e}",
                 )
         else:
+            # Cannot modify the access blob if there is no access policy
+            access_blob = entry.access_blob
             access_blob_modified = False
 
         await entry.replace_metadata(
