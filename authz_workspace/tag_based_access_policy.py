@@ -2,9 +2,11 @@ import asyncio
 import grp
 import threading
 import warnings
+from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 from sys import intern
+from typing import NamedTuple
 
 import cachetools
 import httpx
@@ -14,8 +16,6 @@ from access_blob_queries import AccessBlobFilter
 from tiled.access_policies import NO_ACCESS
 from tiled.scopes import ALL_SCOPES
 
-TILED_TBAP_SYNC_CURRENT_CYCLE_PERIOD = 30  # minutes
-TILED_TBAP_SYNC_ALL_CYCLES_PERIOD = 480  # minutes
 
 TILED_TBAP_GROUP_CACHE_MAXSIZE = 55_000
 TILED_TBAP_GROUP_CACHE_TTL = 3600  # seconds
@@ -48,26 +48,53 @@ if __debug__:
         logger.setLevel(log_level.upper())
 
 
-def calculate_first_cycle(period):
-    # calculate first run using midnight as reference point
-    now = datetime.now()
-    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    minutes_since_midnight = (now - midnight).total_seconds() // 60
-    minutes_until_cycle = period - (minutes_since_midnight % period)
+def calculate_next_cycle(now: datetime, ref: datetime, period):
+    # calculate next cycle using a reference point
+    minutes_since_ref = (now - ref).total_seconds() // 60
+    minutes_until_cycle = period - (minutes_since_ref % period)
     next_cycle_at = now + timedelta(minutes=minutes_until_cycle)
     return next_cycle_at
 
 
 def create_sync_tags_tasks(coro, *args, period=1, **kwargs):
-    next_cycle_at = calculate_first_cycle(period)
+    now = datetime.now().replace(second=0, microsecond=0)
+    # using midnight as starting reference
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    next_cycle_at = calculate_next_cycle(now, midnight, period)
     sync_tags_tasks.append(
         {
             "coro": (coro, args, kwargs),
-            "rate": (period // 60, period % 60),
-            "next_run": (next_cycle_at.hour, next_cycle_at.minute),
+            "period": period,
+            "next_run": next_cycle_at,
             "last_run": None,
         }
     )
+
+
+def _sync_tags_run_tasks(loop: asyncio.AbstractEventLoop, now: datetime):
+    now = now.replace(second=0, microsecond=0)
+    for task in sync_tags_tasks:
+        if task["last_run"] == now:
+            continue
+
+        coro, args, kwargs = task["coro"]
+        period = task["period"]
+        if task["last_run"] is None:
+            loop.create_task(coro(*args, **kwargs))
+            task["last_run"] = now
+            logger.debug(f"Initial run of coroutine '{coro.__name__}' at {now}")
+        elif task["last_run"] >= task["next_run"]:
+            # fell behind, skip ahead to next scheduled cycle
+            task["next_run"] = calculate_next_cycle(now, task["next_run"], period)
+            logger.debug(
+                "Task '{coro.__name__}' fell behind, skipping ahead to next scheduled cycle"
+            )
+        elif now >= task["next_run"]:
+            loop.create_task(coro(*args, **kwargs))
+            task["next_run"] += timedelta(minutes=period)
+            task["last_run"] = now
+        logger.debug(f"""Last run of '{coro.__name__}': {task["last_run"]}""")
+        logger.debug(f"""Next run of '{coro.__name__}': {task["next_run"]}""")
 
 
 async def _sync_tags_scheduler():
@@ -92,44 +119,21 @@ async def _sync_tags_scheduler():
         await asyncio.sleep(max(0, next_tick - loop.time()))
         now = datetime.now()
         logger.debug(f"Tag Sync Event Loop Tick {now}")
-        for task in sync_tags_tasks:
-            if task["last_run"] == (now.hour, now.minute):
-                continue
-
-            coro, args, kwargs = task["coro"]
-            hour, minute = task["next_run"]
-            if task["last_run"] is None:
-                loop.create_task(coro(*args, **kwargs))
-                task["last_run"] = (now.hour, now.minute)
-                logger.debug("Initial run of coroutines")
-            elif (now.minute >= minute) and (now.hour >= hour):
-                loop.create_task(coro(*args, **kwargs))
-                hours, minutes = task["rate"]
-                task["next_run"] = (
-                    (hour + hours + ((minute + minutes) // 60)) % 24,
-                    (minute + minutes) % 60,
-                )
-                task["last_run"] = (now.hour, now.minute)
-                logger.debug(
-                    f"""Last run of '{coro.__name__}': {task["last_run"]} (hour, min)"""
-                )
-                logger.debug(
-                    f"""Next run of '{coro.__name__}': {task["next_run"]} (hour, min)"""
-                )
+        _sync_tags_run_tasks(loop, now)
         next_tick += tick_rate
 
 
-def _start_sync_tags_loop(loop: asyncio.AbstractEventLoop):
+def _sync_tags_start_loop(loop: asyncio.AbstractEventLoop):
     asyncio.set_event_loop(loop)
     loop.create_task(_sync_tags_scheduler())
     loop.run_forever()
 
 
 sync_tags_loop = asyncio.new_event_loop()
-thread_sync_tags = threading.Thread(
-    target=_start_sync_tags_loop, args=(sync_tags_loop,), daemon=True
+sync_tags_thread = threading.Thread(
+    target=_sync_tags_start_loop, args=(sync_tags_loop,), daemon=True
 )
-thread_sync_tags.start()
+sync_tags_thread.start()
 
 
 def get_group_users(groupname):
@@ -158,15 +162,22 @@ def interning_constructor(loader, node):
 InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
 
 
+class LoadedTags(NamedTuple):
+    tags: dict
+    public: set
+    scopes: dict
+    owners: dict
+
+
 class TagBasedAccessPolicy:
-    def __init__(self, *, provider, tag_config, url, scopes=None):
+    def __init__(self, *, provider, tag_config, url, scopes=None, sync_proposals={}):
         self.provider = provider
         self.tag_config_path = Path(tag_config)
         self.client = httpx.AsyncClient(base_url=url)
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         self.read_scopes = [intern("read:metadata"), intern("read:data")]
         self.reverse_lookup_scopes = [intern("read:metadata"), intern("read:data")]
-        self.unremovable_scopes = [intern("read:metadata"), intern("read:data")]
+        self.unremovable_scopes = [intern("read:metadata"), intern("write:metadata")]
         self.public_tag = intern("public").casefold()
         self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
 
@@ -177,22 +188,22 @@ class TagBasedAccessPolicy:
         self.compiled_public = set({self.public_tag})
         self.compiled_scopes = {}
         self.compiled_tag_owners = {}
-        self.loaded_tags = {}
-        self.loaded_public = set()
-        self.loaded_scopes = {}
-        self.loaded_tag_owners = {}
+        self.loaded_tags = LoadedTags({}, {}, set(), {})
 
         self.load_tag_config()
         self.create_tags_root_node()
         self.compile()
         self.load_compiled_tags()
 
-        # create_sync_tags_tasks(
-        #    self.reload_tags_all_cycles, period=TILED_TBAP_SYNC_ALL_CYCLES_PERIOD
-        # )
-        # create_sync_tags_tasks(
-        #    self.reload_tags_current_cycle, period=TILED_TBAP_SYNC_CURRENT_CYCLE_PERIOD
-        # )
+        if not all(rate in sync_proposals for rate in ("rate_all", "rate_current")):
+            raise ValueError("Must specify rates for syncing proposals from NSLS2 API.")
+
+        create_sync_tags_tasks(
+            self.reload_tags_all_cycles, period=sync_proposals["rate_all"]
+        )
+        create_sync_tags_tasks(
+            self.reload_tags_current_cycle, period=sync_proposals["rate_current"]
+        )
 
     def load_tag_config(self):
         try:
@@ -633,10 +644,12 @@ class TagBasedAccessPolicy:
         self.compile()
 
     def load_compiled_tags(self):
-        self.loaded_tags = self.compiled_tags.copy()
-        self.loaded_public = self.compiled_public.copy()
-        self.loaded_scopes = self.compiled_scopes.copy()
-        self.loaded_tag_owners = self.compiled_tag_owners.copy()
+        self.loaded_tags = LoadedTags(
+            self.compiled_tags.copy(),
+            self.compiled_public.copy(),
+            deepcopy(self.compiled_scopes),
+            deepcopy(self.compiled_tag_owners),
+        )
 
     def _get_id(self, principal):
         for identity in principal.identities:
@@ -675,9 +688,9 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             f"Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                         )
-                elif tag not in self.loaded_tags:
+                elif tag not in self.loaded_tags.tags:
                     raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
-                elif identifier not in self.loaded_tag_owners.get(tag, set()):
+                elif identifier not in self.loaded_tags.owners.get(tag, set()):
                     raise ValueError(
                         f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                     )
@@ -723,9 +736,9 @@ class TagBasedAccessPolicy:
                     raise ValueError(
                         f"Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                     )
-            elif tag not in self.loaded_tags:
+            elif tag not in self.loaded_tags.tags:
                 raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
-            elif identifier not in self.loaded_tag_owners.get(tag, set()):
+            elif identifier not in self.loaded_tags.owners.get(tag, set()):
                 raise ValueError(
                     f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                 )
@@ -746,11 +759,11 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             f"Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
                         )
-                elif tag not in self.loaded_tags:
+                elif tag not in self.loaded_tags.tags:
                     raise ValueError(
                         f"Cannot remove tag from node: {tag=} is not defined"
                     )
-                elif identifier not in self.loaded_tag_owners.get(tag, set()):
+                elif identifier not in self.loaded_tags.owners.get(tag, set()):
                     raise ValueError(
                         f"Cannot remove tag from node: user='{identifier}' is not an owner of {tag=}"
                     )
@@ -763,7 +776,7 @@ class TagBasedAccessPolicy:
         # switching from user-owned node to shared (tagged) node
         new_scopes = set()
         for tag in access_tags_from_policy:
-            new_scopes.update(self.loaded_tags[tag][identifier])
+            new_scopes.update(self.loaded_tags.tags[tag][identifier])
         if not all(scope in new_scopes for scope in self.unremovable_scopes):
             raise ValueError(
                 f"Cannot modify tags on node: operation removes unremovable scopes."
@@ -795,13 +808,13 @@ class TagBasedAccessPolicy:
                     allowed = self.scopes
             elif "tags" in node.access_blob:
                 for tag in node.access_blob["tags"]:
-                    if tag in self.loaded_public:
+                    if tag in self.loaded_tags.public:
                         allowed.update(self.read_scopes)
                         if tag == self.public_tag:
                             continue
-                    elif tag not in self.loaded_tags:
+                    elif tag not in self.loaded_tags.tags:
                         continue
-                    tag_scopes = self.loaded_tags[tag].get(identifier, set())
+                    tag_scopes = self.loaded_tags.tags[tag].get(identifier, set())
                     allowed.update(
                         tag_scopes if tag_scopes.issubset(self.scopes) else set()
                     )
@@ -827,12 +840,12 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = set.intersection(
-            *[self.loaded_scopes[scope].get(identifier, set()) for scope in scopes]
+            *[self.loaded_tags.scopes[scope].get(identifier, set()) for scope in scopes]
         )
         tag_list.update(
             set.intersection(
                 *[
-                    self.loaded_public if scope in self.read_scopes else set()
+                    self.loaded_tags.public if scope in self.read_scopes else set()
                     for scope in scopes
                 ]
             )
