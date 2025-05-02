@@ -1,5 +1,7 @@
 import asyncio
 import grp
+import pickle
+import sqlite3
 import threading
 import warnings
 from copy import deepcopy
@@ -182,10 +184,56 @@ class LoadedTags(NamedTuple):
     owners: dict
 
 
+def load_tags_file(tags_db):
+    if not tags_db.is_file():
+        raise FileNotFoundError(f"sqlite DB not found: {tags_db}")
+
+    conn = sqlite3.connect(tags_db)
+    cursor = conn.cursor()
+    cursor.execute("SELECT obj_blob FROM store WHERE obj_name = ?", ("tags_state",))
+    row = cursor.fetchone()
+    loaded_tags = pickle.loads(row[0]) if row else None
+    if not loaded_tags:
+        raise ValueError(f"Could not load tags state from DB: {tags_db}")
+
+    return loaded_tags
+
+
+def dump_tags_file(tags_db, loaded_tags):
+    conn = sqlite3.connect(tags_db)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+CREATE TABLE IF NOT EXISTS store (
+    obj_name TEXT PRIMARY KEY,
+    obj_blob BLOB
+)
+"""
+    )
+    loaded_tags_blob = sqlite3.Binary(
+        pickle.dumps(loaded_tags, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+    cursor.execute(
+        "REPLACE INTO store (obj_name, obj_blob) VALUES (?, ?)",
+        ("tags_state", loaded_tags_blob),
+    )
+    conn.commit()
+
+
 class TagBasedAccessPolicy:
-    def __init__(self, *, provider, tag_config, url, scopes=None, sync_proposals={}):
+    def __init__(
+        self,
+        *,
+        provider,
+        tag_config,
+        url,
+        scopes=None,
+        tags_state_file=None,
+        sync_proposals={},
+    ):
         self.provider = provider
         self.tag_config_path = Path(tag_config)
+        self.tags_state_file = Path(tags_state_file)
         self.client = httpx.AsyncClient(base_url=url)
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
         self.read_scopes = [intern("read:metadata"), intern("read:data")]
@@ -203,10 +251,13 @@ class TagBasedAccessPolicy:
         self.compiled_tag_owners = {}
         self.loaded_tags = LoadedTags({}, {}, set(), {})
 
-        self.load_tag_config()
-        self.create_tags_root_node()
-        self.compile()
-        self.load_compiled_tags()
+        try:
+            self.loaded_tags = load_tags_file(self.tags_state_file)
+        except:
+            self.load_tag_config()
+            self.create_tags_root_node()
+            self.compile()
+            self.load_compiled_tags()
 
         if not all(rate in sync_proposals for rate in ("rate_all", "rate_current")):
             raise ValueError("Must specify rates for syncing proposals from NSLS2 API.")
@@ -415,6 +466,7 @@ class TagBasedAccessPolicy:
             self.create_tags_root_node()
             self.recompile()
             self.load_compiled_tags()
+            dump_tags_file(self.tags_state_file, self.loaded_tags)
 
     async def update_tags_current_cycle(self):
         """
@@ -460,6 +512,7 @@ class TagBasedAccessPolicy:
             self.create_tags_root_node()
             self.recompile()
             self.load_compiled_tags()
+            dump_tags_file(self.tags_state_file, self.loaded_tags)
         finally:
             TAG_SYNC_LOCK.release()
             logger.debug("Releasing lock...")

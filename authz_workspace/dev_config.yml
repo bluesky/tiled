@@ -28,6 +28,7 @@ access_control:
   args:
     provider: "toy"
     tag_config: "tag_definitions.yaml"
+    tags_state_file: "tags_state.sqlite"
     url: "https://api.nsls2.bnl.gov"
     sync_proposals:
       rate_all: 480    # minutes
