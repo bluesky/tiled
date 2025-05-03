@@ -211,8 +211,15 @@ tags:
     groups:
       - name: n2sn-right-dataadmin
         role: facility_data_admin
+  test_scopes:
+    users:
+      - name: nmaytan
+        role: facility_user
 
 tag_owners:
+  test_scopes:
+    users:
+      - name: nmaytan
   six_beamline:
     groups:
       - name: n2sn-right-dataadmin-six

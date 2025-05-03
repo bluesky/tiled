@@ -742,7 +742,7 @@ class TagBasedAccessPolicy:
         if access_blob:
             if len(access_blob) != 1 or not "tags" in access_blob:
                 raise ValueError(
-                    f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'"""
+                    f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'\n"""
                     f"""Received {access_blob=}"""
                 )
             access_tags = set(access_blob["tags"])
@@ -787,8 +787,8 @@ class TagBasedAccessPolicy:
 
         if len(access_blob) != 1 or not "tags" in access_blob:
             raise ValueError(
-                f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'"""
-                f"""Received {access_blob=}"""
+                f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'\n"""
+                f"""Received {access_blob=}\n"""
                 f"""If this was a merge-patch on a user-owned node, use a json-patch instead."""
             )
         access_tags = set(access_blob["tags"])
@@ -849,9 +849,9 @@ class TagBasedAccessPolicy:
             new_scopes.update(self.loaded_tags.tags[tag].get(identifier, set()))
         if not all(scope in new_scopes for scope in self.unremovable_scopes):
             raise ValueError(
-                f"Cannot modify tags on node: operation removes unremovable scopes."
-                f"The current access_blob is: {node.access_blob}"
-                f"The new access_blob would be: {access_blob_from_policy}"
+                f"Cannot modify tags on node: operation removes unremovable scopes.\n"
+                f"The current access_blob is: {node.access_blob}\n"
+                f"The new access_blob would be: {access_blob_from_policy}\n"
                 f"These scopes cannot be self-removed: {self.unremovable_scopes}"
             )
 
