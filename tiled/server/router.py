@@ -1543,8 +1543,8 @@ def get_router(
                 )
         else:
             # Cannot modify the access blob if there is no access policy
+            access_blob_modified = access_blob != entry.access_blob
             access_blob = entry.access_blob
-            access_blob_modified = False
 
         await entry.replace_metadata(
             metadata=metadata, specs=specs, access_blob=access_blob
@@ -1605,8 +1605,8 @@ def get_router(
                 )
         else:
             # Cannot modify the access blob if there is no access policy
+            access_blob_modified = access_blob != entry.access_blob
             access_blob = entry.access_blob
-            access_blob_modified = False
 
         await entry.replace_metadata(
             metadata=metadata, specs=specs, access_blob=access_blob
