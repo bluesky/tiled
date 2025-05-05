@@ -771,11 +771,9 @@ class CatalogNodeAdapter:
 
         return asset_id
 
-    async def put_data_source(self, data_source, data_source_id=None):
+    async def put_data_source(self, data_source):
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
-        if data_source.id is None:
-            data_source.id = data_source_id or self.data_sources[0].id
         structure = _prepare_structure(
             data_source.structure_family, data_source.structure
         )

@@ -1211,15 +1211,12 @@ def get_router(
         request: Request,
         path: str,
         body: schemas.PutDataSourceRequest,
-        data_source: Optional[int] = None,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(
             get_entry(), scopes=["write:metadata", "register"]
         ),
     ):
-        await entry.put_data_source(
-            data_source=body.data_source, data_source_id=data_source
-        )
+        await entry.put_data_source(data_source=body.data_source)
 
     @router.delete("/metadata/{path:path}")
     async def delete(
