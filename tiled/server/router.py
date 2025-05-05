@@ -1210,8 +1210,8 @@ def get_router(
     async def put_data_source(
         request: Request,
         path: str,
-        data_source: int,
         body: schemas.PutDataSourceRequest,
+        data_source: Optional[int] = None,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(
             get_entry(), scopes=["write:metadata", "register"]
