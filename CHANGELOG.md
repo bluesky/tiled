@@ -8,6 +8,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Support for reading numpy's on-disk format, `.npy` files.
 
+
+### Changed
+
+- In server configuration, `writable_storage` now takes a list of URIs,
+  given in order of decreasing priority.
+- Adapters should implement a `supported_storage` attribute, as specified
+  in `tiled.adapters.protocols.BaseAdapter`. This is optional, for
+  backward-compatiblity with existing Adapters, which are assumed to
+  use file-based storage.
+
 ### Fixed
 
 - When using SQL-backed storage and file-backed storage, Tiled treated SQLite

@@ -67,8 +67,8 @@ from ..mimetypes import (
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
+from ..storage import FileStorage, parse_storage, register_storage
 from ..structures.core import StructureFamily
-from ..structures.data_source import Storage
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -76,7 +76,6 @@ from ..utils import (
     UnsupportedQueryType,
     ensure_awaitable,
     ensure_specified_sql_driver,
-    ensure_uri,
     import_object,
     path_from_uri,
     safe_json_dump,
@@ -158,24 +157,28 @@ class Context:
     ):
         self.engine = engine
 
+        self.writable_storage = []
+        self.readable_storage = set()
+
+        # Back-compat: `writable_storage` used to be a dict: we want its values.
+        if isinstance(writable_storage, dict):
+            writable_storage = list(writable_storage.values())
+        # Back-compat: `writable_storage` used to be a filepath.
         if isinstance(writable_storage, (str, Path)):
-            storage = Storage.from_path(writable_storage)
-        else:
-            storage = Storage(**(writable_storage or {}))
+            writable_storage = [writable_storage]
         if isinstance(readable_storage, str):
             raise ValueError("readable_storage should be a list of URIs or paths")
-        self.readable_storage = set(
-            ensure_uri(path) for path in (readable_storage or [])
-        )
+
+        for item in writable_storage or []:
+            self.writable_storage.append(parse_storage(item))
+        for item in readable_storage or []:
+            self.readable_storage.add(parse_storage(item))
         # Writable storage should also be readable.
-        if storage.filesystem is not None:
-            self.readable_storage.add(storage.filesystem)
-        if storage.sql is not None:
-            self.readable_storage.add(storage.sql)
-        self.writable_storage = storage
-        self.readable_filesystem_storage = set(
-            item for item in self.readable_storage if urlparse(item).scheme == "file"
-        )
+        self.readable_storage.update(self.writable_storage)
+        # Register all storage in a registry that enables Adapters to access
+        # credentials (if applicable).
+        for item in self.readable_storage:
+            register_storage(item)
 
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -343,7 +346,7 @@ class CatalogNodeAdapter:
 
     @property
     def writable(self):
-        return any(dataclasses.asdict(self.context.writable_storage).values())
+        return bool(self.context.writable_storage)
 
     def __repr__(self):
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
@@ -482,12 +485,15 @@ class CatalogNodeAdapter:
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
-                for readable_storage in self.context.readable_filesystem_storage:
-                    if Path(
-                        os.path.commonpath(
-                            [path_from_uri(readable_storage), asset_path]
-                        )
-                    ) == path_from_uri(readable_storage):
+                for readable_storage in {
+                    item
+                    for item in self.context.readable_storage
+                    if isinstance(item, FileStorage)
+                }:
+                    if (
+                        Path(os.path.commonpath([readable_storage.path, asset_path]))
+                        == readable_storage.path
+                    ):
                         break
                 else:
                     raise RuntimeError(
@@ -664,9 +670,26 @@ class CatalogNodeAdapter:
                             ),
                         )
                     adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
+                    # Choose writable storage. Use the first writable storage item
+                    # with a scheme that is supported by this adapter. # For
+                    # back-compat, if an adapter does not declare `supported_storage`
+                    # assume it supports file-based storage only.
+                    supported_storage = getattr(
+                        adapter, "supported_storage", {FileStorage}
+                    )
+                    for storage in self.context.writable_storage:
+                        if isinstance(storage, tuple(supported_storage)):
+                            break
+                    else:
+                        raise RuntimeError(
+                            f"The adapter {adapter} supports storage types "
+                            f"{[cls.__name__ for cls in supported_storage]} "
+                            "but the only available storage types "
+                            f"are {self.context.writable_storage}."
+                        )
                     data_source = await ensure_awaitable(
                         adapter.init_storage,
-                        self.context.writable_storage,
+                        storage,
                         data_source,
                         self.segments + [key],
                     )
