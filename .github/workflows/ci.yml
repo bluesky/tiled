@@ -118,9 +118,6 @@ jobs:
         python -m pip install .[dev]
         python -m pip list
 
-    - name: "TEMP: Test problematic module first."
-      run: pytest -v tiled/_tests/test_writing.py
-
     - name: Test with pytest
       run: pytest -v
 
