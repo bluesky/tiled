@@ -1,5 +1,7 @@
 import asyncio
 import grp
+import logging
+import os
 import pickle
 import sqlite3
 import threading
@@ -35,19 +37,15 @@ TAG_SYNC_LOCK = asyncio.Lock()
 sync_tags_tasks = []
 
 
-if __debug__:
-    import logging
-    import os
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setLevel("DEBUG")
+handler.setFormatter(logging.Formatter("TAG BASED ACCESS POLICY: %(message)s"))
+logger.addHandler(handler)
 
-    logger = logging.getLogger(__name__)
-    handler = logging.StreamHandler()
-    handler.setLevel("DEBUG")
-    handler.setFormatter(logging.Formatter("TAG BASED ACCESS POLICY: %(message)s"))
-    logger.addHandler(handler)
-
-    log_level = os.getenv("TAG_BASED_ACCESS_POLICY_LOG_LEVEL")
-    if log_level:
-        logger.setLevel(log_level.upper())
+log_level = os.getenv("TAG_BASED_ACCESS_POLICY_LOG_LEVEL")
+if log_level:
+    logger.setLevel(log_level.upper())
 
 
 def calculate_next_cycle(now: datetime, ref: datetime, period):
@@ -88,7 +86,7 @@ def _sync_tags_run_tasks(loop: asyncio.AbstractEventLoop, now: datetime):
         elif task["last_run"] >= task["next_run"]:
             # fell behind, skip ahead to next scheduled cycle
             task["next_run"] = calculate_next_cycle(now, task["next_run"], period)
-            logger.debug(
+            logger.error(
                 "Task '{coro.__qualname__}' fell behind, skipping ahead to next scheduled cycle"
             )
         elif now >= task["next_run"]:
@@ -140,7 +138,7 @@ def _sync_tags_exc_handler(loop, context):
     e = task.exception()
     e_type = e.__class__.__name__
     coro_name = task.get_coro().__qualname__
-    logger.debug(f"Caught '{e_type}' exception from '{coro_name}': {e}")
+    logger.exception(f"Caught '{e_type}' exception from '{coro_name}': {e}")
 
 
 sync_tags_loop = asyncio.new_event_loop()
@@ -155,12 +153,11 @@ def get_group_users(groupname):
     try:
         usernames = group_record_cache[groupname]
     except KeyError:
-        # logger.debug("%s: Cache miss", groupname)
+        logger.info("%s: Cache miss", groupname)
         usernames = grp.getgrnam(groupname).gr_mem
         group_record_cache[groupname] = usernames
     else:
-        # logger.debug("%s: Cache hit", groupname)
-        pass
+        logger.info("%s: Cache hit", groupname)
 
     return usernames
 
@@ -253,6 +250,9 @@ class TagBasedAccessPolicy:
 
         try:
             self.loaded_tags = load_tags_file(self.tags_state_file)
+            logger.debug(
+                f"Loaded previous tags state from file: '{self.tags_state_file}'"
+            )
         except:
             self.load_tag_config()
             self.create_tags_root_node()
@@ -446,6 +446,7 @@ class TagBasedAccessPolicy:
         without changing the already-compiled tags
         """
         async with TAG_SYNC_LOCK:
+            logger.debug("Synchronizing from API for ALL cycles - update")
             await self.load_proposals_all_cycles()
             self.create_tags_root_node()
             self.compile()
@@ -458,7 +459,7 @@ class TagBasedAccessPolicy:
         to be refreshed.
         """
         async with TAG_SYNC_LOCK:
-            logger.debug("Updating ALL cycles")
+            logger.debug("Synchronizing from API for ALL cycles - reload")
             if clear_grp_cache:
                 group_record_cache.clear()
             self.load_tag_config()
@@ -474,10 +475,10 @@ class TagBasedAccessPolicy:
         without changing the already-compiled tags
         """
         try:
-            logger.debug("Acquiring lock for sync of current cycle")
+            logger.debug("Acquiring lock for sync of current cycle - update")
             await asyncio.wait_for(TAG_SYNC_LOCK.acquire(), timeout=0.1)
         except (TimeoutError, asyncio.TimeoutError):
-            logger.debug("Lock failed: skipping sync of current cycle")
+            logger.error("Lock failed: skipping sync of current cycle")
             return
 
         try:
@@ -497,10 +498,10 @@ class TagBasedAccessPolicy:
         to be refreshed.
         """
         try:
-            logger.debug("Acquiring lock for sync of current cycle")
+            logger.debug("Acquiring lock for sync of current cycle - reload")
             await asyncio.wait_for(TAG_SYNC_LOCK.acquire(), timeout=0.1)
         except (TimeoutError, asyncio.TimeoutError):
-            logger.debug("Lock failed: skipping sync of current cycle")
+            logger.error("Lock failed: skipping sync of current cycle")
             return
 
         try:
@@ -773,6 +774,9 @@ class TagBasedAccessPolicy:
             access_blob_from_policy = {"user": identifier}
             access_blob_modified = True
 
+        logger.debug(
+            f"Node to be initialized with access_blob: {access_blob_from_policy}"
+        )
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
@@ -783,6 +787,9 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         if access_blob == node.access_blob:
+            logger.debug(
+                f"Node access_blob not modified; access_blob is identical: {access_blob_from_policy}"
+            )
             return False, node.access_blob
 
         if len(access_blob) != 1 or not "tags" in access_blob:
@@ -855,6 +862,9 @@ class TagBasedAccessPolicy:
                 f"These scopes cannot be self-removed: {self.unremovable_scopes}"
             )
 
+        logger.debug(
+            f"Node to be modified with new access_blob: {access_blob_from_policy}"
+        )
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
@@ -888,6 +898,7 @@ class TagBasedAccessPolicy:
                     allowed.update(
                         tag_scopes if tag_scopes.issubset(self.scopes) else set()
                     )
+
         return allowed
 
     async def filters(self, node, principal, scopes, path_parts):
