@@ -1,10 +1,7 @@
 import dataclasses
 import enum
-from pathlib import Path
-from typing import Generic, List, Optional, TypeVar, Union
-from urllib.parse import urlparse
+from typing import Generic, List, Optional, TypeVar
 
-from ..utils import ensure_uri
 from .core import StructureFamily
 
 
@@ -42,47 +39,3 @@ class DataSource(Generic[StructureT]):
         d = d.copy()
         assets = [Asset(**a) for a in d.pop("assets")]
         return cls(assets=assets, **d)
-
-
-@dataclasses.dataclass(frozen=True)
-class Bucket:
-    uri: str
-    key: Optional[str]
-    secret: Optional[str]
-
-    def __post_init__(self):
-        object.__setattr__(self, "uri", ensure_uri(self.uri))
-        parsed_uri = urlparse(self.uri)
-        if not parsed_uri.path or parsed_uri.path == "/":
-            raise ValueError(f"URI must contain a path attribute: {self.uri}")
-
-
-@dataclasses.dataclass
-class Storage:
-    filesystem: Optional[str] = None
-    sql: Optional[str] = None
-    bucket: Optional[Bucket] = None
-
-    def __post_init__(self):
-        if self.filesystem is not None:
-            self.filesystem = ensure_uri(self.filesystem)
-        if self.sql is not None:
-            self.sql = ensure_uri(self.sql)
-        if self.bucket is not None:
-            self.bucket = Bucket(**self.bucket)
-
-    @classmethod
-    def from_path(cls, path: Union[str, Path]):
-        # Interpret input as a filesystem path or 'file:' URI.
-        filesystem_storage = ensure_uri(str(path))
-        if not urlparse(filesystem_storage).scheme == "file":
-            raise ValueError(f"Could not parse as filepath: {path}")
-        return cls(filesystem=filesystem_storage)
-
-    def get(self, key: str) -> str:
-        value = getattr(self, key)
-        if not value:
-            raise RuntimeError(
-                f"Adapter requested {key} storage but none is configured."
-            )
-        return value
