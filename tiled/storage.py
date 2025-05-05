@@ -9,6 +9,7 @@ from .utils import ensure_uri, path_from_uri
 __all__ = [
     "EmbeddedSQLStorage",
     "FileStorage",
+    "BucketStorage",
     "SQLStorage",
     "Storage",
     "get_storage",
@@ -19,6 +20,7 @@ __all__ = [
 @dataclasses.dataclass(frozen=True)
 class Storage:
     "Base class for representing storage location"
+
     uri: str
 
     def __post_init__(self):
@@ -35,6 +37,20 @@ class FileStorage(Storage):
 
 
 @dataclasses.dataclass(frozen=True)
+class BucketStorage:
+    "Bucket storage location for BLOBS"
+    uri: str
+    key: Optional[str]
+    secret: Optional[str]
+
+    def __post_init__(self):
+        object.__setattr__(self, "uri", ensure_uri(self.uri))
+        parsed_uri = urlparse(self.uri)
+        if not parsed_uri.path or parsed_uri.path == "/":
+            raise ValueError(f"URI must contain a path attribute: {self.uri}")
+
+
+@dataclasses.dataclass(frozen=True)
 class EmbeddedSQLStorage(Storage):
     "File-based SQL database storage location"
 
@@ -42,6 +58,7 @@ class EmbeddedSQLStorage(Storage):
 @dataclasses.dataclass(frozen=True)
 class SQLStorage(Storage):
     "File-based SQL database storage location"
+
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -92,6 +109,8 @@ def parse_storage(item: Union[Path, str]) -> Storage:
         result = FileStorage(item)
     elif scheme == "postgresql":
         result = SQLStorage(item)
+    elif scheme == "bucket":
+        result = BucketStorage(item)
     elif scheme in {"sqlite", "duckdb"}:
         result = EmbeddedSQLStorage(item)
     else:
@@ -112,5 +131,4 @@ def register_storage(storage: Storage) -> None:
 
 def get_storage(uri: str) -> Storage:
     "Look up Storage by URI."
-
     return _STORAGE[uri]

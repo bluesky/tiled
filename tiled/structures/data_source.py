@@ -39,4 +39,3 @@ class DataSource(Generic[StructureT]):
         d = d.copy()
         assets = [Asset(**a) for a in d.pop("assets")]
         return cls(assets=assets, **d)
-
