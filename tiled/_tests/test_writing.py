@@ -4,7 +4,6 @@ This tests tiled's writing routes with an in-memory store.
 Persistent stores are being developed externally to the tiled package.
 """
 import base64
-import time
 from datetime import datetime
 
 import awkward
@@ -470,7 +469,7 @@ async def test_delete(tree):
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_before_delete) == 1
@@ -488,10 +487,10 @@ async def test_delete(tree):
             client.write_array(
                 [1, 2, 3],
                 metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-                key="x",
+                key="delete_me",
             )
 
-        client.delete("x")
+        client.delete("delete_me")
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_after_delete) == 0
@@ -502,16 +501,11 @@ async def test_delete(tree):
         assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
         assert len(assets_after_delete) == 0
 
-        # Give the filesystem time to catch up.
-        # On CI, the Windows job can be flaky here, finding that the
-        # array has not been deleted yet if we try immediately to write.
-        time.sleep(1)
-
         # Writing again with the same name works now.
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
 
 
