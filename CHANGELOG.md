@@ -4,6 +4,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Support for reading numpy's on-disk format, `.npy` files.
+
+
 ### Changed
 
 - In server configuration, `writable_storage` now takes a list of URIs,
