@@ -9,8 +9,9 @@ import pyarrow.feather as feather
 import pyarrow.fs
 
 from ..catalog.orm import Node
+from ..storage import FileStorage, Storage
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Management, Storage
+from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import ensure_uri, path_from_uri
@@ -22,6 +23,7 @@ class ArrowAdapter:
     """ArrowAdapter Class"""
 
     structure_family = StructureFamily.table
+    supported_storage = {FileStorage}
 
     def __init__(
         self,
@@ -81,7 +83,7 @@ class ArrowAdapter:
         The list of assets.
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.get("filesystem") + "".join(
+        data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
 

@@ -4,6 +4,7 @@ import awkward
 import awkward.forms
 from numpy.typing import NDArray
 
+from ..storage import FileStorage
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
@@ -12,6 +13,7 @@ from .awkward_directory_container import DirectoryContainer
 
 class AwkwardAdapter:
     structure_family = StructureFamily.awkward
+    supported_storage = {FileStorage}
 
     def __init__(
         self,

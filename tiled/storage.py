@@ -112,4 +112,5 @@ def register_storage(storage: Storage) -> None:
 
 def get_storage(uri: str) -> Storage:
     "Look up Storage by URI."
+
     return _STORAGE[uri]
