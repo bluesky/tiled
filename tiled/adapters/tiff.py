@@ -1,11 +1,12 @@
 import builtins
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 import tifffile
 from numpy._typing import NDArray
 
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
+from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -27,6 +28,7 @@ class TiffAdapter:
     """
 
     structure_family = StructureFamily.array
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,

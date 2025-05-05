@@ -10,9 +10,10 @@ from urllib.parse import quote_plus
 import awkward.forms
 
 from ..catalog.orm import Node
+from ..storage import FileStorage, Storage
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Storage
+from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .awkward import AwkwardAdapter
@@ -22,6 +23,7 @@ from .utils import init_adapter_from_catalog
 
 class AwkwardBuffersAdapter(AwkwardAdapter):
     structure_family = StructureFamily.awkward
+    supported_storage = {FileStorage}
 
     @classmethod
     def init_storage(
@@ -42,7 +44,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
 
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.get("filesystem") + "".join(
+        data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
         directory: Path = path_from_uri(data_uri)

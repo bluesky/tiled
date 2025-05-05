@@ -43,10 +43,10 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 @pytest.fixture
 def tree(tmpdir):
     return in_memory(
-        writable_storage={
-            "filesystem": str(tmpdir / "data"),
-            "sql": f"duckdb:///{tmpdir / 'data.duckdb'}",
-        }
+        writable_storage=[
+            f"file://localhost{str(tmpdir / 'data')}",
+            f"duckdb:///{tmpdir / 'data.duckdb'}",
+        ]
     )
 
 
@@ -470,7 +470,7 @@ async def test_delete(tree):
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_before_delete) == 1
@@ -488,10 +488,10 @@ async def test_delete(tree):
             client.write_array(
                 [1, 2, 3],
                 metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-                key="x",
+                key="delete_me",
             )
 
-        client.delete("x")
+        client.delete("delete_me")
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_after_delete) == 0
@@ -506,7 +506,7 @@ async def test_delete(tree):
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
 
 

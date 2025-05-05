@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
 import dask.array
 import numpy
@@ -6,6 +6,7 @@ import pandas
 from numpy.typing import NDArray
 
 from ..ndslice import NDSlice
+from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
@@ -27,6 +28,7 @@ class ArrayAdapter:
     """
 
     structure_family = StructureFamily.array
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,

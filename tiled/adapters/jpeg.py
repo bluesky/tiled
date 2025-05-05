@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Set, Tuple, Union
 
 import numpy as np
 from numpy._typing import NDArray
@@ -7,6 +7,7 @@ from PIL import Image
 
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
+from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -28,6 +29,7 @@ class JPEGAdapter:
     """
 
     structure_family = StructureFamily.array
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
