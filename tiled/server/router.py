@@ -1218,7 +1218,7 @@ def get_router(
         ),
     ):
         await entry.put_data_source(
-            data_source=body.data_source,
+            data_source=body.data_source, data_source_id=data_source
         )
 
     @router.delete("/metadata/{path:path}")
