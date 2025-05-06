@@ -250,14 +250,14 @@ class BaseClient:
 
     def metadata_copy(self):
         """
-        Generate a mutable copy of metadata and specs for validating metadata
-        (useful with update_metadata())
+        Generate a mutable copy of metadata, specs, and access_tags for
+        validating metadata (useful with update_metadata())
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
         specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
-        access_blob = deepcopy(self._item["attributes"]["access_blob"])
+        access_tags = deepcopy(self._item["attributes"]["access_blob"].get("tags", []))
         return [
-            md for md in [metadata, specs, access_blob] if md is not None
+            md for md in [metadata, specs, access_tags] if md is not None
         ]  # returning as list of mutable items
 
     @property
@@ -460,7 +460,7 @@ class BaseClient:
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None, access_blob=None):
+    def update_metadata(self, metadata=None, specs=None, access_tags=None):
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -475,10 +475,8 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_blob: dict, optional
-            Server-specific authZ info in blob form, used to confer access to the node.
-            May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         See Also
         --------
@@ -517,7 +515,7 @@ class BaseClient:
         metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
             metadata=metadata,
             specs=specs,
-            access_blob=access_blob,
+            access_tags=access_tags,
         )
         self.patch_metadata(
             metadata_patch=metadata_patch,
@@ -525,7 +523,7 @@ class BaseClient:
             access_blob_patch=access_blob_patch,
         )
 
-    def build_metadata_patches(self, metadata=None, specs=None, access_blob=None):
+    def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
         """
         Build valid JSON Patches (RFC6902) for metadata and metadata validation
         specs accepted by `patch_metadata`.
@@ -539,10 +537,8 @@ class BaseClient:
         specs : list[Spec], optional
             Metadata validation specifications.
 
-        access_blob: dict, optional
-            Server-specific authZ info in blob form, used to confer access to the node.
-            May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         Returns
         -------
@@ -554,7 +550,7 @@ class BaseClient:
             for metadata validation specifications.
         access_blob_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
-            for access control information stored in the access_blob.
+            for access control fields that are stored in the access_blob.
 
         See Also
         --------
@@ -617,10 +613,11 @@ class BaseClient:
                 ).patch
             )
 
-        if access_blob is None:
+        if access_tags is None:
             access_blob_patch = []
         else:
             ab_copy = deepcopy(self._item["attributes"]["access_blob"])
+            access_blob = {"tags": access_tags}
             access_blob_patch = jsonpatch.JsonPatch.from_diff(
                 self._item["attributes"]["access_blob"],
                 apply_update_patch(ab_copy, access_blob),
@@ -763,7 +760,7 @@ class BaseClient:
                     dict(self.access_blob), access_blob_patch, content_type
                 )
 
-    def replace_metadata(self, metadata=None, specs=None, access_blob=None):
+    def replace_metadata(self, metadata=None, specs=None, access_tags=None):
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
@@ -777,10 +774,8 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
-        access_blob: dict, optional
-            Server-specific authZ info in blob form, used to confer access to the node.
-            May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         See Also
         --------
@@ -798,6 +793,12 @@ class BaseClient:
                 if isinstance(spec, str):
                     spec = Spec(spec)
                 normalized_specs.append(asdict(spec))
+
+        if access_tags is None:
+            access_blob = None
+        else:
+            access_blob = {"tags": access_tags}
+
         data = {
             "metadata": metadata,
             "specs": normalized_specs,

@@ -797,7 +797,7 @@ class TagBasedAccessPolicy:
             raise ValueError(
                 f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'\n"""
                 f"""Received {access_blob=}\n"""
-                f"""If this was a merge-patch on a user-owned node, use a json-patch instead."""
+                f"""If this was a merge patch on a user-owned node, use a replace op instead."""
             )
         access_tags = set(access_blob["tags"])
         include_public_tag = False
