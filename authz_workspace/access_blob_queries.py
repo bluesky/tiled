@@ -10,6 +10,7 @@ from tiled.catalog import orm
 from tiled.catalog.adapter import CatalogNodeAdapter
 from tiled.queries import JSONSerializable
 from tiled.query_registration import register
+from tiled.utils import UnsupportedQueryType
 
 
 @register(name="access_blob_filter")

@@ -40,7 +40,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import UNCHANGED, Sentinel
-from .protocols import AccessPolicy, AnyAdapter
+from .protocols import AnyAdapter
 from .utils import IndexersMixin
 
 

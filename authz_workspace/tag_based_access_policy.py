@@ -20,7 +20,6 @@ from access_blob_queries import AccessBlobFilter
 from tiled.access_policies import NO_ACCESS
 from tiled.scopes import ALL_SCOPES
 
-
 TILED_TBAP_GROUP_CACHE_MAXSIZE = 55_000
 TILED_TBAP_GROUP_CACHE_TTL = 3600  # seconds
 
@@ -253,7 +252,7 @@ class TagBasedAccessPolicy:
             logger.debug(
                 f"Loaded previous tags state from file: '{self.tags_state_file}'"
             )
-        except:
+        except (FileNotFoundError, ValueError):
             self.load_tag_config()
             self.create_tags_root_node()
             self.compile()
@@ -357,7 +356,7 @@ class TagBasedAccessPolicy:
                 count = page_size
                 while count == page_size:
                     proposals_response = await self.client.get(
-                        f"/v1/proposals/?beamline={beamline.upper()}&cycle={cycle}&facility={facility}&page_size={page_size}&page={page}&include_directories=false"
+                        f"/v1/proposals/?beamline={beamline.upper()}&cycle={cycle}&facility={facility}&page_size={page_size}&page={page}&include_directories=false"  # noqa: E501
                     )
                     proposals_response.raise_for_status()
                     proposals_response_json = proposals_response.json()
@@ -543,7 +542,7 @@ class TagBasedAccessPolicy:
             return {}, False
         if nested_level > self.max_tag_nesting:
             raise RecursionError(
-                f"Exceeded maximum tag nesting of {max_nesting} levels"
+                f"Exceeded maximum tag nesting of {self.max_tag_nesting} levels"
             )
 
         public_auto_tag = False
@@ -741,7 +740,7 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         if access_blob:
-            if len(access_blob) != 1 or not "tags" in access_blob:
+            if len(access_blob) != 1 or "tags" not in access_blob:
                 raise ValueError(
                     f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'\n"""
                     f"""Received {access_blob=}"""
@@ -753,7 +752,7 @@ class TagBasedAccessPolicy:
                     include_public_tag = True
                     if not self._is_admin(principal):
                         raise ValueError(
-                            f"Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
+                            "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                         )
                 elif tag not in self.loaded_tags.tags:
                     raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
@@ -788,11 +787,11 @@ class TagBasedAccessPolicy:
 
         if access_blob == node.access_blob:
             logger.debug(
-                f"Node access_blob not modified; access_blob is identical: {access_blob_from_policy}"
+                f"Node access_blob not modified; access_blob is identical: {access_blob}"
             )
             return False, node.access_blob
 
-        if len(access_blob) != 1 or not "tags" in access_blob:
+        if len(access_blob) != 1 or "tags" not in access_blob:
             raise ValueError(
                 f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'\n"""
                 f"""Received {access_blob=}\n"""
@@ -811,7 +810,7 @@ class TagBasedAccessPolicy:
                 include_public_tag = True
                 if not self._is_admin(principal):
                     raise ValueError(
-                        f"Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
+                        "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                     )
             elif tag not in self.loaded_tags.tags:
                 raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
@@ -834,7 +833,7 @@ class TagBasedAccessPolicy:
                 if tag == self.public_tag:
                     if not self._is_admin(principal):
                         raise ValueError(
-                            f"Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
+                            "Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
                         )
                 elif tag not in self.loaded_tags.tags:
                     raise ValueError(
@@ -903,9 +902,10 @@ class TagBasedAccessPolicy:
 
     async def filters(self, node, principal, scopes):
         queries = []
-        query_filter = lambda value_id, value_tags: AccessBlobFilter(
-            "user", value_id, "tags", value_tags
-        )
+
+        def query_filter(value_id, value_tags):
+            return AccessBlobFilter("user", value_id, "tags", value_tags)
+
         if not hasattr(node, "access_blob"):
             return queries
         if not scopes.issubset(self.scopes):

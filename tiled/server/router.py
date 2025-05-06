@@ -1195,10 +1195,11 @@ def get_router(
             request.app.state.access_policy, "init_node"
         ):
             try:
-                access_blob_modified, access_blob = (
-                    await request.app.state.access_policy.init_node(
-                        principal, access_blob=access_blob
-                    )
+                (
+                    access_blob_modified,
+                    access_blob,
+                ) = await request.app.state.access_policy.init_node(
+                    principal, access_blob=access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1531,10 +1532,11 @@ def get_router(
             request.app.state.access_policy, "modify_node"
         ):
             try:
-                access_blob_modified, access_blob = (
-                    await request.app.state.access_policy.modify_node(
-                        entry, principal, access_blob
-                    )
+                (
+                    access_blob_modified,
+                    access_blob,
+                ) = await request.app.state.access_policy.modify_node(
+                    entry, principal, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1593,10 +1595,11 @@ def get_router(
             request.app.state.access_policy, "modify_node"
         ):
             try:
-                access_blob_modified, access_blob = (
-                    await request.app.state.access_policy.modify_node(
-                        entry, principal, access_blob
-                    )
+                (
+                    access_blob_modified,
+                    access_blob,
+                ) = await request.app.state.access_policy.modify_node(
+                    entry, principal, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
