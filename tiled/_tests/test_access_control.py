@@ -568,12 +568,14 @@ class CustomAttributesAccessPolicy:
                     if "admins" in auth_attributes.get("groups", []):
                         return ALL_SCOPES
 
-                    # if not node.access_blob["tags"]:
-                    #    return NO_ACCESS
+                    if not node.metadata():
+                        return self.READ_METADATA
 
-                    if node.metadata in auth_attributes.get(
+                    if node.metadata()["beamline"] in auth_attributes.get(
                         "beamlines", []
-                    ) or node.metadata in auth_attributes.get("proposals", []):
+                    ) or node.metadata()["proposal"] in auth_attributes.get(
+                        "proposals", []
+                    ):
                         return USER_SCOPES
 
             return self.READ_METADATA
