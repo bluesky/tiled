@@ -70,6 +70,7 @@ class Node(Timestamped, Base):
     structure_family = Column(Enum(StructureFamily), nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
+    is_streaming = Column(Boolean, default=False, nullable=False)
 
     data_sources = relationship(
         "DataSource",
