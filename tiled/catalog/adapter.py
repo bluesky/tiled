@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import copy
 import dataclasses
@@ -1480,6 +1481,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    mount_node=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1519,11 +1521,20 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    return CatalogContainerAdapter(
+    adapter = CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
     )
+    if isinstance(mount_node, str):
+        mount_node = [segment for segment in mount_node.split("/") if segment]
+    if mount_node:
+
+        async def get_nested_node():
+            return await adapter.lookup_adapter(mount_node)
+
+        adapter = asyncio.run(get_nested_node())
+    return adapter
 
 
 def _set_sqlite_pragma(conn, record):
