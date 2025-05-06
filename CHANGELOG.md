@@ -24,6 +24,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   or DuckDB files as if they were directories of readable files, and
   included them superfluously in a check on whether assets were situated
   in a readable area.
+- Update data_sources in the client after receiving a response from the server.
 
 ## 0.1.0-b23 (2025-04-24)
 
