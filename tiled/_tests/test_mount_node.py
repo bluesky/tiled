@@ -1,3 +1,5 @@
+import numpy
+
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
 
@@ -60,6 +62,16 @@ def test_mount_node(tmpdir):
         assert list(client["a"]) == ["x"]
         assert list(client["a"]["x"]) == ["i"]
         assert list(client["b"]) == ["y"]
+        # Check that assets do not collide.
+        arr1 = numpy.array([1, 2, 3])
+        arr2 = numpy.array([4, 5, 6])
+        ac1 = client["a"].write_array(arr1, key="c")
+        ac2 = client["b"].write_array(arr2, key="c")
+        assert numpy.array_equal(ac1[:], arr1)
+        assert numpy.array_equal(ac2[:], arr2)
+        uri1 = ac1.data_sources()[0].assets[0].data_uri
+        uri2 = ac2.data_sources()[0].assets[0].data_uri
+        assert uri1 != uri2
 
     # Mount a more deeply nested node at a nested path.
     multi_tree_config = {
