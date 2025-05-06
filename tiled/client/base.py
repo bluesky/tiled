@@ -613,8 +613,9 @@ class BaseClient:
                 ).patch
             )
 
-        if access_tags is None:
-            access_blob_patch = []
+        if not access_tags:
+            # empty list of access_tags should be a no-op
+            access_blob_patch = None
         else:
             ab_copy = deepcopy(self._item["attributes"]["access_blob"])
             access_blob = {"tags": access_tags}
