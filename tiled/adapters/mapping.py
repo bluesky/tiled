@@ -10,6 +10,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
     cast,
@@ -36,6 +37,7 @@ from ..queries import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.schemas import SortingItem
+from ..storage import Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
@@ -62,6 +64,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
     )
 
     structure_family = StructureFamily.container
+    supported_storage: Set[type[Storage]] = set()
 
     # Define classmethods for managing what queries this Adapter knows.
     query_registry = QueryTranslationRegistry()

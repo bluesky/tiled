@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
+import orjson
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -699,14 +700,28 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure = data_source.structure
         item["attributes"]["structure"] = structure
 
-        # if server returned modified metadata update the local copy
+        # If server returned modified metadata update the local copy.
+        # Otherwise, round-trip it through a JSON serializer locally
+        # to ensure that any special types (e.g. datetimes, numpy arrays)
+        # are normalized to natively JSON serializable types.
         if "metadata" in document:
             item["attributes"]["metadata"] = document.pop("metadata")
+        else:
+            item["attributes"]["metadata"] = orjson.loads(
+                safe_json_dump(item["attributes"]["metadata"])
+            )
+
         # Ditto for structure
         if "structure" in document:
             item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
                 document.pop("structure")
             )
+
+        # And for data sources
+        if "data_sources" in document:
+            item["attributes"]["data_sources"] = [
+                ds for ds in document.pop("data_sources")
+            ]
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)

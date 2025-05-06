@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import dask.dataframe
 import numpy
@@ -7,6 +7,7 @@ import sparse
 from numpy._typing import NDArray
 
 from ..ndslice import NDSlice
+from ..storage import Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from ..type_aliases import JSON
@@ -16,6 +17,7 @@ from .array import slice_and_shape_from_block_and_chunks
 class COOAdapter:
     "Wrap sparse Coordinate List (COO) arrays."
     structure_family = StructureFamily.sparse
+    supported_storage: Set[type[Storage]] = set()
 
     @classmethod
     def from_arrays(

@@ -1,13 +1,11 @@
 import builtins
-from typing import Any, List, Optional, Set, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
-import numpy as np
+import numpy
 from numpy._typing import NDArray
-from PIL import Image
 
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
-from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -18,18 +16,17 @@ from .sequence import FileSequenceAdapter
 from .utils import init_adapter_from_catalog
 
 
-class JPEGAdapter:
+class NPYAdapter:
     """
-    Read a JPEG file.
+    Read the Numpy on-disk format, NPY (.npy).
 
     Examples
     --------
 
-    >>> JPEGAdapter("path/to/file.jpeg")
+    >>> NPYAdapter("path/to/file.npy")
     """
 
     structure_family = StructureFamily.array
-    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -48,9 +45,7 @@ class JPEGAdapter:
         metadata :
         specs :
         """
-        filepath = path_from_uri(data_uri)
-        cache_key = (Image.open, filepath)
-        self._file = with_resource_cache(cache_key, Image.open, filepath)
+        self._filepath = path_from_uri(data_uri)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         self._structure = structure
@@ -62,7 +57,7 @@ class JPEGAdapter:
         node: Node,
         /,
         **kwargs: Optional[Any],
-    ) -> "JPEGAdapter":
+    ) -> "NPYAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     @classmethod
@@ -70,12 +65,11 @@ class JPEGAdapter:
         cls,
         data_uri: str,
         **kwargs: Optional[Any],
-    ) -> "JPEGAdapter":
+    ) -> "NPYAdapter":
         filepath = path_from_uri(data_uri)
-        cache_key = (Image.open, filepath)
-        _file = with_resource_cache(cache_key, Image.open, filepath)
+        cache_key = (numpy.load, filepath)
+        arr = with_resource_cache(cache_key, numpy.load, filepath)
 
-        arr = np.asarray(_file)
         structure = ArrayStructure(
             shape=arr.shape,
             chunks=tuple((dim,) for dim in arr.shape),
@@ -91,7 +85,8 @@ class JPEGAdapter:
         return self._provided_metadata.copy()
 
     def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
-        arr = np.asarray(self._file)
+        cache_key = (numpy.load, self._filepath)
+        arr = with_resource_cache(cache_key, numpy.load, self._filepath)
         arr = arr[slice] if slice else arr
         return arr
 
@@ -100,8 +95,9 @@ class JPEGAdapter:
     ) -> NDArray[Any]:
         if sum(block) != 0:
             raise IndexError(block)
-
-        arr = np.asarray(self._file)
+        cache_key = (numpy.load, self._filepath)
+        arr = with_resource_cache(cache_key, numpy.load, self._filepath)
+        arr = arr[slice] if slice else arr
         if slice is not None:
             arr = arr[slice]
         return arr
@@ -110,15 +106,11 @@ class JPEGAdapter:
         return self._structure
 
 
-class JPEGSequenceAdapter(FileSequenceAdapter):
+class NPYSequenceAdapter(FileSequenceAdapter):
     def _load_from_files(
         self, slice: Union[builtins.slice, int] = slice(None)
     ) -> NDArray[Any]:
-        from PIL import Image
-
         if isinstance(slice, int):
-            return np.asarray(Image.open(self.filepaths[slice]))[None, ...]
+            return numpy.load(self.filepaths[slice])[None, ...]
         else:
-            return np.asarray(
-                [np.asarray(Image.open(file)) for file in self.filepaths[slice]]
-            )
+            return numpy.asarray([numpy.load(file) for file in self.filepaths[slice]])

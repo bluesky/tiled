@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import dask.dataframe
 import numpy
@@ -22,6 +22,7 @@ from ..adapters.protocols import (
 from ..ndslice import NDSlice
 from ..scopes import ALL_SCOPES
 from ..server.schemas import Principal, PrincipalType
+from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
@@ -32,6 +33,7 @@ from ..type_aliases import JSON, Filters, Scopes
 
 class CustomArrayAdapter:
     structure_family: Literal[StructureFamily.array] = StructureFamily.array
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -103,6 +105,7 @@ def test_arrayadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomAwkwardAdapter:
     structure_family: Literal[StructureFamily.awkward] = StructureFamily.awkward
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -179,6 +182,7 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomSparseAdapter:
     structure_family: Literal[StructureFamily.sparse] = StructureFamily.sparse
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -265,6 +269,7 @@ def test_sparseadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomTableAdapter:
     structure_family: Literal[StructureFamily.table] = StructureFamily.table
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
