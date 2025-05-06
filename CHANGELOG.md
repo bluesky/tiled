@@ -2,12 +2,11 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## Unreleased
+## 0.1.0-b24 (2025-05-06)
 
 ### Added
 
 - Support for reading numpy's on-disk format, `.npy` files.
-
 
 ### Changed
 
