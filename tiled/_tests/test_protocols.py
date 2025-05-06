@@ -370,7 +370,12 @@ class CustomAccessPolicy(AccessPolicy):
     def _get_id(self, principal: Principal) -> None:
         return None
 
-    async def allowed_scopes(self, node: BaseAdapter, principal: Principal) -> Scopes:
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_scopes: Scopes,
+    ) -> Scopes:
         allowed = self.scopes
         somemetadata = node.metadata()  # noqa: 841
         return allowed
@@ -379,6 +384,7 @@ class CustomAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
         queries: Filters = []
@@ -390,10 +396,11 @@ async def accesspolicy_protocol_functions(
     policy: AccessPolicy,
     node: BaseAdapter,
     principal: Principal,
+    authn_scopes: Scopes,
     scopes: Scopes,
 ) -> None:
-    await policy.allowed_scopes(node, principal)
-    await policy.filters(node, principal, scopes)
+    await policy.allowed_scopes(node, principal, authn_scopes)
+    await policy.filters(node, principal, authn_scopes, scopes)
 
 
 @pytest.mark.asyncio  # type: ignore
@@ -410,6 +417,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
+    authn_scopes = {"abc", "baz"}
     scopes = {"abc"}
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
@@ -418,6 +426,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
         anyaccesspolicy,
         anyawkwardadapter,
         principal,
+        authn_scopes,
         scopes,
     )
     mock_call.assert_called_once()

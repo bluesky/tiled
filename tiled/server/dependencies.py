@@ -10,8 +10,14 @@ from tiled.server.schemas import Principal
 from tiled.structures.core import StructureFamily
 from tiled.utils import SpecialUsers
 
+from ..type_aliases import Scopes
 from ..utils import BrokenLink
-from .authentication import check_scopes, get_current_principal, get_session_state
+from .authentication import (
+    check_scopes,
+    get_current_principal,
+    get_current_scopes,
+    get_session_state,
+)
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
@@ -29,6 +35,7 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         request: Request,
         security_scopes: SecurityScopes,
         principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
@@ -55,6 +62,7 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
             entry,
             access_policy,
             principal,
+            authn_scopes,
             ["read:metadata"],
             request.state.metrics,
         )
@@ -81,6 +89,7 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                     entry,
                     access_policy,
                     principal,
+                    authn_scopes,
                     ["read:metadata"],
                     request.state.metrics,
                 )
@@ -89,7 +98,9 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
             if access_policy is not None:
                 with record_timing(request.state.metrics, "acl"):
                     allowed_scopes = await access_policy.allowed_scopes(
-                        entry, principal
+                        entry,
+                        principal,
+                        authn_scopes,
                     )
                     if not set(security_scopes.scopes).issubset(allowed_scopes):
                         if "read:metadata" not in allowed_scopes:

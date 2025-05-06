@@ -559,7 +559,7 @@ class CustomAttributesAccessPolicy:
     def __init__(self):
         pass
 
-    async def allowed_scopes(self, node, principal):
+    async def allowed_scopes(self, node, principal, authn_scopes):
         if hasattr(principal, "sessions"):
             if len(principal.sessions):
                 auth_state = principal.sessions[-1].state or {}
@@ -581,8 +581,10 @@ class CustomAttributesAccessPolicy:
             return self.READ_METADATA
         return NO_SCOPES
 
-    async def filters(self, node, principal, scopes):
-        if not scopes.issubset(await self.allowed_scopes(node, principal)):
+    async def filters(self, node, principal, authn_scopes, scopes):
+        if not scopes.issubset(
+            await self.allowed_scopes(node, principal, authn_scopes)
+        ):
             return NO_ACCESS
         return []
 

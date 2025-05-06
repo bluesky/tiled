@@ -235,6 +235,7 @@ class TagBasedAccessPolicy:
         self.read_scopes = [intern("read:metadata"), intern("read:data")]
         self.reverse_lookup_scopes = [intern("read:metadata"), intern("read:data")]
         self.unremovable_scopes = [intern("read:metadata"), intern("write:metadata")]
+        self.admin_scopes = [intern("admin:apikeys")]
         self.public_tag = intern("public").casefold()
         self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
 
@@ -492,7 +493,7 @@ class TagBasedAccessPolicy:
 
     async def reload_tags_current_cycle(self, clear_grp_cache=False):
         """
-        Fetch all proposals and reload all tags.This is the same as fresh restart.
+        Fetch all proposals and reload all tags. This is the same as fresh restart.
         Optionally, clear the group_record_cache to also force group membership
         to be refreshed.
         """
@@ -727,13 +728,12 @@ class TagBasedAccessPolicy:
                 f"The Principal's identities are: {principal.identities}"
             )
 
-    def _is_admin(self, principal):
-        for role in principal.roles:
-            if role.name == "admin":
-                return True
+    def _is_admin(self, authn_scopes):
+        if all(s in authn_scopes for s in self.admin_scopes):
+            return True
         return False
 
-    async def init_node(self, principal, access_blob=None):
+    async def init_node(self, principal, authn_scopes, access_blob=None):
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -750,16 +750,18 @@ class TagBasedAccessPolicy:
             for tag in access_tags:
                 if tag.casefold() == self.public_tag:
                     include_public_tag = True
-                    if not self._is_admin(principal):
+                    if not self._is_admin(authn_scopes):
                         raise ValueError(
                             "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                         )
                 elif tag not in self.loaded_tags.tags:
                     raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
                 elif identifier not in self.loaded_tags.owners.get(tag, set()):
-                    raise ValueError(
-                        f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
-                    )
+                    # admins can ignore the tag ownership check
+                    if not self._is_admin(authn_scopes):
+                        raise ValueError(
+                            f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
+                        )
 
             access_tags_from_policy = {
                 tag for tag in access_tags if tag.casefold() != self.public_tag
@@ -779,7 +781,7 @@ class TagBasedAccessPolicy:
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
-    async def modify_node(self, node, principal, access_blob):
+    async def modify_node(self, node, principal, authn_scopes, access_blob):
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -808,16 +810,18 @@ class TagBasedAccessPolicy:
                 continue
             if tag.casefold() == self.public_tag:
                 include_public_tag = True
-                if not self._is_admin(principal):
+                if not self._is_admin(authn_scopes):
                     raise ValueError(
                         "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                     )
             elif tag not in self.loaded_tags.tags:
                 raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
             elif identifier not in self.loaded_tags.owners.get(tag, set()):
-                raise ValueError(
-                    f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
-                )
+                # admins can ignore the tag ownership check
+                if not self._is_admin(authn_scopes):
+                    raise ValueError(
+                        f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
+                    )
 
         access_tags_from_policy = {
             tag for tag in access_tags if tag.casefold() != self.public_tag
@@ -831,7 +835,7 @@ class TagBasedAccessPolicy:
                 access_tags_from_policy
             ):
                 if tag == self.public_tag:
-                    if not self._is_admin(principal):
+                    if not self._is_admin(authn_scopes):
                         raise ValueError(
                             "Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
                         )
@@ -840,26 +844,30 @@ class TagBasedAccessPolicy:
                         f"Cannot remove tag from node: {tag=} is not defined"
                     )
                 elif identifier not in self.loaded_tags.owners.get(tag, set()):
-                    raise ValueError(
-                        f"Cannot remove tag from node: user='{identifier}' is not an owner of {tag=}"
-                    )
+                    # admins can ignore the tag ownership check
+                    if not self._is_admin(authn_scopes):
+                        raise ValueError(
+                            f"Cannot remove tag from node: user='{identifier}' is not an owner of {tag=}"
+                        )
 
         access_blob_from_policy = {"tags": list(access_tags_from_policy)}
         access_blob_modified = access_tags != access_tags_from_policy
 
-        # check that the access_blob change would not result in invalid scopes for user.
-        # this applies when removing tags, but also must be done when
-        # converting from user-owned node to shared (tagged) node
-        new_scopes = set()
-        for tag in access_tags_from_policy:
-            new_scopes.update(self.loaded_tags.tags[tag].get(identifier, set()))
-        if not all(scope in new_scopes for scope in self.unremovable_scopes):
-            raise ValueError(
-                f"Cannot modify tags on node: operation removes unremovable scopes.\n"
-                f"The current access_blob is: {node.access_blob}\n"
-                f"The new access_blob would be: {access_blob_from_policy}\n"
-                f"These scopes cannot be self-removed: {self.unremovable_scopes}"
-            )
+        # admin principals are not subject to scope reduction restriction
+        if not self._is_admin(authn_scopes):
+            # check that the access_blob change would not result in invalid scopes for user.
+            # this applies when removing tags, but also must be done when
+            # converting from user-owned node to shared (tagged) node
+            new_scopes = set()
+            for tag in access_tags_from_policy:
+                new_scopes.update(self.loaded_tags.tags[tag].get(identifier, set()))
+            if not all(scope in new_scopes for scope in self.unremovable_scopes):
+                raise ValueError(
+                    f"Cannot modify tags on node: operation removes unremovable scopes.\n"
+                    f"The current access_blob is: {node.access_blob}\n"
+                    f"The new access_blob would be: {access_blob_from_policy}\n"
+                    f"These scopes cannot be self-removed: {self.unremovable_scopes}"
+                )
 
         logger.debug(
             f"Node to be modified with new access_blob: {access_blob_from_policy}"
@@ -867,13 +875,13 @@ class TagBasedAccessPolicy:
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
-    async def allowed_scopes(self, node, principal):
+    async def allowed_scopes(self, node, principal, authn_scopes):
         # If this is being called, filter_for_access has let us get this far.
         # However, filters and allowed_scopes should always be implmented to
         # give answers consistent with each other.
         if not hasattr(node, "access_blob"):
             allowed = self.scopes
-        elif self._is_admin(principal):
+        elif self._is_admin(authn_scopes):
             allowed = self.scopes
         else:
             if principal.type == "service":
@@ -900,7 +908,7 @@ class TagBasedAccessPolicy:
 
         return allowed
 
-    async def filters(self, node, principal, scopes):
+    async def filters(self, node, principal, authn_scopes, scopes):
         queries = []
 
         def query_filter(value_id, value_tags):
@@ -915,7 +923,7 @@ class TagBasedAccessPolicy:
 
         if principal.type == "service":
             identifier = str(principal.uuid)
-        elif self._is_admin(principal):
+        elif self._is_admin(authn_scopes):
             return queries
         else:
             identifier = self._get_id(principal)

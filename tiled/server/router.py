@@ -37,6 +37,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from .. import __version__
 from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import Scopes
 from ..utils import (
     BrokenLink,
     SpecialUsers,
@@ -46,7 +47,7 @@ from ..utils import (
 )
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from .authentication import get_current_principal
+from .authentication import get_current_principal, get_current_scopes
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -1127,6 +1128,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
     ):
         for data_source in body.data_sources:
             if data_source.assets:
@@ -1146,6 +1148,7 @@ def get_router(
             settings=settings,
             entry=entry,
             principal=principal,
+            authn_scopes=authn_scopes,
         )
 
     @router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse)
@@ -1160,6 +1163,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
     ):
         return await _create_node(
             request=request,
@@ -1168,6 +1172,7 @@ def get_router(
             settings=settings,
             entry=entry,
             principal=principal,
+            authn_scopes=authn_scopes,
         )
 
     async def _create_node(
@@ -1177,6 +1182,7 @@ def get_router(
         settings: Settings,
         entry,
         principal: schemas.Principal,
+        authn_scopes: Scopes,
     ):
         metadata, structure_family, specs, access_blob = (
             body.metadata,
@@ -1199,7 +1205,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.init_node(
-                    principal, access_blob=access_blob
+                    principal, authn_scopes, access_blob=access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1470,6 +1476,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1536,7 +1543,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.modify_node(
-                    entry, principal, access_blob
+                    entry, principal, authn_scopes, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1568,6 +1575,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1599,7 +1607,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.modify_node(
-                    entry, principal, access_blob
+                    entry, principal, authn_scopes, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
