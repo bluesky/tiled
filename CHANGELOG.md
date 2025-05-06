@@ -24,6 +24,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   or DuckDB files as if they were directories of readable files, and
   included them superfluously in a check on whether assets were situated
   in a readable area.
+- Update data_sources in the client after receiving a response from the server.
+  Removed the (unused) `data_source` parameter from the `PUT /data_source/`
+  endpoint; the id of the updated data source must be included in the structure
+  within the body of the request.
 
 ## 0.1.0-b23 (2025-04-24)
 

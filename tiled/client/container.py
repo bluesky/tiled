@@ -714,6 +714,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 document.pop("structure")
             )
 
+        # And for data sources
+        if "data_sources" in document:
+            item["attributes"]["data_sources"] = [
+                ds for ds in document.pop("data_sources")
+            ]
+
         # Merge in "id" and "links" returned by the server.
         item.update(document)
 

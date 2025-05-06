@@ -1126,7 +1126,7 @@ def get_router(
             if data_source.assets:
                 raise HTTPException(
                     "Externally-managed assets cannot be registered "
-                    "using POST /metadata/{path} Use POST /register/{path} instead."
+                    "using POST /metadata/{path}. Use POST /register/{path} instead."
                 )
         if body.data_sources and not getattr(entry, "writable", False):
             raise HTTPException(
@@ -1210,16 +1210,13 @@ def get_router(
     async def put_data_source(
         request: Request,
         path: str,
-        data_source: int,
         body: schemas.PutDataSourceRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(
             get_entry(), scopes=["write:metadata", "register"]
         ),
     ):
-        await entry.put_data_source(
-            data_source=body.data_source,
-        )
+        await entry.put_data_source(data_source=body.data_source)
 
     @router.delete("/metadata/{path:path}")
     async def delete(
