@@ -514,15 +514,6 @@ class BaseClient:
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
-        if isinstance(metadata, list) and len(metadata) == 3:
-            if specs is None:
-                # Likely [metadata, specs] form from node.metadata_copy()
-                metadata, specs, access_blob = metadata
-            else:
-                raise ValueError(
-                    "Duplicate specs provided after [metadata, specs, access_blob]"
-                )
-
         metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
             metadata=metadata,
             specs=specs,
