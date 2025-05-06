@@ -868,7 +868,7 @@ class TagBasedAccessPolicy:
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
-    async def allowed_scopes(self, node, principal, path_parts):
+    async def allowed_scopes(self, node, principal):
         # If this is being called, filter_for_access has let us get this far.
         # However, filters and allowed_scopes should always be implmented to
         # give answers consistent with each other.
@@ -901,7 +901,7 @@ class TagBasedAccessPolicy:
 
         return allowed
 
-    async def filters(self, node, principal, scopes, path_parts):
+    async def filters(self, node, principal, scopes):
         queries = []
         query_filter = lambda value_id, value_tags: AccessBlobFilter(
             "user", value_id, "tags", value_tags

@@ -65,6 +65,23 @@ def buffer():
         yield buffer
 
 
+@pytest.fixture(scope="function")
+def buffer_factory(request):
+    buffers = []
+
+    def _buffer():
+        buf = io.BytesIO()
+        buffers.append(buf)
+        return buf
+
+    def teardown():
+        for buf in buffers:
+            buf.close()
+
+    request.addfinalizer(teardown)
+    return _buffer
+
+
 @pytest.fixture
 def tmp_profiles_dir():
     """

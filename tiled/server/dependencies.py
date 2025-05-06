@@ -42,7 +42,6 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         session_state is an optional dictionary passed in the session token
         """
         path_parts = [segment for segment in path.split("/") if segment]
-        path_parts_relative = path_parts
         entry = root_tree
         access_policy = getattr(request.app.state, "access_policy", None)
 
@@ -58,7 +57,6 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
             principal,
             ["read:metadata"],
             request.state.metrics,
-            path_parts_relative,
         )
         try:
             for i, segment in enumerate(path_parts):
@@ -78,7 +76,6 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                     except (KeyError, TypeError):
                         raise NoEntry(path_parts)
 
-                path_parts_relative = path_parts[i + 1 :]  # noqa: E203
                 # filter and keep only what we are allowed to see from here
                 entry = await filter_for_access(
                     entry,
@@ -86,14 +83,13 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                     principal,
                     ["read:metadata"],
                     request.state.metrics,
-                    path_parts_relative,
                 )
 
             # Now check that we have the requested scope according to the access policy
             if access_policy is not None:
                 with record_timing(request.state.metrics, "acl"):
                     allowed_scopes = await access_policy.allowed_scopes(
-                        entry, principal, path_parts_relative
+                        entry, principal
                     )
                     if not set(security_scopes.scopes).issubset(allowed_scopes):
                         if "read:metadata" not in allowed_scopes:

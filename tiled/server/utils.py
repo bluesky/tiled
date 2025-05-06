@@ -62,14 +62,10 @@ def get_root_url_low_level(request_headers, scope):
     return f"{scheme}://{host}{root_path}"
 
 
-async def filter_for_access(
-    entry, access_policy, principal, scopes, metrics, path_parts
-):
-    if access_policy is not None:
+async def filter_for_access(entry, access_policy, principal, scopes, metrics):
+    if access_policy is not None and hasattr(entry, "search"):
         with record_timing(metrics, "acl"):
-            queries = await access_policy.filters(
-                entry, principal, set(scopes), path_parts
-            )
+            queries = await access_policy.filters(entry, principal, set(scopes))
             if queries is NO_ACCESS:
                 entry = EMPTY_NODE
             else:
