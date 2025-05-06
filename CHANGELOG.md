@@ -2,6 +2,16 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+## 0.1.0-b25 (2025-05-06)
+
+### Added
+
+- New optional parameter to catalog configuration, `mount_node`
+  enables mounting different sub-trees of one catalog database
+  at different prefixes. This is an advanced feature to facilitate
+  migration from many catalogs to one. See
+  `tiled/_tests/test_mount_node.py` for usage.
+
 ## 0.1.0-b24 (2025-05-06)
 
 ### Added
