@@ -15,9 +15,9 @@ from typing import NamedTuple
 import cachetools
 import httpx
 import yaml
-from access_blob_queries import AccessBlobFilter
 
 from tiled.access_policies import NO_ACCESS
+from tiled.queries import AccessBlobFilter
 from tiled.scopes import ALL_SCOPES
 
 TILED_TBAP_GROUP_CACHE_MAXSIZE = 55_000
@@ -910,9 +910,7 @@ class TagBasedAccessPolicy:
 
     async def filters(self, node, principal, authn_scopes, scopes):
         queries = []
-
-        def query_filter(value_id, value_tags):
-            return AccessBlobFilter("user", value_id, "tags", value_tags)
+        query_filter = AccessBlobFilter
 
         if not hasattr(node, "access_blob"):
             return queries

@@ -479,6 +479,48 @@ def SpecQuery(spec):
     return SpecsQuery([spec])
 
 
+@register(name="access_blob_filter")
+@dataclass
+class AccessBlobFilter:
+    """
+    Perform a query against the access_blob with two conditions.
+    1. Query for a user id (i.e. username) match against the "user" field
+    2. Query for if any tag in a list of tags is present in the "tags" field
+    The values for these conditions are independent.
+
+    Parameters
+    ----------
+    user_id : str
+        e.g. "bill", "amanda"
+    tags : List[JSONSerializable]
+        e.g. ["tag_for_bill", "amanda_only"]
+
+
+    Examples
+    --------
+
+    Search for user "bill", as well as tags in ["tag_for_bill", "useful_data"]
+
+    >>> c.search(AccessBlobFilter("bill", ["tag_for_bill", "useful_data"]))
+    """
+
+    user_id: str
+    tags: List[str]
+
+    def encode(self):
+        return {
+            "user_id": self.user_id,
+            "tags": self.tags,
+        }
+
+    @classmethod
+    def decode(cls, *, user_id, tags):
+        return cls(
+            user_id=user_id,
+            tags=tags,
+        )
+
+
 @register(name="structure_family")
 @dataclass(init=False)
 class StructureFamilyQuery:

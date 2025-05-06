@@ -30,7 +30,7 @@ from sqlalchemy import (
     type_coerce,
     update,
 )
-from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -41,6 +41,7 @@ from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
+    AccessBlobFilter,
     Comparison,
     Contains,
     Eq,
@@ -1347,6 +1348,36 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
+def access_blob_filter(query, tree):
+    dialect_name = tree.engine.url.get_dialect().name
+    attr_id = orm.Node.access_blob["user"]
+    attr_tags = orm.Node.access_blob["tags"]
+    if len(query.user_id) == 0 and len(query.tags) == 0:
+        # Results cannot possibly match an empty value or list,
+        # so put a False condition in the list ensuring that
+        # there are no rows returned.
+        condition = false()
+    elif dialect_name == "sqlite":
+        access_blob_json = func.json_each(attr_tags).table_valued("value")
+        condition = or_(
+            (
+                select(1)
+                .select_from(access_blob_json)
+                .where(access_blob_json.c.value.in_(query.tags))
+            ).exists(),
+            func.json_extract(func.json_quote(attr_id), "$") == query.user_id,
+        )
+    elif dialect_name == "postgresql":
+        condition = or_(
+            (attr_tags.op("?|")(cast(query.tags, ARRAY(TEXT)))),
+            attr_id.astext == query.user_id,
+        )
+    else:
+        raise UnsupportedQueryType("access_blob_filter")
+
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def in_or_not_in_sqlite(query, tree, method):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
@@ -1425,6 +1456,7 @@ CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
+CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
 CatalogNodeAdapter.register_query(FullText, full_text)
 CatalogNodeAdapter.register_query(Like, like)
 
