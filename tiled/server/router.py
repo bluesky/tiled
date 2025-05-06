@@ -1126,7 +1126,7 @@ def get_router(
             if data_source.assets:
                 raise HTTPException(
                     "Externally-managed assets cannot be registered "
-                    "using POST /metadata/{path} Use POST /register/{path} instead."
+                    "using POST /metadata/{path}. Use POST /register/{path} instead."
                 )
         if body.data_sources and not getattr(entry, "writable", False):
             raise HTTPException(
