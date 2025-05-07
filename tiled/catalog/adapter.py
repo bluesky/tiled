@@ -888,7 +888,7 @@ class CatalogNodeAdapter:
 
     async def delete_tree(self, external_only=True):
         """
-        Delete a Node and of the Nodes beneath it in the tree.
+        Delete the Nodes beneath a Node in the tree.
 
         That is, delete all Nodes that have this Node as an ancestor, any number
         of "generators" up.
@@ -902,11 +902,18 @@ class CatalogNodeAdapter:
             if external_only:
                 count_int_asset_statement = (
                     select(func.count(orm.Asset.data_uri))
-                    .filter(
-                        orm.Asset.data_sources.any(
-                            orm.DataSource.management != Management.external
-                        )
+                    .select_from(orm.Asset)
+                    .join(
+                        orm.DataSourceAssetAssociation,
+                        orm.DataSourceAssetAssociation.asset_id == orm.Asset.id,
                     )
+                    .join(
+                        orm.DataSource,
+                        orm.DataSource.id
+                        == orm.DataSourceAssetAssociation.data_source_id,
+                    )
+                    .join(orm.Node, orm.Node.id == orm.DataSource.node_id)
+                    .filter(orm.DataSource.management != Management.external)
                     .filter(condition)
                 )
                 count_int_assets = (
@@ -923,6 +930,7 @@ class CatalogNodeAdapter:
             # TODO Deal with Assets belonging to multiple DataSources.
             asset_ids_to_delete = (
                 select(orm.Asset.id)
+                .select_from(orm.Asset)  # Explicitly define the starting point
                 .join(
                     orm.DataSourceAssetAssociation,
                     orm.DataSourceAssetAssociation.asset_id == orm.Asset.id,
