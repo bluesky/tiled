@@ -446,7 +446,7 @@ class BaseClient:
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None):
+    def update_metadata(self, metadata=None, specs=None, *, drop_revision=False):
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -461,6 +461,9 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -506,7 +509,11 @@ class BaseClient:
         metadata_patch, specs_patch = self.build_metadata_patches(
             metadata=metadata, specs=specs
         )
-        self.patch_metadata(metadata_patch=metadata_patch, specs_patch=specs_patch)
+        self.patch_metadata(
+            metadata_patch=metadata_patch,
+            specs_patch=specs_patch,
+            drop_revision=drop_revision,
+        )
 
     def build_metadata_patches(self, metadata=None, specs=None):
         """
@@ -619,6 +626,7 @@ class BaseClient:
         metadata_patch=None,
         specs_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
+        drop_revision=False,
     ):
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
@@ -639,6 +647,9 @@ class BaseClient:
               (See https://datatracker.ietf.org/doc/html/rfc6902)
             * "application/merge-patch+json"
               (See https://datatracker.ietf.org/doc/html/rfc7386)
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -689,6 +700,9 @@ class BaseClient:
             "metadata": metadata_patch,
             "specs": normalized_specs_patch,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
         for attempt in retry_context():
             with attempt:
@@ -696,6 +710,7 @@ class BaseClient:
                     self.context.http_client.patch(
                         self.item["links"]["self"],
                         content=safe_json_dump(data),
+                        params=params,
                     )
                 ).json()
 
@@ -716,7 +731,7 @@ class BaseClient:
             patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
             self._item["attributes"]["specs"] = patched_specs
 
-    def replace_metadata(self, metadata=None, specs=None):
+    def replace_metadata(self, metadata=None, specs=None, drop_revision=False):
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
@@ -730,6 +745,9 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -751,12 +769,17 @@ class BaseClient:
             "metadata": metadata,
             "specs": normalized_specs,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.put(
-                        self.item["links"]["self"], content=safe_json_dump(data)
+                        self.item["links"]["self"],
+                        content=safe_json_dump(data),
+                        params=params,
                     )
                 ).json()
 

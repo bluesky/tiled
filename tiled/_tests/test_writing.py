@@ -406,6 +406,22 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+def test_drop_revision(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        # Set metadata color=blue.
+        ac = client.write_array([1, 2, 3], metadata={"color": "blue"}, key="revise_me")
+        assert ac.metadata["color"] == "blue"
+        assert client["revise_me"].metadata["color"] == "blue"
+        assert len(ac.metadata_revisions[:]) == 0
+        # Update metadata to color=red, but drop revision.
+        ac.update_metadata(metadata={"color": "red"}, drop_revision=True)
+        # Metadata is updated; no revision is saved.
+        assert ac.metadata["color"] == "red"
+        assert client["revise_me"].metadata["color"] == "red"
+        assert len(ac.metadata_revisions) == 0
+
+
 def test_merge_patching(tree):
     "Test merge patching of metadata and specs"
     with Context.from_app(build_app(tree)) as context:
