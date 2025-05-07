@@ -1,4 +1,3 @@
-import asyncio
 import collections
 import copy
 import dataclasses
@@ -13,7 +12,7 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 import anyio
@@ -308,9 +307,18 @@ class CatalogNodeAdapter:
         queries=None,
         sorting=None,
         access_policy=None,
+        mount_node: Optional[Union[str, List[str]]] = None,
     ):
         self.context = context
         self.engine = self.context.engine
+        if isinstance(mount_node, str):
+            mount_node = [segment for segment in mount_node.split("/") if segment]
+        if mount_node:
+            if not isinstance(node, RootNode):
+                # sanity-check -- this should not be reachable
+                raise RuntimeError("mount_node should only be passed with the RootNode")
+            node.ancestors.extend(mount_node[:-1])
+            node.key = mount_node[-1]
         self.node = node
         if node.key is None:
             # Special case for RootNode
@@ -955,7 +963,7 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def replace_metadata(self, metadata=None, specs=None):
+    async def replace_metadata(self, metadata=None, specs=None, *, drop_revision=False):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -964,28 +972,31 @@ class CatalogNodeAdapter:
         if specs is not None:
             values["specs"] = [s.model_dump() for s in specs]
         async with self.context.session() as db:
-            current = (
-                await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
-            ).scalar_one()
-            next_revision_number = 1 + (
-                (
+            if not drop_revision:
+                current = (
                     await db.execute(
-                        select(func.max(orm.Revision.revision_number)).where(
-                            orm.Revision.node_id == self.node.id
-                        )
+                        select(orm.Node).where(orm.Node.id == self.node.id)
                     )
                 ).scalar_one()
-                or 0
-            )
-            revision = orm.Revision(
-                # Trailing underscore in 'metadata_' avoids collision with
-                # SQLAlchemy reserved word 'metadata'.
-                metadata_=current.metadata_,
-                specs=current.specs,
-                node_id=current.id,
-                revision_number=next_revision_number,
-            )
-            db.add(revision)
+                next_revision_number = 1 + (
+                    (
+                        await db.execute(
+                            select(func.max(orm.Revision.revision_number)).where(
+                                orm.Revision.node_id == self.node.id
+                            )
+                        )
+                    ).scalar_one()
+                    or 0
+                )
+                revision = orm.Revision(
+                    # Trailing underscore in 'metadata_' avoids collision with
+                    # SQLAlchemy reserved word 'metadata'.
+                    metadata_=current.metadata_,
+                    specs=current.specs,
+                    node_id=current.id,
+                    revision_number=next_revision_number,
+                )
+                db.add(revision)
             await db.execute(
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
@@ -1481,7 +1492,7 @@ def from_uri(
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
-    mount_node=None,
+    mount_node: Optional[Union[str, List[str]]] = None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1525,15 +1536,8 @@ def from_uri(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
+        mount_node=mount_node,
     )
-    if isinstance(mount_node, str):
-        mount_node = [segment for segment in mount_node.split("/") if segment]
-    if mount_node:
-
-        async def get_nested_node():
-            return await adapter.lookup_adapter(mount_node)
-
-        adapter = asyncio.run(get_nested_node())
     return adapter
 
 

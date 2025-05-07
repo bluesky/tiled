@@ -1,20 +1,16 @@
-import os
 from pathlib import Path
-from typing import Any, AsyncGenerator, Callable, Generator, Union
+from typing import Any, Callable, Generator, Union
 
 import adbc_driver_duckdb
 import adbc_driver_sqlite
 import pyarrow as pa
 import pytest
-import pytest_asyncio
 
 from tiled.adapters.sql import SQLAdapter, check_table_name
 from tiled.storage import parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
-
-from ..utils import temp_postgres
 
 names = ["f0", "f1", "f2", "f3"]
 data0 = [
@@ -180,9 +176,9 @@ def test_attributes_sql_many_part(adapter_sql_many_partitions: SQLAdapter) -> No
 @pytest.fixture
 def adapter_psql_one_partition(
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    postgres_uri: str,
+    postgresql_database_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(postgres_uri, 1)
+    data_source = data_source_from_init_storage(postgresql_database_uri, 1)
     adapter = SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -196,9 +192,9 @@ def adapter_psql_one_partition(
 @pytest.fixture
 def adapter_psql_many_partitions(
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    postgres_uri: str,
+    postgresql_database_uri: str,
 ) -> SQLAdapter:
-    data_source = data_source_from_init_storage(postgres_uri, 3)
+    data_source = data_source_from_init_storage(postgresql_database_uri, 3)
     return SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
