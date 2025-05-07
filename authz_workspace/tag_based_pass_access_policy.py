@@ -14,8 +14,6 @@ import httpx
 
 from tiled.access_policies import TagBasedAccessPolicy
 
-# from tag_based_access_policy import TagBasedAccessPolicy
-
 TILED_TBAP_GROUP_CACHE_MAXSIZE = 55_000
 TILED_TBAP_GROUP_CACHE_TTL = 3300  # seconds
 
