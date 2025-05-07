@@ -305,11 +305,7 @@ class SQLAdapter:
         Returns the concatenated pyarrow table as pandas dataframe.
         """
 
-        cols = (
-            ", ".join([f'"{c}"' for c in ["_partition_id", "_dataset_id"] + fields])
-            if fields
-            else "*"
-        )
+        cols = ", ".join([f'"{c}"' for c in fields]) if fields else "*"
         query = (
             f'SELECT {cols} FROM "{self.table_name}" '
             f"WHERE _dataset_id={self.dataset_id} ORDER BY _partition_id"
@@ -321,14 +317,18 @@ class SQLAdapter:
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
-        data = data.drop_columns(["_partition_id", "_dataset_id"])
-        schema = self.structure().arrow_schema_decoded
-        data.cast(schema)
+        # Pick only the present columns from the schema.
+        to_drop = set(data.column_names).intersection(["_partition_id", "_dataset_id"])
+        data = data.drop_columns(to_drop)
+        full_schema = self.structure().arrow_schema_decoded
+        target_schema = pyarrow.schema(
+            [
+                full_schema.field(full_schema.get_field_index(name))
+                for name in data.column_names
+            ]
+        )
 
-        table = data.to_pandas()
-        if fields is not None:
-            table = table[fields]
-        return table
+        return data.cast(target_schema).to_pandas()
 
     def read_partition(
         self, partition: int, fields: Optional[List[str]] = None
