@@ -4,7 +4,7 @@ from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
 
 
-def test_mount_node(sqlite_or_postgresql_database_uri, tmpdir):
+def test_mount_node(sqlite_or_postgres_uri, tmpdir):
     "Test 'mounting' sub-trees of a catalog."
     one_tree_config = {
         "trees": [
@@ -12,7 +12,7 @@ def test_mount_node(sqlite_or_postgresql_database_uri, tmpdir):
                 "path": "/",
                 "tree": "catalog",
                 "args": {
-                    "uri": sqlite_or_postgresql_database_uri,
+                    "uri": sqlite_or_postgres_uri,
                     "init_if_not_exists": True,
                     "writable_storage": [tmpdir / "data"],
                 },
@@ -34,7 +34,7 @@ def test_mount_node(sqlite_or_postgresql_database_uri, tmpdir):
                 "path": "/a",
                 "tree": "catalog",
                 "args": {
-                    "uri": sqlite_or_postgresql_database_uri,
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": [tmpdir / "data"],
                     "mount_node": "/A",
                 },
@@ -43,7 +43,7 @@ def test_mount_node(sqlite_or_postgresql_database_uri, tmpdir):
                 "path": "/b",
                 "tree": "catalog",
                 "args": {
-                    "uri": sqlite_or_postgresql_database_uri,
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": [tmpdir / "data"],
                     "mount_node": "/B",
                 },
@@ -79,7 +79,7 @@ def test_mount_node(sqlite_or_postgresql_database_uri, tmpdir):
                 "path": "/some/nested/path",
                 "tree": "catalog",
                 "args": {
-                    "uri": sqlite_or_postgresql_database_uri,
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": [tmpdir / "data"],
                     "mount_node": "/A/x",
                 },
@@ -97,7 +97,7 @@ def test_mount_node(sqlite_or_postgresql_database_uri, tmpdir):
                 "path": "/some/nested/path",
                 "tree": "catalog",
                 "args": {
-                    "uri": sqlite_or_postgresql_database_uri,
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": [tmpdir / "data"],
                     "mount_node": ["A", "x"],
                 },

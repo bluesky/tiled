@@ -63,9 +63,9 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
 def adapter_duckdb_one_partition(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    duckdb_database_uri: str,
+    duckdb_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(duckdb_database_uri, 1)
+    data_source = data_source_from_init_storage(duckdb_uri, 1)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -78,9 +78,9 @@ def adapter_duckdb_one_partition(
 def adapter_duckdb_many_partitions(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    duckdb_database_uri: str,
+    duckdb_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(duckdb_database_uri, 3)
+    data_source = data_source_from_init_storage(duckdb_uri, 3)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -111,9 +111,9 @@ def test_attributes_duckdb_many_part(
 def adapter_sql_one_partition(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    sqlite_database_uri: str,
+    sqlite_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(sqlite_database_uri, 1)
+    data_source = data_source_from_init_storage(sqlite_uri, 1)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -126,9 +126,9 @@ def adapter_sql_one_partition(
 def adapter_sql_many_partitions(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    sqlite_database_uri: str,
+    sqlite_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(sqlite_database_uri, 3)
+    data_source = data_source_from_init_storage(sqlite_uri, 3)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -156,9 +156,9 @@ def test_attributes_sql_many_part(adapter_sql_many_partitions: SQLAdapter) -> No
 @pytest.fixture
 def adapter_psql_one_partition(
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    postgresql_database_uri: str,
+    postgres_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(postgresql_database_uri, 1)
+    data_source = data_source_from_init_storage(postgres_uri, 1)
     adapter = SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -172,9 +172,9 @@ def adapter_psql_one_partition(
 @pytest.fixture
 def adapter_psql_many_partitions(
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    postgresql_database_uri: str,
+    postgres_uri: str,
 ) -> SQLAdapter:
-    data_source = data_source_from_init_storage(postgresql_database_uri, 3)
+    data_source = data_source_from_init_storage(postgres_uri, 3)
     return SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -516,10 +516,7 @@ def test_check_table_name_reserved_keywords(
         assert check_table_name(table_name) is None  # type: ignore[func-returns-value]
 
 
-@pytest.mark.parametrize(
-    "data_uri",
-    ["sqlite_database_uri", "duckdb_database_uri", "postgresql_database_uri"],
-)
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
 @pytest.mark.parametrize("column_name", ["a", "a b", "a-b", "a+b", "1"])
 def test_valid_column_names(
     data_uri: str, column_name: str, request: pytest.FixtureRequest
