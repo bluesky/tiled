@@ -787,6 +787,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -798,6 +799,7 @@ def get_router(
             request=request,
             entry=entry,
             principal=principal,
+            authn_scopes=authn_scopes,
             field=field,
             format=format,
             filename=filename,
@@ -817,6 +819,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -828,6 +831,7 @@ def get_router(
             request=request,
             entry=entry,
             principal=principal,
+            authn_scopes=authn_scopes,
             field=field,
             format=format,
             filename=filename,
@@ -837,6 +841,7 @@ def get_router(
         request: Request,
         entry,
         principal: str,
+        authn_scopes: Scopes,
         field: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
@@ -856,6 +861,7 @@ def get_router(
             filter_for_access,
             access_policy=request.app.state.access_policy,
             principal=principal,
+            authn_scopes=authn_scopes,
             scopes=["read:data"],
             metrics=request.state.metrics,
         )
@@ -898,6 +904,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -933,6 +940,7 @@ def get_router(
                 filter_for_access,
                 access_policy=request.app.state.access_policy,
                 principal=principal,
+                authn_scopes=authn_scopes,
                 scopes=["read:data"],
                 metrics=request.state.metrics,
             )
