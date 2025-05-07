@@ -407,18 +407,19 @@ def test_metadata_revisions(tree):
 
 
 def test_drop_revision(tree):
+    key = "test_drop_revision"
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         # Set metadata color=blue.
-        ac = client.write_array([1, 2, 3], metadata={"color": "blue"}, key="revise_me")
+        ac = client.write_array([1, 2, 3], metadata={"color": "blue"}, key=key)
         assert ac.metadata["color"] == "blue"
-        assert client["revise_me"].metadata["color"] == "blue"
+        assert client[key].metadata["color"] == "blue"
         assert len(ac.metadata_revisions[:]) == 0
         # Update metadata to color=red, but drop revision.
         ac.update_metadata(metadata={"color": "red"}, drop_revision=True)
         # Metadata is updated; no revision is saved.
         assert ac.metadata["color"] == "red"
-        assert client["revise_me"].metadata["color"] == "red"
+        assert client[key].metadata["color"] == "red"
         assert len(ac.metadata_revisions) == 0
 
 
