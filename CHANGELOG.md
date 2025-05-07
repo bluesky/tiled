@@ -11,6 +11,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
   the update is _not_ saved as a revision. This is exposed in the Python
   client via a new keyword-only argument `drop_revision` in
   `update_metadata`, `patch_metadata`, and `replace_metadata`.
+- New access policy `TagBasedAccessPolicy` which introduces more robust
+  authorization based on the concept of tagging. When this policy is used,
+  access to data is controlled by the node's `access_blob` (i.e the tags applied
+  to that node).
+- Added new `access_blob` column to Catalog, in support of the new
+  authorization. This blob typically contains one of: resource owner (creator),
+  or a list of access tags.
+- Added new filter type `AccessBlobFilter` which filters nodes based upon their
+  `access_blob` contents. In support of the new authorization.
+
+### Changed
+- Tiled now accepts a single `access_control` configuraton for the entire
+  server, only. Access policies are now a server-wide singleton used for
+  all access requests. Access control can no longer be specified on
+  individual trees.
+- Removed `path_parts` arg from access policy signatures and related.
+- Effective scopes for the principal (from authN) are now threaded into
+  access policies and related.
+- Removed `access_policy` from `MapAdapter` and `CatalogAdapter`; accesss policies
+  are now set server-wide only.
 
 ### Fixed
 
