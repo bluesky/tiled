@@ -526,7 +526,7 @@ class BaseClient:
             metadata_patch=metadata_patch,
             specs_patch=specs_patch,
             access_blob_patch=access_blob_patch,
-            drop_revision=drop_devision,
+            drop_revision=drop_revision,
         )
 
     def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):

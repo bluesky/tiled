@@ -308,7 +308,6 @@ class CatalogNodeAdapter:
         conditions=None,
         queries=None,
         sorting=None,
-        access_policy=None,
         mount_node: Optional[Union[str, List[str]]] = None,
     ):
         self.context = context
