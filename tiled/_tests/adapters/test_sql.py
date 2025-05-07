@@ -58,9 +58,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
 
         storage = parse_storage(data_uri)
         register_storage(storage)
-        return SQLAdapter.init_storage(
-            data_source=data_source, storage=storage, path_parts=[]
-        )
+        return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
     return _data_source_from_init_storage
 
@@ -81,7 +79,7 @@ def adapter_duckdb_one_partition(
 
 
 @pytest.fixture
-def adapter_duckdb_many_partition(
+def adapter_duckdb_many_partitions(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
 ) -> Generator[SQLAdapter, None, None]:
@@ -103,11 +101,13 @@ def test_attributes_duckdb_one_part(adapter_duckdb_one_partition: SQLAdapter) ->
     )
 
 
-def test_attributes_duckdb_many_part(adapter_duckdb_many_partition: SQLAdapter) -> None:
-    assert adapter_duckdb_many_partition.structure().columns == names
-    assert adapter_duckdb_many_partition.structure().npartitions == 3
+def test_attributes_duckdb_many_part(
+    adapter_duckdb_many_partitions: SQLAdapter,
+) -> None:
+    assert adapter_duckdb_many_partitions.structure().columns == names
+    assert adapter_duckdb_many_partitions.structure().npartitions == 3
     assert isinstance(
-        adapter_duckdb_many_partition.conn, adbc_driver_duckdb.dbapi.Connection
+        adapter_duckdb_many_partitions.conn, adbc_driver_duckdb.dbapi.Connection
     )
 
 
@@ -127,7 +127,7 @@ def adapter_sql_one_partition(
 
 
 @pytest.fixture
-def adapter_sql_many_partition(
+def adapter_sql_many_partitions(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
 ) -> Generator[SQLAdapter, None, None]:
@@ -149,11 +149,11 @@ def test_attributes_sql_one_part(adapter_sql_one_partition: SQLAdapter) -> None:
     )
 
 
-def test_attributes_sql_many_part(adapter_sql_many_partition: SQLAdapter) -> None:
-    assert adapter_sql_many_partition.structure().columns == names
-    assert adapter_sql_many_partition.structure().npartitions == 3
+def test_attributes_sql_many_part(adapter_sql_many_partitions: SQLAdapter) -> None:
+    assert adapter_sql_many_partitions.structure().columns == names
+    assert adapter_sql_many_partitions.structure().npartitions == 3
     assert isinstance(
-        adapter_sql_many_partition.conn, adbc_driver_sqlite.dbapi.Connection
+        adapter_sql_many_partitions.conn, adbc_driver_sqlite.dbapi.Connection
     )
 
 
@@ -165,6 +165,16 @@ async def postgres_uri() -> AsyncGenerator[str, None]:
 
     async with temp_postgres(uri) as uri_with_database_name:
         yield uri_with_database_name
+
+
+@pytest_asyncio.fixture
+async def duckdb_uri(tmp_path: Path) -> AsyncGenerator[str, None]:
+    yield f"duckdb:///{tmp_path}/test.db"
+
+
+@pytest_asyncio.fixture
+async def sqlite_uri(tmp_path: Path) -> AsyncGenerator[str, None]:
+    yield f"sqlite:///{tmp_path}/test.db"
 
 
 @pytest.fixture
@@ -184,7 +194,7 @@ def adapter_psql_one_partition(
 
 
 @pytest.fixture
-def adapter_psql_many_partition(
+def adapter_psql_many_partitions(
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
     postgres_uri: str,
 ) -> SQLAdapter:
@@ -297,9 +307,9 @@ def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
 @pytest.mark.parametrize(
     "adapter",
     [
-        ("adapter_sql_many_partition"),
-        ("adapter_duckdb_many_partition"),
-        ("adapter_psql_many_partition"),
+        ("adapter_sql_many_partitions"),
+        ("adapter_duckdb_many_partitions"),
+        ("adapter_psql_many_partitions"),
     ],
 )
 def test_append_single_partition(
@@ -325,8 +335,8 @@ def test_append_single_partition(
 @pytest.mark.parametrize(
     "adapter",
     [
-        ("adapter_sql_many_partition"),
-        ("adapter_psql_many_partition"),
+        ("adapter_sql_many_partitions"),
+        ("adapter_psql_many_partitions"),
     ],
 )
 def test_write_read_one_batch_many_part(
@@ -444,6 +454,18 @@ def test_check_table_name_long_name(
             pytest.raises(ValueError, match="Illegal table name!"),
         ),
         (
+            "here-is-my-table",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "-here-is-my-table",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
+            "here-is-my-table-",
+            pytest.raises(ValueError, match="Illegal table name!"),
+        ),
+        (
             "create_this_table1246*",
             pytest.raises(ValueError, match="Illegal table name!"),
         ),
@@ -516,3 +538,23 @@ def test_check_table_name_reserved_keywords(
             check_table_name(table_name)
     else:
         assert check_table_name(table_name) is None  # type: ignore[func-returns-value]
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+@pytest.mark.parametrize("column_name", ["a", "a b", "a-b", "a+b", "1"])
+def test_valid_column_names(
+    data_uri: str, column_name: str, request: pytest.FixtureRequest
+) -> None:
+    table = pa.Table.from_arrays([[1, 2, 3]], [column_name])
+    structure = TableStructure.from_arrow_table(table)
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=structure,
+        assets=[],
+    )
+    data_uri = request.getfixturevalue(data_uri)
+    storage = parse_storage(data_uri)
+    register_storage(storage)
+    assert SQLAdapter.init_storage(data_source=data_source, storage=storage) is not None

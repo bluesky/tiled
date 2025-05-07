@@ -98,7 +98,7 @@ class SQLAdapter:
         cls,
         storage: Storage,
         data_source: DataSource[TableStructure],
-        path_parts: List[str],
+        path_parts: Optional[List[str]] = None,
     ) -> DataSource[TableStructure]:
         """
         Class to initialize the list of assets for given uri.
@@ -141,7 +141,7 @@ class SQLAdapter:
 
         create_index_statement = (
             "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
-            f"ON {table_name}(_dataset_id, _partition_id)"
+            f'ON "{table_name}"(_dataset_id, _partition_id)'
         )
 
         with conn.cursor() as cursor:
@@ -305,8 +305,13 @@ class SQLAdapter:
         Returns the concatenated pyarrow table as pandas dataframe.
         """
 
+        cols = (
+            ", ".join([f'"{c}"' for c in ["_partition_id", "_dataset_id"] + fields])
+            if fields
+            else "*"
+        )
         query = (
-            f"SELECT * FROM {self.table_name} "
+            f'SELECT {cols} FROM "{self.table_name}" '
             f"WHERE _dataset_id={self.dataset_id} ORDER BY _partition_id"
         )
         with self.conn.cursor() as cursor:
@@ -342,7 +347,7 @@ class SQLAdapter:
         Returns the concatenated pyarrow table as pandas dataframe.
         """
         query = (
-            f"SELECT * FROM {self.table_name} "
+            f'SELECT * FROM "{self.table_name}" '
             f"WHERE _dataset_id={self.dataset_id} AND _partition_id={int(partition)}"
         )
         with self.conn.cursor() as cursor:
@@ -814,9 +819,9 @@ def arrow_schema_to_create_table(
     # Construct the CREATE TABLE statement
     create_statement = (
         f"""
-    CREATE TABLE IF NOT EXISTS {table_name} (
+    CREATE TABLE IF NOT EXISTS \"{table_name}\" (
         """
-        + ",\n        ".join(f"{name} {type_}" for name, type_ in columns.items())
+        + ",\n        ".join(f'"{name}" {type_}' for name, type_ in columns.items())
         + """)
     """
     )
