@@ -130,6 +130,11 @@ async def sqlite_database_uri(tmpdir):
 
 
 @pytest_asyncio.fixture
+async def duckdb_database_uri(tmp_path: Path):
+    yield f"duckdb:///{tmp_path}/tiled.duckdb"
+
+
+@pytest_asyncio.fixture
 async def postgresql_database_uri():
     if not TILED_TEST_POSTGRESQL_URI:
         raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
