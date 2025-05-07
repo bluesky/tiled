@@ -1482,6 +1482,7 @@ def get_router(
             get_current_principal
         ),
         authn_scopes: Scopes = Depends(get_current_scopes),
+        drop_revision: bool = False,
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1561,7 +1562,10 @@ def get_router(
             access_blob = entry.access_blob
 
         await entry.replace_metadata(
-            metadata=metadata, specs=specs, access_blob=access_blob
+            metadata=metadata,
+            specs=specs,
+            access_blob=access_blob,
+            drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.key}
@@ -1581,6 +1585,7 @@ def get_router(
             get_current_principal
         ),
         authn_scopes: Scopes = Depends(get_current_scopes),
+        drop_revision: bool = False,
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1625,7 +1630,10 @@ def get_router(
             access_blob = entry.access_blob
 
         await entry.replace_metadata(
-            metadata=metadata, specs=specs, access_blob=access_blob
+            metadata=metadata,
+            specs=specs,
+            access_blob=access_blob,
+            drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.key}

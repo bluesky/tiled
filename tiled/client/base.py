@@ -460,7 +460,9 @@ class BaseClient:
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None, access_tags=None):
+    def update_metadata(
+        self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
+    ):
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -477,6 +479,9 @@ class BaseClient:
             conform to some named standard specification.
         access_tags: List[str], optional
             Server-specific authZ tags in list form, used to confer access to the node.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -521,6 +526,7 @@ class BaseClient:
             metadata_patch=metadata_patch,
             specs_patch=specs_patch,
             access_blob_patch=access_blob_patch,
+            drop_revision=drop_devision,
         )
 
     def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
@@ -653,6 +659,7 @@ class BaseClient:
         specs_patch=None,
         access_blob_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
+        drop_revision=False,
     ):
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
@@ -675,6 +682,9 @@ class BaseClient:
               (See https://datatracker.ietf.org/doc/html/rfc6902)
             * "application/merge-patch+json"
               (See https://datatracker.ietf.org/doc/html/rfc7386)
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -726,6 +736,9 @@ class BaseClient:
             "specs": normalized_specs_patch,
             "access_blob": access_blob_patch,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
         for attempt in retry_context():
             with attempt:
@@ -733,6 +746,7 @@ class BaseClient:
                     self.context.http_client.patch(
                         self.item["links"]["self"],
                         content=safe_json_dump(data),
+                        params=params,
                     )
                 ).json()
 
@@ -761,7 +775,9 @@ class BaseClient:
                     dict(self.access_blob), access_blob_patch, content_type
                 )
 
-    def replace_metadata(self, metadata=None, specs=None, access_tags=None):
+    def replace_metadata(
+        self, metadata=None, specs=None, access_tags=None, drop_revision=False
+    ):
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
@@ -777,6 +793,9 @@ class BaseClient:
             conform to some named standard specification.
         access_tags: List[str], optional
             Server-specific authZ tags in list form, used to confer access to the node.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -805,12 +824,17 @@ class BaseClient:
             "specs": normalized_specs,
             "access_blob": access_blob,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.put(
-                        self.item["links"]["self"], content=safe_json_dump(data)
+                        self.item["links"]["self"],
+                        content=safe_json_dump(data),
+                        params=params,
                     )
                 ).json()
 

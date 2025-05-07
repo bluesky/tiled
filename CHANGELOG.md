@@ -2,6 +2,22 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
+## Unreleased
+
+### Added
+
+- New query parameter `drop_revision` on endpoints `PUT /metadata/{path}`
+  and `PATCH /metadata/{path}`. If set to true, the version replaced by
+  the update is _not_ saved as a revision. This is exposed in the Python
+  client via a new keyword-only argument `drop_revision` in
+  `update_metadata`, `patch_metadata`, and `replace_metadata`.
+
+### Fixed
+
+- A critical bug in the `mount_node` feature introduced in the
+  previous release prohibited the server from starting when
+  `mount_node` was used with a PostgreSQL database.
+
 ## 0.1.0-b25 (2025-05-06)
 
 ### Added
