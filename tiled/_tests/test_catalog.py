@@ -385,6 +385,52 @@ async def test_delete_subtree(tmpdir):
 
 
 @pytest.mark.asyncio
+async def test_delete_asset_registered_twice(tmpdir):
+    # Do not use client fixture here.
+    # The Context must be opened inside the test or we run into
+    # event loop crossing issues with the Postgres test.
+    tree = in_memory(readable_storage=[str(tmpdir)])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        for i in range(1, 4):
+            with open(tmpdir / f"test_{i}.csv", "w") as file:
+                file.write(
+                    """a, b, c
+1, 2, 3
+4, 5, 6
+"""
+                )
+        # a has children b1 and b2, which each contain arrays
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        await register(b1, tmpdir / "test_1.csv")
+        await register(b1, tmpdir / "test_2.csv")
+        b2 = a.create_container("b2")
+        await register(b2, tmpdir / "test_1.csv")
+        await register(b2, tmpdir / "test_3.csv")
+
+        data_sources_before_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_before_delete) == 4
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 3  # shared by two data sources
+
+        b2.delete_tree()
+
+        data_sources_after_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_after_delete) == 2
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 2
+
+        client["a"]["b1"]["test_1"][:]
+        b2.delete_tree()
+
+
+@pytest.mark.asyncio
 async def test_delete_tree(tmpdir):
     # Do not use client fixture here.
     # The Context must be opened inside the test or we run into
