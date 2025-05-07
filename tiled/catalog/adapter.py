@@ -1,4 +1,3 @@
-import asyncio
 import collections
 import copy
 import dataclasses
@@ -308,6 +307,7 @@ class CatalogNodeAdapter:
         queries=None,
         sorting=None,
         access_policy=None,
+        mount_node=None,
     ):
         self.context = context
         self.engine = self.context.engine
@@ -317,6 +317,11 @@ class CatalogNodeAdapter:
             self.segments = []
         else:
             self.segments = node.ancestors + [node.key]
+        if mount_node:
+            if not (isinstance(node, RootNode) and len(self.segments) == 0):
+                # sanity-check -- this should not be reachable
+                raise RuntimeError("mount_node should only be passed with the RootNode")
+            self.segments.extend(mount_node)
         self.sorting = sorting or [("", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
@@ -1524,19 +1529,14 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
+    if isinstance(mount_node, str):
+        mount_node = [segment for segment in mount_node.split("/") if segment]
     adapter = CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
         RootNode(metadata, specs, access_policy),
         access_policy=access_policy,
+        mount_node=mount_node,
     )
-    if isinstance(mount_node, str):
-        mount_node = [segment for segment in mount_node.split("/") if segment]
-    if mount_node:
-
-        async def get_nested_node():
-            return await adapter.lookup_adapter(mount_node)
-
-        adapter = asyncio.run(get_nested_node())
     return adapter
 
 
