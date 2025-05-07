@@ -24,11 +24,12 @@ authentication:
         biff: "biff"
       confirmation_message: "You have logged in."
 access_control:
-  access_policy: tag_based_access_policy:TagBasedAccessPolicy
+  access_policy: tag_based_pass_access_policy:TagBasedPASSAccessPolicy
   args:
     provider: "toy"
     tag_config: "tag_definitions.yaml"
-    tags_state_file: "tags_state.sqlite"
+    group_parser: tag_based_pass_access_policy:get_group_users
+    tags_db: "tags_state.sqlite"
     url: "https://api.nsls2.bnl.gov"
     sync_proposals:
       rate_all: 480    # minutes
