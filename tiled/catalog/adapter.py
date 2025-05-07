@@ -955,7 +955,7 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def replace_metadata(self, metadata=None, specs=None):
+    async def replace_metadata(self, metadata=None, specs=None, *, drop_revision=False):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -964,28 +964,31 @@ class CatalogNodeAdapter:
         if specs is not None:
             values["specs"] = [s.model_dump() for s in specs]
         async with self.context.session() as db:
-            current = (
-                await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
-            ).scalar_one()
-            next_revision_number = 1 + (
-                (
+            if not drop_revision:
+                current = (
                     await db.execute(
-                        select(func.max(orm.Revision.revision_number)).where(
-                            orm.Revision.node_id == self.node.id
-                        )
+                        select(orm.Node).where(orm.Node.id == self.node.id)
                     )
                 ).scalar_one()
-                or 0
-            )
-            revision = orm.Revision(
-                # Trailing underscore in 'metadata_' avoids collision with
-                # SQLAlchemy reserved word 'metadata'.
-                metadata_=current.metadata_,
-                specs=current.specs,
-                node_id=current.id,
-                revision_number=next_revision_number,
-            )
-            db.add(revision)
+                next_revision_number = 1 + (
+                    (
+                        await db.execute(
+                            select(func.max(orm.Revision.revision_number)).where(
+                                orm.Revision.node_id == self.node.id
+                            )
+                        )
+                    ).scalar_one()
+                    or 0
+                )
+                revision = orm.Revision(
+                    # Trailing underscore in 'metadata_' avoids collision with
+                    # SQLAlchemy reserved word 'metadata'.
+                    metadata_=current.metadata_,
+                    specs=current.specs,
+                    node_id=current.id,
+                    revision_number=next_revision_number,
+                )
+                db.add(revision)
             await db.execute(
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )

@@ -1429,6 +1429,7 @@ def get_router(
         body: schemas.PatchMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        drop_revision: bool = False,
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1476,7 +1477,9 @@ def get_router(
             settings=settings,
         )
 
-        await entry.replace_metadata(metadata=metadata, specs=specs)
+        await entry.replace_metadata(
+            metadata=metadata, specs=specs, drop_revision=drop_revision
+        )
 
         response_data = {"id": entry.key}
         if metadata_modified:
@@ -1489,6 +1492,7 @@ def get_router(
         body: schemas.PutMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        drop_revision: bool = False,
     ):
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1511,7 +1515,9 @@ def get_router(
             settings=settings,
         )
 
-        await entry.replace_metadata(metadata=metadata, specs=specs)
+        await entry.replace_metadata(
+            metadata=metadata, specs=specs, drop_revision=drop_revision
+        )
 
         response_data = {"id": entry.key}
         if metadata_modified:
