@@ -63,13 +63,33 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
     return _data_source_from_init_storage
 
 
+@pytest_asyncio.fixture
+async def postgres_uri() -> AsyncGenerator[str, None]:
+    uri = os.getenv("TILED_TEST_POSTGRESQL_URI")
+    if uri is None:
+        pytest.skip("TILED_TEST_POSTGRESQL_URI is not set")
+
+    async with temp_postgres(uri) as uri_with_database_name:
+        yield uri_with_database_name
+
+
+@pytest_asyncio.fixture
+async def duckdb_uri(tmp_path: Path) -> AsyncGenerator[str, None]:
+    yield f"duckdb:///{tmp_path}/test.db"
+
+
+@pytest_asyncio.fixture
+async def sqlite_uri(tmp_path: Path) -> AsyncGenerator[str, None]:
+    yield f"sqlite:///{tmp_path}/test.db"
+
+
 @pytest.fixture
 def adapter_duckdb_one_partition(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
+    duckdb_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_uri = f"duckdb:///{tmp_path}/test.db"
-    data_source = data_source_from_init_storage(data_uri, 1)
+    data_source = data_source_from_init_storage(duckdb_uri, 1)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -82,9 +102,9 @@ def adapter_duckdb_one_partition(
 def adapter_duckdb_many_partitions(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
+    duckdb_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_uri = f"duckdb:///{tmp_path}/test.db"
-    data_source = data_source_from_init_storage(data_uri, 3)
+    data_source = data_source_from_init_storage(duckdb_uri, 3)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -115,9 +135,9 @@ def test_attributes_duckdb_many_part(
 def adapter_sql_one_partition(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
+    sqlite_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_uri = f"sqlite:///{tmp_path}/test.db"
-    data_source = data_source_from_init_storage(data_uri, 1)
+    data_source = data_source_from_init_storage(sqlite_uri, 1)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -130,9 +150,9 @@ def adapter_sql_one_partition(
 def adapter_sql_many_partitions(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
+    sqlite_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
-    data_uri = f"sqlite:///{tmp_path}/test.db"
-    data_source = data_source_from_init_storage(data_uri, 3)
+    data_source = data_source_from_init_storage(sqlite_uri, 3)
     yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
@@ -155,26 +175,6 @@ def test_attributes_sql_many_part(adapter_sql_many_partitions: SQLAdapter) -> No
     assert isinstance(
         adapter_sql_many_partitions.conn, adbc_driver_sqlite.dbapi.Connection
     )
-
-
-@pytest_asyncio.fixture
-async def postgres_uri() -> AsyncGenerator[str, None]:
-    uri = os.getenv("TILED_TEST_POSTGRESQL_URI")
-    if uri is None:
-        pytest.skip("TILED_TEST_POSTGRESQL_URI is not set")
-
-    async with temp_postgres(uri) as uri_with_database_name:
-        yield uri_with_database_name
-
-
-@pytest_asyncio.fixture
-async def duckdb_uri(tmp_path: Path) -> AsyncGenerator[str, None]:
-    yield f"duckdb:///{tmp_path}/test.db"
-
-
-@pytest_asyncio.fixture
-async def sqlite_uri(tmp_path: Path) -> AsyncGenerator[str, None]:
-    yield f"sqlite:///{tmp_path}/test.db"
 
 
 @pytest.fixture
