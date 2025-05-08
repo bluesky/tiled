@@ -435,8 +435,9 @@ class TagBasedPASSAccessPolicy(TagBasedAccessPolicy):
     async def reload_tags_current_cycle(self, clear_grp_cache=False):
         """
         Fetch current proposals and reload their tags. This is a partial refresh,
-        not a fresh restart. Any tag config changes will be pulled in, and current
-        cycle proposals will be recompiled.
+        not a fresh restart. Additions and changes in the tag config will be
+        pulled in, but not deletions (i.e. tags that were removed).
+        Current-cycle proposals will be recompiled.
         Optionally, clear the group_record_cache to also force group membership
         to be refreshed.
         """

@@ -248,9 +248,9 @@ class TagBasedAccessPolicy:
                     )
 
                 user_scopes = set(
-                    user["scopes"]
-                    if "scopes" in user
-                    else self.roles[user["role"]]["scopes"]
+                    self.roles[user["role"]]["scopes"]
+                    if ("role" in user) and (user["role"] in self.roles)
+                    else user.get("scopes", [])
                 )
                 if not user_scopes:
                     raise ValueError(f"Scopes must not be empty. {username=}")
@@ -275,9 +275,9 @@ class TagBasedAccessPolicy:
                     )
 
                 group_scopes = set(
-                    group["scopes"]
-                    if "scopes" in group
-                    else self.roles[group["role"]]["scopes"]
+                    self.roles[group["role"]]["scopes"]
+                    if ("role" in group) and (group["role"] in self.roles)
+                    else group.get("scopes", [])
                 )
                 if not group_scopes:
                     raise ValueError(f"Scopes must not be empty. {groupname=}")
@@ -313,7 +313,7 @@ class TagBasedAccessPolicy:
             if not set(role["scopes"]).issubset(self.scopes):
                 raise ValueError(
                     f"Scopes for {role=} are not in the valid set of scopes. The invalid scopes are:"
-                    f'{role["scopes"].difference(self.scopes)}'
+                    f'{set(role["scopes"]).difference(self.scopes)}'
                 )
 
         adjacent_tags = {}
@@ -480,9 +480,9 @@ class TagBasedAccessPolicy:
                 # node already has this tag - no action.
                 # or: access_blob does not have "tags" key,
                 # so it must have a "user" key currently
-                include_public_tag = tag == self.public_tag
+                include_public_tag = tag.casefold() == self.public_tag
                 continue
-            if tag.casefold() == self.public_tag:
+            elif tag.casefold() == self.public_tag:
                 include_public_tag = True
                 if not self._is_admin(authn_scopes):
                     raise ValueError(
