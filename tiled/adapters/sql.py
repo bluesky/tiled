@@ -294,22 +294,40 @@ class SQLAdapter:
             cursor.adbc_ingest(self.table_name, table, mode="append")
         self.conn.commit()
 
-    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
-        """
-        The concatenated data from given set of partitions as pyarrow table.
+    def _read_full_table_or_partition(
+        self, fields: Optional[List[str]] = None, partition: Optional[int] = None
+    ) -> pyarrow.Table:
+        """Read the data from the database
+
+        This is a helper function to read the data from the database. The result
+        is a pyarrow table conatining rows either from the entire table or from a
+        specific partition. The retained columns are cast to the original type.
+
         Parameters
         ----------
-        fields: optional string to return the data in the specified field.
+        fields : optional string to return the data in the specified field.
+        partition : optional int to return the data in the specified partition.
+
         Returns
         -------
-        Returns the concatenated pyarrow table as pandas dataframe.
+        The concatenated table as pyarrow table.
         """
 
-        cols = ", ".join([f'"{c}"' for c in fields]) if fields else "*"
+        # Make sure that requested columns exist and safe to put in SQL query.
+        schema = self.structure().arrow_schema_decoded
+        req_cols = set(schema.names).intersection(fields) if fields else schema.names
+
         query = (
-            f'SELECT {cols} FROM "{self.table_name}" '
-            f"WHERE _dataset_id={self.dataset_id} ORDER BY _partition_id"
+            "SELECT " + ", ".join([f'"{c}"' for c in req_cols]) + " "
+            f'FROM "{self.table_name}" '
+            f"WHERE _dataset_id={self.dataset_id} "
         )
+        query += (
+            f"AND _partition_id={int(partition)}"
+            if partition is not None
+            else "ORDER BY _partition_id"
+        )
+
         with self.conn.cursor() as cursor:
             cursor.execute(query)
             data = cursor.fetch_arrow_table()
@@ -317,24 +335,30 @@ class SQLAdapter:
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
-        # Pick only the present columns from the schema.
-        to_drop = set(data.column_names).intersection(["_partition_id", "_dataset_id"])
-        data = data.drop_columns(to_drop)
-        full_schema = self.structure().arrow_schema_decoded
         target_schema = pyarrow.schema(
-            [
-                full_schema.field(full_schema.get_field_index(name))
-                for name in data.column_names
-            ]
+            [schema.field(schema.get_field_index(name)) for name in req_cols]
         )
 
-        return data.cast(target_schema).to_pandas()
+        return data.cast(target_schema)
+
+    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
+        """Read the concatenated data from the entire table.
+
+        Parameters
+        ----------
+        fields: optional string to return the data in the specified field.
+
+        Returns
+        -------
+        The concatenated table as pandas dataframe.
+        """
+
+        return self._read_full_table_or_partition(fields=fields).to_pandas()
 
     def read_partition(
         self, partition: int, fields: Optional[List[str]] = None
     ) -> pandas.DataFrame:
-        """
-        Read a batch of data from a given partition.
+        """Read a batch of data from a given partition.
 
         Parameters
         ----------
@@ -344,27 +368,12 @@ class SQLAdapter:
 
         Returns
         -------
-        Returns the concatenated pyarrow table as pandas dataframe.
+        The concatenated table as pandas dataframe.
         """
-        query = (
-            f'SELECT * FROM "{self.table_name}" '
-            f"WHERE _dataset_id={self.dataset_id} AND _partition_id={int(partition)}"
-        )
-        with self.conn.cursor() as cursor:
-            cursor.execute(query)
-            data = cursor.fetch_arrow_table()
-        self.conn.commit()
 
-        # The database may have stored this in a coarser type, such as
-        # storing uint8 data as int16. Cast it to the original type.
-        data = data.drop_columns(["_partition_id", "_dataset_id"])
-        schema = self.structure().arrow_schema_decoded
-        data.cast(schema)
-
-        table = data.to_pandas()
-        if fields is not None:
-            table = table[fields]
-        return table
+        return self._read_full_table_or_partition(
+            fields=fields, partition=partition
+        ).to_pandas()
 
 
 def create_connection(
