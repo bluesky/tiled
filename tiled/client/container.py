@@ -723,6 +723,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 ds for ds in document.pop("data_sources")
             ]
 
+        # And for access_blob
+        if "access_blob" in document:
+            item["attributes"]["access_blob"] = document.pop("access_blob")
+
         # Merge in "id" and "links" returned by the server.
         item.update(document)
 
