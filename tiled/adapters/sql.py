@@ -40,7 +40,10 @@ from .utils import init_adapter_from_catalog
 
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
+
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
+TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 class SQLAdapter:
@@ -121,7 +124,7 @@ class SQLAdapter:
         encoded = schema.serialize()
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
-        check_table_name(table_name)
+        is_safe_identifier(table_name, TABLE_NAME_PATTERN)
 
         if isinstance(storage, SQLStorage):
             uri = storage.authenticated_uri
@@ -838,15 +841,16 @@ def arrow_schema_to_create_table(
     return create_statement
 
 
-TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+def is_safe_identifier(identifier: str, pattern: re.Pattern[str]) -> None:
+    if len(identifier) > 63:
+        raise ValueError(
+            f'Invalid SQL identifier "{identifier}": max character number is 63'
+        )
 
+    if pattern.match(identifier) is None:
+        raise ValueError(f'Malformed SQL identifier "{identifier}"')
 
-def check_table_name(table_name: str) -> None:
-    if len(table_name) > 63:
-        raise ValueError("Table name is too long, max character number is 63!")
-
-    if TABLE_NAME_PATTERN.match(table_name) is None:
-        raise ValueError("Illegal table name!")
-
-    if table_name.lower() in RESERVED_WORDS:
-        raise ValueError("Reserved SQL keywords are not allowed in the table name!")
+    if identifier.lower() in RESERVED_WORDS:
+        raise ValueError(
+            f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
+        )
