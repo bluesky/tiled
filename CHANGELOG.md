@@ -10,7 +10,7 @@ _This release requires a database migration of the catalog database._
 tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 ```
 
-## Added
+### Added
 
 - New access policy `TagBasedAccessPolicy` which introduces more robust
   authorization based on the concept of tagging. When this policy is used,
