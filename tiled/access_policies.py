@@ -480,6 +480,7 @@ class TagBasedAccessPolicy:
                 # node already has this tag - no action.
                 # or: access_blob does not have "tags" key,
                 # so it must have a "user" key currently
+                include_public_tag = tag == self.public_tag
                 continue
             if tag.casefold() == self.public_tag:
                 include_public_tag = True
