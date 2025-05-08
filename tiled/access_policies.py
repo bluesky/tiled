@@ -450,6 +450,19 @@ class TagBasedAccessPolicy:
 
             access_blob_from_policy = {"tags": list(access_tags_from_policy)}
             access_blob_modified = access_tags != access_tags_from_policy
+
+            # admin principals are not subject to scope reduction restriction
+            if not self._is_admin(authn_scopes):
+                # check that the access_blob would not result in invalid scopes for user.
+                new_scopes = set()
+                for tag in access_tags_from_policy:
+                    new_scopes.update(self.loaded_tags.tags[tag].get(identifier, set()))
+                if not all(scope in new_scopes for scope in self.unremovable_scopes):
+                    raise ValueError(
+                        f"Cannot init node with tags: operation does not grant necessary scopes.\n"
+                        f"The resulting access_blob would be: {access_blob_from_policy}\n"
+                        f"This access_blob does not confer the minimum scopes: {self.unremovable_scopes}"
+                    )
         else:
             access_blob_from_policy = {"user": identifier}
             access_blob_modified = True
