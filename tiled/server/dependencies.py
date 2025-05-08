@@ -74,8 +74,6 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                     # but currenty doesn't, to ensure access_policy is applied.
                     # Raises NoEntry or BrokenLink if the path is not found
                     entry = await entry.lookup_adapter([segment])
-                    if (i + 1) == len(path_parts):
-                        break
                 else:
                     # Old-style dict-like interface
                     # Traverse into sub-tree(s) to reach the desired entry

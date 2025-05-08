@@ -522,7 +522,8 @@ class CatalogNodeAdapter:
             ),
         )
         for query in self.queries:
-            adapter = adapter.search(query)
+            if hasattr(adapter, "searc"):
+                adapter = adapter.search(query)
         return adapter
 
     def new_variation(
