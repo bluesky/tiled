@@ -418,6 +418,11 @@ class TagBasedAccessPolicy:
                     f"""access_blob must be in the form '{{"tags": ["tag1", "tag2", ...]}}'\n"""
                     f"""Received {access_blob=}"""
                 )
+            if not access_blob["tags"]:
+                if not self._is_admin(authn_scopes):
+                    raise ValueError(
+                        "Cannot apply empty tag list to node: only Tiled admins can apply an empty tag list."
+                    )
             access_tags = set(access_blob["tags"])
             include_public_tag = False
             for tag in access_tags:
@@ -472,6 +477,11 @@ class TagBasedAccessPolicy:
                 f"""Received {access_blob=}\n"""
                 f"""If this was a merge patch on a user-owned node, use a replace op instead."""
             )
+        if not access_blob["tags"]:
+            if not self._is_admin(authn_scopes):
+                raise ValueError(
+                    "Cannot apply empty tag list to node: only Tiled admins can apply an empty tag list."
+                )
         access_tags = set(access_blob["tags"])
         include_public_tag = False
         # check for tags that need to be added
