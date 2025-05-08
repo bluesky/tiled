@@ -171,6 +171,7 @@ async def register(
                 metadata={},
                 specs=[],
                 key=key,
+                access_tags=[],
             )
             # TODO When we have a tiled AsyncClient, use that.
             child_node = await anyio.to_thread.run_sync(node.get, segment)
@@ -230,6 +231,7 @@ async def _walk(
             data_sources=[],
             metadata={},
             specs=[],
+            access_tags=[],
         )
         # TODO When we have a tiled AsyncClient, use that.
         child_node = await anyio.to_thread.run_sync(node.get, key)

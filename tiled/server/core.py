@@ -423,6 +423,8 @@ async def construct_resource(
             }
         else:
             attributes["metadata"] = entry.metadata()
+    if schemas.EntryFields.access_blob in fields and hasattr(entry, "access_blob"):
+        attributes["access_blob"] = entry.access_blob
     if schemas.EntryFields.specs in fields:
         specs = []
         for spec in getattr(entry, "specs", []):

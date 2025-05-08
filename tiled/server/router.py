@@ -3,6 +3,7 @@ import inspect
 import os
 import re
 import warnings
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
@@ -36,6 +37,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from .. import __version__
 from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
+from ..type_aliases import Scopes
 from ..utils import (
     BrokenLink,
     SpecialUsers,
@@ -45,7 +47,7 @@ from ..utils import (
 )
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from .authentication import get_current_principal
+from .authentication import get_current_principal, get_current_scopes
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -785,6 +787,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -796,6 +799,7 @@ def get_router(
             request=request,
             entry=entry,
             principal=principal,
+            authn_scopes=authn_scopes,
             field=field,
             format=format,
             filename=filename,
@@ -815,6 +819,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -826,6 +831,7 @@ def get_router(
             request=request,
             entry=entry,
             principal=principal,
+            authn_scopes=authn_scopes,
             field=field,
             format=format,
             filename=filename,
@@ -835,6 +841,7 @@ def get_router(
         request: Request,
         entry,
         principal: str,
+        authn_scopes: Scopes,
         field: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
@@ -852,7 +859,9 @@ def get_router(
             )
         curried_filter = partial(
             filter_for_access,
+            access_policy=request.app.state.access_policy,
             principal=principal,
+            authn_scopes=authn_scopes,
             scopes=["read:data"],
             metrics=request.state.metrics,
         )
@@ -895,6 +904,7 @@ def get_router(
         principal: Union[schemas.Principal, SpecialUsers] = Depends(
             get_current_principal
         ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -928,7 +938,9 @@ def get_router(
         }:
             curried_filter = partial(
                 filter_for_access,
+                access_policy=request.app.state.access_policy,
                 principal=principal,
+                authn_scopes=authn_scopes,
                 scopes=["read:data"],
                 metrics=request.state.metrics,
             )
@@ -1121,6 +1133,10 @@ def get_router(
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata", "create"]),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
     ):
         for data_source in body.data_sources:
             if data_source.assets:
@@ -1139,6 +1155,8 @@ def get_router(
             body=body,
             settings=settings,
             entry=entry,
+            principal=principal,
+            authn_scopes=authn_scopes,
         )
 
     @router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse)
@@ -1150,6 +1168,10 @@ def get_router(
         entry: MapAdapter = Security(
             get_entry(), scopes=["write:metadata", "create", "register"]
         ),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
     ):
         return await _create_node(
             request=request,
@@ -1157,6 +1179,8 @@ def get_router(
             body=body,
             settings=settings,
             entry=entry,
+            principal=principal,
+            authn_scopes=authn_scopes,
         )
 
     async def _create_node(
@@ -1165,11 +1189,14 @@ def get_router(
         body: schemas.PostMetadataRequest,
         settings: Settings,
         entry,
+        principal: schemas.Principal,
+        authn_scopes: Scopes,
     ):
-        metadata, structure_family, specs = (
+        metadata, structure_family, specs, access_blob = (
             body.metadata,
             body.structure_family,
             body.specs,
+            body.access_blob,
         )
         if structure_family in {StructureFamily.container, StructureFamily.composite}:
             structure = None
@@ -1177,6 +1204,25 @@ def get_router(
             if len(body.data_sources) != 1:
                 raise NotImplementedError
             structure = body.data_sources[0].structure
+
+        if request.app.state.access_policy is not None and hasattr(
+            request.app.state.access_policy, "init_node"
+        ):
+            try:
+                (
+                    access_blob_modified,
+                    access_blob,
+                ) = await request.app.state.access_policy.init_node(
+                    principal, authn_scopes, access_blob=access_blob
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=HTTP_403_FORBIDDEN,
+                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                )
+        else:
+            access_blob_modified = access_blob != {}
+            access_blob = {}
 
         metadata_modified, metadata = await validate_metadata(
             metadata=metadata,
@@ -1192,6 +1238,7 @@ def get_router(
             key=body.id,
             specs=body.specs,
             data_sources=body.data_sources,
+            access_blob=access_blob,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{key}"
@@ -1203,6 +1250,8 @@ def get_router(
         }
         if metadata_modified:
             response_data["metadata"] = metadata
+        if access_blob_modified:
+            response_data["access_blob"] = access_blob
 
         return json_or_msgpack(request, response_data)
 
@@ -1429,6 +1478,10 @@ def get_router(
         body: schemas.PatchMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         drop_revision: bool = False,
     ):
         if not hasattr(entry, "replace_metadata"):
@@ -1436,9 +1489,11 @@ def get_router(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node does not support update of metadata.",
             )
+
         if body.content_type == patch_mimetypes.JSON_PATCH:
             metadata = apply_json_patch(entry.metadata(), (body.metadata or []))
             specs = apply_json_patch((entry.specs or []), (body.specs or []))
+            access_blob = apply_json_patch(entry.access_blob, (body.access_blob or []))
         elif body.content_type == patch_mimetypes.MERGE_PATCH:
             metadata = apply_merge_patch(entry.metadata(), (body.metadata or {}))
             # body.specs = [] clears specs, as per json merge patch specification
@@ -1446,6 +1501,15 @@ def get_router(
             current_specs = entry.specs or []
             target_specs = current_specs if body.specs is None else body.specs
             specs = apply_merge_patch(current_specs, target_specs)
+            # json_merge_patch applies merge in-place, which would
+            # otherwise modify the in-memory node and prevent the
+            # access policy from sanity checking the access blob.
+            # make a copy so we can compare the node against the
+            # proposed new access blob.
+            entry_access_blob_copy = deepcopy(entry.access_blob)
+            access_blob = apply_merge_patch(
+                entry_access_blob_copy, (body.access_blob or [])
+            )
         else:
             raise HTTPException(
                 status_code=HTTP_406_NOT_ACCEPTABLE,
@@ -1477,13 +1541,38 @@ def get_router(
             settings=settings,
         )
 
+        if request.app.state.access_policy is not None and hasattr(
+            request.app.state.access_policy, "modify_node"
+        ):
+            try:
+                (
+                    access_blob_modified,
+                    access_blob,
+                ) = await request.app.state.access_policy.modify_node(
+                    entry, principal, authn_scopes, access_blob
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=HTTP_403_FORBIDDEN,
+                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                )
+        else:
+            # Cannot modify the access blob if there is no access policy
+            access_blob_modified = access_blob != entry.access_blob
+            access_blob = entry.access_blob
+
         await entry.replace_metadata(
-            metadata=metadata, specs=specs, drop_revision=drop_revision
+            metadata=metadata,
+            specs=specs,
+            access_blob=access_blob,
+            drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.key}
         if metadata_modified:
             response_data["metadata"] = metadata
+        if access_blob_modified:
+            response_data["access_blob"] = access_blob
         return json_or_msgpack(request, response_data)
 
     @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
@@ -1492,6 +1581,10 @@ def get_router(
         body: schemas.PutMetadataRequest,
         settings: Settings = Depends(get_settings),
         entry: MapAdapter = Security(get_entry(), scopes=["write:metadata"]),
+        principal: Union[schemas.Principal, SpecialUsers] = Depends(
+            get_current_principal
+        ),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         drop_revision: bool = False,
     ):
         if not hasattr(entry, "replace_metadata"):
@@ -1500,11 +1593,12 @@ def get_router(
                 detail="This node does not support update of metadata.",
             )
 
-        metadata, structure_family, structure, specs = (
+        metadata, structure_family, structure, specs, access_blob = (
             body.metadata if body.metadata is not None else entry.metadata(),
             entry.structure_family,
             entry.structure(),
             body.specs if body.specs is not None else entry.specs,
+            body.access_blob if body.access_blob is not None else entry.access_blob,
         )
 
         metadata_modified, metadata = await validate_metadata(
@@ -1515,13 +1609,38 @@ def get_router(
             settings=settings,
         )
 
+        if request.app.state.access_policy is not None and hasattr(
+            request.app.state.access_policy, "modify_node"
+        ):
+            try:
+                (
+                    access_blob_modified,
+                    access_blob,
+                ) = await request.app.state.access_policy.modify_node(
+                    entry, principal, authn_scopes, access_blob
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=HTTP_403_FORBIDDEN,
+                    detail=f"Access policy rejects the provided access blob.\n{e}",
+                )
+        else:
+            # Cannot modify the access blob if there is no access policy
+            access_blob_modified = access_blob != entry.access_blob
+            access_blob = entry.access_blob
+
         await entry.replace_metadata(
-            metadata=metadata, specs=specs, drop_revision=drop_revision
+            metadata=metadata,
+            specs=specs,
+            access_blob=access_blob,
+            drop_revision=drop_revision,
         )
 
         response_data = {"id": entry.key}
         if metadata_modified:
             response_data["metadata"] = metadata
+        if access_blob_modified:
+            response_data["access_blob"] = access_blob
         return json_or_msgpack(request, response_data)
 
     @router.get("/revisions/{path:path}")

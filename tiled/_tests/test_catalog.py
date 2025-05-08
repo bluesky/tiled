@@ -388,6 +388,18 @@ async def test_access_control(tmpdir):
                 }
             ],
         },
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "access_lists": {
+                    "alice": ["outer_x", "inner"],
+                    "bob": ["outer_y"],
+                },
+                "admins": ["admin"],
+                "public": ["outer_z", "inner"],
+            },
+        },
         "database": {
             "uri": "sqlite://",  # in-memory
         },
@@ -399,18 +411,6 @@ async def test_access_control(tmpdir):
                     "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
-                },
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": ["outer_x"],
-                            "bob": ["outer_y"],
-                        },
-                        "admins": ["admin"],
-                        "public": ["outer_z"],
-                    },
                 },
             },
         ],

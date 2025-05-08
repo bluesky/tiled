@@ -2,355 +2,470 @@ import json
 
 import numpy
 import pytest
-from fastapi import HTTPException
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+from starlette.status import HTTP_403_FORBIDDEN
 
 from tiled.authenticators import DictionaryAuthenticator
 from tiled.server.protocols import UserSessionState
 
-from ..access_policies import NO_ACCESS, SimpleAccessPolicy, SpecialUsers
+from ..access_policies import NO_ACCESS
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.utils import ClientError
-from ..scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from ..scopes import ALL_SCOPES, NO_SCOPES, USER_SCOPES
 from ..server.app import build_app_from_config
-from ..server.core import NoEntry
 from .utils import enter_username_password, fail_with_status_code
 
 arr = numpy.ones((5, 5))
-arr_zeros = numpy.zeros((5, 5))
 arr_ad = ArrayAdapter.from_array(arr)
 
-
-class EntryBasedAccessPolicy(SimpleAccessPolicy):
-    """
-    This example access policy demonstrates how the metadata on some nested child node
-    can be efficiently consulted and incorporated in logic that determines access scopes.
-    In this test example, the metadata on the node quite literally lists some scopes that
-    it should not allow. In realistic examples it could be incorporated in site-specific logic.
-    """
-
-    async def allowed_scopes(self, node, principal, path_parts):
-        # If this is being called, filter_access has let us get this far.
-        if principal is SpecialUsers.public:
-            allowed = PUBLIC_SCOPES
-        else:
-            allowed = self.scopes
-
-        if self._get_id(principal) in self.admins:
-            allowed = ALL_SCOPES
-        else:
-            # Allowed scopes will be filtered based on some metadata of the target entry
-            try:
-                for i, segment in enumerate(path_parts):
-                    if hasattr(node, "lookup_adapter"):
-                        node = await node.lookup_adapter(path_parts[i:])
-                    else:
-                        try:
-                            node = node[segment]
-                        except (KeyError, TypeError):
-                            raise NoEntry(path_parts)
-            except NoEntry:
-                raise HTTPException(
-                    status_code=HTTP_404_NOT_FOUND,
-                    detail=f"No such entry: {path_parts}",
-                )
-            remove_scope = node.metadata().get("remove_scope", None)
-            if remove_scope in allowed:
-                allowed = set(allowed)
-                allowed.remove(remove_scope)
-        return allowed
+server_common_config = {
+    "authentication": {
+        "allow_anonymous_access": True,
+        "secret_keys": ["SECRET"],
+        "providers": [
+            {
+                "provider": "toy",
+                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                "args": {
+                    "users_to_passwords": {
+                        "alice": "secret1",
+                        "bob": "secret2",
+                        "admin": "admin",
+                    },
+                },
+            },
+        ],
+    },
+    "database": {
+        "uri": "sqlite://",  # in-memory
+    },
+}
 
 
 def tree_a(access_policy=None):
-    return MapAdapter({"A1": arr_ad, "A2": arr_ad}, access_policy=access_policy)
+    return MapAdapter({"A1": arr_ad, "A2": arr_ad})
 
 
 def tree_b(access_policy=None):
-    return MapAdapter({"B1": arr_ad, "B2": arr_ad}, access_policy=access_policy)
+    return MapAdapter({"B1": arr_ad, "B2": arr_ad})
 
 
 @pytest.fixture(scope="module")
-def context(tmpdir_module):
+def context_a(tmpdir_module):
     config = {
-        "authentication": {
-            "allow_anonymous_access": True,
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {
-                            "alice": "secret1",
-                            "bob": "secret2",
-                            "admin": "admin",
-                        }
-                    },
-                }
-            ],
-        },
-        "database": {
-            "uri": "sqlite://",  # in-memory
-        },
         "access_control": {
             "access_policy": "tiled.access_policies:SimpleAccessPolicy",
             "args": {
-                "access_lists": {"alice": ["a", "c", "d", "e", "g", "h"]},
                 "provider": "toy",
+                "access_lists": {
+                    "alice": ["a", "A2"],
+                    # This should have no effect because bob
+                    # cannot access the parent node.
+                    "bob": ["A1", "A2"],
+                },
                 "admins": ["admin"],
-                "public": ["f", "g"],
             },
         },
         "trees": [
             {
                 "tree": f"{__name__}:tree_a",
                 "path": "/a",
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": ["A2"],
-                            # This should have no effect because bob
-                            # cannot access the parent node.
-                            "bob": ["A1", "A2"],
-                        },
-                        "admins": ["admin"],
-                    },
-                },
             },
-            {"tree": f"{__name__}:tree_b", "path": "/b", "access_policy": None},
+        ],
+    }
+
+    config.update(server_common_config)
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        yield context
+
+
+@pytest.fixture(scope="module")
+def context_b(tmpdir_module):
+    config = {
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "access_lists": {
+                    "alice": [],
+                    "bob": [],
+                },
+                "admins": ["admin"],
+            },
+        },
+        "trees": [
+            {
+                "tree": f"{__name__}:tree_b",
+                "path": "/b",
+            },
+        ],
+    }
+
+    config.update(server_common_config)
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        yield context
+
+
+@pytest.fixture(scope="module")
+def context_c(tmpdir_module):
+    config = {
+        "trees": [
             {
                 "tree": "tiled.catalog:in_memory",
                 "args": {"writable_storage": str(tmpdir_module / "c")},
                 "path": "/c",
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": "tiled.access_policies:ALL_ACCESS",
-                        },
-                        "admins": ["admin"],
-                    },
-                },
-            },
-            {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "d")},
-                "path": "/d",
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": "tiled.access_policies:ALL_ACCESS",
-                        },
-                        "admins": ["admin"],
-                        # Block writing.
-                        "scopes": ["read:metadata", "read:data"],
-                    },
-                },
-            },
-            {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "e")},
-                "path": "/e",
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": "tiled.access_policies:ALL_ACCESS",
-                        },
-                        "admins": ["admin"],
-                        # Block creation.
-                        "scopes": [
-                            "read:metadata",
-                            "read:data",
-                            "write:metadata",
-                            "write:data",
-                        ],
-                    },
-                },
-            },
-            {"tree": ArrayAdapter.from_array(arr), "path": "/f"},
-            {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "g")},
-                "path": "/g",
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "key": "project",
-                        "access_lists": {"alice": ["projectA"], "bob": ["projectB"]},
-                        "admins": ["admin"],
-                        "public": ["projectC"],
-                    },
-                },
-            },
-            {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "h")},
-                "path": "/h",
-                "access_control": {
-                    "access_policy": "tiled._tests.test_access_control:EntryBasedAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {"alice": ["x", "y"]},
-                        "admins": ["admin"],
-                    },
-                },
             },
         ],
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "access_lists": {
+                    "alice": "tiled.access_policies:ALL_ACCESS",
+                },
+                "admins": ["admin"],
+            },
+        },
     }
+
+    config.update(server_common_config)
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
         admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
             admin_client.login()
-            for k in ["c", "d", "e"]:
+            for k in ["c"]:
                 admin_client[k].write_array(arr, key="A1")
                 admin_client[k].write_array(arr, key="A2")
                 admin_client[k].write_array(arr, key="x")
-            for k, v in {"A3": "projectA", "A4": "projectB", "r": "projectC"}.items():
-                admin_client["g"].write_array(arr, key=k, metadata={"project": v})
-            for k, v in {"x": "write:data", "y": None}.items():
-                admin_client["h"].write_array(arr, key=k, metadata={"remove_scope": v})
         yield context
 
 
-def test_entry_based_scopes(context, enter_username_password):
-    alice_client = from_context(context)
+@pytest.fixture(scope="module")
+def context_d(tmpdir_module):
+    config = {
+        "trees": [
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {"writable_storage": str(tmpdir_module / "d")},
+                "path": "/d",
+            },
+        ],
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "access_lists": {
+                    "alice": "tiled.access_policies:ALL_ACCESS",
+                },
+                "admins": ["admin"],
+                # Block writing.
+                "scopes": ["read:metadata", "read:data"],
+            },
+        },
+    }
+
+    config.update(server_common_config)
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        admin_client = from_context(context)
+        with enter_username_password("admin", "admin"):
+            admin_client.login()
+            for k in ["d"]:
+                admin_client[k].write_array(arr, key="A1")
+                admin_client[k].write_array(arr, key="A2")
+                admin_client[k].write_array(arr, key="x")
+        yield context
+
+
+@pytest.fixture(scope="module")
+def context_e(tmpdir_module):
+    config = {
+        "trees": [
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {"writable_storage": str(tmpdir_module / "e")},
+                "path": "/e",
+            },
+        ],
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "access_lists": {
+                    "alice": "tiled.access_policies:ALL_ACCESS",
+                },
+                "admins": ["admin"],
+                # Block creation.
+                "scopes": [
+                    "read:metadata",
+                    "read:data",
+                    "write:metadata",
+                    "write:data",
+                ],
+            },
+        },
+    }
+
+    config.update(server_common_config)
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        admin_client = from_context(context)
+        with enter_username_password("admin", "admin"):
+            admin_client.login()
+            for k in ["e"]:
+                admin_client[k].write_array(arr, key="A1")
+                admin_client[k].write_array(arr, key="A2")
+                admin_client[k].write_array(arr, key="x")
+        yield context
+
+
+@pytest.fixture(scope="module")
+def context_f(tmpdir_module):
+    config = {
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "access_lists": {},
+                "admins": ["admin"],
+                "public": ["f"],
+            },
+        },
+        "trees": [
+            {
+                "tree": ArrayAdapter.from_array(arr),
+                "path": "/f",
+            },
+        ],
+    }
+
+    config.update(server_common_config)
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        yield context
+
+
+@pytest.fixture(scope="module")
+def context_g(tmpdir_module):
+    config = {
+        "trees": [
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {
+                    "writable_storage": str(tmpdir_module / "g"),
+                    "metadata": {"project": "all_projects"},
+                },
+                "path": "/g",
+            },
+        ],
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "key": "project",
+                "access_lists": {
+                    "alice": ["all_projects", "projectA"],
+                    "bob": ["projectB"],
+                },
+                "admins": ["admin"],
+                "public": ["projectC", "all_projects"],
+            },
+        },
+    }
+
+    config.update(server_common_config)
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        admin_client = from_context(context)
+        with enter_username_password("admin", "admin"):
+            admin_client.login()
+            for k, v in {"A3": "projectA", "A4": "projectB", "r": "projectC"}.items():
+                admin_client["g"].write_array(arr, key=k, metadata={"project": v})
+        yield context
+
+
+def test_basic_access_control(context_a, context_b, context_g, enter_username_password):
+    alice_client_a = from_context(context_a)
+    alice_client_b = from_context(context_b)
+    alice_client_g = from_context(context_g)
     with enter_username_password("alice", "secret1"):
-        alice_client.login()
-    with pytest.raises(ClientError, match="Not enough permissions"):
-        alice_client["h"]["x"].write(arr_zeros)
-    alice_client["h"]["y"].write(arr_zeros)
-
-
-def test_top_level_access_control(context, enter_username_password):
-    alice_client = from_context(context)
-    with enter_username_password("alice", "secret1"):
-        alice_client.login()
-    assert "a" in alice_client
-    assert "A2" in alice_client["a"]
-    assert "A1" not in alice_client["a"]
-    assert "b" not in alice_client
-    assert "g" in alice_client
-    assert "A3" in alice_client["g"]
-    assert "A4" not in alice_client["g"]
-    alice_client["a"]["A2"]
-    alice_client["g"]["A3"]
+        alice_client_a.login()
+        alice_client_b.login()
+        alice_client_g.login()
+    assert "a" in alice_client_a
+    assert "A2" in alice_client_a["a"]
+    assert "A1" not in alice_client_a["a"]
+    assert "b" not in alice_client_b
+    assert "g" in alice_client_g
+    assert "A3" in alice_client_g["g"]
+    assert "A4" not in alice_client_g["g"]
+    alice_client_a["a"]["A2"]
+    alice_client_g["g"]["A3"]
     with pytest.raises(KeyError):
-        alice_client["b"]
+        alice_client_b["b"]
     with pytest.raises(KeyError):
-        alice_client["g"]["A4"]
-    alice_client.logout()
+        alice_client_g["g"]["A4"]
+    alice_client_a.logout()
+    alice_client_b.logout()
+    alice_client_g.logout()
 
-    bob_client = from_context(context)
+    bob_client_a = from_context(context_a)
+    bob_client_b = from_context(context_b)
+    bob_client_g = from_context(context_g)
     with enter_username_password("bob", "secret2"):
-        bob_client.login()
-    assert not list(bob_client)
+        bob_client_a.login()
+        bob_client_b.login()
+        bob_client_g.login()
+    assert not list(bob_client_a)
+    assert not list(bob_client_b)
+    assert not list(bob_client_g)
     with pytest.raises(KeyError):
-        bob_client["a"]
+        bob_client_a["a"]
     with pytest.raises(KeyError):
-        bob_client["b"]
+        bob_client_b["b"]
     with pytest.raises(KeyError):
-        bob_client["g"]["A3"]
-    bob_client.logout()
+        bob_client_g["g"]["A3"]
+    bob_client_a.logout()
+    bob_client_b.logout()
+    bob_client_g.logout()
 
 
-def test_access_control_with_api_key_auth(context, enter_username_password):
+def test_access_control_with_api_key_auth(
+    context_a, context_g, enter_username_password
+):
     # Log in, create an API key, log out.
     with enter_username_password("alice", "secret1"):
-        context.authenticate()
-    key_info = context.create_api_key()
-    context.logout()
+        context_a.authenticate()
+        context_g.authenticate()
+    key_info_a = context_a.create_api_key()
+    context_a.logout()
+    key_info_g = context_g.create_api_key()
+    context_g.logout()
 
     try:
         # Use API key auth while exercising the access control code.
-        context.api_key = key_info["secret"]
-        client = from_context(context)
-        client["a"]["A2"]
-        client["g"]["A3"]
+        context_a.api_key = key_info_a["secret"]
+        client_a = from_context(context_a)
+        context_g.api_key = key_info_g["secret"]
+        client_g = from_context(context_g)
+        client_a["a"]["A2"]
+        client_g["g"]["A3"]
     finally:
         # Clean up Context, which is a module-scopae fixture shared with other tests.
-        context.api_key = None
+        context_a.api_key = None
+        context_g.api_key = None
 
 
-def test_node_export(enter_username_password, context, buffer):
+def test_node_export(
+    enter_username_password, context_a, context_b, context_g, buffer_factory
+):
     "Exporting a node should include only the children we can see."
-    alice_client = from_context(context)
+    alice_client_a = from_context(context_a)
+    alice_client_b = from_context(context_b)
+    alice_client_g = from_context(context_g)
     with enter_username_password("alice", "secret1"):
-        alice_client.login()
-    alice_client.export(buffer, format="application/json")
-    alice_client.logout()
-    buffer.seek(0)
-    exported_dict = json.loads(buffer.read())
-    assert "a" in exported_dict["contents"]
-    assert "A2" in exported_dict["contents"]["a"]["contents"]
-    assert "A1" not in exported_dict["contents"]["a"]["contents"]
-    assert "b" not in exported_dict
-    assert "g" in exported_dict["contents"]
-    assert "A3" in exported_dict["contents"]["g"]["contents"]
-    assert "A4" not in exported_dict["contents"]["g"]["contents"]
-    exported_dict["contents"]["a"]["contents"]["A2"]
-    exported_dict["contents"]["g"]["contents"]["A3"]
+        alice_client_a.login()
+        alice_client_b.login()
+        alice_client_g.login()
+    buffer_a = buffer_factory()
+    buffer_b = buffer_factory()
+    buffer_g = buffer_factory()
+    alice_client_a.export(buffer_a, format="application/json")
+    alice_client_b.export(buffer_b, format="application/json")
+    alice_client_g.export(buffer_g, format="application/json")
+    alice_client_a.logout()
+    alice_client_b.logout()
+    alice_client_g.logout()
+    buffer_a.seek(0)
+    buffer_b.seek(0)
+    buffer_g.seek(0)
+    exported_dict_a = json.loads(buffer_a.read())
+    exported_dict_b = json.loads(buffer_b.read())
+    exported_dict_g = json.loads(buffer_g.read())
+    assert "a" in exported_dict_a["contents"]
+    assert "A2" in exported_dict_a["contents"]["a"]["contents"]
+    assert "A1" not in exported_dict_a["contents"]["a"]["contents"]
+    assert "b" not in exported_dict_b
+    assert "g" in exported_dict_g["contents"]
+    assert "A3" in exported_dict_g["contents"]["g"]["contents"]
+    assert "A4" not in exported_dict_g["contents"]["g"]["contents"]
+    exported_dict_a["contents"]["a"]["contents"]["A2"]
+    exported_dict_g["contents"]["g"]["contents"]["A3"]
 
 
-def test_create_and_update_allowed(enter_username_password, context):
-    alice_client = from_context(context)
+def test_create_and_update_allowed(enter_username_password, context_c, context_g):
+    alice_client_c = from_context(context_c)
+    alice_client_g = from_context(context_g)
     with enter_username_password("alice", "secret1"):
-        alice_client.login()
+        alice_client_c.login()
+        alice_client_g.login()
 
     # Update
-    alice_client["c"]["x"].metadata
-    alice_client["c"]["x"].update_metadata(metadata={"added_key": 3})
-    assert alice_client["c"]["x"].metadata["added_key"] == 3
+    alice_client_c["c"]["x"].metadata
+    alice_client_c["c"]["x"].update_metadata(metadata={"added_key": 3})
+    assert alice_client_c["c"]["x"].metadata["added_key"] == 3
 
-    alice_client["g"]["A3"].metadata
-    alice_client["g"]["A3"].update_metadata(metadata={"added_key": 9})
-    assert alice_client["g"]["A3"].metadata["added_key"] == 9
+    alice_client_g["g"]["A3"].metadata
+    alice_client_g["g"]["A3"].update_metadata(metadata={"added_key": 9})
+    assert alice_client_g["g"]["A3"].metadata["added_key"] == 9
 
     # Create
-    alice_client["c"].write_array([1, 2, 3])
-    alice_client["g"].write_array([4, 5, 6], metadata={"project": "projectA"})
-    alice_client.logout()
+    alice_client_c["c"].write_array([1, 2, 3])
+    alice_client_g["g"].write_array([4, 5, 6], metadata={"project": "projectA"})
+    alice_client_c.logout()
+    alice_client_g.logout()
 
 
-def test_writing_blocked_by_access_policy(enter_username_password, context):
-    alice_client = from_context(context)
+def test_writing_blocked_by_access_policy(enter_username_password, context_d):
+    alice_client_d = from_context(context_d)
     with enter_username_password("alice", "secret1"):
-        alice_client.login()
-    alice_client["d"]["x"].metadata
+        alice_client_d.login()
+    alice_client_d["d"]["x"].metadata
     with fail_with_status_code(HTTP_403_FORBIDDEN):
-        alice_client["d"]["x"].update_metadata(metadata={"added_key": 3})
-    alice_client.logout()
+        alice_client_d["d"]["x"].update_metadata(metadata={"added_key": 3})
+    alice_client_d.logout()
 
 
-def test_create_blocked_by_access_policy(enter_username_password, context):
-    alice_client = from_context(context)
+def test_create_blocked_by_access_policy(enter_username_password, context_e):
+    alice_client_e = from_context(context_e)
     with enter_username_password("alice", "secret1"):
-        alice_client.login()
+        alice_client_e.login()
     with fail_with_status_code(HTTP_403_FORBIDDEN):
-        alice_client["e"].write_array([1, 2, 3])
-    alice_client.logout()
+        alice_client_e["e"].write_array([1, 2, 3])
+    alice_client_e.logout()
 
 
-def test_public_access(context):
-    public_client = from_context(context)
-    for key in ["a", "b", "c", "d", "e"]:
-        assert key not in public_client
-    public_client["f"].read()
-    public_client["g"]["r"].read()
+def test_public_access(
+    context_a, context_b, context_c, context_d, context_e, context_f, context_g
+):
+    public_client_a = from_context(context_a)
+    public_client_b = from_context(context_b)
+    public_client_c = from_context(context_c)
+    public_client_d = from_context(context_d)
+    public_client_e = from_context(context_e)
+    public_client_f = from_context(context_f)
+    public_client_g = from_context(context_g)
+    for key, client in zip(
+        ["a", "b", "c", "d", "e"],
+        [
+            public_client_a,
+            public_client_b,
+            public_client_c,
+            public_client_d,
+            public_client_e,
+        ],
+    ):
+        assert key not in client
+    public_client_f["f"].read()
+    public_client_g["g"]["r"].read()
     with pytest.raises(KeyError):
-        public_client["a", "A1"]
+        public_client_a["a", "A1"]
     with pytest.raises(KeyError):
-        public_client["g", "A3"]
+        public_client_g["g", "A3"]
 
 
 def test_service_principal_access(tmpdir):
@@ -384,16 +499,16 @@ def test_service_principal_access(tmpdir):
                     "init_if_not_exists": True,
                 },
                 "path": "/",
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "access_lists": {},
-                        "provider": "toy",
-                        "admins": ["admin"],
-                    },
-                },
             }
         ],
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "access_lists": {},
+                "provider": "toy",
+                "admins": ["admin"],
+            },
+        },
     }
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("admin", "admin"):
@@ -408,7 +523,7 @@ def test_service_principal_access(tmpdir):
     # Drop the admin, no longer needed.
     config["authentication"].pop("tiled_admins")
     # Add the service principal to the access_lists.
-    config["trees"][0]["access_control"]["args"]["access_lists"][sp["uuid"]] = ["x"]
+    config["access_control"]["args"]["access_lists"][sp["uuid"]] = ["x"]
     with Context.from_app(
         build_app_from_config(config), api_key=key_info["secret"]
     ) as context:
@@ -444,7 +559,7 @@ class CustomAttributesAccessPolicy:
     def __init__(self):
         pass
 
-    async def allowed_scopes(self, node, principal, path_parts):
+    async def allowed_scopes(self, node, principal, authn_scopes):
         if hasattr(principal, "sessions"):
             if len(principal.sessions):
                 auth_state = principal.sessions[-1].state or {}
@@ -453,16 +568,12 @@ class CustomAttributesAccessPolicy:
                     if "admins" in auth_attributes.get("groups", []):
                         return ALL_SCOPES
 
-                    if not path_parts:
+                    if not node.metadata():
                         return self.READ_METADATA
 
-                    if node[path_parts[0]].metadata()[
-                        "beamline"
-                    ] in auth_attributes.get("beamlines", []) or node[
-                        path_parts[0]
-                    ].metadata()[
-                        "proposal"
-                    ] in auth_attributes.get(
+                    if node.metadata()["beamline"] in auth_attributes.get(
+                        "beamlines", []
+                    ) or node.metadata()["proposal"] in auth_attributes.get(
                         "proposals", []
                     ):
                         return USER_SCOPES
@@ -470,8 +581,10 @@ class CustomAttributesAccessPolicy:
             return self.READ_METADATA
         return NO_SCOPES
 
-    async def filters(self, node, principal, scopes, path_parts):
-        if not scopes.issubset(await self.allowed_scopes(node, principal, path_parts)):
+    async def filters(self, node, principal, authn_scopes, scopes):
+        if not scopes.issubset(
+            await self.allowed_scopes(node, principal, authn_scopes)
+        ):
             return NO_ACCESS
         return []
 

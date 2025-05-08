@@ -102,10 +102,10 @@ class PASSAccessPolicy:
                 f"Its identities are: {principal.identities}"
             )
 
-    def allowed_scopes(self, node, principal, path_parts):
+    def allowed_scopes(self, node, principal, authn_scopes):
         return PUBLIC_SCOPES
 
-    def filters(self, node, principal, scopes, path_parts):
+    def filters(self, node, principal, authn_scopes, scopes):
         queries = []
         id = self._get_id(principal)
         if not scopes.issubset(PUBLIC_SCOPES):

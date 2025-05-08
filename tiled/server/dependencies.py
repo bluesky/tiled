@@ -10,8 +10,14 @@ from tiled.server.schemas import Principal
 from tiled.structures.core import StructureFamily
 from tiled.utils import SpecialUsers
 
+from ..type_aliases import Scopes
 from ..utils import BrokenLink
-from .authentication import check_scopes, get_current_principal, get_session_state
+from .authentication import (
+    check_scopes,
+    get_current_principal,
+    get_current_scopes,
+    get_session_state,
+)
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
@@ -29,6 +35,7 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         request: Request,
         security_scopes: SecurityScopes,
         principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
@@ -36,22 +43,14 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         """
         Obtain a node in the tree from its path.
 
-        Walk down the path from the root tree, discover the access policy
-        to be used for access to the destination node, and finally filter
-        access by the specified scope.
-
-        The access policy used for access to the destination node will be
-        the last one found while walking the tree or, in the case of a catalog adapter,
-        the access policy of the catalog adapter node.
+        Walk down the path starting from the root of the tree and filter
+        access by the specified scopes.
 
         session_state is an optional dictionary passed in the session token
         """
         path_parts = [segment for segment in path.split("/") if segment]
-        path_parts_relative = path_parts
         entry = root_tree
-        entry_with_access_policy = (
-            entry if getattr(root_tree, "access_policy", None) is not None else None
-        )
+        access_policy = getattr(request.app.state, "access_policy", None)
 
         # If the entry/adapter can take a session state, pass it in.
         # The entry/adapter may return itself or a different object.
@@ -61,46 +60,45 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
         # filter and keep only what we are allowed to see from here
         entry = await filter_for_access(
             entry,
+            access_policy,
             principal,
+            authn_scopes,
             ["read:metadata"],
             request.state.metrics,
-            path_parts_relative,
         )
         try:
             for i, segment in enumerate(path_parts):
                 if hasattr(entry, "lookup_adapter"):
-                    # New catalog adapter - only has access control at the top level
-                    # Top level means the basename of the path as defined in the config
-                    # This adapter can jump directly to the node of interest
+                    # New catalog adapter
+                    # This adapter can jump directly to the node of interest,
+                    # but currenty doesn't, to ensure access_policy is applied.
                     # Raises NoEntry or BrokenLink if the path is not found
-                    entry = await entry.lookup_adapter(path_parts[i:])
-                    break
+                    entry = await entry.lookup_adapter([segment])
                 else:
                     # Old-style dict-like interface
-                    # Traverse into sub-tree(s) to reach the desired entry, and
-                    # to discover the access policy to use for the request
+                    # Traverse into sub-tree(s) to reach the desired entry
                     try:
                         entry = entry[segment]
                     except (KeyError, TypeError):
                         raise NoEntry(path_parts)
-                    if getattr(entry, "access_policy", None) is not None:
-                        path_parts_relative = path_parts[i + 1 :]  # noqa: E203
-                        entry_with_access_policy = entry
-                        # filter and keep only what we are allowed to see from here
-                        entry = await filter_for_access(
-                            entry,
-                            principal,
-                            ["read:metadata"],
-                            request.state.metrics,
-                            path_parts_relative,
-                        )
 
-            # Now check that we have the requested scope according to the discovered access policy
-            access_policy = getattr(entry_with_access_policy, "access_policy", None)
+                # filter and keep only what we are allowed to see from here
+                entry = await filter_for_access(
+                    entry,
+                    access_policy,
+                    principal,
+                    authn_scopes,
+                    ["read:metadata"],
+                    request.state.metrics,
+                )
+
+            # Now check that we have the requested scope according to the access policy
             if access_policy is not None:
                 with record_timing(request.state.metrics, "acl"):
                     allowed_scopes = await access_policy.allowed_scopes(
-                        entry_with_access_policy, principal, path_parts_relative
+                        entry,
+                        principal,
+                        authn_scopes,
                     )
                     if not set(security_scopes.scopes).issubset(allowed_scopes):
                         if "read:metadata" not in allowed_scopes:
