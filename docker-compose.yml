@@ -38,7 +38,7 @@ services:
 
     # Note that the port mapping does not expose grafana externally.
     ports:
-      - "127.0.0.1:3000:3000"
+      - 3000:3000
     volumes:
       - ./monitoring_example/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./monitoring_example/grafana/main.yml:/etc/grafana/provisioning/dashboards/main.yml
