@@ -35,8 +35,6 @@ services:
     image: docker.io/grafana/grafana:8.2.6
     depends_on:
       - prometheus
-
-    # Note that the port mapping does not expose grafana externally.
     ports:
       - 3000:3000
     volumes:
