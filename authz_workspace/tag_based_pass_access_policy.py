@@ -191,10 +191,11 @@ CREATE TABLE IF NOT EXISTS store (
 
 
 class TagBasedPASSAccessPolicy(TagBasedAccessPolicy):
-    def __init__(self, url, tags_db, sync_proposals={}, *args, **kwargs):
+    def __init__(self, url, tags_db, sync_proposals, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.tags_db = Path(tags_db)
         self.client = httpx.AsyncClient(base_url=url)
+        self.sync_proposals = sync_proposals or {}
 
         try:
             self.loaded_tags = load_tags_file(self.tags_db)
@@ -204,6 +205,9 @@ class TagBasedPASSAccessPolicy(TagBasedAccessPolicy):
                 f"Could not load previous tags state from file: '{self.tags_db}'\n"
                 f"Caught exception '{type(e).__name__}': {e}"
             )
+            self.create_tags_root_node()
+            self.compile()
+            self.load_compiled_tags()
 
         if not all(rate in sync_proposals for rate in ("rate_all", "rate_current")):
             raise ValueError("Must specify rates for syncing proposals from NSLS2 API.")

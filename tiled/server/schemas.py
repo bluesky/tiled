@@ -560,7 +560,6 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     # May be None if not altered
     metadata: Optional[Dict]
     data_sources: Optional[List[DataSource]]
-    # May be None if not altered
     access_blob: Optional[Dict]
 
 

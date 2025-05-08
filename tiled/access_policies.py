@@ -2,10 +2,10 @@ import logging
 import os
 import warnings
 from copy import deepcopy
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from sys import intern
-from typing import NamedTuple
 
 import yaml
 
@@ -152,11 +152,12 @@ def interning_constructor(loader, node):
 InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
 
 
-class LoadedTags(NamedTuple):
-    tags: dict
-    public: set
-    scopes: dict
-    owners: dict
+@dataclass(frozen=True)
+class LoadedTags:
+    tags: dict = field(default_factory=dict)
+    public: set = field(default_factory=set)
+    scopes: dict = field(default_factory=dict)
+    owners: dict = field(default_factory=dict)
 
 
 class TagBasedAccessPolicy:
@@ -175,7 +176,7 @@ class TagBasedAccessPolicy:
         self.reverse_lookup_scopes = [intern("read:metadata"), intern("read:data")]
         self.unremovable_scopes = [intern("read:metadata"), intern("write:metadata")]
         self.admin_scopes = [intern("admin:apikeys")]
-        self.public_tag = intern("public").casefold()
+        self.public_tag = intern("public".casefold())
         self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
         self.group_parser = import_object(group_parser)
 
@@ -186,7 +187,7 @@ class TagBasedAccessPolicy:
         self.compiled_public = set({self.public_tag})
         self.compiled_scopes = {}
         self.compiled_tag_owners = {}
-        self.loaded_tags = LoadedTags({}, {}, set(), {})
+        self.loaded_tags = LoadedTags()
 
         self.load_tag_config()
         self.compile()

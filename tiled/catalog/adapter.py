@@ -1391,7 +1391,7 @@ def specs(query, tree):
 def access_blob_filter(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
     access_blob = orm.Node.access_blob
-    if len(query.user_id) == 0 and len(query.tags) == 0:
+    if not (query.user_id or query.tags):
         # Results cannot possibly match an empty value or list,
         # so put a False condition in the list ensuring that
         # there are no rows returned.
