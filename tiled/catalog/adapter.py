@@ -1399,20 +1399,18 @@ def access_blob_filter(query, tree):
     elif dialect_name == "sqlite":
         attr_id = access_blob["user"]
         attr_tags = access_blob["tags"]
-        access_blob_json = func.json_each(attr_tags).table_valued("value")
+        access_tags_json = func.json_each(attr_tags).table_valued("value")
         contains_tags = (
             select(1)
-            .select_from(access_blob_json)
-            .where(access_blob_json.c.value.in_(query.tags))
+            .select_from(access_tags_json)
+            .where(access_tags_json.c.value.in_(query.tags))
             .exists()
         )
         user_match = func.json_extract(func.json_quote(attr_id), "$") == query.user_id
         condition = or_(contains_tags, user_match)
     elif dialect_name == "postgresql":
         access_blob_jsonb = type_coerce(access_blob, JSONB)
-        contains_tags = access_blob_jsonb["tags"].op("?|")(
-            cast(query.tags, ARRAY(TEXT))
-        )
+        contains_tags = access_blob_jsonb["tags"].has_any(cast(query.tags, ARRAY(TEXT)))
         user_match = access_blob_jsonb["user"].astext == query.user_id
         condition = or_(contains_tags, user_match)
     else:
