@@ -5,7 +5,6 @@ services:
     environment:
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
     
-    # Note that the port mapping does not expose tiled externally.
     ports:
       - 8000:8000
     restart: unless-stopped
