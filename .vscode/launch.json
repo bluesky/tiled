@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug Tiled Server",
+        "type": "python",
+        "request": "launch",
+        "module": "tiled",
+        "args": [
+          "serve",
+          "config",
+          "--host", "127.0.0.1",
+          "--port", "8000",
+          "--scalable"
+        ],
+        "env": {
+          // Point this at any of your YAML configs or a config directory
+          "TILED_CONFIG":
+"${workspaceFolder}/example_configs/single_catalog_single_user.yml",
+          "TILED_SINGLE_USER_API_KEY": "secret",
+        },
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "jinja": true,
+        "subProcess": true
+      }
+    ]
+  }
