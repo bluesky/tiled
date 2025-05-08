@@ -164,7 +164,7 @@ async def register(
     for segment in prefix_parts:
         child_node = await anyio.to_thread.run_sync(node.get, segment)
         if child_node is None:
-            key = key_from_filename(segment)
+            key = settings.key_from_filename(segment)
             await create_node_or_drop_collision(
                 node,
                 structure_family=StructureFamily.container,
