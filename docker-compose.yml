@@ -4,7 +4,6 @@ services:
     image: ghcr.io/bluesky/tiled:0.1.0-b24
     environment:
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
-    
     ports:
       - 8000:8000
     restart: unless-stopped
