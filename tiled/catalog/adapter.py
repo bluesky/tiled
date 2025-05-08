@@ -1390,28 +1390,31 @@ def specs(query, tree):
 
 def access_blob_filter(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
-    attr_id = orm.Node.access_blob["user"]
-    attr_tags = orm.Node.access_blob["tags"]
+    access_blob = orm.Node.access_blob
     if len(query.user_id) == 0 and len(query.tags) == 0:
         # Results cannot possibly match an empty value or list,
         # so put a False condition in the list ensuring that
         # there are no rows returned.
         condition = false()
     elif dialect_name == "sqlite":
+        attr_id = access_blob["user"]
+        attr_tags = access_blob["tags"]
         access_blob_json = func.json_each(attr_tags).table_valued("value")
-        condition = or_(
-            (
-                select(1)
-                .select_from(access_blob_json)
-                .where(access_blob_json.c.value.in_(query.tags))
-            ).exists(),
-            func.json_extract(func.json_quote(attr_id), "$") == query.user_id,
+        contains_tags = (
+            select(1)
+            .select_from(access_blob_json)
+            .where(access_blob_json.c.value.in_(query.tags))
+            .exists()
         )
+        user_match = func.json_extract(func.json_quote(attr_id), "$") == query.user_id
+        condition = or_(contains_tags, user_match)
     elif dialect_name == "postgresql":
-        condition = or_(
-            (attr_tags.op("?|")(cast(query.tags, ARRAY(TEXT)))),
-            attr_id.astext == query.user_id,
+        access_blob_jsonb = type_coerce(access_blob, JSONB)
+        contains_tags = access_blob_jsonb["tags"].op("?|")(
+            cast(query.tags, ARRAY(TEXT))
         )
+        user_match = access_blob_jsonb["user"].astext == query.user_id
+        condition = or_(contains_tags, user_match)
     else:
         raise UnsupportedQueryType("access_blob_filter")
 

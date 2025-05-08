@@ -39,6 +39,7 @@ trees:
   - path: /test/raw
     tree: catalog
     args:
+#      uri: "postgresql+asyncpg://postgres:secret@localhost:5432"
       uri: "sqlite+aiosqlite:///./storage/catalog.db"
       writable_storage: "./storage/data"
       init_if_not_exists: true
