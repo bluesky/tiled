@@ -494,7 +494,7 @@ def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -
 
 
 @pytest.mark.parametrize(
-    "identifier, expected",
+    "column_name, expected",
     [
         # Valid column names
         ("valid_column_name", None),
@@ -610,21 +610,21 @@ def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -
         ),
     ],
 )
-def test_check_column_name_is_safe(identifier: str, expected: str) -> None:
+def test_check_column_name_is_safe(column_name: str, expected: str) -> None:
     if isinstance(expected, type(pytest.raises(ValueError))):
         with expected:
             is_safe_identifier(
-                identifier, COLUMN_NAME_PATTERN, allow_reserved_words=True
+                column_name, COLUMN_NAME_PATTERN, allow_reserved_words=True
             )
     else:
         assert is_safe_identifier(
-            identifier, COLUMN_NAME_PATTERN, allow_reserved_words=True
+            column_name, COLUMN_NAME_PATTERN, allow_reserved_words=True
         )
 
 
 @pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
 @pytest.mark.parametrize("column_name", ["a", "a b", "a-b", "a:b", "a*b", "a/b"])
-def test_can_write_with_valid_column_names(
+def test_can_query_with_valid_column_names(
     data_uri: str, column_name: str, request: pytest.FixtureRequest
 ) -> None:
     table = pa.Table.from_arrays([[1, 2, 3]], [column_name])
