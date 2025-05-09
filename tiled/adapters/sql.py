@@ -19,7 +19,6 @@ from typing import (
 import numpy
 import pandas
 import pyarrow
-import pyarrow.fs
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
@@ -40,7 +39,30 @@ from .utils import init_adapter_from_catalog
 
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
+
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
+TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_].*$")
+FORBIDDEN_CHARACTERS = re.compile(
+    r"""
+    (
+      '           # single quote -- ends string literals
+    | "           # double quote -- ends quoted identifiers (PostgreSQL)
+    | `           # backtick -- ends quoted identifiers (MySQL)
+    | ;           # semicolon -- terminates statements (SQL injection risk)
+    | --          # double dash -- starts comments (SQL injection risk)
+    | /\*         # \* -- starts block comment
+    | \*/         # */ -- ends block comment
+    | \\          # backslash -- escape character (esp. in MySQL)
+    | %           # percent -- wildcards (in LIKE patterns, can be tricky if misused)
+    | \(          # parenthesis -- alters grouping, can break expressions
+    | \)          #
+    | =           # equals -- can change logic (injections in expressions)
+    | \+          # plus -- can change logic (injections in expressions)
+    )
+    """,
+    re.VERBOSE,
+)
 
 
 class SQLAdapter:
@@ -98,7 +120,7 @@ class SQLAdapter:
         cls,
         storage: Storage,
         data_source: DataSource[TableStructure],
-        path_parts: List[str],
+        path_parts: Optional[List[str]] = None,
     ) -> DataSource[TableStructure]:
         """
         Class to initialize the list of assets for given uri.
@@ -121,7 +143,7 @@ class SQLAdapter:
         encoded = schema.serialize()
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
-        check_table_name(table_name)
+        is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
 
         if isinstance(storage, SQLStorage):
             uri = storage.authenticated_uri
@@ -141,7 +163,7 @@ class SQLAdapter:
 
         create_index_statement = (
             "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
-            f"ON {table_name}(_dataset_id, _partition_id)"
+            f'ON "{table_name}"(_dataset_id, _partition_id)'
         )
 
         with conn.cursor() as cursor:
@@ -294,21 +316,40 @@ class SQLAdapter:
             cursor.adbc_ingest(self.table_name, table, mode="append")
         self.conn.commit()
 
-    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
-        """
-        The concatenated data from given set of partitions as pyarrow table.
+    def _read_full_table_or_partition(
+        self, fields: Optional[List[str]] = None, partition: Optional[int] = None
+    ) -> pyarrow.Table:
+        """Read the data from the database
+
+        This is a helper function to read the data from the database. The result
+        is a pyarrow table conatining rows either from the entire table or from a
+        specific partition. The retained columns are cast to the original type.
+
         Parameters
         ----------
-        fields: optional string to return the data in the specified field.
+        fields : optional string to return the data in the specified field.
+        partition : optional int to return the data in the specified partition.
+
         Returns
         -------
-        Returns the concatenated pyarrow table as pandas dataframe.
+        The concatenated table as pyarrow table.
         """
 
+        # Make sure that requested columns exist and safe to put in SQL query.
+        schema = self.structure().arrow_schema_decoded
+        req_cols = set(schema.names).intersection(fields) if fields else schema.names
+
         query = (
-            f"SELECT * FROM {self.table_name} "
-            f"WHERE _dataset_id={self.dataset_id} ORDER BY _partition_id"
+            "SELECT " + ", ".join([f'"{c}"' for c in req_cols]) + " "
+            f'FROM "{self.table_name}" '
+            f"WHERE _dataset_id={self.dataset_id} "
         )
+        query += (
+            f"AND _partition_id={int(partition)}"
+            if partition is not None
+            else "ORDER BY _partition_id"
+        )
+
         with self.conn.cursor() as cursor:
             cursor.execute(query)
             data = cursor.fetch_arrow_table()
@@ -316,20 +357,30 @@ class SQLAdapter:
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
-        data = data.drop_columns(["_partition_id", "_dataset_id"])
-        schema = self.structure().arrow_schema_decoded
-        data.cast(schema)
+        target_schema = pyarrow.schema(
+            [schema.field(schema.get_field_index(name)) for name in req_cols]
+        )
 
-        table = data.to_pandas()
-        if fields is not None:
-            table = table[fields]
-        return table
+        return data.cast(target_schema)
+
+    def read(self, fields: Optional[List[str]] = None) -> pandas.DataFrame:
+        """Read the concatenated data from the entire table.
+
+        Parameters
+        ----------
+        fields: optional string to return the data in the specified field.
+
+        Returns
+        -------
+        The concatenated table as pandas dataframe.
+        """
+
+        return self._read_full_table_or_partition(fields=fields).to_pandas()
 
     def read_partition(
         self, partition: int, fields: Optional[List[str]] = None
     ) -> pandas.DataFrame:
-        """
-        Read a batch of data from a given partition.
+        """Read a batch of data from a given partition.
 
         Parameters
         ----------
@@ -339,27 +390,12 @@ class SQLAdapter:
 
         Returns
         -------
-        Returns the concatenated pyarrow table as pandas dataframe.
+        The concatenated table as pandas dataframe.
         """
-        query = (
-            f"SELECT * FROM {self.table_name} "
-            f"WHERE _dataset_id={self.dataset_id} AND _partition_id={int(partition)}"
-        )
-        with self.conn.cursor() as cursor:
-            cursor.execute(query)
-            data = cursor.fetch_arrow_table()
-        self.conn.commit()
 
-        # The database may have stored this in a coarser type, such as
-        # storing uint8 data as int16. Cast it to the original type.
-        data = data.drop_columns(["_partition_id", "_dataset_id"])
-        schema = self.structure().arrow_schema_decoded
-        data.cast(schema)
-
-        table = data.to_pandas()
-        if fields is not None:
-            table = table[fields]
-        return table
+        return self._read_full_table_or_partition(
+            fields=fields, partition=partition
+        ).to_pandas()
 
 
 def create_connection(
@@ -801,6 +837,7 @@ def arrow_schema_to_column_defns(
     columns = {}
     converter = DIALECT_TO_TYPE_CONVERTER[dialect]
     for field in schema:
+        is_safe_identifier(field.name, COLUMN_NAME_PATTERN, allow_reserved_words=True)
         sql_type = converter(field)
         nullable = "NULL" if field.nullable else "NOT NULL"
         columns[field.name] = f"{sql_type} {nullable}"
@@ -814,9 +851,9 @@ def arrow_schema_to_create_table(
     # Construct the CREATE TABLE statement
     create_statement = (
         f"""
-    CREATE TABLE IF NOT EXISTS {table_name} (
+    CREATE TABLE IF NOT EXISTS \"{table_name}\" (
         """
-        + ",\n        ".join(f"{name} {type_}" for name, type_ in columns.items())
+        + ",\n        ".join(f'"{name}" {type_}' for name, type_ in columns.items())
         + """)
     """
     )
@@ -824,15 +861,28 @@ def arrow_schema_to_create_table(
     return create_statement
 
 
-TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+def is_safe_identifier(
+    identifier: str,
+    pattern: re.Pattern[str],
+    allow_reserved_words: bool = True,
+) -> bool:
+    if len(identifier) > 63:
+        raise ValueError(
+            f'Invalid SQL identifier "{identifier}": max character number is 63'
+        )
 
+    if pattern.match(identifier) is None:
+        raise ValueError(f'Malformed SQL identifier "{identifier}"')
 
-def check_table_name(table_name: str) -> None:
-    if len(table_name) > 63:
-        raise ValueError("Table name is too long, max character number is 63!")
+    if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
+        raise ValueError(
+            f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
+        )
 
-    if TABLE_NAME_PATTERN.match(table_name) is None:
-        raise ValueError("Illegal table name!")
+    if match := FORBIDDEN_CHARACTERS.search(identifier):
+        raise ValueError(
+            f'Invalid SQL identifier "{identifier}" '
+            f"contains forbidden character(s): {', '.join(match.groups())}"
+        )
 
-    if table_name.lower() in RESERVED_WORDS:
-        raise ValueError("Reserved SQL keywords are not allowed in the table name!")
+    return True
