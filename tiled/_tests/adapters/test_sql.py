@@ -608,6 +608,13 @@ def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -
                 match=r"Invalid SQL identifier.+contains forbidden character.+",
             ),
         ),
+        (
+            "yet\\another--invalid=name+with(many)forbidden*/characters",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
     ],
 )
 def test_check_column_name_is_safe(column_name: str, expected: str) -> None:
