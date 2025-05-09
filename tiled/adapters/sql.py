@@ -19,7 +19,6 @@ from typing import (
 import numpy
 import pandas
 import pyarrow
-import pyarrow.fs
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
@@ -43,7 +42,27 @@ if TYPE_CHECKING:
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
-COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_].*$")
+FORBIDDEN_CHARACTERS = re.compile(
+    r"""
+    (
+      '           # single quote -- ends string literals
+    | "           # double quote -- ends quoted identifiers (PostgreSQL)
+    | `           # backtick -- ends quoted identifiers (MySQL)
+    | ;           # semicolon -- terminates statements (SQL injection risk)
+    | --          # double dash -- starts comments (SQL injection risk)
+    | /\*         # \* -- starts block comment
+    | \*/         # */ -- ends block comment
+    | \\          # backslash -- escape character (esp. in MySQL)
+    | %           # percent -- wildcards (in LIKE patterns, can be tricky if misused)
+    | \(          # parenthesis -- alters grouping, can break expressions
+    | \)          #
+    | =           # equals -- can change logic (injections in expressions)
+    | \+          # plus -- can change logic (injections in expressions)
+    )
+    """,
+    re.VERBOSE,
+)
 
 
 class SQLAdapter:
@@ -124,7 +143,7 @@ class SQLAdapter:
         encoded = schema.serialize()
         default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
-        is_safe_identifier(table_name, TABLE_NAME_PATTERN)
+        is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
 
         if isinstance(storage, SQLStorage):
             uri = storage.authenticated_uri
@@ -818,6 +837,7 @@ def arrow_schema_to_column_defns(
     columns = {}
     converter = DIALECT_TO_TYPE_CONVERTER[dialect]
     for field in schema:
+        is_safe_identifier(field.name, COLUMN_NAME_PATTERN, allow_reserved_words=True)
         sql_type = converter(field)
         nullable = "NULL" if field.nullable else "NOT NULL"
         columns[field.name] = f"{sql_type} {nullable}"
@@ -841,7 +861,11 @@ def arrow_schema_to_create_table(
     return create_statement
 
 
-def is_safe_identifier(identifier: str, pattern: re.Pattern[str]) -> None:
+def is_safe_identifier(
+    identifier: str,
+    pattern: re.Pattern[str],
+    allow_reserved_words: bool = True,
+) -> bool:
     if len(identifier) > 63:
         raise ValueError(
             f'Invalid SQL identifier "{identifier}": max character number is 63'
@@ -850,7 +874,15 @@ def is_safe_identifier(identifier: str, pattern: re.Pattern[str]) -> None:
     if pattern.match(identifier) is None:
         raise ValueError(f'Malformed SQL identifier "{identifier}"')
 
-    if identifier.lower() in RESERVED_WORDS:
+    if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
         raise ValueError(
             f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
         )
+
+    if match := FORBIDDEN_CHARACTERS.search(identifier):
+        raise ValueError(
+            f'Invalid SQL identifier "{identifier}" '
+            f"contains forbidden character(s): {', '.join(match.groups())}"
+        )
+
+    return True

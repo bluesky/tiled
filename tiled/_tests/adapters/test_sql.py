@@ -6,7 +6,12 @@ import adbc_driver_sqlite
 import pyarrow as pa
 import pytest
 
-from tiled.adapters.sql import TABLE_NAME_PATTERN, SQLAdapter, is_safe_identifier
+from tiled.adapters.sql import (
+    COLUMN_NAME_PATTERN,
+    TABLE_NAME_PATTERN,
+    SQLAdapter,
+    is_safe_identifier,
+)
 from tiled.storage import parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
@@ -479,14 +484,147 @@ def test_write_read_one_batch_many_part(
 def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -> None:
     if isinstance(expected, type(pytest.raises(ValueError))):
         with expected:
-            is_safe_identifier(table_name, TABLE_NAME_PATTERN)
+            is_safe_identifier(
+                table_name, TABLE_NAME_PATTERN, allow_reserved_words=False
+            )
     else:
-        assert is_safe_identifier(table_name, TABLE_NAME_PATTERN) is None  # type: ignore[func-returns-value]
+        assert is_safe_identifier(
+            table_name, TABLE_NAME_PATTERN, allow_reserved_words=False
+        )
+
+
+@pytest.mark.parametrize(
+    "identifier, expected",
+    [
+        # Valid column names
+        ("valid_column_name", None),
+        ("_another_valid_name123", None),
+        ("table_name_with_underscores", None),
+        ("short", None),
+        ("a" * 63, None),  # Maximum length
+        ("name with-other*allowed:special/characters?!", None),
+        # Invalid identifiers - length
+        (
+            "a" * 64,
+            pytest.raises(
+                ValueError, match=r"Invalid SQL identifier.+max character number is 63"
+            ),
+        ),
+        # Invalid identifiers - malformed
+        (
+            "1invalid_start",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        ("-invalid", pytest.raises(ValueError, match=r"Malformed SQL identifier.+")),
+        # Invalid identifiers - forbidden characters
+        (
+            'invalid"name',
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid'name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid`name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid;name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid--name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid\\*name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid*\\name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid*/name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid\\name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid(name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid)name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid+name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+        (
+            "invalid=name",
+            pytest.raises(
+                ValueError,
+                match=r"Invalid SQL identifier.+contains forbidden character.+",
+            ),
+        ),
+    ],
+)
+def test_check_column_name_is_safe(identifier: str, expected: str) -> None:
+    if isinstance(expected, type(pytest.raises(ValueError))):
+        with expected:
+            is_safe_identifier(
+                identifier, COLUMN_NAME_PATTERN, allow_reserved_words=True
+            )
+    else:
+        assert is_safe_identifier(
+            identifier, COLUMN_NAME_PATTERN, allow_reserved_words=True
+        )
 
 
 @pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
-@pytest.mark.parametrize("column_name", ["a", "a b", "a-b", "a+b", "1"])
-def test_valid_column_names(
+@pytest.mark.parametrize("column_name", ["a", "a b", "a-b", "a:b", "a*b", "a/b"])
+def test_can_write_with_valid_column_names(
     data_uri: str, column_name: str, request: pytest.FixtureRequest
 ) -> None:
     table = pa.Table.from_arrays([[1, 2, 3]], [column_name])
