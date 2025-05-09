@@ -16,6 +16,15 @@ docs/source/reference/generated/
 # pytest
 .pytest_cache/
 
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+cover/*
+
 # PyBuilder
 target/
 
