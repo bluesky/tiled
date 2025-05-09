@@ -12,7 +12,7 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 import anyio
@@ -30,7 +30,7 @@ from sqlalchemy import (
     type_coerce,
     update,
 )
-from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -41,6 +41,7 @@ from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
+    AccessBlobFilter,
     Comparison,
     Contains,
     Eq,
@@ -138,12 +139,13 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs, access_policy):
+    def __init__(self, metadata, specs, top_level_access_blob):
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
         self.key = None
         self.data_sources = None
+        self.access_blob = top_level_access_blob or {}
 
 
 class Context:
@@ -306,10 +308,18 @@ class CatalogNodeAdapter:
         conditions=None,
         queries=None,
         sorting=None,
-        access_policy=None,
+        mount_node: Optional[Union[str, List[str]]] = None,
     ):
         self.context = context
         self.engine = self.context.engine
+        if isinstance(mount_node, str):
+            mount_node = [segment for segment in mount_node.split("/") if segment]
+        if mount_node:
+            if not isinstance(node, RootNode):
+                # sanity-check -- this should not be reachable
+                raise RuntimeError("mount_node should only be passed with the RootNode")
+            node.ancestors.extend(mount_node[:-1])
+            node.key = mount_node[-1]
         self.node = node
         if node.key is None:
             # Special case for RootNode
@@ -324,9 +334,12 @@ class CatalogNodeAdapter:
         self.specs = [Spec.model_validate(spec) for spec in node.specs]
         self.ancestors = node.ancestors
         self.key = node.key
-        self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
+
+    @property
+    def access_blob(self):
+        return self.node.access_blob
 
     def metadata(self):
         return self.node.metadata_
@@ -509,7 +522,8 @@ class CatalogNodeAdapter:
             ),
         )
         for query in self.queries:
-            adapter = adapter.search(query)
+            if hasattr(adapter, "searc"):
+                adapter = adapter.search(query)
         return adapter
 
     def new_variation(
@@ -534,7 +548,6 @@ class CatalogNodeAdapter:
             node=self.node,
             conditions=conditions,
             sorting=sorting,
-            # access_policy=self.access_policy,
             # entries_stale_after=self.entries_stale_after,
             # metadata_stale_after=self.entries_stale_after,
             # must_revalidate=must_revalidate,
@@ -625,7 +638,9 @@ class CatalogNodeAdapter:
         key=None,
         specs=None,
         data_sources=None,
+        access_blob=None,
     ):
+        access_blob = access_blob or {}
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
@@ -635,6 +650,7 @@ class CatalogNodeAdapter:
             metadata_=metadata,
             structure_family=structure_family,
             specs=[s.model_dump() for s in specs or []],
+            access_blob=access_blob,
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -751,9 +767,7 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            return key, type(self)(
-                self.context, refreshed_node, access_policy=self.access_policy
-            )
+            return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db, asset):
         # Find an asset_id if it exists, otherwise create a new one
@@ -954,7 +968,9 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def replace_metadata(self, metadata=None, specs=None):
+    async def replace_metadata(
+        self, metadata=None, specs=None, access_blob=None, *, drop_revision=False
+    ):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -962,29 +978,35 @@ class CatalogNodeAdapter:
             values["metadata_"] = metadata
         if specs is not None:
             values["specs"] = [s.model_dump() for s in specs]
+        if access_blob is not None:
+            values["access_blob"] = access_blob
         async with self.context.session() as db:
-            current = (
-                await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
-            ).scalar_one()
-            next_revision_number = 1 + (
-                (
+            if not drop_revision:
+                current = (
                     await db.execute(
-                        select(func.max(orm.Revision.revision_number)).where(
-                            orm.Revision.node_id == self.node.id
-                        )
+                        select(orm.Node).where(orm.Node.id == self.node.id)
                     )
                 ).scalar_one()
-                or 0
-            )
-            revision = orm.Revision(
-                # Trailing underscore in 'metadata_' avoids collision with
-                # SQLAlchemy reserved word 'metadata'.
-                metadata_=current.metadata_,
-                specs=current.specs,
-                node_id=current.id,
-                revision_number=next_revision_number,
-            )
-            db.add(revision)
+                next_revision_number = 1 + (
+                    (
+                        await db.execute(
+                            select(func.max(orm.Revision.revision_number)).where(
+                                orm.Revision.node_id == self.node.id
+                            )
+                        )
+                    ).scalar_one()
+                    or 0
+                )
+                revision = orm.Revision(
+                    # Trailing underscore in 'metadata_' avoids collision with
+                    # SQLAlchemy reserved word 'metadata'.
+                    metadata_=current.metadata_,
+                    specs=current.specs,
+                    access_blob=current.access_blob,
+                    node_id=current.id,
+                    revision_number=next_revision_number,
+                )
+                db.add(revision)
             await db.execute(
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
@@ -1038,9 +1060,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return [
                 (
                     node.key,
-                    STRUCTURES[node.structure_family](
-                        self.context, node, access_policy=self.access_policy
-                    ),
+                    STRUCTURES[node.structure_family](self.context, node),
                 )
                 for node in nodes
             ]
@@ -1071,6 +1091,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         key=None,
         specs=None,
         data_sources=None,
+        access_blob=None,
     ):
         key = key or self.context.key_maker()
 
@@ -1107,7 +1128,12 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 specs = [Spec(name="flattened")] + (specs or [])
 
         return await super().create_node(
-            structure_family, metadata, key=key, specs=specs, data_sources=data_sources
+            structure_family,
+            metadata,
+            key=key,
+            specs=specs,
+            data_sources=data_sources,
+            access_blob=access_blob,
         )
 
 
@@ -1363,6 +1389,37 @@ def specs(query, tree):
     return tree.new_variation(conditions=tree.conditions + conditions)
 
 
+def access_blob_filter(query, tree):
+    dialect_name = tree.engine.url.get_dialect().name
+    access_blob = orm.Node.access_blob
+    if not (query.user_id or query.tags):
+        # Results cannot possibly match an empty value or list,
+        # so put a False condition in the list ensuring that
+        # there are no rows returned.
+        condition = false()
+    elif dialect_name == "sqlite":
+        attr_id = access_blob["user"]
+        attr_tags = access_blob["tags"]
+        access_tags_json = func.json_each(attr_tags).table_valued("value")
+        contains_tags = (
+            select(1)
+            .select_from(access_tags_json)
+            .where(access_tags_json.c.value.in_(query.tags))
+            .exists()
+        )
+        user_match = func.json_extract(func.json_quote(attr_id), "$") == query.user_id
+        condition = or_(contains_tags, user_match)
+    elif dialect_name == "postgresql":
+        access_blob_jsonb = type_coerce(access_blob, JSONB)
+        contains_tags = access_blob_jsonb["tags"].has_any(cast(query.tags, ARRAY(TEXT)))
+        user_match = access_blob_jsonb["user"].astext == query.user_id
+        condition = or_(contains_tags, user_match)
+    else:
+        raise UnsupportedQueryType("access_blob_filter")
+
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def in_or_not_in_sqlite(query, tree, method):
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
@@ -1441,6 +1498,7 @@ CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
+CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
 CatalogNodeAdapter.register_query(FullText, full_text)
 CatalogNodeAdapter.register_query(Like, like)
 
@@ -1449,7 +1507,6 @@ def in_memory(
     *,
     metadata=None,
     specs=None,
-    access_policy=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
@@ -1460,7 +1517,6 @@ def in_memory(
         uri=uri,
         metadata=metadata,
         specs=specs,
-        access_policy=access_policy,
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         init_if_not_exists=True,
@@ -1474,12 +1530,13 @@ def from_uri(
     *,
     metadata=None,
     specs=None,
-    access_policy=None,
     writable_storage=None,
     readable_storage=None,
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    top_level_access_blob=None,
+    mount_node: Optional[Union[str, List[str]]] = None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1519,11 +1576,12 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    return CatalogContainerAdapter(
+    adapter = CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
-        RootNode(metadata, specs, access_policy),
-        access_policy=access_policy,
+        RootNode(metadata, specs, top_level_access_blob),
+        mount_node=mount_node,
     )
+    return adapter
 
 
 def _set_sqlite_pragma(conn, record):

@@ -250,17 +250,31 @@ class BaseClient:
 
     def metadata_copy(self):
         """
-        Generate a mutable copy of metadata and specs for validating metadata
-        (useful with update_metadata())
+        Generate a mutable copy of metadata, specs, and access_tags for
+        validating metadata (useful with update_metadata())
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
         specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
-        return [metadata, specs]  # returning as list of mutable items
+        access_tags = deepcopy(self._item["attributes"]["access_blob"].get("tags", []))
+        return [
+            md for md in [metadata, specs, access_tags] if md is not None
+        ]  # returning as list of mutable items
 
     @property
     def specs(self):
         "List of specifications describing the structure of the metadata and/or data."
         return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
+
+    @property
+    def access_blob(self):
+        "Authorization information about this node, in blob form"
+        access_blob = self._item["attributes"]["access_blob"]
+        if access_blob is None:
+            raise AttributeError("Node has no attribute 'access_blob'")
+        # Ensure this is immutable (at the top level) to help the user avoid
+        # getting the wrong impression that editing this would update anything
+        # persistent.
+        return DictView(access_blob)
 
     @property
     def uri(self):
@@ -446,7 +460,9 @@ class BaseClient:
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None):
+    def update_metadata(
+        self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
+    ):
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -461,6 +477,11 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -496,19 +517,19 @@ class BaseClient:
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
-        if isinstance(metadata, list) and len(metadata) == 2:
-            if specs is None:
-                # Likely [metadata, specs] form from node.metadata_copy()
-                metadata, specs = metadata
-            else:
-                raise ValueError("Duplicate specs provided after [metadata, specs]")
-
-        metadata_patch, specs_patch = self.build_metadata_patches(
-            metadata=metadata, specs=specs
+        metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
         )
-        self.patch_metadata(metadata_patch=metadata_patch, specs_patch=specs_patch)
+        self.patch_metadata(
+            metadata_patch=metadata_patch,
+            specs_patch=specs_patch,
+            access_blob_patch=access_blob_patch,
+            drop_revision=drop_revision,
+        )
 
-    def build_metadata_patches(self, metadata=None, specs=None):
+    def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
         """
         Build valid JSON Patches (RFC6902) for metadata and metadata validation
         specs accepted by `patch_metadata`.
@@ -522,6 +543,9 @@ class BaseClient:
         specs : list[Spec], optional
             Metadata validation specifications.
 
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+
         Returns
         -------
         metadata_patch : list[dict]
@@ -530,6 +554,9 @@ class BaseClient:
         specs_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
             for metadata validation specifications.
+        access_blob_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for access control fields that are stored in the access_blob.
 
         See Also
         --------
@@ -592,7 +619,19 @@ class BaseClient:
                 ).patch
             )
 
-        return metadata_patch, specs_patch
+        if not access_tags:
+            # empty list of access_tags should be a no-op
+            access_blob_patch = None
+        else:
+            ab_copy = deepcopy(self._item["attributes"]["access_blob"])
+            access_blob = {"tags": access_tags}
+            access_blob_patch = jsonpatch.JsonPatch.from_diff(
+                self._item["attributes"]["access_blob"],
+                apply_update_patch(ab_copy, access_blob),
+                dumps=orjson.dumps,
+            ).patch
+
+        return metadata_patch, specs_patch, access_blob_patch
 
     def _build_json_patch(self, origin, update_patch):
         """
@@ -618,7 +657,9 @@ class BaseClient:
         self,
         metadata_patch=None,
         specs_patch=None,
+        access_blob_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
+        drop_revision=False,
     ):
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
@@ -632,6 +673,8 @@ class BaseClient:
         specs_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata validation
             specifications list
+        access_blob_patch : List[dict], optional
+            JSON-serializable patch to be applied to the access_blob
         content_type : str
             Mimetype of the patches. Acceptable values are:
 
@@ -639,6 +682,9 @@ class BaseClient:
               (See https://datatracker.ietf.org/doc/html/rfc6902)
             * "application/merge-patch+json"
               (See https://datatracker.ietf.org/doc/html/rfc7386)
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -688,7 +734,11 @@ class BaseClient:
             "content-type": content_type,
             "metadata": metadata_patch,
             "specs": normalized_specs_patch,
+            "access_blob": access_blob_patch,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
         for attempt in retry_context():
             with attempt:
@@ -696,6 +746,7 @@ class BaseClient:
                     self.context.http_client.patch(
                         self.item["links"]["self"],
                         content=safe_json_dump(data),
+                        params=params,
                     )
                 ).json()
 
@@ -716,7 +767,17 @@ class BaseClient:
             patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
             self._item["attributes"]["specs"] = patched_specs
 
-    def replace_metadata(self, metadata=None, specs=None):
+        if access_blob_patch is not None:
+            if "access_blob" in content:
+                self._item["attributes"]["access_blob"] = content["access_blob"]
+            else:
+                self._item["attributes"]["access_blob"] = patcher(
+                    dict(self.access_blob), access_blob_patch, content_type
+                )
+
+    def replace_metadata(
+        self, metadata=None, specs=None, access_tags=None, drop_revision=False
+    ):
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
@@ -730,6 +791,11 @@ class BaseClient:
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -747,16 +813,28 @@ class BaseClient:
                 if isinstance(spec, str):
                     spec = Spec(spec)
                 normalized_specs.append(asdict(spec))
+
+        if access_tags is None:
+            access_blob = None
+        else:
+            access_blob = {"tags": access_tags}
+
         data = {
             "metadata": metadata,
             "specs": normalized_specs,
+            "access_blob": access_blob,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.put(
-                        self.item["links"]["self"], content=safe_json_dump(data)
+                        self.item["links"]["self"],
+                        content=safe_json_dump(data),
+                        params=params,
                     )
                 ).json()
 
@@ -766,12 +844,18 @@ class BaseClient:
                 # It is updated locally using the new version.
                 self._item["attributes"]["metadata"] = content["metadata"]
             else:
-                # Metadata was accepted as it si by the server.
-                # It is updated locally with the version submitted buy the client.
+                # Metadata was accepted as it is by the server.
+                # It is updated locally with the version submitted by the client.
                 self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
             self._item["attributes"]["specs"] = normalized_specs
+
+        if access_blob is not None:
+            if "access_blob" in content:
+                self._item["attributes"]["access_blob"] = content["access_blob"]
+            else:
+                self._item["attributes"]["access_blob"] = access_blob
 
     @property
     def metadata_revisions(self):

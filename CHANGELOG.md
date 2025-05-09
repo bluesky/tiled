@@ -2,7 +2,68 @@
 Write the date in place of the "Unreleased" in the case a new version is released. -->
 # Changelog
 
-## Unreleased
+## 0.1.0-b27 (2025-05-08)
+
+_This release requires a database migration of the catalog database._
+
+```none
+tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
+```
+
+### Added
+
+- New access policy `TagBasedAccessPolicy` which introduces more robust
+  authorization based on the concept of tagging. When this policy is used,
+  access to data is controlled by the node's `access_blob` (i.e the tags applied
+  to that node).
+- Added new `access_blob` column to catalog database, in support of the new
+  authorization. This blob typically contains one of: resource owner (creator),
+  or a list of access tags.
+- Added new filter type `AccessBlobFilter` which filters nodes based upon their
+  `access_blob` contents. In support of the new authorization.
+
+### Changed
+- Tiled now accepts a single `access_control` configuraton for the entire
+  server, only. Access policies are now a server-wide singleton used for
+  all access requests. Access control can no longer be specified on
+  individual trees.
+- Removed `path_parts` arg from access policy signatures and related.
+- Effective scopes for the principal (from authN) are now threaded into
+  access policies and related.
+- Removed `access_policy` from `MapAdapter` and `CatalogAdapter`; accesss policies
+  are now set server-wide only.
+
+## 0.1.0-b26 (2025-05-07)
+
+### Added
+
+- New query parameter `drop_revision` on endpoints `PUT /metadata/{path}`
+  and `PATCH /metadata/{path}`. If set to true, the version replaced by
+  the update is _not_ saved as a revision. This is exposed in the Python
+  client via a new keyword-only argument `drop_revision` in
+  `update_metadata`, `patch_metadata`, and `replace_metadata`.
+
+### Fixed
+
+- A critical bug in the `mount_node` feature introduced in the
+  previous release prohibited the server from starting when
+  `mount_node` was used with a PostgreSQL database.
+
+## 0.1.0-b25 (2025-05-06)
+
+### Added
+
+- New optional parameter to catalog configuration, `mount_node`
+  enables mounting different sub-trees of one catalog database
+  at different prefixes. This is an advanced feature to facilitate
+  migration from many catalogs to one. See
+  `tiled/_tests/test_mount_node.py` for usage.
+
+## 0.1.0-b24 (2025-05-06)
+
+### Added
+
+- Support for reading numpy's on-disk format, `.npy` files.
 
 ### Changed
 
@@ -19,6 +80,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   or DuckDB files as if they were directories of readable files, and
   included them superfluously in a check on whether assets were situated
   in a readable area.
+- Update data_sources in the client after receiving a response from the server.
+  Removed the (unused) `data_source` parameter from the `PUT /data_source/`
+  endpoint; the id of the updated data source must be included in the structure
+  within the body of the request.
 
 ## 0.1.0-b23 (2025-04-24)
 
