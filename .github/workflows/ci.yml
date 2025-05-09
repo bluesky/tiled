@@ -88,6 +88,14 @@ jobs:
         # Opt in to LDAPAuthenticator tests.
         TILED_TEST_LDAP: 1
 
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        name: ${{ inputs.python-version }}/${{ inputs.runs-on }}
+        files: cov.xml
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   windows_checks:
     name: Test on Windows
     runs-on: windows-latest

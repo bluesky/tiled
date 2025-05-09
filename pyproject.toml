@@ -307,3 +307,12 @@ exclude = '''
   | web-frontend
 )
 '''
+
+[tool.coverage.run]
+data_file = "/tmp/tiled.coverage"
+
+[tool.coverage.report]
+exclude_lines = ["if __name__ == '__main__':"]
+
+[tool.coverage.paths]
+source = ["."]
