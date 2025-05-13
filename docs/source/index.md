@@ -33,6 +33,7 @@ how-to/metrics
 how-to/direct-client
 how-to/tiled-authn-database
 how-to/register
+how-to/retries
 ```
 
 ```{toctree}

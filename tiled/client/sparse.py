@@ -7,7 +7,7 @@ from ndindex import ndindex
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice
+from .utils import export_util, handle_error, params_from_slice, retry_context
 
 
 class SparseClient(BaseClient):
@@ -52,13 +52,15 @@ class SparseClient(BaseClient):
         url_path = self.item["links"]["block"]
         params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
         params["block"] = ",".join(map(str, block))
-        content = handle_error(
-            self.context.http_client.get(
-                url_path,
-                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                params=params,
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        url_path,
+                        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                        params=params,
+                    )
+                ).read()
         df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
@@ -79,13 +81,15 @@ class SparseClient(BaseClient):
         structure = self.structure()
         url_path = self.item["links"]["full"]
         params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
-        content = handle_error(
-            self.context.http_client.get(
-                url_path,
-                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                params=params,
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        url_path,
+                        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                        params=params,
+                    )
+                ).read()
         df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
@@ -106,13 +110,15 @@ class SparseClient(BaseClient):
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
         d["data"] = data
         df = pandas.DataFrame(d)
-        handle_error(
-            self.context.http_client.put(
-                self.item["links"]["full"],
-                content=bytes(serialize_arrow(df, {})),
-                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["full"],
+                        content=bytes(serialize_arrow(df, {})),
+                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    )
+                )
 
     def write_block(self, coords, data, block):
         import pandas
@@ -120,13 +126,15 @@ class SparseClient(BaseClient):
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
         d["data"] = data
         df = pandas.DataFrame(d)
-        handle_error(
-            self.context.http_client.put(
-                self.item["links"]["block"].format(*block),
-                content=bytes(serialize_arrow(df, {})),
-                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["block"].format(*block),
+                        content=bytes(serialize_arrow(df, {})),
+                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    )
+                )
 
     def __getitem__(self, slice):
         return self.read(slice)

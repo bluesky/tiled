@@ -12,7 +12,7 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 import anyio
@@ -30,7 +30,7 @@ from sqlalchemy import (
     type_coerce,
     update,
 )
-from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -41,12 +41,14 @@ from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from tiled.queries import (
+    AccessBlobFilter,
     Comparison,
     Contains,
     Eq,
     FullText,
     In,
     KeysFilter,
+    Like,
     NotEq,
     NotIn,
     Operator,
@@ -66,8 +68,8 @@ from ..mimetypes import (
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
+from ..storage import FileStorage, parse_storage, register_storage
 from ..structures.core import StructureFamily
-from ..structures.data_source import Storage
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -75,7 +77,6 @@ from ..utils import (
     UnsupportedQueryType,
     ensure_awaitable,
     ensure_specified_sql_driver,
-    ensure_uri,
     import_object,
     path_from_uri,
     safe_json_dump,
@@ -138,7 +139,7 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs, access_policy):
+    def __init__(self, metadata, specs, top_level_access_blob):
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
@@ -146,6 +147,7 @@ class RootNode:
         self.data_sources = None
         self.id = None
         self.parent_id = None
+        self.access_blob = top_level_access_blob or {}
 
 
 class Context:
@@ -159,21 +161,28 @@ class Context:
     ):
         self.engine = engine
 
+        self.writable_storage = []
+        self.readable_storage = set()
+
+        # Back-compat: `writable_storage` used to be a dict: we want its values.
+        if isinstance(writable_storage, dict):
+            writable_storage = list(writable_storage.values())
+        # Back-compat: `writable_storage` used to be a filepath.
         if isinstance(writable_storage, (str, Path)):
-            storage = Storage.from_path(writable_storage)
-        else:
-            storage = Storage(**(writable_storage or {}))
+            writable_storage = [writable_storage]
         if isinstance(readable_storage, str):
             raise ValueError("readable_storage should be a list of URIs or paths")
-        self.readable_storage = set(
-            ensure_uri(path) for path in (readable_storage or [])
-        )
+
+        for item in writable_storage or []:
+            self.writable_storage.append(parse_storage(item))
+        for item in readable_storage or []:
+            self.readable_storage.add(parse_storage(item))
         # Writable storage should also be readable.
-        if storage.filesystem is not None:
-            self.readable_storage.add(storage.filesystem)
-        if storage.sql is not None:
-            self.readable_storage.add(storage.sql)
-        self.writable_storage = storage
+        self.readable_storage.update(self.writable_storage)
+        # Register all storage in a registry that enables Adapters to access
+        # credentials (if applicable).
+        for item in self.readable_storage:
+            register_storage(item)
 
         self.key_maker = key_maker
         adapters_by_mimetype = adapters_by_mimetype or {}
@@ -301,10 +310,18 @@ class CatalogNodeAdapter:
         conditions=None,
         queries=None,
         sorting=None,
-        access_policy=None,
+        mount_node: Optional[Union[str, List[str]]] = None,
     ):
         self.context = context
         self.engine = self.context.engine
+        if isinstance(mount_node, str):
+            mount_node = [segment for segment in mount_node.split("/") if segment]
+        if mount_node:
+            if not isinstance(node, RootNode):
+                # sanity-check -- this should not be reachable
+                raise RuntimeError("mount_node should only be passed with the RootNode")
+            node.ancestors.extend(mount_node[:-1])
+            node.key = mount_node[-1]
         self.node = node
         self.ancestors = node.ancestors
         self.sorting = sorting or [("", 1)]
@@ -314,7 +331,6 @@ class CatalogNodeAdapter:
         self.structure_family = node.structure_family
         self.specs = [Spec.model_validate(spec) for spec in node.specs]
         self.key = node.key
-        self.access_policy = access_policy
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
 
@@ -325,6 +341,9 @@ class CatalogNodeAdapter:
             return []
         # breakpoint()
         return self.ancestors + [self.node.key]
+
+    def access_blob(self):
+        return self.node.access_blob
 
     def metadata(self):
         return self.node.metadata_
@@ -344,7 +363,7 @@ class CatalogNodeAdapter:
 
     @property
     def writable(self):
-        return any(dataclasses.asdict(self.context.writable_storage).values())
+        return bool(self.context.writable_storage)
 
     def __repr__(self):
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
@@ -483,12 +502,15 @@ class CatalogNodeAdapter:
             if scheme == "file":
                 # Protect against misbehaving clients reading from unintended parts of the filesystem.
                 asset_path = path_from_uri(asset.data_uri)
-                for readable_storage in self.context.readable_storage:
-                    if Path(
-                        os.path.commonpath(
-                            [path_from_uri(readable_storage), asset_path]
-                        )
-                    ) == path_from_uri(readable_storage):
+                for readable_storage in {
+                    item
+                    for item in self.context.readable_storage
+                    if isinstance(item, FileStorage)
+                }:
+                    if (
+                        Path(os.path.commonpath([readable_storage.path, asset_path]))
+                        == readable_storage.path
+                    ):
                         break
                 else:
                     raise RuntimeError(
@@ -504,7 +526,8 @@ class CatalogNodeAdapter:
             ),
         )
         for query in self.queries:
-            adapter = adapter.search(query)
+            if hasattr(adapter, "searc"):
+                adapter = adapter.search(query)
         return adapter
 
     def new_variation(
@@ -529,7 +552,6 @@ class CatalogNodeAdapter:
             node=self.node,
             conditions=conditions,
             sorting=sorting,
-            # access_policy=self.access_policy,
             # entries_stale_after=self.entries_stale_after,
             # metadata_stale_after=self.entries_stale_after,
             # must_revalidate=must_revalidate,
@@ -620,7 +642,9 @@ class CatalogNodeAdapter:
         key=None,
         specs=None,
         data_sources=None,
+        access_blob=None,
     ):
+        access_blob = access_blob or {}
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
@@ -631,6 +655,7 @@ class CatalogNodeAdapter:
             metadata_=metadata,
             structure_family=structure_family,
             specs=[s.model_dump() for s in specs or []],
+            access_blob=access_blob,
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -666,9 +691,26 @@ class CatalogNodeAdapter:
                             ),
                         )
                     adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
+                    # Choose writable storage. Use the first writable storage item
+                    # with a scheme that is supported by this adapter. # For
+                    # back-compat, if an adapter does not declare `supported_storage`
+                    # assume it supports file-based storage only.
+                    supported_storage = getattr(
+                        adapter, "supported_storage", {FileStorage}
+                    )
+                    for storage in self.context.writable_storage:
+                        if isinstance(storage, tuple(supported_storage)):
+                            break
+                    else:
+                        raise RuntimeError(
+                            f"The adapter {adapter} supports storage types "
+                            f"{[cls.__name__ for cls in supported_storage]} "
+                            "but the only available storage types "
+                            f"are {self.context.writable_storage}."
+                        )
                     data_source = await ensure_awaitable(
                         adapter.init_storage,
-                        self.context.writable_storage,
+                        storage,
                         data_source,
                         self.segments + [key],
                     )
@@ -730,9 +772,7 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            return key, type(self)(
-                self.context, refreshed_node, access_policy=self.access_policy
-            )
+            return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db, asset):
         # Find an asset_id if it exists, otherwise create a new one
@@ -933,7 +973,9 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def replace_metadata(self, metadata=None, specs=None):
+    async def replace_metadata(
+        self, metadata=None, specs=None, access_blob=None, *, drop_revision=False
+    ):
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -941,29 +983,35 @@ class CatalogNodeAdapter:
             values["metadata_"] = metadata
         if specs is not None:
             values["specs"] = [s.model_dump() for s in specs]
+        if access_blob is not None:
+            values["access_blob"] = access_blob
         async with self.context.session() as db:
-            current = (
-                await db.execute(select(orm.Node).where(orm.Node.id == self.node.id))
-            ).scalar_one()
-            next_revision_number = 1 + (
-                (
+            if not drop_revision:
+                current = (
                     await db.execute(
-                        select(func.max(orm.Revision.revision_number)).where(
-                            orm.Revision.node_id == self.node.id
-                        )
+                        select(orm.Node).where(orm.Node.id == self.node.id)
                     )
                 ).scalar_one()
-                or 0
-            )
-            revision = orm.Revision(
-                # Trailing underscore in 'metadata_' avoids collision with
-                # SQLAlchemy reserved word 'metadata'.
-                metadata_=current.metadata_,
-                specs=current.specs,
-                node_id=current.id,
-                revision_number=next_revision_number,
-            )
-            db.add(revision)
+                next_revision_number = 1 + (
+                    (
+                        await db.execute(
+                            select(func.max(orm.Revision.revision_number)).where(
+                                orm.Revision.node_id == self.node.id
+                            )
+                        )
+                    ).scalar_one()
+                    or 0
+                )
+                revision = orm.Revision(
+                    # Trailing underscore in 'metadata_' avoids collision with
+                    # SQLAlchemy reserved word 'metadata'.
+                    metadata_=current.metadata_,
+                    specs=current.specs,
+                    access_blob=current.access_blob,
+                    node_id=current.id,
+                    revision_number=next_revision_number,
+                )
+                db.add(revision)
             await db.execute(
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
@@ -1017,9 +1065,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return [
                 (
                     node.key,
-                    STRUCTURES[node.structure_family](
-                        self.context, node, access_policy=self.access_policy
-                    ),
+                    STRUCTURES[node.structure_family](self.context, node),
                 )
                 for node in nodes
             ]
@@ -1050,6 +1096,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         key=None,
         specs=None,
         data_sources=None,
+        access_blob=None,
     ):
         key = key or self.context.key_maker()
 
@@ -1086,7 +1133,12 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
                 specs = [Spec(name="flattened")] + (specs or [])
 
         return await super().create_node(
-            structure_family, metadata, key=key, specs=specs, data_sources=data_sources
+            structure_family,
+            metadata,
+            key=key,
+            specs=specs,
+            data_sources=data_sources,
+            access_blob=access_blob,
         )
 
 
@@ -1284,6 +1336,13 @@ def binary_op(query, tree, operation):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def like(query, tree):
+    keys = query.key.split(".")
+    attr = orm.Node.metadata_[keys]
+    condition = _get_value(attr, str).like(query.pattern)
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def comparison(query, tree):
     OPERATORS = {
         Operator.lt: operator.lt,
@@ -1333,6 +1392,37 @@ def specs(query, tree):
     else:
         raise UnsupportedQueryType("specs")
     return tree.new_variation(conditions=tree.conditions + conditions)
+
+
+def access_blob_filter(query, tree):
+    dialect_name = tree.engine.url.get_dialect().name
+    access_blob = orm.Node.access_blob
+    if not (query.user_id or query.tags):
+        # Results cannot possibly match an empty value or list,
+        # so put a False condition in the list ensuring that
+        # there are no rows returned.
+        condition = false()
+    elif dialect_name == "sqlite":
+        attr_id = access_blob["user"]
+        attr_tags = access_blob["tags"]
+        access_tags_json = func.json_each(attr_tags).table_valued("value")
+        contains_tags = (
+            select(1)
+            .select_from(access_tags_json)
+            .where(access_tags_json.c.value.in_(query.tags))
+            .exists()
+        )
+        user_match = func.json_extract(func.json_quote(attr_id), "$") == query.user_id
+        condition = or_(contains_tags, user_match)
+    elif dialect_name == "postgresql":
+        access_blob_jsonb = type_coerce(access_blob, JSONB)
+        contains_tags = access_blob_jsonb["tags"].has_any(cast(query.tags, ARRAY(TEXT)))
+        user_match = access_blob_jsonb["user"].astext == query.user_id
+        condition = or_(contains_tags, user_match)
+    else:
+        raise UnsupportedQueryType("access_blob_filter")
+
+    return tree.new_variation(conditions=tree.conditions + [condition])
 
 
 def in_or_not_in_sqlite(query, tree, method):
@@ -1413,15 +1503,15 @@ CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
+CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
 CatalogNodeAdapter.register_query(FullText, full_text)
-# TODO: Regex
+CatalogNodeAdapter.register_query(Like, like)
 
 
 def in_memory(
     *,
     metadata=None,
     specs=None,
-    access_policy=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
@@ -1432,7 +1522,6 @@ def in_memory(
         uri=uri,
         metadata=metadata,
         specs=specs,
-        access_policy=access_policy,
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         init_if_not_exists=True,
@@ -1446,12 +1535,13 @@ def from_uri(
     *,
     metadata=None,
     specs=None,
-    access_policy=None,
     writable_storage=None,
     readable_storage=None,
     init_if_not_exists=False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    top_level_access_blob=None,
+    mount_node: Optional[Union[str, List[str]]] = None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1491,11 +1581,12 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    return CatalogContainerAdapter(
+    adapter = CatalogContainerAdapter(
         Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
-        RootNode(metadata, specs, access_policy),
-        access_policy=access_policy,
+        RootNode(metadata, specs, top_level_access_blob),
+        mount_node=mount_node,
     )
+    return adapter
 
 
 def _set_sqlite_pragma(conn, record):

@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 
 from ..structures.core import STRUCTURE_TYPES
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice
+from .utils import export_util, handle_error, params_from_slice, retry_context
 
 
 class _DaskArrayClient(BaseClient):
@@ -94,17 +94,19 @@ class _DaskArrayClient(BaseClient):
         else:
             expected_shape = "scalar"
         url_path = self.item["links"]["block"]
-        content = handle_error(
-            self.context.http_client.get(
-                url_path,
-                headers={"Accept": media_type},
-                params={
-                    **parse_qs(urlparse(url_path).query),
-                    "block": ",".join(map(str, block)),
-                    "expected_shape": expected_shape,
-                },
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        url_path,
+                        headers={"Accept": media_type},
+                        params={
+                            **parse_qs(urlparse(url_path).query),
+                            "block": ",".join(map(str, block)),
+                            "expected_shape": expected_shape,
+                        },
+                    )
+                ).read()
         return numpy.frombuffer(content, dtype=dtype).reshape(shape)
 
     def read_block(self, block, slice=None):
@@ -166,13 +168,15 @@ class _DaskArrayClient(BaseClient):
         return dask_array
 
     def write(self, array):
-        handle_error(
-            self.context.http_client.put(
-                self.item["links"]["full"],
-                content=array.tobytes(),
-                headers={"Content-Type": "application/octet-stream"},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["full"],
+                        content=array.tobytes(),
+                        headers={"Content-Type": "application/octet-stream"},
+                    )
+                )
 
     def write_block(self, array, block, slice=...):
         url_path = self.item["links"]["block"].format(*block)
@@ -180,14 +184,16 @@ class _DaskArrayClient(BaseClient):
             **parse_qs(urlparse(url_path).query),
             **params_from_slice(slice),
         }
-        handle_error(
-            self.context.http_client.put(
-                url_path,
-                content=array.tobytes(),
-                headers={"Content-Type": "application/octet-stream"},
-                params=params,
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        url_path,
+                        content=array.tobytes(),
+                        headers={"Content-Type": "application/octet-stream"},
+                        params=params,
+                    )
+                )
 
     def patch(self, array: NDArray, offset: Union[int, tuple[int, ...]], extend=False):
         """
@@ -256,19 +262,21 @@ class _DaskArrayClient(BaseClient):
             "shape": ",".join(map(str, array_.shape)),
             "extend": bool(extend),
         }
-        response = self.context.http_client.patch(
-            url_path,
-            content=array_.tobytes(),
-            headers={"Content-Type": "application/octet-stream"},
-            params=params,
-        )
-        if response.status_code == httpx.codes.CONFLICT:
-            raise ValueError(
-                f"Slice {slice} does not fit within current array shape. "
-                "Pass keyword argument extend=True to extend the array "
-                "dimensions to fit."
-            )
-        handle_error(response)
+        for attempt in retry_context():
+            with attempt:
+                response = self.context.http_client.patch(
+                    url_path,
+                    content=array_.tobytes(),
+                    headers={"Content-Type": "application/octet-stream"},
+                    params=params,
+                )
+                if response.status_code == httpx.codes.CONFLICT:
+                    raise ValueError(
+                        f"Slice {slice} does not fit within current array shape. "
+                        "Pass keyword argument extend=True to extend the array "
+                        "dimensions to fit."
+                    )
+                handle_error(response)
         # Update cached structure.
         new_structure = response.json()
         structure_type = STRUCTURE_TYPES[self.structure_family]

@@ -113,6 +113,7 @@ def build_app(
     validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
     scalable=False,
+    access_policy=None,
 ):
     """
     Serve a Tree
@@ -126,6 +127,8 @@ def build_app(
         List of authenticator classes (one per support identity provider)
     server_settings: dict, optional
         Dict of other server configuration.
+    access_policy:
+        AccessPolicy object encoding rules for which users can see which entries.
     """
     authentication = authentication or {}
     authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
@@ -358,6 +361,8 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     # are processed, so we cannot just inject this configuration via Depends.
     for custom_router in getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/api/v1")
+
+    app.state.access_policy = access_policy
 
     if authentication.get("providers", []):
         # Delay this imports to avoid delaying startup with the SQL and cryptography

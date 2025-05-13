@@ -43,10 +43,10 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 @pytest.fixture
 def tree(tmpdir):
     return in_memory(
-        writable_storage={
-            "filesystem": str(tmpdir / "data"),
-            "sql": f"duckdb:///{tmpdir / 'data.duckdb'}",
-        }
+        writable_storage=[
+            f"file://localhost{str(tmpdir / 'data')}",
+            f"duckdb:///{tmpdir / 'data.duckdb'}",
+        ]
     )
 
 
@@ -406,6 +406,23 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+def test_drop_revision(tree):
+    key = "test_drop_revision"
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        # Set metadata color=blue.
+        ac = client.write_array([1, 2, 3], metadata={"color": "blue"}, key=key)
+        assert ac.metadata["color"] == "blue"
+        assert client[key].metadata["color"] == "blue"
+        assert len(ac.metadata_revisions[:]) == 0
+        # Update metadata to color=red, but drop revision.
+        ac.update_metadata(metadata={"color": "red"}, drop_revision=True)
+        # Metadata is updated; no revision is saved.
+        assert ac.metadata["color"] == "red"
+        assert client[key].metadata["color"] == "red"
+        assert len(ac.metadata_revisions) == 0
+
+
 def test_merge_patching(tree):
     "Test merge patching of metadata and specs"
     with Context.from_app(build_app(tree)) as context:
@@ -457,9 +474,10 @@ def test_metadata_with_unsafe_objects(tree):
         ac = client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
+            key="x",
         )
-        ac.metadata
-        ac.read()
+        # Local copy matches copy fetched from remote.
+        assert ac.metadata == client["x"].metadata
 
 
 @pytest.mark.asyncio
@@ -469,7 +487,7 @@ async def test_delete(tree):
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_before_delete) == 1
@@ -487,10 +505,10 @@ async def test_delete(tree):
             client.write_array(
                 [1, 2, 3],
                 metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-                key="x",
+                key="delete_me",
             )
 
-        client.delete("x")
+        client.delete("delete_me")
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_after_delete) == 0
@@ -505,7 +523,7 @@ async def test_delete(tree):
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
 
 

@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
+import orjson
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
@@ -26,6 +27,7 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
+    retry_context,
 )
 
 if TYPE_CHECKING:
@@ -179,18 +181,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 # Used the cached value and do not make any request.
                 return length
         link = self.item["links"]["search"]
-        content = handle_error(
-            self.context.http_client.get(
-                link,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **parse_qs(urlparse(link).query),
-                    "fields": "",
-                    **self._queries_as_params,
-                    **self._sorting_params,
-                },
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "fields": "",
+                            **self._queries_as_params,
+                            **self._sorting_params,
+                        },
+                    )
+                ).json()
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
@@ -214,18 +218,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             return (yield from contents)
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        **parse_qs(urlparse(next_page_url).query),
-                        "fields": "",
-                        **self._queries_as_params,
-                        **self._sorting_params,
-                    },
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                "fields": "",
+                                **self._queries_as_params,
+                                **self._sorting_params,
+                            },
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -269,13 +275,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if self._include_data_sources:
                 params["include_data_sources"] = True
             link = self.item["links"]["search"]
-            content = handle_error(
-                self.context.http_client.get(
-                    link,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={**parse_qs(urlparse(link).query), **params},
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            link,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={**parse_qs(urlparse(link).query), **params},
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -333,13 +341,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         if self._include_data_sources:
                             params["include_data_sources"] = True
                         link = self_link + "".join(f"/{key}" for key in keys[i:])
-                        content = handle_error(
-                            self.context.http_client.get(
-                                link,
-                                headers={"Accept": MSGPACK_MIME_TYPE},
-                                params={**parse_qs(urlparse(link).query), **params},
-                            )
-                        ).json()
+                        for attempt in retry_context():
+                            with attempt:
+                                content = handle_error(
+                                    self.context.http_client.get(
+                                        link,
+                                        headers={"Accept": MSGPACK_MIME_TYPE},
+                                        params={
+                                            **parse_qs(urlparse(link).query),
+                                            **params,
+                                        },
+                                    )
+                                ).json()
                     except ClientError as err:
                         if err.response.status_code == httpx.codes.NOT_FOUND:
                             # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
@@ -371,7 +384,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def delete(self, key):
         self._cached_len = None
-        handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
+        for attempt in retry_context():
+            with attempt:
+                handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
 
     # The following two methods are used by keys(), values(), items().
 
@@ -399,18 +414,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        **parse_qs(urlparse(next_page_url).query),
-                        "fields": "",
-                        **self._queries_as_params,
-                        **sorting_params,
-                    },
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                "fields": "",
+                                **self._queries_as_params,
+                                **sorting_params,
+                            },
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -459,13 +476,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             }
             if self._include_data_sources:
                 params["include_data_sources"] = True
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params=params,
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params=params,
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -523,20 +542,22 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
 
         link = self.item["links"]["self"].replace("/metadata", "/distinct", 1)
-        distinct = handle_error(
-            self.context.http_client.get(
-                link,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **parse_qs(urlparse(link).query),
-                    "metadata": metadata_keys,
-                    "structure_families": structure_families,
-                    "specs": specs,
-                    "counts": counts,
-                    **self._queries_as_params,
-                },
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                distinct = handle_error(
+                    self.context.http_client.get(
+                        link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "metadata": metadata_keys,
+                            "structure_families": structure_families,
+                            "specs": specs,
+                            "counts": counts,
+                            **self._queries_as_params,
+                        },
+                    )
+                ).json()
         return distinct
 
     def sort(self, *sorting):
@@ -619,6 +640,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
     ):
         """
         Create a new item within this Node.
@@ -633,6 +655,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         self._cached_len = None
         metadata = metadata or {}
+        access_blob = {"tags": access_tags} if access_tags is not None else {}
         specs = specs or []
         normalized_specs = []
         for spec in specs:
@@ -646,6 +669,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
                 "data_sources": [asdict(data_source) for data_source in data_sources],
+                "access_blob": access_blob,
             }
         }
         body = dict(item["attributes"])
@@ -658,13 +682,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             endpoint = self.uri
 
-        document = handle_error(
-            self.context.http_client.post(
-                endpoint,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                content=safe_json_dump(body),
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                document = handle_error(
+                    self.context.http_client.post(
+                        endpoint,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        content=safe_json_dump(body),
+                    )
+                ).json()
 
         if structure_family in {StructureFamily.container, StructureFamily.composite}:
             structure = {"contents": None, "count": None}
@@ -674,14 +700,32 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure = data_source.structure
         item["attributes"]["structure"] = structure
 
-        # if server returned modified metadata update the local copy
+        # If server returned modified metadata update the local copy.
+        # Otherwise, round-trip it through a JSON serializer locally
+        # to ensure that any special types (e.g. datetimes, numpy arrays)
+        # are normalized to natively JSON serializable types.
         if "metadata" in document:
             item["attributes"]["metadata"] = document.pop("metadata")
+        else:
+            item["attributes"]["metadata"] = orjson.loads(
+                safe_json_dump(item["attributes"]["metadata"])
+            )
+
         # Ditto for structure
         if "structure" in document:
             item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
                 document.pop("structure")
             )
+
+        # And for data sources
+        if "data_sources" in document:
+            item["attributes"]["data_sources"] = [
+                ds for ds in document.pop("data_sources")
+            ]
+
+        # And for access_blob
+        if "access_blob" in document:
+            item["attributes"]["access_blob"] = document.pop("access_blob")
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)
@@ -708,7 +752,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_composite(self, key=None, *, metadata=None, specs=None):
+    def create_composite(
+        self,
+        key=None,
+        *,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
         """Create a new, empty composite container.
 
         Parameters
@@ -721,6 +772,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         """
         return self.new(
@@ -729,9 +782,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
 
-    def create_container(self, key=None, *, metadata=None, specs=None):
+    def create_container(
+        self,
+        key=None,
+        *,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
         """Create a new, empty container.
 
         Parameters
@@ -744,6 +805,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         """
         return self.new(
@@ -752,9 +815,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
 
-    def write_array(self, array, *, key=None, metadata=None, dims=None, specs=None):
+    def write_array(
+        self,
+        array,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        access_tags=None,
+    ):
         """
         EXPERIMENTAL: Write an array.
 
@@ -771,6 +844,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         """
         import dask.array
@@ -816,6 +891,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
@@ -848,6 +924,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
+        access_tags=None,
     ):
         """
         Write an AwkwardArray.
@@ -865,6 +942,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
         """
         import awkward
 
@@ -886,6 +965,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         client.write(container)
         return client
@@ -900,6 +980,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
+        access_tags=None,
     ):
         """
         EXPERIMENTAL: Write a sparse array.
@@ -919,6 +1000,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         Examples
         --------
@@ -960,6 +1043,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         client.write(coords, data)
         return client
@@ -972,6 +1056,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
         table_name: Optional[str] = None,
     ):
         """Initialize a table whose rows can be appended to a partition.
@@ -989,6 +1074,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
         table_name : str, optional
             Optionally provide a name for the table this should be stored in.
             By default a name unique to the schema will be chosen.
@@ -1018,6 +1105,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
+            access_tags=access_tags or [],
         )
 
         return client
@@ -1029,6 +1117,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
     ):
         """Write a DataFrame.
 
@@ -1043,6 +1132,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         See Also
         --------
@@ -1071,6 +1162,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
+            access_tags=access_tags or [],
         )
 
         if hasattr(dataframe, "partitions"):
@@ -1088,125 +1180,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             client.write(dataframe)
 
         return client
-
-
-class Composite(Container):
-    def get_contents(self, maxlen=None, include_metadata=False):
-        result = {}
-        next_page_url = f"{self.item['links']['search']}"
-        while (next_page_url is not None) or (
-            maxlen is not None and len(result) < maxlen
-        ):
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        **parse_qs(urlparse(next_page_url).query),
-                        **self._queries_as_params,
-                    }
-                    | ({} if include_metadata else {"select_metadata": False}),
-                )
-            ).json()
-            result.update({item["id"]: item for item in content["data"]})
-
-            next_page_url = content["links"]["next"]
-
-        return result
-
-    @property
-    def _flat_keys_mapping(self):
-        result = {}
-        for key, item in self.get_contents().items():
-            if item["attributes"]["structure_family"] == StructureFamily.table:
-                for col in item["attributes"]["structure"]["columns"]:
-                    result[col] = item["id"] + "/" + col
-            else:
-                result[item["id"]] = item["id"]
-
-        self._cached_len = (len(result), time.monotonic() + LENGTH_CACHE_TTL)
-
-        return result
-
-    @property
-    def parts(self):
-        return CompositeParts(self)
-
-    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
-        yield from self._flat_keys_mapping.keys()
-
-    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
-        for key in self._flat_keys_mapping.keys():
-            yield key, self[key]
-
-    def __len__(self):
-        if self._cached_len is not None:
-            length, deadline = self._cached_len
-            if time.monotonic() < deadline:
-                # Used the cached value and do not make any request.
-                return length
-
-        return len(self._flat_keys_mapping)
-
-    def __getitem__(self, key: str, _ignore_inlined_contents=False):
-        if isinstance(key, tuple):
-            key = "/".join(key)
-        if key in self._flat_keys_mapping:
-            key = self._flat_keys_mapping[key]
-        else:
-            raise KeyError(
-                f"Key '{key}' not found. If it refers to a table, use .parts['{key}'] instead."
-            )
-
-        return super().__getitem__(key, _ignore_inlined_contents)
-
-    def create_container(self, key=None, *, metadata=None, specs=None):
-        """Composite nodes can not include nested containers by design."""
-        raise NotImplementedError("Cannot create a container within a composite node.")
-
-    def create_composite(self, key=None, *, metadata=None, specs=None):
-        """Ccomposite nodes can not include nested composites by design."""
-        raise NotImplementedError("Cannot create a composite within a composite node.")
-
-
-class CompositeParts:
-    def __init__(self, node):
-        self.contents = node.get_contents(include_metadata=True)
-        self.context = node.context
-        self.structure_clients = node.structure_clients
-        self._include_data_sources = node._include_data_sources
-
-    def __repr__(self):
-        return (
-            f"<{type(self).__name__} {{"
-            + ", ".join(f"'{item}'" for item in self.contents)
-            + "}>"
-        )
-
-    def __getitem__(self, key):
-        key, *tail = key.split("/")
-
-        if key not in self.contents:
-            raise KeyError(key)
-
-        client = client_for_item(
-            self.context,
-            self.structure_clients,
-            self.contents[key],
-            include_data_sources=self._include_data_sources,
-        )
-
-        if tail:
-            return client["/".join(tail)]
-        else:
-            return client
-
-    def __iter__(self):
-        for key in self.contents:
-            yield key
-
-    def __len__(self) -> int:
-        return len(self.contents)
 
 
 def _queries_to_params(*queries):
@@ -1273,7 +1246,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
             "container": _Wrap(Container),
-            "composite": _Wrap(Composite),
+            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
             "awkward": _LazyLoad(("..awkward", Container.__module__), "AwkwardClient"),
             "dataframe": _LazyLoad(
@@ -1291,7 +1264,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "dask": OneShotCachedMap(
         {
             "container": _Wrap(Container),
-            "composite": _Wrap(Composite),
+            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
             # TODO Create DaskAwkwardClient
             # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),

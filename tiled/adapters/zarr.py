@@ -14,9 +14,10 @@ from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..ndslice import NDSlice
+from ..storage import FileStorage, Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from ..structures.data_source import Asset, DataSource, Storage
+from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
@@ -26,6 +27,8 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 class ZarrArrayAdapter(ArrayAdapter):
     """ """
+
+    supported_storage = {FileStorage}
 
     @classmethod
     def init_storage(
@@ -46,7 +49,7 @@ class ZarrArrayAdapter(ArrayAdapter):
 
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.get("filesystem") + "".join(
+        data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
         )
         # Zarr requires evenly-sized chunks within each dimension.

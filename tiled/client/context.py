@@ -20,7 +20,12 @@ from ..utils import UNSET, DictView, parse_time_string
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
 from .decoders import SUPPORTED_DECODERS
 from .transport import Transport
-from .utils import DEFAULT_TIMEOUT_PARAMS, MSGPACK_MIME_TYPE, handle_error
+from .utils import (
+    DEFAULT_TIMEOUT_PARAMS,
+    MSGPACK_MIME_TYPE,
+    handle_error,
+    retry_context,
+)
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
@@ -256,15 +261,17 @@ class Context:
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        server_info = handle_error(
-            self.http_client.get(
-                self.api_uri,
-                headers={
-                    "Accept": MSGPACK_MIME_TYPE,
-                    "Cache-Control": "no-cache, no-store",
-                },
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                server_info = handle_error(
+                    self.http_client.get(
+                        self.api_uri,
+                        headers={
+                            "Accept": MSGPACK_MIME_TYPE,
+                            "Cache-Control": "no-cache, no-store",
+                        },
+                    )
+                ).json()
         self.server_info: About = TypeAdapter(About).validate_python(server_info)
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
@@ -385,7 +392,9 @@ class Context:
         # Logic will follow only one redirect, it is intended ONLY to toggle HTTPS.
         # The redirect will be followed only if the netloc host is identical to the original.
         if uri.scheme == "http":
-            response_from_http = httpx.get(uri)
+            for attempt in retry_context():
+                with attempt:
+                    response_from_http = httpx.get(uri)
             if response_from_http.is_redirect:
                 redirect_uri = httpx.URL(response_from_http.headers["location"])
                 if redirect_uri.scheme == "https" and redirect_uri.host == uri.host:
@@ -499,12 +508,14 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        return handle_error(
-            self.http_client.get(
-                self.server_info.authentication.links.apikey,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.http_client.get(
+                        self.server_info.authentication.links.apikey,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                    )
+                ).json()
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
@@ -528,13 +539,15 @@ class Context:
         """
         if isinstance(expires_in, str):
             expires_in = parse_time_string(expires_in)
-        return handle_error(
-            self.http_client.post(
-                self.server_info.authentication.links.apikey,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                json={"scopes": scopes, "expires_in": expires_in, "note": note},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.http_client.post(
+                        self.server_info.authentication.links.apikey,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                    )
+                ).json()
 
     def revoke_api_key(self, first_eight):
         """
@@ -551,16 +564,18 @@ class Context:
             (Any additional characters passed will be truncated.)
         """
         url_path = self.server_info.authentication.links.apikey
-        handle_error(
-            self.http_client.delete(
-                url_path,
-                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-                params={
-                    **parse_qs(urlparse(url_path).query),
-                    "first_eight": first_eight[:8],
-                },
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.http_client.delete(
+                        url_path,
+                        headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+                        params={
+                            **parse_qs(urlparse(url_path).query),
+                            "first_eight": first_eight[:8],
+                        },
+                    )
+                )
 
     @property
     def app(self):
@@ -755,12 +770,14 @@ class Context:
             refresh_token,
             csrf_token,
         )
-        token_response = self.http_client.send(refresh_request, auth=None)
-        if token_response.status_code == httpx.codes.UNAUTHORIZED:
-            raise CannotRefreshAuthentication(
-                "Session cannot be refreshed. Log in again."
-            )
-        handle_error(token_response)
+        for attempt in retry_context():
+            with attempt:
+                token_response = self.http_client.send(refresh_request, auth=None)
+                if token_response.status_code == httpx.codes.UNAUTHORIZED:
+                    raise CannotRefreshAuthentication(
+                        "Session cannot be refreshed. Log in again."
+                    )
+                handle_error(token_response)
         tokens = token_response.json()
         self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
         self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
@@ -768,12 +785,14 @@ class Context:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return handle_error(
-            self.http_client.get(
-                self.server_info.authentication.links.whoami,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.http_client.get(
+                        self.server_info.authentication.links.whoami,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                    )
+                ).json()
 
     def logout(self):
         """
@@ -786,16 +805,18 @@ class Context:
 
         # Revoke the current session.
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
-        handle_error(
-            self.http_client.post(
-                f"{self.api_uri}auth/session/revoke",
-                json={"refresh_token": refresh_token},
-                # Circumvent auth because this request is not authenticated.
-                # The refresh_token in the body is the relevant proof, not the
-                # 'Authentication' header.
-                auth=None,
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.http_client.post(
+                        f"{self.api_uri}auth/session/revoke",
+                        json={"refresh_token": refresh_token},
+                        # Circumvent auth because this request is not authenticated.
+                        # The refresh_token in the body is the relevant proof, not the
+                        # 'Authentication' header.
+                        auth=None,
+                    )
+                )
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
@@ -811,14 +832,16 @@ class Context:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        handle_error(
-            self.http_client.delete(
-                self.server_info.authentication.links.revoke_session.format(
-                    session_id=session_id
-                ),
-                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.http_client.delete(
+                        self.server_info.authentication.links.revoke_session.format(
+                            session_id=session_id
+                        ),
+                        headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+                    )
+                )
 
 
 class Admin:
@@ -836,15 +859,21 @@ class Admin:
             "offset": offset,
             "limit": limit,
         }
-        return handle_error(
-            self.context.http_client.get(url_path, params=params)
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.get(url_path, params=params)
+                ).json()
 
     def show_principal(self, uuid):
         "Show one Principal (user or service) in the authenticaiton database."
-        return handle_error(
-            self.context.http_client.get(f"{self.base_url}/auth/principal/{uuid}")
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.get(
+                        f"{self.base_url}/auth/principal/{uuid}"
+                    )
+                ).json()
 
     def create_api_key(self, uuid, scopes=None, expires_in=None, note=None):
         """
@@ -864,13 +893,15 @@ class Admin:
         note : Optional[str]
             Description (for humans).
         """
-        return handle_error(
-            self.context.http_client.post(
-                f"{self.base_url}/auth/principal/{uuid}/apikey",
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                json={"scopes": scopes, "expires_in": expires_in, "note": note},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.post(
+                        f"{self.base_url}/auth/principal/{uuid}/apikey",
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                    )
+                ).json()
 
     def create_service_principal(
         self,
@@ -885,13 +916,15 @@ class Admin:
             Specify the role (e.g. user or admin)
         """
         url_path = f"{self.base_url}/auth/principal"
-        return handle_error(
-            self.context.http_client.post(
-                url_path,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={**parse_qs(urlparse(url_path).query), "role": role},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.post(
+                        url_path,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={**parse_qs(urlparse(url_path).query), "role": role},
+                    )
+                ).json()
 
     def revoke_api_key(self, uuid, first_eight=None):
         """
@@ -908,16 +941,18 @@ class Admin:
             (Any additional characters passed will be truncated.)
         """
         url_path = f"{self.base_url}/auth/principal/{uuid}/apikey"
-        return handle_error(
-            self.context.http_client.delete(
-                url_path,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    **parse_qs(urlparse(url_path).query),
-                    "first_eight": first_eight[:8],
-                },
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.delete(
+                        url_path,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(url_path).query),
+                            "first_eight": first_eight[:8],
+                        },
+                    )
+                )
 
 
 class CannotPrompt(Exception):
@@ -947,14 +982,18 @@ def password_grant(http_client, auth_endpoint, provider, username, password):
         "username": username,
         "password": password,
     }
-    token_response = http_client.post(auth_endpoint, data=form_data, auth=None)
-    handle_error(token_response)
+    for attempt in retry_context():
+        with attempt:
+            token_response = http_client.post(auth_endpoint, data=form_data, auth=None)
+            handle_error(token_response)
     return token_response.json()
 
 
 def device_code_grant(http_client, auth_endpoint):
-    verification_response = http_client.post(auth_endpoint, json={}, auth=None)
-    handle_error(verification_response)
+    for attempt in retry_context():
+        with attempt:
+            verification_response = http_client.post(auth_endpoint, json={}, auth=None)
+            handle_error(verification_response)
     verification = verification_response.json()
     authorization_uri = verification["authorization_uri"]
     print(
@@ -978,22 +1017,24 @@ and enter the code:
         time.sleep(verification["interval"])
         if time.monotonic() > deadline:
             raise Exception("Deadline expired.")
-        # Intentionally do not wrap this in handle_error(...).
-        # Check status codes manually below.
-        access_response = http_client.post(
-            verification["verification_uri"],
-            json={
-                "device_code": verification["device_code"],
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            },
-            auth=None,
-        )
-        if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
-            access_response.json()["detail"]["error"] == "authorization_pending"
-        ):
-            print(".", end="", flush=True)
-            continue
-        handle_error(access_response)
+        for attempt in retry_context():
+            with attempt:
+                # Intentionally do not wrap this in handle_error(...).
+                # Check status codes manually below.
+                access_response = http_client.post(
+                    verification["verification_uri"],
+                    json={
+                        "device_code": verification["device_code"],
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                    auth=None,
+                )
+                if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
+                    access_response.json()["detail"]["error"] == "authorization_pending"
+                ):
+                    print(".", end="", flush=True)
+                    continue
+                handle_error(access_response)
         print("")
         break
     tokens = access_response.json()

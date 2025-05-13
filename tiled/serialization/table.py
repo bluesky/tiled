@@ -119,19 +119,15 @@ if modules_available("orjson"):
         "application/json-seq",  # official mimetype for newline-delimited JSON
     )
     def json_sequence(df, metadata):
-        rows = df.iterrows()
-        # The first row is a special case; the rest start with a newline.
-        try:
-            # Emit the first row with no newline.
-            _, row = next(rows)
-        except StopIteration:
+        if rows := df.to_dict(orient="records"):
+            # The first row is a special case; the rest start with a newline.
+            yield orjson.dumps(rows[0])
+            # Emit the remaining rows, prepending newline.
+            for row in rows[1:]:
+                yield b"\n" + orjson.dumps(row)
+        else:
             # No rows
             yield b""
-        else:
-            # Emit the remaining rows, prepending newline.
-            yield orjson.dumps(row.to_dict())
-            for _, row in rows:
-                yield b"\n" + orjson.dumps(row.to_dict())
 
 
 if modules_available("h5py"):

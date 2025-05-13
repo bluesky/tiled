@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Protocol, Set, Tuple, Union
 
 import dask.dataframe
 import pandas
@@ -9,6 +9,7 @@ from numpy.typing import NDArray
 
 from ..ndslice import NDSlice
 from ..server.schemas import Principal
+from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
@@ -19,6 +20,8 @@ from .awkward_directory_container import DirectoryContainer
 
 
 class BaseAdapter(Protocol):
+    supported_storage: Set[type[Storage]]
+
     # @abstractmethod
     # @classmethod
     # def from_catalog(
@@ -132,7 +135,10 @@ AnyAdapter = Union[
 class AccessPolicy(Protocol):
     @abstractmethod
     async def allowed_scopes(
-        self, node: BaseAdapter, principal: Principal, path_parts: List[Any]
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_scopes: Scopes,
     ) -> Scopes:
         pass
 
@@ -141,7 +147,7 @@ class AccessPolicy(Protocol):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_scopes: Scopes,
         scopes: Scopes,
-        path_parts: List[Any],
     ) -> Filters:
         pass

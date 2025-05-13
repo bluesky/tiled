@@ -7,6 +7,7 @@ from pathlib import Path
 import asyncpg
 import pytest
 import pytest_asyncio
+import stamina
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from .. import profiles
@@ -16,6 +17,12 @@ from ..server.settings import get_settings
 from ..utils import ensure_specified_sql_driver
 from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres
+
+
+@pytest.fixture(autouse=True, scope="session")
+def deactivate_retries():
+    "Deactivate HTTP retries."
+    stamina.set_active(False)
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +63,23 @@ def buffer():
     "Generate a temporary buffer for testing file export + re-import."
     with io.BytesIO() as buffer:
         yield buffer
+
+
+@pytest.fixture(scope="function")
+def buffer_factory(request):
+    buffers = []
+
+    def _buffer():
+        buf = io.BytesIO()
+        buffers.append(buf)
+        return buf
+
+    def teardown():
+        for buf in buffers:
+            buf.close()
+
+    request.addfinalizer(teardown)
+    return _buffer
 
 
 @pytest.fixture

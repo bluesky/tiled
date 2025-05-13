@@ -4,8 +4,9 @@ import pyarrow as pa
 import pytest
 
 from tiled.adapters.arrow import ArrowAdapter
+from tiled.storage import FileStorage
 from tiled.structures.core import StructureFamily
-from tiled.structures.data_source import DataSource, Management, Storage
+from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
 
 names = ["f0", "f1", "f2"]
@@ -38,7 +39,7 @@ def data_source_from_init_storage() -> DataSource[TableStructure]:
         structure=structure,
         assets=[],
     )
-    storage = Storage(filesystem=data_uri, sql=None)
+    storage = FileStorage(data_uri)
     return ArrowAdapter.init_storage(
         data_source=data_source, storage=storage, path_parts=[]
     )

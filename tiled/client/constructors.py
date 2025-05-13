@@ -8,7 +8,7 @@ import httpx
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
-from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error
+from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
 
 
 def from_uri(
@@ -145,12 +145,14 @@ def from_context(
     params = parse_qs(urlparse(item_uri).query)
     if include_data_sources:
         params["include_data_sources"] = include_data_sources
-    content = handle_error(
-        context.http_client.get(
-            item_uri,
-            headers={"Accept": MSGPACK_MIME_TYPE},
-        )
-    ).json()
+    for attempt in retry_context():
+        with attempt:
+            content = handle_error(
+                context.http_client.get(
+                    item_uri,
+                    headers={"Accept": MSGPACK_MIME_TYPE},
+                )
+            ).json()
     item = content["data"]
     return client_for_item(
         context, structure_clients, item, include_data_sources=include_data_sources
