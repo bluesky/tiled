@@ -60,8 +60,8 @@ async def test_nested_node_creation(a):
         specs=[],
     )
     c = await b.lookup_adapter(["c"])
-    assert b.segments == ["b"]
-    assert c.segments == ["b", "c"]
+    assert await b.segments() == ["b"]
+    assert await c.segments() == ["b", "c"]
     assert (await a.keys_range(0, 1)) == ["b"]
     assert (await b.keys_range(0, 1)) == ["c"]
     # smoke test
