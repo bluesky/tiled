@@ -41,7 +41,8 @@ target/
 .idea/
 
 #VSCode
-.vscode/
+.vscode/*
+!.vscode/launch.json
 
 #Ipython Notebook
 .ipynb_checkpoints
