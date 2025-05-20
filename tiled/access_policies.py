@@ -122,8 +122,13 @@ class SimpleAccessPolicy:
 
 
 class TagsParser:
-    def __init__(self, uri):
-        self.db = sqlite3.connect(f"{uri}?ro", uri=True, check_same_thread=False)
+    @classmethod
+    def from_uri(cls, uri):
+        db = sqlite3.connect(f"{uri}?ro", uri=True, check_same_thread=False)
+        return cls(db)
+
+    def __init__(self, db):
+        self.db = db
 
     def is_tag_defined(self, name):
         cursor = self.db.cursor()
@@ -187,7 +192,7 @@ class TagBasedAccessPolicy:
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
 
         tags_parser = import_object(tags_parser)
-        self.tags_parser = tags_parser(tags_db["uri"])
+        self.tags_parser = tags_parser.from_uri(tags_db["uri"])
         self.is_tag_defined = self.tags_parser.is_tag_defined
         self.get_public_tags = self.tags_parser.get_public_tags
         self.get_scopes_from_tag = self.tags_parser.get_scopes_from_tag
