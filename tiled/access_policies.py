@@ -1,13 +1,7 @@
 import logging
 import os
-import warnings
-from copy import deepcopy
-from dataclasses import dataclass, field
+import sqlite3
 from functools import partial
-from pathlib import Path
-from sys import intern
-
-import yaml
 
 from .queries import AccessBlobFilter, In, KeysFilter
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
@@ -15,8 +9,6 @@ from .utils import Sentinel, SpecialUsers, import_object
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
-
-_MAX_TAG_NESTING = 5
 
 
 logger = logging.getLogger(__name__)
@@ -129,268 +121,25 @@ class SimpleAccessPolicy:
         return queries
 
 
-def get_group_users(groupname):
-    """
-    A default method to retrieve group information
-    when compiling ACLs from tags. This should be
-    replaced by site-specific requirements.
-    """
-    import grp
-
-    return grp.getgrnam(groupname).gr_mem
-
-
-class InterningLoader(yaml.loader.BaseLoader):
-    pass
-
-
-def interning_constructor(loader, node):
-    value = loader.construct_scalar(node)
-    return intern(value)
-
-
-InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
-
-
-@dataclass(frozen=True)
-class LoadedTags:
-    tags: dict = field(default_factory=dict)
-    public: set = field(default_factory=set)
-    scopes: dict = field(default_factory=dict)
-    owners: dict = field(default_factory=dict)
-
-
 class TagBasedAccessPolicy:
     def __init__(
         self,
         *,
         provider,
-        tag_config,
-        group_parser,
+        tags_db,
+        tags_parser,
         scopes=None,
     ):
         self.provider = provider
-        self.tag_config_path = Path(tag_config)
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
-        self.read_scopes = [intern("read:metadata"), intern("read:data")]
-        self.reverse_lookup_scopes = [intern("read:metadata"), intern("read:data")]
-        self.unremovable_scopes = [intern("read:metadata"), intern("write:metadata")]
-        self.admin_scopes = [intern("admin:apikeys")]
-        self.public_tag = intern("public".casefold())
-        self.max_tag_nesting = max(_MAX_TAG_NESTING, 0)
-        self.group_parser = import_object(group_parser)
-
-        self.roles = {}
-        self.tags = {}
-        self.tag_owners = {}
-        self.compiled_tags = {}
-        self.compiled_public = set({self.public_tag})
-        self.compiled_scopes = {}
-        self.compiled_tag_owners = {}
-        self.loaded_tags = LoadedTags()
-
-        self.load_tag_config()
-        self.compile()
-        self.load_compiled_tags()
-
-    def load_tag_config(self):
-        try:
-            with open(self.tag_config_path) as tag_config:
-                tag_definitions = yaml.load(tag_config, Loader=InterningLoader)
-                self.roles.update(tag_definitions.get("roles", {}))
-                self.tags.update(tag_definitions["tags"])
-                self.tag_owners.update(tag_definitions.get("tag_owners", {}))
-        except FileNotFoundError as e:
-            raise ValueError(
-                f"The tag config path {self.tag_config_path!s} doesn't exist."
-            ) from e
-
-    def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
-        if current_tag in self.compiled_tags:
-            return self.compiled_tags[current_tag], current_tag in self.compiled_public
-        if current_tag in seen_tags:
-            return {}, False
-        if nested_level > self.max_tag_nesting:
-            raise RecursionError(
-                f"Exceeded maximum tag nesting of {self.max_tag_nesting} levels"
-            )
-
-        public_auto_tag = False
-        seen_tags.add(current_tag)
-        users = {}
-        for tag in tags[current_tag]:
-            if tag.casefold() == self.public_tag:
-                public_auto_tag = True
-                continue
-            try:
-                child_users, child_public = self._dfs(
-                    tag, tags, seen_tags, nested_level + 1
-                )
-                public_auto_tag = public_auto_tag or child_public
-                users.update(child_users)
-            except (RecursionError, ValueError) as e:
-                raise RuntimeError(
-                    f"Tag compilation failed at tag: {current_tag}"
-                ) from e
-
-        if public_auto_tag:
-            self.compiled_public.add(current_tag)
-
-        if "users" in self.tags[current_tag]:
-            for user in self.tags[current_tag]["users"]:
-                username = user["name"]
-                if all(k in user for k in ("scopes", "role")):
-                    raise ValueError(
-                        f"Cannot define both 'scopes' and 'role' for a user. {username=}"
-                    )
-                elif not any(k in user for k in ("scopes", "role")):
-                    raise ValueError(
-                        f"Must define either 'scopes' or 'role' for a user. {username=}"
-                    )
-
-                user_scopes = set(
-                    self.roles[user["role"]]["scopes"]
-                    if ("role" in user) and (user["role"] in self.roles)
-                    else user.get("scopes", [])
-                )
-                if not user_scopes:
-                    raise ValueError(f"Scopes must not be empty. {username=}")
-                if not user_scopes.issubset(self.scopes):
-                    raise ValueError(
-                        f"Scopes for {username=} are not in the valid set of scopes. The invalid scopes are:"
-                        f"{user_scopes.difference(self.scopes)}"
-                    )
-                users.setdefault(username, set())
-                users[username].update(user_scopes)
-
-        if "groups" in self.tags[current_tag]:
-            for group in self.tags[current_tag]["groups"]:
-                groupname = group["name"]
-                if all(k in group for k in ("scopes", "role")):
-                    raise ValueError(
-                        f"Cannot define both 'scopes' and 'role' for a group. {groupname=}"
-                    )
-                elif not any(k in group for k in ("scopes", "role")):
-                    raise ValueError(
-                        f"Must define either 'scopes' or 'role' for a group. {groupname=}"
-                    )
-
-                group_scopes = set(
-                    self.roles[group["role"]]["scopes"]
-                    if ("role" in group) and (group["role"] in self.roles)
-                    else group.get("scopes", [])
-                )
-                if not group_scopes:
-                    raise ValueError(f"Scopes must not be empty. {groupname=}")
-                if not group_scopes.issubset(self.scopes):
-                    raise ValueError(
-                        f"Scopes for {groupname=} are not in the valid set of scopes. The invalid scopes are:"
-                        f"{group_scopes.difference(self.scopes)}"
-                    )
-
-                try:
-                    usernames = self.group_parser(groupname)
-                except KeyError:
-                    warnings.warn(
-                        f"Group with {groupname=} does not exist - skipping",
-                        UserWarning,
-                    )
-                    continue
-                else:
-                    for username in usernames:
-                        username = intern(username)
-                        users.setdefault(username, set())
-                        users[username].update(group_scopes)
-
-        self.compiled_tags[current_tag] = users
-        return users, public_auto_tag
-
-    def compile(self):
-        for role in self.roles.values():
-            if "scopes" not in role:
-                raise ValueError(f"Scopes must be defined for a role. {role=}")
-            if not role["scopes"]:
-                raise ValueError(f"Scopes must not be empty. {role=}")
-            if not set(role["scopes"]).issubset(self.scopes):
-                raise ValueError(
-                    f"Scopes for {role=} are not in the valid set of scopes. The invalid scopes are:"
-                    f'{set(role["scopes"]).difference(self.scopes)}'
-                )
-
-        adjacent_tags = {}
-        for tag, members in self.tags.items():
-            if tag.casefold() == self.public_tag:
-                raise ValueError(
-                    f"'Public' tag '{self.public_tag}' cannot be redefined."
-                )
-            adjacent_tags[tag] = set()
-            if "auto_tags" in members:
-                for auto_tag in members["auto_tags"]:
-                    if (
-                        auto_tag["name"] not in self.tags
-                        and auto_tag["name"].casefold() != self.public_tag
-                    ):
-                        raise KeyError(
-                            f"Tag '{tag}' has nested tag '{auto_tag}' which does not have a definition."
-                        )
-                    adjacent_tags[tag].add(auto_tag["name"])
-
-        for tag in adjacent_tags:
-            try:
-                self._dfs(tag, adjacent_tags, set())
-            except (RecursionError, ValueError) as e:
-                raise RuntimeError(f"Tag compilation failed at tag: {tag}") from e
-
-        for scope in self.reverse_lookup_scopes:
-            self.compiled_scopes.setdefault(scope, {})
-        for tag, users in self.compiled_tags.items():
-            for user, scopes in users.items():
-                for scope in self.reverse_lookup_scopes:
-                    if scope in scopes:
-                        self.compiled_scopes[scope].setdefault(user, set())
-                        self.compiled_scopes[scope][user].add(tag)
-
-        for tag in self.tag_owners:
-            self.compiled_tag_owners.setdefault(tag, set())
-            if "users" in self.tag_owners[tag]:
-                for user in self.tag_owners[tag]["users"]:
-                    username = user["name"]
-                    self.compiled_tag_owners[tag].add(username)
-            if "groups" in self.tag_owners[tag]:
-                for group in self.tag_owners[tag]["groups"]:
-                    groupname = group["name"]
-                    try:
-                        usernames = self.group_parser(groupname)
-                    except KeyError:
-                        warnings.warn(
-                            f"Group with {groupname=} does not exist - skipping",
-                            UserWarning,
-                        )
-                        continue
-                    else:
-                        for username in usernames:
-                            username = intern(username)
-                            self.compiled_tag_owners[tag].add(username)
-
-    def clear_raw_tags(self):
-        self.roles = {}
-        self.tags = {}
-        self.tag_owners = {}
-
-    def recompile(self):
-        self.compiled_tags = {}
-        self.compiled_public = set({self.public_tag})
-        self.compiled_scopes = {}
-        self.compiled_tag_owners = {}
-        self.compile()
-
-    def load_compiled_tags(self):
-        self.loaded_tags = LoadedTags(
-            self.compiled_tags.copy(),
-            self.compiled_public.copy(),
-            deepcopy(self.compiled_scopes),
-            deepcopy(self.compiled_tag_owners),
+        self.connection = sqlite3.connect(
+            f"{tags_db['uri']}?ro", uri=True, check_same_thread=False
         )
+        self.tags_parser = import_object(tags_parser)
+        self.read_scopes = PUBLIC_SCOPES
+        self.unremovable_scopes = ["read:metadata", "write:metadata"]
+        self.admin_scopes = ["admin:apikeys"]
+        self.public_tag = "public".casefold()
 
     def _get_id(self, principal):
         for identity in principal.identities:
@@ -615,8 +364,6 @@ class TagBasedAccessPolicy:
         if not hasattr(node, "access_blob"):
             return queries
         if not scopes.issubset(self.scopes):
-            return NO_ACCESS
-        if not scopes.issubset(self.reverse_lookup_scopes):
             return NO_ACCESS
 
         if principal.type == "service":
