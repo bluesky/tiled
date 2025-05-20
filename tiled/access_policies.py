@@ -121,6 +121,59 @@ class SimpleAccessPolicy:
         return queries
 
 
+class TagsParser:
+    def __init__(self, uri):
+        self.db = sqlite3.connect(f"{uri}?ro", uri=True, check_same_thread=False)
+
+    def is_tag_defined(self, name):
+        cursor = self.db.cursor()
+        cursor.execute("SELECT 1 FROM tags WHERE name = ?;", (name,))
+        row = cursor.fetchone()
+        found_tagname = bool(row)
+        return found_tagname
+
+    def get_public_tags(self):
+        cursor = self.db.cursor()
+        cursor.execute("SELECT name FROM public_tags;")
+        public_tags = {name for (name,) in cursor.fetchall()}
+        return public_tags
+
+    def get_scopes_from_tag(self, tagname, username):
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT scope_name FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?;",
+            (tagname, username),
+        )
+        user_tag_scopes = {scope for (scope,) in cursor.fetchall()}
+        return user_tag_scopes
+
+    def is_tag_owner(self, tagname, username):
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?;",
+            (tagname, username),
+        )
+        row = cursor.fetchone()
+        found_owner = bool(row)
+        return found_owner
+
+    def is_tag_public(self, name):
+        cursor = self.db.cursor()
+        cursor.execute("SELECT 1 FROM public_tags WHERE name = ?;", (name,))
+        row = cursor.fetchone()
+        found_public = bool(row)
+        return found_public
+
+    def get_tags_from_scope(self, scope, username):
+        cursor = self.db.cursor()
+        cursor.execute(
+            "SELECT tag_name FROM user_tag_scopes WHERE user_name = ? AND scope_name = ?;",
+            (username, scope),
+        )
+        user_scope_tags = {tag for (tag,) in cursor.fetchall()}
+        return user_scope_tags
+
+
 class TagBasedAccessPolicy:
     def __init__(
         self,
@@ -132,22 +185,15 @@ class TagBasedAccessPolicy:
     ):
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
-        self.connection = sqlite3.connect(
-            f"{tags_db['uri']}?ro", uri=True, check_same_thread=False
-        )
-        self.tags_parser = import_object(tags_parser)
-        self.is_tag_defined = partial(self.tags_parser.is_tag_defined, self.connection)
-        self.get_public_tags = partial(
-            self.tags_parser.get_public_tags, self.connection
-        )
-        self.get_scopes_from_tag = partial(
-            self.tags_parser.get_scopes_from_tag, self.connection
-        )
-        self.is_tag_owner = partial(self.tags_parser.is_tag_owner, self.connection)
-        self.is_tag_public = partial(self.tags_parser.is_tag_public, self.connection)
-        self.get_tags_from_scope = partial(
-            self.tags_parser.get_tags_from_scope, self.connection
-        )
+
+        tags_parser = import_object(tags_parser)
+        self.tags_parser = tags_parser(tags_db["uri"])
+        self.is_tag_defined = self.tags_parser.is_tag_defined
+        self.get_public_tags = self.tags_parser.get_public_tags
+        self.get_scopes_from_tag = self.tags_parser.get_scopes_from_tag
+        self.is_tag_owner = self.tags_parser.is_tag_owner
+        self.is_tag_public = self.tags_parser.is_tag_public
+        self.get_tags_from_scope = self.tags_parser.get_tags_from_scope
 
         self.read_scopes = PUBLIC_SCOPES
         self.unremovable_scopes = ["read:metadata", "write:metadata"]
