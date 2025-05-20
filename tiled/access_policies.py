@@ -136,6 +136,7 @@ class TagBasedAccessPolicy:
             f"{tags_db['uri']}?ro", uri=True, check_same_thread=False
         )
         self.tags_parser = import_object(tags_parser)
+        self.tags_parser = partial(self.tags_parser, self.connection)
         self.read_scopes = PUBLIC_SCOPES
         self.unremovable_scopes = ["read:metadata", "write:metadata"]
         self.admin_scopes = ["admin:apikeys"]
@@ -182,9 +183,9 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                         )
-                elif tag not in self.loaded_tags.tags:
+                elif not self.tags_parser.is_tag_defined(tag):
                     raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
-                elif identifier not in self.loaded_tags.owners.get(tag, set()):
+                elif not self.tags_parser.is_tag_owner(tag, identifier):
                     # admins can ignore the tag ownership check
                     if not self._is_admin(authn_scopes):
                         raise ValueError(
@@ -205,7 +206,9 @@ class TagBasedAccessPolicy:
                 # check that the access_blob would not result in invalid scopes for user.
                 new_scopes = set()
                 for tag in access_tags_from_policy:
-                    new_scopes.update(self.loaded_tags.tags[tag].get(identifier, set()))
+                    new_scopes.update(
+                        self.tags_parser.get_scopes_from_tag(tag, identifier)
+                    )
                 if not all(scope in new_scopes for scope in self.unremovable_scopes):
                     raise ValueError(
                         f"Cannot init node with tags: operation does not grant necessary scopes.\n"
@@ -263,9 +266,9 @@ class TagBasedAccessPolicy:
                     raise ValueError(
                         "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                     )
-            elif tag not in self.loaded_tags.tags:
+            elif not self.tags_parser.is_tag_defined(tag):
                 raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
-            elif identifier not in self.loaded_tags.owners.get(tag, set()):
+            elif not self.tags_parser.is_tag_owner(tag, identifier):
                 # admins can ignore the tag ownership check
                 if not self._is_admin(authn_scopes):
                     raise ValueError(
@@ -288,11 +291,11 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             "Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
                         )
-                elif tag not in self.loaded_tags.tags:
+                elif not self.tags_parser.is_tag_defined(tag):
                     raise ValueError(
                         f"Cannot remove tag from node: {tag=} is not defined"
                     )
-                elif identifier not in self.loaded_tags.owners.get(tag, set()):
+                elif not self.tags_parser.is_tag_owner(tag, identifier):
                     # admins can ignore the tag ownership check
                     if not self._is_admin(authn_scopes):
                         raise ValueError(
@@ -309,7 +312,7 @@ class TagBasedAccessPolicy:
             # converting from user-owned node to shared (tagged) node
             new_scopes = set()
             for tag in access_tags_from_policy:
-                new_scopes.update(self.loaded_tags.tags[tag].get(identifier, set()))
+                new_scopes.update(self.tags_parser.get_scopes_from_tag(tag, identifier))
             if not all(scope in new_scopes for scope in self.unremovable_scopes):
                 raise ValueError(
                     f"Cannot modify tags on node: operation removes unremovable scopes.\n"
@@ -344,13 +347,13 @@ class TagBasedAccessPolicy:
                     allowed = self.scopes
             elif "tags" in node.access_blob:
                 for tag in node.access_blob["tags"]:
-                    if tag in self.loaded_tags.public:
+                    if self.tags_parser.is_tag_public(tag):
                         allowed.update(self.read_scopes)
                         if tag == self.public_tag:
                             continue
-                    elif tag not in self.loaded_tags.tags:
+                    elif not self.tags_parser.is_tag_defined(tag):
                         continue
-                    tag_scopes = self.loaded_tags.tags[tag].get(identifier, set())
+                    tag_scopes = self.tags_parser.get_scopes_from_tag(tag, identifier)
                     allowed.update(
                         tag_scopes if tag_scopes.issubset(self.scopes) else set()
                     )
@@ -374,12 +377,17 @@ class TagBasedAccessPolicy:
             identifier = self._get_id(principal)
 
         tag_list = set.intersection(
-            *[self.loaded_tags.scopes[scope].get(identifier, set()) for scope in scopes]
+            *[
+                self.tags_parser.get_tags_from_scope(scope, identifier)
+                for scope in scopes
+            ]
         )
         tag_list.update(
             set.intersection(
                 *[
-                    self.loaded_tags.public if scope in self.read_scopes else set()
+                    self.tags_parser.get_public_tags()
+                    if scope in self.read_scopes
+                    else set()
                     for scope in scopes
                 ]
             )
