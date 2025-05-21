@@ -48,6 +48,7 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - A critical bug in the `mount_node` feature introduced in the
   previous release prohibited the server from starting when
   `mount_node` was used with a PostgreSQL database.
+- Accept (allowed) special characters in SQL column names, e.g. "-".
 
 ## 0.1.0-b25 (2025-05-06)
 
