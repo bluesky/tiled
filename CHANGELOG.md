@@ -1,6 +1,15 @@
 <!-- Add the recent changes in the code under the relevant category.
 Write the date in place of the "Unreleased" in the case a new version is released. -->
+
 # Changelog
+
+## v0.1.0-b28 (2025-05-21)
+
+### Changed
+
+- Accept (allowed) special characters in SQL column names, e.g. "-".
+- The large `TagBasedAccessPolicy` class introduced in the previous release
+  was refactored into separate objects.
 
 ## 0.1.0-b27 (2025-05-08)
 
