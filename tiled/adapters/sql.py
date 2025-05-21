@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
-TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 COLUMN_NAME_PATTERN = re.compile(r"^[a-zA-Z_].*$")
 FORBIDDEN_CHARACTERS = re.compile(
     r"""
@@ -63,6 +63,11 @@ FORBIDDEN_CHARACTERS = re.compile(
     """,
     re.VERBOSE,
 )
+# NOTE: While capital letters are allowed in SQL identifiers, we convert column names
+# to lower case to avoid potential collisions (in SQLite). The original name with
+# upper case letters is retained in the structure, but attempts to create columns
+# e.g. "A" and "a" will raise an error.
+# Furthermore, user-specified table names can only be in lower case.
 
 
 class SQLAdapter:
@@ -87,6 +92,9 @@ class SQLAdapter:
         ----------
         data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
         structure : the structure of the data; structure is not optional for sql database
+        table_name : the name of the table in the database. Will be converted to lower case in
+            all SQL queries.
+        dataset_id : the dataset id of the data in the storage database.
         metadata : the optional metadata of the data.
         specs : the specs.
         """
@@ -141,7 +149,7 @@ class SQLAdapter:
         # Create a table_name based on the hash of Arrow schema
         schema = data_source.structure.arrow_schema_decoded
         encoded = schema.serialize()
-        default_table_name = "table_" + hashlib.md5(encoded).hexdigest()
+        default_table_name = "table_" + hashlib.md5(encoded).hexdigest().lower()
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
         is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
 
@@ -312,6 +320,11 @@ class SQLAdapter:
         table = table.add_column(
             0, pyarrow.field("_dataset_id", pyarrow.int32()), [dataset_id_column]
         )
+        # Convert column names to lower case
+        if upr_lwr_case_mapping := {
+            c: c.lower() for c in table.column_names if c != c.lower()
+        }:
+            table = table.rename_columns(upr_lwr_case_mapping)
         with self.conn.cursor() as cursor:
             cursor.adbc_ingest(self.table_name, table, mode="append")
         self.conn.commit()
@@ -340,7 +353,7 @@ class SQLAdapter:
         req_cols = set(schema.names).intersection(fields) if fields else schema.names
 
         query = (
-            "SELECT " + ", ".join([f'"{c}"' for c in req_cols]) + " "
+            "SELECT " + ", ".join([f'"{c.lower()}"' for c in req_cols]) + " "
             f'FROM "{self.table_name}" '
             f"WHERE _dataset_id={self.dataset_id} "
         )
@@ -357,6 +370,9 @@ class SQLAdapter:
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
+        # Additionally, back-convert lower case column names to their original names.
+        if lwr_upr_case_mapping := {c.lower(): c for c in req_cols if c != c.lower()}:
+            data = data.rename_columns(lwr_upr_case_mapping)
         target_schema = pyarrow.schema(
             [schema.field(schema.get_field_index(name)) for name in req_cols]
         )
@@ -834,31 +850,30 @@ def arrow_schema_to_column_defns(
 
     Example output: {'x': 'INTEGER NOT NULL'}
     """
+    # Check for possible column name collisions when converted to lower case
+    all_names = [field.name.lower() for field in schema]
+    if len(all_names) != len(set(all_names)):
+        raise ValueError("Column names must be unique when converted to lower case.")
     columns = {}
     converter = DIALECT_TO_TYPE_CONVERTER[dialect]
     for field in schema:
         is_safe_identifier(field.name, COLUMN_NAME_PATTERN, allow_reserved_words=True)
         sql_type = converter(field)
         nullable = "NULL" if field.nullable else "NOT NULL"
-        columns[field.name] = f"{sql_type} {nullable}"
+        columns[field.name.lower()] = f"{sql_type} {nullable}"
     return columns
 
 
 def arrow_schema_to_create_table(
     schema: pyarrow.Schema, table_name: str, dialect: DIALECTS
 ) -> str:
+    "Construct the CREATE TABLE statement"
     columns = arrow_schema_to_column_defns(schema, dialect)
-    # Construct the CREATE TABLE statement
-    create_statement = (
-        f"""
-    CREATE TABLE IF NOT EXISTS \"{table_name}\" (
-        """
-        + ",\n        ".join(f'"{name}" {type_}' for name, type_ in columns.items())
-        + """)
-    """
+    return (
+        f'CREATE TABLE IF NOT EXISTS "{table_name}" ('
+        + ",\n ".join(f'"{name}" {type_}' for name, type_ in columns.items())
+        + ")"
     )
-
-    return create_statement
 
 
 def is_safe_identifier(
@@ -871,13 +886,13 @@ def is_safe_identifier(
             f'Invalid SQL identifier "{identifier}": max character number is 63'
         )
 
-    if pattern.match(identifier) is None:
-        raise ValueError(f'Malformed SQL identifier "{identifier}"')
-
     if not allow_reserved_words and identifier.lower() in RESERVED_WORDS:
         raise ValueError(
             f'Reserved SQL keywords are not allowed in identifiers, "{identifier}"'
         )
+
+    if pattern.match(identifier) is None:
+        raise ValueError(f'Malformed SQL identifier "{identifier}"')
 
     if match := FORBIDDEN_CHARACTERS.search(identifier):
         raise ValueError(

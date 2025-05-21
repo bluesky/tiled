@@ -478,7 +478,14 @@ def test_write_read_one_batch_many_part(
             ),
         ),
         ("drop_this_table123_", None),
-        ("DROP_thistable123_hwejk", None),
+        (
+            "DROP_thistable123_hwejk",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        (
+            "CAPITALIZED_NAME",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
     ],
 )
 def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -> None:
@@ -499,7 +506,8 @@ def test_check_table_name_is_safe(table_name: str, expected: Union[None, Any]) -
         # Valid column names
         ("valid_column_name", None),
         ("_another_valid_name123", None),
-        ("table_name_with_underscores", None),
+        ("column_name_with_underscores", None),
+        ("COLUMNnameWITHCAPITALletters", None),
         ("short", None),
         ("a" * 63, None),  # Maximum length
         ("name with-other*allowed:special/characters?!", None),
@@ -630,7 +638,7 @@ def test_check_column_name_is_safe(column_name: str, expected: str) -> None:
 
 
 @pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
-@pytest.mark.parametrize("column_name", ["a", "a b", "a-b", "a:b", "a*b", "a/b"])
+@pytest.mark.parametrize("column_name", ["a", "a b", "a-b", "a:b", "a*b", "a/b", "Ab"])
 def test_can_query_with_valid_column_names(
     data_uri: str, column_name: str, request: pytest.FixtureRequest
 ) -> None:
@@ -647,3 +655,52 @@ def test_can_query_with_valid_column_names(
     storage = parse_storage(data_uri)
     register_storage(storage)
     assert SQLAdapter.init_storage(data_source=data_source, storage=storage) is not None
+
+
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_reject_colliding_uppercase_column_names(
+    data_uri: str, request: pytest.FixtureRequest
+) -> None:
+    # Define a table and a storage
+    data_uri = request.getfixturevalue(data_uri)
+    storage = parse_storage(data_uri)
+    register_storage(storage)
+
+    # Create a table with colliding column names
+    table = pa.Table.from_arrays([[1, 2, 3], [4, 5, 6]], ["column_name", "COLUMN_NAME"])
+    structure = TableStructure.from_arrow_table(table)
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=structure,
+        parameters={"table_name": "table_name"},
+        assets=[],
+    )
+    with pytest.raises(ValueError, match=r"Column names must be unique.+"):
+        SQLAdapter.init_storage(data_source=data_source, storage=storage)
+
+    # Create a table with mixed cases in column names
+    table = pa.Table.from_arrays([[1, 2, 3], [4, 5, 6]], ["lower_case", "UPPER_CASE"])
+    structure = TableStructure.from_arrow_table(table)
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=structure,
+        parameters={"table_name": "table_name"},
+        assets=[],
+    )
+    data_source = SQLAdapter.init_storage(data_source=data_source, storage=storage)
+    assert data_source is not None
+
+    # Write to and read from the table
+    adapter = SQLAdapter(
+        data_source.assets[0].data_uri,
+        structure=data_source.structure,
+        table_name=data_source.parameters["table_name"],
+        dataset_id=data_source.parameters["dataset_id"],
+    )
+    adapter.append_partition(table, 0)
+    assert adapter.table_name == "table_name"
+    assert set(adapter.read().columns) == {"lower_case", "UPPER_CASE"}

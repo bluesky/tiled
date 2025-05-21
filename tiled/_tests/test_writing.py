@@ -699,6 +699,46 @@ def test_append_partition(
         assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
 
 
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (None, None),
+        ("valid_table_name", None),
+        (
+            "_invalid_table_name",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        (
+            "invalid-table-name",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        (
+            "UPPERCASE_TABLE_NAME",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        (
+            "",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+    ],
+)
+def test_create_table_with_custom_name(
+    tree: CatalogContainerAdapter,
+    table_name: str,
+    expected: str,
+):
+    table = pyarrow.Table.from_arrays([[1, 2, 3]], ["column_name"])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        if isinstance(expected, type(pytest.raises(ValueError))):
+            with expected:
+                client.create_appendable_table(table.schema, table_name=table_name)
+        else:
+            x = client.create_appendable_table(table.schema, table_name=table_name)
+            x.append_partition(table, 0)
+            assert x.read()["column_name"].to_list() == [1, 2, 3]
+
+
 def test_composite_one_table(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
