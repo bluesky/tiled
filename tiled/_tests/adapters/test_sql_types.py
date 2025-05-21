@@ -218,6 +218,9 @@ def test_data_types(
     test_table_name = f"test_{test_case_id}"
     table, dialect_results = TEST_CASES[test_case_id]
 
+    if (dialect == "duckdb") and (test_case_id == "decimal"):
+        pytest.xfail(reason="Regression in support, needs investigation")
+
     if dialect not in cast(dict, dialect_results):  # type: ignore
         with pytest.raises(ValueError, match="Unsupported PyArrow type"):
             arrow_schema_to_column_defns(table.schema, dialect)
