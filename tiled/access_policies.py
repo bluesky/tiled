@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+from contextlib import closing
 from functools import partial
 
 from .queries import AccessBlobFilter, In, KeysFilter
@@ -121,7 +122,7 @@ class SimpleAccessPolicy:
         return queries
 
 
-class TagsParser:
+class AccessTagsParser:
     @classmethod
     def from_uri(cls, uri):
         db = sqlite3.connect(f"{uri}?ro", uri=True, check_same_thread=False)
@@ -131,51 +132,51 @@ class TagsParser:
         self.db = db
 
     def is_tag_defined(self, name):
-        cursor = self.db.cursor()
-        cursor.execute("SELECT 1 FROM tags WHERE name = ?;", (name,))
-        row = cursor.fetchone()
-        found_tagname = bool(row)
+        with closing(self.db.cursor()) as cursor:
+            cursor.execute("SELECT 1 FROM tags WHERE name = ?;", (name,))
+            row = cursor.fetchone()
+            found_tagname = bool(row)
         return found_tagname
 
     def get_public_tags(self):
-        cursor = self.db.cursor()
-        cursor.execute("SELECT name FROM public_tags;")
-        public_tags = {name for (name,) in cursor.fetchall()}
+        with closing(self.db.cursor()) as cursor:
+            cursor.execute("SELECT name FROM public_tags;")
+            public_tags = {name for (name,) in cursor.fetchall()}
         return public_tags
 
     def get_scopes_from_tag(self, tagname, username):
-        cursor = self.db.cursor()
-        cursor.execute(
-            "SELECT scope_name FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?;",
-            (tagname, username),
-        )
-        user_tag_scopes = {scope for (scope,) in cursor.fetchall()}
+        with closing(self.db.cursor()) as cursor:
+            cursor.execute(
+                "SELECT scope_name FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?;",
+                (tagname, username),
+            )
+            user_tag_scopes = {scope for (scope,) in cursor.fetchall()}
         return user_tag_scopes
 
     def is_tag_owner(self, tagname, username):
-        cursor = self.db.cursor()
-        cursor.execute(
-            "SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?;",
-            (tagname, username),
-        )
-        row = cursor.fetchone()
-        found_owner = bool(row)
+        with closing(self.db.cursor()) as cursor:
+            cursor.execute(
+                "SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?;",
+                (tagname, username),
+            )
+            row = cursor.fetchone()
+            found_owner = bool(row)
         return found_owner
 
     def is_tag_public(self, name):
-        cursor = self.db.cursor()
-        cursor.execute("SELECT 1 FROM public_tags WHERE name = ?;", (name,))
-        row = cursor.fetchone()
-        found_public = bool(row)
+        with closing(self.db.cursor()) as cursor:
+            cursor.execute("SELECT 1 FROM public_tags WHERE name = ?;", (name,))
+            row = cursor.fetchone()
+            found_public = bool(row)
         return found_public
 
     def get_tags_from_scope(self, scope, username):
-        cursor = self.db.cursor()
-        cursor.execute(
-            "SELECT tag_name FROM user_tag_scopes WHERE user_name = ? AND scope_name = ?;",
-            (username, scope),
-        )
-        user_scope_tags = {tag for (tag,) in cursor.fetchall()}
+        with closing(self.db.cursor()) as cursor:
+            cursor.execute(
+                "SELECT tag_name FROM user_tag_scopes WHERE user_name = ? AND scope_name = ?;",
+                (username, scope),
+            )
+            user_scope_tags = {tag for (tag,) in cursor.fetchall()}
         return user_scope_tags
 
 
@@ -185,20 +186,20 @@ class TagBasedAccessPolicy:
         *,
         provider,
         tags_db,
-        tags_parser,
+        access_tags_parser,
         scopes=None,
     ):
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
 
-        tags_parser = import_object(tags_parser)
-        self.tags_parser = tags_parser.from_uri(tags_db["uri"])
-        self.is_tag_defined = self.tags_parser.is_tag_defined
-        self.get_public_tags = self.tags_parser.get_public_tags
-        self.get_scopes_from_tag = self.tags_parser.get_scopes_from_tag
-        self.is_tag_owner = self.tags_parser.is_tag_owner
-        self.is_tag_public = self.tags_parser.is_tag_public
-        self.get_tags_from_scope = self.tags_parser.get_tags_from_scope
+        access_tags_parser = import_object(access_tags_parser)
+        self.access_tags_parser = access_tags_parser.from_uri(tags_db["uri"])
+        self.is_tag_defined = self.access_tags_parser.is_tag_defined
+        self.get_public_tags = self.access_tags_parser.get_public_tags
+        self.get_scopes_from_tag = self.access_tags_parser.get_scopes_from_tag
+        self.is_tag_owner = self.access_tags_parser.is_tag_owner
+        self.is_tag_public = self.access_tags_parser.is_tag_public
+        self.get_tags_from_scope = self.access_tags_parser.get_tags_from_scope
 
         self.read_scopes = PUBLIC_SCOPES
         self.unremovable_scopes = ["read:metadata", "write:metadata"]
