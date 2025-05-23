@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- An auth bug that prevented a user to create a table with empty access_tags.
+
 ## v0.1.0-b28 (2025-05-21)
 
 ### Changed

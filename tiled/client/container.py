@@ -1105,7 +1105,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
-            access_tags=access_tags or [],
+            access_tags=access_tags,
         )
 
         return client
@@ -1162,7 +1162,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata or {},
             specs=specs or [],
-            access_tags=access_tags or [],
+            access_tags=access_tags,
         )
 
         if hasattr(dataframe, "partitions"):
