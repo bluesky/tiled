@@ -1703,16 +1703,12 @@ def get_router(
             )
         media_type = request.headers["content-type"]
         if entry.structure_family == "array":
-            dtype = entry.structure().data_type.to_numpy_dtype()
-            shape = entry.structure().shape
             deserializer = deserialization_registry.dispatch("array", media_type)
-            data = await ensure_awaitable(deserializer, body, dtype, shape)
         elif entry.structure_family == "sparse":
             deserializer = deserialization_registry.dispatch("sparse", media_type)
-            data = await ensure_awaitable(deserializer, body)
         else:
             raise NotImplementedError(entry.structure_family)
-        await ensure_awaitable(entry.write, data)
+        await ensure_awaitable(entry.write, deserializer, entry, body)
         return json_or_msgpack(request, None)
 
     @router.put("/array/block/{path:path}")
