@@ -842,6 +842,30 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
+        if self.context.redis_client:
+            import json
+            from datetime import datetime
+            seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
+            metadata = {
+                "timestamp": datetime.now().isoformat(),
+                "data_source_id": data_source.id
+            }
+            metadata.setdefault("Content-Type", data_source.mimetype)
+            
+            # Cache data in Redis with a TTL, and publish
+            # a notification about it.
+            pipeline = self.context.redis_client.pipeline()
+            print(f"Setting pipeline metadata: {json.dumps(metadata).encode("utf-8")}")
+            pipeline.hset(
+                f"data:{self.node.id}:{seq_num}",
+                mapping={
+                    "metadata": json.dumps(metadata).encode("utf-8"),
+                    "payload": data_source,  # Raw binary bytes
+                },
+            )
+            pipeline.expire(f"data:{node_id}:{seq_num}", settings.ttl)
+            pipeline.publish(f"notify:{node_id}", seq_num)
+            await pipeline.execute()
 
     # async def patch_node(datasources=None):
     #     ...
