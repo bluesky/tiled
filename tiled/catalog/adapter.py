@@ -855,7 +855,7 @@ class CatalogNodeAdapter:
             # Cache data in Redis with a TTL, and publish
             # a notification about it.
             pipeline = self.context.redis_client.pipeline()
-            print(f"Setting pipeline metadata: {json.dumps(metadata).encode("utf-8")}")
+            print(f"Setting pipeline metadata: {json.dumps(metadata).encode('utf-8')}")
             pipeline.hset(
                 f"data:{self.node.id}:{seq_num}",
                 mapping={
@@ -1182,8 +1182,16 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).read_block, *args, **kwargs
         )
 
-    async def write(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+    async def write(self, deserializer, entry, body):
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            shape = entry.structure().shape
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
+        return await ensure_awaitable((await self.get_adapter()).write, data)
 
     async def write_block(self, *args, **kwargs):
         return await ensure_awaitable(
