@@ -186,3 +186,25 @@ def test_manual_page_size_truncated_keys(client):
     actual_nums = [int(key) for key in keys]
     expected_nums = [0, 1, 2, 3, 4]
     assert actual_nums == expected_nums
+
+
+def test_unbounded_values_slice(client):
+    "An unbounded slice lets the server set the page size."
+    with record_history() as history:
+        items = client.values()[3:]
+    assert len(history.requests) == 1
+    assert "page[limit]" not in history.requests[0].url.params
+    actual_nums = [item.metadata["num"] for item in items]
+    expected_nums = [3, 4, 5, 6, 7, 8, 9]
+    assert actual_nums == expected_nums
+
+
+def test_unbounded_keys_slice(client):
+    "An unbounded slice lets the server set the page size."
+    with record_history() as history:
+        keys = client.keys()[3:]
+    assert len(history.requests) == 1
+    assert "page[limit]" not in history.requests[0].url.params
+    actual_nums = [int(key) for key in keys]
+    expected_nums = [3, 4, 5, 6, 7, 8, 9]
+    assert actual_nums == expected_nums
