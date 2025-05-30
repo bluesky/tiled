@@ -437,9 +437,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 time.monotonic() + LENGTH_CACHE_TTL,
             )
             for item in content["data"]:
-                if stop is not None and next(item_counter) == stop:
-                    return
                 yield item["id"]
+                if stop is not None and next(item_counter) == stop - 1:
+                    return
             next_page_url = content["links"]["next"]
 
     def _items_slice(
