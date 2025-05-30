@@ -390,7 +390,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _keys_slice(
+        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+    ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
@@ -412,6 +414,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         assert start >= 0
         assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
+        if page_size is not None:
+            next_page_url += f"&page[limit]={page_size}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
             for attempt in retry_context():
@@ -438,7 +442,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _items_slice(
+        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+    ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
@@ -467,6 +473,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         assert start >= 0
         assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
+        if page_size is not None:
+            next_page_url += f"&page[limit]={page_size}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
             params = {
