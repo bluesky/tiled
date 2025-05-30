@@ -63,9 +63,7 @@ class KeysView(IterViewBase):
             else:
                 direction = 1
             keys = list(
-                self._keys_slice(
-                    index_or_slice, 1 + index_or_slice, direction, self._page_size
-                )
+                self._keys_slice(index_or_slice, 1 + index_or_slice, direction, 1)
             )
             try:
                 (key,) = keys
@@ -74,7 +72,10 @@ class KeysView(IterViewBase):
             return key
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return list(self._keys_slice(start, stop, direction, self._page_size))
+            page_size = abs(start - stop)
+            if self._page_size is not None:
+                page_size = min(page_size, self._page_size)
+            return list(self._keys_slice(start, stop, direction, page_size))
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
@@ -111,9 +112,7 @@ class ItemsView(IterViewBase):
             else:
                 direction = 1
             items = list(
-                self._items_slice(
-                    index_or_slice, 1 + index_or_slice, direction, self._page_size
-                )
+                self._items_slice(index_or_slice, 1 + index_or_slice, direction, 1)
             )
             try:
                 (item,) = items
@@ -122,7 +121,10 @@ class ItemsView(IterViewBase):
             return item
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return list(self._items_slice(start, stop, direction, self._page_size))
+            page_size = abs(start - stop)
+            if self._page_size is not None:
+                page_size = min(page_size, self._page_size)
+            return list(self._items_slice(start, stop, direction, page_size))
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
@@ -159,9 +161,7 @@ class ValuesView(IterViewBase):
             else:
                 direction = 1
             items = list(
-                self._items_slice(
-                    index_or_slice, 1 + index_or_slice, direction, self._page_size
-                )
+                self._items_slice(index_or_slice, 1 + index_or_slice, direction, 1)
             )
             try:
                 (item,) = items
@@ -171,11 +171,12 @@ class ValuesView(IterViewBase):
             return value
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
+            page_size = abs(start - stop)
+            if self._page_size is not None:
+                page_size = min(page_size, self._page_size)
             return [
                 value
-                for _key, value in self._items_slice(
-                    start, stop, direction, self._page_size
-                )
+                for _key, value in self._items_slice(start, stop, direction, page_size)
             ]
         else:
             raise TypeError(
