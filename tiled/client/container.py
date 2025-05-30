@@ -498,8 +498,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 time.monotonic() + LENGTH_CACHE_TTL,
             )
             for item in content["data"]:
-                if stop is not None and next(item_counter) == stop:
-                    return
                 key = item["id"]
                 yield key, client_for_item(
                     self.context,
@@ -507,6 +505,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     item,
                     include_data_sources=self._include_data_sources,
                 )
+                if stop is not None and next(item_counter) == stop - 1:
+                    return
             next_page_url = content["links"]["next"]
 
     def keys(self):
