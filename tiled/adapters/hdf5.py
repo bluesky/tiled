@@ -506,14 +506,16 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start: int, stop: int, direction: int) -> List[Any]:
+    def _keys_slice(
+        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
+    ) -> List[Any]:
         keys = list(self._tree.keys())
         if direction < 0:
             keys = list(reversed(keys))
         return keys[start:stop]
 
     def _items_slice(
-        self, start: int, stop: int, direction: int
+        self, start: int, stop: int, direction: int, page_size: Optional[int] = None
     ) -> List[Tuple[Any, Any]]:
         """
 

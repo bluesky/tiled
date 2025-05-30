@@ -55,6 +55,16 @@ and several convenience methods:
    tiled.iterviews.ValuesView.tail
 ```
 
+as well as a method for controlling the "page size" in which results will be
+batched across requests, which affects performance.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.iterviews.ValuesView.page_size
+```
+
 Likewise for `.keys()` and `.items()`.
 
 Beyond the Mapping interface, Container adds the following attributes
