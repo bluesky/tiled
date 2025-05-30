@@ -5,9 +5,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- It is now possible to explicitly control the page size used for fetching
+  batches of metadata, e.g. `client.values().page_size(N)`.
+
 ### Fixed
 
 - An auth bug that prevented a user to create a table with empty access_tags.
+- When accessing a small number of results, the page size is set appropriately
+  to avoid needlessly downloading additional results.
 
 ## v0.1.0-b28 (2025-05-21)
 
