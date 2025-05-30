@@ -72,9 +72,12 @@ class KeysView(IterViewBase):
             return key
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            page_size = abs(start - stop)
-            if self._page_size is not None:
-                page_size = min(page_size, self._page_size)
+            if stop is not None:
+                page_size = abs(start - stop)
+                if self._page_size is not None:
+                    page_size = min(page_size, self._page_size)
+            else:
+                page_size = None
             return list(self._keys_slice(start, stop, direction, page_size))
         else:
             raise TypeError(
@@ -121,9 +124,12 @@ class ItemsView(IterViewBase):
             return item
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            page_size = abs(start - stop)
-            if self._page_size is not None:
-                page_size = min(page_size, self._page_size)
+            if stop is not None:
+                page_size = abs(start - stop)
+                if self._page_size is not None:
+                    page_size = min(page_size, self._page_size)
+            else:
+                page_size = None
             return list(self._items_slice(start, stop, direction, page_size))
         else:
             raise TypeError(
@@ -171,9 +177,12 @@ class ValuesView(IterViewBase):
             return value
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            page_size = abs(start - stop)
-            if self._page_size is not None:
-                page_size = min(page_size, self._page_size)
+            if stop is not None:
+                page_size = abs(start - stop)
+                if self._page_size is not None:
+                    page_size = min(page_size, self._page_size)
+            else:
+                page_size = None
             return [
                 value
                 for _key, value in self._items_slice(start, stop, direction, page_size)
