@@ -420,7 +420,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(
-        self, start: int, stop: int, direction: int
+        self, start: int, stop: int, direction: int, page_size: int | None = None
     ) -> Union[Iterator[str], List[str]]:
         """
 
@@ -450,7 +450,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
             return keys
 
     def _items_slice(
-        self, start: int, stop: int, direction: int
+        self, start: int, stop: int, direction: int, page_size: int | None = None
     ) -> Iterator[Tuple[str, Any]]:
         """
 

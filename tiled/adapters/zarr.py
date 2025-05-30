@@ -315,7 +315,9 @@ class ZarrGroupAdapter(
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start: int, stop: int, direction: int) -> List[Any]:
+    def _keys_slice(
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> List[Any]:
         """
 
         Parameters
@@ -333,7 +335,9 @@ class ZarrGroupAdapter(
             keys = list(reversed(keys))
         return keys[start:stop]
 
-    def _items_slice(self, start: int, stop: int, direction: int) -> List[Any]:
+    def _items_slice(
+        self, start: int, stop: int, direction: int, page_size: int | None = None
+    ) -> List[Any]:
         """
 
         Parameters
