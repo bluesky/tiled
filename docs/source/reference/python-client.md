@@ -63,6 +63,7 @@ batched across requests, which affects performance.
    :toctree: generated
 
    tiled.iterviews.ValuesView.page_size
+```
 
 Likewise for `.keys()` and `.items()`.
 
