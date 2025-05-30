@@ -90,3 +90,14 @@ def test_manual_page_size(client):
     actual_nums = [item.metadata["num"] for item in items]
     expected_nums = [0, 1, 2, 3, 4]
     assert actual_nums == expected_nums
+
+
+def test_manual_page_size_truncated(client):
+    "If the manual page size is larger than the result set, it is truncated."
+    with record_history() as history:
+        items = client.values().page_size(6).head(5)
+    assert len(history.requests) == 1
+    assert history.requests[0].url.params["page[limit]"] == "5"
+    actual_nums = [item.metadata["num"] for item in items]
+    expected_nums = [0, 1, 2, 3, 4]
+    assert actual_nums == expected_nums
