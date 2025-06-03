@@ -168,14 +168,14 @@ class SimpleTiledServer:
     
     def logs(self, n: int = 10) -> str:
         """
-        Return the last `n` lines of the error log.
+        Returns the last `n` lines of the error log.
         """
         log_file = self.directory / "error.log"
         if not log_file.exists():
             return "No error log available."
         with open(log_file, "r") as f:
             lines = f.readlines()
-        return "".join(lines[-n:])
+        return "".join(lines)
 
     def __enter__(self):
         return self
