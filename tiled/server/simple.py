@@ -165,6 +165,17 @@ class SimpleTiledServer:
             # Windows cannot delete the logfiles because the global Python
             # logging system still has the logfiles open for appending.
             shutil.rmtree(self.directory)
+    
+    def logs(self, n: int = 10) -> str:
+        """
+        Return the last `n` lines of the error log.
+        """
+        log_file = self.directory / "error.log"
+        if not log_file.exists():
+            return "No error log available."
+        with open(log_file, "r") as f:
+            lines = f.readlines()
+        return "".join(lines[-n:])
 
     def __enter__(self):
         return self
