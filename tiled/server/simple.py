@@ -118,12 +118,12 @@ class SimpleTiledServer:
         log_config["handlers"]["default"]["class"] = "logging.FileHandler"
         del log_config["handlers"]["default"]["stream"]
         log_config["handlers"]["default"]["filename"] = str(directory / "error.log")
-        print(directory)
+
         self.catalog = catalog_from_uri(
             directory / "catalog.db",
             writable_storage=directory / "data",
             init_if_not_exists=True,
-            readable_storage= [directory]
+            readable_storage= ["tmp/blop/sim"]
         )
         self.app = build_app(
             self.catalog, authentication={"single_user_api_key": api_key}
@@ -165,6 +165,8 @@ class SimpleTiledServer:
             # Windows cannot delete the logfiles because the global Python
             # logging system still has the logfiles open for appending.
             shutil.rmtree(self.directory)
+
+    
 
     def __enter__(self):
         return self
