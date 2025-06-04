@@ -123,7 +123,7 @@ class SimpleTiledServer:
             directory / "catalog.db",
             writable_storage=directory / "data",
             init_if_not_exists=True,
-            readable_storage= directory / "data"
+            readable_storage= [str(directory / "data")]
         )
         self.app = build_app(
             self.catalog, authentication={"single_user_api_key": api_key}
