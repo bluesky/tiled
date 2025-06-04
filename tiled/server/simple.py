@@ -118,7 +118,7 @@ class SimpleTiledServer:
         log_config["handlers"]["default"]["class"] = "logging.FileHandler"
         del log_config["handlers"]["default"]["stream"]
         log_config["handlers"]["default"]["filename"] = str(directory / "error.log")
-
+        print(directory)
         self.catalog = catalog_from_uri(
             directory / "catalog.db",
             writable_storage=directory / "data",
@@ -165,17 +165,6 @@ class SimpleTiledServer:
             # Windows cannot delete the logfiles because the global Python
             # logging system still has the logfiles open for appending.
             shutil.rmtree(self.directory)
-    
-    def logs(self, n: int = 10) -> str:
-        """
-        Returns the last `n` lines of the error log.
-        """
-        log_file = self.directory / "error.log"
-        if not log_file.exists():
-            return "No error log available."
-        with open(log_file, "r") as f:
-            lines = f.readlines()
-        return "".join(lines)
 
     def __enter__(self):
         return self
