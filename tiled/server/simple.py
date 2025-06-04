@@ -124,7 +124,7 @@ class SimpleTiledServer:
             directory / "catalog.db",
             writable_storage=directory / "data",
             init_if_not_exists=True,
-            readable_storage= readable_storage
+            readable_storage=readable_storage,
         )
         self.app = build_app(
             self.catalog, authentication={"single_user_api_key": api_key}
@@ -166,8 +166,6 @@ class SimpleTiledServer:
             # Windows cannot delete the logfiles because the global Python
             # logging system still has the logfiles open for appending.
             shutil.rmtree(self.directory)
-
-    
 
     def __enter__(self):
         return self
