@@ -49,6 +49,8 @@ def scrape_server_url_from_logs(process):
     # The thread will leak. This is the best reasonably simple,
     # portable approach available.
     thread.join()
+    _, port = url.rsplit(":", 1)
+    assert port != "8000"  # should be a random high port
     return url
 
 
