@@ -122,7 +122,7 @@ class SimpleTiledServer:
         self.catalog = catalog_from_uri(
             directory / "catalog.db",
             writable_storage=[
-                f"file://localhost{str(directory / 'data')}",
+                directory / "data",
                 f"duckdb:///{str(directory / 'storage.duckdb')}",
             ],
             init_if_not_exists=True,
