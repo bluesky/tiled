@@ -248,7 +248,7 @@ server = [
     "tifffile",
     "uvicorn[standard]",
     "xarray",
-    "zarr <3",
+    "zarr >=3",
     "zstandard",
 ]
 # These are needed by the client and server to transmit/receive sparse arrays.
