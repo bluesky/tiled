@@ -100,7 +100,7 @@ class SimpleTiledServer:
             directory = pathlib.Path(tempfile.mkdtemp())
             self._cleanup_directory = True
         else:
-            directory = pathlib.Path(directory)
+            directory = pathlib.Path(directory).resolve()
             self._cleanup_directory = False
         (directory / "data").mkdir(parents=True, exist_ok=True)
         # In production we use a proper 32-bit token, but for brevity we

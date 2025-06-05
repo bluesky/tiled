@@ -4,6 +4,7 @@ from pathlib import Path
 import httpx
 import pyarrow
 import pytest
+import shutil
 
 from tiled.client import from_uri
 from tiled.server import SimpleTiledServer
@@ -56,6 +57,7 @@ def test_specified_api_key():
 
 def test_persistent_data(tmp_path):
     "Write data in a specified location. Access it across a server restart."
+    shutil.rmtree(tmp_path)  # Ensure the directory is clean before starting the server
     with SimpleTiledServer(directory=tmp_path) as server1:
         client1 = from_uri(server1.uri)
         client1.write_array([1, 2, 3], key="x")
