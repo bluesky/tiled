@@ -100,9 +100,9 @@ class SimpleTiledServer:
             directory = pathlib.Path(tempfile.mkdtemp())
             self._cleanup_directory = True
         else:
-            directory = pathlib.Path(directory)
+            directory = pathlib.Path(directory).resolve()
             self._cleanup_directory = False
-        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "data").mkdir(parents=True, exist_ok=True)
         # In production we use a proper 32-bit token, but for brevity we
         # use just 8 here. This server only accepts connections on localhost
         # and is not intended for production use, so we think this is an
@@ -121,7 +121,10 @@ class SimpleTiledServer:
 
         self.catalog = catalog_from_uri(
             directory / "catalog.db",
-            writable_storage=directory / "data",
+            writable_storage=[
+                f"file://localhost{str(directory / 'data')}",
+                f"duckdb:///{str(directory / 'storage.duckdb')}",
+            ],
             init_if_not_exists=True,
         )
         self.app = build_app(
