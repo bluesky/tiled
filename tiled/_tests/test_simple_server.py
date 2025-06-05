@@ -1,10 +1,10 @@
 import platform
+import shutil
 from pathlib import Path
 
 import httpx
 import pyarrow
 import pytest
-import shutil
 
 from tiled.client import from_uri
 from tiled.server import SimpleTiledServer
