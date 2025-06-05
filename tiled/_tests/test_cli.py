@@ -30,7 +30,6 @@ def scrape_server_url_from_logs(process):
         lines = []
         while not process.poll():
             line = process.stderr.readline()
-            print(line.decode())
             lines.append(line.decode())
             if match := pattern.search(line.decode()):
                 break
