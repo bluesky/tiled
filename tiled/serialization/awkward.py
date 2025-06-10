@@ -12,7 +12,7 @@ from ..utils import APACHE_ARROW_FILE_MIME_TYPE, modules_available
 
 
 @default_serialization_registry.register(StructureFamily.awkward, "application/zip")
-def to_zipped_buffers(components, metadata):
+def to_zipped_buffers(mimetype, components, metadata):
     (form, length, container) = components
     file = io.BytesIO()
     # Pack multiple buffers into a zipfile, uncompressed. This enables
@@ -26,7 +26,7 @@ def to_zipped_buffers(components, metadata):
 
 
 @default_deserialization_registry.register(StructureFamily.awkward, "application/zip")
-def from_zipped_buffers(buffer, form, length):
+def from_zipped_buffers(mimetype, buffer, form, length):
     file = io.BytesIO(buffer)
     with zipfile.ZipFile(file, "r") as zip:
         form_keys = zip.namelist()
@@ -37,7 +37,7 @@ def from_zipped_buffers(buffer, form, length):
 
 
 @default_serialization_registry.register(StructureFamily.awkward, "application/json")
-def to_json(components, metadata):
+def to_json(mimetype, components, metadata):
     (form, length, container) = components
     file = io.StringIO()
     array = awkward.from_buffers(form, length, container)
@@ -50,7 +50,7 @@ if modules_available("pyarrow"):
     @default_serialization_registry.register(
         StructureFamily.awkward, APACHE_ARROW_FILE_MIME_TYPE
     )
-    def to_arrow(components, metadata):
+    def to_arrow(mimetype, components, metadata):
         import pyarrow
 
         (form, length, container) = components
@@ -66,7 +66,7 @@ if modules_available("pyarrow"):
     @default_serialization_registry.register(
         StructureFamily.awkward, "application/x-parquet"
     )
-    def to_parquet(components, metadata):
+    def to_parquet(mimetype, components, metadata):
         import pyarrow.parquet
 
         (form, length, container) = components
