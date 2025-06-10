@@ -43,7 +43,9 @@ class AwkwardClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=bytes(to_zipped_buffers("application/zip", components, {})),
+                        content=bytes(
+                            to_zipped_buffers("application/zip", components, {})
+                        ),
                         headers={"Content-Type": "application/zip"},
                     )
                 )
