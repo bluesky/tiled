@@ -574,11 +574,13 @@ class UnsupportedQueryType(TypeError):
 
 class Conflicts(Exception):
     "Prompts the server to send 409 Conflicts with message"
+
     pass
 
 
 class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
+
     pass
 
 
@@ -733,7 +735,8 @@ def path_from_uri(uri) -> Path:
         path = Path(parsed.path[1:])
     else:
         raise ValueError(
-            "Supported schemes are 'file', 'sqlite', and 'duckdb'. "
+            "Supported schemes are 'file', 'sqlite', and 'duckdb'."
+            "For bucket storage, 'http', 'https', and 's3' are supported."
             f"Did not recognize scheme {parsed.scheme!r}"
         )
     return path
