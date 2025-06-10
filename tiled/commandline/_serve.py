@@ -664,7 +664,9 @@ def serve_config(
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
     # If --host is given, it overrides host in config. Same for --port and --log-config.
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
-    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
+    if port is None:
+        port = uvicorn_kwargs.get("port", 8000)
+    uvicorn_kwargs["port"] = port
     uvicorn_kwargs["log_config"] = _setup_log_config(
         log_config or uvicorn_kwargs.get("log_config"),
         log_timestamps,

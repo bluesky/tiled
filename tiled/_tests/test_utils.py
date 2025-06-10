@@ -2,7 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from ..utils import ensure_specified_sql_driver, parse_time_string
+from ..utils import (
+    CachingMap,
+    DictView,
+    ListView,
+    OneShotCachedMap,
+    ensure_specified_sql_driver,
+    parse_time_string,
+    walk,
+)
 
 
 def test_ensure_specified_sql_driver():
@@ -103,3 +111,162 @@ def test_parse_time_string_valid(string_input, expected):
 def test_parse_time_string_invalid(string_input):
     with pytest.raises(ValueError):
         parse_time_string(string_input)
+
+
+def test_listview_repr():
+    lv = ListView([1, 2, 3])
+    assert repr(lv) == "ListView([1, 2, 3])"
+
+
+def test_dictview_repr():
+    dv = DictView({"a": 1, "b": 2})
+    assert repr(dv) == "DictView({'a': 1, 'b': 2})"
+
+
+def test_listview_repr_pretty(monkeypatch):
+    lv = ListView([1, 2, 3])
+    called = {}
+
+    class DummyP:
+        "Dummy pretty printer to capture the text output."
+
+        def text(self, s):
+            called["text"] = s
+
+    # Should use pformat on a list
+    lv._repr_pretty_(DummyP(), cycle=False)
+    assert called["text"] == "[1, 2, 3]"
+
+    # Should convert to list if not a list
+    lv2 = ListView((4, 5, 6))
+    lv2._internal_list = (4, 5, 6)  # forcibly set to tuple
+    called.clear()
+    lv2._repr_pretty_(DummyP(), cycle=False)
+    assert called["text"] == "[4, 5, 6]"
+
+
+def test_dictview_repr_pretty(monkeypatch):
+    dv = DictView({"a": 1, "b": 2})
+    called = {}
+
+    class DummyP:
+        "Dummy pretty printer to capture the text output."
+
+        def text(self, s):
+            called["text"] = s
+
+    # Should use pformat on a dict
+    dv._repr_pretty_(DummyP(), cycle=False)
+    assert called["text"] == "{'a': 1, 'b': 2}"
+
+    # Should convert to dict if not a dict
+    dv2 = DictView([("x", 10), ("y", 20)])
+    dv2._internal_dict = [("x", 10), ("y", 20)]  # forcibly set to list of tuples
+    called.clear()
+    dv2._repr_pretty_(DummyP(), cycle=False)
+    # The order of keys in dict may not be guaranteed, so check both possibilities
+    assert called["text"] in ("{'x': 10, 'y': 20}", "{'y': 20, 'x': 10}")
+
+
+def test_oneshotcachedmap_repr_lazy_and_evaluated():
+    # Value factories
+    def factory1():
+        return 42
+
+    def factory2():
+        return "foo"
+
+    # All values are lazy initially
+    m = OneShotCachedMap(a=factory1, b=factory2)
+    r = repr(m)
+    assert "<OneShotCachedMap" in r
+    assert "'a': <lazy>" in r
+    assert "'b': <lazy>" in r
+
+    # Access one value to trigger evaluation
+    assert m["a"] == 42
+    r2 = repr(m)
+    assert "'a': 42" in r2
+    assert "'b': <lazy>" in r2
+
+    # Access both
+    assert m["b"] == "foo"
+    r3 = repr(m)
+    assert "'a': 42" in r3
+    assert "'b': 'foo'" in r3
+
+
+def test_cachingmap_repr_lazy_and_evaluated():
+    # Value factories
+    def factory1():
+        return 123
+
+    def factory2():
+        return "bar"
+
+    mapping = {"x": factory1, "y": factory2}
+    cache = {}
+
+    m = CachingMap(mapping.copy(), cache)
+    # Initially, nothing is cached, so repr should show <lazy>
+    r = repr(m)
+    assert "<CachingMap" in r
+    assert "'x': <lazy>" in r
+    assert "'y': <lazy>" in r
+
+    # Access one value to trigger evaluation and caching
+    assert m["x"] == 123
+    r2 = repr(m)
+    assert "'x': 123" in r2
+    assert "'y': <lazy>" in r2
+
+    # Access both
+    assert m["y"] == "bar"
+    r3 = repr(m)
+    assert "'x': 123" in r3
+    assert "'y': 'bar'" in r3
+
+    # If cache is None, all should be <lazy>
+    m2 = CachingMap(mapping.copy(), None)
+    r4 = repr(m2)
+    assert "'x': <lazy>" in r4
+    assert "'y': <lazy>" in r4
+
+
+@pytest.mark.parametrize(
+    "mapping, expected",
+    [
+        (
+            {
+                "A": {
+                    "dog": {},
+                    "cat": {},
+                    "monkey": {},
+                },
+                "B": {
+                    "snake": {},
+                    "bear": {},
+                    "wolf": {},
+                },
+            },
+            [
+                ["A"],
+                ["A", "dog"],
+                ["A", "cat"],
+                ["A", "monkey"],
+                ["B"],
+                ["B", "snake"],
+                ["B", "bear"],
+                ["B", "wolf"],
+            ],
+        ),
+        ({"root": 42}, [["root"]]),
+        ({"x": {"y": {"z": 1}}, "a": 2}, [["x"], ["x", "y"], ["x", "y", "z"], ["a"]]),
+        ({}, []),
+        ({"foo": object()}, [["foo"]]),
+    ],
+    ids=["nested_dict", "leaf_value", "nested_mixed", "empty_dict", "non_dict_leaf"],
+)
+def test_walk(mapping, expected):
+    result = list(walk(mapping))
+    assert result == expected

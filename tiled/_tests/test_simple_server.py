@@ -2,6 +2,7 @@ import platform
 from pathlib import Path
 
 import httpx
+import pyarrow
 import pytest
 
 from tiled.client import from_uri
@@ -12,9 +13,17 @@ def test_default():
     "Smoke test a server with defaults (no parameters)"
     with SimpleTiledServer() as server:
         client = from_uri(server.uri)
-        # Write and read data
+
+        # Write and read array data
         x = client.write_array([1, 2, 3], key="x")
         x[:]
+
+        # Write and read tabular data to the SQL storage
+        table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+        y = client.create_appendable_table(table.schema, key="y")
+        y.append_partition(table, 0)
+        y.read()
+
         repr(server)
         server._repr_html_()  # impl, used by Jupyter
         # Web UI
@@ -50,10 +59,17 @@ def test_persistent_data(tmp_path):
     with SimpleTiledServer(directory=tmp_path) as server1:
         client1 = from_uri(server1.uri)
         client1.write_array([1, 2, 3], key="x")
+        table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+        y = client1.create_appendable_table(table.schema, key="y")
+        y.append_partition(table, 0)
         assert "x" in client1
+        assert "y" in client1
     with SimpleTiledServer(directory=tmp_path) as server2:
         client2 = from_uri(server2.uri)
         assert "x" in client2
+        assert "y" in client2
+        assert client2["x"].read() is not None
+        assert client2["y"].read() is not None
     assert server1.directory == server2.directory == tmp_path
 
 

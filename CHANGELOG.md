@@ -3,18 +3,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.1.0-b29 (2025-06-06)
 
 ### Added
 
 - It is now possible to explicitly control the page size used for fetching
   batches of metadata, e.g. `client.values().page_size(N)`.
+- Writable tabular SQL storage in SimpleTiledServer.
 
 ### Fixed
 
 - An auth bug that prevented a user to create a table with empty access_tags.
 - When accessing a small number of results, the page size is set appropriately
   to avoid needlessly downloading additional results.
+- The `tiled serve config ...` CLI command silently ignored `--port 0` and
+  used the default port (`8000`).
 
 ## v0.1.0-b28 (2025-05-21)
 
