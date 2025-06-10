@@ -185,7 +185,7 @@ class _WideTableFetcher:
                 },
             )
         ).read()
-        return deserialize_arrow(content)
+        return deserialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, content)
 
     def _fetch_variables__post(self, variables):
         content = handle_error(
@@ -198,7 +198,7 @@ class _WideTableFetcher:
                 },
             )
         ).read()
-        return deserialize_arrow(content)
+        return deserialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, content)
 
 
 def write_xarray_dataset(client_node, dataset, key=None):

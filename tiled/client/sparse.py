@@ -61,7 +61,7 @@ class SparseClient(BaseClient):
                         params=params,
                     )
                 ).read()
-        df = deserialize_arrow(content)
+        df = deserialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, content)
         original_shape = structure.shape
         if slice is not None:
             sliced_shape = ndindex(slice).newshape(original_shape)
@@ -90,7 +90,7 @@ class SparseClient(BaseClient):
                         params=params,
                     )
                 ).read()
-        df = deserialize_arrow(content)
+        df = deserialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, content)
         original_shape = structure.shape
         if slice is not None:
             sliced_shape = ndindex(slice).newshape(original_shape)
@@ -115,7 +115,7 @@ class SparseClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=bytes(serialize_arrow(df, {})),
+                        content=bytes(serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, df, {})),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )
@@ -131,7 +131,7 @@ class SparseClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["block"].format(*block),
-                        content=bytes(serialize_arrow(df, {})),
+                        content=bytes(serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, df, {})),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )

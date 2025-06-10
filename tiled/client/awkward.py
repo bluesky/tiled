@@ -43,7 +43,7 @@ class AwkwardClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=bytes(to_zipped_buffers(components, {})),
+                        content=bytes(to_zipped_buffers("application/zip", components, {})),
                         headers={"Content-Type": "application/zip"},
                     )
                 )
@@ -67,7 +67,9 @@ class AwkwardClient(BaseClient):
                         json=form_keys,
                     )
                 ).read()
-        container = from_zipped_buffers(content, projected_form, structure.length)
+        container = from_zipped_buffers(
+            "application/zip", content, projected_form, structure.length
+        )
         projected_array = awkward.from_buffers(
             projected_form, structure.length, container, allow_noncanonical_form=True
         )
