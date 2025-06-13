@@ -1,4 +1,5 @@
 import json
+import csv
 from pathlib import Path
 
 import numpy
@@ -77,6 +78,12 @@ def client():
 # but we mostly export for a buffer in memory because disk access
 # can be very cloud on cloud CI VMs.
 
+def has_csv_header(filepath):
+    with open(filepath, 'r') as csv_f:
+        sniffer = csv.Sniffer()
+        has_header = sniffer.has_header(csv_f.read(2048))
+        csv_f.seek(0)
+    return has_header
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "image.png", "image.tiff"])
 def test_export_2d_array(client, filename, tmpdir):
@@ -86,6 +93,14 @@ def test_export_2d_array(client, filename, tmpdir):
 @pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
 def test_export_table(client, filename, tmpdir):
     client["C"].export(Path(tmpdir, filename))
+
+
+@pytest.mark.parametrize("filename", ["numbers.csv"])
+def test_csv_mimetype_opt_params(client, filename, tmpdir):
+    client["C"].export(Path(tmpdir, filename), format="text/csv;header=absent")
+    assert not has_csv_header(Path(tmpdir, filename))
+    client["C"].export(Path(tmpdir, filename), format="text/csv;header=present")
+    assert has_csv_header(Path(tmpdir, filename))
 
 
 def test_streaming_export(client, buffer):

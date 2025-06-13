@@ -51,6 +51,11 @@ def serialize_parquet(mimetype, df, metadata, preserve_index=True):
 
 def serialize_csv(mimetype, df, metadata, preserve_index=False):
     file = io.StringIO()
+    if ";" in mimetype:
+        opt_param = mimetype.split(";")[1:][0]
+        if "header" in opt_param and "absent" in opt_param:
+            df.to_csv(file, index=preserve_index, header=False)
+            return file.getvalue().encode()
     df.to_csv(file, index=preserve_index)
     return file.getvalue().encode()
 
