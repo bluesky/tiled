@@ -67,29 +67,29 @@ if modules_available("scipy"):
 
 @default_serialization_registry.register("xarray_dataset", APACHE_ARROW_FILE_MIME_TYPE)
 async def serialize_dataset_arrow(mimetype, node, metadata, filter_for_access):
-    return serialize_arrow((await as_dataset(node)).to_dataframe(), metadata)
+    return serialize_arrow(mimetype, (await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register("xarray_dataset", "application/x-parquet")
 async def serialize_dataset_parquet(mimetype, node, metadata, filter_for_access):
-    return serialize_parquet((await as_dataset(node)).to_dataframe(), metadata)
+    return serialize_parquet(mimetype, (await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register(
     "xarray_dataset", ["text/csv", "text/comma-separated-values", "text/plain"]
 )
 async def serialize_dataset_csv(mimetype, node, metadata, filter_for_access):
-    return serialize_csv((await as_dataset(node)).to_dataframe(), metadata)
+    return serialize_csv(mimetype, (await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register("xarray_dataset", "text/html")
 async def serialize_dataset_html(mimetype, node, metadata, filter_for_access):
-    return serialize_html((await as_dataset(node)).to_dataframe(), metadata)
+    return serialize_html(mimetype, (await as_dataset(node)).to_dataframe(), metadata)
 
 
 @default_serialization_registry.register("xarray_dataset", XLSX_MIME_TYPE)
 async def serialize_dataset_excel(mimetype, node, metadata, filter_for_access):
-    return serialize_excel((await as_dataset(node)).to_dataframe(), metadata)
+    return serialize_excel(mimetype, (await as_dataset(node)).to_dataframe(), metadata)
 
 
 if modules_available("orjson"):
