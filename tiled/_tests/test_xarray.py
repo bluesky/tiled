@@ -13,6 +13,7 @@ from ..serialization.xarray import serialize_json
 from ..server.app import build_app
 from ..structures.core import Spec
 from .utils import URL_LIMITS
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 
 image = numpy.random.random((3, 5))
 temp = 15 + 8 * numpy.random.randn(2, 2, 3)
@@ -190,7 +191,7 @@ async def test_serialize_json(ds_node: DatasetAdapter):
     """
     metadata = None  # Not used
     filter_for_access = None  # Not used
-    result = await serialize_json(ds_node, metadata, filter_for_access)
+    result = await serialize_json(APACHE_ARROW_FILE_MIME_TYPE, ds_node, metadata, filter_for_access)
 
     result_data_keys = orjson.loads(result).keys()
     ds_coords_and_vars = set(ds_node)
