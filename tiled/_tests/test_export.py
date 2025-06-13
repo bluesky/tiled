@@ -78,12 +78,14 @@ def client():
 # but we mostly export for a buffer in memory because disk access
 # can be very cloud on cloud CI VMs.
 
+
 def has_csv_header(filepath):
-    with open(filepath, 'r') as csv_f:
+    with open(filepath, "r") as csv_f:
         sniffer = csv.Sniffer()
         has_header = sniffer.has_header(csv_f.read(2048))
         csv_f.seek(0)
     return has_header
+
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "image.png", "image.tiff"])
 def test_export_2d_array(client, filename, tmpdir):
