@@ -1,0 +1,209 @@
+"""Redefine the catalog tree using a closure table
+
+Revision ID: e05e918092c3
+Revises: 9331ed94d6ac
+Create Date: 2025-06-16 10:38:46.797381
+
+This revision introduces a closure table to represent the hierarchical structure of nodes in the catalog.
+
+Tree structure:
+---------------
+
+root
+├── A
+│   ├── C
+│   │   ├── E
+│   │   ├── F
+│   │   └── G
+│   └── D
+└── B
+
+Before:
+-------
+
+> SELECT * FROM nodes;
+
+id  key  ancestors  structure_family  metadata   ...
+--  ---  ---------  ----------------  --------
+1   A    []         container         {}
+2   B    []         container         {}
+3   C    ["A"]      container         {}
+4   D    ["A"]      container         {}
+5   E    ["A","C"]  container         {}
+6   F    ["A","C"]  container         {}
+7   G    ["A","C"]  container         {}
+
+After:
+------
+
+> SELECT * FROM nodes;
+
+id  parent  key  structure_family  metadata   ...
+--  ------  ---  ----------------  --------
+0                container         {}         <-- root node (always present)
+1   0       A    container         {}
+2   0       B    container         {}
+3   1       C    container         {}
+4   1       D    container         {}
+5   3       E    container         {}
+6   3       F    container         {}
+7   3       G    container         {}
+
+> SELECT * FROM nodes_closure;
+
+ancestor  descendant  depth
+--------  ----------  -----
+0         0           0
+1         1           0
+0         1           1
+2         2           0
+0         2           1
+3         3           0
+1         3           1
+0         3           2
+4         4           0
+1         4           1
+0         4           2
+5         5           0
+3         5           1
+1         5           2
+0         5           3
+6         6           0
+3         6           1
+1         6           2
+0         6           3
+7         7           0
+3         7           1
+1         7           2
+0         7           3
+
+A new node with `id = 0` and no parent representing the root of the tree is added to the nodes table.
+The `parent` column is introduced to represent the parent-child relationships between nodes.
+The `ancestors` column is removed, as it is no longer needed with the closure table structure.
+
+"""
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision = "e05e918092c3"
+down_revision = "9331ed94d6ac"
+branch_labels = None
+depends_on = None
+
+
+def upgrade():
+    connection = op.get_bind()
+
+    # 1. Add the 'parent' column and the foreign key to the 'nodes' table. Use batch mode, so it works for SQLite.
+    with op.batch_alter_table("nodes", schema=None) as batch_op:
+        batch_op.add_column(sa.Column("parent", sa.Integer(), nullable=True))
+        batch_op.create_foreign_key("fk_nodes_parent", "nodes", ["parent"], ["id"])
+        batch_op.drop_constraint("key_ancestors_unique_constraint", type_="unique")
+        batch_op.create_unique_constraint(
+            "key_parent_unique_constraint", ["key", "parent"]
+        )
+
+    # 2. Create the 'nodes_closure' table and create the uniqueness constraint
+    op.create_table(
+        "nodes_closure",
+        sa.Column(
+            "ancestor", sa.Integer(), sa.ForeignKey("nodes.id"), primary_key=True
+        ),
+        sa.Column(
+            "descendant", sa.Integer(), sa.ForeignKey("nodes.id"), primary_key=True
+        ),
+        sa.Column("depth", sa.Integer(), nullable=False),
+    )
+    with op.batch_alter_table("nodes_closure", schema=None) as batch_op:
+        batch_op.create_unique_constraint(
+            "ancestor_descendant_unique_constraint", ["ancestor", "descendant"]
+        )
+
+    # 3. Insert the explicit root node (id=0, key='') with no parent
+    connection.execute(
+        sa.text(
+            """
+        INSERT INTO nodes(id, key, parent, ancestors, structure_family, metadata, specs, access_blob)
+        VALUES (0, '', NULL, NULL, 'container', '{}', '[]', '{}');
+        """
+        )
+    )
+
+    # 4. Insert self-referential records into nodes_closure for each node, including the "root" node
+    connection.execute(
+        sa.text(
+            """
+        INSERT INTO nodes_closure(ancestor, descendant, depth)
+        SELECT id, id, 0 FROM nodes;
+        """
+        )
+    )
+
+    # 5. Populate the 'parent' column of the 'nodes' table based on the 'ancestors' column
+    json_len_func = (
+        "jsonb_array_length"
+        if connection.engine.dialect.name == "postgresql"
+        else "json_array_length"
+    )
+    max_depth = connection.execute(
+        sa.text(
+            f"SELECT MAX({json_len_func}(ancestors)) FROM nodes WHERE ancestors IS NOT NULL;"
+        )
+    ).scalar()
+
+    # 6. Initialize the parent of each node as 0 (the 'root' node) and set 'depth' in the closure table
+    connection.execute(
+        sa.text("UPDATE nodes SET parent = 0 WHERE ancestors IS NOT NULL;")
+    )
+    connection.execute(
+        sa.text(
+            f"""
+        INSERT INTO nodes_closure(ancestor, descendant, depth)
+        SELECT 0, id, {json_len_func}(ancestors) + 1 FROM nodes WHERE ancestors IS NOT NULL;
+        """
+        )
+    )
+
+    # 7. Update the 'parent' column recursively
+    for depth in range(max_depth):
+        condition_statement = (
+            f"parent.key = child.ancestors::json->>{depth}"
+            if connection.engine.dialect.name == "postgresql"
+            else f"parent.key = json_extract(child.ancestors, '$[{depth}]')"
+        )
+        sql = f"""
+            UPDATE nodes AS child
+            SET parent = parent.id
+            FROM nodes AS parent
+            WHERE {json_len_func}(child.ancestors) >= {depth + 1}
+            AND {condition_statement}
+            AND parent.parent = child.parent
+        """
+        connection.execute(sa.text(sql))
+
+        # Populate the 'nodes_closure' table   (possibly use ON CONFLIST DO NOTHING ?)
+        sql = f"""
+            INSERT INTO nodes_closure (ancestor, descendant, depth)
+            SELECT parent.id, child.id, {json_len_func}(child.ancestors) - {depth}
+            FROM nodes AS child
+            JOIN nodes AS parent ON parent.id = child.parent
+            WHERE {json_len_func}(child.ancestors) >= {depth + 1};
+        """
+        connection.execute(sa.text(sql))
+
+    # 8. Update index in the 'nodes' table: drop old, add new
+    op.drop_index("top_level_metadata", table_name="nodes")
+    op.create_index(
+        "top_level_metadata",
+        "nodes",
+        ["parent", "time_created", "id", "metadata", "access_blob"],
+        postgresql_using="gin",
+    )
+
+    # 9. Drop the 'ancestors' column from the 'nodes' table
+    op.drop_column("nodes", "ancestors")
+
+
+def downgrade():
+    pass

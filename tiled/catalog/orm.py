@@ -297,6 +297,7 @@ def create_index_metadata_tsvector_search(target, connection, **kw):
 @event.listens_for(NodesClosure.__table__, "after_create")
 def update_closure_table(target, connection, **kw):
     if connection.engine.dialect.name == "sqlite":
+        # Create a trigger to update the closure table when INSERTING a new node
         connection.execute(
             text(
                 """
@@ -312,6 +313,8 @@ BEGIN
 END"""
             )
         )
+
+        # Create a trigger to update the closure table when DELETING a node
         connection.execute(
             text(
                 """
@@ -328,7 +331,7 @@ END"""
         )
 
     elif connection.engine.dialect.name == "postgresql":
-        # Create function and trigger for insert
+        # Create function and trigger to update the closure table when INSERTING a new node
         connection.execute(
             text(
                 """
@@ -359,7 +362,7 @@ END"""
             )
         )
 
-        # Create function and trigger for delete
+        # Create function and trigger to update the closure table when DELETING a node
         connection.execute(
             text(
                 """
@@ -391,7 +394,7 @@ END"""
             )
         )
 
-    # Create the root node
+    # Create the root node (in nodes and, automatically, in nodes_closure) when initializing the database.
     connection.execute(
         text(
             """
@@ -400,15 +403,6 @@ SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
 """
         )
     )
-
-
-#     connection.execute(
-#         text(
-#             """
-# INSERT INTO nodes_closure(ancestor, descendant, depth) SELECT 0, 0, 0;
-# """
-#         )
-#     )
 
 
 class FTS5Table(Table):
