@@ -204,6 +204,108 @@ def upgrade():
     # 9. Drop the 'ancestors' column from the 'nodes' table
     op.drop_column("nodes", "ancestors")
 
+    # 10. Add triggers to maintain the closure table
+    if connection.engine.dialect.name == "sqlite":
+        # Create a trigger to update the closure table when INSERTING a new node
+        connection.execute(
+            sa.text(
+                """
+CREATE TRIGGER update_closure_table_when_inserting
+AFTER INSERT ON nodes
+BEGIN
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    SELECT NEW.id, NEW.id, 0;
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    SELECT p.ancestor, c.descendant, p.depth+c.depth+1
+    FROM nodes_closure p, nodes_closure c
+    WHERE p.descendant=NEW.parent and c.ancestor=NEW.id;
+END"""
+            )
+        )
+
+        # Create a trigger to update the closure table when DELETING a node
+        connection.execute(
+            sa.text(
+                """
+CREATE TRIGGER update_closure_table_when_deleting
+BEFORE DELETE ON nodes
+BEGIN
+    DELETE FROM nodes_closure
+    WHERE (ancestor, descendant) IN (
+    SELECT p.ancestor, c.descendant
+    FROM nodes_closure p, nodes_closure c
+    WHERE (p.descendant=OLD.parent OR p.descendant=OLD.id) AND c.ancestor=OLD.id);
+END"""
+            )
+        )
+
+    elif connection.engine.dialect.name == "postgresql":
+        # Create function and trigger to update the closure table when INSERTING a new node
+        connection.execute(
+            sa.text(
+                """
+CREATE OR REPLACE FUNCTION update_closure_table_when_inserting()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    VALUES (NEW.id, NEW.id, 0);
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    SELECT p.ancestor, c.descendant, p.depth + c.depth + 1
+    FROM nodes_closure p, nodes_closure c
+    WHERE p.descendant = NEW.parent AND c.ancestor = NEW.id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+"""
+            )
+        )
+
+        connection.execute(
+            sa.text(
+                """
+CREATE TRIGGER update_closure_table_when_inserting
+AFTER INSERT ON nodes
+FOR EACH ROW
+EXECUTE FUNCTION update_closure_table_when_inserting();
+"""
+            )
+        )
+
+        # Create function and trigger to update the closure table when DELETING a node
+        connection.execute(
+            sa.text(
+                """
+CREATE OR REPLACE FUNCTION update_closure_table_when_deleting()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM nodes_closure
+    WHERE (ancestor, descendant) IN (
+        SELECT p.ancestor, c.descendant
+        FROM nodes_closure p, nodes_closure c
+        WHERE (p.descendant = OLD.parent OR p.descendant = OLD.id)
+        AND c.ancestor = OLD.id
+    );
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+"""
+            )
+        )
+
+        connection.execute(
+            sa.text(
+                """
+CREATE TRIGGER update_closure_table_when_deleting
+BEFORE DELETE ON nodes
+FOR EACH ROW
+EXECUTE FUNCTION update_closure_table_when_deleting();
+"""
+            )
+        )
+
 
 def downgrade():
-    pass
+    # Downgrade is not implemented for this migration.
+    raise NotImplementedError(
+        "Downgrade is not implemented for the closure table migration."
+    )

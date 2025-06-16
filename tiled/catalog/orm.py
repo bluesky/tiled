@@ -335,30 +335,30 @@ END"""
         connection.execute(
             text(
                 """
-        CREATE OR REPLACE FUNCTION update_closure_table_when_inserting()
-        RETURNS TRIGGER AS $$
-        BEGIN
-            INSERT INTO nodes_closure(ancestor, descendant, depth)
-            VALUES (NEW.id, NEW.id, 0);
-            INSERT INTO nodes_closure(ancestor, descendant, depth)
-            SELECT p.ancestor, c.descendant, p.depth + c.depth + 1
-            FROM nodes_closure p, nodes_closure c
-            WHERE p.descendant = NEW.parent AND c.ancestor = NEW.id;
-            RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
-        """
+CREATE OR REPLACE FUNCTION update_closure_table_when_inserting()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    VALUES (NEW.id, NEW.id, 0);
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    SELECT p.ancestor, c.descendant, p.depth + c.depth + 1
+    FROM nodes_closure p, nodes_closure c
+    WHERE p.descendant = NEW.parent AND c.ancestor = NEW.id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+"""
             )
         )
 
         connection.execute(
             text(
                 """
-        CREATE TRIGGER update_closure_table_when_inserting
-        AFTER INSERT ON nodes
-        FOR EACH ROW
-        EXECUTE FUNCTION update_closure_table_when_inserting();
-        """
+CREATE TRIGGER update_closure_table_when_inserting
+AFTER INSERT ON nodes
+FOR EACH ROW
+EXECUTE FUNCTION update_closure_table_when_inserting();
+"""
             )
         )
 
@@ -366,31 +366,31 @@ END"""
         connection.execute(
             text(
                 """
-        CREATE OR REPLACE FUNCTION update_closure_table_when_deleting()
-        RETURNS TRIGGER AS $$
-        BEGIN
-            DELETE FROM nodes_closure
-            WHERE (ancestor, descendant) IN (
-                SELECT p.ancestor, c.descendant
-                FROM nodes_closure p, nodes_closure c
-                WHERE (p.descendant = OLD.parent OR p.descendant = OLD.id)
-                AND c.ancestor = OLD.id
-            );
-            RETURN OLD;
-        END;
-        $$ LANGUAGE plpgsql;
-        """
+CREATE OR REPLACE FUNCTION update_closure_table_when_deleting()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM nodes_closure
+    WHERE (ancestor, descendant) IN (
+        SELECT p.ancestor, c.descendant
+        FROM nodes_closure p, nodes_closure c
+        WHERE (p.descendant = OLD.parent OR p.descendant = OLD.id)
+        AND c.ancestor = OLD.id
+    );
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+"""
             )
         )
 
         connection.execute(
             text(
                 """
-        CREATE TRIGGER update_closure_table_when_deleting
-        BEFORE DELETE ON nodes
-        FOR EACH ROW
-        EXECUTE FUNCTION update_closure_table_when_deleting();
-        """
+CREATE TRIGGER update_closure_table_when_deleting
+BEFORE DELETE ON nodes
+FOR EACH ROW
+EXECUTE FUNCTION update_closure_table_when_deleting();
+"""
             )
         )
 
