@@ -9,8 +9,9 @@ docs/source/reference/generated/
 /build
 /dist
 /tiled.egg-info
+/node_modules
+test-results/
 /web-frontend/dist
-
 /web-frontend/node_modules
 
 # pytest
