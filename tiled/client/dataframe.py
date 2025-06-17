@@ -138,7 +138,7 @@ class _DaskDataFrameClient(BaseClient):
                             params=params,
                         )
                     ).read()
-        return deserialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, content)
+        return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):
         """
