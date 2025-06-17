@@ -1,11 +1,12 @@
 import * as React from "react";
-
 import {
   DataGrid,
   GridRowParams,
   GridToolbarColumnsButton,
   GridToolbarContainer,
   GridToolbarDensitySelector,
+  
+
 } from "@mui/x-data-grid";
 
 import Box from "@mui/material/Box";
@@ -36,10 +37,9 @@ const DEFAULT_PAGE_SIZE = 10;
 
 function CustomToolbar() {
   return (
-    // working around https://github.com/mui/mui-x/issues/2383
     <GridToolbarContainer>
-      <GridToolbarColumnsButton {...({} as any)} />
-      <GridToolbarDensitySelector {...({} as any)} />
+      <GridToolbarColumnsButton />
+      <GridToolbarDensitySelector />
     </GridToolbarContainer>
   );
 }
@@ -75,7 +75,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
     }
   );
   type IdToAncestors = { [key: string]: string[] };
-  var idsToAncestors: IdToAncestors = {};
+  const idsToAncestors: IdToAncestors = {};
   props.items.map(
     (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
       idsToAncestors[item.id as string] = item.attributes.ancestors;
@@ -88,10 +88,9 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
         <DataGrid
           rows={rows}
           columns={gridColumns}
-          pagination
-          pageSize={pageSize}
-          rowsPerPageOptions={[10, 30, 100]}
-          onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
+          paginationModel={{pageSize, page:0}}
+          pageSizeOptions={[10, 30, 100]}
+          
           onRowClick={(params: GridRowParams) => {
             navigate(
               `/browse${idsToAncestors[params.id]
@@ -101,8 +100,8 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
                 .join("")}/${params.id}`
             );
           }}
-          components={{
-            Toolbar: CustomToolbar,
+          slots={{
+            toolbar: CustomToolbar,
           }}
           disableColumnFilter
           autoHeight

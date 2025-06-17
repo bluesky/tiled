@@ -17,7 +17,7 @@ export default defineConfig({
     plugins: [
         viteRequire(),
         react({
-            jsxRuntime: "classic",
+            jsxRuntime: "automatic",
             babel: {
                 plugins: []
             }

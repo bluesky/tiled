@@ -1,7 +1,5 @@
 import * as React from "react";
-
 import { Download, Format } from "./download-core";
-
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -98,7 +96,7 @@ function Examples() {
 const DownloadArray: React.FunctionComponent<DownloadArrayProps> = (props) => {
   const [format, setFormat] = useState<Format>();
   const [slice, setSlice] = useState<string>("");
-  var link: string;
+  let link: string;
   if (format !== undefined) {
     link = `${props.link}?format=${format.mimetype}`;
     if (slice) {
@@ -112,7 +110,7 @@ const DownloadArray: React.FunctionComponent<DownloadArrayProps> = (props) => {
     // Strip any spaces.
     // The server rejects them as invalid characters, but we will
     // tolerate them as input for readability.
-    setSlice(event.target.value.replaceAll(" ", ""));
+    setSlice(event.target.value.replace(/ /g, ""));
   };
 
   return (

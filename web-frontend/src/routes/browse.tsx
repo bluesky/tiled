@@ -1,8 +1,5 @@
-import * as React from "react";
-
 import { Suspense, lazy } from "react";
 import { useContext, useEffect, useState } from "react";
-
 import Box from "@mui/material/Box";
 import ErrorBoundary from "../components/error-boundary";
 import NodeBreadcrumbs from "../components/node-breadcrumbs";

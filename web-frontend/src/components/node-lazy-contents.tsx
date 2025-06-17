@@ -7,7 +7,6 @@ import {
   GridToolbarDensitySelector,
 } from "@mui/x-data-grid";
 import { useContext, useEffect, useState } from "react";
-
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import { components } from "../openapi_schemas";
@@ -23,10 +22,9 @@ interface Column {
 
 function CustomToolbar() {
   return (
-    // working around https://github.com/mui/mui-x/issues/2383
     <GridToolbarContainer>
-      <GridToolbarColumnsButton {...({} as any)} />
-      <GridToolbarDensitySelector {...({} as any)} />
+      <GridToolbarColumnsButton/>
+      <GridToolbarDensitySelector/>
     </GridToolbarContainer>
   );
 }
@@ -83,8 +81,8 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     async function loadItems(): Promise<
       components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
     > {
-      var selectMetadata: string | null;
-      var fields: string[];
+      let selectMetadata: string | null;
+      let fields: string[];
       const controller = new AbortController();
       if (props.columns.length === 0) {
         // No configuration on which columns to show. Fetch only the ID.
@@ -164,11 +162,10 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           rowCount={rowCount}
           {...rowsState}
           paginationMode="server"
-          rowsPerPageOptions={[10, 30, 100]}
-          onPageChange={(page) => setRowsState((prev) => ({ ...prev, page }))}
-          onPageSizeChange={(pageSize) => {
-            setRowsState((prev) => ({ ...prev, pageSize }));
-          }}
+          pageSizeOptions={[10, 30, 100]}
+          onPaginationModelChange={({page, pageSize,}: { page: number; pageSize: number }) => {
+            setRowsState((prev) => ({ ...prev, page, pageSize }));
+    }}
           onRowClick={(params: GridRowParams) => {
             navigate(
               `/browse${idsToAncestors[params.id]
@@ -178,8 +175,8 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
                 .join("")}/${params.id}`
             );
           }}
-          components={{
-            Toolbar: CustomToolbar,
+          slots={{
+            toolbar: CustomToolbar,
           }}
           disableColumnFilter
           autoHeight
