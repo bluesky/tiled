@@ -66,7 +66,7 @@ if modules_available("pandas", "pyarrow"):
         "sparse",
         APACHE_ARROW_FILE_MIME_TYPE,
         lambda mimetype, sparse_arr, metadata: serialize_arrow(
-            to_dataframe(sparse_arr), metadata, preserve_index=False
+            mimetype, to_dataframe(sparse_arr), metadata, preserve_index=False
         ),
     )
     default_serialization_registry.register(
