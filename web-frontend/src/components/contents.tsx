@@ -5,7 +5,7 @@ import {
   GridToolbarColumnsButton,
   GridToolbarContainer,
   GridToolbarDensitySelector,
-  
+
 
 } from "@mui/x-data-grid";
 
@@ -90,7 +90,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
           columns={gridColumns}
           paginationModel={{pageSize, page:0}}
           pageSizeOptions={[10, 30, 100]}
-          
+
           onRowClick={(params: GridRowParams) => {
             navigate(
               `/browse${idsToAncestors[params.id]
