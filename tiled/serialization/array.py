@@ -42,12 +42,7 @@ def serialize_csv(mimetype, array, metadata):
     if array.ndim > 2:
         raise UnsupportedShape(array.shape)
     file = io.StringIO()
-    if ";" in mimetype:
-        opt_param = mimetype.split(";")[1:]
-        if "header" in opt_param and "present" in opt_param:
-            numpy.savetxt(file, array, fmt="%s", delimiter=",", header=str(metadata))
-        else:
-            numpy.savetxt(file, array, fmt="%s", delimiter=",")
+    numpy.savetxt(file, array, fmt="%s", delimiter=",")
     return file.getvalue().encode()
 
 
