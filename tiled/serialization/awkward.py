@@ -26,7 +26,7 @@ def to_zipped_buffers(mimetype, components, metadata):
 
 
 @default_deserialization_registry.register(StructureFamily.awkward, "application/zip")
-def from_zipped_buffers(mimetype, buffer, form, length):
+def from_zipped_buffers(buffer, form, length):
     file = io.BytesIO(buffer)
     with zipfile.ZipFile(file, "r") as zip:
         form_keys = zip.namelist()

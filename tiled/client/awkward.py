@@ -69,9 +69,7 @@ class AwkwardClient(BaseClient):
                         json=form_keys,
                     )
                 ).read()
-        container = from_zipped_buffers(
-            "application/zip", content, projected_form, structure.length
-        )
+        container = from_zipped_buffers(content, projected_form, structure.length)
         projected_array = awkward.from_buffers(
             projected_form, structure.length, container, allow_noncanonical_form=True
         )
