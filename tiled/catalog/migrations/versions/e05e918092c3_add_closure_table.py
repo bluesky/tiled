@@ -85,6 +85,8 @@ The `ancestors` column is removed, as it is no longer needed with the closure ta
 import sqlalchemy as sa
 from alembic import op
 
+from tiled.catalog.orm import JSONVariant
+
 # revision identifiers, used by Alembic.
 revision = "e05e918092c3"
 down_revision = "9331ed94d6ac"
@@ -172,7 +174,9 @@ def upgrade():
             if connection.engine.dialect.name == "postgresql"
             else f"parent.key = json_extract(child.ancestors, '$[{depth}]')"
         )
-        sql = f"""
+        connection.execute(
+            sa.text(
+                f"""
             UPDATE nodes AS child
             SET parent = parent.id
             FROM nodes AS parent
@@ -180,17 +184,21 @@ def upgrade():
             AND {condition_statement}
             AND parent.parent = child.parent
         """
-        connection.execute(sa.text(sql))
+            )
+        )
 
         # Populate the 'nodes_closure' table   (possibly use ON CONFLIST DO NOTHING ?)
-        sql = f"""
+        connection.execute(
+            sa.text(
+                f"""
             INSERT INTO nodes_closure (ancestor, descendant, depth)
             SELECT parent.id, child.id, {json_len_func}(child.ancestors) - {depth}
             FROM nodes AS child
             JOIN nodes AS parent ON parent.id = child.parent
             WHERE {json_len_func}(child.ancestors) >= {depth + 1};
         """
-        connection.execute(sa.text(sql))
+            )
+        )
 
     # 8. Update index in the 'nodes' table: drop old, add new
     op.drop_index("top_level_metadata", table_name="nodes")
@@ -305,7 +313,81 @@ EXECUTE FUNCTION update_closure_table_when_deleting();
 
 
 def downgrade():
-    # Downgrade is not implemented for this migration.
-    raise NotImplementedError(
-        "Downgrade is not implemented for the closure table migration."
+    connection = op.get_bind()
+
+    # 1. Drop triggers and functions for maintaining the closure table
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            sa.text("DROP TRIGGER IF EXISTS update_closure_table_when_inserting")
+        )
+        connection.execute(
+            sa.text("DROP TRIGGER IF EXISTS update_closure_table_when_deleting")
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            sa.text(
+                "DROP TRIGGER IF EXISTS update_closure_table_when_inserting ON nodes"
+            )
+        )
+        connection.execute(
+            sa.text(
+                "DROP TRIGGER IF EXISTS update_closure_table_when_deleting ON nodes"
+            )
+        )
+        connection.execute(
+            sa.text("DROP FUNCTION IF EXISTS update_closure_table_when_inserting")
+        )
+        connection.execute(
+            sa.text("DROP FUNCTION IF EXISTS update_closure_table_when_deleting")
+        )
+
+    # 2. Re-add the 'ancestors' column to the 'nodes' table
+    op.add_column("nodes", sa.Column("ancestors", JSONVariant, nullable=True))
+
+    # 3. Reconstruct 'ancestors' for each node from 'parent'. Skip the root node (id=0)
+    # In PostgreSQL, jsonb_agg does not support ORDER BY directly in SELECT.
+    # SQLite’s json_group_array only allows ORDER BY outside the function.
+    select_stmt = (
+        "SELECT jsonb_agg(n.key ORDER BY nc.depth DESC)"
+        if connection.engine.dialect.name == "postgresql"
+        else "SELECT json_group_array(n.key)"
     )
+    connection.execute(
+        sa.text(
+            f"""
+            UPDATE nodes
+            SET ancestors = COALESCE((
+                {select_stmt}
+                FROM nodes_closure nc
+                JOIN nodes n ON nc.ancestor = n.id
+                WHERE nc.descendant = nodes.id AND nc.depth > 0 AND nc.ancestor != 0
+                {"" if connection.engine.dialect.name == "postgresql" else "ORDER BY nc.depth DESC"}
+            ), '[]'{"::jsonb" if connection.engine.dialect.name == "postgresql" else ""})
+            WHERE id != 0;
+            """
+        )
+    )
+
+    # 4. Drop the closure table
+    op.drop_table("nodes_closure")
+
+    # 5. Restore the old index, drop the new one
+    op.drop_index("top_level_metadata", table_name="nodes")
+    op.create_index(
+        "top_level_metadata",
+        "nodes",
+        ["time_created", "id", "ancestors", "metadata", "access_blob"],
+        postgresql_using="gin",
+    )
+
+    # 6. Drop the 'parent' column and related foreign key/unique constraint
+    with op.batch_alter_table("nodes", schema=None) as batch_op:
+        batch_op.drop_constraint("fk_nodes_parent", type_="foreignkey")
+        batch_op.drop_constraint("key_parent_unique_constraint", type_="unique")
+        batch_op.create_unique_constraint(
+            "key_ancestors_unique_constraint", ["key", "ancestors"]
+        )
+        batch_op.drop_column("parent")
+
+    # 7. Remove the explicit root node from the 'nodes' table
+    connection.execute(sa.text("DELETE FROM nodes WHERE id = 0"))
