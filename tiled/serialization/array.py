@@ -62,9 +62,7 @@ default_serialization_registry.register(
 default_deserialization_registry.register(
     "array",
     "application/octet-stream",
-    lambda mimetype, buffer, dtype, shape: numpy.frombuffer(
-        buffer, dtype=dtype
-    ).reshape(shape),
+    lambda buffer, dtype, shape: numpy.frombuffer(buffer, dtype=dtype).reshape(shape),
 )
 if modules_available("PIL"):
 

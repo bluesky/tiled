@@ -61,7 +61,7 @@ class SparseClient(BaseClient):
                         params=params,
                     )
                 ).read()
-        df = deserialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, content)
+        df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
             sliced_shape = ndindex(slice).newshape(original_shape)
@@ -90,7 +90,7 @@ class SparseClient(BaseClient):
                         params=params,
                     )
                 ).read()
-        df = deserialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, content)
+        df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
             sliced_shape = ndindex(slice).newshape(original_shape)

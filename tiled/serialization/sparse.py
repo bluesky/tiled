@@ -60,7 +60,7 @@ if modules_available("pandas", "pyarrow"):
     default_deserialization_registry.register(
         "sparse",
         APACHE_ARROW_FILE_MIME_TYPE,
-        lambda mimetype, buffer: deserialize_arrow(buffer),
+        lambda buffer: deserialize_arrow(buffer),
     )
     default_serialization_registry.register(
         "sparse",

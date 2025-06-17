@@ -30,7 +30,7 @@ def serialize_arrow(mimetype, df, metadata, preserve_index=True):
 @default_deserialization_registry.register(
     StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE
 )
-def deserialize_arrow(mimetype, buffer):
+def deserialize_arrow(buffer):
     import pyarrow
 
     return pyarrow.ipc.open_file(buffer).read_pandas()
