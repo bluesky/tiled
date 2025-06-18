@@ -72,7 +72,9 @@ async def serialize_dataset_arrow(mimetype, node, metadata, filter_for_access):
 
 @default_serialization_registry.register("xarray_dataset", "application/x-parquet")
 async def serialize_dataset_parquet(mimetype, node, metadata, filter_for_access):
-    return serialize_parquet(mimetype, (await as_dataset(node)).to_dataframe(), metadata)
+    return serialize_parquet(
+        mimetype, (await as_dataset(node)).to_dataframe(), metadata
+    )
 
 
 @default_serialization_registry.register(
