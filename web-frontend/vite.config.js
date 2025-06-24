@@ -3,8 +3,10 @@ import react from "@vitejs/plugin-react";
 import { viteRequire } from "vite-require";
 import { webcrypto as crypto } from "crypto";
 
-if (!globalThis.crypto) {
-  globalThis.crypto = crypto;
+// vite.config.js
+if (!global.crypto) {
+  global.crypto = require('crypto');
+  global.crypto.getRandomValues = (arr) => require('crypto').randomFillSync(arr);
 }
 
 export default defineConfig({
