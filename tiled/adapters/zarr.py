@@ -20,15 +20,19 @@ from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
+import sys
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
+def check_python_version():
+    if sys.version_info < (3, 11):
+        raise NotImplementedError("Python 3.11 or higher is required to use Zarr within Tiled.")
 
 class ZarrArrayAdapter(ArrayAdapter):
     """ """
 
     supported_storage = {FileStorage}
-
+    check_python_version()
     @classmethod
     def init_storage(
         cls,
@@ -225,7 +229,7 @@ class ZarrGroupAdapter(
     """ """
 
     structure_family = StructureFamily.container
-
+    check_python_version()
     def __init__(
         self,
         node: Any,
