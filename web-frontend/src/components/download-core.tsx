@@ -83,7 +83,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
                 >
                   {format.display_name as string}
                 </MenuItem>
-              )
+              );
             })}
           </Select>
         </FormControl>

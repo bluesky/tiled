@@ -59,7 +59,7 @@ const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
   useEffect(() => {
     const controller = new AbortController();
     async function loadData() {
-      var response = await axiosInstance.get(
+      const response = await axiosInstance.get(
         `${props.link}?format=application/json&slice=${props.range[0]}:${props.range[1]}`,
         { signal: controller.signal }
       );
