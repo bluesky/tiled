@@ -1,7 +1,7 @@
 import axios from "axios";
 import { components } from "./openapi_schemas";
 
-var axiosInstance = axios.create();
+const axiosInstance = axios.create();
 
 export const search = async (
   apiURL: string,
@@ -35,7 +35,9 @@ export const metadata = async (
   components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
 > => {
   const response = await axiosInstance.get(
-    `${apiURL}/metadata/${segments.join("/")}?fields=${fields.join("&fields=")}`,
+    `${apiURL}/metadata/${segments.join("/")}?fields=${fields.join(
+      "&fields="
+    )}`,
     { signal: signal }
   );
   return response.data;

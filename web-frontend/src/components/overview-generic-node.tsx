@@ -19,8 +19,8 @@ const NodeOverview: React.FunctionComponent<IProps> = (props) => {
   const spec = specs.find((spec: Spec) =>
     props.item.data!.attributes!.specs.includes(spec.spec)
   );
-  var columns: Column[];
-  var defaultColumns: string[];
+  let columns: Column[];
+  let defaultColumns: string[];
   if (spec === undefined) {
     columns = [];
     defaultColumns = ["id"];

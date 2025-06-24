@@ -29,7 +29,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const theme = useTheme();
   const sm = useMediaQuery(theme.breakpoints.down("sm"));
   const md = useMediaQuery(theme.breakpoints.down("md"));
-  var maxImageSize: number;
+  let maxImageSize: number;
   if (sm) {
     maxImageSize = theme.breakpoints.values.sm;
   } else if (md) {
@@ -97,7 +97,7 @@ interface ImageDisplayProps {
 }
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
-  var url: string;
+  let url: string;
   url = `${props.link}?format=image/png&slice=${props.cuts.join(",")}`;
   if (props.stride !== 1) {
     // Downsample the image dimensions.

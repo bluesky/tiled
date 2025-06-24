@@ -204,7 +204,7 @@ export interface components {
     };
     /** Structure */
     Structure: {
-      [key: string]: unknown
+      [key: string]: unknown;
     };
     /**
      * StructureFamilies
