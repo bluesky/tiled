@@ -65,7 +65,7 @@ class Node(Timestamped, Base):
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     parent = Column(
-        Integer, ForeignKey("nodes.id", name="fk_nodes_parent"), nullable=True
+        Integer, ForeignKey("nodes.id", name="fk_nodes_parent", ondelete="CASCADE"), nullable=True
     )
 
     key = Column(Unicode(1023), nullable=False)
@@ -114,14 +114,16 @@ class NodesClosure(Base):
 
     __tablename__ = "nodes_closure"
 
-    ancestor = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
-    descendant = Column(Integer, ForeignKey("nodes.id"), primary_key=True)
+    ancestor = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True)
+    descendant = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True)
     depth = Column(Integer, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
             "ancestor", "descendant", name="ancestor_descendant_unique_constraint"
         ),
+        Index("idx_nodes_closure_ancestor", "ancestor"),
+        Index("idx_nodes_closure_descendant", "descendant"),
     )
 
 
@@ -316,22 +318,6 @@ END"""
             )
         )
 
-        # Create a trigger to update the closure table when DELETING a node
-        connection.execute(
-            text(
-                """
-CREATE TRIGGER update_closure_table_when_deleting
-BEFORE DELETE ON nodes
-BEGIN
-    DELETE FROM nodes_closure
-    WHERE (ancestor, descendant) IN (
-    SELECT p.ancestor, c.descendant
-    FROM nodes_closure p, nodes_closure c
-    WHERE (p.descendant=OLD.parent OR p.descendant=OLD.id) AND c.ancestor=OLD.id);
-END"""
-            )
-        )
-
     elif connection.engine.dialect.name == "postgresql":
         # Create function and trigger to update the closure table when INSERTING a new node
         connection.execute(
@@ -360,38 +346,6 @@ CREATE TRIGGER update_closure_table_when_inserting
 AFTER INSERT ON nodes
 FOR EACH ROW
 EXECUTE FUNCTION update_closure_table_when_inserting();
-"""
-            )
-        )
-
-        # Create function and trigger to update the closure table when DELETING a node
-        connection.execute(
-            text(
-                """
-CREATE OR REPLACE FUNCTION update_closure_table_when_deleting()
-RETURNS TRIGGER AS $$
-BEGIN
-    DELETE FROM nodes_closure
-    WHERE (ancestor, descendant) IN (
-        SELECT p.ancestor, c.descendant
-        FROM nodes_closure p, nodes_closure c
-        WHERE (p.descendant = OLD.parent OR p.descendant = OLD.id)
-        AND c.ancestor = OLD.id
-    );
-    RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-"""
-            )
-        )
-
-        connection.execute(
-            text(
-                """
-CREATE TRIGGER update_closure_table_when_deleting
-BEFORE DELETE ON nodes
-FOR EACH ROW
-EXECUTE FUNCTION update_closure_table_when_deleting();
 """
             )
         )
