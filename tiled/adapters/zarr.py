@@ -6,7 +6,6 @@ from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
 import zarr.core
-import zarr.hierarchy
 import zarr.storage
 from numpy._typing import NDArray
 
@@ -21,15 +20,19 @@ from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
+import sys
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
+def check_python_version():
+    if sys.version_info < (3, 11):
+        raise NotImplementedError("Python 3.11 or higher is required to use Zarr within Tiled.")
 
 class ZarrArrayAdapter(ArrayAdapter):
     """ """
 
     supported_storage = {FileStorage}
-
+    check_python_version()
     @classmethod
     def init_storage(
         cls,
@@ -58,8 +61,8 @@ class ZarrArrayAdapter(ArrayAdapter):
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        store = zarr.storage.DirectoryStore(str(directory))
-        zarr.storage.init_array(
+        store = zarr.storage.LocalStore(str(directory))
+        zarr.create_array(
             store,
             shape=shape,
             chunks=zarr_chunks,
@@ -226,7 +229,7 @@ class ZarrGroupAdapter(
     """ """
 
     structure_family = StructureFamily.container
-
+    check_python_version()
     def __init__(
         self,
         node: Any,
@@ -267,7 +270,7 @@ class ZarrGroupAdapter(
 
     def __getitem__(self, key: str) -> Union[ArrayAdapter, "ZarrGroupAdapter"]:
         value = self._node[key]
-        if isinstance(value, zarr.hierarchy.Group):
+        if isinstance(value, zarr.Group):
             return ZarrGroupAdapter(value)
         else:
             return ZarrArrayAdapter.from_array(value)
@@ -394,7 +397,7 @@ class ZarrAdapter:
         cls, data_uri: str, **kwargs: Optional[Any]
     ) -> Union[ZarrArrayAdapter, ZarrGroupAdapter]:
         zarr_obj = zarr.open(path_from_uri(data_uri))  # Group or Array
-        if isinstance(zarr_obj, zarr.hierarchy.Group):
+        if isinstance(zarr_obj, zarr.Group):
             return ZarrGroupAdapter(zarr_obj, **kwargs)
         else:
             structure = ArrayStructure.from_array(zarr_obj)

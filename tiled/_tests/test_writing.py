@@ -3,7 +3,9 @@ This tests tiled's writing routes with an in-memory store.
 
 Persistent stores are being developed externally to the tiled package.
 """
+
 import base64
+import sys
 from datetime import datetime
 
 import awkward
@@ -39,6 +41,11 @@ from .utils import fail_with_status_code
 validation_registry = ValidationRegistry()
 validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
+# Zarr 3 requires Python 3.11 or higher
+req_zarr3 = pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="requires python3.11 or higher"
+)
+
 
 @pytest.fixture
 def tree(tmpdir):
@@ -50,6 +57,7 @@ def tree(tmpdir):
     )
 
 
+@req_zarr3
 def test_write_array_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -74,6 +82,7 @@ def test_write_array_full(tree):
         assert result.specs == specs
 
 
+@req_zarr3
 def test_write_large_array_full(tree):
     "Test that a large array is chunked"
     with Context.from_app(
@@ -104,6 +113,7 @@ def test_write_large_array_full(tree):
             client._SUGGESTED_MAX_UPLOAD_SIZE = original
 
 
+@req_zarr3
 def test_write_array_chunked(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -128,6 +138,7 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
+@req_zarr3
 def test_extend_array(tree):
     "Extend an array with additional data, expanding its shape."
     with Context.from_app(
@@ -341,6 +352,7 @@ def test_write_sparse_chunked(tree):
         assert result.specs == specs
 
 
+@req_zarr3
 def test_limits(tree):
     "Test various limits on uploaded metadata."
 
@@ -387,6 +399,7 @@ def test_limits(tree):
             x.update_metadata(specs=too_many_chars)
 
 
+@req_zarr3
 def test_metadata_revisions(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
@@ -406,6 +419,7 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+@req_zarr3
 def test_drop_revision(tree):
     key = "test_drop_revision"
     with Context.from_app(build_app(tree)) as context:
@@ -423,6 +437,7 @@ def test_drop_revision(tree):
         assert len(ac.metadata_revisions) == 0
 
 
+@req_zarr3
 def test_merge_patching(tree):
     "Test merge patching of metadata and specs"
     with Context.from_app(build_app(tree)) as context:
@@ -439,6 +454,7 @@ def test_merge_patching(tree):
         assert [x.name for x in ac.specs] == ["spec2"]
 
 
+@req_zarr3
 def test_json_patching(tree):
     "Test json patching of metadata and specs"
 
@@ -468,6 +484,7 @@ def test_json_patching(tree):
         assert [x.name for x in ac.specs] == ["spec1", "spec2"]
 
 
+@req_zarr3
 def test_metadata_with_unsafe_objects(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
@@ -480,6 +497,7 @@ def test_metadata_with_unsafe_objects(tree):
         assert ac.metadata == client["x"].metadata
 
 
+@req_zarr3
 @pytest.mark.asyncio
 async def test_delete(tree):
     with Context.from_app(build_app(tree)) as context:
@@ -555,6 +573,7 @@ async def test_delete_non_empty_node(tree):
         client.delete("a")
 
 
+@req_zarr3
 @pytest.mark.asyncio
 async def test_write_in_container(tree):
     "Create a container and write a structure into it."
@@ -609,6 +628,7 @@ async def test_bytes_in_metadata(tree):
         assert base64.b64decode(encoded) == b"raw_bytes"
 
 
+@req_zarr3
 @pytest.mark.asyncio
 async def test_container_export(tree, buffer):
     with Context.from_app(build_app(tree)) as context:
@@ -748,6 +768,7 @@ def test_composite_one_table(tree):
         assert len(client["x"].parts) == 1
 
 
+@req_zarr3
 def test_composite_two_tables(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
@@ -781,7 +802,7 @@ def test_composite_two_tables_colliding_keys(tree):
         with fail_with_status_code(HTTP_409_CONFLICT):
             x.write_dataframe(df2, key="table2")
 
-
+@req_zarr3
 def test_composite_two_tables_two_arrays(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
@@ -808,6 +829,7 @@ def test_composite_two_tables_two_arrays(tree):
             x[column].read()
 
 
+@req_zarr3
 def test_composite_table_column_array_key_collision(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
