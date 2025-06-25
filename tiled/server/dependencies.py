@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 from typing import List, Optional, Union
+=======
+from typing import Optional, Union, Tuple
+>>>>>>> 0a23da2b (Refactored get_entry() to not use dependencies)
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
@@ -79,7 +83,12 @@ async def get_entry(
                 principal,
                 authn_scopes,
                 ["read:metadata"],
+<<<<<<< HEAD
                 metrics,
+=======
+                metrics
+                # request.state.metrics,
+>>>>>>> 0a23da2b (Refactored get_entry() to not use dependencies)
             )
 
         # Now check that we have the requested scope according to the access policy
@@ -90,7 +99,11 @@ async def get_entry(
                     principal,
                     authn_scopes,
                 )
+<<<<<<< HEAD
                 if not set(security_scopes).issubset(allowed_scopes):
+=======
+                if not set(security_scopes.scopes).issubset(allowed_scopes):
+>>>>>>> 0a23da2b (Refactored get_entry() to not use dependencies)
                     if "read:metadata" not in allowed_scopes:
                         # If you can't read metadata, it does not exist for you.
                         raise NoEntry(path_parts)
@@ -101,7 +114,11 @@ async def get_entry(
                             status_code=HTTP_403_FORBIDDEN,
                             detail=(
                                 "Not enough permissions to perform this action on this node. "
+<<<<<<< HEAD
                                 f"Requires scopes {security_scopes}. "
+=======
+                                f"Requires scopes {security_scopes.scopes}. "
+>>>>>>> 0a23da2b (Refactored get_entry() to not use dependencies)
                                 f"Principal had scopes {list(allowed_scopes)} on this node."
                             ),
                         )
@@ -112,8 +129,15 @@ async def get_entry(
             status_code=HTTP_404_NOT_FOUND, detail=f"No such entry: {path_parts}"
         )
     # Fast path for the common successful case
+<<<<<<< HEAD
     if (structure_families is None) or (entry.structure_family in structure_families):
         return entry
+=======
+    if (structure_families is None) or (
+        entry.structure_family in structure_families
+    ):
+        return entry, metrics
+>>>>>>> 0a23da2b (Refactored get_entry() to not use dependencies)
     raise HTTPException(
         status_code=HTTP_404_NOT_FOUND,
         detail=(
@@ -122,6 +146,10 @@ async def get_entry(
             f"{structure_families}"
         ),
     )
+<<<<<<< HEAD
+=======
+
+>>>>>>> 0a23da2b (Refactored get_entry() to not use dependencies)
 
 
 def block(
