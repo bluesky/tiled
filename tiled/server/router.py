@@ -12,8 +12,8 @@ from typing import Callable, List, Optional, TypeVar, Union
 import anyio
 import packaging
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security, WebSocket
-from jmespath.exceptions import JMESPathError
 import pydantic_settings
+from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
 from starlette.status import (
@@ -49,7 +49,12 @@ from ..utils import (
 )
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from .authentication import check_scopes, get_current_principal, get_current_scopes, get_session_state
+from .authentication import (
+    check_scopes,
+    get_current_principal,
+    get_current_scopes,
+    get_session_state,
+)
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -65,7 +70,14 @@ from .core import (
     json_or_msgpack,
     resolve_media_type,
 )
-from .dependencies import block, expected_shape, get_entry, get_root_tree, offset_param, shape_param
+from .dependencies import (
+    block,
+    expected_shape,
+    get_entry,
+    get_root_tree,
+    offset_param,
+    shape_param,
+)
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
 from .settings import Settings, get_settings
@@ -275,9 +287,15 @@ def get_router(
         _=Security(check_scopes),
         **filters,
     ):
-        entry, metrics = await get_entry(path, ["read:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["read:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         request.state.endpoint = "search"
         if entry.structure_family not in {
@@ -357,9 +375,15 @@ def get_router(
         _=Security(check_scopes),
         **filters,
     ):
-        entry, metrics = await get_entry(path, ["read:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["read:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if hasattr(entry, "get_distinct"):
             filtered = await apply_search(entry, filters, query_registry)
@@ -399,9 +423,15 @@ def get_router(
         _=Security(check_scopes),
     ):
         """Fetch the metadata and structure information for one entry"""
-        entry, metrics = await get_entry(path, ["read:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["read:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         request.state.endpoint = "metadata"
         base_url = get_base_url(request)
@@ -454,9 +484,15 @@ def get_router(
         """
         Fetch a chunk of array-like data.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal, authn_scopes,
-                                        root_tree, session_state,
-                                        {StructureFamily.array, StructureFamily.sparse})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.array, StructureFamily.sparse},
+        )
         request.state.metrics = metrics
         shape = entry.structure().shape
         # Check that block dimensionality matches array dimensionality.
@@ -536,9 +572,15 @@ def get_router(
         """
         Fetch a slice of array-like data.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal, authn_scopes,
-                                root_tree, session_state,
-                                {StructureFamily.array, StructureFamily.sparse})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.array, StructureFamily.sparse},
+        )
         request.state.metrics = metrics
         structure_family = entry.structure_family
         # Deferred import because this is not a required dependency of the server
@@ -684,9 +726,15 @@ def get_router(
         """
         Fetch a partition (continuous block of rows) from a DataFrame [GET route].
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal, authn_scopes,
-                                root_tree, session_state,
-                                {StructureFamily.table})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.table},
+        )
         request.state.metrics = metrics
         if (field is not None) and (column is not None):
             redundant_field_and_column = " ".join(
@@ -739,9 +787,15 @@ def get_router(
         """
         Fetch a partition (continuous block of rows) from a DataFrame [POST route].
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal, authn_scopes,
-                                root_tree, session_state,
-                                {StructureFamily.table})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.table},
+        )
         request.state.metrics = metrics
         return await table_partition(
             request=request,
@@ -825,9 +879,15 @@ def get_router(
         """
         Fetch the data for the given table [GET route].
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.table})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.table},
+        )
         request.state.metrics = metrics
         return await table_full(
             request=request,
@@ -859,9 +919,15 @@ def get_router(
         """
         Fetch the data for the given table [POST route].
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.table})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.table},
+        )
         request.state.metrics = metrics
         return await table_full(
             request=request,
@@ -939,9 +1005,15 @@ def get_router(
         """
         Fetch the data for the given container via a GET request.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.container, StructureFamily.composite})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.container, StructureFamily.composite},
+        )
         request.state.metrics = metrics
         return await container_full(
             request=request,
@@ -975,9 +1047,15 @@ def get_router(
         """
         Fetch the data for the given container via a POST request.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.container, StructureFamily.composite})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.container, StructureFamily.composite},
+        )
         request.state.metrics = metrics
         return await container_full(
             request=request,
@@ -1059,11 +1137,19 @@ def get_router(
         """
         Fetch the data below the given node.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.table,
-                                         StructureFamily.container,
-                                         StructureFamily.composite})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {
+                StructureFamily.table,
+                StructureFamily.container,
+                StructureFamily.composite,
+            },
+        )
         request.state.metrics = metrics
         try:
             with record_timing(request.state.metrics, "read"):
@@ -1144,9 +1230,15 @@ def get_router(
         one, but this is a pragmatic measure.) For requests with large numbers of
         form_key parameters, POST may be the only option.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.awkward})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.awkward},
+        )
         request.state.metrics = metrics
         return await _awkward_buffers(
             request=request,
@@ -1185,9 +1277,15 @@ def get_router(
         one, but this is a pragmatic measure.) For requests with large numbers of
         form_key parameters, POST may be the only option.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.awkward})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.awkward},
+        )
         request.state.metrics = metrics
         return await _awkward_buffers(
             request=request,
@@ -1260,9 +1358,15 @@ def get_router(
         """
         Fetch a slice of AwkwardArray data.
         """
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.awkward})
+        entry, metrics = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.awkward},
+        )
         request.state.metrics = metrics
         structure_family = entry.structure_family
         # Deferred import because this is not a required dependency of the server
@@ -1312,9 +1416,15 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:metadata", "create"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:metadata", "create"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         for data_source in body.data_sources:
             if data_source.assets:
@@ -1351,9 +1461,15 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:metadata", "create", "register"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:metadata", "create", "register"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         return await _create_node(
             request=request,
@@ -1449,9 +1565,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:metadata", "register"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:metadata", "register"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         await entry.put_data_source(data_source=body.data_source)
 
@@ -1465,9 +1587,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data", "write:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:data", "write:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if hasattr(entry, "delete"):
             await entry.delete()
@@ -1488,9 +1616,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data", "write:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:data", "write:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if hasattr(entry, "delete_tree"):
             await entry.delete_tree()
@@ -1511,9 +1645,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.array, StructureFamily.sparse})
+        entry, metrics = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.array, StructureFamily.sparse},
+        )
         request.state.metrics = metrics
         body = await request.body()
         if not hasattr(entry, "write"):
@@ -1546,9 +1686,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.array, StructureFamily.sparse})
+        entry, metrics = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.array, StructureFamily.sparse},
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "write_block"):
             raise HTTPException(
@@ -1587,9 +1733,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.array})
+        entry, metrics = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.array},
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "patch"):
             raise HTTPException(
@@ -1616,9 +1768,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.table})
+        entry, metrics = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.table},
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "write"):
             raise HTTPException(
@@ -1645,9 +1803,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "write_partition"):
             raise HTTPException(
@@ -1674,9 +1838,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "write_partition"):
             raise HTTPException(
@@ -1702,9 +1872,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         {StructureFamily.awkward})
+        entry, metrics = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            {StructureFamily.awkward},
+        )
         request.state.metrics = metrics
         body = await request.body()
         if not hasattr(entry, "write"):
@@ -1738,9 +1914,15 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1848,9 +2030,15 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "replace_metadata"):
             raise HTTPException(
@@ -1922,9 +2110,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["read:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["read:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "revisions"):
             raise HTTPException(
@@ -1955,9 +2149,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["write:metadata"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)
+        entry, metrics = await get_entry(
+            path,
+            ["write:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            None,
+        )
         request.state.metrics = metrics
         if not hasattr(entry, "revisions"):
             raise HTTPException(
@@ -1986,9 +2186,9 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None)# TODO: Separate scope for assets?
+        entry, metrics = await get_entry(
+            path, ["read:data"], principal, authn_scopes, root_tree, session_state, None
+        )  # TODO: Separate scope for assets?
         request.state.metrics = metrics
         if not settings.expose_raw_assets:
             raise HTTPException(
@@ -2091,9 +2291,9 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes),
     ):
-        entry, metrics = await get_entry(path, ["read:data"], principal,
-                                         authn_scopes, root_tree, session_state,
-                                         None) # TODO: Separate scope for assets?
+        entry, metrics = await get_entry(
+            path, ["read:data"], principal, authn_scopes, root_tree, session_state, None
+        )  # TODO: Separate scope for assets?
         request.state.metrics = metrics
         if not settings.expose_raw_assets:
             raise HTTPException(
