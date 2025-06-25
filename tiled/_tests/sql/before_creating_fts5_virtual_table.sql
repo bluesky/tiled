@@ -3,16 +3,37 @@ BEGIN TRANSACTION;
 CREATE TABLE nodes (
 	id INTEGER NOT NULL,
 	"key" VARCHAR(1023) NOT NULL,
-	ancestors JSON,
+	parent INTEGER,
 	structure_family VARCHAR(9) NOT NULL,
 	metadata JSON NOT NULL,
 	specs JSON NOT NULL,
 	time_created DATETIME DEFAULT (CURRENT_TIMESTAMP),
 	time_updated DATETIME DEFAULT (CURRENT_TIMESTAMP),
 	PRIMARY KEY (id),
-	CONSTRAINT key_ancestors_unique_constraint UNIQUE ("key", ancestors)
+	FOREIGN KEY (parent) REFERENCES nodes(id) ON DELETE CASCADE,
+	CONSTRAINT key_parent_unique_constraint UNIQUE ("key", parent)
 );
-INSERT INTO nodes VALUES(1,'x','[]','array','{"color":"blue"}','[]','2024-05-25 10:18:38','2024-05-25 10:18:38');
+CREATE TABLE nodes_closure (
+    ancestor INTEGER NOT NULL,
+    descendant INTEGER NOT NULL,
+    depth INTEGER NOT NULL,
+    PRIMARY KEY (ancestor, descendant),
+    FOREIGN KEY (ancestor) REFERENCES nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (descendant) REFERENCES nodes(id) ON DELETE CASCADE,
+    CONSTRAINT ancestor_descendant_unique_constraint UNIQUE (ancestor, descendant)
+);
+CREATE TRIGGER update_closure_table_when_inserting
+AFTER INSERT ON nodes
+BEGIN
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    SELECT NEW.id, NEW.id, 0;
+    INSERT INTO nodes_closure(ancestor, descendant, depth)
+    SELECT p.ancestor, c.descendant, p.depth+c.depth+1
+    FROM nodes_closure p, nodes_closure c
+    WHERE p.descendant=NEW.parent and c.ancestor=NEW.id;
+END;
+INSERT INTO nodes VALUES(0,'',NULL,'container','{}','[]','2024-05-25 10:18:37','2024-05-25 10:18:37');
+INSERT INTO nodes VALUES(1,'x',0,'array','{"color":"blue"}','[]','2024-05-25 10:18:38','2024-05-25 10:18:38');
 CREATE TABLE structures (
 	id VARCHAR(32) NOT NULL,
 	structure JSON NOT NULL,
@@ -74,13 +95,15 @@ CREATE TABLE alembic_version (
 	version_num VARCHAR(32) NOT NULL,
 	CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
 );
-INSERT INTO alembic_version VALUES('e756b9381c14');
+INSERT INTO alembic_version VALUES('e05e918092c3');
 CREATE INDEX ix_nodes_id ON nodes (id);
-CREATE INDEX top_level_metadata ON nodes (ancestors, time_created, id, metadata);
+CREATE INDEX top_level_metadata ON nodes (parent, time_created, id, metadata);
 CREATE UNIQUE INDEX ix_assets_data_uri ON assets (data_uri);
 CREATE INDEX ix_assets_id ON assets (id);
 CREATE INDEX ix_data_sources_id ON data_sources (id);
 CREATE INDEX ix_revisions_id ON revisions (id);
+CREATE INDEX idx_nodes_closure_ancestor ON nodes_closure (ancestor);
+CREATE INDEX idx_nodes_closure_descendant ON nodes_closure (descendant);
 CREATE TRIGGER cannot_insert_num_null_if_num_exists
 BEFORE INSERT ON data_source_asset_association
 WHEN NEW.num IS NULL
