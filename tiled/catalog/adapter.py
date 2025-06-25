@@ -330,23 +330,17 @@ class CatalogNodeAdapter:
         self.startup_tasks = [self.startup]
         self.shutdown_tasks = [self.shutdown]
 
-    async def ancestors(self):
+    async def path_segments(self):
         statement = (
             select(orm.Node.key)
             .where(orm.Node.id != 0)
             .join(orm.NodesClosure, orm.NodesClosure.ancestor == orm.Node.id)
             .where(orm.NodesClosure.descendant == self.node.id)
-            .where(orm.NodesClosure.depth > 0)
             .order_by(orm.NodesClosure.depth.desc())
         )
 
         async with self.context.session() as db:
-            ancestors = (await db.execute(statement)).scalars().all()
-
-        return ancestors + self.mount_node[:-1]
-
-    async def segments(self):
-        return await self.ancestors() + [self.key]
+            return (await db.execute(statement)).scalars().all()
 
     @property
     def access_blob(self):
@@ -686,7 +680,7 @@ class CatalogNodeAdapter:
                 UNIQUE_CONSTRAINT_FAILED = "gkpj"
                 if exc.code == UNIQUE_CONSTRAINT_FAILED:
                     await db.rollback()
-                    raise Collision(f"/{'/'.join(await self.segments() + [key])}")
+                    raise Collision(f"/{'/'.join(await self.path_segments() + [key])}")
                 raise
             await db.refresh(node)
             for data_source in data_sources:
@@ -730,7 +724,7 @@ class CatalogNodeAdapter:
                         adapter_cls.init_storage,
                         storage,
                         data_source,
-                        await self.segments() + [key],
+                        await self.path_segments() + [key],
                     )
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
@@ -924,10 +918,11 @@ class CatalogNodeAdapter:
         Any DataSources belonging to those Nodes and any Assets associated (only) with
         those DataSources will also be deleted.
         """
+        ROOT_ID = 0   # Protect the root node from being deleted
         condition = orm.Node.id.in_(
-            select(orm.NodesClosure.descendant).where(
-                orm.NodesClosure.ancestor == self.node.id
-            )
+            select(orm.NodesClosure.descendant) \
+                .where(orm.NodesClosure.ancestor == self.node.id) \
+                .where(orm.NodesClosure.descendant != ROOT_ID)
         )
         async with self.context.session() as db:
             if external_only:
