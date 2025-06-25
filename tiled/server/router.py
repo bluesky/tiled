@@ -13,8 +13,8 @@ import anyio
 import packaging
 import pydantic_settings
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security, WebSocket
-from jmespath.exceptions import JMESPathError
 import pydantic_settings
+from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
 from starlette.status import (
@@ -495,10 +495,9 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            request.state.metrics,
             {StructureFamily.array, StructureFamily.sparse},
-            getattr(request.app.state, "access_policy", None),
         )
+        request.state.metrics = metrics
         shape = entry.structure().shape
         # Check that block dimensionality matches array dimensionality.
         ndim = len(shape)
@@ -935,7 +934,6 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            request.state.metrics,
             {StructureFamily.table},
             getattr(request.app.state, "access_policy", None),
         )
