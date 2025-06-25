@@ -92,7 +92,7 @@ async def get_entry(
                     authn_access_tags,
                     authn_scopes,
                 )
-                if not set(security_scopes).issubset(allowed_scopes):
+                if not set(security_scopes.scopes).issubset(allowed_scopes):
                     if "read:metadata" not in allowed_scopes:
                         # If you can't read metadata, it does not exist for you.
                         raise NoEntry(path_parts)
@@ -103,7 +103,7 @@ async def get_entry(
                             status_code=HTTP_403_FORBIDDEN,
                             detail=(
                                 "Not enough permissions to perform this action on this node. "
-                                f"Requires scopes {security_scopes}. "
+                                f"Requires scopes {security_scopes.scopes}. "
                                 f"Principal had scopes {list(allowed_scopes)} on this node."
                             ),
                         )
@@ -115,7 +115,7 @@ async def get_entry(
         )
     # Fast path for the common successful case
     if (structure_families is None) or (entry.structure_family in structure_families):
-        return entry
+        return entry, metrics
     raise HTTPException(
         status_code=HTTP_404_NOT_FOUND,
         detail=(
