@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import pydantic_settings
-from fastapi import Depends, HTTPException, Query, Request, Security
+from fastapi import HTTPException, Query
 from fastapi.security import SecurityScopes
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
@@ -12,12 +12,6 @@ from tiled.utils import SpecialUsers
 
 from ..type_aliases import Scopes
 from ..utils import BrokenLink
-from .authentication import (
-    check_scopes,
-    get_current_principal,
-    get_current_scopes,
-    get_session_state,
-)
 from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
