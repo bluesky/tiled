@@ -121,6 +121,8 @@ def upgrade():
         batch_op.create_unique_constraint(
             "ancestor_descendant_unique_constraint", ["ancestor", "descendant"]
         )
+    op.create_index("idx_nodes_closure_ancestor", "nodes_closure", ["ancestor"])
+    op.create_index("idx_nodes_closure_descendant", "nodes_closure", ["descendant"])
 
     # 3. Insert the explicit root node (id=0, key='') with no parent
     connection.execute(
