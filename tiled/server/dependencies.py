@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request

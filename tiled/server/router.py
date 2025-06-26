@@ -496,8 +496,9 @@ def get_router(
             root_tree,
             session_state,
             {StructureFamily.array, StructureFamily.sparse},
+            request.state.metrics,
+            getattr(request.app.state, "access_policy", None),
         )
-        request.state.metrics = metrics
         shape = entry.structure().shape
         # Check that block dimensionality matches array dimensionality.
         ndim = len(shape)
@@ -934,6 +935,7 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
+            request.state.metrics,
             {StructureFamily.table},
             getattr(request.app.state, "access_policy", None),
         )
