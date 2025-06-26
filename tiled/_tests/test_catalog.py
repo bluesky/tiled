@@ -60,8 +60,8 @@ async def test_nested_node_creation(a):
         specs=[],
     )
     c = await b.lookup_adapter(["c"])
-    assert await b.segments() == ["b"]
-    assert await c.segments() == ["b", "c"]
+    assert await b.path_segments() == ["b"]
+    assert await c.path_segments() == ["b", "c"]
     assert (await a.keys_range(0, 1)) == ["b"]
     assert (await b.keys_range(0, 1)) == ["c"]
     # smoke test
@@ -344,7 +344,7 @@ async def test_delete_tree(tmpdir):
         d.write_array([7, 8, 9])
 
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_before_delete) == 7
+        assert len(nodes_before_delete) == 7 + 1  # +1 for the root node
         data_sources_before_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
@@ -361,7 +361,7 @@ async def test_delete_tree(tmpdir):
         await tree.delete_tree(external_only=False)
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_after_delete) == 0
+        assert len(nodes_after_delete) == 0 + 1  # the root node that should remain
         data_sources_after_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()

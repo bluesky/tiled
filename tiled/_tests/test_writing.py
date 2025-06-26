@@ -510,7 +510,7 @@ async def test_delete(tree):
             key="delete_me",
         )
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_before_delete) == 1
+        assert len(nodes_before_delete) == 1 + 1  # +1 for the root node
         data_sources_before_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
@@ -531,7 +531,7 @@ async def test_delete(tree):
         client.delete("delete_me")
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_after_delete) == 0
+        assert len(nodes_after_delete) == 0 + 1  # the root node should still exist
         data_sources_after_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
