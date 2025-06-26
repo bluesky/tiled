@@ -1946,7 +1946,7 @@ def get_router(
             drop_revision=drop_revision,
         )
 
-        response_data = {"id": entry.key}
+        response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
         if access_blob_modified:
@@ -2026,7 +2026,7 @@ def get_router(
             drop_revision=drop_revision,
         )
 
-        response_data = {"id": entry.key}
+        response_data = {"id": entry.node.key}
         if metadata_modified:
             response_data["metadata"] = metadata
         if access_blob_modified:
