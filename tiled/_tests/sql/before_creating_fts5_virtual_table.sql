@@ -7,6 +7,7 @@ CREATE TABLE nodes (
 	structure_family VARCHAR(9) NOT NULL,
 	metadata JSON NOT NULL,
 	specs JSON NOT NULL,
+	access_blob JSON NOT NULL,
 	time_created DATETIME DEFAULT (CURRENT_TIMESTAMP),
 	time_updated DATETIME DEFAULT (CURRENT_TIMESTAMP),
 	PRIMARY KEY (id),
@@ -32,8 +33,8 @@ BEGIN
     FROM nodes_closure p, nodes_closure c
     WHERE p.descendant=NEW.parent and c.ancestor=NEW.id;
 END;
-INSERT INTO nodes VALUES(0,'',NULL,'container','{}','[]','2024-05-25 10:18:37','2024-05-25 10:18:37');
-INSERT INTO nodes VALUES(1,'x',0,'array','{"color":"blue"}','[]','2024-05-25 10:18:38','2024-05-25 10:18:38');
+INSERT INTO nodes VALUES(0,'',NULL,'container','{}','[]','{}','2024-05-25 10:18:37','2024-05-25 10:18:37');
+INSERT INTO nodes VALUES(1,'x',0,'array','{"color":"blue"}','[]','{}','2024-05-25 10:18:38','2024-05-25 10:18:38');
 CREATE TABLE structures (
 	id VARCHAR(32) NOT NULL,
 	structure JSON NOT NULL,

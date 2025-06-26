@@ -65,7 +65,9 @@ class Node(Timestamped, Base):
     # This id is internal, never exposed to the client.
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     parent = Column(
-        Integer, ForeignKey("nodes.id", name="fk_nodes_parent", ondelete="CASCADE"), nullable=True
+        Integer,
+        ForeignKey("nodes.id", name="fk_nodes_parent", ondelete="CASCADE"),
+        nullable=True,
     )
 
     key = Column(Unicode(1023), nullable=False)
@@ -114,8 +116,12 @@ class NodesClosure(Base):
 
     __tablename__ = "nodes_closure"
 
-    ancestor = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True)
-    descendant = Column(Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True)
+    ancestor = Column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
+    )
+    descendant = Column(
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
+    )
     depth = Column(Integer, nullable=False)
 
     __table_args__ = (

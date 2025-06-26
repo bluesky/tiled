@@ -451,11 +451,11 @@ class CatalogNodeAdapter:
             return await first_level.lookup_adapter(segments[1:])
 
         # Query the database recursively to find the node with the given ancestors and key
-        # Create an alias for each node in the path and build the join chain
-        NodeAliases = [orm.Node] + [aliased(orm.Node) for _ in range(len(segments))]
-        statement = select(NodeAliases[-1])
-        statement = statement.select_from(NodeAliases[0])
-        statement = self.apply_conditions(statement)
+        # Create an alias for each ancestor node in the path and build the join chain
+        NodeAliases = [aliased(orm.Node) for _ in range(len(segments))] + [orm.Node]
+        statement = select(NodeAliases[-1])  # Select the child node
+        statement = statement.select_from(NodeAliases[0])  # Start from the ancestor
+        statement = self.apply_conditions(statement)  # Conditions on the child node
         statement = statement.where(NodeAliases[0].id == self.node.id)
 
         for i, segment in enumerate(segments):
@@ -918,11 +918,11 @@ class CatalogNodeAdapter:
         Any DataSources belonging to those Nodes and any Assets associated (only) with
         those DataSources will also be deleted.
         """
-        ROOT_ID = 0   # Protect the root node from being deleted
+        ROOT_ID = 0  # Protect the root node from being deleted
         condition = orm.Node.id.in_(
-            select(orm.NodesClosure.descendant) \
-                .where(orm.NodesClosure.ancestor == self.node.id) \
-                .where(orm.NodesClosure.descendant != ROOT_ID)
+            select(orm.NodesClosure.descendant)
+            .where(orm.NodesClosure.ancestor == self.node.id)
+            .where(orm.NodesClosure.descendant != ROOT_ID)
         )
         async with self.context.session() as db:
             if external_only:
