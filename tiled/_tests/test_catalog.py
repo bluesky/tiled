@@ -371,7 +371,7 @@ async def test_delete_tree(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_access_control(tmpdir):
+async def test_access_control(tmpdir, sqlite_or_postgres_uri):
     config = {
         "authentication": {
             "allow_anonymous_access": True,
@@ -410,7 +410,7 @@ async def test_access_control(tmpdir):
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": f"sqlite:///{tmpdir}/catalog.db",
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },
@@ -536,7 +536,7 @@ async def test_constraints_on_parameter_and_num(a, assets):
 
 
 @pytest.mark.asyncio
-async def test_init_db_logging(tmpdir, caplog):
+async def test_init_db_logging(sqlite_or_postgres_uri, tmpdir, caplog):
     config = {
         "database": {
             "uri": "sqlite://",  # in-memory
@@ -546,7 +546,7 @@ async def test_init_db_logging(tmpdir, caplog):
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": f"sqlite:///{tmpdir}/catalog.db",
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },
