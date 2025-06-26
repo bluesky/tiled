@@ -1,8 +1,7 @@
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Union
 
 import pydantic_settings
 from fastapi import HTTPException, Query
-from fastapi.security import SecurityScopes
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from tiled.adapters.protocols import AnyAdapter
@@ -25,7 +24,7 @@ def get_root_tree():
 
 async def get_entry(
     path: str,
-    security_scopes: SecurityScopes,
+    security_scopes: List[str],
     principal: Union[Principal, SpecialUsers],
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
@@ -33,7 +32,7 @@ async def get_entry(
     structure_families: Optional[set[StructureFamily]] = None,
     metrics: Optional[dict] = None,
     access_policy=None,
-) -> Tuple[AnyAdapter, dict]:
+) -> AnyAdapter:
     """
     Obtain a node in the tree from its path.
 
@@ -46,7 +45,7 @@ async def get_entry(
     entry = root_tree
     # access_policy = getattr(request.app.state, "access_policy", None)
     if metrics is None:
-        metrics = {}
+        metrics = {"app": {}}
     # If the entry/adapter can take a session state, pass it in.
     # The entry/adapter may return itself or a different object.
     if hasattr(entry, "with_session_state") and session_state:
@@ -96,7 +95,7 @@ async def get_entry(
                     principal,
                     authn_scopes,
                 )
-                if not set(security_scopes.scopes).issubset(allowed_scopes):
+                if not set(security_scopes).issubset(allowed_scopes):
                     if "read:metadata" not in allowed_scopes:
                         # If you can't read metadata, it does not exist for you.
                         raise NoEntry(path_parts)
@@ -107,7 +106,7 @@ async def get_entry(
                             status_code=HTTP_403_FORBIDDEN,
                             detail=(
                                 "Not enough permissions to perform this action on this node. "
-                                f"Requires scopes {security_scopes.scopes}. "
+                                f"Requires scopes {security_scopes}. "
                                 f"Principal had scopes {list(allowed_scopes)} on this node."
                             ),
                         )
@@ -119,7 +118,7 @@ async def get_entry(
         )
     # Fast path for the common successful case
     if (structure_families is None) or (entry.structure_family in structure_families):
-        return entry, metrics
+        return entry
     raise HTTPException(
         status_code=HTTP_404_NOT_FOUND,
         detail=(
