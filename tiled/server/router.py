@@ -284,7 +284,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:metadata"]),
         **filters,
     ):
         entry = await get_entry(
@@ -373,7 +373,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:metadata"]),
         **filters,
     ):
         entry = await get_entry(
@@ -422,7 +422,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:metadata"]),
     ):
         """Fetch the metadata and structure information for one entry"""
         entry = await get_entry(
@@ -482,7 +482,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch a chunk of array-like data.
@@ -571,7 +571,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch a slice of array-like data.
@@ -648,7 +648,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch a partition (continuous block of rows) from a DataFrame [GET route].
@@ -710,7 +710,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch a partition (continuous block of rows) from a DataFrame [POST route].
@@ -803,7 +803,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch the data for the given table [GET route].
@@ -844,7 +844,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch the data for the given table [POST route].
@@ -931,7 +931,7 @@ def get_router(
         filename: Optional[str] = None,
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch the data for the given container via a GET request.
@@ -974,7 +974,7 @@ def get_router(
         filename: Optional[str] = None,
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch the data for the given container via a POST request.
@@ -1065,7 +1065,7 @@ def get_router(
         settings: Settings = Depends(get_settings),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch the data below the given node.
@@ -1152,7 +1152,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch a slice of AwkwardArray data.
@@ -1200,7 +1200,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch a slice of AwkwardArray data.
@@ -1289,7 +1289,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         """
         Fetch a slice of AwkwardArray data.
@@ -1351,7 +1351,7 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:metadata", "create"]),
     ):
         entry = await get_entry(
             path,
@@ -1397,7 +1397,7 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:metadata", "create", "register"]),
     ):
         entry = await get_entry(
             path,
@@ -1502,7 +1502,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:metadata", "register"]),
     ):
         entry = await get_entry(
             path,
@@ -1525,7 +1525,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data", "write:metadata"]),
     ):
         entry = await get_entry(
             path,
@@ -1555,7 +1555,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data", "write:metadata"]),
     ):
         entry = await get_entry(
             path,
@@ -1585,7 +1585,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
     ):
         entry = await get_entry(
             path,
@@ -1627,7 +1627,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
     ):
         entry = await get_entry(
             path,
@@ -1675,7 +1675,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
     ):
         entry = await get_entry(
             path,
@@ -1711,7 +1711,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
     ):
         entry = await get_entry(
             path,
@@ -1747,7 +1747,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
     ):
         entry = await get_entry(
             path,
@@ -1783,7 +1783,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
     ):
         entry = await get_entry(
             path,
@@ -1818,7 +1818,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
     ):
         entry = await get_entry(
             path,
@@ -1861,7 +1861,7 @@ def get_router(
         drop_revision: bool = False,
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:metadata"]),
     ):
         entry = await get_entry(
             path,
@@ -1978,7 +1978,7 @@ def get_router(
         drop_revision: bool = False,
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:metadata"]),
     ):
         entry = await get_entry(
             path,
@@ -2059,7 +2059,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:metadata"]),
     ):
         entry = await get_entry(
             path,
@@ -2099,7 +2099,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["write:metadata"]),
     ):
         entry = await get_entry(
             path,
@@ -2137,7 +2137,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         entry = await get_entry(
             path,
@@ -2249,7 +2249,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
     ):
         entry = await get_entry(
             path,
