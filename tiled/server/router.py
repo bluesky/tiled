@@ -11,7 +11,8 @@ from typing import Callable, List, Optional, Set, TypeVar, Union
 
 import anyio
 import packaging
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
+import pydantic_settings
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security, WebSocket
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
@@ -630,6 +631,84 @@ def get_router(
                 )
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
+
+    @router.websocket("/stream/{path:path}")
+    async def websocket_endpoint(websocket: WebSocket,
+                                 path: str, 
+                                 envelope_format: str = "json", 
+                                 seq_num: Optional[int] = None,
+                                 principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+                                 root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
+                                 session_state: dict = Depends(get_session_state),
+                                 _=Security(check_scopes),
+                                ):
+        entry = await get_entry(path, ["read:data", "read:metadata"], principal, root_tree, session_state, None)
+        import asyncio
+        import json
+        import msgpack
+        import numpy as np
+        await websocket.accept()
+        end_stream = asyncio.Event()
+        redis_client = entry.context.redis_client
+        async def stream_data(seq_num):
+            key = f"data:{entry.node.id}:{seq_num}"
+            payload, metadata = await redis_client.hmget(key, "payload", "metadata")
+            if payload is None and metadata is None:
+                return
+            try:
+                payload = np.frombuffer(payload, dtype=np.float64).tolist()
+            except Exception as e:
+                payload = json.loads(payload)
+            data = { "sequence": seq_num,
+                      "metadata": metadata.decode('utf-8'),
+                      "payload": payload 
+                    }
+            if envelope_format == "msgpack":
+                data = msgpack.packb(data)
+                await websocket.send_bytes(data)
+            else:
+                await websocket.send_text(json.dumps(data))
+            if payload is None and metadata is not None:
+                # This means that the stream is closed by the producer
+                end_stream.set()
+
+        # Setup buffer
+        stream_buffer = asyncio.Queue()
+        async def buffer_live_events():
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(f"notify:{entry.node.id}")
+            try:
+                async for message in pubsub.listen():
+                    if message.get("type") == "message":
+                        try:
+                            live_seq = int(message["data"])
+                            await stream_buffer.put(live_seq)
+                        except Exception as e:
+                            print(f"Error parsing live message: {e}")
+            except Exception as e:
+                print(f"Live subscription error: {e}")
+            finally:
+                await pubsub.unsubscribe(f"notify:{entry.node.id}")
+                await pubsub.aclose()
+        live_task = asyncio.create_task(buffer_live_events())
+
+        if seq_num is not None:
+            current_seq = await redis_client.get(f"seq_num:{entry.node.id}")
+            current_seq = int(current_seq) if current_seq is not None else 0
+            print("Replaying old data...")
+            for s in range(seq_num, current_seq + 1):
+                await stream_data(s)
+        # New data
+        try:
+            while not end_stream.is_set():
+                live_seq = await stream_buffer.get()
+                await stream_data(live_seq)
+            else:
+                await websocket.close(code=1000, reason="Producer ended stream")
+        except WebSocketDisconnect:
+            print(f"Client disconnected from node {entry.node.id}")
+        finally:
+            live_task.cancel()
 
     @router.get(
         "/table/partition/{path:path}",
