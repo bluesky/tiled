@@ -20,17 +20,13 @@ interface DownloadTableProps {
   full_link: string;
 }
 
-const DownloadTable: React.FunctionComponent<DownloadTableProps> = (
-  props
-) => {
+const DownloadTable: React.FunctionComponent<DownloadTableProps> = (props) => {
   const npartitions = props.structure.npartitions;
   const [format, setFormat] = useState<Format>();
   const [partition, setPartition] = useState<number>(0);
   const [full, setFull] = useState<boolean>(npartitions === 1);
-  const [columns, setColumns] = useState<string[]>(
-    props.structure.columns
-  );
-  var link: string;
+  const [columns, setColumns] = useState<string[]>(props.structure.columns);
+  let link: string;
   if (format !== undefined && columns.length !== 0) {
     if (full) {
       link = `${props.full_link}?format=${format.mimetype}`;

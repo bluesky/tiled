@@ -34,7 +34,7 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
       partition
     );
     async function loadRows() {
-      var response = await axiosInstance.get(
+      const response = await axiosInstance.get(
         `${templated_link}&format=application/json-seq`,
         { signal: controller.signal }
       );
@@ -165,9 +165,9 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
       rows={data_rows}
       columns={data_columns}
       pagination
-      pageSize={pageSize}
-      rowsPerPageOptions={[10, 30, 100]}
-      onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
+      paginationModel={{ pageSize, page: 0 }}
+      pageSizeOptions={[10, 30, 100]}
+      onPaginationModelChange={(model) => setPageSize(model.pageSize)}
       autoHeight
     />
   );
