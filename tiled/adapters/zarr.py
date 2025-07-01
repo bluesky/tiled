@@ -5,8 +5,16 @@ from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
+import sys
 import zarr.core
-import zarr.storage
+
+
+if sys.version_info < (3, 11):
+    from zarr.storage import DirectoryStore as LocalStore
+    from zarr.storage import init_array as create_array
+else:
+    from zarr.storage import LocalStore
+    from zarr import create_array
 from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
@@ -20,19 +28,15 @@ from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
-import sys
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
-def check_python_version():
-    if sys.version_info < (3, 11):
-        raise NotImplementedError("Python 3.11 or higher is required to use Zarr within Tiled.")
 
 class ZarrArrayAdapter(ArrayAdapter):
     """ """
 
     supported_storage = {FileStorage}
-    check_python_version()
+
     @classmethod
     def init_storage(
         cls,
@@ -61,8 +65,8 @@ class ZarrArrayAdapter(ArrayAdapter):
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        store = zarr.storage.LocalStore(str(directory))
-        zarr.create_array(
+        store = LocalStore(str(directory))
+        create_array(
             store,
             shape=shape,
             chunks=zarr_chunks,
@@ -229,7 +233,7 @@ class ZarrGroupAdapter(
     """ """
 
     structure_family = StructureFamily.container
-    check_python_version()
+
     def __init__(
         self,
         node: Any,
