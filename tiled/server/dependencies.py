@@ -29,8 +29,8 @@ async def get_entry(
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
-    structure_families: Optional[set[StructureFamily]] = None,
-    metrics: Optional[dict] = None,
+    structure_families: set[StructureFamily],
+    metrics: dict,
     access_policy=None,
 ) -> AnyAdapter:
     """
