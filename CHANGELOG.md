@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Explicit type conversion in SQL adapter when appending to an existing table.
+
 ## v0.1.0-b29 (2025-06-06)
 
 ### Added
