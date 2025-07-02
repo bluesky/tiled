@@ -36,17 +36,19 @@ async def test_zarr_array(tmpdir):
 
 @pytest.mark.asyncio
 async def test_zarr_group(tmpdir):
-    with zarr.open(str(tmpdir / "zg.zarr"), "w") as root:
-        root.create_dataset("x", data=[1, 2, 3])
-        root.create_dataset("y", data=[4, 5, 6])
+    root = zarr.open(str(tmpdir / "zg.zarr"), "w")
+    yield root
+    root.create_dataset("x", data=[1, 2, 3])
+    root.create_dataset("y", data=[4, 5, 6])
     catalog = in_memory(readable_storage=[tmpdir])
-    with Context.from_app(build_app(catalog)) as context:
-        client = from_context(context)
-        await register(client, tmpdir)
-        tree(client)
-        client["zg"].export(str(tmpdir / "stuff.h5"))
-        client["zg"]["x"].read()
-        client["zg"]["y"].read()
+    context = Context.from_app(build_app(catalog))
+    yield context
+    client = from_context(context)
+    await register(client, tmpdir)
+    tree(client)
+    client["zg"].export(str(tmpdir / "stuff.h5"))
+    client["zg"]["x"].read()
+    client["zg"]["y"].read()
 
 
 @pytest.mark.asyncio

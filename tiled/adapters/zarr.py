@@ -1,13 +1,20 @@
 import builtins
 import copy
 import os
+import sys
 from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
 import zarr.core
-import zarr.hierarchy
-import zarr.storage
+
+if sys.version_info < (3, 11):
+    from zarr.storage import DirectoryStore as LocalStore
+    from zarr.storage import init_array as create_array
+else:
+    from zarr.storage import LocalStore
+    from zarr import create_array
+
 from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
@@ -58,8 +65,8 @@ class ZarrArrayAdapter(ArrayAdapter):
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
-        store = zarr.storage.DirectoryStore(str(directory))
-        zarr.storage.init_array(
+        store = LocalStore(str(directory))
+        create_array(
             store,
             shape=shape,
             chunks=zarr_chunks,
@@ -267,7 +274,7 @@ class ZarrGroupAdapter(
 
     def __getitem__(self, key: str) -> Union[ArrayAdapter, "ZarrGroupAdapter"]:
         value = self._node[key]
-        if isinstance(value, zarr.hierarchy.Group):
+        if isinstance(value, zarr.Group):
             return ZarrGroupAdapter(value)
         else:
             return ZarrArrayAdapter.from_array(value)
@@ -394,7 +401,7 @@ class ZarrAdapter:
         cls, data_uri: str, **kwargs: Optional[Any]
     ) -> Union[ZarrArrayAdapter, ZarrGroupAdapter]:
         zarr_obj = zarr.open(path_from_uri(data_uri))  # Group or Array
-        if isinstance(zarr_obj, zarr.hierarchy.Group):
+        if isinstance(zarr_obj, zarr.Group):
             return ZarrGroupAdapter(zarr_obj, **kwargs)
         else:
             structure = ArrayStructure.from_array(zarr_obj)

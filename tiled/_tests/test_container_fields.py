@@ -78,9 +78,13 @@ def mark_xfail(value, unsupported="UNSPECIFIED ADAPTER"):
 def zarr_data_dir(tmpdir_factory):
     "Generate a temporary Zarr group file with multiple datasets."
     tmpdir = tmpdir_factory.mktemp("zarr_files")
-    with zarr.open(str(tmpdir / "zarr_group.zarr"), "w") as root:
+    try:
+        root = zarr.open(str(tmpdir / "zarr_group.zarr"), "w")
         for i, name in enumerate("abcde"):
             root.create_dataset(name, data=range(i, i + 3))
+    finally:
+        # Ensure the Zarr group is closed properly
+        print("Closed")
     return tmpdir
 
 
@@ -90,8 +94,9 @@ def test_zarr_group_fields(client, fields, buffer):
     "Export selected fields (Datasets) from a Zarr group via /container/full."
     client = client["zarr_group"]
     url_path = client.item["links"]["full"]
-    with record_history() as history:
-        client.export(buffer, fields=fields, format="application/x-hdf5")
+    history = record_history()
+    yield history
+    client.export(buffer, fields=fields, format="application/x-hdf5")
 
     assert_single_request_to_url(history, url_path)
     assert_requested_fields_fetched(buffer, fields, client)

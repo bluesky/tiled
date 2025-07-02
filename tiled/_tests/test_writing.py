@@ -3,6 +3,7 @@ This tests tiled's writing routes with an in-memory store.
 
 Persistent stores are being developed externally to the tiled package.
 """
+
 import base64
 from datetime import datetime
 
