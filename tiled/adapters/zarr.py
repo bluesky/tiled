@@ -1,13 +1,12 @@
 import builtins
 import copy
 import os
+import sys
 from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
-import sys
 import zarr.core
-
 
 if sys.version_info < (3, 11):
     from zarr.storage import DirectoryStore as LocalStore
@@ -15,6 +14,7 @@ if sys.version_info < (3, 11):
 else:
     from zarr.storage import LocalStore
     from zarr import create_array
+
 from numpy._typing import NDArray
 
 from ..adapters.utils import IndexersMixin
