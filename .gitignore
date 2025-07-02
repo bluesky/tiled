@@ -33,6 +33,9 @@ target/
 .DS_Store
 *~
 
+#alembic
+alembic.ini
+
 #vim
 *.swp
 *.swo
