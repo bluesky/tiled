@@ -310,7 +310,8 @@ class SQLAdapter:
             else:
                 batches = data
             table = pyarrow.Table.from_batches(batches)
-
+        # Explicitly cast the table to the structure's schema
+        table = table.cast(self.structure().arrow_schema_decoded)
         # Prepend columns for internal dataset_id and partition number.
         dataset_id_column = self.dataset_id * numpy.ones(len(table), dtype=numpy.int32)
         partition_id_column = partition * numpy.ones(len(table), dtype=numpy.int16)
