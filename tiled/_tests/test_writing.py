@@ -5,7 +5,6 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
-import sys
 from datetime import datetime
 
 import awkward
@@ -40,6 +39,7 @@ from .utils import fail_with_status_code
 
 validation_registry = ValidationRegistry()
 validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
+
 
 @pytest.fixture
 def tree(tmpdir):
