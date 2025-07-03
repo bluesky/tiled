@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Union, Annotated
 
 from fastapi import (
     APIRouter,
@@ -15,6 +15,8 @@ from fastapi import (
     Request,
     Response,
     Security,
+    WebSocket,
+    Header
 )
 from fastapi.security import (
     OAuth2PasswordBearer,
@@ -306,6 +308,67 @@ async def check_scopes(
             headers=headers_for_401(request, security_scopes),
         )
 
+async def get_current_principal_from_api_key(
+        api_key, authenticated, db, settings
+):
+    if authenticated:
+        # Tiled is in a multi-user configuration with authentication providers.
+        # We store the hashed value of the API key secret.
+        # By comparing hashes we protect against timing attacks.
+        # By storing only the hash of the (high-entropy) secret
+        # we reduce the value of that an attacker can extracted from a
+        # stolen database backup.
+        try:
+            secret = bytes.fromhex(api_key)
+        except Exception:
+            # Not valid hex, therefore not a valid API key
+            return None
+
+        api_key_orm = await lookup_valid_api_key(db, secret)
+        if api_key_orm is not None:
+            principal = api_key_orm.principal
+            principal_scopes = set().union(
+                *[role.scopes for role in principal.roles]
+            )
+            # This intersection addresses the case where the Principal has
+            # lost a scope that they had when this key was created.
+            scopes = set(api_key_orm.scopes).intersection(
+                principal_scopes | {"inherit"}
+            )
+            if "inherit" in scopes:
+                # The scope "inherit" is a metascope that confers all the
+                # scopes for the Principal associated with this API,
+                # resolved at access time.
+                scopes.update(principal_scopes)
+            api_key_orm.latest_activity = utcnow()
+            await db.commit()
+            return principal
+        else:
+            return None   
+    else:
+        # Tiled is in a "single user" mode with only one API key.
+        if secrets.compare_digest(api_key, settings.single_user_api_key):
+            principal = SpecialUsers.admin
+            return principal
+        else:
+            return None
+
+async def get_current_principal_websocket(
+        websocket: WebSocket,
+        #security_scopes: SecurityScopes,
+        #api_key: str = Depends(get_api_key),
+        authorization: Annotated[str | None, Header()] = None,
+        settings: Settings = Depends(get_settings),
+        db: Optional[AsyncSession] = Depends(get_database_session),   
+):
+    print(authorization)
+    principal = await get_current_principal_from_api_key(authorization,
+                                                         websocket.app.state.authenticated,
+                                                         db,
+                                                         settings)
+    if principal is None:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
+                            detail="Invalid API key")
 
 async def get_current_principal(
     request: Request,
@@ -330,56 +393,17 @@ async def get_current_principal(
     """
 
     if api_key is not None:
-        if request.app.state.authenticated:
-            # Tiled is in a multi-user configuration with authentication providers.
-            # We store the hashed value of the API key secret.
-            # By comparing hashes we protect against timing attacks.
-            # By storing only the hash of the (high-entropy) secret
-            # we reduce the value of that an attacker can extracted from a
-            # stolen database backup.
-            try:
-                secret = bytes.fromhex(api_key)
-            except Exception:
-                # Not valid hex, therefore not a valid API key
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                    headers=headers_for_401(request, security_scopes),
-                )
-            api_key_orm = await lookup_valid_api_key(db, secret)
-            if api_key_orm is not None:
-                principal = api_key_orm.principal
-                principal_scopes = set().union(
-                    *[role.scopes for role in principal.roles]
-                )
-                # This intersection addresses the case where the Principal has
-                # lost a scope that they had when this key was created.
-                scopes = set(api_key_orm.scopes).intersection(
-                    principal_scopes | {"inherit"}
-                )
-                if "inherit" in scopes:
-                    # The scope "inherit" is a metascope that confers all the
-                    # scopes for the Principal associated with this API,
-                    # resolved at access time.
-                    scopes.update(principal_scopes)
-                api_key_orm.latest_activity = utcnow()
-                await db.commit()
-            else:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                    headers=headers_for_401(request, security_scopes),
-                )
-        else:
-            # Tiled is in a "single user" mode with only one API key.
-            if secrets.compare_digest(api_key, settings.single_user_api_key):
-                principal = SpecialUsers.admin
-            else:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                    headers=headers_for_401(request, security_scopes),
-                )
+        principal = await get_current_principal_from_api_key(api_key, 
+                                                             request.app.state.authenticated, 
+                                                             db,
+                                                             settings,
+                                                             )
+        if principal is None:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key",
+                headers=headers_for_401(request, security_scopes),
+            )
     elif decoded_access_token is not None:
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
