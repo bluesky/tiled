@@ -155,6 +155,8 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        redis_client=None,
+        redis_ttl=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
@@ -194,6 +196,8 @@ class Context:
             adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
+        self.redis_client = redis_client
+        self.redis_ttl = redis_ttl
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -767,6 +771,8 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
+            if self.context.redis_client:
+                self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
             return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db, asset):
@@ -835,6 +841,30 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
+        if self.context.redis_client:
+            import json
+            from datetime import datetime
+            seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
+            metadata = {
+                "timestamp": datetime.now().isoformat(),
+                "data_source_id": data_source.id
+            }
+            metadata.setdefault("Content-Type", data_source.mimetype)
+            
+            # Cache data in Redis with a TTL, and publish
+            # a notification about it.
+            pipeline = self.context.redis_client.pipeline()
+            print(f"Setting pipeline metadata: {json.dumps(metadata).encode('utf-8')}")
+            pipeline.hset(
+                f"data:{self.node.id}:{seq_num}",
+                mapping={
+                    "metadata": json.dumps(metadata).encode("utf-8"),
+                    "payload": data_source,  # Raw binary bytes
+                },
+            )
+            pipeline.expire(f"data:{node_id}:{seq_num}", settings.ttl)
+            pipeline.publish(f"notify:{node_id}", seq_num)
+            await pipeline.execute()
 
     # async def patch_node(datasources=None):
     #     ...
@@ -1151,8 +1181,16 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).read_block, *args, **kwargs
         )
 
-    async def write(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+    async def write(self, deserializer, entry, body):
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            shape = entry.structure().shape
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
+        return await ensure_awaitable((await self.get_adapter()).write, data)
 
     async def write_block(self, *args, **kwargs):
         return await ensure_awaitable(
@@ -1537,6 +1575,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    redis_settings=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1576,12 +1615,25 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    adapter = CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
+
+    if redis_settings:
+        import redis
+
+        redis_client = redis.from_url(redis_settings["uri"])
+        redis_ttl = redis_settings.get("ttl", 3600)
+
+    return CatalogContainerAdapter(
+        Context(
+            engine,
+            writable_storage,
+            readable_storage,
+            adapters_by_mimetype,
+            redis_client,
+            redis_ttl,
+        ),
         RootNode(metadata, specs, top_level_access_blob),
         mount_node=mount_node,
     )
-    return adapter
 
 
 def _set_sqlite_pragma(conn, record):
