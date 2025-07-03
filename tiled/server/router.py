@@ -61,6 +61,7 @@ from . import schemas
 from .authentication import (
     check_scopes,
     get_current_principal,
+    get_current_principal_websocket,
     get_current_scopes,
     get_session_state,
 )
@@ -644,12 +645,23 @@ def get_router(
                                  path: str, 
                                  envelope_format: str = "json", 
                                  seq_num: Optional[int] = None,
-                                 principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
-                                 root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
-                                 session_state: dict = Depends(get_session_state),
-                                 _=Security(check_scopes),
+                                 # principal: Union[Principal, SpecialUsers] = Depends(get_current_principal_websocket),
+                                 # root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
+                                 # session_state: dict = Depends(get_session_state),
+                                 # authn_scopes: Scopes = Depends(get_current_scopes),
+                                 # _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
                                 ):
-        entry = await get_entry(path, ["read:data", "read:metadata"], principal, root_tree, session_state, None)
+        # entry = await get_entry(path, 
+        #                         ["read:data", "read:metadata"],
+        #                         principal,
+        #                         set(["read:data"]),# authn_scopes,
+        #                         root_tree,
+        #                         None, #session_state,
+        #                         {StructureFamily.array, StructureFamily.sparse},
+        #                         websocket.state.metrics,
+        #                         getattr(websocket.app.state, "access_policy", None),
+        #                         )
+        entry = None
         import asyncio
         import json
 
@@ -2418,16 +2430,6 @@ def get_router(
                     result = validator(metadata, structure_family, structure, spec)
                 except ValidationError as e:
                     raise HTTPException(
-                        status_code=HTTP_400_BAD_REQUEST,
-                        detail=f"failed validation for spec {spec.name}:\n{e}",
-                    )
-                if result is not None:
-                    metadata_modified = True
-                    metadata = result
-
-        return metadata_modified, metadata
-
-    return router
                         status_code=HTTP_400_BAD_REQUEST,
                         detail=f"failed validation for spec {spec.name}:\n{e}",
                     )
