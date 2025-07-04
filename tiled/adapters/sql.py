@@ -417,14 +417,15 @@ class SQLAdapter:
 def create_connection(
     uri: str,
 ) -> "adbc_driver_manager.dbapi.Connection":
-    """
-    Function to create an adbc connection of type duckdb , sqlite or postgresql.
+    """Create an adbc connection of type duckdb, sqlite or postgresql.
+
     Parameters
     ----------
-    uri : the uri which is used to create a connection
+        uri : the uri which is used to create a connection
+
     Returns
     -------
-    Returns a connection of type duckdb , sqlite or postgresql.
+        Returns a connection of type duckdb , sqlite or postgresql.
     """
     if uri.startswith("duckdb:"):
         import adbc_driver_duckdb.dbapi

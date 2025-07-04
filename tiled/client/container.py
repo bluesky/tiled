@@ -382,11 +382,16 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         return result
 
-    def delete(self, key):
+    def delete(self, key, recursive=False, external_only=True):
         self._cached_len = None
         for attempt in retry_context():
             with attempt:
-                handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
+                handle_error(
+                    self.context.http_client.delete(
+                        f"{self.uri}/{key}",
+                        params={"recursive": recursive, "external_only": external_only},
+                    )
+                )
 
     # The following two methods are used by keys(), values(), items().
 

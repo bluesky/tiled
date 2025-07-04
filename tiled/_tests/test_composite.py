@@ -102,7 +102,7 @@ def context_for_read(context):
     client = from_context(context)
 
     # Awkward arrays are not supported when building xarray, in general
-    client["x"].delete("awk")
+    client["x"].delete("awk", external_only=False)
     # Add an image array and a table with 5 rows
     client["x"].write_array(img_data, key="img")
     client["x"].write_dataframe(df3, key="df3")
@@ -111,8 +111,8 @@ def context_for_read(context):
 
     # Restore the original context
     client["x"].write_awkward(awk_arr, key="awk", metadata={"md_key": "md_for_awk"})
-    client["x"].delete("img")
-    client["x"].delete("df3")
+    client["x"].delete("img", external_only=False)
+    client["x"].delete("df3", external_only=False)
 
 
 @pytest.fixture
