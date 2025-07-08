@@ -12,8 +12,17 @@ from typing import Callable, List, Optional, TypeVar, Union
 import anyio
 import packaging
 import pydantic_settings
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security, WebSocket
-import pydantic_settings
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Security,
+    WebSocket,
+    WebSocketDisconnect
+)
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
@@ -650,8 +659,8 @@ def get_router(
                                 set(["read:data"]),# authn_scopes,
                                 root_tree,
                                 None, #session_state,
-                                {StructureFamily.array, StructureFamily.sparse},
                                 websocket.state.metrics,
+                                {StructureFamily.array, StructureFamily.sparse},
                                 getattr(websocket.app.state, "access_policy", None),
                                 )
         import asyncio
