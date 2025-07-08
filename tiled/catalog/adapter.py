@@ -643,7 +643,7 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
-        redis_client=None
+        redis_client=None,
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
@@ -845,12 +845,13 @@ class CatalogNodeAdapter:
         if self.context.redis_client:
             import json
             from datetime import datetime
+
             seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
             metadata = {
                 "timestamp": datetime.now().isoformat(),
             }
             metadata.setdefault("Content-Type", data_source.mimetype)
-            
+
             # Cache data in Redis with a TTL, and publish
             # a notification about it.
             pipeline = self.context.redis_client.pipeline()
@@ -861,8 +862,8 @@ class CatalogNodeAdapter:
                     "datasource": json.dumps(data_source).encode("utf-8"),
                 },
             )
-            pipeline.expire(f"data:{node_id}:{seq_num}", self.context.redis_ttl)
-            pipeline.publish(f"notify:{node_id}", seq_num)
+            pipeline.expire(f"data:{self.node_id}:{seq_num}", self.context.redis_ttl)
+            pipeline.publish(f"notify:{self.node_id}", seq_num)
             await pipeline.execute()
 
     # async def patch_node(datasources=None):
@@ -1189,16 +1190,17 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             data = await ensure_awaitable(deserializer, body)
         else:
             raise NotImplementedError(entry.structure_family)
-        
+
         if self.context.redis_client:
             import json
             from datetime import datetime
+
             seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
             metadata = {
                 "timestamp": datetime.now().isoformat(),
             }
             metadata.setdefault("Content-Type", "application/octet-stream")
-            
+
             pipeline = self.context.redis_client.pipeline()
             pipeline.hset(
                 f"data:{self.node.id}:{seq_num}",
@@ -1596,7 +1598,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
-    redis_settings=None
+    redis_settings=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:

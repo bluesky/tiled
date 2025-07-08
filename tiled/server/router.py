@@ -21,7 +21,7 @@ from fastapi import (
     Request,
     Security,
     WebSocket,
-    WebSocketDisconnect
+    WebSocketDisconnect,
 )
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
@@ -642,34 +642,41 @@ def get_router(
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.websocket("/stream/{path:path}")
-    async def websocket_endpoint(websocket: WebSocket,
-                                 path: str, 
-                                 envelope_format: str = "json", 
-                                 seq_num: Optional[int] = None,
-                                 principal: Union[Principal, SpecialUsers] = Depends(get_current_principal_websocket),
-                                 root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
-                                 # session_state: dict = Depends(get_session_state),
-                                 # authn_scopes: Scopes = Depends(get_current_scopes),
-                                 # _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
-                                ):
+    async def websocket_endpoint(
+        websocket: WebSocket,
+        path: str,
+        envelope_format: str = "json",
+        seq_num: Optional[int] = None,
+        principal: Union[Principal, SpecialUsers] = Depends(
+            get_current_principal_websocket
+        ),
+        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
+        # session_state: dict = Depends(get_session_state),
+        # authn_scopes: Scopes = Depends(get_current_scopes),
+        # _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
+    ):
         websocket.state.metrics = {}
-        entry = await get_entry(path, 
-                                ["read:data", "read:metadata"],
-                                principal,
-                                set(["read:data"]),# authn_scopes,
-                                root_tree,
-                                None, #session_state,
-                                websocket.state.metrics,
-                                {StructureFamily.array, StructureFamily.sparse},
-                                getattr(websocket.app.state, "access_policy", None),
-                                )
+        entry = await get_entry(
+            path,
+            ["read:data", "read:metadata"],
+            principal,
+            set(["read:data"]),  # authn_scopes,
+            root_tree,
+            None,  # session_state,
+            websocket.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
+            getattr(websocket.app.state, "access_policy", None),
+        )
         import asyncio
         import json
+
         import msgpack
         import numpy as np
+
         await websocket.accept()
         end_stream = asyncio.Event()
         redis_client = entry.context.redis_client
+
         async def stream_data(seq_num):
             key = f"data:{entry.node.id}:{seq_num}"
             payload, metadata = await redis_client.hmget(key, "payload", "metadata")
@@ -677,12 +684,13 @@ def get_router(
                 return
             try:
                 payload = np.frombuffer(payload, dtype=np.float64).tolist()
-            except Exception as e:
+            except Exception:
                 payload = json.loads(payload)
-            data = { "sequence": seq_num,
-                      "metadata": metadata.decode('utf-8'),
-                      "payload": payload 
-                    }
+            data = {
+                "sequence": seq_num,
+                "metadata": metadata.decode("utf-8"),
+                "payload": payload,
+            }
             if envelope_format == "msgpack":
                 data = msgpack.packb(data)
                 await websocket.send_bytes(data)
@@ -694,6 +702,7 @@ def get_router(
 
         # Setup buffer
         stream_buffer = asyncio.Queue()
+
         async def buffer_live_events():
             pubsub = redis_client.pubsub()
             await pubsub.subscribe(f"notify:{entry.node.id}")
@@ -710,6 +719,7 @@ def get_router(
             finally:
                 await pubsub.unsubscribe(f"notify:{entry.node.id}")
                 await pubsub.aclose()
+
         live_task = asyncio.create_task(buffer_live_events())
 
         if seq_num is not None:
@@ -1576,7 +1586,7 @@ def get_router(
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
-            redis_client=request.app.state.redis_client
+            redis_client=request.app.state.redis_client,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{key}"

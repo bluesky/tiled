@@ -4,19 +4,19 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union, Annotated
+from typing import Annotated, Any, Optional, Sequence, Union
 
 from fastapi import (
     APIRouter,
     Depends,
     Form,
+    Header,
     HTTPException,
     Query,
     Request,
     Response,
     Security,
     WebSocket,
-    Header
 )
 from fastapi.security import (
     OAuth2PasswordBearer,
@@ -308,9 +308,8 @@ async def check_scopes(
             headers=headers_for_401(request, security_scopes),
         )
 
-async def get_current_principal_from_api_key(
-        api_key, authenticated, db, settings
-):
+
+async def get_current_principal_from_api_key(api_key, authenticated, db, settings):
     if authenticated:
         # Tiled is in a multi-user configuration with authentication providers.
         # We store the hashed value of the API key secret.
@@ -327,9 +326,7 @@ async def get_current_principal_from_api_key(
         api_key_orm = await lookup_valid_api_key(db, secret)
         if api_key_orm is not None:
             principal = api_key_orm.principal
-            principal_scopes = set().union(
-                *[role.scopes for role in principal.roles]
-            )
+            principal_scopes = set().union(*[role.scopes for role in principal.roles])
             # This intersection addresses the case where the Principal has
             # lost a scope that they had when this key was created.
             scopes = set(api_key_orm.scopes).intersection(
@@ -344,7 +341,7 @@ async def get_current_principal_from_api_key(
             await db.commit()
             return principal
         else:
-            return None   
+            return None
     else:
         # Tiled is in a "single user" mode with only one API key.
         if secrets.compare_digest(api_key, settings.single_user_api_key):
@@ -353,22 +350,22 @@ async def get_current_principal_from_api_key(
         else:
             return None
 
+
 async def get_current_principal_websocket(
-        websocket: WebSocket,
-        #security_scopes: SecurityScopes,
-        #api_key: str = Depends(get_api_key),
-        authorization: Annotated[str | None, Header()] = None,
-        settings: Settings = Depends(get_settings),
-        db: Optional[AsyncSession] = Depends(get_database_session),   
+    websocket: WebSocket,
+    # security_scopes: SecurityScopes,
+    # api_key: str = Depends(get_api_key),
+    authorization: Annotated[str | None, Header()] = None,
+    settings: Settings = Depends(get_settings),
+    db: Optional[AsyncSession] = Depends(get_database_session),
 ):
     print(authorization)
-    principal = await get_current_principal_from_api_key(authorization,
-                                                         websocket.app.state.authenticated,
-                                                         db,
-                                                         settings)
+    principal = await get_current_principal_from_api_key(
+        authorization, websocket.app.state.authenticated, db, settings
+    )
     if principal is None:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED,
-                            detail="Invalid API key")
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
 
 async def get_current_principal(
     request: Request,
@@ -393,11 +390,12 @@ async def get_current_principal(
     """
 
     if api_key is not None:
-        principal = await get_current_principal_from_api_key(api_key, 
-                                                             request.app.state.authenticated, 
-                                                             db,
-                                                             settings,
-                                                             )
+        principal = await get_current_principal_from_api_key(
+            api_key,
+            request.app.state.authenticated,
+            db,
+            settings,
+        )
         if principal is None:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
