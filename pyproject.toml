@@ -101,8 +101,7 @@ all = [
     "uvicorn[standard]",
     "watchfiles",
     "xarray",
-    "zarr <3; python_version <= '3.10'",
-    "zarr >=3; python_version >= '3.11'",
+    "zarr",
     "zstandard",
 ]
 # These are needed by the client and server to transmit/receive arrays.
@@ -203,8 +202,7 @@ minimal-server = [
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "uvicorn[standard]",
-    "zarr <3; python_version <= '3.10'",
-    "zarr >=3; python_version >= '3.11'",
+    "zarr",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
@@ -250,8 +248,7 @@ server = [
     "tifffile",
     "uvicorn[standard]",
     "xarray",
-    "zarr <3; python_version <= '3.10'",
-    "zarr >=3; python_version >= '3.11'",
+    "zarr",
     "zstandard",
 ]
 # These are needed by the client and server to transmit/receive sparse arrays.
