@@ -1606,6 +1606,7 @@ def from_uri(
         redis_ttl = redis_settings.get("ttl", 3600)
     else:
         redis_client = None
+        redis_ttl = 0
     
     context = Context(
         engine, 
