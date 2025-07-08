@@ -496,8 +496,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.array, StructureFamily.sparse},
             request.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         shape = entry.structure().shape
