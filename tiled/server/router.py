@@ -1586,7 +1586,7 @@ def get_router(
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
-            redis_client=request.app.state.redis_client,
+            redis_client=getattr(request.app.state, "redis_client", None),
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{key}"
