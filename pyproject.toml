@@ -318,3 +318,25 @@ exclude_lines = ["if __name__ == '__main__':"]
 
 [tool.coverage.paths]
 source = ["."]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.pypi-dependencies]
+tiled = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+all = { features = ["all"], solve-group = "default" }
+array = { features = ["array"], solve-group = "default" }
+client = { features = ["client"], solve-group = "default" }
+compression = { features = ["compression"], solve-group = "default" }
+dataframe = { features = ["dataframe"], solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+formats = { features = ["formats"], solve-group = "default" }
+minimal-client = { features = ["minimal-client"], solve-group = "default" }
+minimal-server = { features = ["minimal-server"], solve-group = "default" }
+server = { features = ["server"], solve-group = "default" }
+sparse = { features = ["sparse"], solve-group = "default" }
+xarray = { features = ["xarray"], solve-group = "default" }
