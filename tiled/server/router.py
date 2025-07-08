@@ -295,8 +295,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         request.state.endpoint = "search"
@@ -384,8 +384,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if hasattr(entry, "get_distinct"):
@@ -433,8 +433,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         request.state.endpoint = "metadata"
@@ -495,8 +495,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.array, StructureFamily.sparse},
             request.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         shape = entry.structure().shape
@@ -584,8 +584,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.array, StructureFamily.sparse},
             request.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         structure_family = entry.structure_family
@@ -750,8 +750,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.table},
             request.state.metrics,
+            {StructureFamily.table},
             getattr(request.app.state, "access_policy", None),
         )
         if (field is not None) and (column is not None):
@@ -812,8 +812,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.table},
             request.state.metrics,
+            {StructureFamily.table},
             getattr(request.app.state, "access_policy", None),
         )
         return await table_partition(
@@ -905,8 +905,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.table},
             request.state.metrics,
+            {StructureFamily.table},
             getattr(request.app.state, "access_policy", None),
         )
         return await table_full(
@@ -946,8 +946,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.table},
             request.state.metrics,
+            {StructureFamily.table},
             getattr(request.app.state, "access_policy", None),
         )
         return await table_full(
@@ -1033,8 +1033,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.container, StructureFamily.composite},
             request.state.metrics,
+            {StructureFamily.container, StructureFamily.composite},
             getattr(request.app.state, "access_policy", None),
         )
         return await container_full(
@@ -1076,8 +1076,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.container, StructureFamily.composite},
             request.state.metrics,
+            {StructureFamily.container, StructureFamily.composite},
             getattr(request.app.state, "access_policy", None),
         )
         return await container_full(
@@ -1167,12 +1167,12 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
+            request.state.metrics,
             {
                 StructureFamily.table,
                 StructureFamily.container,
                 StructureFamily.composite,
             },
-            request.state.metrics,
             getattr(request.app.state, "access_policy", None),
         )
         try:
@@ -1261,8 +1261,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.awkward},
             request.state.metrics,
+            {StructureFamily.awkward},
             getattr(request.app.state, "access_policy", None),
         )
         return await _awkward_buffers(
@@ -1309,8 +1309,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.awkward},
             request.state.metrics,
+            {StructureFamily.awkward},
             getattr(request.app.state, "access_policy", None),
         )
         return await _awkward_buffers(
@@ -1391,8 +1391,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.awkward},
             request.state.metrics,
+            {StructureFamily.awkward},
             getattr(request.app.state, "access_policy", None),
         )
         structure_family = entry.structure_family
@@ -1450,8 +1450,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         for data_source in body.data_sources:
@@ -1496,8 +1496,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         return await _create_node(
@@ -1602,8 +1602,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         await entry.put_data_source(data_source=body.data_source)
@@ -1625,8 +1625,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if hasattr(entry, "delete"):
@@ -1655,8 +1655,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if hasattr(entry, "delete_tree"):
@@ -1685,8 +1685,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.array, StructureFamily.sparse},
             request.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         body = await request.body()
@@ -1723,8 +1723,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.array, StructureFamily.sparse},
             request.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "write_block"):
@@ -1771,8 +1771,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.array},
             request.state.metrics,
+            {StructureFamily.array},
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "patch"):
@@ -1807,8 +1807,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.table},
             request.state.metrics,
+            {StructureFamily.table},
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "write"):
@@ -1843,8 +1843,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "write_partition"):
@@ -1879,8 +1879,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "write_partition"):
@@ -1914,8 +1914,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            {StructureFamily.awkward},
             request.state.metrics,
+            {StructureFamily.awkward},
             getattr(request.app.state, "access_policy", None),
         )
         body = await request.body()
@@ -1957,8 +1957,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "replace_metadata"):
@@ -2074,8 +2074,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "replace_metadata"):
@@ -2155,8 +2155,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "revisions"):
@@ -2195,8 +2195,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         if not hasattr(entry, "revisions"):
@@ -2233,8 +2233,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )  # TODO: Separate scope for assets?
         if not settings.expose_raw_assets:
@@ -2345,8 +2345,8 @@ def get_router(
             authn_scopes,
             root_tree,
             session_state,
-            None,
             request.state.metrics,
+            None,
             getattr(request.app.state, "access_policy", None),
         )  # TODO: Separate scope for assets?
         if not settings.expose_raw_assets:
