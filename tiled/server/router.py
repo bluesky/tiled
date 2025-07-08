@@ -56,6 +56,7 @@ from ..utils import (
     ensure_awaitable,
     patch_mimetypes,
     path_from_uri,
+    safe_json_dump,
 )
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
@@ -668,9 +669,9 @@ def get_router(
             getattr(websocket.app.state, "access_policy", None),
         )
         import asyncio
-        import json
 
         import msgpack
+        import orjson
 
         await websocket.accept()
         end_stream = asyncio.Event()
@@ -678,20 +679,39 @@ def get_router(
 
         async def stream_data(seq_num):
             key = f"data:{entry.node.id}:{seq_num}"
-            payload, metadata = await redis_client.hmget(key, "payload", "metadata")
-            if payload is None and metadata is None:
+            payload_bytes, metadata_bytes = await redis_client.hmget(
+                key, "payload", "metadata"
+            )
+            if payload_bytes is None and metadata_bytes is None:
                 return
-            data = {
-                "sequence": seq_num,
-                "metadata": metadata.decode("utf-8"),
-                "payload": payload,
-            }
+            metadata = orjson.loads(metadata_bytes)
             if envelope_format == "msgpack":
+                data = {
+                    "sequence": seq_num,
+                    "timestamp": metadata["timestamp"],
+                    "mimetype": metadata["Content-Type"],
+                    "payload": payload_bytes,
+                }
                 data = msgpack.packb(data)
                 await websocket.send_bytes(data)
             else:
-                await websocket.send_text(json.dumps(data))
-            if payload is None and metadata is not None:
+                media_type = metadata.pop("Content-Type")
+                structure_family = (
+                    StructureFamily.array
+                )  # TODO: generalize beyond array
+                structure = entry.structure()
+                deserializer = deserialization_registry.dispatch(
+                    structure_family, media_type
+                )
+                payload_decoded = deserializer(
+                    payload_bytes, structure.data_type.to_numpy_dtype(), structure.shape
+                )
+                data = {
+                    "sequence": seq_num,
+                    "timestamp": metadata["timestamp"],
+                    "payload": payload_decoded,
+                }
+                await websocket.send_text(safe_json_dump(data))
                 # This means that the stream is closed by the producer
                 end_stream.set()
 
