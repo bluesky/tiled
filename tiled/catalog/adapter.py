@@ -773,7 +773,7 @@ class CatalogNodeAdapter:
                 )
             ).scalar()
             if self.context.redis_client:
-                self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
+                await self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
             return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db, asset):
@@ -848,22 +848,20 @@ class CatalogNodeAdapter:
             seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
             metadata = {
                 "timestamp": datetime.now().isoformat(),
-                "data_source_id": data_source.id
             }
             metadata.setdefault("Content-Type", data_source.mimetype)
             
             # Cache data in Redis with a TTL, and publish
             # a notification about it.
             pipeline = self.context.redis_client.pipeline()
-            print(f"Setting pipeline metadata: {json.dumps(metadata).encode('utf-8')}")
             pipeline.hset(
                 f"data:{self.node.id}:{seq_num}",
                 mapping={
                     "metadata": json.dumps(metadata).encode("utf-8"),
-                    "payload": data_source,  # Raw binary bytes
+                    "datasource": json.dumps(data_source).encode("utf-8"),
                 },
             )
-            pipeline.expire(f"data:{node_id}:{seq_num}", settings.ttl)
+            pipeline.expire(f"data:{node_id}:{seq_num}", self.context.redis_ttl)
             pipeline.publish(f"notify:{node_id}", seq_num)
             await pipeline.execute()
 
@@ -1191,6 +1189,28 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             data = await ensure_awaitable(deserializer, body)
         else:
             raise NotImplementedError(entry.structure_family)
+        
+        if self.context.redis_client:
+            import json
+            from datetime import datetime
+            seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
+            metadata = {
+                "timestamp": datetime.now().isoformat(),
+            }
+            metadata.setdefault("Content-Type", "application/octet-stream")
+            
+            pipeline = self.context.redis_client.pipeline()
+            pipeline.hset(
+                f"data:{self.node.id}:{seq_num}",
+                mapping={
+                    "metadata": json.dumps(metadata).encode("utf-8"),
+                    "payload": data.tobytes(),  # Raw binary bytes
+                },
+            )
+            pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
+            pipeline.publish(f"notify:{self.node.id}", seq_num)
+            await pipeline.execute()
+
         return await ensure_awaitable((await self.get_adapter()).write, data)
 
     async def write_block(self, *args, **kwargs):
@@ -1618,7 +1638,7 @@ def from_uri(
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
 
     if redis_settings:
-        import redis
+        from redis import asyncio as redis
 
         redis_client = redis.from_url(redis_settings["uri"])
         redis_ttl = redis_settings.get("ttl", 3600)
