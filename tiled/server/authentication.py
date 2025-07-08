@@ -359,7 +359,11 @@ async def get_current_principal_websocket(
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
 ):
-    print(authorization)
+    if authorization is None:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="An API key must be passed in the Authorization header",
+        )
     principal = await get_current_principal_from_api_key(
         authorization, websocket.app.state.authenticated, db, settings
     )
