@@ -673,7 +673,6 @@ def get_router(
         import json
 
         import msgpack
-        import numpy as np
 
         await websocket.accept()
         end_stream = asyncio.Event()
@@ -684,10 +683,6 @@ def get_router(
             payload, metadata = await redis_client.hmget(key, "payload", "metadata")
             if payload is None and metadata is None:
                 return
-            try:
-                payload = np.frombuffer(payload, dtype=np.float64).tolist()
-            except Exception:
-                payload = json.loads(payload)
             data = {
                 "sequence": seq_num,
                 "metadata": metadata.decode("utf-8"),
