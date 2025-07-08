@@ -326,6 +326,13 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 [tool.pixi.pypi-dependencies]
 tiled = { path = ".", editable = true }
 
+[tool.pixi.feature.sparse.dependencies]
+# sparse setuptools-based build is not working, so override with conda
+# packages.
+ndindex = "*"
+pyarrow = "*"
+sparse = "*"
+
 [tool.pixi.environments]
 default = { solve-group = "default" }
 all = { features = ["all"], solve-group = "default" }
