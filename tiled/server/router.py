@@ -682,8 +682,14 @@ def get_router(
             payload_bytes, metadata_bytes = await redis_client.hmget(
                 key, "payload", "metadata"
             )
-            if payload_bytes is None and metadata_bytes is None:
-                return
+            if payload_bytes is None:
+                if metadata_bytes is None:
+                    # What does this mean?
+                    return
+                else:
+                    # This means that the stream is closed by the producer
+                    end_stream.set()
+                    return
             metadata = orjson.loads(metadata_bytes)
             if envelope_format == "msgpack":
                 data = {
@@ -712,8 +718,6 @@ def get_router(
                     "payload": payload_decoded,
                 }
                 await websocket.send_text(safe_json_dump(data))
-                # This means that the stream is closed by the producer
-                end_stream.set()
 
         # Setup buffer
         stream_buffer = asyncio.Queue()
