@@ -103,7 +103,7 @@ class Settings:
         key_from_filename=None,
         filter=None,
     ):
-        # If parameters come from a configuration file, they are given
+        # If parameters come from a configuration file, they
         # are given as importable strings, like "package.module:Reader".
         adapters_by_mimetype = adapters_by_mimetype or {}
         for key, value in list((adapters_by_mimetype).items()):
