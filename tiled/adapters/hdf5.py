@@ -38,7 +38,7 @@ def parse_hdf5_tree(
 ) -> Union[dict[str, Union[Any, Sentinel]], Sentinel]:
     """Parse an HDF5 file or group into a nested dictionary structure
 
-    the resulting tree structure represenets any groups as nested dictionaries ans datasets as None.
+    the resulting tree structure represents any groups as nested dictionaries ans datasets as None.
 
     Parameters
     ----------
@@ -388,7 +388,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
             )
 
         # Initialize adapter for the entire HDF5 tree
-        # If multiple data_uri assests are supplied, only the first one is traversed, but the rest of the uris
+        # If multiple data_uri assets are supplied, only the first one is traversed, but the rest of the uris
         # will be kept in case we need to read an array that spans all of them.
         assets = data_source.assets
         assert len(assets) > 0, "No assets found in data source"

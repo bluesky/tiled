@@ -18,9 +18,9 @@ _MESSAGE = (
 
 class IndexersMixin:
     """
-    Provides slicable attributes keys_indexer, items_indexer, values_indexer.
+    Provides sliceable attributes keys_indexer, items_indexer, values_indexer.
 
-    This is just for back-ward compatiblity.
+    This is just for back-ward compatibility.
     """
 
     keys: Any

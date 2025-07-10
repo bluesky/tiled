@@ -308,7 +308,7 @@ class CacheControl:
             # )
             return False
 
-        # always cache request, eevent if 'no-store' is set as header
+        # always cache request, event if 'no-store' is set as header
         if self.always_cache:
             # logger.debug("Caching Response because 'always_cache' is set to True.'")
             return True
