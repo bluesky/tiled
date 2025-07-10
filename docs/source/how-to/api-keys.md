@@ -201,7 +201,7 @@ ba9af604  2022-01-31T23:03:57  -                                              re
 ```
 
 If an API key is no longer need or accidentally leaked, it should be revoked. It
-can be identified by its first eight characters, as shown in the the output of
+can be identified by its first eight characters, as shown in the output of
 `tiled api_key list`.
 
 ```

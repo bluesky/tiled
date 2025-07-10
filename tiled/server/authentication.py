@@ -467,7 +467,7 @@ async def create_session(
     )
     db.add(session)
     await db.commit()
-    # Relaod to select Principal and Identiies.
+    # Reload to select Principal and Identities.
     fully_loaded_session = (
         await db.execute(
             select(orm.Session)

@@ -1,4 +1,4 @@
-# This is a variation on starlette's FileRespones that adds support for the
+# This is a variation on starlette's FileResponse that adds support for the
 # 'Range' HTTP header.
 
 # It is adapted from a closed PR in starlette which was reviewed by a core

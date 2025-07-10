@@ -58,7 +58,7 @@ def smiley_separated_variables(array, metadata):
     return file.getvalue()
 ```
 
-Either approach---from scracth or using numpy----will work in our case. Notice
+Either approach---from scratch or using numpy----will work in our case. Notice
 that we also get a dictionary of metadata. Some formats give us nowhere to put
 this extra information, and we can just drop it in that case.
 
@@ -159,7 +159,7 @@ def to_jpeg(array, metadata):
 ```
 
 This covers the basic functionality. See the built-in exporters in
-`tiled/strucures/array.py` for details that add polish, like scaling the
+`tiled/structures/array.py` for details that add polish, like scaling the
 image's dynamic range and failing gracefully when given arrays that have the
 wrong dimensionality to be exported as an image.
 

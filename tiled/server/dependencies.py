@@ -71,7 +71,7 @@ def get_entry(structure_families: Optional[set[StructureFamily]] = None):
                 if hasattr(entry, "lookup_adapter"):
                     # New catalog adapter
                     # This adapter can jump directly to the node of interest,
-                    # but currenty doesn't, to ensure access_policy is applied.
+                    # but currently doesn't, to ensure access_policy is applied.
                     # Raises NoEntry or BrokenLink if the path is not found
                     entry = await entry.lookup_adapter([segment])
                 else:

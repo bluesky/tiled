@@ -409,7 +409,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
                 )
 
             if direction < 0:
-                # TODO In Python 3.8 dict items should be reservible
+                # TODO In Python 3.8 dict items should be reversible
                 # but I have seen errors in the wild that I could not
                 # quickly resolve so for now we convert to list in the middle.
                 to_reverse = list(mapping.items())

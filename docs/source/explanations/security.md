@@ -266,7 +266,7 @@ authentication:
 There are example configurations for ORCID and Google in the directory
 `example_configs/` in the Tiled source repository.
 
-You can also try it against a locally-runing dummy OIDC provider. See the
+You can also try it against a locally-running dummy OIDC provider. See the
 README and files under `example_configs/simple_oidc/` in the Tiled source
 repository.
 

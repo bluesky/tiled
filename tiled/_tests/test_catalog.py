@@ -31,7 +31,7 @@ from .utils import enter_username_password
 
 @pytest_asyncio.fixture
 async def a(adapter):
-    "Raw adapter, not to be used within an app becaues it is manually started and stopped."
+    "Raw adapter, not to be used within an app because it is manually started and stopped."
     await adapter.startup()
     yield adapter
     await adapter.shutdown()

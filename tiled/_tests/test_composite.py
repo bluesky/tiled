@@ -189,7 +189,7 @@ def test_metadata(context):
         assert c.metadata["md_key"] == f"md_for_{part}"
 
 
-def test_parts_not_direclty_accessible(context):
+def test_parts_not_directly_accessible(context):
     client = from_context(context)
     client["x"].parts["df1"].read()
     client["x"].parts["df1"]["A"].read()

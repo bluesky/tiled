@@ -391,7 +391,7 @@ class TagBasedAccessPolicy:
 
     async def allowed_scopes(self, node, principal, authn_scopes):
         # If this is being called, filter_for_access has let us get this far.
-        # However, filters and allowed_scopes should always be implmented to
+        # However, filters and allowed_scopes should always be implemented to
         # give answers consistent with each other.
         if not hasattr(node, "access_blob"):
             allowed = self.scopes

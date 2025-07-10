@@ -19,7 +19,7 @@ from .utils import init_adapter_from_catalog
 
 
 def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
-    """Reshape a numpy array to match the desited shape, if possible.
+    """Reshape a numpy array to match the desired shape, if possible.
 
     Parameters
     ----------
@@ -131,7 +131,7 @@ class FileSequenceAdapter:
 
         Returns
         -------
-            A numpy or dask ND array with data from each file stacked along an addional (left-most) dimension.
+            A numpy or dask ND array with data from each file stacked along an additional (left-most) dimension.
         """
 
         pass

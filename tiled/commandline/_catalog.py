@@ -37,7 +37,7 @@ def init(
     tiled init sqlite:////path/to/catalog.db
 
     # Using a client/serve database engine (PostgreSQL)
-    tiled init postgresql://uesrname:password@localhost/database_name:5432
+    tiled init postgresql://username:password@localhost/database_name:5432
     """
     from sqlalchemy.ext.asyncio import create_async_engine
 

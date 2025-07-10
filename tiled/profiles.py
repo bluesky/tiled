@@ -4,7 +4,7 @@ This module handles client configuration.
 See config.py for server configuration.
 
 It contains several functions that are factored to facilitate testing,
-but the user-facing functionality is striaghtforward.
+but the user-facing functionality is straightforward.
 """
 
 import collections

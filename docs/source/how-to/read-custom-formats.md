@@ -9,7 +9,7 @@ names and/or custom formats.
 
 Tiled is not limited to serving data from files.
 
-Large deployements typically involve a database, supporting fast search on
+Large deployments typically involve a database, supporting fast search on
 metadata, and perhaps external files or "blob stores" with large data.
 
 But starting with files is a good way to get rolling with Tiled.
