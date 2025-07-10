@@ -642,6 +642,60 @@ def get_router(
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
+    @router.post("/stream/close/{path:path}")
+    async def close_stream(
+        request: Request,
+        path: str,
+        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        import json
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
+            getattr(request.app.state, "access_policy", None),
+        )
+        body = await request.json()
+        headers = request.headers
+        redis_client = entry.context.redis_client
+        reason = body.get("reason", None)
+    
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "reason": reason
+        }
+        metadata.setdefault("Content-Type", headers.get("Content-Type"))
+        # Increment the counter for this node.
+        seq_num = await redis_client.incr(f"seq_num:{entry.node.id}")
+
+        # Cache data in Redis with a TTL, and publish
+        # a notification about it.
+        pipeline = redis_client.pipeline()
+        pipeline.hset(
+            f"data:{entry.node.id}:{seq_num}",
+            mapping={
+                "metadata": json.dumps(metadata).encode("utf-8"),
+                "payload": json.dumps(None).encode("utf-8"),
+            },
+        )
+        pipeline.expire(f"data:{entry.node.id}:{seq_num}", entry.context.redis_ttl)
+        pipeline.publish(f"notify:{entry.node.id}", seq_num)
+        await pipeline.execute()
+
+        return {
+            "status": f"Connection for node {entry.node.id} is now closed.",
+            "reason": reason
+        }
+
     @router.websocket("/stream/{path:path}")
     async def websocket_endpoint(
         websocket: WebSocket,
@@ -682,9 +736,9 @@ def get_router(
             payload_bytes, metadata_bytes = await redis_client.hmget(
                 key, "payload", "metadata"
             )
-            if payload_bytes is None:
+            if payload_bytes is None or payload_bytes == b'null':
                 if metadata_bytes is None:
-                    # What does this mean?
+                    # This means that redis ttl has expired for this seq_num
                     return
                 else:
                     # This means that the stream is closed by the producer
@@ -702,16 +756,19 @@ def get_router(
                 await websocket.send_bytes(data)
             else:
                 media_type = metadata.pop("Content-Type")
-                structure_family = (
-                    StructureFamily.array
-                )  # TODO: generalize beyond array
-                structure = entry.structure()
-                deserializer = deserialization_registry.dispatch(
-                    structure_family, media_type
-                )
-                payload_decoded = deserializer(
-                    payload_bytes, structure.data_type.to_numpy_dtype(), structure.shape
-                )
+                if media_type == "application/json":
+                    payload_decoded = payload_bytes
+                else:
+                    structure_family = (
+                        StructureFamily.array
+                    )  # TODO: generalize beyond array
+                    structure = entry.structure()
+                    deserializer = deserialization_registry.dispatch(
+                        structure_family, media_type
+                    )
+                    payload_decoded = deserializer(
+                        payload_bytes, structure.data_type.to_numpy_dtype(), structure.shape
+                    )
                 data = {
                     "sequence": seq_num,
                     "timestamp": metadata["timestamp"],
