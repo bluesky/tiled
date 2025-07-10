@@ -82,6 +82,15 @@ class ArrayAdapter:
         if not hasattr(array, "__array__"):
             array = numpy.asanyarray(array)
 
+        # Convert array of arrays to ND array to expose the underlying dtype
+        is_array_of_arrays = (
+            array.dtype == "object"
+            and array.shape[0]
+            and isinstance(array[0], numpy.ndarray)
+        )
+        if is_array_of_arrays:
+            array = numpy.vstack(array)
+
         # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
         is_likely_string_dtype = isinstance(array.dtype, pandas.StringDtype) or (
             array.dtype == "object" and array.dtype.fields is None
