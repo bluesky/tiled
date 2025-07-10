@@ -71,6 +71,7 @@ class Node(Timestamped, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
+    is_streaming = Column(Boolean, default=False, nullable=False)
 
     data_sources = relationship(
         "DataSource",
