@@ -12,6 +12,6 @@ authentication:
       confirmation_message: "You have logged in with ORCID as {id}."
 trees:
  # Just some arbitrary example data...
- # The point of this example is the authenticaiton above.
+ # The point of this example is the authentication above.
  - tree: tiled.examples.generated_minimal:tree
    path: /
