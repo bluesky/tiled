@@ -355,7 +355,7 @@ def test_access_control_with_api_key_auth(
         client_a["a"]["A2"]
         client_g["g"]["A3"]
     finally:
-        # Clean up Context, which is a module-scopae fixture shared with other tests.
+        # Clean up Context, which is a module-scope fixture shared with other tests.
         context_a.api_key = None
         context_g.api_key = None
 

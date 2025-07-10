@@ -38,13 +38,13 @@ def test_pickle_clients(structure_clients, tmpdir):
             )
         client = from_context(context, structure_clients)
         pickle.loads(pickle.dumps(client))
-        for segements in [
+        for segments in [
             ["generated"],
             ["generated", "small_image"],
             ["generated", "short_table"],
         ]:
             original = client
-            for segment in segements:
+            for segment in segments:
                 original = original[segment]
             roundtripped = pickle.loads(pickle.dumps(original))
             roundtripped_twice = pickle.loads(pickle.dumps(roundtripped))
