@@ -115,9 +115,9 @@ client.new(
 
 #### Writing a composite structure
 
-A Composite structure allows the user to acess the columns of contained tables in
+A Composite structure allows the user to access the columns of contained tables in
 a flat namespace along with other sibling arrays. Writing new data to a Composite container
-is analoguous to the usual containers, however exceptions will be raised if there are
+is analogues to the usual containers, however exceptions will be raised if there are
 any name collisions.
 
 ```python

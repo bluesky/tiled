@@ -103,7 +103,7 @@ looking at a couple or efficiently grabbing batches of items, especially if you
 need to start from the middle.
 
 ```python
->>> client.keys().first()  # Acces the first key.
+>>> client.keys().first()  # Access the first key.
 'big_image'
 
 >>> client.keys().head()  # Access the first several keys.
