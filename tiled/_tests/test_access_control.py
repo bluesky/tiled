@@ -7,12 +7,12 @@ from starlette.status import HTTP_403_FORBIDDEN
 from tiled.authenticators import DictionaryAuthenticator
 from tiled.server.protocols import UserSessionState
 
-from ..access_policies import NO_ACCESS
+from ..access_control.access_policies import NO_ACCESS
+from ..access_control.scopes import ALL_SCOPES, NO_SCOPES, USER_SCOPES
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.utils import ClientError
-from ..scopes import ALL_SCOPES, NO_SCOPES, USER_SCOPES
 from ..server.app import build_app_from_config
 from .utils import enter_username_password, fail_with_status_code
 
@@ -55,7 +55,7 @@ def tree_b(access_policy=None):
 def context_a(tmpdir_module):
     config = {
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "access_lists": {
@@ -85,7 +85,7 @@ def context_a(tmpdir_module):
 def context_b(tmpdir_module):
     config = {
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "access_lists": {
@@ -120,11 +120,11 @@ def context_c(tmpdir_module):
             },
         ],
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "access_lists": {
-                    "alice": "tiled.access_policies:ALL_ACCESS",
+                    "alice": "tiled.access_control.access_policies:ALL_ACCESS",
                 },
                 "admins": ["admin"],
             },
@@ -155,11 +155,11 @@ def context_d(tmpdir_module):
             },
         ],
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "access_lists": {
-                    "alice": "tiled.access_policies:ALL_ACCESS",
+                    "alice": "tiled.access_control.access_policies:ALL_ACCESS",
                 },
                 "admins": ["admin"],
                 # Block writing.
@@ -192,11 +192,11 @@ def context_e(tmpdir_module):
             },
         ],
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "access_lists": {
-                    "alice": "tiled.access_policies:ALL_ACCESS",
+                    "alice": "tiled.access_control.access_policies:ALL_ACCESS",
                 },
                 "admins": ["admin"],
                 # Block creation.
@@ -227,7 +227,7 @@ def context_e(tmpdir_module):
 def context_f(tmpdir_module):
     config = {
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "access_lists": {},
@@ -263,7 +263,7 @@ def context_g(tmpdir_module):
             },
         ],
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "key": "project",
@@ -502,7 +502,7 @@ def test_service_principal_access(tmpdir):
             }
         ],
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "access_lists": {},
                 "provider": "toy",
