@@ -5,7 +5,7 @@ RUN npm install && npm run build
 
 # We cannot upgrade to Python 3.11 until numba supports it.
 # The `sparse` library relies on numba.
-FROM python:3.12-slim as builder
+FROM python:3.12-slim as developer
 
 # We need git at build time in order for versioneer to work, which in turn is
 # needed for the server to correctly report the library_version in the /api/v1/
@@ -27,11 +27,12 @@ RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install build dependencies.
-RUN pip install --no-cache-dir cython
+RUN pip install --upgrade pip && pip install --no-cache-dir cython
 
 COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
 
+from developer as builder
 # Skip building the UI here because we already did it in the stage
 # above using a node container.
 # Include server and client depedencies here because this container may be used
