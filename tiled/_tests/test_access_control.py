@@ -8,11 +8,11 @@ from tiled.authenticators import DictionaryAuthenticator
 from tiled.server.protocols import UserSessionState
 
 from ..access_control.access_policies import NO_ACCESS
+from ..access_control.scopes import ALL_SCOPES, NO_SCOPES, USER_SCOPES
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
 from ..client.utils import ClientError
-from ..scopes import ALL_SCOPES, NO_SCOPES, USER_SCOPES
 from ..server.app import build_app_from_config
 from .utils import enter_username_password, fail_with_status_code
 

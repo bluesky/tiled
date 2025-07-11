@@ -1,8 +1,10 @@
 import sqlite3
-import yaml
-
+import warnings
 from contextlib import closing
+from pathlib import Path
 from sys import intern
+
+import yaml
 
 from ..utils import InterningLoader
 
@@ -66,7 +68,7 @@ class AccessTagsParser:
 
 
 def create_access_tags_tables(db):
-    with contextlib.closing(db.cursor()) as cursor:
+    with closing(db.cursor()) as cursor:
         tables_setup_sql = """
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -144,7 +146,7 @@ PRAGMA optimize;
 
 
 def update_access_tags_tables(db, scopes, tags, owners, public_tags):
-    with contextlib.closing(db.cursor()) as cursor:
+    with closing(db.cursor()) as cursor:
         tables_stage_sql = """
 BEGIN TRANSACTION;
 CREATE TEMP TABLE IF NOT EXISTS stage_tags (
