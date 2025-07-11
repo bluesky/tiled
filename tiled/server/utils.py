@@ -6,7 +6,7 @@ from typing import Any, Literal, Mapping
 from fastapi import Request
 from starlette.types import Scope
 
-from ..access_policies import NO_ACCESS
+from ..access_control.access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
 
 EMPTY_NODE = MapAdapter({})

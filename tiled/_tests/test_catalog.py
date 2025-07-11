@@ -723,7 +723,7 @@ async def test_access_control(tmpdir, sqlite_or_postgres_uri):
             ],
         },
         "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
             "args": {
                 "provider": "toy",
                 "access_lists": {
