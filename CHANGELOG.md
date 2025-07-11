@@ -67,6 +67,14 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - For compatibility with older clients, do not require metadata updates to include
   an `access_blob` in the body of the request.
 
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+
+### Changed
+
+- Access control code is now in the `access_control` subdirectory
+
 ### Fixed
 
 - Uniform array columns read from Postgres/DuckDB are now aggregated to an
