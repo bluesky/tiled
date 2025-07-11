@@ -70,7 +70,7 @@ integrate with our proposal system.
 import cachetools
 import httpx
 from tiled.queries import In
-from tiled.scopes import PUBLIC_SCOPES
+from tiled.access_control.scopes import PUBLIC_SCOPES
 
 
 # To reduce load on the external service and to expedite repeated lookups, use a

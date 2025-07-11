@@ -10,6 +10,7 @@ from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
 from ..access_control.access_policies import ALL_ACCESS
+from ..access_control.scopes import ALL_SCOPES
 from ..adapters.awkward_directory_container import DirectoryContainer
 from ..adapters.protocols import (
     AccessPolicy,
@@ -20,7 +21,6 @@ from ..adapters.protocols import (
     TableAdapter,
 )
 from ..ndslice import NDSlice
-from ..scopes import ALL_SCOPES
 from ..server.schemas import Principal, PrincipalType
 from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype

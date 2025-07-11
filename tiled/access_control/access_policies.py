@@ -2,9 +2,9 @@ import logging
 import os
 from functools import partial
 
-from .queries import AccessBlobFilter, In, KeysFilter
+from ..queries import AccessBlobFilter, In, KeysFilter
+from ..utils import Sentinel, SpecialUsers, import_object
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
-from .utils import Sentinel, import_object
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")

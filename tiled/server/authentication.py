@@ -37,7 +37,7 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
-from tiled.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
