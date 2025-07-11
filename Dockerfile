@@ -62,3 +62,23 @@ ENV TILED_CONFIG=/deploy/config
 EXPOSE 8000
 
 CMD ["tiled", "serve", "config", "--host", "0.0.0.0", "--port", "8000", "--scalable"]
+
+FROM builder as dev-runner
+
+RUN TILED_BUILD_SKIP_UI=1 pip install -e '.[all]'
+
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
+# We want cURL and httpie so healthchecks can be performed within the container
+RUN apt-get update && apt-get install -y curl httpie
+
+WORKDIR /deploy
+RUN mkdir /deploy/config
+RUN mkdir -p /storage
+COPY ./example_configs/single_catalog_single_user.yml /deploy/config
+ENV TILED_CONFIG=/deploy/config
+
+EXPOSE 8000
+
+CMD ["tiled", "serve", "config", "--host", "0.0.0.0", "--port", "8000", "--scalable"]

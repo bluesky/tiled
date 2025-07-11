@@ -3,7 +3,7 @@
 	"build": {
 		"context": "..",
 		"dockerfile": "../Dockerfile",
-		"target": "developer"
+		"target": "dev-runner"
 	},
 	"features": {
 		"ghcr.io/devcontainers/features/git:1": {}
@@ -21,7 +21,6 @@
 				"ms-vscode-remote.remote-containers"
 			]
 		}
-	},
+	}
 
-	"postCreateCommand": "TILED_BUILD_SKIP_UI=1 pip install -e '.[all]'"
 }
