@@ -14,6 +14,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Refactored internal Zarr version detection
 - Remove `SpecialUsers` principals for single-user and anonymous-access cases
 
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+
+### Changed
+
+- Access control code is now in the `access_control` subdirectory
+
 ### Fixed
 
 - Uniform array columns read from Postgres/DuckDB are now aggregated to an
