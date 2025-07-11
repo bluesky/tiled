@@ -309,12 +309,12 @@ properties:
 
           ```yaml
           access_control:
-            access_policy: "tiled.access_policies:SimpleAccessPolicy"
+            access_policy: "tiled.access_control.access_policies:SimpleAccessPolicy"
             args:
               access_lists:
                 alice: ["A", "B"]
                 bob: ["C"]
-                cara: "tiled.access_policies:ALL_ACCESS"
+                cara: "tiled.access_control.access_policies:ALL_ACCESS"
           ```
       args:
         type: object
