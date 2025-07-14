@@ -5,6 +5,8 @@ from typing import List, Optional
 
 import typer
 
+from tiled.server.settings import get_settings
+
 serve_app = typer.Typer(no_args_is_help=True)
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
@@ -192,9 +194,7 @@ def serve_directory(
     if api_key is None:
         api_key = os.getenv("TILED_SINGLE_USER_API_KEY")
         if api_key is None:
-            import secrets
-
-            api_key = secrets.token_hex(32)
+            api_key = get_settings().single_user_api_key
             generated = True
 
     web_app = build_app(
