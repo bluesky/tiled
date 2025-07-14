@@ -11,12 +11,14 @@ import shutil
 import sys
 import uuid
 from contextlib import closing
+from datetime import datetime
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
+import orjson
 from fastapi import HTTPException
 from sqlalchemy import (
     and_,
@@ -567,6 +569,7 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
+        is_streaming=False,
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
@@ -579,6 +582,7 @@ class CatalogNodeAdapter:
             structure_family=structure_family,
             specs=[s.model_dump() for s in specs or []],
             access_blob=access_blob,
+            is_streaming=is_streaming,
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -969,6 +973,46 @@ class CatalogNodeAdapter:
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
             await db.commit()
+
+    async def close_stream(self):
+        async with self.context.session() as db:
+            await db.execute(
+                update(orm.Node)
+                .where(orm.Node.id == self.node.id)
+                .values(is_streaming=False)
+            )
+            await db.commit()
+
+        # Check if stream is already closed. If it is raise an exception
+        node_ttl = await self.context.redis_client.ttl(f"seq_num:{self.node.id}")
+        if node_ttl > 0:
+            # Already closed, nothing to do
+            return
+        if node_ttl == -2:
+            # Key not found, must have already expired or never existed
+            return
+
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "Content-Type": "application/json",
+        }
+        # Increment the counter for this node.
+        seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
+
+        # Cache data in Redis with a TTL, and publish
+        # a notification about it.
+        pipeline = self.context.redis_client.pipeline()
+        pipeline.hset(
+            f"data:{self.node.id}:{seq_num}",
+            mapping={
+                "metadata": orjson.dumps(metadata),
+                "payload": orjson.dumps(None),
+            },
+        )
+        pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
+        pipeline.expire(f"seq_num:{self.node.id}", self.context.redis_ttl)
+        pipeline.publish(f"notify:{self.node.id}", seq_num)
+        await pipeline.execute()
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
