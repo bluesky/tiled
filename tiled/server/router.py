@@ -653,6 +653,7 @@ def get_router(
         _=Security(check_scopes, scopes=["write:data"]),
     ):
         import json
+
         entry = await get_entry(
             path,
             ["write:data"],
@@ -667,10 +668,12 @@ def get_router(
         headers = request.headers
         redis_client = entry.context.redis_client
 
-        # Check if stream is already closed. If it is raise an exception    
-        node_ttl = await redis_client.ttl(f"seq_num:{node_id}")
+        # Check if stream is already closed. If it is raise an exception
+        node_ttl = await redis_client.ttl(f"seq_num:{entry.node.id}")
         if node_ttl > 0:
-            raise HTTPException(status_code=404, detail=f"Node expiring in {node_ttl} seconds")
+            raise HTTPException(
+                status_code=404, detail=f"Node expiring in {node_ttl} seconds"
+            )
         if node_ttl == -2:
             raise HTTPException(status_code=404, detail="Node not found")
 
@@ -740,7 +743,7 @@ def get_router(
             payload_bytes, metadata_bytes = await redis_client.hmget(
                 key, "payload", "metadata"
             )
-            if payload_bytes is None or payload_bytes == b'null':
+            if payload_bytes is None or payload_bytes == b"null":
                 if metadata_bytes is None:
                     # This means that redis ttl has expired for this seq_num
                     return
@@ -771,7 +774,9 @@ def get_router(
                         structure_family, media_type
                     )
                     payload_decoded = deserializer(
-                        payload_bytes, structure.data_type.to_numpy_dtype(), structure.shape
+                        payload_bytes,
+                        structure.data_type.to_numpy_dtype(),
+                        structure.shape,
                     )
                 data = {
                     "sequence": seq_num,
