@@ -82,7 +82,7 @@ async def get_entry(
                 principal,
                 authn_scopes,
                 ["read:metadata"],
-                metrics
+                metrics,
             )
 
         # Now check that we have the requested scope according to the access policy
