@@ -692,6 +692,7 @@ def get_router(
             },
         )
         pipeline.expire(f"data:{entry.node.id}:{seq_num}", entry.context.redis_ttl)
+        pipeline.expire(f"seq_num:{entry.node.id}", entry.context.redis_ttl)
         pipeline.publish(f"notify:{entry.node.id}", seq_num)
         await pipeline.execute()
 
