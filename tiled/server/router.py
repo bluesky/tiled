@@ -653,8 +653,6 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
-        import json
-
         entry = await get_entry(
             path,
             ["write:data"],
@@ -666,43 +664,7 @@ def get_router(
             {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
-        headers = request.headers
-        redis_client = entry.context.redis_client
-
-        # Check if stream is already closed. If it is raise an exception
-        node_ttl = await redis_client.ttl(f"seq_num:{entry.node.id}")
-        if node_ttl > 0:
-            raise HTTPException(
-                status_code=404, detail=f"Node expiring in {node_ttl} seconds"
-            )
-        if node_ttl == -2:
-            raise HTTPException(status_code=404, detail="Node not found")
-
-        metadata = {
-            "timestamp": datetime.now().isoformat(),
-        }
-        metadata.setdefault("Content-Type", headers.get("Content-Type"))
-        # Increment the counter for this node.
-        seq_num = await redis_client.incr(f"seq_num:{entry.node.id}")
-
-        # Cache data in Redis with a TTL, and publish
-        # a notification about it.
-        pipeline = redis_client.pipeline()
-        pipeline.hset(
-            f"data:{entry.node.id}:{seq_num}",
-            mapping={
-                "metadata": json.dumps(metadata).encode("utf-8"),
-                "payload": json.dumps(None).encode("utf-8"),
-            },
-        )
-        pipeline.expire(f"data:{entry.node.id}:{seq_num}", entry.context.redis_ttl)
-        pipeline.expire(f"seq_num:{entry.node.id}", entry.context.redis_ttl)
-        pipeline.publish(f"notify:{entry.node.id}", seq_num)
-        await pipeline.execute()
-
-        return {
-            "status": f"Connection for node {entry.node.id} is now closed.",
-        }
+        await entry.close_stream()
 
     @router.websocket("/stream/single/{path:path}")
     async def websocket_endpoint(
@@ -1640,11 +1602,12 @@ def get_router(
         authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
     ):
-        metadata, structure_family, specs, access_blob = (
+        metadata, structure_family, specs, access_blob, is_streaming = (
             body.metadata,
             body.structure_family,
             body.specs,
             body.access_blob,
+            body.is_streaming,
         )
         if structure_family == StructureFamily.container:
             structure = None
@@ -1689,6 +1652,7 @@ def get_router(
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
+            is_streaming=is_streaming,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
