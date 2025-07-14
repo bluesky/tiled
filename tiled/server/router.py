@@ -666,7 +666,14 @@ def get_router(
         )
         headers = request.headers
         redis_client = entry.context.redis_client
-    
+
+        # Check if stream is already closed. If it is raise an exception    
+        node_ttl = await redis_client.ttl(f"seq_num:{node_id}")
+        if node_ttl > 0:
+            raise HTTPException(status_code=404, detail=f"Node expiring in {node_ttl} seconds")
+        if node_ttl == -2:
+            raise HTTPException(status_code=404, detail="Node not found")
+
         metadata = {
             "timestamp": datetime.now().isoformat(),
         }
