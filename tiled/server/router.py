@@ -703,7 +703,7 @@ def get_router(
             "status": f"Connection for node {entry.node.id} is now closed.",
         }
 
-    @router.websocket("/stream/{path:path}")
+    @router.websocket("/stream/single/{path:path}")
     async def websocket_endpoint(
         websocket: WebSocket,
         path: str,
