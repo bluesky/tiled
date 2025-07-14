@@ -642,7 +642,7 @@ def get_router(
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
-    @router.post("/stream/close/{path:path}")
+    @router.delete("/stream/close/{path:path}")
     async def close_stream(
         request: Request,
         path: str,
@@ -664,14 +664,11 @@ def get_router(
             {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
-        body = await request.json()
         headers = request.headers
         redis_client = entry.context.redis_client
-        reason = body.get("reason", None)
     
         metadata = {
             "timestamp": datetime.now().isoformat(),
-            "reason": reason
         }
         metadata.setdefault("Content-Type", headers.get("Content-Type"))
         # Increment the counter for this node.
@@ -693,7 +690,6 @@ def get_router(
 
         return {
             "status": f"Connection for node {entry.node.id} is now closed.",
-            "reason": reason
         }
 
     @router.websocket("/stream/{path:path}")
