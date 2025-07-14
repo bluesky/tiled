@@ -567,7 +567,6 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
-        redis_client=None,
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
