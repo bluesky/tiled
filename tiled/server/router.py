@@ -705,7 +705,7 @@ def get_router(
             payload_bytes, metadata_bytes, data_source_bytes = await redis_client.hmget(
                 key, "payload", "metadata", "data_source"
             )
-            if payload_bytes is None or payload_bytes == b"null":
+            if (payload_bytes is None) and (data_source_bytes is None):
                 if metadata_bytes is None:
                     # This means that redis ttl has expired for this seq_num
                     return
