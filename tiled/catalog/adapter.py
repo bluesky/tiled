@@ -1156,15 +1156,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).read_block, *args, **kwargs
         )
 
-    async def write(self, deserializer, entry, body):
-        if entry.structure_family == "array":
-            dtype = entry.structure().data_type.to_numpy_dtype()
-            shape = entry.structure().shape
-            data = await ensure_awaitable(deserializer, body, dtype, shape)
-        elif entry.structure_family == "sparse":
-            data = await ensure_awaitable(deserializer, body)
-        else:
-            raise NotImplementedError(entry.structure_family)
+    async def write(self, media_type, deserializer, entry, body):
+        shape = entry.structure().shape
 
         if self.context.redis_client:
             import json
@@ -1173,20 +1166,31 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
             metadata = {
                 "timestamp": datetime.now().isoformat(),
+                "content-type": media_type,
+                "shape": shape,
+                "offset": [0 for dim in range(len(shape))],
             }
-            metadata.setdefault("Content-Type", "application/octet-stream")
 
             pipeline = self.context.redis_client.pipeline()
             pipeline.hset(
                 f"data:{self.node.id}:{seq_num}",
                 mapping={
                     "metadata": json.dumps(metadata).encode("utf-8"),
-                    "payload": data.tobytes(),  # Raw binary bytes
+                    "payload": body,  # raw user input
                 },
             )
             pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
             pipeline.publish(f"notify:{self.node.id}", seq_num)
             await pipeline.execute()
+
+        # Decode bytes and store.
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
 
         return await ensure_awaitable((await self.get_adapter()).write, data)
 

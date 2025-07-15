@@ -716,19 +716,17 @@ def get_router(
                     return
             metadata = orjson.loads(metadata_bytes)
             if envelope_format == "msgpack":
-                data = {
-                    "sequence": seq_num,
-                    "timestamp": metadata["timestamp"],
-                    "mimetype": metadata["Content-Type"],
-                    "payload": payload_bytes,
-                }
-                data = msgpack.packb(data)
+                metadata["payload"] = payload_bytes
+                data = msgpack.packb(metadata)
                 await websocket.send_bytes(data)
             else:
-                media_type = metadata.pop("Content-Type")
+                media_type = metadata["content-type"]
                 if media_type == "application/json":
+                    # nothing to do, the payload is already JSON
                     payload_decoded = payload_bytes
                 else:
+                    # Transcode to payload to JSON.
+                    metadata["content-type"] = "application/json"
                     structure_family = (
                         StructureFamily.array
                     )  # TODO: generalize beyond array
@@ -741,12 +739,9 @@ def get_router(
                         structure.data_type.to_numpy_dtype(),
                         structure.shape,
                     )
-                data = {
-                    "sequence": seq_num,
-                    "timestamp": metadata["timestamp"],
-                    "payload": payload_decoded,
-                }
-                await websocket.send_text(safe_json_dump(data))
+                metadata["payload"] = payload_decoded
+                data = safe_json_dump(metadata)
+                await websocket.send_text(data)
 
         # Setup buffer
         stream_buffer = asyncio.Queue()
@@ -1774,7 +1769,7 @@ def get_router(
             deserializer = deserialization_registry.dispatch("sparse", media_type)
         else:
             raise NotImplementedError(entry.structure_family)
-        await ensure_awaitable(entry.write, deserializer, entry, body)
+        await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
         return json_or_msgpack(request, None)
 
     @router.put("/array/block/{path:path}")
