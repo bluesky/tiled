@@ -768,12 +768,13 @@ class CatalogNodeAdapter:
             ).scalar()
             if self.context.redis_client:
                 # Allocate a counter for the new node.
-                await self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
+                await self.context.redis_client.setnx(f"sequence:{node.id}", 0)
                 # Notify subscribers of the *parent* node about the new child.
-                seq_num = await self.context.redis_client.incr(
-                    f"seq_num:{self.node.id}"
+                sequence = await self.context.redis_client.incr(
+                    f"sequence:{self.node.id}"
                 )
                 metadata = {
+                    "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
                     "data_sources": [d.dict() for d in data_sources],
@@ -783,15 +784,16 @@ class CatalogNodeAdapter:
                 # a notification about it.
                 pipeline = self.context.redis_client.pipeline()
                 pipeline.hset(
-                    f"data:{self.node.id}:{seq_num}",
+                    f"data:{self.node.id}:{sequence}",
                     mapping={
+                        "sequence": sequence,
                         "metadata": orjson.dumps(metadata),
                     },
                 )
                 pipeline.expire(
-                    f"data:{self.node.id}:{seq_num}", self.context.redis_ttl
+                    f"data:{self.node.id}:{sequence}", self.context.redis_ttl
                 )
-                pipeline.publish(f"notify:{self.node.id}", seq_num)
+                pipeline.publish(f"notify:{self.node.id}", sequence)
                 await pipeline.execute()
             return key, type(self)(self.context, refreshed_node)
 
@@ -862,8 +864,9 @@ class CatalogNodeAdapter:
 
             await db.commit()
         if self.context.redis_client:
-            seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
+            sequence = await self.context.redis_client.incr(f"sequence:{self.node.id}")
             metadata = {
+                "sequence": sequence,
                 "timestamp": datetime.now().isoformat(),
                 "data_source": data_source.dict(),
             }
@@ -872,13 +875,14 @@ class CatalogNodeAdapter:
             # a notification about it.
             pipeline = self.context.redis_client.pipeline()
             pipeline.hset(
-                f"data:{self.node.id}:{seq_num}",
+                f"data:{self.node.id}:{sequence}",
                 mapping={
+                    "sequence": sequence,
                     "metadata": orjson.dumps(metadata),
                 },
             )
-            pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
-            pipeline.publish(f"notify:{self.node.id}", seq_num)
+            pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.redis_ttl)
+            pipeline.publish(f"notify:{self.node.id}", sequence)
             await pipeline.execute()
 
     async def revisions(self, offset, limit):
@@ -1072,7 +1076,7 @@ class CatalogNodeAdapter:
             await db.commit()
 
         # Check if stream is already closed. If it is raise an exception
-        node_ttl = await self.context.redis_client.ttl(f"seq_num:{self.node.id}")
+        node_ttl = await self.context.redis_client.ttl(f"sequence:{self.node.id}")
         if node_ttl > 0:
             # Already closed, nothing to do
             return
@@ -1085,35 +1089,36 @@ class CatalogNodeAdapter:
             "end_of_stream": True,
         }
         # Increment the counter for this node.
-        seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
+        sequence = await self.context.redis_client.incr(f"sequence:{self.node.id}")
 
         # Cache data in Redis with a TTL, and publish
         # a notification about it.
         pipeline = self.context.redis_client.pipeline()
         pipeline.hset(
-            f"data:{self.node.id}:{seq_num}",
+            f"data:{self.node.id}:{sequence}",
             mapping={
+                "sequence": sequence,
                 "metadata": orjson.dumps(metadata),
             },
         )
-        pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
-        pipeline.expire(f"seq_num:{self.node.id}", self.context.redis_ttl)
-        pipeline.publish(f"notify:{self.node.id}", seq_num)
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.redis_ttl)
+        pipeline.expire(f"sequence:{self.node.id}", self.context.redis_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
         await pipeline.execute()
 
     def make_ws_handler(self, websocket, formatter):
-        async def handler(seq_num: Optional[int] = None):
+        async def handler(sequence: Optional[int] = None):
             await websocket.accept()
             end_stream = asyncio.Event()
             redis_client = self.context.redis_client
 
-            async def stream_data(seq_num):
-                key = f"data:{self.node.id}:{seq_num}"
+            async def stream_data(sequence):
+                key = f"data:{self.node.id}:{sequence}"
                 payload_bytes, metadata_bytes = await redis_client.hmget(
                     key, "payload", "metadata"
                 )
                 if metadata_bytes is None:
-                    # This means that redis ttl has expired for this seq_num
+                    # This means that redis ttl has expired for this sequence
                     return
                 metadata = orjson.loads(metadata_bytes)
                 if metadata.get("end_of_stream"):
@@ -1144,11 +1149,11 @@ class CatalogNodeAdapter:
 
             live_task = asyncio.create_task(buffer_live_events())
 
-            if seq_num is not None:
-                current_seq = await redis_client.get(f"seq_num:{self.node.id}")
+            if sequence is not None:
+                current_seq = await redis_client.get(f"sequence:{self.node.id}")
                 current_seq = int(current_seq) if current_seq is not None else 0
                 print("Replaying old data...")
-                for s in range(seq_num, current_seq + 1):
+                for s in range(sequence, current_seq + 1):
                     await stream_data(s)
             # New data
             try:
@@ -1241,7 +1246,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
-        seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
+        sequence = await self.context.redis_client.incr(f"sequence:{self.node.id}")
         metadata = {
             "timestamp": datetime.now().isoformat(),
             "content-type": media_type,
@@ -1252,14 +1257,15 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
 
         pipeline = self.context.redis_client.pipeline()
         pipeline.hset(
-            f"data:{self.node.id}:{seq_num}",
+            f"data:{self.node.id}:{sequence}",
             mapping={
+                "sequence": sequence,
                 "metadata": orjson.dumps(metadata),
                 "payload": body,  # raw user input
             },
         )
-        pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
-        pipeline.publish(f"notify:{self.node.id}", seq_num)
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.redis_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
         await pipeline.execute()
 
     async def write(self, media_type, deserializer, entry, body):
