@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b30 (Unreleased)
+
+## Changed
+
+- Refactored get_entry() to not use the FastAPI dependencies injection
+
 ## v0.1.0-b29 (2025-06-06)
 
 ### Added
