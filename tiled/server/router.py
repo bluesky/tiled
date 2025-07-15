@@ -669,7 +669,7 @@ def get_router(
         websocket: WebSocket,
         path: str,
         envelope_format: schemas.EnvelopeFormat = "json",
-        seq_num: Optional[int] = None,
+        start: Optional[int] = None,
         principal: Union[Principal, SpecialUsers] = Depends(
             get_current_principal_websocket
         ),
@@ -696,7 +696,7 @@ def get_router(
             envelope_format, entry, deserialization_registry
         )
         handler = entry.make_ws_handler(websocket, encoder)
-        await handler(seq_num)
+        await handler(start)
 
     @router.get(
         "/table/partition/{path:path}",
