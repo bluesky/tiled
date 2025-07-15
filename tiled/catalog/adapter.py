@@ -848,7 +848,7 @@ class CatalogNodeAdapter:
                 f"data:{self.node.id}:{seq_num}",
                 mapping={
                     "metadata": orjson.dumps(metadata),
-                    "datasource": orjson.dumps(data_source.dict()),
+                    "data_source": orjson.dumps(data_source.dict()),
                 },
             )
             pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
