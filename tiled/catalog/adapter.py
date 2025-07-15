@@ -58,6 +58,7 @@ from tiled.queries import (
     NotIn,
     Operator,
     SpecsQuery,
+    Streaming,
     StructureFamilyQuery,
 )
 
@@ -1545,6 +1546,11 @@ def structure_family(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def streaming(query, tree):
+    condition = orm.Node.is_streaming == query.value
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 CatalogNodeAdapter.register_query(Eq, partial(binary_op, operation=operator.eq))
 CatalogNodeAdapter.register_query(NotEq, partial(binary_op, operation=operator.ne))
 CatalogNodeAdapter.register_query(Comparison, comparison)
@@ -1553,6 +1559,7 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
+CatalogNodeAdapter.register_query(Streaming, streaming)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
 CatalogNodeAdapter.register_query(FullText, full_text)
