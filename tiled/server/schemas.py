@@ -572,4 +572,10 @@ SearchResponse = Response[
     List[Resource[NodeAttributes, Dict, Dict]], PaginationLinks, Dict
 ]
 
+
+class EnvelopeFormat(str, enum.Enum):
+    json = "json"
+    msgpack = "msgpack"
+
+
 NodeStructure.model_rebuild()
