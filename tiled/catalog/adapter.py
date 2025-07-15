@@ -767,7 +767,32 @@ class CatalogNodeAdapter:
                 )
             ).scalar()
             if self.context.redis_client:
+                # Allocate a counter for the new node.
                 await self.context.redis_client.setnx(f"seq_num:{node.id}", 0)
+                # Notify subscribers of the *parent* node about the new child.
+                seq_num = await self.context.redis_client.incr(
+                    f"seq_num:{self.node.id}"
+                )
+                metadata = {
+                    "timestamp": datetime.now().isoformat(),
+                    "key": key,
+                    "data_sources": [d.dict() for d in data_sources],
+                }
+
+                # Cache data in Redis with a TTL, and publish
+                # a notification about it.
+                pipeline = self.context.redis_client.pipeline()
+                pipeline.hset(
+                    f"data:{self.node.id}:{seq_num}",
+                    mapping={
+                        "metadata": orjson.dumps(metadata),
+                    },
+                )
+                pipeline.expire(
+                    f"data:{self.node.id}:{seq_num}", self.context.redis_ttl
+                )
+                pipeline.publish(f"notify:{self.node.id}", seq_num)
+                await pipeline.execute()
             return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
