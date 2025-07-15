@@ -392,7 +392,7 @@ async def get_current_principal_websocket(
     websocket: WebSocket,
     # security_scopes: SecurityScopes,
     # api_key: str = Depends(get_api_key),
-    authorization: Annotated[str | None, Header()] = None,
+    authorization: Annotated[Optional[str], Header()] = None,
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
 ):
@@ -621,9 +621,9 @@ def add_external_routes(
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        user_session_state: UserSessionState | None = await authenticator.authenticate(
-            request
-        )
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(request)
         if not user_session_state:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
@@ -716,9 +716,9 @@ def add_external_routes(
                 },
                 status_code=HTTP_401_UNAUTHORIZED,
             )
-        user_session_state: UserSessionState | None = await authenticator.authenticate(
-            request
-        )
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(request)
         if not user_session_state:
             return templates.TemplateResponse(
                 request,
@@ -800,7 +800,9 @@ def add_internal_routes(
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        user_session_state: UserSessionState | None = await authenticator.authenticate(
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(
             username=form_data.username, password=form_data.password
         )
         if not user_session_state or not user_session_state.user_name:
