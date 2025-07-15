@@ -112,9 +112,7 @@ async def get_entry(
             status_code=HTTP_404_NOT_FOUND, detail=f"No such entry: {path_parts}"
         )
     # Fast path for the common successful case
-    if (structure_families is None) or (
-        entry.structure_family in structure_families
-    ):
+    if (structure_families is None) or (entry.structure_family in structure_families):
         return entry
     raise HTTPException(
         status_code=HTTP_404_NOT_FOUND,
