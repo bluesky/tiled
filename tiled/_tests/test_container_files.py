@@ -23,7 +23,9 @@ async def test_excel(tmpdir):
 
 @pytest.mark.asyncio
 async def test_zarr_array(tmpdir):
-    z = zarr.open(store=str(tmpdir / "za.zarr"), mode="w", shape=(3,), chunks=(3,), dtype="i4")
+    z = zarr.open(
+        store=str(tmpdir / "za.zarr"), mode="w", shape=(3,), chunks=(3,), dtype="i4"
+    )
     z[:] = [1, 2, 3]
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
