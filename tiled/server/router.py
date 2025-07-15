@@ -702,8 +702,8 @@ def get_router(
 
         async def stream_data(seq_num):
             key = f"data:{entry.node.id}:{seq_num}"
-            payload_bytes, metadata_bytes = await redis_client.hmget(
-                key, "payload", "metadata"
+            payload_bytes, metadata_bytes, data_source_bytes = await redis_client.hmget(
+                key, "payload", "metadata", "data_source"
             )
             if payload_bytes is None or payload_bytes == b"null":
                 if metadata_bytes is None:
@@ -715,30 +715,36 @@ def get_router(
                     return
             metadata = orjson.loads(metadata_bytes)
             if envelope_format == "msgpack":
-                metadata["payload"] = payload_bytes
+                if payload_bytes is not None:
+                    metadata["payload"] = payload_bytes
+                else:
+                    metadata["data_source"] = orjson.loads(data_source_bytes)
                 data = msgpack.packb(metadata)
                 await websocket.send_bytes(data)
             else:
-                media_type = metadata["content-type"]
-                if media_type == "application/json":
-                    # nothing to do, the payload is already JSON
-                    payload_decoded = payload_bytes
+                if payload_bytes is not None:
+                    media_type = metadata["content-type"]
+                    if media_type == "application/json":
+                        # nothing to do, the payload is already JSON
+                        payload_decoded = payload_bytes
+                    else:
+                        # Transcode to payload to JSON.
+                        metadata["content-type"] = "application/json"
+                        structure_family = (
+                            StructureFamily.array
+                        )  # TODO: generalize beyond array
+                        structure = entry.structure()
+                        deserializer = deserialization_registry.dispatch(
+                            structure_family, media_type
+                        )
+                        payload_decoded = deserializer(
+                            payload_bytes,
+                            structure.data_type.to_numpy_dtype(),
+                            metadata["shape"],
+                        )
+                    metadata["payload"] = payload_decoded
                 else:
-                    # Transcode to payload to JSON.
-                    metadata["content-type"] = "application/json"
-                    structure_family = (
-                        StructureFamily.array
-                    )  # TODO: generalize beyond array
-                    structure = entry.structure()
-                    deserializer = deserialization_registry.dispatch(
-                        structure_family, media_type
-                    )
-                    payload_decoded = deserializer(
-                        payload_bytes,
-                        structure.data_type.to_numpy_dtype(),
-                        metadata["shape"],
-                    )
-                metadata["payload"] = payload_decoded
+                    metadata["data_source"] = orjson.loads(data_source_bytes)
                 data = safe_json_dump(metadata)
                 await websocket.send_text(data)
 
