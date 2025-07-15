@@ -771,9 +771,6 @@ class CatalogNodeAdapter:
 
             await db.commit()
         if self.context.redis_client:
-            import json
-            from datetime import datetime
-
             seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
             metadata = {
                 "timestamp": datetime.now().isoformat(),
@@ -786,12 +783,12 @@ class CatalogNodeAdapter:
             pipeline.hset(
                 f"data:{self.node.id}:{seq_num}",
                 mapping={
-                    "metadata": json.dumps(metadata).encode("utf-8"),
-                    "datasource": json.dumps(data_source).encode("utf-8"),
+                    "metadata": orjson.dumps(metadata),
+                    "datasource": orjson.dumps(data_source.dict()),
                 },
             )
-            pipeline.expire(f"data:{self.node_id}:{seq_num}", self.context.redis_ttl)
-            pipeline.publish(f"notify:{self.node_id}", seq_num)
+            pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
+            pipeline.publish(f"notify:{self.node.id}", seq_num)
             await pipeline.execute()
 
     async def revisions(self, offset, limit):
@@ -1095,6 +1092,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         specs=None,
         data_sources=None,
         access_blob=None,
+        is_streaming=False,
     ):
         key = key or self.context.key_maker()
 
@@ -1137,6 +1135,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             specs=specs,
             data_sources=data_sources,
             access_blob=access_blob,
+            is_streaming=is_streaming,
         )
 
 
@@ -1155,9 +1154,6 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
-        import json
-        from datetime import datetime
-
         seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
         metadata = {
             "timestamp": datetime.now().isoformat(),
@@ -1171,7 +1167,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         pipeline.hset(
             f"data:{self.node.id}:{seq_num}",
             mapping={
-                "metadata": json.dumps(metadata).encode("utf-8"),
+                "metadata": orjson.dumps(metadata),
                 "payload": body,  # raw user input
             },
         )
