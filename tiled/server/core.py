@@ -10,13 +10,14 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
-from typing import Any
+from typing import Any, Optional
 
 import anyio
 import dateutil.tz
+import orjson
 import jmespath
 import msgpack
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Response, WebSocket
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
@@ -742,6 +743,50 @@ def json_or_msgpack(
     return NumpySafeJSONResponse(
         content, headers=headers, metrics=request.state.metrics, status_code=status_code
     )
+
+
+def get_websocket_encoder(
+    envelope_format: schemas.EnvelopeFormat, entry, deserialization_registry
+):
+    if envelope_format == "msgpack":
+        async def stream_msgpack(websocket: WebSocket, metadata: dict, payload_bytes: Optional[bytes], data_source_bytes: bytes):
+            if payload_bytes is not None:
+                metadata["payload"] = payload_bytes
+            else:
+                metadata["data_source"] = orjson.loads(data_source_bytes)
+            data = msgpack.packb(metadata)
+            await websocket.send_bytes(data)
+        return stream_msgpack
+
+    elif envelope_format == "json":
+        async def stream_json(websocket: WebSocket, metadata: dict, payload_bytes: Optional[bytes], data_source_bytes: bytes):
+            if payload_bytes is not None:
+                media_type = metadata["content-type"]
+                if media_type == "application/json":
+                    # nothing to do, the payload is already JSON
+                    payload_decoded = payload_bytes
+                else:
+                    # Transcode to payload to JSON.
+                    metadata["content-type"] = "application/json"
+                    structure_family = (
+                        StructureFamily.array
+                    )  # TODO: generalize beyond array
+                    structure = entry.structure()
+                    deserializer = deserialization_registry.dispatch(
+                        structure_family, media_type
+                    )
+                    payload_decoded = deserializer(
+                        payload_bytes,
+                        structure.data_type.to_numpy_dtype(),
+                        metadata["shape"],
+                    )
+                metadata["payload"] = payload_decoded
+            else:
+                metadata["data_source"] = orjson.loads(data_source_bytes)
+            data = safe_json_dump(metadata)
+            await websocket.send_text(data)
+
+        return stream_json
 
 
 class UnsupportedMediaTypes(Exception):

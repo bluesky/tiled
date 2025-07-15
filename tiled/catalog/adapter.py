@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import copy
 import dataclasses
@@ -19,7 +20,7 @@ from urllib.parse import urlparse
 
 import anyio
 import orjson
-from fastapi import HTTPException
+from fastapi import HTTPException, WebSocketDisconnect
 from sqlalchemy import (
     and_,
     delete,
@@ -1074,6 +1075,70 @@ class CatalogNodeAdapter:
         pipeline.expire(f"seq_num:{self.node.id}", self.context.redis_ttl)
         pipeline.publish(f"notify:{self.node.id}", seq_num)
         await pipeline.execute()
+
+    def make_ws_handler(self, websocket, formatter):
+        async def handler(seq_num: Optional[int] = None):
+            await websocket.accept()
+            end_stream = asyncio.Event()
+            redis_client = self.context.redis_client
+
+            async def stream_data(seq_num):
+                key = f"data:{self.node.id}:{seq_num}"
+                payload_bytes, metadata_bytes, data_source_bytes = await redis_client.hmget(
+                    key, "payload", "metadata", "data_source"
+                )
+                if (payload_bytes is None) and (data_source_bytes is None):
+                    if metadata_bytes is None:
+                        # This means that redis ttl has expired for this seq_num
+                        return
+                    else:
+                        # This means that the stream is closed by the producer
+                        end_stream.set()
+                        return
+                metadata = orjson.loads(metadata_bytes)
+                await formatter(websocket, metadata, payload_bytes, data_source_bytes)
+
+            # Setup buffer
+            stream_buffer = asyncio.Queue()
+
+            async def buffer_live_events():
+                pubsub = redis_client.pubsub()
+                await pubsub.subscribe(f"notify:{self.node.id}")
+                try:
+                    async for message in pubsub.listen():
+                        if message.get("type") == "message":
+                            try:
+                                live_seq = int(message["data"])
+                                await stream_buffer.put(live_seq)
+                            except Exception as e:
+                                print(f"Error parsing live message: {e}")
+                except Exception as e:
+                    print(f"Live subscription error: {e}")
+                finally:
+                    await pubsub.unsubscribe(f"notify:{self.node.id}")
+                    await pubsub.aclose()
+
+            live_task = asyncio.create_task(buffer_live_events())
+
+            if seq_num is not None:
+                current_seq = await redis_client.get(f"seq_num:{self.node.id}")
+                current_seq = int(current_seq) if current_seq is not None else 0
+                print("Replaying old data...")
+                for s in range(seq_num, current_seq + 1):
+                    await stream_data(s)
+            # New data
+            try:
+                while not end_stream.is_set():
+                    live_seq = await stream_buffer.get()
+                    await stream_data(live_seq)
+                else:
+                    await websocket.close(code=1000, reason="Producer ended stream")
+            except WebSocketDisconnect:
+                print(f"Client disconnected from node {self.node.id}")
+            finally:
+                live_task.cancel()
+
+        return handler
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
