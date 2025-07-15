@@ -21,7 +21,6 @@ from fastapi import (
     Request,
     Security,
     WebSocket,
-    WebSocketDisconnect,
 )
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
@@ -56,7 +55,6 @@ from ..utils import (
     ensure_awaitable,
     patch_mimetypes,
     path_from_uri,
-    safe_json_dump,
 )
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
@@ -79,6 +77,7 @@ from .core import (
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
+    get_websocket_encoder,
     json_or_msgpack,
     resolve_media_type,
 )
@@ -675,9 +674,6 @@ def get_router(
             get_current_principal_websocket
         ),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
-        # session_state: dict = Depends(get_session_state),
-        # authn_scopes: Scopes = Depends(get_current_scopes),
-        # _=Security(check_scopes, scopes=["read:data", "read:metadata"]),
     ):
         websocket.state.metrics = {}
         entry = await get_entry(
@@ -691,102 +687,11 @@ def get_router(
             {StructureFamily.array, StructureFamily.sparse},
             getattr(websocket.app.state, "access_policy", None),
         )
-        import asyncio
-
-        import msgpack
-        import orjson
-
-        await websocket.accept()
-        end_stream = asyncio.Event()
-        redis_client = entry.context.redis_client
-
-        async def stream_data(seq_num):
-            key = f"data:{entry.node.id}:{seq_num}"
-            payload_bytes, metadata_bytes, data_source_bytes = await redis_client.hmget(
-                key, "payload", "metadata", "data_source"
-            )
-            if (payload_bytes is None) and (data_source_bytes is None):
-                if metadata_bytes is None:
-                    # This means that redis ttl has expired for this seq_num
-                    return
-                else:
-                    # This means that the stream is closed by the producer
-                    end_stream.set()
-                    return
-            metadata = orjson.loads(metadata_bytes)
-            if envelope_format == "msgpack":
-                if payload_bytes is not None:
-                    metadata["payload"] = payload_bytes
-                else:
-                    metadata["data_source"] = orjson.loads(data_source_bytes)
-                data = msgpack.packb(metadata)
-                await websocket.send_bytes(data)
-            else:
-                if payload_bytes is not None:
-                    media_type = metadata["content-type"]
-                    if media_type == "application/json":
-                        # nothing to do, the payload is already JSON
-                        payload_decoded = payload_bytes
-                    else:
-                        # Transcode to payload to JSON.
-                        metadata["content-type"] = "application/json"
-                        structure_family = (
-                            StructureFamily.array
-                        )  # TODO: generalize beyond array
-                        structure = entry.structure()
-                        deserializer = deserialization_registry.dispatch(
-                            structure_family, media_type
-                        )
-                        payload_decoded = deserializer(
-                            payload_bytes,
-                            structure.data_type.to_numpy_dtype(),
-                            metadata["shape"],
-                        )
-                    metadata["payload"] = payload_decoded
-                else:
-                    metadata["data_source"] = orjson.loads(data_source_bytes)
-                data = safe_json_dump(metadata)
-                await websocket.send_text(data)
-
-        # Setup buffer
-        stream_buffer = asyncio.Queue()
-
-        async def buffer_live_events():
-            pubsub = redis_client.pubsub()
-            await pubsub.subscribe(f"notify:{entry.node.id}")
-            try:
-                async for message in pubsub.listen():
-                    if message.get("type") == "message":
-                        try:
-                            live_seq = int(message["data"])
-                            await stream_buffer.put(live_seq)
-                        except Exception as e:
-                            print(f"Error parsing live message: {e}")
-            except Exception as e:
-                print(f"Live subscription error: {e}")
-            finally:
-                await pubsub.unsubscribe(f"notify:{entry.node.id}")
-                await pubsub.aclose()
-
-        live_task = asyncio.create_task(buffer_live_events())
-
-        if seq_num is not None:
-            current_seq = await redis_client.get(f"seq_num:{entry.node.id}")
-            current_seq = int(current_seq) if current_seq is not None else 0
-            print("Replaying old data...")
-            for s in range(seq_num, current_seq + 1):
-                await stream_data(s)
-        # New data
-        try:
-            while not end_stream.is_set():
-                live_seq = await stream_buffer.get()
-                await stream_data(live_seq)
-            else:
-                await websocket.close(code=1000, reason="Producer ended stream")
-        except WebSocketDisconnect:
-            print(f"Client disconnected from node {entry.node.id}")
-        finally:
-            live_task.cancel()
+        encoder = get_websocket_encoder(
+            envelope_format, entry, deserialization_registry
+        )
+        handler = entry.make_ws_handler(websocket, encoder)
+        await handler(seq_num)
 
     @router.get(
         "/table/partition/{path:path}",
