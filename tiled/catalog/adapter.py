@@ -1068,7 +1068,6 @@ class CatalogNodeAdapter:
             f"data:{self.node.id}:{seq_num}",
             mapping={
                 "metadata": orjson.dumps(metadata),
-                "payload": orjson.dumps(None),
             },
         )
         pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
