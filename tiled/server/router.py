@@ -669,7 +669,7 @@ def get_router(
     async def websocket_endpoint(
         websocket: WebSocket,
         path: str,
-        envelope_format: str = "json",
+        envelope_format: schemas.EnvelopeFormat = "json",
         seq_num: Optional[int] = None,
         principal: Union[Principal, SpecialUsers] = Depends(
             get_current_principal_websocket
