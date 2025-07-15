@@ -1156,17 +1156,16 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).read_block, *args, **kwargs
         )
 
-    async def _stream(self, media_type, entry, body, block):
+    async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         import json
         from datetime import datetime
 
-        shape = entry.structure().shape
         seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
         metadata = {
             "timestamp": datetime.now().isoformat(),
             "content-type": media_type,
             "shape": shape,
-            "offset": [0 for dim in range(len(shape))],
+            "offset": offset,
             "block": block,
         }
 
@@ -1183,11 +1182,11 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         await pipeline.execute()
 
     async def write(self, media_type, deserializer, entry, body):
+        shape = entry.structure().shape
         if self.context.redis_client:
-            await self._stream(media_type, entry, body, block=None)
+            await self._stream(media_type, entry, body, shape)
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
-            shape = entry.structure().shape
             data = await ensure_awaitable(deserializer, body, dtype, shape)
         elif entry.structure_family == "sparse":
             data = await ensure_awaitable(deserializer, body)
@@ -1198,13 +1197,13 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def write_block(self, block, media_type, deserializer, entry, body):
         from tiled.adapters.array import slice_and_shape_from_block_and_chunks
 
+        _, shape = slice_and_shape_from_block_and_chunks(
+            block, entry.structure().chunks
+        )
         if self.context.redis_client:
-            await self._stream(media_type, entry, body, block=block)
+            await self._stream(media_type, entry, body, shape, block=block)
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
-            _, shape = slice_and_shape_from_block_and_chunks(
-                block, entry.structure().chunks
-            )
             data = await ensure_awaitable(deserializer, body, dtype, shape)
         elif entry.structure_family == "sparse":
             data = await ensure_awaitable(deserializer, body)
@@ -1214,11 +1213,15 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, data, block
         )
 
-    async def patch(self, *args, **kwargs):
+    async def patch(self, shape, offset, extend, media_type, deserializer, entry, body):
+        if self.context.redis_client:
+            await self._stream(media_type, entry, body, shape, offset=offset)
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
         # assumes a single DataSource (currently only supporting zarr)
         async with self.context.session() as db:
             new_shape_and_chunks = await ensure_awaitable(
-                (await self.get_adapter()).patch, *args, **kwargs
+                (await self.get_adapter()).patch, data, offset, extend
             )
             node = await db.get(orm.Node, self.node.id)
             if len(node.data_sources) != 1:

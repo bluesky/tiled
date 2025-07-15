@@ -737,7 +737,7 @@ def get_router(
                     payload_decoded = deserializer(
                         payload_bytes,
                         structure.data_type.to_numpy_dtype(),
-                        structure.shape,
+                        metadata["shape"],
                     )
                 metadata["payload"] = payload_decoded
                 data = safe_json_dump(metadata)
@@ -1844,12 +1844,12 @@ def get_router(
                 detail="This node cannot accept array data.",
             )
 
-        dtype = entry.structure().data_type.to_numpy_dtype()
         body = await request.body()
         media_type = request.headers["content-type"]
         deserializer = deserialization_registry.dispatch("array", media_type)
-        data = await ensure_awaitable(deserializer, body, dtype, shape)
-        structure = await ensure_awaitable(entry.patch, data, offset, extend)
+        structure = await ensure_awaitable(
+            entry.patch, shape, offset, extend, media_type, deserializer, entry, body
+        )
         return json_or_msgpack(request, structure)
 
     @router.put("/table/full/{path:path}")
