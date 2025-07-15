@@ -865,6 +865,7 @@ class CatalogNodeAdapter:
             seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
             metadata = {
                 "timestamp": datetime.now().isoformat(),
+                "data_source": data_source.dict(),
             }
 
             # Cache data in Redis with a TTL, and publish
@@ -874,7 +875,6 @@ class CatalogNodeAdapter:
                 f"data:{self.node.id}:{seq_num}",
                 mapping={
                     "metadata": orjson.dumps(metadata),
-                    "data_source": orjson.dumps(data_source.dict()),
                 },
             )
             pipeline.expire(f"data:{self.node.id}:{seq_num}", self.context.redis_ttl)
@@ -1082,7 +1082,7 @@ class CatalogNodeAdapter:
 
         metadata = {
             "timestamp": datetime.now().isoformat(),
-            "Content-Type": "application/json",
+            "end_of_stream": True,
         }
         # Increment the counter for this node.
         seq_num = await self.context.redis_client.incr(f"seq_num:{self.node.id}")
@@ -1109,19 +1109,18 @@ class CatalogNodeAdapter:
 
             async def stream_data(seq_num):
                 key = f"data:{self.node.id}:{seq_num}"
-                payload_bytes, metadata_bytes, data_source_bytes = await redis_client.hmget(
-                    key, "payload", "metadata", "data_source"
+                payload_bytes, metadata_bytes = await redis_client.hmget(
+                    key, "payload", "metadata"
                 )
-                if (payload_bytes is None) and (data_source_bytes is None):
-                    if metadata_bytes is None:
-                        # This means that redis ttl has expired for this seq_num
-                        return
-                    else:
-                        # This means that the stream is closed by the producer
-                        end_stream.set()
-                        return
+                if metadata_bytes is None:
+                    # This means that redis ttl has expired for this seq_num
+                    return
                 metadata = orjson.loads(metadata_bytes)
-                await formatter(websocket, metadata, payload_bytes, data_source_bytes)
+                if metadata.get("end_of_stream"):
+                    # This means that the stream is closed by the producer
+                    end_stream.set()
+                    return
+                await formatter(websocket, metadata, payload_bytes)
 
             # Setup buffer
             stream_buffer = asyncio.Queue()

@@ -16,7 +16,6 @@ import anyio
 import dateutil.tz
 import jmespath
 import msgpack
-import orjson
 from fastapi import HTTPException, Response, WebSocket
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
@@ -754,12 +753,9 @@ def get_websocket_encoder(
             websocket: WebSocket,
             metadata: dict,
             payload_bytes: Optional[bytes],
-            data_source_bytes: bytes,
         ):
             if payload_bytes is not None:
                 metadata["payload"] = payload_bytes
-            else:
-                metadata["data_source"] = orjson.loads(data_source_bytes)
             data = msgpack.packb(metadata)
             await websocket.send_bytes(data)
 
@@ -771,7 +767,6 @@ def get_websocket_encoder(
             websocket: WebSocket,
             metadata: dict,
             payload_bytes: Optional[bytes],
-            data_source_bytes: bytes,
         ):
             if payload_bytes is not None:
                 media_type = metadata.get("content-type", "application/octet-stream")
@@ -794,8 +789,6 @@ def get_websocket_encoder(
                         metadata.get("shape"),
                     )
                 metadata["payload"] = payload_decoded
-            else:
-                metadata["data_source"] = orjson.loads(data_source_bytes)
             data = safe_json_dump(metadata)
             await websocket.send_text(data)
 
