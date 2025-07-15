@@ -1,5 +1,6 @@
 import anyio
 import h5py
+import numpy
 import pandas
 import pytest
 import zarr
@@ -79,9 +80,9 @@ def zarr_data_dir(tmpdir_factory):
     "Generate a temporary Zarr group file with multiple datasets."
     tmpdir = tmpdir_factory.mktemp("zarr_files")
     try:
-        root = zarr.open(str(tmpdir / "zarr_group.zarr"), "w")
+        root = zarr.open_group(str(tmpdir / "zarr_group.zarr"), mode="w")
         for i, name in enumerate("abcde"):
-            root.create_dataset(name, data=range(i, i + 3))
+            root.create_array(name,dtype=numpy.dtype("int32"),shape=range(i,i+3))
     finally:
         # Ensure the Zarr group is closed properly
         print("Closed")
@@ -94,12 +95,11 @@ def test_zarr_group_fields(client, fields, buffer):
     "Export selected fields (Datasets) from a Zarr group via /container/full."
     client = client["zarr_group"]
     url_path = client.item["links"]["full"]
-    history = record_history()
-    yield history
-    client.export(buffer, fields=fields, format="application/x-hdf5")
+    with record_history() as history:
+        client.export(buffer, fields=fields, format="application/x-hdf5")
 
-    assert_single_request_to_url(history, url_path)
-    assert_requested_fields_fetched(buffer, fields, client)
+        assert_single_request_to_url(history, url_path)
+        assert_requested_fields_fetched(buffer, fields, client)
 
 
 @pytest.fixture(scope="module")
