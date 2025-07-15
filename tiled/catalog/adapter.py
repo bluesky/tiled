@@ -840,7 +840,6 @@ class CatalogNodeAdapter:
             metadata = {
                 "timestamp": datetime.now().isoformat(),
             }
-            metadata.setdefault("Content-Type", data_source.mimetype)
 
             # Cache data in Redis with a TTL, and publish
             # a notification about it.
