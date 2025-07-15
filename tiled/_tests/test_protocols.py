@@ -8,7 +8,7 @@ import pytest
 import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
-
+import uuid
 from ..access_policies import ALL_ACCESS
 from ..adapters.awkward_directory_container import DirectoryContainer
 from ..adapters.protocols import (
@@ -420,7 +420,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     metadata: JSON = {"foo": "bar"}
     container = DirectoryContainer(directory=Path("somedirectory"), form={})
     principal = Principal(
-        uuid="12345678124123412345678123456781", type=PrincipalType.user
+        uuid=uuid.UUID(int=0x12345678124123412345678123456781), type=PrincipalType.user
     )
     authn_scopes = {"abc", "baz"}
     scopes = {"abc"}

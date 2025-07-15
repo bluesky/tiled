@@ -18,7 +18,7 @@ from ..utils import path_from_uri
 from .utils import init_adapter_from_catalog
 
 
-def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
+def force_reshape(arr: np.ndarray, desired_shape: Tuple[int, ...]) -> np.ndarray:
     """Reshape a numpy array to match the desired shape, if possible.
 
     Parameters

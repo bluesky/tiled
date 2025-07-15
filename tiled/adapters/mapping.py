@@ -36,7 +36,7 @@ from ..queries import (
     StructureFamilyQuery,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import SortingItem
+from ..server.schemas import SortingDirection, SortingItem
 from ..storage import Storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
@@ -111,7 +111,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
             # This is a special case that means, "the given ordering".
             # By giving that a name ("_") we enable requests to asking for the
             # last N by requesting the sorting ("_", -1).
-            sorting = [SortingItem(key="_", direction=1)]
+            sorting = [SortingItem(key="_", direction=SortingDirection.ASCENDING)]
         self._sorting = sorting
         self._metadata = metadata or {}
         self.specs = specs or []
