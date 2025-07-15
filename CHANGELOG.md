@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ## Changed
 
 - Refactored get_entry() to not use the FastAPI dependencies injection
+- Restored authentication check for API key
 
 ## v0.1.0-b29 (2025-06-06)
 
