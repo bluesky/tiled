@@ -684,7 +684,12 @@ def get_router(
             root_tree,
             None,  # session_state,
             websocket.state.metrics,
-            {StructureFamily.array, StructureFamily.sparse},
+            {
+                StructureFamily.array,
+                StructureFamily.container,
+                StructureFamily.composite,
+                StructureFamily.sparse,
+            },
             getattr(websocket.app.state, "access_policy", None),
         )
         encoder = get_websocket_encoder(
