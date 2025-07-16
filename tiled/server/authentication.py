@@ -406,6 +406,7 @@ async def get_current_principal_websocket(
     )
     if principal is None:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    return principal
 
 
 async def get_current_principal(
