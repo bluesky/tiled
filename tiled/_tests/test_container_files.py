@@ -24,7 +24,7 @@ async def test_excel(tmpdir):
 @pytest.mark.asyncio
 async def test_zarr_array(tmpdir):
     z = zarr.open(
-        store=str(tmpdir / "za.zarr"), mode="w", shape=(3,), chunks=(3,), dtype="i4"
+        str(tmpdir / "za.zarr"), mode="w", shape=(3,), chunks=(3,), dtype="i4"
     )
     z[:] = [1, 2, 3]
     catalog = in_memory(readable_storage=[tmpdir])
@@ -38,7 +38,7 @@ async def test_zarr_array(tmpdir):
 
 @pytest.mark.asyncio
 async def test_zarr_group(tmpdir):
-    root = zarr.open(str(tmpdir / "zg.zarr"), "w")
+    root = zarr.open(str(tmpdir / "zg.zarr"), mode="w")
     yield root
     root.create_dataset("x", data=[1, 2, 3])
     root.create_dataset("y", data=[4, 5, 6])
