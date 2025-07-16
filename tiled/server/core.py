@@ -744,7 +744,7 @@ def json_or_msgpack(
     )
 
 
-def get_websocket_encoder(
+def get_websocket_envelope_formatter(
     envelope_format: schemas.EnvelopeFormat, entry, deserialization_registry
 ):
     if envelope_format == "msgpack":
