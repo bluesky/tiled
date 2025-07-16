@@ -10,6 +10,7 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
+from textwrap import dedent
 from typing import Optional, Union
 
 import anyio
@@ -163,30 +164,35 @@ def build_app(
                 and "TILED_SECRET_KEYS" not in os.environ
             ):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, secret keys must be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured with an
+                        Authenticator, secret keys must be provided via configuration like
 
-authentication:
-  secret_keys:
-    - SECRET
-  ...
+                        authentication:
+                          secret_keys:
+                            - SECRET
+                          ...
 
-or via the environment variable TILED_SECRET_KEYS.""",
+                        or via the environment variable TILED_SECRET_KEYS.\
+                        """,
+                    )
                 )
             # Multi-user authentication requires a database. We cannot fall
             # back to the default of an in-memory SQLite database in a
             # horizontally scaled deployment.
             if not server_settings.get("database", {}).get("uri"):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, a persistent database must be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured with an
+                        Authenticator, a persistent database must be provided via configuration like
 
-database:
-  uri: sqlite:////path/to/database.sqlite
+                        database:
+                          uri: sqlite:////path/to/database.sqlite
 
-"""
+                        """
+                    )
                 )
         else:
             # No authentication provider is configured, so no secret keys are
@@ -196,18 +202,22 @@ database:
                 or ("TILED_SINGLE_USER_API_KEY" in os.environ)
             ):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured for
-single-user access (i.e. without an Authenticator) a single-user API key must
-be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured for
+                        single-user access (i.e. without an Authenticator) a single-user API key must
+                        be provided via configuration like
 
-authentication:
-  single_user_api_key: SECRET
-  ...
+                        authentication:
+                          single_user_api_key: SECRET
+                          ...
 
-or via the environment variable TILED_SINGLE_USER_API_KEY.""",
+                        or via the environment variable TILED_SINGLE_USER_API_KEY.\
+                        """,
+                    )
                 )
-        # If we reach here, the no configuration problems were found.
+
+    # If we reach here, the no configuration problems were found.
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -456,32 +466,38 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # Validate the single-user API key.
         settings: Settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
-        API_KEY_MSG = """
-Here are two ways to generate a good API key:
+        API_KEY_MSG = dedent(
+            """
+            Here are two ways to generate a good API key:
 
-# With openssl:
-openssl rand -hex 32
+            # With openssl:
+            openssl rand -hex 32
 
-# With Python:
-python -c "import secrets; print(secrets.token_hex(32))"
+            # With Python:
+            python -c "import secrets; print(secrets.token_hex(32))"
 
-"""
+            """
+        )
         if single_user_api_key is not None:
             if not single_user_api_key:
                 raise ValueError(
-                    """
-The single-user API key is set to an empty value. Perhaps the environment
-variable TILED_SINGLE_USER_API_KEY is set to an empty string.
-"""
-                    + API_KEY_MSG
+                    dedent(
+                        """
+                        The single-user API key is set to an empty value. Perhaps the environment
+                        variable TILED_SINGLE_USER_API_KEY is set to an empty string.
+                        """
+                        + API_KEY_MSG
+                    )
                 )
             if not single_user_api_key.isalnum():
                 raise ValueError(
-                    """
-The API key must only contain alphanumeric characters. We enforce this because
-pasting other characters into a URL, as in ?api_key=..., can result in
-confusing behavior due to ambiguous encodings.
-"""
+                    dedent(
+                        """
+                        The API key must only contain alphanumeric characters. We enforce this because
+                        pasting other characters into a URL, as in ?api_key=..., can result in
+                        confusing behavior due to ambiguous encodings.
+                        """
+                    )
                     + API_KEY_MSG
                 )
 
@@ -559,29 +575,33 @@ confusing behavior due to ambiguous encodings.
                         )
                     else:
                         print(
-                            f"""
+                            dedent(
+                                f"""
 
-No database found at {redacted_url}
+                                No database found at {redacted_url}
 
-To create one, run:
+                                To create one, run:
 
-    tiled admin init-database {redacted_url}
-""",
+                                    tiled admin init-database {redacted_url}
+                                """
+                            ),
                             file=sys.stderr,
                         )
                         raise
                 except DatabaseUpgradeNeeded as err:
                     print(
-                        f"""
+                        dedent(
+                            f"""
 
-The database used by Tiled to store authentication-related information
-was created using an older version of Tiled. It needs to be upgraded to
-work with this version of Tiled.
+                            The database used by Tiled to store authentication-related information
+                            was created using an older version of Tiled. It needs to be upgraded to
+                            work with this version of Tiled.
 
-Back up the database, and then run:
+                            Back up the database, and then run:
 
-    tiled admin upgrade-database {redacted_url}
-""",
+                                tiled admin upgrade-database {redacted_url}
+                            """
+                        ),
                         file=sys.stderr,
                     )
                     raise err from None
