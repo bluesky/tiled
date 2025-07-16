@@ -217,7 +217,7 @@ def serve_directory(
     config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
     server = uvicorn.Server(config)
 
-    async def run_server():
+    async def run_server() -> None:
         await server.serve()
 
     async def wait_for_server():
@@ -234,7 +234,7 @@ def serve_directory(
 
     if watch:
 
-        async def serve_and_walk():
+        async def serve_and_walk() -> None:
             server_task = asyncio.create_task(run_server())
             api_url = await wait_for_server()
             # When we add an AsyncClient for Tiled, use that here.
@@ -262,7 +262,7 @@ def serve_directory(
 
     else:
 
-        async def serve_and_walk():
+        async def serve_and_walk() -> None:
             server_task = asyncio.create_task(run_server())
             api_url = await wait_for_server()
             # When we add an AsyncClient for Tiled, use that here.
@@ -531,7 +531,7 @@ def serve_pyobject(
     log_timestamps: bool = typer.Option(
         False, help="Include timestamps in log output."
     ),
-):
+) -> None:
     "Serve a Tree instance from a Python module."
     from ..server.app import build_app, print_server_info
     from ..utils import import_object
@@ -566,7 +566,7 @@ def serve_demo(
         ),
     ),
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
-):
+) -> None:
     "Start a public server with example data."
     from ..server.app import build_app, print_server_info
     from ..utils import import_object

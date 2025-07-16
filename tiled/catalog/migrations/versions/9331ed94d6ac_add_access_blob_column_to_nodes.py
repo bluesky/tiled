@@ -17,12 +17,12 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade() -> None:
     op.add_column(
         "nodes",
         sa.Column("access_blob", JSONVariant, nullable=False, server_default="{}"),
     )
 
 
-def downgrade():
+def downgrade() -> None:
     op.drop_column("nodes", "access_blob")

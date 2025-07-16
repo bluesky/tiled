@@ -10,14 +10,14 @@ from ..server.app import build_app_from_config
 here = Path(__file__).parent.absolute()
 
 
-def test_config_imports_custom_python_module():
+def test_config_imports_custom_python_module() -> None:
     "Configs can import from Python modules located in their same directory."
     config_path = here / ".." / ".." / "example_configs" / "custom_export_formats"
     parsed_config = parse_configs(config_path)
     build_app_from_config(parsed_config, source_filepath=config_path)
 
 
-def test_direct_profile(tmpdir):
+def test_direct_profile(tmpdir) -> None:
     profile_content = {
         "test": {"direct": {"trees": [{"path": "/", "tree": "custom_module:tree"}]}}
     }

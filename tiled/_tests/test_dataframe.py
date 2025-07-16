@@ -63,7 +63,7 @@ def context():
         yield context
 
 
-def test_dataframe_basic(context):
+def test_dataframe_basic(context) -> None:
     client = from_context(context)
     expected = tree["basic"].read()
     actual = client["basic"].read()
@@ -72,7 +72,7 @@ def test_dataframe_basic(context):
     assert client["basic"].columns == list(expected.columns) == list(actual.columns)
 
 
-def test_dataframe_column_access(context):
+def test_dataframe_column_access(context) -> None:
     client = from_context(context)
     expected_df = tree["basic"].read()
     for col in expected_df.columns:
@@ -82,7 +82,7 @@ def test_dataframe_column_access(context):
 
 
 @pytest.mark.xfail(reason="HTTP API accepts only one column")
-def test_dataframe_multicolumn_access(context):
+def test_dataframe_multicolumn_access(context) -> None:
     client = from_context(context)
     original_df = tree["basic"].read()
     columns = list(original_df.columns)
@@ -90,7 +90,7 @@ def test_dataframe_multicolumn_access(context):
     client["basic"][columns]
 
 
-def test_dataframe_multicolumn_read(context):
+def test_dataframe_multicolumn_read(context) -> None:
     client = from_context(context)
     original_df = tree["basic"].read()
     columns = list(original_df.columns)[::2]  # Select a subset of columns
@@ -103,7 +103,7 @@ def test_dataframe_multicolumn_read(context):
         numpy.testing.assert_equal(actual, expected)
 
 
-def test_dataframe_single_partition(context):
+def test_dataframe_single_partition(context) -> None:
     client = from_context(context)
     expected = tree["single_partition"].read()
     actual = client["single_partition"].read()
@@ -111,7 +111,7 @@ def test_dataframe_single_partition(context):
     pandas.testing.assert_frame_equal(actual, expected)
 
 
-def test_reading_diverse_dtypes(context):
+def test_reading_diverse_dtypes(context) -> None:
     client = from_context(context)
     expected = tree["diverse"].read()
     actual = client["diverse"].read()
@@ -122,7 +122,7 @@ def test_reading_diverse_dtypes(context):
         assert numpy.array_equal(expected[col], actual)
 
 
-def test_dask(context):
+def test_dask(context) -> None:
     client = from_context(context, "dask")["basic"]
     expected = tree["basic"].read()
     pandas.testing.assert_frame_equal(client.read().compute(), expected)
@@ -138,7 +138,7 @@ def test_dask(context):
     ),
     indirect=["url_limit"],
 )
-def test_url_limit_bypass(context, url_limit, expected_method):
+def test_url_limit_bypass(context, url_limit, expected_method) -> None:
     "GET requests beyond the URL length limit should become POST requests."
     client = from_context(context)
     df_client = client["wide"]
@@ -164,7 +164,7 @@ def test_url_limit_bypass(context, url_limit, expected_method):
 
 @pytest.mark.parametrize("http_method", ("GET", "POST"))
 @pytest.mark.parametrize("link", ("full", "partition"))
-def test_http_fetch_columns(context, http_method, link):
+def test_http_fetch_columns(context, http_method, link) -> None:
     "GET requests beyond the URL length limit should become POST requests."
     if http_method not in ("GET", "POST"):
         pytest.fail(reason="HTTP method {http_method} is not expected.")
@@ -196,7 +196,7 @@ def test_http_fetch_columns(context, http_method, link):
         assert len(requests) == 1
 
 
-def test_deprecated_query_parameter(context):
+def test_deprecated_query_parameter(context) -> None:
     "HTTP route /table/partition: 'field' is a deprecated query parameter"
     client = from_context(context)
     url_path = client["basic"].item["links"]["partition"]
@@ -210,7 +210,7 @@ def test_deprecated_query_parameter(context):
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
-def test_redundant_query_parameters(context):
+def test_redundant_query_parameters(context) -> None:
     "HTTP route /table/partition accepts 'column' or 'field', but not both"
     client = from_context(context)
     url_path = client["basic"].item["links"]["partition"]

@@ -60,7 +60,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-    ):
+    ) -> None:
         form = awkward.forms.from_dict(structure.form)
         directory: Path = path_from_uri(data_uri)
         if not directory.is_dir():

@@ -1,7 +1,7 @@
 from ..utils import modules_available
 
 
-def register_builtin_serializers():
+def register_builtin_serializers() -> None:
     """
     Register built-in serializers for each structure if its associated module(s) are installed.
     """

@@ -60,30 +60,30 @@ def client(request: pytest.FixtureRequest):
         ("animal", "cat", ["c"]),
     ],
 )
-def test_search(client, key, value, expected_keys):
+def test_search(client, key, value, expected_keys) -> None:
     query = Key(key)
     results = client.search(query == value)
     assert list(results) == expected_keys
 
 
-def test_compound_search(client):
+def test_compound_search(client) -> None:
     results = client.search(Key("animal") == "dog").search(Key("banana") == "yellow")
     assert list(results) == ["b"]
 
 
-def test_indexing_over_search(client):
+def test_indexing_over_search(client) -> None:
     results = client.search(Key("animal") == "dog")
     assert dict(results["a"].metadata) == tree["a"].metadata()
 
 
-def test_key_into_results(client):
+def test_key_into_results(client) -> None:
     results = client.search(Key("animal") == "dog")
     assert "apple" in results["a"].metadata
     assert "banana" in results["b"].metadata
     assert "c" not in results  # This *is* in the tree but not among the results.
 
 
-def test_compound_key_into_results():
+def test_compound_key_into_results() -> None:
     nested_tree = MapAdapter(
         {
             "i": MapAdapter({"X": tree}, metadata={"temp": "hot"}),

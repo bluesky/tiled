@@ -51,7 +51,7 @@ class SimpleAccessPolicy:
 
     def __init__(
         self, access_lists, *, provider, key=None, scopes=None, public=None, admins=None
-    ):
+    ) -> None:
         self.access_lists = {}
         self.provider = provider
         self.key = key
@@ -128,7 +128,7 @@ class AccessTagsParser:
         db = sqlite3.connect(f"{uri}?ro", uri=True, check_same_thread=False)
         return cls(db)
 
-    def __init__(self, db):
+    def __init__(self, db) -> None:
         self.db = db
 
     def is_tag_defined(self, name):
@@ -188,7 +188,7 @@ class TagBasedAccessPolicy:
         tags_db,
         access_tags_parser,
         scopes=None,
-    ):
+    ) -> None:
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
 
@@ -216,7 +216,7 @@ class TagBasedAccessPolicy:
                 f"The Principal's identities are: {principal.identities}"
             )
 
-    def _is_admin(self, authn_scopes):
+    def _is_admin(self, authn_scopes) -> bool:
         if all(s in authn_scopes for s in self.admin_scopes):
             return True
         return False

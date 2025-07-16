@@ -9,7 +9,7 @@ admin_app = typer.Typer(no_args_is_help=True)
 
 
 @admin_app.command("initialize-database")
-def initialize_database(database_uri: str):
+def initialize_database(database_uri: str) -> None:
     """
     Initialize a SQL database for use by Tiled.
     """
@@ -60,7 +60,7 @@ def upgrade_database(
         None,
         help="The ID of a revision to upgrade to. By default, upgrade to the latest one.",
     ),
-):
+) -> None:
     """
     Upgrade the database schema to the latest version.
     """
@@ -99,7 +99,7 @@ def upgrade_database(
 def downgrade_database(
     database_uri: str,
     revision: str = typer.Argument(..., help="The ID of a revision to downgrade to."),
-):
+) -> None:
     """
     Upgrade the database schema to the latest version.
     """
@@ -165,7 +165,7 @@ def list_principals(
     ),
     page_offset: int = typer.Argument(0),
     page_limit: int = typer.Argument(100, help="Max items to show"),
-):
+) -> None:
     """
     List information about all Principals (users or services) that have ever logged in.
     """
@@ -182,7 +182,7 @@ def show_principal(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     uuid: str = typer.Argument(..., help="UUID identifying Principal of interest"),
-):
+) -> None:
     """
     Show information about one Principal (user or service).
     """

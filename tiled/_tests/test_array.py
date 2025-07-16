@@ -83,7 +83,7 @@ def context():
 
 
 @pytest.mark.parametrize("kind", list(array_cases))
-def test_array_dtypes(kind, context):
+def test_array_dtypes(kind, context) -> None:
     client = from_context(context)["array"]
     expected = array_cases[kind]
     actual_via_slice = client[kind][:]
@@ -93,20 +93,20 @@ def test_array_dtypes(kind, context):
 
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
-def test_scalar_dtypes(kind, context):
+def test_scalar_dtypes(kind, context) -> None:
     client = from_context(context)["scalar"]
     expected = scalar_cases[kind]
     actual = client[kind].read()
     assert numpy.array_equal(actual, expected)
 
 
-def test_shape_with_zero(context):
+def test_shape_with_zero(context) -> None:
     client = from_context(context)["zero"]
     actual = client["example"].read()
     assert numpy.array_equal(actual, arr_with_zero_dim)
 
 
-def test_nan_infinity_handler(tmpdir, context):
+def test_nan_infinity_handler(tmpdir, context) -> None:
     client = from_context(context)["inf"]
     data = client["example"].read()
     assert numpy.isnan(data).any()
@@ -129,7 +129,7 @@ def test_nan_infinity_handler(tmpdir, context):
     assert open_json == expected_list
 
 
-def test_block_validation(context):
+def test_block_validation(context) -> None:
     "Verify that block must be fully specified."
     client = from_context(context, "dask")["cube"]["tiny_cube"]
     block_url = httpx.URL(client.item["links"]["block"])
@@ -139,7 +139,7 @@ def test_block_validation(context):
         client.context.http_client.get(malformed_block_url).raise_for_status()
 
 
-def test_dask(context):
+def test_dask(context) -> None:
     expected = cube_cases["tiny_cube"]
     client = from_context(context, "dask")["cube"]["tiny_cube"]
     assert numpy.array_equal(client.read().compute(), expected)
@@ -147,13 +147,13 @@ def test_dask(context):
     assert numpy.array_equal(client[:].compute(), expected)
 
 
-def test_array_format_shape_from_cube(context):
+def test_array_format_shape_from_cube(context) -> None:
     client = from_context(context)["cube"]
     with fail_with_status_code(HTTP_406_NOT_ACCEPTABLE):
         hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
 
 
-def test_array_interface(context):
+def test_array_interface(context) -> None:
     client = from_context(context)["array"]
     for k, v in client.items():
         assert v.shape == array_cases[k].shape
@@ -167,6 +167,6 @@ def test_array_interface(context):
 
 
 @pytest.mark.parametrize("kind", list(array_cases))
-def test_as_buffer(kind):
+def test_as_buffer(kind) -> None:
     output = as_buffer(array_cases[kind], {})
     assert len(output) == len(bytes(output))

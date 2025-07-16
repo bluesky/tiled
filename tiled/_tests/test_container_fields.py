@@ -32,7 +32,7 @@ def example_data_dir(tmpdir_factory):
 
 @pytest.mark.parametrize("fields", (None, (), ("a", "b")))
 @pytest.mark.parametrize("client", ("example_data_dir",), indirect=True)
-def test_directory_fields(client, fields, buffer):
+def test_directory_fields(client, fields, buffer) -> None:
     "Export selected fields (files) from a directory via /container/full."
     url_path = client.item["links"]["full"]
     with record_history() as history:
@@ -55,7 +55,7 @@ def excel_data_dir(tmpdir_factory):
 
 @pytest.mark.parametrize("fields", (None, (), ("Sheet 1", "Sheet 10")))
 @pytest.mark.parametrize("client", ("excel_data_dir",), indirect=True)
-def test_excel_fields(client, fields, buffer):
+def test_excel_fields(client, fields, buffer) -> None:
     "Export selected fields (sheets) from an Excel file via /container/full."
     client = client["spreadsheet"]
     url_path = client.item["links"]["full"]
@@ -117,7 +117,7 @@ def hdf5_data_dir(tmpdir_factory):
     "fields", (None, (), mark_xfail(("x",), "HDF5"), mark_xfail(("g",), "HDF5"))
 )
 @pytest.mark.parametrize("client", ("hdf5_data_dir",), indirect=True)
-def test_hdf5_fields(client, fields, buffer):
+def test_hdf5_fields(client, fields, buffer) -> None:
     "Export selected fields (array/group) from a HDF5 file via /container/full."
     client = client["hdf5_example"]
     url_path = client.item["links"]["full"]
@@ -128,14 +128,14 @@ def test_hdf5_fields(client, fields, buffer):
     assert_requested_fields_fetched(buffer, fields, client)
 
 
-def assert_single_request_to_url(history, url_path):
+def assert_single_request_to_url(history, url_path) -> None:
     "Container contents were fetched as a single request using 'full' route."
     (request,) = history.requests
     request_url_path = request.url.copy_with(query=None)
     assert request_url_path == url_path
 
 
-def assert_requested_fields_fetched(buffer, fields, client):
+def assert_requested_fields_fetched(buffer, fields, client) -> None:
     "Only the requested fields were fetched."
     with h5py.File(buffer) as file:
         actual_fields = set(file.keys())

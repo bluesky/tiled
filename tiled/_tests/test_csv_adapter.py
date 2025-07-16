@@ -66,7 +66,7 @@ def csv_array2_file(tmpdir):
     yield str(fpath)
 
 
-def test_csv_table(context, csv_table_file):
+def test_csv_table(context, csv_table_file) -> None:
     client = from_context(context)
 
     csv_assets = [
@@ -96,7 +96,7 @@ def test_csv_table(context, csv_table_file):
     assert (read_df == df1).all().all()
 
 
-def test_csv_arrays(context, csv_array1_file, csv_array2_file):
+def test_csv_arrays(context, csv_array1_file, csv_array2_file) -> None:
     client = from_context(context)
 
     for key, csv_fpath, arr in zip(
@@ -131,7 +131,7 @@ def test_csv_arrays(context, csv_array1_file, csv_array2_file):
     assert numpy.isclose(read_arr2, arr2).all()
 
 
-def test_csv_arrays_from_uris(csv_array1_file, csv_array2_file):
+def test_csv_arrays_from_uris(csv_array1_file, csv_array2_file) -> None:
     array_adapter = CSVArrayAdapter.from_uris(f"file://localhost/{csv_array1_file}")
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr1).all()

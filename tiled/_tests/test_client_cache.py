@@ -30,7 +30,7 @@ def client():
         yield from_context(context)
 
 
-def test_cache(client, tmpdir):
+def test_cache(client, tmpdir) -> None:
     cache = client.context.cache
     before_count = cache.count()
     before_size = cache.size()
@@ -53,7 +53,7 @@ def test_cache(client, tmpdir):
         assert isinstance(response, CachedResponse)
 
 
-def test_no_cache(client):
+def test_no_cache(client) -> None:
     client.context.cache = None
 
     # First time: not cached
@@ -69,7 +69,7 @@ def test_no_cache(client):
         assert not isinstance(response, CachedResponse)
 
 
-def test_lru_eviction(client):
+def test_lru_eviction(client) -> None:
     # First time: not cached
     client.context.cache.capacity = 5000
     num_items = len(client)
@@ -100,7 +100,7 @@ def test_lru_eviction(client):
         assert not isinstance(response, CachedResponse)
 
 
-def test_item_too_large_to_store(client):
+def test_item_too_large_to_store(client) -> None:
     client.context.cache.max_item_size = 10
 
     # First time: not cached
@@ -116,7 +116,7 @@ def test_item_too_large_to_store(client):
         assert not isinstance(response, CachedResponse)
 
 
-def test_readonly_cache(client):
+def test_readonly_cache(client) -> None:
     # Start with a writable cache.
 
     # First time: not cached
@@ -166,7 +166,7 @@ def test_readonly_cache(client):
             cur.execute("DELETE FROM responses")
 
 
-def test_clear_cache(client):
+def test_clear_cache(client) -> None:
     cache = client.context.cache
     client.values()[0]
     assert cache.size() > 0
@@ -175,7 +175,7 @@ def test_clear_cache(client):
     assert cache.size() == cache.count() == 0
 
 
-def test_not_thread_safe(client, monkeypatch):
+def test_not_thread_safe(client, monkeypatch) -> None:
     # Check that writes fail if thread safety is disabled
     monkeypatch.setattr(sqlite3, "threadsafety", ThreadingMode.SINGLE_THREAD)
     cache = client.context.cache
@@ -190,7 +190,7 @@ def test_not_thread_safe(client, monkeypatch):
     sqlite3.threadsafety != ThreadingMode.SERIALIZED,
     reason="sqlite not built with thread safe support",
 )
-def test_thread_safety(client):
+def test_thread_safety(client) -> None:
     cache = client.context.cache
     # Clear the cache in another thread
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -199,7 +199,7 @@ def test_thread_safety(client):
 
 
 @pytest.mark.asyncio
-async def test_thread_lock():
+async def test_thread_lock() -> None:
     """Check that we can prevent concurrent thread writes."""
 
     class Timer:
@@ -207,7 +207,7 @@ async def test_thread_lock():
         sleep_time = 0.01
 
         @with_thread_lock
-        def sleep(self):
+        def sleep(self) -> None:
             time.sleep(self.sleep_time)
 
     timer = Timer()

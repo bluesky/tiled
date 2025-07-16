@@ -9,7 +9,7 @@ class IterViewBase:
     def __init__(self, get_length) -> None:
         self._get_length = get_length
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__}>"
 
     # Convenience aliases
@@ -26,13 +26,13 @@ class IterViewBase:
     def tail(self, n=5):
         return list(reversed(self[-1 : -(n + 1) : -1]))  # noqa: E203
 
-    def __init_subclass__(cls, *args, **kwargs):
+    def __init_subclass__(cls, *args, **kwargs) -> None:
         cls.first.__doc__ = f"Get the first {cls._name}."
         cls.last.__doc__ = f"Get the last {cls._name}."
         cls.head.__doc__ = f"Get the first N {cls._name}s."
         cls.tail.__doc__ = f"Get the last N {cls._name}s."
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self._get_length()
 
 

@@ -600,7 +600,7 @@ Back up the database, and then run:
                         id=admin["id"],
                     )
 
-            async def purge_expired_sessions_and_api_keys():
+            async def purge_expired_sessions_and_api_keys() -> None:
                 PURGE_INTERVAL = 600  # seconds
                 while True:
                     async with AsyncSession(
@@ -626,7 +626,7 @@ Back up the database, and then run:
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
             )
 
-    async def shutdown_event():
+    async def shutdown_event() -> None:
         # Run shutdown tasks collected from trees (adapters).
         for task in tasks.get("shutdown", []):
             await task()
@@ -875,7 +875,7 @@ def print_server_info(
     host: str = "127.0.0.1",
     port: int = 8000,
     include_api_key: bool = False,
-):
+) -> None:
     settings = get_settings()
 
     if settings.allow_anonymous_access:

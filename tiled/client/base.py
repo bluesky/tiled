@@ -19,12 +19,12 @@ from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
 
 
 class MetadataRevisions:
-    def __init__(self, context, link):
+    def __init__(self, context, link) -> None:
         self._cached_len = None
         self.context = context
         self._link = link
 
-    def __len__(self):
+    def __len__(self) -> int:
         LENGTH_CACHE_TTL = 1  # second
 
         now = time.monotonic()
@@ -102,7 +102,7 @@ class MetadataRevisions:
 
             return result["data"]
 
-    def delete_revision(self, n):
+    def delete_revision(self, n) -> None:
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -128,7 +128,7 @@ class BaseClient:
         structure_clients,
         structure=None,
         include_data_sources=False,
-    ):
+    ) -> None:
         self._context = context
         self._item = item
         self._cached_len = None  # a cache just for __len__
@@ -163,7 +163,7 @@ class BaseClient:
             )
         return self._structure
 
-    def login(self):
+    def login(self) -> None:
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -182,7 +182,7 @@ class BaseClient:
         """
         self.context.authenticate()
 
-    def logout(self):
+    def logout(self) -> None:
         """
         Log out.
 
@@ -190,7 +190,7 @@ class BaseClient:
         """
         self.context.logout()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__}>"
 
     @property
@@ -462,7 +462,7 @@ class BaseClient:
 
     def update_metadata(
         self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
-    ):
+    ) -> None:
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -660,7 +660,7 @@ class BaseClient:
         access_blob_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
         drop_revision=False,
-    ):
+    ) -> None:
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
 
@@ -777,7 +777,7 @@ class BaseClient:
 
     def replace_metadata(
         self, metadata=None, specs=None, access_tags=None, drop_revision=False
-    ):
+    ) -> None:
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
@@ -865,7 +865,7 @@ class BaseClient:
 
         return self._metadata_revisions
 
-    def delete_tree(self):
+    def delete_tree(self) -> None:
         endpoint = self.uri.replace("/metadata/", "/nodes/", 1)
         for attempt in retry_context():
             with attempt:

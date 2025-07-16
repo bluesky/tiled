@@ -133,7 +133,7 @@ if modules_available("tifffile"):
     )
 
 
-def serialize_html(array, metadata):
+def serialize_html(array, metadata) -> str:
     "Try to display as image. Fall back to CSV."
     try:
         png_data = default_serialization_registry.dispatch("array", "image/png")(

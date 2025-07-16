@@ -23,7 +23,7 @@ def app():
     # tiled.client's default headers and other configuration.
 
 
-def test_gzip_supported(app):
+def test_gzip_supported(app) -> None:
     with TestClient(app=app) as client:
         client.headers["Authorization"] = "Apikey secret"
         client.headers["Accept-Encoding"] = "gzip"
@@ -37,7 +37,7 @@ def test_gzip_supported(app):
     assert "gzip" in data_response.headers["Content-Encoding"]
 
 
-def test_zstd_preferred(app):
+def test_zstd_preferred(app) -> None:
     with TestClient(app=app) as client:
         client.headers["Authorization"] = "Apikey secret"
         client.headers["Accept-Encoding"] = "zstd"

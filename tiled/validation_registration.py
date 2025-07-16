@@ -3,10 +3,10 @@ class ValidationRegistry:
     Register validation functions for specs
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._lookup = {}
 
-    def register(self, spec, func):
+    def register(self, spec, func) -> None:
         self._lookup[spec] = func
 
     def dispatch(self, spec):
@@ -19,7 +19,7 @@ class ValidationRegistry:
     def __call__(self, spec):
         return self.dispatch(spec)
 
-    def __contains__(self, spec):
+    def __contains__(self, spec) -> bool:
         return spec in self._lookup
 
 

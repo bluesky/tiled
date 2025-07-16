@@ -6,7 +6,7 @@ import numpy
 from ..server.etag import tokenize
 
 
-def test_deterministic_h5py_dataset(tmpdir):
+def test_deterministic_h5py_dataset(tmpdir) -> None:
     file = h5py.File(Path(tmpdir, "test.h5"), "w")
     group = file.create_group("stuff")
     dataset = group.create_dataset("data", data=numpy.ones((3, 3)))

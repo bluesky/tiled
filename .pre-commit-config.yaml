@@ -15,6 +15,14 @@ repos:
         exclude: ^helm/tiled/templates/
     -   id: debug-statements
 
+-   repo: https://github.com/JelleZijlstra/autotyping
+    rev:  24.9.0
+    hooks:
+    -   id: autotyping
+        stages: [pre-commit]
+        types: [python]
+        args: [--safe]
+
 -   repo: https://github.com/pycqa/flake8
     rev: 6.1.0
     hooks:

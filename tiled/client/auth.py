@@ -11,7 +11,7 @@ class CannotRefreshAuthentication(Exception):
 
 
 class TiledAuth(httpx.Auth):
-    def __init__(self, refresh_url, csrf_token, token_directory):
+    def __init__(self, refresh_url, csrf_token, token_directory) -> None:
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
         if token_directory is not None:
@@ -36,7 +36,7 @@ class TiledAuth(httpx.Auth):
             self._sync_lock,
         )
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         # Omit the cached tokens (self.tokens) from the pickled bundle because:
         # 1. Sometimes users persist pickled data and handle it insecurely.
         # 2. The un-serialized instance of TiledAuth will need to be able to
@@ -79,7 +79,7 @@ class TiledAuth(httpx.Auth):
                     file.write(value)
             self.tokens[key] = value  # Update cached value.
 
-    def sync_clear_token(self, key):
+    def sync_clear_token(self, key) -> None:
         with self._sync_lock:
             if self.token_directory is not None:
                 filepath = self.token_directory / key

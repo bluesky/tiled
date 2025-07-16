@@ -31,7 +31,7 @@ def client(context):
     yield client
 
 
-def test_include_data_sources_method_on_self(client):
+def test_include_data_sources_method_on_self(client) -> None:
     "Calling include_data_sources() fetches data sources on self."
     x = client.write_array([1, 2, 3], key="x")
     # Fetch data_sources on x object directly.
@@ -41,7 +41,7 @@ def test_include_data_sources_method_on_self(client):
     assert client["x"].include_data_sources().data_sources() is not None
 
 
-def test_include_data_sources_method_affects_children(client):
+def test_include_data_sources_method_affects_children(client) -> None:
     "Calling include_data_sources() fetches data sources on children."
     client.create_container("c")
     client["c"].write_array([1, 2, 3], key="x")
@@ -49,7 +49,7 @@ def test_include_data_sources_method_affects_children(client):
     assert c["x"].data_sources() is not None
 
 
-def test_include_data_sources_kwarg(context):
+def test_include_data_sources_kwarg(context) -> None:
     "Passing include_data_sources to constructor includes them by default."
     client = from_context(context, include_data_sources=True)
     client.write_array([1, 2, 3], key="x")
@@ -57,7 +57,7 @@ def test_include_data_sources_kwarg(context):
     assert client["x"].include_data_sources() is not None
 
 
-def test_raw_export(client, tmpdir):
+def test_raw_export(client, tmpdir) -> None:
     "Use raw_export() and compare hashes or original and exported files."
     client.write_array([1, 2, 3], key="x")
     exported_paths = client["x"].raw_export(tmpdir / "exported")
@@ -72,7 +72,7 @@ def test_raw_export(client, tmpdir):
     assert orig_hashes == exported_hashes
 
 
-def test_asset_range_request(client, tmpdir):
+def test_asset_range_request(client, tmpdir) -> None:
     "Access part of an asset using an HTTP Range header."
     df = pandas.DataFrame({"A": [1, 2, 3], "B": [4.0, 5.0, 6.0]})
     client.write_dataframe(df, key="x")
@@ -110,13 +110,13 @@ def test_asset_range_request(client, tmpdir):
         malformed_response.raise_for_status()
 
 
-def test_get_asset_filepaths(client):
+def test_get_asset_filepaths(client) -> None:
     "Smoke test get_asset_filepaths."
     client.write_array([1, 2, 3], key="x")
     get_asset_filepaths(client.include_data_sources()["x"])
 
 
-def test_do_not_expose_raw_assets(tmpdir):
+def test_do_not_expose_raw_assets(tmpdir) -> None:
     catalog = in_memory(writable_storage=str(tmpdir / "data"))
     app = build_app(catalog, server_settings={"expose_raw_assets": False})
     with Context.from_app(app) as context:

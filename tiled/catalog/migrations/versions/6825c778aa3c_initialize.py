@@ -17,6 +17,6 @@ def upgrade():
     raise NotImplementedError
 
 
-def downgrade():
+def downgrade() -> None:
     "Nothing to do because this is the initial schema."
     pass

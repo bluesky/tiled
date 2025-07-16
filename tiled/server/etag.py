@@ -21,7 +21,7 @@ def tokenize(obj):
 
 
 @normalize_token.register_lazy("h5py")
-def register_h5py():
+def register_h5py() -> None:
     from pathlib import Path
 
     import h5py

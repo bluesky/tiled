@@ -32,14 +32,14 @@ def context():
         yield context
 
 
-def test_smoke_read_list(context):
+def test_smoke_read_list(context) -> None:
     client = from_context(context)
 
     faulty_list = read(client)
     assert len(faulty_list) == 1
 
 
-def test_smoke_read_raise(context):
+def test_smoke_read_raise(context) -> None:
     client = from_context(context)
 
     with pytest.raises(Broken):

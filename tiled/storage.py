@@ -21,7 +21,7 @@ class Storage:
     "Base class for representing storage location"
     uri: str
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         object.__setattr__(self, "uri", ensure_uri(self.uri))
 
 

@@ -7,7 +7,9 @@ from alembic.config import Config
 from alembic.runtime import migration
 
 
-def write_alembic_ini(alembic_ini_template_path, alembic_dir, path, database_uri):
+def write_alembic_ini(
+    alembic_ini_template_path, alembic_dir, path, database_uri
+) -> None:
     """Write a complete alembic.ini from our template.
 
     Parameters
@@ -64,7 +66,7 @@ def temp_alembic_ini(alembic_ini_template_path, alembic_dir, database_uri):
         yield alembic_ini
 
 
-def stamp_head(alembic_ini_template_path, alembic_dir, engine_url):
+def stamp_head(alembic_ini_template_path, alembic_dir, engine_url) -> None:
     """
     Upgrade schema to the specified revision.
     """
@@ -75,7 +77,7 @@ def stamp_head(alembic_ini_template_path, alembic_dir, engine_url):
         command.stamp(alembic_cfg, "head")
 
 
-def upgrade(alembic_ini_template_path, alembic_dir, engine_url, revision):
+def upgrade(alembic_ini_template_path, alembic_dir, engine_url, revision) -> None:
     """
     Upgrade schema to the specified revision.
     """
@@ -86,7 +88,7 @@ def upgrade(alembic_ini_template_path, alembic_dir, engine_url, revision):
         command.upgrade(alembic_cfg, revision)
 
 
-def downgrade(alembic_ini_template_path, alembic_dir, engine_url, revision):
+def downgrade(alembic_ini_template_path, alembic_dir, engine_url, revision) -> None:
     """
     Downgrade schema to the specified revision.
     """

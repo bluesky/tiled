@@ -20,7 +20,7 @@ from .utils import temp_postgres
 
 
 @pytest.fixture(autouse=True, scope="session")
-def deactivate_retries():
+def deactivate_retries() -> None:
     "Deactivate HTTP retries."
     stamina.set_active(False)
 
@@ -74,7 +74,7 @@ def buffer_factory(request):
         buffers.append(buf)
         return buf
 
-    def teardown():
+    def teardown() -> None:
         for buf in buffers:
             buf.close()
 
@@ -120,7 +120,7 @@ if os.getenv("TILED_DEBUG_LEAKED_THREADS"):
     import threading
     import time
 
-    def poll_enumerate():
+    def poll_enumerate() -> None:
         logger = logging.getLogger(__name__)
         msg_level = int(logging.INFO + logging.WARNING) // 2
         while True:

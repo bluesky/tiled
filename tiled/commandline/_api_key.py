@@ -30,7 +30,7 @@ def create_api_key(
     ),
     note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
     no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
-):
+) -> None:
     context = get_context(profile)
     if not scopes:
         # This is how typer interprets unspecified scopes.
@@ -48,7 +48,7 @@ def list_api_keys(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-):
+) -> None:
     context = get_context(profile)
     info = context.whoami()
     if not info["api_keys"]:
@@ -94,6 +94,6 @@ def revoke_api_key(
     first_eight: str = typer.Argument(
         ..., help="First eight characters of API key (or the whole key)"
     ),
-):
+) -> None:
     context = get_context(profile)
     context.revoke_api_key(first_eight[:8])

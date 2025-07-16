@@ -18,7 +18,7 @@ def client(tmpdir_module):
         yield client
 
 
-def test_first_value(client):
+def test_first_value(client) -> None:
     "Fetching the first value requests a page of size 1."
     with record_history() as history:
         item = client.values().first()
@@ -27,7 +27,7 @@ def test_first_value(client):
     assert item.metadata["num"] == 0
 
 
-def test_first_key(client):
+def test_first_key(client) -> None:
     "Fetching the first key requests a page of size 1."
     with record_history() as history:
         key = client.keys().first()
@@ -36,7 +36,7 @@ def test_first_key(client):
     assert key == "0"
 
 
-def test_last_value(client):
+def test_last_value(client) -> None:
     "Fetching the last value requests a page of size 1."
     with record_history() as history:
         item = client.values().last()
@@ -45,7 +45,7 @@ def test_last_value(client):
     assert item.metadata["num"] == N - 1
 
 
-def test_last_key(client):
+def test_last_key(client) -> None:
     "Fetching the last key requests a page of size 1."
     with record_history() as history:
         key = client.keys().last()
@@ -54,7 +54,7 @@ def test_last_key(client):
     assert key == str(N - 1)
 
 
-def test_head_values(client):
+def test_head_values(client) -> None:
     "Fetching the 'head' values requests a page of size 5."
     with record_history() as history:
         items = client.values().head(5)
@@ -65,7 +65,7 @@ def test_head_values(client):
     assert actual_nums == expected_nums
 
 
-def test_head_keys(client):
+def test_head_keys(client) -> None:
     "Fetching the 'head' keys requests a page of size 5."
     with record_history() as history:
         keys = client.keys().head(5)
@@ -76,7 +76,7 @@ def test_head_keys(client):
     assert actual_nums == expected_nums
 
 
-def test_tail_values(client):
+def test_tail_values(client) -> None:
     "Fetching the 'tail' values requests a page of size 5."
     with record_history() as history:
         items = client.values().tail(5)
@@ -87,7 +87,7 @@ def test_tail_values(client):
     assert actual_nums == expected_nums
 
 
-def test_tail_keys(client):
+def test_tail_keys(client) -> None:
     "Fetching the 'tail' keys requests a page of size 5."
     with record_history() as history:
         keys = client.keys().tail(5)
@@ -98,7 +98,7 @@ def test_tail_keys(client):
     assert actual_nums == expected_nums
 
 
-def test_middle_forward_values(client):
+def test_middle_forward_values(client) -> None:
     "Fetching a slice of values in the middle requests a page of the correct size."
     with record_history() as history:
         items = client.values()[2:6]
@@ -109,7 +109,7 @@ def test_middle_forward_values(client):
     assert actual_nums == expected_nums
 
 
-def test_middle_forward_keys(client):
+def test_middle_forward_keys(client) -> None:
     "Fetching a slice of keys in the middle requests a page of the correct size."
     with record_history() as history:
         keys = client.keys()[2:6]
@@ -120,7 +120,7 @@ def test_middle_forward_keys(client):
     assert actual_nums == expected_nums
 
 
-def test_middle_backward_values(client):
+def test_middle_backward_values(client) -> None:
     "Fetching a slice of values in the middle requests a page of the correct size."
     with record_history() as history:
         items = client.values()[-2:-6:-1]
@@ -131,7 +131,7 @@ def test_middle_backward_values(client):
     assert actual_nums == expected_nums
 
 
-def test_middle_backward_keys(client):
+def test_middle_backward_keys(client) -> None:
     "Fetching a slice of keys in the middle requests a page of the correct size."
     with record_history() as history:
         keys = client.keys()[-2:-6:-1]
@@ -142,7 +142,7 @@ def test_middle_backward_keys(client):
     assert actual_nums == expected_nums
 
 
-def test_manual_page_size_values(client):
+def test_manual_page_size_values(client) -> None:
     "The page_size method on values() can set the page size manually."
     with record_history() as history:
         items = client.values().page_size(2).head(5)
@@ -154,7 +154,7 @@ def test_manual_page_size_values(client):
     assert actual_nums == expected_nums
 
 
-def test_manual_page_size_keys(client):
+def test_manual_page_size_keys(client) -> None:
     "The page_size method on keys() can set the page size manually."
     with record_history() as history:
         keys = client.keys().page_size(2).head(5)
@@ -166,7 +166,7 @@ def test_manual_page_size_keys(client):
     assert actual_nums == expected_nums
 
 
-def test_manual_page_size_truncated_values(client):
+def test_manual_page_size_truncated_values(client) -> None:
     "If the manual page size is larger than the result set, it is truncated."
     with record_history() as history:
         items = client.values().page_size(6).head(5)
@@ -177,7 +177,7 @@ def test_manual_page_size_truncated_values(client):
     assert actual_nums == expected_nums
 
 
-def test_manual_page_size_truncated_keys(client):
+def test_manual_page_size_truncated_keys(client) -> None:
     "If the manual page size is larger than the result set, it is truncated."
     with record_history() as history:
         keys = client.keys().page_size(6).head(5)
@@ -188,7 +188,7 @@ def test_manual_page_size_truncated_keys(client):
     assert actual_nums == expected_nums
 
 
-def test_unbounded_values_slice(client):
+def test_unbounded_values_slice(client) -> None:
     "An unbounded slice lets the server set the page size."
     with record_history() as history:
         items = client.values()[3:]
@@ -199,7 +199,7 @@ def test_unbounded_values_slice(client):
     assert actual_nums == expected_nums
 
 
-def test_unbounded_keys_slice(client):
+def test_unbounded_keys_slice(client) -> None:
     "An unbounded slice lets the server set the page size."
     with record_history() as history:
         keys = client.keys()[3:]

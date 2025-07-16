@@ -9,7 +9,7 @@ from ..server.app import build_app_from_config
 
 
 @pytest.mark.asyncio
-async def test_xdi_round_trip(tmpdir):
+async def test_xdi_round_trip(tmpdir) -> None:
     """
     Steps:
 

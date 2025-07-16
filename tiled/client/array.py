@@ -16,7 +16,7 @@ from .utils import export_util, handle_error, params_from_slice, retry_context
 class _DaskArrayClient(BaseClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
-    def __init__(self, *args, item, **kwargs):
+    def __init__(self, *args, item, **kwargs) -> None:
         super().__init__(*args, item=item, **kwargs)
 
     @property
@@ -49,7 +49,7 @@ class _DaskArrayClient(BaseClient):
     def ndim(self):
         return len(self.structure().shape)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         structure = self.structure()
         attrs = {
             "shape": structure.shape,
@@ -167,7 +167,7 @@ class _DaskArrayClient(BaseClient):
             dask_array = dask_array[slice]
         return dask_array
 
-    def write(self, array):
+    def write(self, array) -> None:
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -178,7 +178,7 @@ class _DaskArrayClient(BaseClient):
                     )
                 )
 
-    def write_block(self, array, block, slice=...):
+    def write_block(self, array, block, slice=...) -> None:
         url_path = self.item["links"]["block"].format(*block)
         params = {
             **parse_qs(urlparse(url_path).query),
@@ -288,7 +288,7 @@ class _DaskArrayClient(BaseClient):
     # The default object.__iter__ works as expected here, no need to
     # implemented it specifically.
 
-    def __len__(self):
+    def __len__(self) -> int:
         # As with numpy, len(arr) is the size of the zeroth axis.
         return self.structure().shape[0]
 

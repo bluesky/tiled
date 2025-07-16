@@ -49,7 +49,7 @@ def client():
         ("number", sorted_numbers),
     ],
 )
-def test_sort(client, key, sorted_list):
+def test_sort(client, key, sorted_list) -> None:
     unsorted = [node.metadata[key] for node in client.values()]
     assert unsorted != sorted_list
     sorted_ascending = [node.metadata[key] for node in client.sort((key, 1)).values()]
@@ -58,7 +58,7 @@ def test_sort(client, key, sorted_list):
     assert sorted_descending == list(reversed(sorted_list))
 
 
-def test_sort_two_columns(client):
+def test_sort_two_columns(client) -> None:
     # Sort by (repeated) letter, then by number.
     client_sorted = client.sort(("repeated_letter", 1), ("number", 1))
     letters_ = [node.metadata["repeated_letter"] for node in client_sorted.values()]
@@ -72,7 +72,7 @@ def test_sort_two_columns(client):
     assert not sorted(numbers_) == numbers_
 
 
-def test_sort_sparse():
+def test_sort_sparse() -> None:
     """
     Sort where the key only present on some nodes.
     """
@@ -90,7 +90,7 @@ def test_sort_sparse():
         assert list(client_sorted)[:2] == ["yes1", "yes2"]
 
 
-def test_sort_missing():
+def test_sort_missing() -> None:
     """
     Sort where the key not present on any node.
     """

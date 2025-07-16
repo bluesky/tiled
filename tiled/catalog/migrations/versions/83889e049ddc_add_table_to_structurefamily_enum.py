@@ -27,7 +27,7 @@ depends_on = None
 JSONVariant = sa.JSON().with_variant(JSONB(), "postgresql")
 
 
-def upgrade():
+def upgrade() -> None:
     connection = op.get_bind()
 
     if connection.engine.dialect.name == "postgresql":

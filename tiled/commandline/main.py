@@ -62,7 +62,7 @@ def login(
     show_secret_tokens: bool = typer.Option(
         False, "--show-secret-tokens", help="Show secret tokens after successful login."
     ),
-):
+) -> None:
     """
     Log in to an authenticated Tiled server.
     """
@@ -83,7 +83,7 @@ def whoami(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-):
+) -> None:
     """
     Show logged in identity.
     """
@@ -105,7 +105,7 @@ def logout(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-):
+) -> None:
     """
     Log out.
     """
@@ -125,7 +125,7 @@ def tree(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
     max_lines: int = typer.Argument(20, help="Max lines to show."),
-):
+) -> None:
     """
     Show the names of entries in a Tree.
 
@@ -155,7 +155,7 @@ def version_callback(
     version: bool = typer.Option(
         False, "--version", "-V", help="Show version and exit."
     ),
-):
+) -> None:
     if version:
         from .. import __version__
 

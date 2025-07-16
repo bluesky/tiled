@@ -106,7 +106,7 @@ class BuiltinDtype:
     def to_numpy_dtype(self) -> numpy.dtype:
         return numpy.dtype(self.to_numpy_str())
 
-    def to_numpy_str(self):
+    def to_numpy_str(self) -> str:
         endianness = self.__endianness_reverse_map[self.endianness]
         # dtype.itemsize always reports bytes.  The format string from the
         # numeric types the string format is: {type_code}{byte_count} so we can

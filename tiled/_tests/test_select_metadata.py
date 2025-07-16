@@ -25,7 +25,7 @@ def client(module_tmp_path):
         yield client
 
 
-def test_select_metadata(client):
+def test_select_metadata(client) -> None:
     http_client = client.context.http_client
     # /metadata
     response = http_client.get("/api/v1/metadata/x?select_metadata=[sample.color]")

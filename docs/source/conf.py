@@ -212,7 +212,7 @@ intersphinx_mapping = {
 import yaml
 
 
-def generate_schema_documentation(header, schema, target):
+def generate_schema_documentation(header, schema, target) -> None:
     # header
     with open(header, "r") as f:
         header_md = f.readlines()

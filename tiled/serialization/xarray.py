@@ -41,7 +41,7 @@ async def as_dataset(node):
 
 
 class _BytesIOThatIgnoresClose(io.BytesIO):
-    def close(self):
+    def close(self) -> None:
         # When the netcdf writer tells us to close(), ignore it.
         pass
 

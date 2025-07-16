@@ -17,27 +17,27 @@ from tiled.structures.table import TableStructure
 
 
 class TimeSuite:
-    def setup(self):
+    def setup(self) -> None:
         tree = MapAdapter({"x": ArrayAdapter.from_array(numpy.ones((100, 100)))})
         app = build_app(tree)
         self.context = Context.from_app(app)
         self.client = from_context(self.context)
 
-    def teardown(self):
+    def teardown(self) -> None:
         self.context.close()
 
-    def time_list_tree(self):
+    def time_list_tree(self) -> None:
         list(self.client)
 
-    def time_lookup(self):
+    def time_lookup(self) -> None:
         self.client["x"]
 
-    def time_lookup_and_read(self):
+    def time_lookup_and_read(self) -> None:
         self.client["x"].read()
 
 
 class CatalogSuite:
-    def setup(self):
+    def setup(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
         self.df = pandas.DataFrame([])
 
@@ -49,11 +49,11 @@ class CatalogSuite:
         self.context = Context.from_app(build_app(catalog))
         self.client = from_context(self.context)
 
-    def teardown(self):
+    def teardown(self) -> None:
         self.context.close()
         self.directory.cleanup()
 
-    def time_repeated_write(self):
+    def time_repeated_write(self) -> None:
         for _ in range(100):
             self.client.new(
                 structure_family=StructureFamily.table,

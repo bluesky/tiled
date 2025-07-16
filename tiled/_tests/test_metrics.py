@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/error")
-def error():
+def error() -> None:
     1 / 0  # error!
 
 
@@ -34,7 +34,7 @@ def total_request_time(client, code):
     return sum(request_duration_buckets)
 
 
-def test_error_code():
+def test_error_code() -> None:
     app = build_app_from_config(config)
     app.include_router(router)
     with Context.from_app(app, raise_server_exceptions=False) as context:
@@ -54,7 +54,7 @@ def test_error_code():
         assert total_request_time(client, 404) - baseline_time[404] > 0
 
 
-def test_correlation_id():
+def test_correlation_id() -> None:
     "Test that exceptions include correlation ID."
     app = build_app_from_config(config)
     app.include_router(router)

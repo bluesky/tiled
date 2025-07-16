@@ -1503,7 +1503,7 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:metadata", "register"]),
-    ):
+    ) -> None:
         entry = await get_entry(
             path,
             ["write:metadata", "register"],

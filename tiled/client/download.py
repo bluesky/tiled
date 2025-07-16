@@ -88,7 +88,7 @@ def download(
             f"Received {len(urls)=} and {len(paths)=}."
         )
 
-    def sigint_handler(signum, frame):
+    def sigint_handler(signum, frame) -> None:
         done_event.set()
         original_sigint_handler(signal.SIGINT, frame)
 

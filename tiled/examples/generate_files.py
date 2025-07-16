@@ -26,7 +26,7 @@ df1 = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
 df2 = pandas.DataFrame({"C": [10, 20, 30], "D": [40, 50, 60]})
 
 
-def generate_files(root_path):
+def generate_files(root_path) -> None:
     for path in TIFF_PATHS:
         full_path = Path(root_path, *path)
         full_path.parent.mkdir(parents=True, exist_ok=True)

@@ -25,7 +25,7 @@ def init(
             "Set this flag to be permissive and return without an error."
         ),
     ),
-):
+) -> None:
     """
     Initialize a database as a Tiled Catalog.
 
@@ -81,7 +81,7 @@ def upgrade_database(
         None,
         help="The ID of a revision to upgrade to. By default, upgrade to the latest one.",
     ),
-):
+) -> None:
     """
     Upgrade the catalog database schema to the latest version.
     """
@@ -117,7 +117,7 @@ def upgrade_database(
 def downgrade_database(
     database_uri: str,
     revision: str = typer.Argument(..., help="The ID of a revision to downgrade to."),
-):
+) -> None:
     """
     Upgrade the catalog database schema to the latest version.
     """

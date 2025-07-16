@@ -32,7 +32,7 @@ class Spec:
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "version", version)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Display the name as a positional argument, for conciseness.
         if self.version is None:
             output = f"{type(self).__name__}({self.name!r})"

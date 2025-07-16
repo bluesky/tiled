@@ -37,14 +37,14 @@ def client():
         yield client
 
 
-def test_lookup(client):
+def test_lookup(client) -> None:
     "Accessing a child node should trigger one request."
     with record_history() as history:
         client["dataset"]
     assert len(history.requests) == 1
 
 
-def test_iter(client):
+def test_iter(client) -> None:
     "Iteration should be free because the contents were in-lined."
     expected = ["temperature", "time"]
     dsc = client["dataset"]
@@ -59,7 +59,7 @@ def test_iter(client):
     assert history.requests
 
 
-def test_keys_slice(client):
+def test_keys_slice(client) -> None:
     "Iteration should be free because the contents were in-lined."
     expected = ["temperature", "time"]
     dsc = client["dataset"]
@@ -83,7 +83,7 @@ def test_keys_slice(client):
     assert history.requests
 
 
-def test_items_slice(client):
+def test_items_slice(client) -> None:
     "Iteration should be free because the contents were in-lined."
     dsc = client["dataset"]
     with record_history() as history:
@@ -109,7 +109,7 @@ def test_items_slice(client):
     assert history.requests
 
 
-def test_too_wide_for_inline():
+def test_too_wide_for_inline() -> None:
     """
     The server will not inline contents above a certain limit.
 

@@ -16,7 +16,7 @@ LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 
 class DaskDatasetClient(Container):
-    def _repr_pretty_(self, p, cycle):
+    def _repr_pretty_(self, p, cycle) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -130,7 +130,7 @@ _EXTRA_CHARS_PER_ITEM = len("&field=")
 
 
 class _WideTableFetcher:
-    def __init__(self, http_client, link):
+    def __init__(self, http_client, link) -> None:
         self.http_client = http_client
         self.link = link
         self.variables = []

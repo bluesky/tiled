@@ -65,7 +65,7 @@ class Composite(Container):
     def __iter__(self):
         yield from self._keys_slice(0, None, 1)
 
-    def __len__(self):
+    def __len__(self) -> int:
         if self._cached_len is not None:
             length, deadline = self._cached_len
             if time.monotonic() < deadline:
@@ -86,7 +86,7 @@ class Composite(Container):
 
         return super().__getitem__(key, _ignore_inlined_contents)
 
-    def __contains__(self, key):
+    def __contains__(self, key) -> bool:
         return key in self._flat_keys_mapping.keys()
 
     def create_container(self, key=None, *, metadata=None, specs=None):
@@ -185,13 +185,13 @@ class Composite(Container):
 
 
 class CompositeParts:
-    def __init__(self, node):
+    def __init__(self, node) -> None:
         self.contents = node.get_contents(include_metadata=True)
         self.context = node.context
         self.structure_clients = node.structure_clients
         self._include_data_sources = node._include_data_sources
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"<{type(self).__name__} {{"
             + ", ".join(f"'{item}'" for item in self.contents)

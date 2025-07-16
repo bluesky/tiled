@@ -4,7 +4,8 @@ import sys
 import warnings
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from types import TracebackType
+from typing import Any, Iterator, List, Optional, Tuple, Type, TypeVar, Union
 
 import dask
 import dask.array
@@ -79,6 +80,9 @@ def get_hdf5_attrs(
     return d
 
 
+_E = TypeVar("_E", bound=BaseException)
+
+
 class h5open(h5py.File):  # type: ignore
     """A context manager for reading datasets from HDF5 files
 
@@ -110,10 +114,15 @@ class h5open(h5py.File):  # type: ignore
             self.__exit__(*sys.exc_info())
             raise
 
-    def __exit__(self, exc_type, exc_value, exc_tb) -> None:  # type: ignore
+    def __exit__(
+        self,
+        exc_type: Optional[Type[_E]],
+        exc_value: Optional[_E],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         super().__exit__(exc_type, exc_value, exc_tb)
 
-        if exc_type == KeyError:
+        if exc_type == KeyError and exc_value:
             if "file" in str(exc_value):
                 # External link is broken
                 raise BrokenLink(exc_value.args[0]) from exc_value

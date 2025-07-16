@@ -50,7 +50,7 @@ def identity(filename):
     return filename
 
 
-def default_filter(path):
+def default_filter(path) -> bool:
     "By default, ignore only hidden files."
     return not path.name.startswith(".")
 
@@ -145,7 +145,7 @@ async def register(
     key_from_filename=None,
     filter=None,
     overwrite=True,
-):
+) -> None:
     "Register a file or directory (recursively)."
     settings = Settings.init(
         adapters_by_mimetype=adapters_by_mimetype,
@@ -202,7 +202,7 @@ async def _walk(
     path,
     walkers,
     settings,
-):
+) -> None:
     "This is the recursive inner loop of walk."
     files = []
     directories = []
@@ -478,7 +478,7 @@ async def watch(
     key_from_filename=None,
     filter=None,
     initial_walk_complete_event=None,
-):
+) -> None:
     settings = Settings.init(
         adapters_by_mimetype=adapters_by_mimetype,
         mimetypes_by_file_ext=mimetypes_by_file_ext,
@@ -531,7 +531,7 @@ async def _watch(
     prefix,
     walkers,
     settings,
-):
+) -> None:
     def watch_filter(change, path):
         return settings.filter(Path(path))
 
@@ -584,7 +584,7 @@ async def process_changes(
     prefix,
     walkers,
     settings,
-):
+) -> None:
     for change in batch:
         change_type, change_path = change
         logger.info("  %s '%s'", change_type.name, change_path)

@@ -150,7 +150,7 @@ def csv_file(tmpdir):
         ("sps", sps_arr.todense()),
     ],
 )
-def test_reading(context, name, expected):
+def test_reading(context, name, expected) -> None:
     client = from_context(context)
     actual = client["x"][name].read()
     if name == "sps":
@@ -158,13 +158,13 @@ def test_reading(context, name, expected):
     assert numpy.array_equal(actual, expected)
 
 
-def test_iterate_parts(context):
+def test_iterate_parts(context) -> None:
     client = from_context(context)
     for part in client["x"].parts:
         client["x"].parts[part].read()
 
 
-def test_iterate_columns(context):
+def test_iterate_columns(context) -> None:
     client = from_context(context)
     for col, _client in client["x"].items():
         read_from_client = _client.read()
@@ -179,7 +179,7 @@ def test_iterate_columns(context):
         assert numpy.array_equal(read_from_full_path, read_from_column)
 
 
-def test_metadata(context):
+def test_metadata(context) -> None:
     client = from_context(context)
     assert client["x"].metadata == md
 
@@ -189,7 +189,7 @@ def test_metadata(context):
         assert c.metadata["md_key"] == f"md_for_{part}"
 
 
-def test_parts_not_directly_accessible(context):
+def test_parts_not_directly_accessible(context) -> None:
     client = from_context(context)
     client["x"].parts["df1"].read()
     client["x"].parts["df1"]["A"].read()
@@ -200,7 +200,7 @@ def test_parts_not_directly_accessible(context):
         client["x/df1"].read()
 
 
-def test_external_assets(context, tiff_sequence, csv_file):
+def test_external_assets(context, tiff_sequence, csv_file) -> None:
     client = from_context(context)
     tiff_assets = [
         Asset(
@@ -261,7 +261,7 @@ def test_external_assets(context, tiff_sequence, csv_file):
     assert set(y.keys()) == {"image", "col1", "col2"}
 
 
-def test_read_full(context_for_read):
+def test_read_full(context_for_read) -> None:
     client = from_context(context_for_read)
     ds = client["x"].read()
 
@@ -281,7 +281,7 @@ def test_read_full(context_for_read):
     }
 
 
-def test_read_selective(context_for_read):
+def test_read_selective(context_for_read) -> None:
     client = from_context(context_for_read)
     ds = client["x"].read(variables=["arr1", "arr2", "A", "B", "sps"])
 
@@ -290,7 +290,7 @@ def test_read_selective(context_for_read):
 
 
 @pytest.mark.parametrize("dim0", ["time", "col1"])
-def test_read_selective_with_dim0(context, dim0):
+def test_read_selective_with_dim0(context, dim0) -> None:
     client = from_context(context)
     ds = client["x"].read(variables=["arr2", "img", "col1"], dim0=dim0)
 

@@ -11,7 +11,7 @@ from ..utils import safe_json_dump
         {"array": numpy.array([b"test"], dtype="|S4")},
     ],
 )
-def test_ndarray(test_params):
+def test_ndarray(test_params) -> None:
     safe_json_dump(test_params["array"])
 
 
@@ -22,7 +22,7 @@ def test_ndarray(test_params):
         {"array": numpy.array([b"test"], dtype="|S4")},
     ],
 )
-def test_nested_ndarray(test_params):
+def test_nested_ndarray(test_params) -> None:
     example_nested_data = {
         "data": [
             {

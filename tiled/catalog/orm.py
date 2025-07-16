@@ -42,7 +42,7 @@ class Timestamped:
         DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"{type(self).__name__}("
             + ", ".join(
@@ -153,7 +153,7 @@ class DataSourceAssetAssociation(Base):
 
 
 @event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
-def unique_parameter_num_null_check(target, connection, **kw):
+def unique_parameter_num_null_check(target, connection, **kw) -> None:
     # This creates a pair of triggers on the data_source_asset_association
     # table. (There are a total of four defined below, two for the SQLite
     # branch and two for the PostgreSQL branch.) Each pair include one trigger
@@ -261,7 +261,7 @@ EXECUTE FUNCTION raise_if_null_parameter_exists();"""
 
 
 @event.listens_for(Node.__table__, "after_create")
-def create_index_metadata_tsvector_search(target, connection, **kw):
+def create_index_metadata_tsvector_search(target, connection, **kw) -> None:
     # This creates a ts_vector based metadata search index for fulltext.
     # Postgres only feature
     if connection.engine.dialect.name == "postgresql":
@@ -308,7 +308,7 @@ metadata_fts5 = FTS5Table(
 
 
 @event.listens_for(metadata_fts5, "after_create")
-def create_virtual_table_fits5(target, connection, **kw):
+def create_virtual_table_fits5(target, connection, **kw) -> None:
     if connection.engine.dialect.name == "sqlite":
         statements = [
             # See https://www.sqlite.org/fts5.html Section 4.4.3.

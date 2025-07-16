@@ -17,13 +17,13 @@ from .utils import fail_with_status_code
 tree = MapAdapter({})
 
 
-def test_configurable_timeout():
+def test_configurable_timeout() -> None:
     with Context.from_app(build_app(tree), timeout=httpx.Timeout(17)) as context:
         assert context.http_client.timeout.connect == 17
         assert context.http_client.timeout.read == 17
 
 
-def test_client_version_check(caplog):
+def test_client_version_check(caplog) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
 
@@ -48,7 +48,7 @@ def test_client_version_check(caplog):
         assert any("gibberish" in message for message in logged_warnings)
 
 
-def test_direct(tmpdir):
+def test_direct(tmpdir) -> None:
     profile_content = {
         "test": {
             "structure_clients": "dask",
@@ -70,7 +70,7 @@ def test_direct(tmpdir):
         paths.remove(profile_dir)
 
 
-def test_direct_config_error(tmpdir):
+def test_direct_config_error(tmpdir) -> None:
     profile_content = {
         "test": {
             "direct": {
@@ -92,7 +92,7 @@ def test_direct_config_error(tmpdir):
         paths.remove(profile_dir)
 
 
-def test_jump_down_tree():
+def test_jump_down_tree() -> None:
     tree = MapAdapter({}, metadata={"number": 1})
     for number, letter in enumerate(list("abcde"), start=2):
         tree = MapAdapter({letter: tree}, metadata={"number": number})

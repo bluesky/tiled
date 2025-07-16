@@ -21,7 +21,7 @@ ROLES = ["admin"]
 NEW_SCOPES = ["register"]
 
 
-def upgrade():
+def upgrade() -> None:
     """
     Add new scopes to Roles.
     """
@@ -35,7 +35,7 @@ def upgrade():
             db.commit()
 
 
-def downgrade():
+def downgrade() -> None:
     """
     Remove new scopes from Roles, if present.
     """

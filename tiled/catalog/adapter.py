@@ -139,7 +139,7 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs, top_level_access_blob):
+    def __init__(self, metadata, specs, top_level_access_blob) -> None:
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
@@ -156,7 +156,7 @@ class Context:
         readable_storage=None,
         adapters_by_mimetype=None,
         key_maker=lambda: str(uuid.uuid4()),
-    ):
+    ) -> None:
         self.engine = engine
 
         self.writable_storage = []
@@ -309,7 +309,7 @@ class CatalogNodeAdapter:
         queries=None,
         sorting=None,
         mount_node: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> None:
         self.context = context
         self.engine = self.context.engine
         if isinstance(mount_node, str):
@@ -344,7 +344,7 @@ class CatalogNodeAdapter:
     def metadata(self):
         return self.node.metadata_
 
-    async def startup(self):
+    async def startup(self) -> None:
         if (self.context.engine.dialect.name == "sqlite") and (
             self.context.engine.url.database == ":memory:"
         ):
@@ -354,14 +354,14 @@ class CatalogNodeAdapter:
         else:
             await check_catalog_database(self.context.engine)
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         await self.context.engine.dispose()
 
     @property
     def writable(self):
         return bool(self.context.writable_storage)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
 
     async def __aiter__(self):
@@ -970,7 +970,7 @@ class CatalogNodeAdapter:
 
     async def replace_metadata(
         self, metadata=None, specs=None, access_blob=None, *, drop_revision=False
-    ):
+    ) -> None:
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -1584,7 +1584,7 @@ def from_uri(
     return adapter
 
 
-def _set_sqlite_pragma(conn, record):
+def _set_sqlite_pragma(conn, record) -> None:
     cursor = conn.cursor()
     # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
     cursor.execute("PRAGMA foreign_keys=ON")

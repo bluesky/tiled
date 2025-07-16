@@ -81,25 +81,25 @@ log_format = "%(asctime)s.%(msecs)03d %(message)s"
 handler.setFormatter(logging.Formatter(log_format, datefmt="%H:%M:%S"))
 
 
-def log_request(request):
+def log_request(request) -> None:
     logger.debug("", extra={"request": request})
 
 
-def log_response(response):
+def log_response(response) -> None:
     logger.debug("", extra={"response": response})
 
 
-def collect_request(request):
+def collect_request(request) -> None:
     if _history is not None:
         _history.requests.append(request)
 
 
-def collect_response(response):
+def collect_response(response) -> None:
     if _history is not None:
         _history.responses.append(response)
 
 
-def show_logs():
+def show_logs() -> None:
     """
     Log network traffic and interactions with the cache.
 
@@ -109,7 +109,7 @@ def show_logs():
     logger.addHandler(handler)
 
 
-def hide_logs():
+def hide_logs() -> None:
     """
     Undo show_logs().
     """

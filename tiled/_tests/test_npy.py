@@ -42,7 +42,7 @@ def client(tmpdir_module):
         yield client
 
 
-def test_npy(client):
+def test_npy(client) -> None:
     "Test a single npy file."
     arr = client["single"].read()
     assert arr.shape == SINGLE_SHAPE
@@ -62,19 +62,19 @@ def test_npy(client):
         ((..., slice(0, 1)), (3, 5, 1)),
     ],
 )
-def test_npy_sequence(client, slice_input, correct_shape):
+def test_npy_sequence(client, slice_input, correct_shape) -> None:
     arr = client["sequence"].read(slice=slice_input)
     assert arr.shape == correct_shape
 
 
 @pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0), (1, 5, 7))])
-def test_npy_sequence_block(client, block_input, correct_shape):
+def test_npy_sequence_block(client, block_input, correct_shape) -> None:
     arr = client["sequence"].read_block(block_input)
     assert arr.shape == correct_shape
 
 
 @pytest.mark.asyncio
-async def test_npy_sequence_order(tmpdir):
+async def test_npy_sequence_order(tmpdir) -> None:
     """
     directory/
       00001.npy
@@ -96,7 +96,7 @@ async def test_npy_sequence_order(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_npy_sequence_with_directory_walker(tmpdir):
+async def test_npy_sequence_with_directory_walker(tmpdir) -> None:
     """
     directory/
       00001.npy
@@ -166,7 +166,7 @@ a,b,c
         assert client["other_file2"].columns == ["a", "b", "c"]
 
 
-def test_npy_sequence_cache(client):
+def test_npy_sequence_cache(client) -> None:
     from numpy.testing import assert_raises
 
     # The two requests go through the same method in the server (read_block) to

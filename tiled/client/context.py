@@ -160,7 +160,7 @@ class Context:
         verify=True,
         app=None,
         raise_server_exceptions=True,
-    ):
+    ) -> None:
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
         headers = headers or {}
@@ -276,7 +276,7 @@ class Context:
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         auth_info = []
         if (self.api_key is None) and (self.http_client.auth is None):
             auth_info.append("(unauthenticated)")
@@ -303,10 +303,10 @@ class Context:
     def __enter__(self):
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self.http_client.__exit__()
 
     def __getstate__(self):
@@ -487,7 +487,7 @@ class Context:
             return match.group(1)
 
     @api_key.setter
-    def api_key(self, api_key):
+    def api_key(self, api_key) -> None:
         if api_key is None:
             if self.http_client.headers.get("Authorization", "").startswith("Apikey "):
                 self.http_client.headers.pop("Authorization")
@@ -499,7 +499,7 @@ class Context:
         return self.http_client._transport.cache
 
     @cache.setter
-    def cache(self, cache):
+    def cache(self, cache) -> None:
         self.http_client._transport.cache = cache
 
     def which_api_key(self):
@@ -549,7 +549,7 @@ class Context:
                     )
                 ).json()
 
-    def revoke_api_key(self, first_eight):
+    def revoke_api_key(self, first_eight) -> None:
         """
         Revoke an API key.
 
@@ -609,7 +609,7 @@ class Context:
         self,
         *,
         remember_me=True,
-    ):
+    ) -> None:
         """
         Log in to a Tiled server.
 
@@ -716,7 +716,7 @@ class Context:
 
         return path
 
-    def use_cached_tokens(self):
+    def use_cached_tokens(self) -> bool:
         """
         Attempt to reconnect using cached tokens.
 
@@ -794,7 +794,7 @@ class Context:
                     )
                 ).json()
 
-    def logout(self):
+    def logout(self) -> None:
         """
         Log out of the current session (if any).
 
@@ -826,7 +826,7 @@ class Context:
         self.http_client.headers.pop("Authorization", None)
         self.http_client.auth = None
 
-    def revoke_session(self, session_id):
+    def revoke_session(self, session_id) -> None:
         """
         Revoke a Session so it cannot be refreshed.
 
@@ -847,7 +847,7 @@ class Context:
 class Admin:
     "Accessor for requests that require administrative privileges."
 
-    def __init__(self, context: Context):
+    def __init__(self, context: Context) -> None:
         self.context = context
         self.base_url = context.server_info.links["self"]
 
@@ -959,7 +959,7 @@ class CannotPrompt(Exception):
     pass
 
 
-def _can_prompt():
+def _can_prompt() -> bool:
     "Infer whether the user can be prompted for a password or user code."
 
     if (not sys.__stdin__.closed) and sys.__stdin__.isatty():

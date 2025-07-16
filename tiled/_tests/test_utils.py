@@ -13,7 +13,7 @@ from ..utils import (
 )
 
 
-def test_ensure_specified_sql_driver():
+def test_ensure_specified_sql_driver() -> None:
     # Postgres
     # Default driver is added if missing.
     assert (
@@ -95,7 +95,7 @@ def test_ensure_specified_sql_driver():
         ("2y", 2 * 365 * 24 * 60 * 60),
     ],
 )
-def test_parse_time_string_valid(string_input, expected):
+def test_parse_time_string_valid(string_input, expected) -> None:
     assert parse_time_string(string_input) == expected
 
 
@@ -108,29 +108,29 @@ def test_parse_time_string_valid(string_input, expected):
         "3 m",  # invalid character '-'
     ],
 )
-def test_parse_time_string_invalid(string_input):
+def test_parse_time_string_invalid(string_input) -> None:
     with pytest.raises(ValueError):
         parse_time_string(string_input)
 
 
-def test_listview_repr():
+def test_listview_repr() -> None:
     lv = ListView([1, 2, 3])
     assert repr(lv) == "ListView([1, 2, 3])"
 
 
-def test_dictview_repr():
+def test_dictview_repr() -> None:
     dv = DictView({"a": 1, "b": 2})
     assert repr(dv) == "DictView({'a': 1, 'b': 2})"
 
 
-def test_listview_repr_pretty(monkeypatch):
+def test_listview_repr_pretty(monkeypatch) -> None:
     lv = ListView([1, 2, 3])
     called = {}
 
     class DummyP:
         "Dummy pretty printer to capture the text output."
 
-        def text(self, s):
+        def text(self, s) -> None:
             called["text"] = s
 
     # Should use pformat on a list
@@ -145,14 +145,14 @@ def test_listview_repr_pretty(monkeypatch):
     assert called["text"] == "[4, 5, 6]"
 
 
-def test_dictview_repr_pretty(monkeypatch):
+def test_dictview_repr_pretty(monkeypatch) -> None:
     dv = DictView({"a": 1, "b": 2})
     called = {}
 
     class DummyP:
         "Dummy pretty printer to capture the text output."
 
-        def text(self, s):
+        def text(self, s) -> None:
             called["text"] = s
 
     # Should use pformat on a dict
@@ -168,12 +168,12 @@ def test_dictview_repr_pretty(monkeypatch):
     assert called["text"] in ("{'x': 10, 'y': 20}", "{'y': 20, 'x': 10}")
 
 
-def test_oneshotcachedmap_repr_lazy_and_evaluated():
+def test_oneshotcachedmap_repr_lazy_and_evaluated() -> None:
     # Value factories
-    def factory1():
+    def factory1() -> int:
         return 42
 
-    def factory2():
+    def factory2() -> str:
         return "foo"
 
     # All values are lazy initially
@@ -196,12 +196,12 @@ def test_oneshotcachedmap_repr_lazy_and_evaluated():
     assert "'b': 'foo'" in r3
 
 
-def test_cachingmap_repr_lazy_and_evaluated():
+def test_cachingmap_repr_lazy_and_evaluated() -> None:
     # Value factories
-    def factory1():
+    def factory1() -> int:
         return 123
 
-    def factory2():
+    def factory2() -> str:
         return "bar"
 
     mapping = {"x": factory1, "y": factory2}
@@ -267,6 +267,6 @@ def test_cachingmap_repr_lazy_and_evaluated():
     ],
     ids=["nested_dict", "leaf_value", "nested_mixed", "empty_dict", "non_dict_leaf"],
 )
-def test_walk(mapping, expected):
+def test_walk(mapping, expected) -> None:
     result = list(walk(mapping))
     assert result == expected

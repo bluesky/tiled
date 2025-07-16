@@ -55,7 +55,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
     @classmethod
-    def discover_clients_from_entrypoints(cls):
+    def discover_clients_from_entrypoints(cls) -> None:
         """
         Search the software environment for libraries that register structure clients.
 
@@ -87,7 +87,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         sorting=None,
         structure=None,
         include_data_sources=False,
-    ):
+    ) -> None:
         "This is not user-facing. Use Node.from_uri."
 
         self.structure_clients = structure_clients
@@ -123,7 +123,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             include_data_sources=include_data_sources,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
@@ -167,7 +167,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             **kwargs,
         )
 
-    def __len__(self):
+    def __len__(self) -> int:
         # If the contents of this node was provided in-line, there is an
         # implication that the contents are not expected to be dynamic. Used the
         # count provided in the structure.
@@ -199,7 +199,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
 
-    def __length_hint__(self):
+    def __length_hint__(self) -> int:
         # TODO The server should provide an estimated count.
         # https://www.python.org/dev/peps/pep-0424/
         return len(self)
@@ -382,7 +382,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         return result
 
-    def delete(self, key):
+    def delete(self, key) -> None:
         self._cached_len = None
         for attempt in retry_context():
             with attempt:
@@ -1207,14 +1207,14 @@ LENGTH_CACHE_TTL = 1  # second
 class Ascending(Sentinel):
     "Intended for more readable sorting operations. An alias for 1."
 
-    def __index__(self):
+    def __index__(self) -> int:
         return 1
 
 
 class Descending(Sentinel):
     "Intended for more readable sorting operations. An alias for -1."
 
-    def __index__(self):
+    def __index__(self) -> int:
         return -1
 
 
@@ -1226,7 +1226,7 @@ DESCENDING = Descending("DESCENDING")
 
 class _LazyLoad:
     # This exists because lambdas and closures cannot be pickled.
-    def __init__(self, import_module_args, attr_name):
+    def __init__(self, import_module_args, attr_name) -> None:
         self.import_module_args = import_module_args
         self.attr_name = attr_name
 
@@ -1238,7 +1238,7 @@ class _LazyLoad:
 
 class _Wrap:
     # This exists because lambdas and closures cannot be pickled.
-    def __init__(self, obj):
+    def __init__(self, obj) -> None:
         self.obj = obj
 
     def __call__(self):

@@ -563,7 +563,7 @@ async def construct_resource(
 
 
 class NumpySafeJSONResponse(JSONResponse):
-    def __init__(self, *args, metrics, **kwargs):
+    def __init__(self, *args, metrics, **kwargs) -> None:
         self.__metrics = metrics
         super().__init__(*args, **kwargs)
 
@@ -612,7 +612,7 @@ def _patch_naive_datetimes(obj):
 class MsgpackResponse(Response):
     media_type = "application/x-msgpack"
 
-    def __init__(self, *args, metrics, **kwargs):
+    def __init__(self, *args, metrics, **kwargs) -> None:
         self.__metrics = metrics
         super().__init__(*args, **kwargs)
 

@@ -269,7 +269,7 @@ data = """# XDI/1.0 GSE/1.0
   8889.0  117185.7  443658.11566  -1.3312944"""
 
 
-def main():
+def main() -> None:
     pathlib.Path("data").mkdir()
     with open("data/example.xdi", "w") as f:
         f.write(data)

@@ -37,7 +37,7 @@ def client(context):
     yield client
 
 
-def test_slicing(client):
+def test_slicing(client) -> None:
     # Write data into catalog. It will be stored as directory of buffers
     # named like 'node0-offsets' and 'node2-data'.
     array = awkward.Array(
@@ -69,7 +69,7 @@ def test_slicing(client):
         assert sliced_response_size < full_response_size
 
 
-def test_export_json(client, buffer):
+def test_export_json(client, buffer) -> None:
     # Write data into catalog. It will be stored as directory of buffers
     # named like 'node0-offsets' and 'node2-data'.
     array = awkward.Array(
@@ -87,7 +87,7 @@ def test_export_json(client, buffer):
     assert actual == awkward.to_json(array)
 
 
-def test_export_arrow(tmpdir, client):
+def test_export_arrow(tmpdir, client) -> None:
     # Write data into catalog. It will be stored as directory of buffers
     # named like 'node0-offsets' and 'node2-data'.
     array = awkward.Array(
@@ -106,7 +106,7 @@ def test_export_arrow(tmpdir, client):
     assert actual == expected
 
 
-def test_export_parquet(tmpdir, client):
+def test_export_parquet(tmpdir, client) -> None:
     # Write data into catalog. It will be stored as directory of buffers
     # named like 'node0-offsets' and 'node2-data'.
     array = awkward.Array(
@@ -125,7 +125,7 @@ def test_export_parquet(tmpdir, client):
     assert actual == expected
 
 
-def test_large_number_of_form_keys(client):
+def test_large_number_of_form_keys(client) -> None:
     "Request should succeed even when too many form_keys to fit in a URL."
     # https://github.com/bluesky/tiled/pull/577
 
@@ -146,7 +146,7 @@ def test_large_number_of_form_keys(client):
     assert url_length <= URL_LENGTH_LIMIT
 
 
-def test_more_slicing_1(client):
+def test_more_slicing_1(client) -> None:
     array = awkward.Array(
         [
             {
@@ -166,7 +166,7 @@ def test_more_slicing_1(client):
         assert awkward.almost_equal(aac["file", "filename"], array["file", "filename"])
 
 
-def test_more_slicing_2(client):
+def test_more_slicing_2(client) -> None:
     array = awkward.from_numpy(
         numpy.arange(2 * 3 * 5).reshape(2, 3, 5), regulararray=True
     )
@@ -180,7 +180,7 @@ def test_more_slicing_2(client):
         assert awkward.almost_equal(aac[1:, 1:], array[1:, 1:])
 
 
-def test_more_slicing_3(client):
+def test_more_slicing_3(client) -> None:
     array = awkward.Array(
         [
             {"good": 123, "bad": 123},
@@ -241,7 +241,7 @@ record_arrays_examples = [
 
 
 @pytest.mark.parametrize("name, data", record_arrays_examples)
-def test_record_arrays(client, name, data):
+def test_record_arrays(client, name, data) -> None:
     array = awkward.Array(data)
     returned = client.write_awkward(array, key=f"test_{name}")
 

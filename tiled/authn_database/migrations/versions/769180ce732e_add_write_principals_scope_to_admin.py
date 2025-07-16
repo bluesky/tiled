@@ -20,7 +20,7 @@ depends_on = None
 SCOPE = "write:principals"
 
 
-def upgrade():
+def upgrade() -> None:
     """
     Add 'write:principals' scope to default 'admin' Role.
     """
@@ -33,7 +33,7 @@ def upgrade():
         db.commit()
 
 
-def downgrade():
+def downgrade() -> None:
     """
     Remove new scopes from Roles, if present.
     """

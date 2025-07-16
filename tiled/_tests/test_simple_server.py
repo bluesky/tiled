@@ -9,7 +9,7 @@ from tiled.client import from_uri
 from tiled.server import SimpleTiledServer
 
 
-def test_default():
+def test_default() -> None:
     "Smoke test a server with defaults (no parameters)"
     with SimpleTiledServer() as server:
         client = from_uri(server.uri)
@@ -31,7 +31,7 @@ def test_default():
         assert response.headers["content-type"].startswith("text/html")
 
 
-def test_one_at_a_time():
+def test_one_at_a_time() -> None:
     "We cannot run two uvicorn servers in one process."
     # Two servers start on different ports.
     MSG = "Only one server can be run at a time in a given Python process."
@@ -40,21 +40,21 @@ def test_one_at_a_time():
             SimpleTiledServer()
 
 
-def test_specified_port():
+def test_specified_port() -> None:
     "Run server on a user-specified port instead of a random one."
     ARBITRARY_PORT = 38593  # I hope it is free!
     with SimpleTiledServer(port=ARBITRARY_PORT) as server:
         assert server.port == ARBITRARY_PORT
 
 
-def test_specified_api_key():
+def test_specified_api_key() -> None:
     "Run server with a user-specified API key instead of a random one."
     API_KEY = "secret"
     with SimpleTiledServer(api_key=API_KEY) as server:
         assert server.api_key == API_KEY
 
 
-def test_persistent_data(tmp_path):
+def test_persistent_data(tmp_path) -> None:
     "Write data in a specified location. Access it across a server restart."
     with SimpleTiledServer(directory=tmp_path) as server1:
         client1 = from_uri(server1.uri)
@@ -73,7 +73,7 @@ def test_persistent_data(tmp_path):
     assert server1.directory == server2.directory == tmp_path
 
 
-def test_cleanup(tmp_path):
+def test_cleanup(tmp_path) -> None:
     if platform.system() == "Windows":
         # Windows cannot delete the logfiles because the global Python
         # logging system still has the logfiles open for appending.

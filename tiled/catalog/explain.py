@@ -12,7 +12,7 @@ EXPLAIN_SQL = bool(int(os.getenv("TILED_EXPLAIN_SQL", "0") or "0"))
 class _explain(Executable, ClauseElement):
     inherit_cache = False
 
-    def __init__(self, stmt, analyze=False):
+    def __init__(self, stmt, analyze=False) -> None:
         self.statement = stmt
         self.analyze = analyze
 
@@ -44,7 +44,7 @@ _query_explanation_callbacks = []
 def record_explanations():
     explanations = []
 
-    def capture(e):
+    def capture(e) -> None:
         explanations.append(e)
 
     _query_explanation_callbacks.append(capture)

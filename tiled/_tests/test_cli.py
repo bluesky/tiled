@@ -54,7 +54,7 @@ def scrape_server_url_from_logs(process):
     return url
 
 
-def check_server_readiness(process):
+def check_server_readiness(process) -> None:
     "Given a server process, check that it responds successfully to HTTP."
     url = scrape_server_url_from_logs(process)
     httpx.get(url).raise_for_status()
@@ -68,7 +68,7 @@ def check_server_readiness(process):
         "--api-key secret",
     ],
 )
-def test_serve_directory(args, tmp_path):
+def test_serve_directory(args, tmp_path) -> None:
     "Test 'tiled serve directory ... with a variety of arguments."
     with run_cli(f"tiled serve directory {tmp_path!s} --port 0 " + args) as process:
         check_server_readiness(process)
@@ -81,7 +81,7 @@ def test_serve_directory(args, tmp_path):
         "--api-key secret",
     ],
 )
-def test_serve_catalog_temp(args, tmp_path):
+def test_serve_catalog_temp(args, tmp_path) -> None:
     "Test 'tiled serve catalog --temp ... with a variety of arguments."
     with run_cli(f"tiled serve directory {tmp_path!s} --port 0 " + args) as process:
         check_server_readiness(process)
@@ -93,7 +93,7 @@ def test_serve_catalog_temp(args, tmp_path):
         "",
     ],
 )
-def test_serve_config(args, tmp_path):
+def test_serve_config(args, tmp_path) -> None:
     "Test 'tiled serve config' with a tmp config file."
     (tmp_path / "data").mkdir()
     (tmp_path / "config").mkdir()
@@ -116,7 +116,7 @@ trees:
         check_server_readiness(process)
 
 
-def test_cli_version():
+def test_cli_version() -> None:
     from tiled import __version__
 
     with run_cli("tiled --version") as process:

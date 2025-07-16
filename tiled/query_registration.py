@@ -22,7 +22,7 @@ class QueryRegistry:
     class, rather than a module-scope singleton, for the sake of tests.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._name_to_query_type_type = {}
         self._query_type_to_name = {}
 
@@ -93,7 +93,7 @@ class QueryTranslationRegistry:
         self._lookup[class_] = translator
         return translator
 
-    def register_lazy(self, toplevel, register):
+    def register_lazy(self, toplevel, register) -> None:
         """
         Register a registration function which will be called if the
         *toplevel* module (e.g. 'pandas') is ever loaded.

@@ -43,7 +43,7 @@ class SerializationRegistry:
         "txt": "text/plain",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._lookup = defaultdict(dict)
         # TODO Think about whether lazy registration makes any sense here.
         self._custom_aliases_by_type = defaultdict(list)
@@ -131,7 +131,7 @@ class SerializationRegistry:
             return dec
         return dec(func)
 
-    def register_alias(self, ext, media_type):
+    def register_alias(self, ext, media_type) -> None:
         self._custom_aliases_by_type[media_type].append(ext)
         self._custom_aliases[ext] = media_type
 
@@ -155,7 +155,7 @@ class SerializationRegistry:
 
 
 class CompressionRegistry:
-    def __init__(self):
+    def __init__(self) -> None:
         self._lookup = defaultdict(collections.OrderedDict)
 
     def encodings(self, media_type):
@@ -164,7 +164,7 @@ class CompressionRegistry:
         # ones will get tried first (if the client accepts them).
         return reversed(self._lookup.get(media_type, []))
 
-    def register(self, media_type, encoding, func):
+    def register(self, media_type, encoding, func) -> None:
         """
         Register a new media_type for a structure family.
 
@@ -251,13 +251,13 @@ if modules_available("zstandard"):
         the pattern set by starlette until we have a clear reason not to.
         """
 
-        def __init__(self, file):
+        def __init__(self, file) -> None:
             self._file = file
 
-        def write(self, b):
+        def write(self, b) -> None:
             self._file.write(zstd_compressor.compress(b))
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     for media_type in [
@@ -307,13 +307,13 @@ if modules_available("lz4"):
         the pattern set by starlette until we have a clear reason not to.
         """
 
-        def __init__(self, file):
+        def __init__(self, file) -> None:
             self._file = file
 
-        def write(self, b):
+        def write(self, b) -> None:
             self._file.write(_fixed_lz4_compress(b))
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     for media_type in [
@@ -339,10 +339,10 @@ if modules_available("blosc2"):
         the pattern set by starlette until we have a clear reason not to.
         """
 
-        def __init__(self, file):
+        def __init__(self, file) -> None:
             self._file = file
 
-        def write(self, b):
+        def write(self, b) -> None:
             if hasattr(b, "itemsize"):
                 # This could be memoryview or numpy.ndarray, for example.
                 # Blosc uses item-aware shuffling for improved results.
@@ -351,7 +351,7 @@ if modules_available("blosc2"):
                 compressed = blosc2.compress(b)
             self._file.write(compressed)
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:

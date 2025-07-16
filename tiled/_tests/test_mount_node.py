@@ -4,7 +4,7 @@ from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
 
 
-def test_mount_node(sqlite_or_postgres_uri, tmpdir):
+def test_mount_node(sqlite_or_postgres_uri, tmpdir) -> None:
     "Test 'mounting' sub-trees of a catalog."
     one_tree_config = {
         "trees": [

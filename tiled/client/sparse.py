@@ -27,7 +27,7 @@ class SparseClient(BaseClient):
     def ndim(self):
         return len(self.structure().shape)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         structure = self.structure()
         attrs = {"shape": structure.shape, "chunks": structure.chunks}
         if structure.dims:
@@ -104,7 +104,7 @@ class SparseClient(BaseClient):
             shape=sliced_shape,
         )
 
-    def write(self, coords, data):
+    def write(self, coords, data) -> None:
         import pandas
 
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
@@ -120,7 +120,7 @@ class SparseClient(BaseClient):
                     )
                 )
 
-    def write_block(self, coords, data, block):
+    def write_block(self, coords, data, block) -> None:
         import pandas
 
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}

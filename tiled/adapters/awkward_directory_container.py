@@ -6,7 +6,7 @@ from typing import Any, Iterator
 class DirectoryContainer(Mapping[str, bytes]):
     """ """
 
-    def __init__(self, directory: Path, form: Any):
+    def __init__(self, directory: Path, form: Any) -> None:
         """
 
         Parameters

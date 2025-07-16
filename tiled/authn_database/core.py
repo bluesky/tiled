@@ -25,7 +25,7 @@ ALL_REVISIONS = [
 REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
-async def create_default_roles(db):
+async def create_default_roles(db) -> None:
     db.add_all(
         [
             Role(
@@ -61,7 +61,7 @@ async def create_default_roles(db):
     await db.commit()
 
 
-async def initialize_database(engine):
+async def initialize_database(engine) -> None:
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 

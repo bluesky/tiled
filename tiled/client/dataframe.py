@@ -28,7 +28,7 @@ class _DaskDataFrameClient(BaseClient):
             structure = self._structure
         return super().new_variation(structure=structure, **kwargs)
 
-    def _repr_pretty_(self, p, cycle):
+    def _repr_pretty_(self, p, cycle) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -216,7 +216,7 @@ class _DaskDataFrameClient(BaseClient):
     # __len__ is intentionally not implemented. For DataFrames it means "number
     # of rows" which is expensive to compute.
 
-    def write(self, dataframe):
+    def write(self, dataframe) -> None:
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -227,7 +227,7 @@ class _DaskDataFrameClient(BaseClient):
                     )
                 )
 
-    def write_partition(self, dataframe, partition):
+    def write_partition(self, dataframe, partition) -> None:
         for attempt in retry_context():
             with attempt:
                 handle_error(

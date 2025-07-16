@@ -7,7 +7,7 @@ from .utils import export_util, handle_error, retry_context
 
 
 class AwkwardClient(BaseClient):
-    def __repr__(self):
+    def __repr__(self) -> str:
         # TODO Include some summary of the structure. Probably
         # lift __repr__ code from awkward itself here.
         form = awkward.forms.from_dict(self.structure().form)
@@ -35,7 +35,7 @@ class AwkwardClient(BaseClient):
 
         return f"<{type(self).__name__}>"
 
-    def write(self, container):
+    def write(self, container) -> None:
         structure = self.structure()
         components = (structure.form, structure.length, container)
         for attempt in retry_context():

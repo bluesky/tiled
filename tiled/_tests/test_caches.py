@@ -3,12 +3,12 @@ import pytest
 from ..utils import CachingMap, OneShotCachedMap
 
 
-def test_one_shot_cached_map():
+def test_one_shot_cached_map() -> None:
     OneShotCachedMap({})  # empty is allowed
 
     counter = 0
 
-    def f():
+    def f() -> int:
         nonlocal counter
         counter += 1
         return 5
@@ -31,12 +31,12 @@ def test_one_shot_cached_map():
         d["a"] = 5
 
 
-def test_caching_map():
+def test_caching_map() -> None:
     CachingMap({}, {})  # empty is allowed
 
     counter = 0
 
-    def f():
+    def f() -> int:
         nonlocal counter
         counter += 1
         return 5

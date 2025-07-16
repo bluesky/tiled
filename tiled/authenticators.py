@@ -32,7 +32,7 @@ class DummyAuthenticator(InternalAuthenticator):
 
     """
 
-    def __init__(self, confirmation_message: str = ""):
+    def __init__(self, confirmation_message: str = "") -> None:
         self.confirmation_message = confirmation_message
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
@@ -63,7 +63,7 @@ properties:
 
     def __init__(
         self, users_to_passwords: Mapping[str, str], confirmation_message: str = ""
-    ):
+    ) -> None:
         self._users_to_passwords = users_to_passwords
         self.confirmation_message = confirmation_message
 
@@ -92,7 +92,7 @@ properties:
     description: May be displayed by client after successful login.
 """
 
-    def __init__(self, service: str = "login", confirmation_message: str = ""):
+    def __init__(self, service: str = "login", confirmation_message: str = "") -> None:
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
@@ -139,7 +139,7 @@ properties:
         client_secret: str,
         well_known_uri: str,
         confirmation_message: str = "",
-    ):
+    ) -> None:
         self._audience = audience
         self._client_id = client_id
         self._client_secret = Secret(client_secret)
@@ -252,7 +252,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
         saml_settings,  # See EXAMPLE_SAML_SETTINGS below.
         attribute_name: str,  # which SAML attribute to use as 'id' for Identity
         confirmation_message: str = "",
-    ):
+    ) -> None:
         self.saml_settings = saml_settings
         self.attribute_name = attribute_name
         self.confirmation_message = confirmation_message
@@ -546,7 +546,7 @@ class LDAPAuthenticator(InternalAuthenticator):
         auth_state_attributes=None,
         use_lookup_dn_username=True,
         confirmation_message="",
-    ):
+    ) -> None:
         self.use_ssl = use_ssl
         self.use_tls = use_tls
         self.connect_timeout = connect_timeout
@@ -589,7 +589,7 @@ class LDAPAuthenticator(InternalAuthenticator):
         )
         self.confirmation_message = confirmation_message
 
-    def _server_port_default(self):
+    def _server_port_default(self) -> int:
         if self.use_ssl:
             return 636  # default SSL port for LDAP
         else:

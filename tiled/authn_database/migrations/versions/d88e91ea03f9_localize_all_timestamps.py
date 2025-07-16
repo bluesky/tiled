@@ -40,7 +40,7 @@ datetime_columns = {
 }
 
 
-def upgrade():
+def upgrade() -> None:
     connection = op.get_bind()
     if connection.engine.dialect.name == "sqlite":
         # No action required. SQLAlchemy handles timezones at the application
@@ -82,7 +82,7 @@ def upgrade():
             )
 
 
-def downgrade():
+def downgrade() -> None:
     connection = op.get_bind()
     if connection.engine.dialect.name == "sqlite":
         # No action required. SQLAlchemy handles timezones at the application

@@ -34,7 +34,7 @@ def empty_client():
         yield client
 
 
-def test_indexers(client, empty_client):
+def test_indexers(client, empty_client) -> None:
     assert client.keys()[0] == client.keys().first() == keys[0] == "a"
     assert client.keys()[-1] == client.keys().last() == keys[-1] == "z"
     assert client.keys()[:3] == client.keys().head(3) == keys[:3] == list("abc")
@@ -77,7 +77,7 @@ def test_indexers(client, empty_client):
     client.items()[1:3]
 
 
-def test_deprecated_indexer_accessors(client):
+def test_deprecated_indexer_accessors(client) -> None:
     with pytest.warns(DeprecationWarning):
         assert client.keys_indexer[:3] == keys[:3] == list("abc")
     # smoke test the others

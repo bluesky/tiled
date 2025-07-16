@@ -17,18 +17,18 @@ from ..structures.array import StructDtype
         (np.dtype([("a", [("b", "i", (1,)), ("c", "f")]), ("d", "c16", (2, 2))]), 2),
     ],
 )
-def test_dtype_rount_trip(dtype, max_depth):
+def test_dtype_rount_trip(dtype, max_depth) -> None:
     struct = StructDtype.from_numpy_dtype(dtype)
     assert dtype == struct.to_numpy_dtype()
     assert max_depth == struct.max_depth()
 
 
-def test_fail_subtype():
+def test_fail_subtype() -> None:
     with pytest.raises(ValueError):
         StructDtype.from_numpy_dtype(np.dtype("8f"))
 
 
-def test_read():
+def test_read() -> None:
     data = np.array(
         [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
         dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],

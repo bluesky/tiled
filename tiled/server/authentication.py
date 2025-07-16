@@ -227,7 +227,9 @@ async def get_session_state(decoded_access_token=Depends(get_decoded_access_toke
         return decoded_access_token.get("state")
 
 
-async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
+async def move_api_key(
+    request: Request, api_key: Optional[str] = Depends(get_api_key)
+) -> None:
     if ("api_key" in request.query_params) and (
         request.cookies.get(API_KEY_COOKIE_NAME) != api_key
     ):
@@ -716,7 +718,7 @@ def add_external_routes(
 
 def add_internal_routes(
     router: APIRouter, provider: str, authenticator: InternalAuthenticator
-):
+) -> None:
     "Register a handle_credentials route function for this Authenticator."
 
     @router.post(f"/provider/{provider}/token")

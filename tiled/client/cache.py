@@ -89,7 +89,7 @@ def load(row, request=None):
     return response
 
 
-def _create_tables(conn):
+def _create_tables(conn) -> None:
     with closing(conn.cursor()) as cur:
         cur.execute(
             """CREATE TABLE responses (
@@ -182,7 +182,7 @@ class Cache:
         capacity=500_000_000,
         max_item_size=500_000,
         readonly=False,
-    ):
+    ) -> None:
         if filepath is None:
             # Resolve this here, not at module scope, because the test suite
             # injects TILED_CACHE_DIR env var to use a temporary directory.
@@ -202,7 +202,7 @@ class Cache:
         self._conn = _prepare_database(filepath, readonly)
         self._lock = SerializableLock()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__} {str(self._filepath)!r}>"
 
     def write_safe(self):
@@ -227,7 +227,7 @@ class Cache:
             self._lock,
         )
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         (filepath, capacity, max_item_size, readonly, lock) = state
         self._capacity = capacity
         self._max_item_size = max_item_size
@@ -253,7 +253,7 @@ class Cache:
         return self._capacity
 
     @capacity.setter
-    def capacity(self, capacity):
+    def capacity(self, capacity) -> None:
         self._capacity = capacity
 
     @property
@@ -262,7 +262,7 @@ class Cache:
         return self._max_item_size
 
     @max_item_size.setter
-    def max_item_size(self, max_item_size):
+    def max_item_size(self, max_item_size) -> None:
         self._max_item_size = max_item_size
 
     @with_thread_lock
