@@ -1,3 +1,4 @@
+import collections
 import dataclasses
 import inspect
 import os
@@ -668,14 +669,16 @@ def get_router(
     async def websocket_endpoint(
         websocket: WebSocket,
         path: str,
-        envelope_format: schemas.EnvelopeFormat = "json",
+        envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
         start: Optional[int] = None,
         principal: Union[Principal, SpecialUsers] = Depends(
             get_current_principal_websocket
         ),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
     ):
-        websocket.state.metrics = {}
+        websocket.state.metrics = collections.defaultdict(
+            lambda: collections.defaultdict(lambda: 0)
+        )
         entry = await get_entry(
             path,
             ["read:data", "read:metadata"],
@@ -692,10 +695,10 @@ def get_router(
             },
             getattr(websocket.app.state, "access_policy", None),
         )
-        encoder = get_websocket_envelope_formatter(
+        formatter = get_websocket_envelope_formatter(
             envelope_format, entry, deserialization_registry
         )
-        handler = entry.make_ws_handler(websocket, encoder)
+        handler = entry.make_ws_handler(websocket, formatter)
         await handler(start)
 
     @router.get(
