@@ -36,7 +36,7 @@ def create_api_key(
         # This is how typer interprets unspecified scopes.
         # Replace with None to get default scopes.
         scopes = None
-    if expires_in.isdigit():
+    if expires_in and expires_in.isdigit():
         expires_in = int(expires_in)
     info = context.create_api_key(scopes=scopes, expires_in=expires_in, note=note)
     # TODO Print other info to the stderr?
