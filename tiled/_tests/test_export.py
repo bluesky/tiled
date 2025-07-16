@@ -79,16 +79,16 @@ def client():
 
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "image.png", "image.tiff"])
-def test_export_2d_array(client, filename, tmpdir):
+def test_export_2d_array(client, filename, tmpdir) -> None:
     client["A"].export(Path(tmpdir, filename))
 
 
 @pytest.mark.parametrize("filename", ["numbers.csv", "spreadsheet.xlsx"])
-def test_export_table(client, filename, tmpdir):
+def test_export_table(client, filename, tmpdir) -> None:
     client["C"].export(Path(tmpdir, filename))
 
 
-def test_streaming_export(client, buffer):
+def test_streaming_export(client, buffer) -> None:
     "The application/json-seq format is streamed via a generator."
     client["C"].export(buffer, format="application/json-seq")
     # Verify that output is valid newline-delimited JSON.
@@ -99,24 +99,24 @@ def test_streaming_export(client, buffer):
         json.loads(line)
 
 
-def test_streaming_export_empty(client, buffer):
+def test_streaming_export_empty(client, buffer) -> None:
     "The application/json-seq format is streamed via a generator."
     client["empty_table"].export(buffer, format="application/json-seq")
     buffer.seek(0)
     assert buffer.read() == b""
 
 
-def test_export_weather_data_var(client, tmpdir, buffer):
+def test_export_weather_data_var(client, tmpdir, buffer) -> None:
     client["structured_data"]["weather"]["temperature"].export(
         buffer, slice=(0,), format="text/csv"
     )
 
 
-def test_export_weather_all(client, buffer):
+def test_export_weather_all(client, buffer) -> None:
     client["structured_data"]["weather"].export(buffer, format="application/x-hdf5")
 
 
-def test_serialization_error_hdf5_metadata(client, buffer):
+def test_serialization_error_hdf5_metadata(client, buffer) -> None:
     tree = MapAdapter(
         {
             "good": MapAdapter({}, metadata={"a": 1}),
@@ -130,12 +130,12 @@ def test_serialization_error_hdf5_metadata(client, buffer):
             client["bad"].export(buffer, format="application/x-hdf5")
 
 
-def test_path_as_Path_or_string(client, tmpdir):
+def test_path_as_Path_or_string(client, tmpdir) -> None:
     client["A"].export(Path(tmpdir, "test_path_as_path.txt"))
     client["A"].export(str(Path(tmpdir, "test_path_as_str.txt")))
 
 
-def test_formats(client):
+def test_formats(client) -> None:
     client.formats
     client["A"].formats
     client["C"].formats

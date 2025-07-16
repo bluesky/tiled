@@ -18,7 +18,7 @@ SERVICE_ISSUED_TOKEN = "secret"
 
 
 class MockClient:
-    def __init__(self, base_url):
+    def __init__(self, base_url) -> None:
         self.base_url = base_url
 
     # This API (get_contents, get_metadata, get_data) is just made up and not important.
@@ -51,7 +51,7 @@ class Adapter:
     the AuthenticatedAdapter that actually accesses the data.
     """
 
-    def __init__(self, base_url, metadata=None):
+    def __init__(self, base_url, metadata=None) -> None:
         self.client = MockClient(base_url)
         self.metadata = metadata
 
@@ -62,7 +62,7 @@ class Adapter:
 class AuthenticatedAdapter:
     structure_family = StructureFamily.container
 
-    def __init__(self, client, token, segments=None, metadata=None):
+    def __init__(self, client, token, segments=None, metadata=None) -> None:
         self._client = client
         self._token = token
         self._segments = segments or []
@@ -79,11 +79,11 @@ class AuthenticatedAdapter:
         # or something custom, or another AuthenticatedAdapter...
         return ArrayAdapter.from_array(data, metadata=metadata)
 
-    async def keys_range(self, offset, limit):
+    async def keys_range(self, offset: int, limit: int):
         url = ...  # based on self._segments
         return await self._client.get_contents(url, token=self._token)
 
-    async def items_range(self, offset, limit):
+    async def items_range(self, offset: int, limit: int):
         # Ideally this would be a batched request to the external service.
         result = []
         for key in self._keys_range(offset, limit):

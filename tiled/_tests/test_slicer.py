@@ -112,7 +112,7 @@ def reference_slice_(
 
 
 @pytest.mark.parametrize("slice", slice_test_data)
-def test_slicer(slice: str):
+def test_slicer(slice: str) -> None:
     """
     Test the slicer function
     """
@@ -120,7 +120,7 @@ def test_slicer(slice: str):
 
 
 @pytest.mark.parametrize("slice", slice_typo_data + slice_missing_data)
-def test_slicer_typo_data(slice: str):
+def test_slicer_typo_data(slice: str) -> None:
     """
     Test the slicer function with invalid input
     """
@@ -129,7 +129,7 @@ def test_slicer_typo_data(slice: str):
 
 
 @pytest.mark.parametrize("slice", slice_malicious_data)
-def test_slicer_malicious_exec(slice: str):
+def test_slicer_malicious_exec(slice: str) -> None:
     """
     Test the slicer function with 'malicious' input
     """
@@ -138,7 +138,7 @@ def test_slicer_malicious_exec(slice: str):
 
 
 @pytest.mark.parametrize("slice_", slice_typo_data + slice_malicious_data)
-def test_slicer_fastapi_query_rejection(slice_, client):
+def test_slicer_fastapi_query_rejection(slice_, client) -> None:
     http_client = client.context.http_client
     response = http_client.get(f"/api/v1/array/block/x?block=0&slice={slice_}")
     assert response.status_code == HTTP_422_UNPROCESSABLE_ENTITY
@@ -165,7 +165,7 @@ slice_cases = [
 
 
 @pytest.mark.parametrize("as_string, as_tuple, as_json", slice_cases)
-def test_ndslice_conversion(as_string, as_tuple, as_json):
+def test_ndslice_conversion(as_string, as_tuple, as_json) -> None:
     assert NDSlice.from_numpy_str(as_string) == as_tuple
 
     # JSON does not preserve Ellipsis expanding them to empty slices
@@ -207,11 +207,11 @@ slice_json_cases = [
 
 
 @pytest.mark.parametrize("as_tuple, as_json, ndim", slice_json_cases)
-def test_ndslice_to_json(as_tuple, as_json, ndim):
+def test_ndslice_to_json(as_tuple, as_json, ndim) -> None:
     assert NDSlice(*as_tuple).to_json(ndim=ndim) == as_json
 
 
-def test_errors_in_slices():
+def test_errors_in_slices() -> None:
     # Multiple Ellipsis are not allowed
     with pytest.raises(ValueError):
         NDSlice(Ellipsis, slice(1), Ellipsis)

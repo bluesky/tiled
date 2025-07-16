@@ -15,7 +15,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade() -> None:
     connection = op.get_bind()
     if connection.engine.dialect.name == "postgresql":
         with op.get_context().autocommit_block():

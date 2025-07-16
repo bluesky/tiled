@@ -15,7 +15,7 @@ from ..utils import (
 )
 
 
-def as_buffer(array, metadata):
+def as_buffer(array: numpy.ndarray, metadata) -> memoryview:
     "Give back a zero-copy memoryview of the array if possible. Otherwise, copy to bytes."
     # The memoryview path fails for datetime type (and possibly some others?)
     # but it generally works for standard types like int, float, bool, str.
@@ -38,7 +38,7 @@ if modules_available("orjson"):
     )
 
 
-def serialize_csv(array, metadata):
+def serialize_csv(array, metadata) -> bytes:
     if array.ndim > 2:
         raise UnsupportedShape(array.shape)
     file = io.StringIO()
@@ -58,7 +58,7 @@ default_deserialization_registry.register(
 )
 if modules_available("PIL"):
 
-    def save_to_buffer_PIL(array, format):
+    def save_to_buffer_PIL(array, format: str) -> memoryview:
         # The logic of which shapes are support is subtle, and we'll leave the details
         # PIL ("beg forgiveness rather than ask permission"). But we can rule out
         # anything above 3 dimensions as definitely not supported.
@@ -88,7 +88,7 @@ if modules_available("PIL"):
 
         return file.getbuffer()
 
-    def array_from_buffer_PIL(buffer, format, dtype, shape):
+    def array_from_buffer_PIL(buffer, format: str, dtype, shape):
         from PIL import Image
 
         file = io.BytesIO(buffer)
@@ -110,7 +110,7 @@ if modules_available("tifffile"):
 
         return imread(buffer).astype(dtype).reshape(shape)
 
-    def save_to_buffer_tifffile(array, metadata):
+    def save_to_buffer_tifffile(array, metadata) -> memoryview:
         from tifffile import imwrite
 
         # Handle too *few* dimensions here, and let tifffile raise if there are too
@@ -133,7 +133,7 @@ if modules_available("tifffile"):
     )
 
 
-def serialize_html(array, metadata):
+def serialize_html(array, metadata) -> str:
     "Try to display as image. Fall back to CSV."
     try:
         png_data = default_serialization_registry.dispatch("array", "image/png")(

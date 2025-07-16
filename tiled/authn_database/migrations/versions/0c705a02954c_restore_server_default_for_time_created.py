@@ -17,7 +17,7 @@ depends_on = None
 tables = ["principals", "identities", "roles", "api_keys", "sessions"]
 
 
-def upgrade():
+def upgrade() -> None:
     connection = op.get_bind()
     if connection.engine.dialect.name == "sqlite":
         return
@@ -33,6 +33,6 @@ SET DEFAULT CURRENT_TIMESTAMP;
         )
 
 
-def downgrade():
+def downgrade() -> None:
     # No action required
     pass

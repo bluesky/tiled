@@ -1,7 +1,7 @@
 import typer
 
 
-def get_profile(name):
+def get_profile(name: str):
     from ..profiles import (
         get_default_profile_name,
         load_profiles,

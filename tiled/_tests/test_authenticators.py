@@ -24,7 +24,7 @@ TILED_TEST_LDAP = os.getenv("TILED_TEST_LDAP")
 ])
 # fmt: on
 @pytest.mark.parametrize("use_tls,use_ssl", [(False, False)])
-def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server_port):
+def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server_port) -> None:
     """
     Basic test for ``LDAPAuthenticator``.
 
@@ -41,7 +41,7 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
         use_ssl=use_ssl,
     )
 
-    async def testing():
+    async def testing() -> None:
         assert (await authenticator.authenticate("user01", "password1")).user_name == "user01"
         assert (await authenticator.authenticate("user02", "password2")).user_name == "user02"
         assert (await authenticator.authenticate("user02a", "password2")) is None

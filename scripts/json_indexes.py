@@ -6,7 +6,7 @@ from tiled.catalog.explain import record_explanations
 from tiled.queries import Key
 
 
-async def test(a):
+async def test(a) -> None:
     for i in range(100):
         await a.create_container(
             metadata={
@@ -33,12 +33,12 @@ async def test(a):
     print(e)
 
 
-async def test_sqlite():
+async def test_sqlite() -> None:
     async with Adapter.async_in_memory(echo=True) as a:
         await test(a)
 
 
-async def test_postgres():
+async def test_postgres() -> None:
     async with temp_postgres(
         "postgresql+asyncpg://postgres:secret@localhost:5432", echo=True
     ) as a:

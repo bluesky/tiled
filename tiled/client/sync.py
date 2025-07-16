@@ -13,7 +13,7 @@ def copy(
     source: BaseClient,
     dest: BaseClient,
     on_conflict: str = "error",
-):
+) -> None:
     """
     Copy data from one Tiled instance to another.
 
@@ -53,7 +53,7 @@ def copy(
         _DISPATCH[StructureFamily.container](dict(source), dest, on_conflict)
 
 
-def _copy_array(source, dest, on_conflict):
+def _copy_array(source, dest: BaseClient, on_conflict: str) -> None:
     num_blocks = (range(len(n)) for n in source.chunks)
     # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
     for block in itertools.product(*num_blocks):
@@ -61,7 +61,7 @@ def _copy_array(source, dest, on_conflict):
         dest.write_block(array, block)
 
 
-def _copy_awkward(source, dest, on_conflict):
+def _copy_awkward(source, dest: BaseClient, on_conflict: str) -> None:
     import awkward
 
     array = source.read()
@@ -69,7 +69,7 @@ def _copy_awkward(source, dest, on_conflict):
     dest.write(container)
 
 
-def _copy_sparse(source, dest, on_conflict):
+def _copy_sparse(source, dest: BaseClient, on_conflict: str) -> None:
     num_blocks = (range(len(n)) for n in source.chunks)
     # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) ....
     for block in itertools.product(*num_blocks):
@@ -77,13 +77,13 @@ def _copy_sparse(source, dest, on_conflict):
         dest.write_block(array.coords, array.data, block)
 
 
-def _copy_table(source, dest, on_conflict):
+def _copy_table(source, dest: BaseClient, on_conflict: str) -> None:
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
         dest.write_partition(df, partition)
 
 
-def _copy_container(source, dest, on_conflict):
+def _copy_container(source, dest: BaseClient, on_conflict: str):
     for key, child_node in source.items():
         original_data_sources = child_node.include_data_sources().data_sources()
         num_data_sources = len(original_data_sources)

@@ -39,7 +39,7 @@ def client():
         yield client
 
 
-def test_sparse_single_chunk(client):
+def test_sparse_single_chunk(client) -> None:
     sc = client["single_chunk"]
     actual_via_slice = sc[:]
     actual_via_read = sc.read()
@@ -57,7 +57,7 @@ def test_sparse_single_chunk(client):
     assert sc.dims == dims
 
 
-def test_sparse_multi_chunk(client):
+def test_sparse_multi_chunk(client) -> None:
     sc = client["multi_chunk"]
     actual_via_slice = sc[:]
     actual_via_read = sc.read()

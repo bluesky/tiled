@@ -50,7 +50,7 @@ def example_data_dir(tmpdir_factory):
     raises=PermissionError,
 )
 @pytest.mark.asyncio
-async def test_collision(example_data_dir, tmpdir):
+async def test_collision(example_data_dir, tmpdir) -> None:
     """Test that files which produce key collisions are ignored until the collision is resolved."""
     # Add a.tiff which will collide with a.tif.
     p = Path(example_data_dir, "a.tiff")
@@ -75,13 +75,13 @@ async def test_collision(example_data_dir, tmpdir):
 @pytest.mark.parametrize(
     ("filename", "expected"), [("a.txt", "a"), ("a.tar.gz", "a"), ("a", "a")]
 )
-def test_strip_suffixes(filename, expected):
+def test_strip_suffixes(filename, expected) -> None:
     actual = strip_suffixes(filename)
     assert actual == expected
 
 
 @pytest.mark.asyncio
-async def test_same_filename_separate_directory(tmpdir):
+async def test_same_filename_separate_directory(tmpdir) -> None:
     "Two files with the same name in separate directories should not collide."
     Path(tmpdir, "one").mkdir()
     Path(tmpdir, "two").mkdir()
@@ -96,7 +96,7 @@ async def test_same_filename_separate_directory(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_mimetype_detection_hook(tmpdir):
+async def test_mimetype_detection_hook(tmpdir) -> None:
     content = "a, b, c\n1, 2 ,3\n4, 5, 6\n"
     with open(Path(tmpdir / "a0"), "w") as file:
         file.write(content)
@@ -135,7 +135,7 @@ async def test_mimetype_detection_hook(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_skip_all_in_combination(tmpdir):
+async def test_skip_all_in_combination(tmpdir) -> None:
     "Using skip_all should override defaults, but not hinder other walkers"
     df1.to_csv(Path(tmpdir, "a.csv"))
     Path(tmpdir, "one").mkdir()
@@ -162,7 +162,7 @@ async def test_skip_all_in_combination(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_tiff_seq_custom_sorting(tmpdir):
+async def test_tiff_seq_custom_sorting(tmpdir) -> None:
     "Register images that are not in alphanumeric order."
     N = 10
     ordering = list(range(N))
@@ -194,7 +194,7 @@ async def test_tiff_seq_custom_sorting(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_image_file_with_sidecar_metadata_file(tmpdir):
+async def test_image_file_with_sidecar_metadata_file(tmpdir) -> None:
     "Create one Node from two different types of files."
     MIMETYPE = "multipart/related;type=application/x-tiff-with-yaml"
     image_filepath = Path(tmpdir, "image.tif")
@@ -205,7 +205,7 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
         yaml.dump(metadata, file)
 
     class TiffAdapterWithSidecar(TiffAdapter):
-        def __init__(self, image_uri, metadata_uri, metadata=None, **kwargs):
+        def __init__(self, image_uri, metadata_uri, metadata=None, **kwargs) -> None:
             with open(path_from_uri(metadata_uri)) as file:
                 metadata = yaml.safe_load(file)
 
@@ -262,7 +262,7 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_hdf5_virtual_datasets(tmpdir):
+async def test_hdf5_virtual_datasets(tmpdir) -> None:
     # A virtual database comprises one master file and N data files. The master
     # file must be handed to the Adapter for opening. The data files are not
     # handled directly by the Adapter but they still ought to be tracked as
@@ -329,7 +329,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
         client["VDS"]["data"][:]
 
 
-def test_unknown_mimetype(tmpdir):
+def test_unknown_mimetype(tmpdir) -> None:
     catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
@@ -357,7 +357,7 @@ def test_unknown_mimetype(tmpdir):
             )
 
 
-def test_one_asset_two_data_sources(tmpdir):
+def test_one_asset_two_data_sources(tmpdir) -> None:
     catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)

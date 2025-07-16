@@ -24,7 +24,7 @@ def client():
         yield from_context(context)
 
 
-def test_zstd(client):
+def test_zstd(client) -> None:
     pytest.importorskip("zstandard")
     with record_history() as h:
         client["compresses_well"]
@@ -34,7 +34,7 @@ def test_zstd(client):
     assert "zstd" in response.headers["Content-Encoding"]
 
 
-def test_blosc2(client):
+def test_blosc2(client) -> None:
     pytest.importorskip("blosc2")
     ac = client["compresses_well"]
     with record_history() as h:

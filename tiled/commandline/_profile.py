@@ -4,7 +4,7 @@ profile_app = typer.Typer(no_args_is_help=True)
 
 
 @profile_app.command("paths")
-def profile_paths():
+def profile_paths() -> None:
     "List the locations that the client will search for profiles (client-side configuration)."
     from ..profiles import paths
 
@@ -12,7 +12,7 @@ def profile_paths():
 
 
 @profile_app.command("list")
-def profile_list():
+def profile_list() -> None:
     "List the profiles (client-side configuration) found and the files they were read from."
     from ..profiles import load_profiles
 
@@ -120,7 +120,7 @@ def create(
 @profile_app.command("delete")
 def delete(
     name: str = typer.Argument(..., help="Profile name"),
-):
+) -> None:
     from ..profiles import (
         delete_profile,
         get_default_profile_name,
@@ -136,7 +136,7 @@ def delete(
 
 
 @profile_app.command("get-default")
-def get_default():
+def get_default() -> None:
     """
     Show the current default Tiled profile.
     """
@@ -155,7 +155,7 @@ def get_default():
 
 
 @profile_app.command("set-default")
-def set_default(profile_name: str):
+def set_default(profile_name: str) -> None:
     """
     Set the default Tiled profile.
     """
@@ -165,7 +165,7 @@ def set_default(profile_name: str):
 
 
 @profile_app.command("clear-default")
-def clear_default():
+def clear_default() -> None:
     """
     Clear the default Tiled profile.
     """

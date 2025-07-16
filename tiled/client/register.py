@@ -21,7 +21,7 @@ from .utils import ClientError
 logger = logging.getLogger(__name__)
 
 
-def strip_suffixes(filename):
+def strip_suffixes(filename) -> str:
     """
     For use with key_from_filename parameter.
 
@@ -50,12 +50,12 @@ def identity(filename):
     return filename
 
 
-def default_filter(path):
+def default_filter(path) -> bool:
     "By default, ignore only hidden files."
     return not path.name.startswith(".")
 
 
-def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
+def resolve_mimetype(path: Path, mimetypes_by_file_ext, mimetype_detection_hook=None):
     """
     Given a filepath (file or directory) detect the mimetype.
 
@@ -136,16 +136,16 @@ class Settings:
 
 async def register(
     node,
-    path,
-    prefix="/",
+    path: str,
+    prefix: str = "/",
     walkers=None,
     adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
     key_from_filename=None,
     filter=None,
-    overwrite=True,
-):
+    overwrite: bool = True,
+) -> None:
     "Register a file or directory (recursively)."
     settings = Settings.init(
         adapters_by_mimetype=adapters_by_mimetype,
@@ -199,10 +199,10 @@ async def register(
 
 async def _walk(
     node,
-    path,
+    path: Path,
     walkers,
     settings,
-):
+) -> None:
     "This is the recursive inner loop of walk."
     files = []
     directories = []
@@ -276,8 +276,8 @@ async def one_node_per_item(
 
 async def register_single_item(
     node,
-    item,
-    is_directory,
+    item: Path,
+    is_directory: bool,
     settings,
 ):
     "Register a single file or directory as a node."
@@ -398,7 +398,7 @@ async def group_image_sequences(
     return unhandled_files, unhandled_directories
 
 
-async def register_image_sequence(node, name, sequence, settings):
+async def register_image_sequence(node, name: str, sequence, settings):
     suffixes = Path(sequence[0]).suffixes
     file_ext = suffixes[-1] if len(suffixes) > 0 else None
     if file_ext and file_ext in IMG_SEQUENCE_MIMETYPES:
@@ -469,8 +469,8 @@ DEFAULT_WALKERS = [group_image_sequences, one_node_per_item]
 
 async def watch(
     node,
-    path,
-    prefix="/",
+    path: str,
+    prefix: str = "/",
     walkers=None,
     adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
@@ -478,7 +478,7 @@ async def watch(
     key_from_filename=None,
     filter=None,
     initial_walk_complete_event=None,
-):
+) -> None:
     settings = Settings.init(
         adapters_by_mimetype=adapters_by_mimetype,
         mimetypes_by_file_ext=mimetypes_by_file_ext,
@@ -528,10 +528,10 @@ async def _watch(
     stop_event,
     node,
     path,
-    prefix,
+    prefix: str,
     walkers,
     settings,
-):
+) -> None:
     def watch_filter(change, path):
         return settings.filter(Path(path))
 
@@ -581,10 +581,10 @@ async def process_changes(
     batch,
     node,
     path,
-    prefix,
+    prefix: str,
     walkers,
     settings,
-):
+) -> None:
     for change in batch:
         change_type, change_path = change
         logger.info("  %s '%s'", change_type.name, change_path)

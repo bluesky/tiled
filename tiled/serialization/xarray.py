@@ -1,5 +1,9 @@
 import io
 
+import xarray
+
+from tiled.adapters.xarray import DatasetAdapter
+
 from ..media_type_registration import default_serialization_registry
 from ..utils import ensure_awaitable, modules_available
 from .container import walk
@@ -14,7 +18,7 @@ from .table import (
 )
 
 
-async def as_dataset(node):
+async def as_dataset(node: DatasetAdapter) -> xarray.core.dataset.Dataset:
     import xarray
 
     data_vars = {}
@@ -41,7 +45,7 @@ async def as_dataset(node):
 
 
 class _BytesIOThatIgnoresClose(io.BytesIO):
-    def close(self):
+    def close(self) -> None:
         # When the netcdf writer tells us to close(), ignore it.
         pass
 
@@ -96,7 +100,7 @@ if modules_available("orjson"):
     import orjson
 
     @default_serialization_registry.register("xarray_dataset", "application/json")
-    async def serialize_json(node, metadata, filter_for_access):
+    async def serialize_json(node: DatasetAdapter, metadata, filter_for_access):
         df = (await as_dataset(node)).to_dataframe()
         return orjson.dumps(
             {column: df[column].tolist() for column in df},

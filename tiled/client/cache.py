@@ -35,7 +35,7 @@ def get_cache_key(request: httpx.Request) -> str:
     return str(request.url)
 
 
-def get_size(response, content=None):
+def get_size(response: httpx.Response, content=None) -> int:
     # get content or stream_content
     if hasattr(response, "_content"):
         size = len(response.content)
@@ -46,7 +46,7 @@ def get_size(response, content=None):
     return size
 
 
-def dump(response, content=None):
+def dump(response: httpx.Response, content=None):
     # get content or stream_content
     if hasattr(response, "_content"):
         body = response.content
@@ -69,7 +69,7 @@ def dump(response, content=None):
     )
 
 
-def load(row, request=None):
+def load(row, request=None) -> CachedResponse:
     status_code, headers_json, body, is_stream, encoding = row
     headers = json.loads(headers_json)
     if is_stream:
@@ -89,7 +89,7 @@ def load(row, request=None):
     return response
 
 
-def _create_tables(conn):
+def _create_tables(conn: sqlite3.Connection) -> None:
     with closing(conn.cursor()) as cur:
         cur.execute(
             """CREATE TABLE responses (
@@ -112,7 +112,7 @@ time_last_accessed REAL
         conn.commit()
 
 
-def _prepare_database(filepath, readonly):
+def _prepare_database(filepath: Path, readonly: bool) -> sqlite3.Connection:
     Path(filepath).parent.mkdir(parents=True, exist_ok=True)
     if readonly:
         # The methods in Cache will not try to write when in readonly mode.
@@ -179,10 +179,10 @@ class Cache:
     def __init__(
         self,
         filepath=None,
-        capacity=500_000_000,
-        max_item_size=500_000,
-        readonly=False,
-    ):
+        capacity: int = 500_000_000,
+        max_item_size: int = 500_000,
+        readonly: bool = False,
+    ) -> None:
         if filepath is None:
             # Resolve this here, not at module scope, because the test suite
             # injects TILED_CACHE_DIR env var to use a temporary directory.
@@ -202,10 +202,10 @@ class Cache:
         self._conn = _prepare_database(filepath, readonly)
         self._lock = SerializableLock()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__} {str(self._filepath)!r}>"
 
-    def write_safe(self):
+    def write_safe(self) -> bool:
         """Check that it is safe to write.
 
         SQLite is not threadsafe for concurrent _writes_ unless the
@@ -227,7 +227,7 @@ class Cache:
             self._lock,
         )
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         (filepath, capacity, max_item_size, readonly, lock) = state
         self._capacity = capacity
         self._max_item_size = max_item_size
@@ -253,7 +253,7 @@ class Cache:
         return self._capacity
 
     @capacity.setter
-    def capacity(self, capacity):
+    def capacity(self, capacity) -> None:
         self._capacity = capacity
 
     @property
@@ -262,7 +262,7 @@ class Cache:
         return self._max_item_size
 
     @max_item_size.setter
-    def max_item_size(self, max_item_size):
+    def max_item_size(self, max_item_size: int) -> None:
         self._max_item_size = max_item_size
 
     @with_thread_lock
@@ -383,13 +383,13 @@ VALUES
             )
             self._conn.commit()
 
-    def size(self):
+    def size(self) -> int:
         "Size of response bodies in bytes (does not count headers and other auxiliary info)"
         with closing(self._conn.cursor()) as cur:
             (total_size,) = cur.execute("SELECT SUM(size) FROM responses").fetchone()
         return total_size or 0  # If emtpy, total_size is None.
 
-    def count(self):
+    def count(self) -> int:
         "Number of responses cached"
         with closing(self._conn.cursor()) as cur:
             (count,) = cur.execute("SELECT COUNT(*) FROM responses").fetchone()

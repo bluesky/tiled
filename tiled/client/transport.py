@@ -39,7 +39,7 @@ class Transport(httpx.BaseTransport):
             httpx.codes.PERMANENT_REDIRECT,
         ),
         always_cache: bool = False,
-    ):
+    ) -> None:
         self.controller = CacheControl(
             cacheable_methods=cacheable_methods,
             cacheable_status_codes=cacheable_status_codes,

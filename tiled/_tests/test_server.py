@@ -24,7 +24,7 @@ router = APIRouter()
 class Server(uvicorn.Server):
     # https://github.com/encode/uvicorn/discussions/1103#discussioncomment-941726
 
-    def install_signal_handlers(self):
+    def install_signal_handlers(self) -> None:
         pass
 
     @contextlib.contextmanager
@@ -117,11 +117,11 @@ def multiuser_server(tmpdir):
 
 
 @router.get("/error")
-def error():
+def error() -> None:
     1 / 0  # error!
 
 
-def test_500_response(server):
+def test_500_response(server) -> None:
     """
     Test that unexpected server error returns 500 response.
 
@@ -138,17 +138,17 @@ def test_500_response(server):
     assert response.status_code == HTTP_500_INTERNAL_SERVER_ERROR
 
 
-def test_writing_integration(server):
+def test_writing_integration(server) -> None:
     client = from_uri(server, api_key=API_KEY)
     x = client.write_array([1, 2, 3], key="array")
     x[:]
 
 
-def test_public_server(public_server):
+def test_public_server(public_server) -> None:
     from_uri(public_server)
 
 
-def test_internal_authentication_mode_with_password_clients(multiuser_server):
+def test_internal_authentication_mode_with_password_clients(multiuser_server) -> None:
     "The 'internal' authentication mode used to be named 'password'."
     # Mock old client
     response = httpx.get(

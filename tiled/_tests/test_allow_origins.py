@@ -23,14 +23,14 @@ headers = {
 }
 
 
-def test_cors_enforcement():
+def test_cors_enforcement() -> None:
     with Context.from_app(build_app_from_config(strict_config)) as context:
         request = context.http_client.build_request("OPTIONS", "/", headers=headers)
         response = context.http_client.send(request)
         assert response.status_code == HTTP_400_BAD_REQUEST
 
 
-def test_allow_origins():
+def test_allow_origins() -> None:
     with Context.from_app(build_app_from_config(permissive_config)) as context:
         request = context.http_client.build_request("OPTIONS", "/", headers=headers)
         response = context.http_client.send(request)

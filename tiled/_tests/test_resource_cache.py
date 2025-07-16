@@ -3,10 +3,10 @@ import cachetools
 from ..adapters.resource_cache import default_resource_cache, with_resource_cache
 
 
-def test_simple_cache():
+def test_simple_cache() -> None:
     counter = 0
 
-    def f():
+    def f() -> str:
         nonlocal counter
         counter += 1
         return "some value"
@@ -17,10 +17,10 @@ def test_simple_cache():
     assert counter == 1
 
 
-def test_default_cache():
+def test_default_cache() -> None:
     counter = 0
 
-    def f():
+    def f() -> str:
         nonlocal counter
         counter += 1
         return "some value"
@@ -31,10 +31,10 @@ def test_default_cache():
     assert counter == 1
 
 
-def test_cache_zero_size():
+def test_cache_zero_size() -> None:
     counter = 0
 
-    def f():
+    def f() -> str:
         nonlocal counter
         counter += 1
         return "some value"

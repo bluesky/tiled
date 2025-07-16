@@ -1,6 +1,7 @@
 import collections
 import collections.abc
 import warnings
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -12,19 +13,19 @@ from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_conte
 
 
 def from_uri(
-    uri,
-    structure_clients="numpy",
+    uri: str,
+    structure_clients: str = "numpy",
     *,
     cache=UNSET,
-    remember_me=True,
-    username=None,
+    remember_me: bool = True,
+    username: Optional[str] = None,
     auth_provider=None,
-    api_key=None,
-    verify=True,
+    api_key: Optional[str] = None,
+    verify: bool = True,
     prompt_for_reauthentication=None,
     headers=None,
     timeout=None,
-    include_data_sources=False,
+    include_data_sources: bool = False,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -97,10 +98,10 @@ For non-interactive authentication, use an API key.
 
 def from_context(
     context: Context,
-    structure_clients="numpy",
+    structure_clients: str = "numpy",
     node_path_parts=None,
-    include_data_sources=False,
-    remember_me=True,
+    include_data_sources: bool = False,
+    remember_me: bool = True,
 ):
     """
     Advanced: Connect to a Node using a custom instance of httpx.Client or httpx.AsyncClient.
@@ -159,7 +160,7 @@ def from_context(
     )
 
 
-def from_profile(name, structure_clients=None, **kwargs):
+def from_profile(name: str, structure_clients=None, **kwargs):
     """
     Build a Node based a 'profile' (a named configuration).
 

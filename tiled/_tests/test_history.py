@@ -13,7 +13,7 @@ def context():
         yield context
 
 
-def test_history(context):
+def test_history(context) -> None:
     "Very basic exercise of history"
     client = from_context(context)
     with record_history() as history:

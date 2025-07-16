@@ -15,7 +15,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade() -> None:
     connection = op.get_bind()
     if connection.engine.dialect.name == "sqlite":
         statements = [
@@ -55,5 +55,5 @@ def upgrade():
             op.execute(sa.text(statement))
 
 
-def downgrade():
+def downgrade() -> None:
     pass

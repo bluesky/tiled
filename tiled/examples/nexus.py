@@ -26,7 +26,7 @@ import httpx
 from tiled.adapters.hdf5 import HDF5Adapter
 
 
-def build_tree(url):
+def build_tree(url: str) -> HDF5Adapter:
     # Download a Nexus file into a memory buffer.
     buffer = io.BytesIO(httpx.get(url, follow_redirects=True).content)
     # Access the buffer with h5py, which can treat it like a "file".

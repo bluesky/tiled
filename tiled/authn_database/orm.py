@@ -37,7 +37,7 @@ class JSONList(TypeDecorator):
     impl = Unicode
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value, dialect) -> str:
         # Make sure we don't get passed some iterable like a dict.
         if not isinstance(value, list):
             raise ValueError("JSONList must be given a literal `list` type.")
@@ -97,7 +97,7 @@ class Timestamped:
         nullable=True,
     )  # null until first update
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"{type(self).__name__}("
             + ", ".join(

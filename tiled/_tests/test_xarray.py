@@ -75,19 +75,19 @@ def client():
 
 
 @pytest.mark.parametrize("key", list(tree))
-def test_xarray_dataset(client, key):
+def test_xarray_dataset(client, key) -> None:
     expected = EXPECTED[key]
     actual = client[key].read().load()
     xarray.testing.assert_identical(actual, expected)
 
 
-def test_specs(client):
+def test_specs(client) -> None:
     assert client["image"].specs == [Spec("xarray_dataset")]
     assert client["image"]["image"].specs == [Spec("xarray_data_var")]
     assert client["image"]["x"].specs == [Spec("xarray_coord")]
 
 
-def test_specs_mutation_bug(client):
+def test_specs_mutation_bug(client) -> None:
     # https://github.com/bluesky/tiled/issues/651
     ds = pandas.DataFrame({"x": numpy.array([1, 2, 3])}).to_xarray()
     tree = MapAdapter({"data": DatasetAdapter.from_dataset(ds)})
@@ -102,7 +102,7 @@ def test_specs_mutation_bug(client):
             assert data.specs == [Spec("xarray_dataset")]
 
 
-def test_specs_override(client):
+def test_specs_override(client) -> None:
     "The 'xarray_dataset' is appended to the end if not present."
     ds = pandas.DataFrame({"x": numpy.array([1, 2, 3])}).to_xarray()
     tree = MapAdapter(
@@ -125,7 +125,7 @@ def test_specs_override(client):
 
 
 @pytest.mark.parametrize("key", ["image", "weather"])
-def test_dataset_column_access(client, key):
+def test_dataset_column_access(client, key) -> None:
     expected_dataset = EXPECTED[key]
     actual_dataset = client[key].read().load()
     for col in expected_dataset:
@@ -134,7 +134,7 @@ def test_dataset_column_access(client, key):
         xarray.testing.assert_equal(actual, expected)
 
 
-def test_wide_table_optimization(client):
+def test_wide_table_optimization(client) -> None:
     wide = client["wide"]
     with record_history() as history:
         wide.read()
@@ -144,7 +144,7 @@ def test_wide_table_optimization(client):
     assert len(history.requests) < 4
 
 
-def test_wide_table_optimization_off(client):
+def test_wide_table_optimization_off(client) -> None:
     wide = client["wide"]
     with record_history() as history:
         wide.read(optimize_wide_table=False)
@@ -160,7 +160,7 @@ def test_wide_table_optimization_off(client):
     ),
     indirect=["url_limit"],
 )
-def test_url_limit_bypass(client, url_limit, expected_method):
+def test_url_limit_bypass(client, url_limit, expected_method) -> None:
     "GET requests beyond the URL length limit should become POST requests."
     expected = EXPECTED["wide"]
     expected_requests = 2  # Once for data_vars + once for coords
@@ -183,7 +183,7 @@ def test_url_limit_bypass(client, url_limit, expected_method):
 
 @pytest.mark.parametrize("ds_node", tree.values(), ids=tree.keys())
 @pytest.mark.asyncio
-async def test_serialize_json(ds_node: DatasetAdapter):
+async def test_serialize_json(ds_node: DatasetAdapter) -> None:
     """Verify that serialized Dataset keys are a subset
     of all coordinates and variables from the Dataset.
     Index variables are removed by serialize_json().

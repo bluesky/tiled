@@ -52,7 +52,7 @@ async def temp_postgres(uri):
 
 
 @contextlib.contextmanager
-def enter_username_password(username, password):
+def enter_username_password(username: str, password: str):
     """
     Override getpass, when prompt_for_credentials with username only
     used like:

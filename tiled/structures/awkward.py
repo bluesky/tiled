@@ -13,7 +13,7 @@ class AwkwardStructure:
         return cls(**structure)
 
 
-def project_form(form, form_keys_touched):
+def project_form(form: awkward.forms.form.Form, form_keys_touched):
     # See https://github.com/bluesky/tiled/issues/450
     if isinstance(form, awkward.forms.RecordForm):
         if form.fields is None:

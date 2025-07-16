@@ -3,6 +3,8 @@ import gzip
 import mimetypes
 from collections import defaultdict
 
+from tiled.structures.core import StructureFamily
+
 from .utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     XLSX_MIME_TYPE,
@@ -43,7 +45,7 @@ class SerializationRegistry:
         "txt": "text/plain",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._lookup = defaultdict(dict)
         # TODO Think about whether lazy registration makes any sense here.
         self._custom_aliases_by_type = defaultdict(list)
@@ -51,7 +53,7 @@ class SerializationRegistry:
         for ext, media_type in self.DEFAULT_ALIASES.items():
             self.register_alias(ext, media_type)
 
-    def media_types(self, structure_family):
+    def media_types(self, structure_family: StructureFamily) -> DictView:
         """
         List the supported media types for a given structure family.
         """
@@ -131,17 +133,17 @@ class SerializationRegistry:
             return dec
         return dec(func)
 
-    def register_alias(self, ext, media_type):
+    def register_alias(self, ext: str, media_type: str) -> None:
         self._custom_aliases_by_type[media_type].append(ext)
         self._custom_aliases[ext] = media_type
 
-    def resolve_alias(self, alias):
+    def resolve_alias(self, alias) -> str:
         try:
             return mimetypes.types_map[f".{alias}"]
         except KeyError:
             return self._custom_aliases.get(alias, alias)
 
-    def dispatch(self, structure_family, media_type):
+    def dispatch(self, structure_family, media_type: str):
         """
         Look up a writer for a given structure and media type.
         """
@@ -155,7 +157,7 @@ class SerializationRegistry:
 
 
 class CompressionRegistry:
-    def __init__(self):
+    def __init__(self) -> None:
         self._lookup = defaultdict(collections.OrderedDict)
 
     def encodings(self, media_type):
@@ -164,7 +166,7 @@ class CompressionRegistry:
         # ones will get tried first (if the client accepts them).
         return reversed(self._lookup.get(media_type, []))
 
-    def register(self, media_type, encoding, func):
+    def register(self, media_type: str, encoding: str, func) -> None:
         """
         Register a new media_type for a structure family.
 
@@ -251,13 +253,13 @@ if modules_available("zstandard"):
         the pattern set by starlette until we have a clear reason not to.
         """
 
-        def __init__(self, file):
+        def __init__(self, file) -> None:
             self._file = file
 
-        def write(self, b):
+        def write(self, b) -> None:
             self._file.write(zstd_compressor.compress(b))
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     for media_type in [
@@ -307,13 +309,13 @@ if modules_available("lz4"):
         the pattern set by starlette until we have a clear reason not to.
         """
 
-        def __init__(self, file):
+        def __init__(self, file) -> None:
             self._file = file
 
-        def write(self, b):
+        def write(self, b) -> None:
             self._file.write(_fixed_lz4_compress(b))
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     for media_type in [
@@ -339,10 +341,10 @@ if modules_available("blosc2"):
         the pattern set by starlette until we have a clear reason not to.
         """
 
-        def __init__(self, file):
+        def __init__(self, file) -> None:
             self._file = file
 
-        def write(self, b):
+        def write(self, b) -> None:
             if hasattr(b, "itemsize"):
                 # This could be memoryview or numpy.ndarray, for example.
                 # Blosc uses item-aware shuffling for improved results.
@@ -351,7 +353,7 @@ if modules_available("blosc2"):
                 compressed = blosc2.compress(b)
             self._file.write(compressed)
 
-        def close(self):
+        def close(self) -> None:
             pass
 
     for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:

@@ -121,7 +121,7 @@ mapping = {
 tree = MapAdapter(mapping, entries_stale_after=timedelta(seconds=10))
 
 
-async def increment_dynamic():
+async def increment_dynamic() -> None:
     """
     Change the value of the 'dynamic' node every 3 seconds.
     """

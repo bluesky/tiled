@@ -45,7 +45,7 @@ async def client(adapter):
 
 
 @pytest.mark.asyncio
-async def test_nested_node_creation(a):
+async def test_nested_node_creation(a) -> None:
     await a.create_node(
         key="b",
         metadata={},
@@ -71,7 +71,7 @@ async def test_nested_node_creation(a):
 
 
 @pytest.mark.asyncio
-async def test_sorting(a):
+async def test_sorting(a) -> None:
     # Generate lists of letters and numbers, randomly shuffled.
     random_state = random.Random(0)
     ordered_letters = list(string.ascii_lowercase[:10])
@@ -126,7 +126,7 @@ async def test_sorting(a):
 
 
 @pytest.mark.asyncio
-async def test_search(a):
+async def test_search(a) -> None:
     for letter, number in zip(string.ascii_lowercase[:5], range(5)):
         await a.create_node(
             key=letter,
@@ -161,7 +161,7 @@ async def test_search(a):
 
 
 @pytest.mark.asyncio
-async def test_metadata_index_is_used(example_data_adapter):
+async def test_metadata_index_is_used(example_data_adapter) -> None:
     a = example_data_adapter  # for succinctness below
     # Check that an index (specifically the 'top_level_metadata' index) is used
     # by inspecting the content of an 'EXPLAIN ...' query. The exact content
@@ -198,7 +198,7 @@ async def test_metadata_index_is_used(example_data_adapter):
 
 
 @pytest.mark.asyncio
-async def test_write_array_external(a, tmpdir):
+async def test_write_array_external(a, tmpdir) -> None:
     arr = numpy.ones((5, 3))
     filepath = str(tmpdir / "file.tiff")
     data_uri = ensure_uri(filepath)
@@ -232,7 +232,7 @@ async def test_write_array_external(a, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_write_dataframe_external_direct(a, tmpdir):
+async def test_write_dataframe_external_direct(a, tmpdir) -> None:
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = str(tmpdir / "file.csv")
     data_uri = ensure_uri(filepath)
@@ -266,7 +266,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_write_array_internal_direct(a, tmpdir):
+async def test_write_array_internal_direct(a, tmpdir) -> None:
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter.from_array(arr)
     structure = ad.structure()
@@ -288,7 +288,7 @@ async def test_write_array_internal_direct(a, tmpdir):
     assert numpy.array_equal(val, arr)
 
 
-def test_write_array_internal_via_client(client):
+def test_write_array_internal_via_client(client) -> None:
     expected = numpy.array([1, 3, 7])
     x = client.write_array(expected)
     actual = x.read()
@@ -299,7 +299,7 @@ def test_write_array_internal_via_client(client):
     assert numpy.array_equal(actual, expected)
 
 
-def test_write_dataframe_internal_via_client(client):
+def test_write_dataframe_internal_via_client(client) -> None:
     expected = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     x = client.write_dataframe(expected)
     actual = x.read()
@@ -311,7 +311,7 @@ def test_write_dataframe_internal_via_client(client):
     # pandas.testing.assert_frame_equal(actual, expected)
 
 
-def test_write_xarray_dataset(client):
+def test_write_xarray_dataset(client) -> None:
     ds = xarray.Dataset(
         {"temp": (["time"], numpy.array([101, 102, 103]))},
         coords={"time": (["time"], numpy.array([1, 2, 3]))},
@@ -325,7 +325,7 @@ def test_write_xarray_dataset(client):
 
 
 @pytest.mark.asyncio
-async def test_delete_tree(tmpdir):
+async def test_delete_tree(tmpdir) -> None:
     # Do not use client fixture here.
     # The Context must be opened inside the test or we run into
     # event loop crossing issues with the Postgres test.
@@ -369,7 +369,7 @@ async def test_delete_tree(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_access_control(tmpdir):
+async def test_access_control(tmpdir) -> None:
     config = {
         "authentication": {
             "allow_anonymous_access": True,
@@ -506,7 +506,7 @@ async def test_access_control(tmpdir):
     ],
 )
 @pytest.mark.asyncio
-async def test_constraints_on_parameter_and_num(a, assets):
+async def test_constraints_on_parameter_and_num(a, assets) -> None:
     "Test constraints enforced by database on 'parameter' and 'num'."
     arr_adapter = ArrayAdapter.from_array([1, 2, 3])
     with pytest.raises(
@@ -534,7 +534,7 @@ async def test_constraints_on_parameter_and_num(a, assets):
 
 
 @pytest.mark.asyncio
-async def test_init_db_logging(tmpdir, caplog):
+async def test_init_db_logging(tmpdir, caplog) -> None:
     config = {
         "database": {
             "uri": "sqlite://",  # in-memory

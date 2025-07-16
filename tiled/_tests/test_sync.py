@@ -32,7 +32,7 @@ def client_factory(readable_storage=None):
             yield client
 
 
-def populate_external(client, tmp_path):
+def populate_external(client, tmp_path) -> None:
     "Populate a client with registered externally-managed data."
     subdir = tmp_path / "subdir"
     subdir.mkdir()
@@ -55,7 +55,7 @@ def populate_external(client, tmp_path):
     asyncio.run(register(client, tmp_path))
 
 
-def populate_internal(client):
+def populate_internal(client) -> None:
     "Populate a client with uploaded internally-managed data."
     # array
     client.write_array([1, 2, 3], key="a", metadata={"color": "red"}, specs=["alpha"])
@@ -84,7 +84,7 @@ def populate_internal(client):
     container.write_sparse(key="E", coords=coo.coords, data=coo.data, shape=coo.shape)
 
 
-def test_copy_internal():
+def test_copy_internal() -> None:
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
@@ -94,7 +94,7 @@ def test_copy_internal():
             read(dest, strict=True)
 
 
-def test_copy_skip_conflict():
+def test_copy_skip_conflict() -> None:
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
@@ -105,7 +105,7 @@ def test_copy_skip_conflict():
             read(dest, strict=True)
 
 
-def test_copy_warn_conflict():
+def test_copy_warn_conflict() -> None:
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
@@ -114,7 +114,7 @@ def test_copy_warn_conflict():
                 copy(source, dest, on_conflict="warn")
 
 
-def test_copy_error_conflict():
+def test_copy_error_conflict() -> None:
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
@@ -123,7 +123,7 @@ def test_copy_error_conflict():
                 copy(source, dest)
 
 
-def test_copy_external(tmp_path):
+def test_copy_external(tmp_path) -> None:
     with client_factory(readable_storage=[tmp_path]) as dest:
         with client_factory() as source:
             populate_external(source, tmp_path)
@@ -133,7 +133,7 @@ def test_copy_external(tmp_path):
             read(dest, strict=True)
 
 
-def test_copy_search_results():
+def test_copy_search_results() -> None:
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
@@ -142,7 +142,7 @@ def test_copy_search_results():
             assert list(results) == list(dest)
 
 
-def test_copy_items():
+def test_copy_items() -> None:
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)
@@ -151,7 +151,7 @@ def test_copy_items():
             assert [key for key, _ in select_items] == list(dest)
 
 
-def test_copy_dict():
+def test_copy_dict() -> None:
     with client_factory() as dest:
         with client_factory() as source:
             populate_internal(source)

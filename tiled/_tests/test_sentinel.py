@@ -3,7 +3,7 @@ import copy
 from tiled.utils import Sentinel
 
 
-def test_sentinel_self_and_copy_equality_and_identity():
+def test_sentinel_self_and_copy_equality_and_identity() -> None:
     s = Sentinel("TEST")
     assert s == s
     assert s is s

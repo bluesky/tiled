@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from typing import Any, Mapping, Optional, cast
 
 import httpx
+import ldap3
 from fastapi import APIRouter, Request
 from jose import JWTError, jwt
 from pydantic import Secret
@@ -32,7 +33,7 @@ class DummyAuthenticator(InternalAuthenticator):
 
     """
 
-    def __init__(self, confirmation_message: str = ""):
+    def __init__(self, confirmation_message: str = "") -> None:
         self.confirmation_message = confirmation_message
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
@@ -63,7 +64,7 @@ properties:
 
     def __init__(
         self, users_to_passwords: Mapping[str, str], confirmation_message: str = ""
-    ):
+    ) -> None:
         self._users_to_passwords = users_to_passwords
         self.confirmation_message = confirmation_message
 
@@ -92,7 +93,7 @@ properties:
     description: May be displayed by client after successful login.
 """
 
-    def __init__(self, service: str = "login", confirmation_message: str = ""):
+    def __init__(self, service: str = "login", confirmation_message: str = "") -> None:
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
@@ -139,7 +140,7 @@ properties:
         client_secret: str,
         well_known_uri: str,
         confirmation_message: str = "",
-    ):
+    ) -> None:
         self._audience = audience
         self._client_id = client_id
         self._client_secret = Secret(client_secret)
@@ -252,7 +253,7 @@ class SAMLAuthenticator(ExternalAuthenticator):
         saml_settings,  # See EXAMPLE_SAML_SETTINGS below.
         attribute_name: str,  # which SAML attribute to use as 'id' for Identity
         confirmation_message: str = "",
-    ):
+    ) -> None:
         self.saml_settings = saml_settings
         self.attribute_name = attribute_name
         self.confirmation_message = confirmation_message
@@ -526,27 +527,27 @@ class LDAPAuthenticator(InternalAuthenticator):
         server_address,
         server_port=None,
         *,
-        use_ssl=False,
-        use_tls=True,
-        connect_timeout=5,
-        receive_timeout=60,
+        use_ssl: bool = False,
+        use_tls: bool = True,
+        connect_timeout: int = 5,
+        receive_timeout: int = 60,
         bind_dn_template=None,
         allowed_groups=None,
-        valid_username_regex=r"^[a-z][.a-z0-9_-]*$",
-        lookup_dn=False,
+        valid_username_regex: str = r"^[a-z][.a-z0-9_-]*$",
+        lookup_dn: bool = False,
         user_search_base=None,
         user_attribute=None,
-        lookup_dn_search_filter="({login_attr}={login})",
+        lookup_dn_search_filter: str = "({login_attr}={login})",
         lookup_dn_search_user=None,
         lookup_dn_search_password=None,
         lookup_dn_user_dn_attribute=None,
-        escape_userdn=False,
-        search_filter="",
+        escape_userdn: bool = False,
+        search_filter: str = "",
         attributes=None,
         auth_state_attributes=None,
-        use_lookup_dn_username=True,
-        confirmation_message="",
-    ):
+        use_lookup_dn_username: bool = True,
+        confirmation_message: str = "",
+    ) -> None:
         self.use_ssl = use_ssl
         self.use_tls = use_tls
         self.connect_timeout = connect_timeout
@@ -589,13 +590,13 @@ class LDAPAuthenticator(InternalAuthenticator):
         )
         self.confirmation_message = confirmation_message
 
-    def _server_port_default(self):
+    def _server_port_default(self) -> int:
         if self.use_ssl:
             return 636  # default SSL port for LDAP
         else:
             return 389  # default plaintext port for LDAP
 
-    async def resolve_username(self, username_supplied_by_user):
+    async def resolve_username(self, username_supplied_by_user: str):
         import ldap3
 
         search_dn = self.lookup_dn_search_user
@@ -676,7 +677,7 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         return (user_dn, response[0]["dn"])
 
-    def get_connection(self, userdn, password):
+    def get_connection(self, userdn, password: str) -> ldap3.core.connection.Connection:
         import ldap3
 
         # NOTE: setting 'active=False' essentially disables exclusion of inactive servers from the pool.

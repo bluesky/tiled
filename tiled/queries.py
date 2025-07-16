@@ -17,7 +17,7 @@ JSONSerializable = Any  # Feel free to refine this.
 
 
 class NoBool:
-    def __bool__(self):
+    def __bool__(self) -> bool:
         raise TypeError(
             """Queries are not "truth-y" or "false-y". They must be passed to search().
 
@@ -50,7 +50,7 @@ class FullText(NoBool):
         return {"text": self.text}
 
     @classmethod
-    def decode(cls, *, text):
+    def decode(cls, *, text: str):
         return cls(text=text)
 
 
@@ -143,7 +143,7 @@ class Regex(NoBool):
         }
 
     @classmethod
-    def decode(cls, *, key, pattern, case_sensitive=True):
+    def decode(cls, *, key, pattern: str, case_sensitive: bool = True):
         # Note: FastAPI decodes case_sensitive into a boolean for us.
         return cls(
             key=key,
@@ -255,7 +255,7 @@ class Comparison(NoBool):
     key: str
     value: JSONSerializable
 
-    def __init__(self, operator, key, value):
+    def __init__(self, operator, key, value) -> None:
         self.operator = Operator(operator)
         self.key = key
         self.value = value
@@ -328,7 +328,7 @@ class In:
     key: str
     value: List[JSONSerializable]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.value = list(self.value)
 
     def encode(self):
@@ -363,7 +363,7 @@ class NotIn:
     key: str
     value: List[JSONSerializable]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.value = list(self.value)
 
     def encode(self):
@@ -409,7 +409,7 @@ class Like(NoBool):
         return {"key": self.key, "pattern": json.dumps(self.pattern)}
 
     @classmethod
-    def decode(cls, *, key, pattern):
+    def decode(cls, *, key, pattern: str):
         return cls(key=key, pattern=json.loads(pattern))
 
 
@@ -435,7 +435,7 @@ class SpecsQuery:
     include: List[str]
     exclude: List[str]
 
-    def __init__(self, include, exclude=None):
+    def __init__(self, include, exclude=None) -> None:
         exclude = exclude or []
 
         if isinstance(include, str):
@@ -458,7 +458,7 @@ class SpecsQuery:
         return cls(include=json.loads(include), exclude=json.loads(exclude))
 
 
-def SpecQuery(spec):
+def SpecQuery(spec) -> SpecsQuery:
     """
     Convenience function for querying if specs list contains a given spec
 
@@ -539,7 +539,7 @@ class StructureFamilyQuery:
     >>> c.search(StructureFamilies("dataframe"))
     """
 
-    def __init__(self, value):
+    def __init__(self, value) -> None:
         self.value = StructureFamilyEnum(value)
 
     value: StructureFamilyEnum
@@ -575,25 +575,25 @@ class Key:
     >>> c.search(Key("position") < 5.0)
     """
 
-    def __init__(self, key):
+    def __init__(self, key) -> None:
         self.key = key
 
-    def __eq__(self, value):
+    def __eq__(self, value) -> Eq:
         return Eq(self.key, value)
 
-    def __ne__(self, value):
+    def __ne__(self, value: int) -> NotEq:
         return NotEq(self.key, value)
 
-    def __lt__(self, value):
+    def __lt__(self, value: int) -> Comparison:
         return Comparison("lt", self.key, value)
 
-    def __gt__(self, value):
+    def __gt__(self, value: int) -> Comparison:
         return Comparison("gt", self.key, value)
 
-    def __le__(self, value):
+    def __le__(self, value: int) -> Comparison:
         return Comparison("le", self.key, value)
 
-    def __ge__(self, value):
+    def __ge__(self, value: int) -> Comparison:
         return Comparison("ge", self.key, value)
 
     # Note: __contains__ cannot be supported because the language coerces

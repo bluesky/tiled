@@ -7,7 +7,7 @@ from ..server.app import build_app
 
 @pytest.mark.parametrize("path", ["/", "/docs", "/healthz"])
 @pytest.mark.asyncio
-async def test_meta_routes(path):
+async def test_meta_routes(path) -> None:
     transport = ASGITransport(app=build_app({}))
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(path)

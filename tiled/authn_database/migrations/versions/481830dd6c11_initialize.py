@@ -29,7 +29,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade() -> None:
     op.create_table(
         "principals",
         Column("time_created", DateTime(timezone=False), server_default=func.now()),
@@ -111,6 +111,6 @@ def upgrade():
     )
 
 
-def downgrade():
+def downgrade() -> None:
     "Nothing to do because this is the initial schema."
     pass

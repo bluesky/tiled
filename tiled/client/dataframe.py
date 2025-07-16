@@ -1,4 +1,5 @@
 import functools
+from typing import Iterator
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -28,7 +29,7 @@ class _DaskDataFrameClient(BaseClient):
             structure = self._structure
         return super().new_variation(structure=structure, **kwargs)
 
-    def _repr_pretty_(self, p, cycle):
+    def _repr_pretty_(self, p, cycle) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -210,13 +211,13 @@ class _DaskDataFrameClient(BaseClient):
         item = content["data"]
         return client_for_item(self.context, self.structure_clients, item)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self.structure().columns
 
     # __len__ is intentionally not implemented. For DataFrames it means "number
     # of rows" which is expensive to compute.
 
-    def write(self, dataframe):
+    def write(self, dataframe) -> None:
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -227,7 +228,7 @@ class _DaskDataFrameClient(BaseClient):
                     )
                 )
 
-    def write_partition(self, dataframe, partition):
+    def write_partition(self, dataframe, partition) -> None:
         for attempt in retry_context():
             with attempt:
                 handle_error(

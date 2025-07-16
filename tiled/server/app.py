@@ -112,9 +112,9 @@ def build_app(
     compression_registry: Optional[CompressionRegistry] = None,
     validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
-    scalable=False,
+    scalable: bool = False,
     access_policy=None,
-):
+) -> FastAPI:
     """
     Serve a Tree
 
@@ -232,7 +232,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             response = await lookup_file(path)
             return response
 
-        async def lookup_file(path, try_app=True):
+        async def lookup_file(path, try_app: bool = True) -> FileResponse:
             if not path:
                 path = "index.html"
             full_path = Path(SHARE_TILED_PATH, "ui", path)
@@ -600,7 +600,7 @@ Back up the database, and then run:
                         id=admin["id"],
                     )
 
-            async def purge_expired_sessions_and_api_keys():
+            async def purge_expired_sessions_and_api_keys() -> None:
                 PURGE_INTERVAL = 600  # seconds
                 while True:
                     async with AsyncSession(
@@ -626,7 +626,7 @@ Back up the database, and then run:
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
             )
 
-    async def shutdown_event():
+    async def shutdown_event() -> None:
         # Run shutdown tasks collected from trees (adapters).
         for task in tasks.get("shutdown", []):
             await task()
@@ -825,13 +825,15 @@ Back up the database, and then run:
     return app
 
 
-def build_app_from_config(config, source_filepath=None, scalable=False):
+def build_app_from_config(
+    config, source_filepath=None, scalable: bool = False
+) -> FastAPI:
     "Convenience function that calls build_app(...) given config as dict."
     kwargs = construct_build_app_kwargs(config, source_filepath=source_filepath)
     return build_app(scalable=scalable, **kwargs)
 
 
-def app_factory():
+def app_factory() -> FastAPI:
     """
     Return an ASGI app instance.
 
@@ -858,7 +860,7 @@ def app_factory():
     return web_app
 
 
-def __getattr__(name):
+def __getattr__(name: str) -> FastAPI:
     """
     This supports tiled.server.app.app by creating app on demand.
     """
@@ -875,7 +877,7 @@ def print_server_info(
     host: str = "127.0.0.1",
     port: int = 8000,
     include_api_key: bool = False,
-):
+) -> None:
     settings = get_settings()
 
     if settings.allow_anonymous_access:

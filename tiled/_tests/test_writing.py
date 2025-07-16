@@ -51,7 +51,7 @@ def tree(tmpdir):
     )
 
 
-def test_write_array_full(tree):
+def test_write_array_full(tree) -> None:
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -75,7 +75,7 @@ def test_write_array_full(tree):
         assert result.specs == specs
 
 
-def test_write_large_array_full(tree):
+def test_write_large_array_full(tree) -> None:
     "Test that a large array is chunked"
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -105,7 +105,7 @@ def test_write_large_array_full(tree):
             client._SUGGESTED_MAX_UPLOAD_SIZE = original
 
 
-def test_write_array_chunked(tree):
+def test_write_array_chunked(tree) -> None:
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -129,7 +129,7 @@ def test_write_array_chunked(tree):
         assert result.specs == specs
 
 
-def test_extend_array(tree):
+def test_extend_array(tree) -> None:
     "Extend an array with additional data, expanding its shape."
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
@@ -182,7 +182,7 @@ def test_extend_array(tree):
             ac.patch(ones.astype("uint8"), offset=9, extend=True)
 
 
-def test_write_dataframe_full(tree):
+def test_write_dataframe_full(tree) -> None:
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -207,7 +207,7 @@ def test_write_dataframe_full(tree):
         assert result.specs == specs
 
 
-def test_write_dataframe_partitioned(tree):
+def test_write_dataframe_partitioned(tree) -> None:
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -233,7 +233,7 @@ def test_write_dataframe_partitioned(tree):
         assert result.specs == specs
 
 
-def test_write_dataframe_dict(tree):
+def test_write_dataframe_dict(tree) -> None:
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -271,7 +271,7 @@ def test_write_dataframe_dict(tree):
         ),
     ],
 )
-def test_write_sparse_full(tree, coo):
+def test_write_sparse_full(tree, coo) -> None:
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -298,7 +298,7 @@ def test_write_sparse_full(tree, coo):
         assert result.specs == specs
 
 
-def test_write_sparse_chunked(tree):
+def test_write_sparse_chunked(tree) -> None:
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -342,7 +342,7 @@ def test_write_sparse_chunked(tree):
         assert result.specs == specs
 
 
-def test_limits(tree):
+def test_limits(tree) -> None:
     "Test various limits on uploaded metadata."
 
     MAX_ALLOWED_SPECS = 20
@@ -388,7 +388,7 @@ def test_limits(tree):
             x.update_metadata(specs=too_many_chars)
 
 
-def test_metadata_revisions(tree):
+def test_metadata_revisions(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         ac = client.write_array([1, 2, 3], key="revise_me")
@@ -407,7 +407,7 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
-def test_replace_metadata(tree):
+def test_replace_metadata(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         ac = client.write_array([1, 2, 3], key="revise_me_with_replace")
@@ -426,7 +426,7 @@ def test_replace_metadata(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
-def test_drop_revision(tree):
+def test_drop_revision(tree) -> None:
     key = "test_drop_revision"
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
@@ -443,7 +443,7 @@ def test_drop_revision(tree):
         assert len(ac.metadata_revisions) == 0
 
 
-def test_merge_patching(tree):
+def test_merge_patching(tree) -> None:
     "Test merge patching of metadata and specs"
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
@@ -459,7 +459,7 @@ def test_merge_patching(tree):
         assert [x.name for x in ac.specs] == ["spec2"]
 
 
-def test_json_patching(tree):
+def test_json_patching(tree) -> None:
     "Test json patching of metadata and specs"
 
     validation_registry = ValidationRegistry()
@@ -488,7 +488,7 @@ def test_json_patching(tree):
         assert [x.name for x in ac.specs] == ["spec1", "spec2"]
 
 
-def test_metadata_with_unsafe_objects(tree):
+def test_metadata_with_unsafe_objects(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         ac = client.write_array(
@@ -501,7 +501,7 @@ def test_metadata_with_unsafe_objects(tree):
 
 
 @pytest.mark.asyncio
-async def test_delete(tree):
+async def test_delete(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         client.write_array(
@@ -548,7 +548,7 @@ async def test_delete(tree):
 
 
 @pytest.mark.asyncio
-async def test_delete_non_empty_node(tree):
+async def test_delete_non_empty_node(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         a = client.create_container("a")
@@ -576,7 +576,7 @@ async def test_delete_non_empty_node(tree):
 
 
 @pytest.mark.asyncio
-async def test_write_in_container(tree):
+async def test_write_in_container(tree) -> None:
     "Create a container and write a structure into it."
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
@@ -619,7 +619,7 @@ async def test_write_in_container(tree):
 
 
 @pytest.mark.asyncio
-async def test_bytes_in_metadata(tree):
+async def test_bytes_in_metadata(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         client.create_container("a", metadata={"test": b"raw_bytes"})
@@ -630,7 +630,7 @@ async def test_bytes_in_metadata(tree):
 
 
 @pytest.mark.asyncio
-async def test_container_export(tree, buffer):
+async def test_container_export(tree, buffer) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
 
@@ -639,7 +639,7 @@ async def test_container_export(tree, buffer):
         client.export(buffer, format="application/json")
 
 
-def test_write_with_specified_mimetype(tree):
+def test_write_with_specified_mimetype(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
         df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
@@ -707,7 +707,7 @@ def test_append_partition(
     orig_file: dict,
     file_to_append: dict,
     expected_file: dict,
-):
+) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
         orig_table = pyarrow.Table.from_pydict(orig_file)
@@ -746,7 +746,7 @@ def test_create_table_with_custom_name(
     tree: CatalogContainerAdapter,
     table_name: str,
     expected: str,
-):
+) -> None:
     table = pyarrow.Table.from_arrays([[1, 2, 3]], ["column_name"])
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
@@ -759,7 +759,7 @@ def test_create_table_with_custom_name(
             assert x.read()["column_name"].to_list() == [1, 2, 3]
 
 
-def test_composite_one_table(tree):
+def test_composite_one_table(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
@@ -768,7 +768,7 @@ def test_composite_one_table(tree):
         assert len(client["x"].parts) == 1
 
 
-def test_composite_two_tables(tree):
+def test_composite_two_tables(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
@@ -780,7 +780,7 @@ def test_composite_two_tables(tree):
         x.parts["table2"].read()
 
 
-def test_composite_two_tables_colliding_names(tree):
+def test_composite_two_tables_colliding_names(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
@@ -791,7 +791,7 @@ def test_composite_two_tables_colliding_names(tree):
             x.write_dataframe(df2, key="table1")
 
 
-def test_composite_two_tables_colliding_keys(tree):
+def test_composite_two_tables_colliding_keys(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
@@ -802,7 +802,7 @@ def test_composite_two_tables_colliding_keys(tree):
             x.write_dataframe(df2, key="table2")
 
 
-def test_composite_two_tables_two_arrays(tree):
+def test_composite_two_tables_two_arrays(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
@@ -828,7 +828,7 @@ def test_composite_two_tables_two_arrays(tree):
             x[column].read()
 
 
-def test_composite_table_column_array_key_collision(tree):
+def test_composite_table_column_array_key_collision(tree) -> None:
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})

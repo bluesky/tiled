@@ -3,7 +3,7 @@ import sys
 from ..structures.core import StructureFamily
 
 
-def read(node, verbose=False, strict=False):
+def read(node, verbose: bool = False, strict: bool = False):
     """
 
     Parameters

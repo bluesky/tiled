@@ -12,10 +12,11 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Sequence, Union
 from urllib.parse import urlparse
 
 import anyio
+import sqlalchemy
 from fastapi import HTTPException
 from sqlalchemy import (
     delete,
@@ -55,6 +56,7 @@ from tiled.queries import (
     SpecsQuery,
     StructureFamilyQuery,
 )
+from tiled.utils import Sentinel
 
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -139,7 +141,7 @@ class RootNode:
 
     structure_family = StructureFamily.container
 
-    def __init__(self, metadata, specs, top_level_access_blob):
+    def __init__(self, metadata, specs, top_level_access_blob) -> None:
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
@@ -156,7 +158,7 @@ class Context:
         readable_storage=None,
         adapters_by_mimetype=None,
         key_maker=lambda: str(uuid.uuid4()),
-    ):
+    ) -> None:
         self.engine = engine
 
         self.writable_storage = []
@@ -195,7 +197,7 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
 
-    def session(self):
+    def session(self) -> ExplainAsyncSession:
         "Convenience method for constructing an AsyncSession context"
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
@@ -309,7 +311,7 @@ class CatalogNodeAdapter:
         queries=None,
         sorting=None,
         mount_node: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> None:
         self.context = context
         self.engine = self.context.engine
         if isinstance(mount_node, str):
@@ -344,7 +346,7 @@ class CatalogNodeAdapter:
     def metadata(self):
         return self.node.metadata_
 
-    async def startup(self):
+    async def startup(self) -> None:
         if (self.context.engine.dialect.name == "sqlite") and (
             self.context.engine.url.database == ":memory:"
         ):
@@ -354,14 +356,14 @@ class CatalogNodeAdapter:
         else:
             await check_catalog_database(self.context.engine)
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         await self.context.engine.dispose()
 
     @property
     def writable(self):
         return bool(self.context.writable_storage)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
 
     async def __aiter__(self):
@@ -527,11 +529,11 @@ class CatalogNodeAdapter:
         return adapter
 
     def new_variation(
-        self,
-        *args,
-        sorting=UNCHANGED,
-        conditions=UNCHANGED,
-        queries=UNCHANGED,
+        self: Sentinel,
+        *args: Sentinel,
+        sorting: Sentinel = UNCHANGED,
+        conditions: Sentinel = UNCHANGED,
+        queries: Sentinel = UNCHANGED,
         # must_revalidate=UNCHANGED,
         **kwargs,
     ):
@@ -554,7 +556,7 @@ class CatalogNodeAdapter:
             **kwargs,
         )
 
-    def search(self, query):
+    def search(self, query: KeysFilter) -> "CatalogNodeAdapter":
         if self.data_sources:
             # Stand queries, which will be passed down to the adapter
             # when / if get_adapter() is called.
@@ -565,7 +567,9 @@ class CatalogNodeAdapter:
     def sort(self, sorting):
         return self.new_variation(sorting=sorting)
 
-    async def get_distinct(self, metadata, structure_families, specs, counts):
+    async def get_distinct(
+        self, metadata, structure_families, specs, counts: Sequence[int]
+    ):
         if self.data_sources:
             return (await self.get_adapter()).get_disinct(
                 metadata, structure_families, specs, counts
@@ -633,7 +637,7 @@ class CatalogNodeAdapter:
 
     async def create_node(
         self,
-        structure_family,
+        structure_family: StructureFamily,
         metadata,
         key=None,
         specs=None,
@@ -839,7 +843,7 @@ class CatalogNodeAdapter:
     # async def patch_node(datasources=None):
     #     ...
 
-    async def revisions(self, offset, limit):
+    async def revisions(self, offset: int, limit: int):
         async with self.context.session() as db:
             revision_orms = (
                 await db.execute(
@@ -891,7 +895,7 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def delete_tree(self, external_only=True):
+    async def delete_tree(self, external_only: bool = True):
         """
         Delete a Node and of the Nodes beneath it in the tree.
 
@@ -950,7 +954,7 @@ class CatalogNodeAdapter:
             await db.commit()
         return result.rowcount
 
-    async def delete_revision(self, number):
+    async def delete_revision(self, number: int):
         async with self.context.session() as db:
             result = await db.execute(
                 delete(orm.Revision)
@@ -969,8 +973,13 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def replace_metadata(
-        self, metadata=None, specs=None, access_blob=None, *, drop_revision=False
-    ):
+        self,
+        metadata=None,
+        specs=None,
+        access_blob=None,
+        *,
+        drop_revision: bool = False,
+    ) -> None:
         values = {}
         if metadata is not None:
             # Trailing underscore in 'metadata_' avoids collision with
@@ -1014,7 +1023,7 @@ class CatalogNodeAdapter:
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
-    async def keys_range(self, offset, limit):
+    async def keys_range(self, offset: int, limit: int):
         if self.data_sources:
             return it.islice(
                 (await self.get_adapter()).keys(),
@@ -1036,7 +1045,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 .all()
             )
 
-    async def items_range(self, offset, limit):
+    async def items_range(self, offset: int, limit: int):
         if self.data_sources:
             return it.islice(
                 (await self.get_adapter()).items(),
@@ -1075,7 +1084,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogCompositeAdapter(CatalogContainerAdapter):
-    async def resolve_flat_key(self, key):
+    async def resolve_flat_key(self, key) -> str:
         for _key, item in await self.items_range(offset=0, limit=None):
             if key == _key:
                 return _key
@@ -1234,7 +1243,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
-def delete_asset(data_uri, is_directory):
+def delete_asset(data_uri: str, is_directory: bool):
     url = urlparse(data_uri)
     if url.scheme == "file":
         path = path_from_uri(data_uri)
@@ -1294,7 +1303,7 @@ _TYPE_CONVERSION_MAP = {
 }
 
 
-def _get_value(value, type):
+def _get_value(value: sqlalchemy.sql.operators.ColumnOperators, type):
     # This is used only for SQLite, to get the types right
     # so that that index is used. There is probably a
     # cleaner way to handle this.
@@ -1303,7 +1312,7 @@ def _get_value(value, type):
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
 
 
-def _prepare_structure(structure_family, structure):
+def _prepare_structure(structure_family: StructureFamily, structure):
     "Convert from pydantic model to dict."
     if structure is None:
         return None
@@ -1507,11 +1516,11 @@ def in_memory(
     *,
     metadata=None,
     specs=None,
-    writable_storage=None,
+    writable_storage: bool = None,
     readable_storage=None,
-    echo=DEFAULT_ECHO,
+    echo: bool = DEFAULT_ECHO,
     adapters_by_mimetype=None,
-):
+) -> CatalogContainerAdapter:
     uri = "sqlite:///:memory:"
     return from_uri(
         uri=uri,
@@ -1531,13 +1540,13 @@ def from_uri(
     metadata=None,
     specs=None,
     writable_storage=None,
-    readable_storage=None,
-    init_if_not_exists=False,
-    echo=DEFAULT_ECHO,
+    readable_storage: bool = None,
+    init_if_not_exists: bool = False,
+    echo: bool = DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
-):
+) -> CatalogContainerAdapter:
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
@@ -1584,14 +1593,14 @@ def from_uri(
     return adapter
 
 
-def _set_sqlite_pragma(conn, record):
+def _set_sqlite_pragma(conn, record) -> None:
     cursor = conn.cursor()
     # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
 
-def format_distinct_result(results, counts):
+def format_distinct_result(results, counts: Sequence[int]):
     if counts:
         formatted_result = [
             {"value": value, "count": count} for value, count in results
@@ -1609,7 +1618,7 @@ class Collision(Conflicts):
     pass
 
 
-def json_serializer(obj):
+def json_serializer(obj) -> str:
     "The PostgreSQL JSON serializer requires str, not bytes."
     return safe_json_dump(obj).decode()
 

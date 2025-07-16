@@ -16,7 +16,7 @@ LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
 
 class DaskDatasetClient(Container):
-    def _repr_pretty_(self, p, cycle):
+    def _repr_pretty_(self, p, cycle) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -32,7 +32,7 @@ class DaskDatasetClient(Container):
         """
         return list(self)
 
-    def _build_arrays(self, variables, optimize_wide_table):
+    def _build_arrays(self, variables, optimize_wide_table: bool):
         data_vars = {}
         coords = {}
         # Optimization: Download scalar columns in batch as DataFrame.
@@ -110,7 +110,9 @@ class DaskDatasetClient(Container):
                     )
         return data_vars, coords
 
-    def read(self, variables=None, *, optimize_wide_table=True):
+    def read(
+        self, variables=None, *, optimize_wide_table: bool = True
+    ) -> xarray.core.dataset.Dataset:
         data_vars, coords = self._build_arrays(variables, optimize_wide_table)
         return xarray.Dataset(
             data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
@@ -118,7 +120,9 @@ class DaskDatasetClient(Container):
 
 
 class DatasetClient(DaskDatasetClient):
-    def read(self, variables=None, *, optimize_wide_table=True):
+    def read(
+        self, variables=None, *, optimize_wide_table: bool = True
+    ) -> xarray.core.dataset.Dataset:
         return (
             super()
             .read(variables=variables, optimize_wide_table=optimize_wide_table)
@@ -130,7 +134,7 @@ _EXTRA_CHARS_PER_ITEM = len("&field=")
 
 
 class _WideTableFetcher:
-    def __init__(self, http_client, link):
+    def __init__(self, http_client, link) -> None:
         self.http_client = http_client
         self.link = link
         self.variables = []
@@ -140,7 +144,7 @@ class _WideTableFetcher:
         # to ask for the data should trigger a request.
         self._lock = threading.Lock()
 
-    def register(self, name, array_client, array_structure):
+    def register(self, name: str, array_client, array_structure):
         if self._dataframe is not None:
             raise RuntimeError("Cannot add variables; already fetched.")
         self.variables.append(name)
@@ -167,7 +171,7 @@ class _WideTableFetcher:
                 self._dataframe = dataframe.reset_index()
         return self._dataframe
 
-    def _fetch_variables(self, variables, method="GET"):
+    def _fetch_variables(self, variables, method: str = "GET"):
         if method == "GET":
             return self._fetch_variables__get(variables)
         if method == "POST":
@@ -201,7 +205,7 @@ class _WideTableFetcher:
         return deserialize_arrow(content)
 
 
-def write_xarray_dataset(client_node, dataset, key=None):
+def write_xarray_dataset(client_node, dataset: xarray.core.dataset.Dataset, key=None):
     dataset_client = client_node.create_container(
         key=key, specs=[Spec("xarray_dataset")], metadata={"attrs": dataset.attrs}
     )

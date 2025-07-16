@@ -22,7 +22,7 @@ here = Path(__file__).parent.absolute()
         ("config_missing_secret_keys_public.yml", False),
     ],
 )
-def test_scalable_config(filename, scalable):
+def test_scalable_config(filename, scalable) -> None:
     config_path = here / "test_configs" / filename
     parsed_config = parse_configs(config_path)
     kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)

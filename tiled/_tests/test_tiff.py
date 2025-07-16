@@ -66,7 +66,7 @@ def client(tmpdir_module):
         ((..., slice(0, 1)), (3, 5, 7, 1)),
     ],
 )
-def test_tiff_sequence(client, slice_input, correct_shape):
+def test_tiff_sequence(client, slice_input, correct_shape) -> None:
     arr = client["sequence"].read(slice=slice_input)
     assert arr.shape == correct_shape
 
@@ -87,19 +87,19 @@ def test_tiff_sequence(client, slice_input, correct_shape):
         ((..., slice(0, 1)), (3, 1, 5, 7, 1)),
     ],
 )
-def test_forced_reshaping(client, slice_input, correct_shape):
+def test_forced_reshaping(client, slice_input, correct_shape) -> None:
     arr = client["5d_sequence"].read(slice=slice_input)
     assert arr.shape == correct_shape
 
 
 @pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0, 0), (1, 5, 7, 4))])
-def test_tiff_sequence_block(client, block_input, correct_shape):
+def test_tiff_sequence_block(client, block_input, correct_shape) -> None:
     arr = client["sequence"].read_block(block_input)
     assert arr.shape == correct_shape
 
 
 @pytest.mark.asyncio
-async def test_tiff_sequence_order(tmpdir):
+async def test_tiff_sequence_order(tmpdir) -> None:
     """
     directory/
       00001.tif
@@ -121,7 +121,7 @@ async def test_tiff_sequence_order(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_tiff_sequence_with_directory_walker(tmpdir):
+async def test_tiff_sequence_with_directory_walker(tmpdir) -> None:
     """
     directory/
       00001.tif
@@ -191,13 +191,13 @@ a,b,c
         assert client["other_file2"].columns == ["a", "b", "c"]
 
 
-def test_rgb(client):
+def test_rgb(client) -> None:
     "Test an RGB TIFF."
     arr = client["color"].read()
     assert arr.shape == COLOR_SHAPE
 
 
-def test_tiff_sequence_cache(client):
+def test_tiff_sequence_cache(client) -> None:
     from numpy.testing import assert_raises
 
     # The two requests go through the same method in the server (read_block) to

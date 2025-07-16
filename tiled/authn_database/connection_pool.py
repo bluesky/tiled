@@ -28,7 +28,7 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
     return engine
 
 
-async def close_database_connection_pool(database_settings: DatabaseSettings):
+async def close_database_connection_pool(database_settings: DatabaseSettings) -> None:
     engine = _connection_pools.pop(database_settings, None)
     if engine is not None:
         await engine.dispose()

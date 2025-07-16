@@ -25,7 +25,7 @@ class FileResponseWithRange(FileResponse):
         *args,
         range: typing.Optional[typing.Tuple[int, int]] = None,
         **kwargs,
-    ):
+    ) -> None:
         if (range is not None) and (status_code != HTTP_206_PARTIAL_CONTENT):
             raise RuntimeError(
                 f"Range requests must have a {HTTP_206_PARTIAL_CONTENT} status code."

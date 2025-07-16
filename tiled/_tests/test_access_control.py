@@ -43,11 +43,11 @@ server_common_config = {
 }
 
 
-def tree_a(access_policy=None):
+def tree_a(access_policy=None) -> MapAdapter:
     return MapAdapter({"A1": arr_ad, "A2": arr_ad})
 
 
-def tree_b(access_policy=None):
+def tree_b(access_policy=None) -> MapAdapter:
     return MapAdapter({"B1": arr_ad, "B2": arr_ad})
 
 
@@ -288,7 +288,9 @@ def context_g(tmpdir_module):
         yield context
 
 
-def test_basic_access_control(context_a, context_b, context_g, enter_username_password):
+def test_basic_access_control(
+    context_a, context_b, context_g, enter_username_password
+) -> None:
     alice_client_a = from_context(context_a)
     alice_client_b = from_context(context_b)
     alice_client_g = from_context(context_g)
@@ -336,7 +338,7 @@ def test_basic_access_control(context_a, context_b, context_g, enter_username_pa
 
 def test_access_control_with_api_key_auth(
     context_a, context_g, enter_username_password
-):
+) -> None:
     # Log in, create an API key, log out.
     with enter_username_password("alice", "secret1"):
         context_a.authenticate()
@@ -362,7 +364,7 @@ def test_access_control_with_api_key_auth(
 
 def test_node_export(
     enter_username_password, context_a, context_b, context_g, buffer_factory
-):
+) -> None:
     "Exporting a node should include only the children we can see."
     alice_client_a = from_context(context_a)
     alice_client_b = from_context(context_b)
@@ -397,7 +399,9 @@ def test_node_export(
     exported_dict_g["contents"]["g"]["contents"]["A3"]
 
 
-def test_create_and_update_allowed(enter_username_password, context_c, context_g):
+def test_create_and_update_allowed(
+    enter_username_password, context_c, context_g
+) -> None:
     alice_client_c = from_context(context_c)
     alice_client_g = from_context(context_g)
     with enter_username_password("alice", "secret1"):
@@ -420,7 +424,7 @@ def test_create_and_update_allowed(enter_username_password, context_c, context_g
     alice_client_g.logout()
 
 
-def test_writing_blocked_by_access_policy(enter_username_password, context_d):
+def test_writing_blocked_by_access_policy(enter_username_password, context_d) -> None:
     alice_client_d = from_context(context_d)
     with enter_username_password("alice", "secret1"):
         alice_client_d.login()
@@ -430,7 +434,7 @@ def test_writing_blocked_by_access_policy(enter_username_password, context_d):
     alice_client_d.logout()
 
 
-def test_create_blocked_by_access_policy(enter_username_password, context_e):
+def test_create_blocked_by_access_policy(enter_username_password, context_e) -> None:
     alice_client_e = from_context(context_e)
     with enter_username_password("alice", "secret1"):
         alice_client_e.login()
@@ -441,7 +445,7 @@ def test_create_blocked_by_access_policy(enter_username_password, context_e):
 
 def test_public_access(
     context_a, context_b, context_c, context_d, context_e, context_f, context_g
-):
+) -> None:
     public_client_a = from_context(context_a)
     public_client_b = from_context(context_b)
     public_client_c = from_context(context_c)
@@ -468,7 +472,7 @@ def test_public_access(
         public_client_g["g", "A3"]
 
 
-def test_service_principal_access(tmpdir):
+def test_service_principal_access(tmpdir) -> None:
     "Test that a service principal can work with SimpleAccessPolicy."
     config = {
         "authentication": {
@@ -534,14 +538,14 @@ def test_service_principal_access(tmpdir):
 class CustomAttributesAuthenticator(DictionaryAuthenticator):
     """An example authenticator that enriches the stored user information."""
 
-    def __init__(self, users: dict, confirmation_message: str = ""):
+    def __init__(self, users: dict, confirmation_message: str = "") -> None:
         self._users = users
         super().__init__(
             {username: user["password"] for username, user in users.items()},
             confirmation_message,
         )
 
-    async def authenticate(self, username, password):
+    async def authenticate(self, username: str, password: str):
         state = await super().authenticate(username, password)
         if isinstance(state, UserSessionState):
             # enrich the auth state
@@ -556,7 +560,7 @@ class CustomAttributesAccessPolicy:
 
     READ_METADATA = ["read:metadata"]
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     async def allowed_scopes(self, node, principal, authn_scopes):
@@ -589,7 +593,7 @@ class CustomAttributesAccessPolicy:
         return []
 
 
-def tree_enriched_metadata():
+def tree_enriched_metadata() -> MapAdapter:
     return MapAdapter(
         {
             "A": ArrayAdapter.from_array(
@@ -671,8 +675,12 @@ def custom_attributes_context():
     ],
 )
 def test_custom_attributes_with_data_access(
-    enter_username_password, custom_attributes_context, username, password, nodes
-):
+    enter_username_password,
+    custom_attributes_context,
+    username: str,
+    password: str,
+    nodes,
+) -> None:
     """Test that the user has access to the data based on their auth attributes."""
     with enter_username_password(username, password):
         custom_attributes_context.authenticate()
@@ -700,8 +708,12 @@ def test_custom_attributes_with_data_access(
     ],
 )
 def test_custom_attributes_without_data_access(
-    enter_username_password, custom_attributes_context, username, password, nodes
-):
+    enter_username_password,
+    custom_attributes_context,
+    username: str,
+    password: str,
+    nodes,
+) -> None:
     """Test that the user cannot access data due to missing auth attributes."""
     with enter_username_password(username, password):
         custom_attributes_context.authenticate()

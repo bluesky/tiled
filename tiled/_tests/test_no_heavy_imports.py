@@ -15,6 +15,6 @@ import pytest
         "xarray",
     ],
 )
-def test_no_heavy_imports(module):
+def test_no_heavy_imports(module) -> None:
     code = f"import tiled.client; import sys; assert '{module}' not in sys.modules"
     subprocess.check_call([sys.executable, "-c", code])

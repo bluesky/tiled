@@ -9,7 +9,7 @@ from ..server.app import build_app_from_config
 tree = MapAdapter({"example": ArrayAdapter.from_array([1, 2, 3])})
 
 
-def test_root():
+def test_root() -> None:
     "One tree served at top level"
     config = {
         "trees": [
@@ -24,7 +24,7 @@ def test_root():
         assert list(client) == ["example"]
 
 
-def test_single_nested():
+def test_single_nested() -> None:
     "One tree served nested one layer down"
     config = {
         "trees": [
@@ -41,7 +41,7 @@ def test_single_nested():
         assert list(client["a"]["b"]) == ["example"]
 
 
-def test_single_deeply_nested():
+def test_single_deeply_nested() -> None:
     "One tree served nested many layers down"
     config = {
         "trees": [
@@ -61,7 +61,7 @@ def test_single_deeply_nested():
         assert list(client["a"]["b"]["c"]["d"]["e"]) == ["example"]
 
 
-def test_many_nested():
+def test_many_nested() -> None:
     config = {
         "trees": [
             {
@@ -100,7 +100,7 @@ def test_many_nested():
         assert list(client["a"]["d"]["g"]["i"]) == ["example"]
 
 
-def test_extra_files(tmpdir):
+def test_extra_files(tmpdir) -> None:
     config = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
     with open(tmpdir / "config.yml", "w") as config_file:
         yaml.dump(config, config_file)

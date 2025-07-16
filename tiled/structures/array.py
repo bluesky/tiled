@@ -106,7 +106,7 @@ class BuiltinDtype:
     def to_numpy_dtype(self) -> numpy.dtype:
         return numpy.dtype(self.to_numpy_str())
 
-    def to_numpy_str(self):
+    def to_numpy_str(self) -> str:
         endianness = self.__endianness_reverse_map[self.endianness]
         # dtype.itemsize always reports bytes.  The format string from the
         # numeric types the string format is: {type_code}{byte_count} so we can
@@ -200,7 +200,7 @@ class StructDtype:
     def to_numpy_descr(self):
         return [f.to_numpy_descr() for f in self.fields]
 
-    def max_depth(self):
+    def max_depth(self) -> int:
         return max(
             1 if isinstance(f.dtype, BuiltinDtype) else 1 + f.dtype.max_depth()
             for f in self.fields
@@ -240,7 +240,9 @@ class ArrayStructure:
         )
 
     @classmethod
-    def from_array(cls, array, shape=None, chunks=None, dims=None) -> "ArrayStructure":
+    def from_array(
+        cls, array, shape=None, chunks=None, dims: Optional[Tuple[str, ...]] = None
+    ) -> "ArrayStructure":
         from dask.array.core import normalize_chunks
 
         if not hasattr(array, "__array__"):

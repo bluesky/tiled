@@ -56,7 +56,7 @@ def low_size_limit():
     os.environ.pop("TILED_RESPONSE_BYTESIZE_LIMIT")
 
 
-def test_array(client, tmpdir):
+def test_array(client, tmpdir) -> None:
     """
     Download an array over the size limit.
     """
@@ -70,7 +70,7 @@ def test_array(client, tmpdir):
             client["small_array"].export(path)  # too big
 
 
-def test_dataframe(client, tmpdir):
+def test_dataframe(client, tmpdir) -> None:
     """
     Download an dataframe over the size limit.
     """

@@ -63,7 +63,7 @@ def config(sqlite_or_postgres_uri):
     }
 
 
-def test_password_auth(enter_username_password, config):
+def test_password_auth(enter_username_password, config) -> None:
     """
     A password that is wrong, empty, or belonging to a different user fails.
     """
@@ -104,7 +104,7 @@ def test_password_auth(enter_username_password, config):
                 from_context(context)
 
 
-def test_remember_me(enter_username_password, config):
+def test_remember_me(enter_username_password, config) -> None:
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as Alice.
         with enter_username_password("alice", "secret1"):
@@ -124,7 +124,7 @@ def test_remember_me(enter_username_password, config):
         assert not context.use_cached_tokens()
 
 
-def test_logout(enter_username_password, config, tmpdir):
+def test_logout(enter_username_password, config, tmpdir) -> None:
     """
     Logging out revokes the session, such that it cannot be refreshed.
     """
@@ -158,7 +158,7 @@ def test_logout(enter_username_password, config, tmpdir):
             client.context.force_auth_refresh()
 
 
-def test_key_rotation(enter_username_password, config):
+def test_key_rotation(enter_username_password, config) -> None:
     """
     Rotate in a new secret used to sign keys.
     Confirm that clients experience a smooth transition.
@@ -192,7 +192,7 @@ def test_key_rotation(enter_username_password, config):
         from_context(context)
 
 
-def test_refresh_forced(enter_username_password, config):
+def test_refresh_forced(enter_username_password, config) -> None:
     "Forcing refresh obtains new token."
     with Context.from_app(build_app_from_config(config)) as context:
         # Normal default configuration: a refresh is not immediately required.
@@ -208,7 +208,7 @@ def test_refresh_forced(enter_username_password, config):
         assert tokens1 != tokens2
 
 
-def test_refresh_transparent(enter_username_password, config):
+def test_refresh_transparent(enter_username_password, config) -> None:
     "When access token expired, refresh happens transparently."
     # Pathological configuration: a refresh is almost immediately required
     config["authentication"]["access_token_max_age"] = 1
@@ -223,7 +223,7 @@ def test_refresh_transparent(enter_username_password, config):
         assert tokens2 != tokens1
 
 
-def test_expired_session(enter_username_password, config):
+def test_expired_session(enter_username_password, config) -> None:
     # Pathological configuration: sessions do not last
     config["authentication"]["session_max_age"] = 1
     with Context.from_app(build_app_from_config(config)) as context:
@@ -235,7 +235,7 @@ def test_expired_session(enter_username_password, config):
             client.context.force_auth_refresh()
 
 
-def test_revoke_session(enter_username_password, config):
+def test_revoke_session(enter_username_password, config) -> None:
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
             client = from_context(context)
@@ -254,7 +254,7 @@ def test_revoke_session(enter_username_password, config):
             client.context.force_auth_refresh()
 
 
-def test_multiple_providers(enter_username_password, config, monkeypatch):
+def test_multiple_providers(enter_username_password, config, monkeypatch) -> None:
     """
     Test a configuration with multiple identity providers.
 
@@ -289,7 +289,7 @@ def test_multiple_providers(enter_username_password, config, monkeypatch):
             from_context(context)
 
 
-def test_multiple_providers_name_collision(config):
+def test_multiple_providers_name_collision(config) -> None:
     """
     Check that we enforce unique provider names.
     """
@@ -312,7 +312,7 @@ def test_multiple_providers_name_collision(config):
         build_app_from_config(config)
 
 
-def test_admin(enter_username_password, config):
+def test_admin(enter_username_password, config) -> None:
     """
     Test that the 'tiled_admin' config confers the 'admin' Role on a Principal.
     """
@@ -349,7 +349,7 @@ def test_admin(enter_username_password, config):
         assert "admin" in [role["name"] for role in admin_roles]
 
 
-def test_api_key_activity(enter_username_password, config):
+def test_api_key_activity(enter_username_password, config) -> None:
     """
     Create and use an API. Verify that latest_activity updates.
     """
@@ -400,7 +400,7 @@ def test_api_key_activity(enter_username_password, config):
         context.which_api_key()
 
 
-def test_api_key_scopes(enter_username_password, config):
+def test_api_key_scopes(enter_username_password, config) -> None:
     # Make alice an admin. Leave bob as a user.
     config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
     with Context.from_app(build_app_from_config(config)) as context:
@@ -432,7 +432,7 @@ def test_api_key_scopes(enter_username_password, config):
         context.api_key = None
 
 
-def test_api_key_revoked(enter_username_password, config):
+def test_api_key_revoked(enter_username_password, config) -> None:
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
             context.authenticate()
@@ -462,7 +462,7 @@ def test_api_key_revoked(enter_username_password, config):
             from_context(context)
 
 
-def test_api_key_expiration(enter_username_password, config):
+def test_api_key_expiration(enter_username_password, config) -> None:
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
             context.authenticate()
@@ -477,7 +477,7 @@ def test_api_key_expiration(enter_username_password, config):
             from_context(context)
 
 
-def test_api_key_limit(enter_username_password, config):
+def test_api_key_limit(enter_username_password, config) -> None:
     # Decrease the limit so this test runs faster.
     original_limit = authentication.API_KEY_LIMIT
     authentication.API_KEY_LIMIT = 3
@@ -494,7 +494,7 @@ def test_api_key_limit(enter_username_password, config):
         authentication.API_KEY_LIMIT = original_limit
 
 
-def test_session_limit(enter_username_password, config):
+def test_session_limit(enter_username_password, config) -> None:
     # Decrease the limit so this test runs faster.
     original_limit = authentication.SESSION_LIMIT
     authentication.SESSION_LIMIT = 3
@@ -553,8 +553,8 @@ def principals_context(enter_username_password, config):
     ),
 )
 def test_admin_api_key_any_principal(
-    enter_username_password, principals_context, username, scopes, resource
-):
+    enter_username_password, principals_context, username: str, scopes, resource
+) -> None:
     """
     Admin can create usable API keys for any prinicipal, within that principal's scopes.
     """
@@ -577,7 +577,9 @@ def test_admin_api_key_any_principal(
             context.http_client.get(resource).raise_for_status()
 
 
-def test_admin_create_service_principal(enter_username_password, principals_context):
+def test_admin_create_service_principal(
+    enter_username_password, principals_context
+) -> None:
     """
     Admin can create service accounts with API keys.
     """
@@ -603,7 +605,7 @@ def test_admin_create_service_principal(enter_username_password, principals_cont
 
 def test_admin_api_key_any_principal_exceeds_scopes(
     enter_username_password, principals_context
-):
+) -> None:
     """
     Admin cannot create API key that exceeds scopes for another principal.
     """
@@ -621,7 +623,9 @@ def test_admin_api_key_any_principal_exceeds_scopes(
 
 
 @pytest.mark.parametrize("username", ("alice", "bob"))
-def test_api_key_any_principal(enter_username_password, principals_context, username):
+def test_api_key_any_principal(
+    enter_username_password, principals_context, username: str
+) -> None:
     """
     Ordinary user cannot create API key for another principal.
     """
@@ -635,7 +639,7 @@ def test_api_key_any_principal(enter_username_password, principals_context, user
             context.admin.create_api_key(principal_uuid, scopes=["read:metadata"])
 
 
-def test_api_key_bypass_scopes(enter_username_password, principals_context):
+def test_api_key_bypass_scopes(enter_username_password, principals_context) -> None:
     """
     Ordinary user cannot create API key that bypasses a scopes restriction.
     """
@@ -670,7 +674,7 @@ def test_api_key_bypass_scopes(enter_username_password, principals_context):
 def test_admin_delete_principal_apikey(
     enter_username_password,
     principals_context,
-):
+) -> None:
     """
     Admin can delete API keys for any prinicipal, revoking access.
     """

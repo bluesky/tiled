@@ -10,7 +10,7 @@ from ..server.app import build_app
 
 
 @pytest.mark.asyncio
-async def test_excel(tmpdir):
+async def test_excel(tmpdir) -> None:
     df = pandas.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
     df.to_excel(tmpdir / "spreadsheet.xlsx")
     catalog = in_memory(readable_storage=[tmpdir])
@@ -22,7 +22,7 @@ async def test_excel(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_zarr_array(tmpdir):
+async def test_zarr_array(tmpdir) -> None:
     z = zarr.open(str(tmpdir / "za.zarr"), "w", shape=(3,), chunks=(3,), dtype="i4")
     z[:] = [1, 2, 3]
     catalog = in_memory(readable_storage=[tmpdir])
@@ -52,7 +52,7 @@ async def test_zarr_group(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_hdf5(tmpdir, buffer):
+async def test_hdf5(tmpdir, buffer) -> None:
     with h5py.File(str(tmpdir / "h.h5"), "w") as file:
         file["x"] = [1, 2, 3]
         group = file.create_group("g")

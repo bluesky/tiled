@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -78,7 +78,7 @@ def identity_provider_input(
     return spec
 
 
-def username_input():
+def username_input() -> str:
     raise_if_cannot_prompt()
     return input("Username: ")
 
@@ -154,13 +154,13 @@ class Context:
         uri,
         *,
         headers=None,
-        api_key=None,
+        api_key: Optional[str] = None,
         cache=UNSET,
         timeout=None,
-        verify=True,
+        verify: bool = True,
         app=None,
-        raise_server_exceptions=True,
-    ):
+        raise_server_exceptions: bool = True,
+    ) -> None:
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
         headers = headers or {}
@@ -276,7 +276,7 @@ class Context:
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         auth_info = []
         if (self.api_key is None) and (self.http_client.auth is None):
             auth_info.append("(unauthenticated)")
@@ -300,13 +300,13 @@ class Context:
         auth_repr = " ".join(auth_info)
         return f"<{type(self).__name__} {auth_repr}>"
 
-    def __enter__(self):
+    def __enter__(self) -> "Context":
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self.http_client.__exit__()
 
     def __getstate__(self):
@@ -373,10 +373,10 @@ class Context:
         uri,
         *,
         headers=None,
-        api_key=None,
+        api_key: Optional[str] = None,
         cache=UNSET,
         timeout=None,
-        verify=True,
+        verify: bool = True,
         app=None,
     ):
         """
@@ -442,8 +442,8 @@ class Context:
         cache=UNSET,
         headers=None,
         timeout=None,
-        api_key=UNSET,
-        raise_server_exceptions=True,
+        api_key: str = UNSET,
+        raise_server_exceptions: bool = True,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -487,7 +487,7 @@ class Context:
             return match.group(1)
 
     @api_key.setter
-    def api_key(self, api_key):
+    def api_key(self, api_key: str) -> None:
         if api_key is None:
             if self.http_client.headers.get("Authorization", "").startswith("Apikey "):
                 self.http_client.headers.pop("Authorization")
@@ -499,7 +499,7 @@ class Context:
         return self.http_client._transport.cache
 
     @cache.setter
-    def cache(self, cache):
+    def cache(self, cache) -> None:
         self.http_client._transport.cache = cache
 
     def which_api_key(self):
@@ -549,7 +549,7 @@ class Context:
                     )
                 ).json()
 
-    def revoke_api_key(self, first_eight):
+    def revoke_api_key(self, first_eight) -> None:
         """
         Revoke an API key.
 
@@ -608,8 +608,8 @@ class Context:
     def authenticate(
         self,
         *,
-        remember_me=True,
-    ):
+        remember_me: bool = True,
+    ) -> None:
         """
         Log in to a Tiled server.
 
@@ -644,7 +644,7 @@ class Context:
     # These two methods are aliased for convenience.
     login = authenticate
 
-    def configure_auth(self, tokens, remember_me=True):
+    def configure_auth(self, tokens, remember_me: bool = True):
         """
         Configure Tiled client with tokens for refresh flow.
 
@@ -698,7 +698,7 @@ class Context:
         # Confirm the state of properties that authentication consists of
         return (self.api_key is not None) or (self.http_client.auth is not None)
 
-    def _token_directory(self):
+    def _token_directory(self) -> Path:
         # e.g. ~/.config/tiled/tokens/{host:port}
         # with the templated element URL-encoded so it is a valid filename.
         path = Path(
@@ -716,7 +716,7 @@ class Context:
 
         return path
 
-    def use_cached_tokens(self):
+    def use_cached_tokens(self) -> bool:
         """
         Attempt to reconnect using cached tokens.
 
@@ -794,7 +794,7 @@ class Context:
                     )
                 ).json()
 
-    def logout(self):
+    def logout(self) -> None:
         """
         Log out of the current session (if any).
 
@@ -826,7 +826,7 @@ class Context:
         self.http_client.headers.pop("Authorization", None)
         self.http_client.auth = None
 
-    def revoke_session(self, session_id):
+    def revoke_session(self, session_id) -> None:
         """
         Revoke a Session so it cannot be refreshed.
 
@@ -847,11 +847,11 @@ class Context:
 class Admin:
     "Accessor for requests that require administrative privileges."
 
-    def __init__(self, context: Context):
+    def __init__(self, context: Context) -> None:
         self.context = context
         self.base_url = context.server_info.links["self"]
 
-    def list_principals(self, offset=0, limit=100):
+    def list_principals(self, offset: int = 0, limit: int = 100):
         "List Principals (users and services) in the authentication database."
         url_path = f"{self.base_url}/auth/principal"
         params = {
@@ -959,7 +959,7 @@ class CannotPrompt(Exception):
     pass
 
 
-def _can_prompt():
+def _can_prompt() -> bool:
     "Infer whether the user can be prompted for a password or user code."
 
     if (not sys.__stdin__.closed) and sys.__stdin__.isatty():
@@ -976,7 +976,9 @@ def _can_prompt():
     return False
 
 
-def password_grant(http_client, auth_endpoint, provider, username, password):
+def password_grant(
+    http_client, auth_endpoint: str, provider: str, username: str, password: str
+):
     form_data = {
         "grant_type": "password",
         "username": username,
@@ -989,7 +991,7 @@ def password_grant(http_client, auth_endpoint, provider, username, password):
     return token_response.json()
 
 
-def device_code_grant(http_client, auth_endpoint):
+def device_code_grant(http_client, auth_endpoint: str):
     for attempt in retry_context():
         with attempt:
             verification_response = http_client.post(auth_endpoint, json={}, auth=None)

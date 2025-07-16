@@ -6,7 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Union
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -44,7 +44,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
     @classmethod
-    def _discover_entrypoints(cls, entrypoint_name):
+    def _discover_entrypoints(cls, entrypoint_name: str):
         return OneShotCachedMap(
             {
                 name: entrypoint.load
@@ -55,7 +55,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
     @classmethod
-    def discover_clients_from_entrypoints(cls):
+    def discover_clients_from_entrypoints(cls) -> None:
         """
         Search the software environment for libraries that register structure clients.
 
@@ -86,8 +86,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         queries=None,
         sorting=None,
         structure=None,
-        include_data_sources=False,
-    ):
+        include_data_sources: bool = False,
+    ) -> None:
         "This is not user-facing. Use Node.from_uri."
 
         self.structure_clients = structure_clients
@@ -123,7 +123,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             include_data_sources=include_data_sources,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Display up to the first N keys to avoid making a giant service
         # request. Use _keys_slicer because it is unauthenticated.
         N = 10
@@ -142,7 +142,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def new_variation(
         self,
         *,
-        structure_clients=UNCHANGED,
+        structure_clients: Sentinel = UNCHANGED,
         queries=UNCHANGED,
         sorting=UNCHANGED,
         **kwargs,
@@ -167,7 +167,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             **kwargs,
         )
 
-    def __len__(self):
+    def __len__(self) -> int:
         # If the contents of this node was provided in-line, there is an
         # implication that the contents are not expected to be dynamic. Used the
         # count provided in the structure.
@@ -199,12 +199,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
 
-    def __length_hint__(self):
+    def __length_hint__(self) -> int:
         # TODO The server should provide an estimated count.
         # https://www.python.org/dev/peps/pep-0424/
         return len(self)
 
-    def __iter__(self, _ignore_inlined_contents=False):
+    def __iter__(self, _ignore_inlined_contents: bool = False) -> Iterator:
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
@@ -240,7 +240,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def __getitem__(self, keys, _ignore_inlined_contents=False):
+    def __getitem__(self, keys, _ignore_inlined_contents: bool = False):
         # These are equivalent:
         #
         # >>> node['a']['b']['c']
@@ -382,7 +382,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         return result
 
-    def delete(self, key):
+    def delete(self, key) -> None:
         self._cached_len = None
         for attempt in retry_context():
             with attempt:
@@ -391,7 +391,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(
-        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+        self,
+        start: int,
+        stop: int,
+        direction: int,
+        page_size: Optional[int] = None,
+        *,
+        _ignore_inlined_contents: bool = False,
     ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
@@ -443,7 +449,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def _items_slice(
-        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+        self,
+        start,
+        stop,
+        direction,
+        page_size: Optional[int] = None,
+        *,
+        _ignore_inlined_contents: bool = False,
     ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
@@ -509,13 +521,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     return
             next_page_url = content["links"]["next"]
 
-    def keys(self):
+    def keys(self) -> KeysView:
         return KeysView(lambda: len(self), self._keys_slice)
 
-    def values(self):
+    def values(self) -> ValuesView:
         return ValuesView(lambda: len(self), self._items_slice)
 
-    def items(self):
+    def items(self) -> ItemsView:
         return ItemsView(lambda: len(self), self._items_slice)
 
     def search(self, query):
@@ -531,7 +543,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return self.new_variation(queries=self._queries + [query])
 
     def distinct(
-        self, *metadata_keys, structure_families=False, specs=False, counts=False
+        self,
+        *metadata_keys,
+        structure_families: bool = False,
+        specs: bool = False,
+        counts: bool = False,
     ):
         """
         Get the unique values and optionally counts of metadata_keys,
@@ -642,7 +658,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def new(
         self,
-        structure_family,
+        structure_family: StructureFamily,
         data_sources,
         *,
         key=None,
@@ -832,7 +848,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         key=None,
         metadata=None,
-        dims=None,
+        dims: Optional[Sequence[int]] = None,
         specs=None,
         access_tags=None,
     ):
@@ -930,7 +946,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         key=None,
         metadata=None,
-        dims=None,
+        dims: Optional[Sequence[int]] = None,
         specs=None,
         access_tags=None,
     ):
@@ -986,7 +1002,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         key=None,
         metadata=None,
-        dims=None,
+        dims: Optional[Sequence[int]] = None,
         specs=None,
         access_tags=None,
     ):
@@ -1207,14 +1223,14 @@ LENGTH_CACHE_TTL = 1  # second
 class Ascending(Sentinel):
     "Intended for more readable sorting operations. An alias for 1."
 
-    def __index__(self):
+    def __index__(self) -> int:
         return 1
 
 
 class Descending(Sentinel):
     "Intended for more readable sorting operations. An alias for -1."
 
-    def __index__(self):
+    def __index__(self) -> int:
         return -1
 
 
@@ -1226,7 +1242,7 @@ DESCENDING = Descending("DESCENDING")
 
 class _LazyLoad:
     # This exists because lambdas and closures cannot be pickled.
-    def __init__(self, import_module_args, attr_name):
+    def __init__(self, import_module_args, attr_name: str) -> None:
         self.import_module_args = import_module_args
         self.attr_name = attr_name
 
@@ -1238,7 +1254,7 @@ class _LazyLoad:
 
 class _Wrap:
     # This exists because lambdas and closures cannot be pickled.
-    def __init__(self, obj):
+    def __init__(self, obj) -> None:
         self.obj = obj
 
     def __call__(self):

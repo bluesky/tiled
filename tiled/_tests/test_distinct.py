@@ -67,7 +67,7 @@ def context():
         yield context
 
 
-def test_distinct(context):
+def test_distinct(context) -> None:
     client = from_context(context)
     # test without counts
     distinct = client.distinct(
@@ -123,7 +123,7 @@ def test_distinct(context):
     assert distinct["metadata"] == expected
 
 
-def test_search_distinct(context):
+def test_search_distinct(context) -> None:
     client = from_context(context)
     distinct = (
         client.search(Key("group") == "A")

@@ -1,3 +1,4 @@
+import sqlalchemy
 from sqlalchemy import text
 
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
@@ -20,7 +21,9 @@ ALL_REVISIONS = [
 REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
-async def initialize_database(engine):
+async def initialize_database(
+    engine: sqlalchemy.ext.asyncio.engine.AsyncEngine,
+) -> None:
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 

@@ -1,6 +1,7 @@
 """
 Iterables for KeysView, ValuesView, ItemsView that are sliceable.
 """
+from typing import Iterator, Optional
 
 
 class IterViewBase:
@@ -9,7 +10,7 @@ class IterViewBase:
     def __init__(self, get_length) -> None:
         self._get_length = get_length
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__}>"
 
     # Convenience aliases
@@ -20,19 +21,19 @@ class IterViewBase:
     def last(self):
         return self[-1]
 
-    def head(self, n=5):
+    def head(self, n: int = 5):
         return self[:n]
 
-    def tail(self, n=5):
+    def tail(self, n: int = 5):
         return list(reversed(self[-1 : -(n + 1) : -1]))  # noqa: E203
 
-    def __init_subclass__(cls, *args, **kwargs):
+    def __init_subclass__(cls, *args, **kwargs) -> None:
         cls.first.__doc__ = f"Get the first {cls._name}."
         cls.last.__doc__ = f"Get the last {cls._name}."
         cls.head.__doc__ = f"Get the first N {cls._name}s."
         cls.tail.__doc__ = f"Get the last N {cls._name}s."
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self._get_length()
 
 
@@ -44,7 +45,7 @@ class KeysView(IterViewBase):
     __slots__ = ("_keys_slice",)
     _name = "key"
 
-    def __init__(self, get_length, keys_slice, page_size=None) -> None:
+    def __init__(self, get_length, keys_slice, page_size: Optional[int] = None) -> None:
         self._keys_slice = keys_slice
         self._page_size = page_size
         super().__init__(get_length)
@@ -55,7 +56,7 @@ class KeysView(IterViewBase):
         # except page_size set to n.
         return type(self)(self._get_length, self._keys_slice, page_size=n)
 
-    def __getitem__(self, index_or_slice):
+    def __getitem__(self, index_or_slice: slice):
         if isinstance(index_or_slice, int):
             if index_or_slice < 0:
                 index_or_slice = -1 - index_or_slice
@@ -84,7 +85,7 @@ class KeysView(IterViewBase):
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._keys_slice(0, None, 1, self._page_size)
 
 
@@ -96,7 +97,9 @@ class ItemsView(IterViewBase):
     __slots__ = ("_items_slice",)
     _name = "item"
 
-    def __init__(self, get_length, items_slice, page_size=None) -> None:
+    def __init__(
+        self, get_length, items_slice, page_size: Optional[int] = None
+    ) -> None:
         self._items_slice = items_slice
         self._page_size = page_size
         super().__init__(get_length)
@@ -107,7 +110,7 @@ class ItemsView(IterViewBase):
         # except page_size set to n.
         return type(self)(self._get_length, self._items_slice, page_size=n)
 
-    def __getitem__(self, index_or_slice):
+    def __getitem__(self, index_or_slice: slice):
         if isinstance(index_or_slice, int):
             if index_or_slice < 0:
                 index_or_slice = -1 - index_or_slice
@@ -136,7 +139,7 @@ class ItemsView(IterViewBase):
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._items_slice(0, None, 1, self._page_size)
 
 
@@ -148,7 +151,9 @@ class ValuesView(IterViewBase):
     __slots__ = ("_items_slice",)
     _name = "value"
 
-    def __init__(self, get_length, items_slice, page_size=None) -> None:
+    def __init__(
+        self, get_length, items_slice, page_size: Optional[int] = None
+    ) -> None:
         self._items_slice = items_slice
         self._page_size = page_size
         super().__init__(get_length)
@@ -192,12 +197,12 @@ class ValuesView(IterViewBase):
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         for key, value in self._items_slice(0, None, 1, self._page_size):
             yield value
 
 
-def slice_to_interval(slice_):
+def slice_to_interval(slice_: slice):
     """
     Convert slice object to (start, stop, direction).
     """

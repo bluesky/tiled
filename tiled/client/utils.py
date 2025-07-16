@@ -9,9 +9,12 @@ from weakref import WeakValueDictionary
 
 import httpx
 import msgpack
+import stamina
 import stamina.instrumentation
 
-from ..utils import path_from_uri
+from tiled.client.context import Context
+
+from ..utils import OneShotCachedMap, path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -64,7 +67,7 @@ def raise_for_status(response) -> None:
     raise httpx.HTTPStatusError(message, request=request, response=response)
 
 
-def handle_error(response):
+def handle_error(response: httpx.Response):
     if not response.is_error:
         return response
     try:
@@ -92,7 +95,7 @@ def handle_error(response):
 
 
 class ClientError(httpx.HTTPStatusError):
-    def __init__(self, message, request, response):
+    def __init__(self, message, request, response) -> None:
         super().__init__(message=message, request=request, response=response)
 
 
@@ -113,7 +116,7 @@ TILED_RETRY_ATTEMPTS = int(os.getenv("TILED_RETRY_ATTEMPTS", "10"))
 TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_TIMEOUT", "45.0"))
 
 
-def retry_context():
+def retry_context() -> stamina._core._RetryContextIterator:
     "Iterable that yields a context manager per retry attempt"
     return stamina.retry_context(
         on=should_retry,
@@ -245,7 +248,11 @@ def export_util(file, format, get, link, params):
 
 
 def client_for_item(
-    context, structure_clients, item, structure=None, include_data_sources=False
+    context: Context,
+    structure_clients: OneShotCachedMap,
+    item,
+    structure=None,
+    include_data_sources: bool = False,
 ):
     """
     Create an instance of the appropriate client class for an item.
@@ -348,7 +355,7 @@ class SerializableLock:
     token: Hashable
     lock: Lock
 
-    def __init__(self, token=None):
+    def __init__(self, token=None) -> None:
         self.token = token or str(uuid.uuid4())
         if self.token in SerializableLock._locks:
             self.lock = SerializableLock._locks[self.token]
@@ -362,10 +369,10 @@ class SerializableLock:
     def release(self, *args, **kwargs):
         return self.lock.release(*args, **kwargs)
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         self.lock.__enter__()
 
-    def __exit__(self, *args):
+    def __exit__(self, *args) -> None:
         self.lock.__exit__(*args)
 
     def locked(self):
@@ -374,10 +381,10 @@ class SerializableLock:
     def __getstate__(self):
         return self.token
 
-    def __setstate__(self, token):
+    def __setstate__(self, token) -> None:
         self.__init__(token)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"<{self.__class__.__name__}: {self.token}>"
 
     __repr__ = __str__

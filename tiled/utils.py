@@ -16,7 +16,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, Sequence
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -35,13 +35,13 @@ patch_mimetypes = namedtuple(
 class ListView(collections.abc.Sequence):
     "An immutable view of a list."
 
-    def __init__(self, seq):
+    def __init__(self, seq) -> None:
         self._internal_list = list(seq)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._internal_list!r})"
 
-    def _repr_pretty_(self, p, cycle):
+    def _repr_pretty_(self, p, cycle: bool) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -59,16 +59,16 @@ class ListView(collections.abc.Sequence):
     def __getitem__(self, index):
         return self._internal_list[index]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._internal_list
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._internal_list)
 
-    def __setitem__(self, index, value):
+    def __setitem__(self, index, value) -> None:
         raise TypeError("Setting values is not allowed.")
 
-    def __delitem__(self, index):
+    def __delitem__(self, index) -> None:
         raise TypeError("Deleting values is not allowed.")
 
     def __add__(self, other):
@@ -81,13 +81,13 @@ class ListView(collections.abc.Sequence):
 class DictView(collections.abc.Mapping):
     "An immutable view of a dict."
 
-    def __init__(self, d):
+    def __init__(self, d) -> None:
         self._internal_dict = d
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._internal_dict!r})"
 
-    def _repr_pretty_(self, p, cycle):
+    def _repr_pretty_(self, p, cycle: bool) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -105,16 +105,16 @@ class DictView(collections.abc.Mapping):
     def __getitem__(self, key):
         return self._internal_dict[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._internal_dict
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._internal_dict)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value) -> None:
         raise TypeError("Setting items is not allowed.")
 
-    def __delitem__(self, key):
+    def __delitem__(self, key) -> None:
         raise TypeError("Deleting items is not allowed.")
 
     def __eq__(self, other):
@@ -131,7 +131,7 @@ _OneShotCachedMapWrapper = collections.namedtuple("_OneShotCachedMapWrapper", ("
 class OneShotCachedMap(collections.abc.Mapping):
     __slots__ = ("__mapping", "__lock")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         dictionary = dict(*args, **kwargs)
         wrap = _OneShotCachedMapWrapper
         # TODO should be recursive lock?
@@ -148,7 +148,7 @@ class OneShotCachedMap(collections.abc.Mapping):
                 v = self.__mapping[key] = v.func()
         return v
 
-    def set(self, key, value_factory):
+    def set(self, key: str, value_factory):
         """
         Set key to a callable the returns value.
         """
@@ -158,38 +158,38 @@ class OneShotCachedMap(collections.abc.Mapping):
             )
         self.__mapping[key] = _OneShotCachedMapWrapper(value_factory)
 
-    def discard(self, key):
+    def discard(self, key) -> None:
         """
         Discard a key if it is present. This is idempotent.
         """
         self.__mapping.pop(key, None)
         self.evict(key)
 
-    def remove(self, key):
+    def remove(self, key) -> None:
         """
         Remove a key. Raises KeyError if key not present.
         """
         del self.__mapping[key]
         self.evict(key)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.__mapping)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return iter(self.__mapping)
 
-    def __contains__(self, k):
+    def __contains__(self, k: str) -> bool:
         # make sure checking 'in' does not trigger evaluation
         return k in self.__mapping
 
     def __getstate__(self):
         return self.__mapping
 
-    def __setstate__(self, mapping):
+    def __setstate__(self, mapping) -> None:
         self.__mapping = mapping
         self.__lock = threading.Lock()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         d = {}
         for k, v in self.__mapping.items():
             if isinstance(v, _OneShotCachedMapWrapper):
@@ -216,11 +216,11 @@ class CachingMap(collections.abc.Mapping):
 
     __slots__ = ("__mapping", "__cache")
 
-    def __init__(self, mapping, cache):
+    def __init__(self, mapping, cache) -> None:
         self.__mapping = mapping
         self.__cache = cache
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         try:
             return self.__cache[key]
         except KeyError:
@@ -228,7 +228,7 @@ class CachingMap(collections.abc.Mapping):
             self.__cache[key] = value
             return value
 
-    def set(self, key, value_factory):
+    def set(self, key: str, value_factory):
         """
         Set key to a callable the returns value.
         """
@@ -240,21 +240,21 @@ class CachingMap(collections.abc.Mapping):
         # This may be replacing (updating) an existing key. Clear any cached value.
         self.evict(key)
 
-    def discard(self, key):
+    def discard(self, key: str) -> None:
         """
         Discard a key if it is present. This is idempotent.
         """
         self.__mapping.pop(key, None)
         self.evict(key)
 
-    def remove(self, key):
+    def remove(self, key: str) -> None:
         """
         Remove a key. Raises KeyError if key not present.
         """
         del self.__mapping[key]
         self.evict(key)
 
-    def evict(self, key):
+    def evict(self, key: str) -> None:
         """
         Evict a key from the internal cache. This is idempotent.
 
@@ -263,25 +263,25 @@ class CachingMap(collections.abc.Mapping):
         """
         self.__cache.pop(key, None)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.__mapping)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return iter(self.__mapping)
 
-    def __contains__(self, key):
+    def __contains__(self, key: str) -> bool:
         # Ensure checking 'in' does not trigger evaluation.
         return key in self.__mapping
 
     def __getstate__(self):
         return self.__mapping, self.__cache
 
-    def __setstate__(self, state):
+    def __setstate__(self, state) -> None:
         mapping, cache = state
         self.__mapping = mapping
         self.__cache = cache
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.__cache is None:
             d = {k: "<lazy>" for k in self.__mapping}
         else:
@@ -370,7 +370,7 @@ def gen_tree(tree, nodes=None, last=None):
             yield _line(nodes, last)
 
 
-def tree(tree, max_lines=20):
+def tree(tree, max_lines: int = 20) -> None:
     """
     Print a visual sketch of Tree structure akin to UNIX `tree`.
 
@@ -428,7 +428,7 @@ UNCHANGED = Sentinel("UNCHANGED")
 UNSET = Sentinel("UNSET")
 
 
-def import_object(colon_separated_string, accept_live_object=True):
+def import_object(colon_separated_string: str, accept_live_object: bool = True):
     if not isinstance(colon_separated_string, str):
         if not accept_live_object:
             raise ValueError(
@@ -455,7 +455,7 @@ def import_object(colon_separated_string, accept_live_object=True):
     return operator.attrgetter(obj_path)(module)
 
 
-def modules_available(*module_names):
+def modules_available(*module_names: Sequence[str]) -> bool:
     for module_name in module_names:
         if not importlib.util.find_spec(module_name):
             break
@@ -523,13 +523,13 @@ def prepend_to_sys_path(*paths):
             sys.path.pop(0)
 
 
-def safe_json_dump(content):
+def safe_json_dump(content) -> bytes:
     """
     Baes64-encode raw bytes, and provide a fallback if orjson numpy handling fails.
     """
     import orjson
 
-    def default(content):
+    def default(content) -> str:
         if isinstance(content, bytes):
             content = f"data:application/octet-stream;base64,{base64.b64encode(content).decode('utf-8')}"
             return content
@@ -652,7 +652,7 @@ def node_repr(tree, sample) -> str:
     return out
 
 
-def bytesize_repr(num):
+def bytesize_repr(num: int):
     # adapted from dask.utils
     for x in ["B", "KB", "MB", "GB", "TB"]:
         if num < 1024.0:
@@ -674,7 +674,7 @@ TIME_STRING_UNITS = {
 }
 
 
-def parse_time_string(s):
+def parse_time_string(s: str) -> int:
     """
     Accept strings like '1y', '1d', '24h'; return int seconds.
 
@@ -710,7 +710,7 @@ async def ensure_awaitable(func, *args, **kwargs):
         return await anyio.to_thread.run_sync(functools.partial(func, **kwargs), *args)
 
 
-def path_from_uri(uri) -> Path:
+def path_from_uri(uri: str) -> Path:
     """
     Give a URI, return a Path.
 
@@ -799,14 +799,14 @@ class catch_warning_msg(warnings.catch_warnings):
     def __init__(
         self,
         *,
-        action="",
-        message="",
+        action: str = "",
+        message: str = "",
         category=Warning,
-        module="",
-        lineno=0,
-        append=False,
-        record=False,
-    ):
+        module: str = "",
+        lineno: int = 0,
+        append: bool = False,
+        record: bool = False,
+    ) -> None:
         super().__init__(record=record)
         self.apply_filter = functools.partial(
             warnings.filterwarnings,
@@ -818,7 +818,7 @@ class catch_warning_msg(warnings.catch_warnings):
             append=append,
         )
 
-    def __enter__(self):
+    def __enter__(self) -> "catch_warning_msg":
         super().__enter__()
         self.apply_filter()
         return self

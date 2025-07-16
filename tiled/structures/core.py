@@ -26,13 +26,13 @@ class Spec:
     name: str
     version: Optional[str] = None
 
-    def __init__(self, name, version=None) -> None:
+    def __init__(self, name: str, version=None) -> None:
         # Enable the name to be passed as a position argument.
         # The setattr stuff is necessary to make this work with a frozen dataclass.
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "version", version)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # Display the name as a positional argument, for conciseness.
         if self.version is None:
             output = f"{type(self).__name__}({self.name!r})"

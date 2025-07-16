@@ -33,7 +33,7 @@ def context():
         yield context
 
 
-def test_openapi_username_password_login(context):
+def test_openapi_username_password_login(context) -> None:
     """
     Ensure that tokenUrl is a valid path.
 

@@ -17,7 +17,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade() -> None:
     connection = op.get_bind()
     # Initialize new structure_family column as a nullable at first because
     # existing rows will be empty.

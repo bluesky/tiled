@@ -1503,7 +1503,7 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:metadata", "register"]),
-    ):
+    ) -> None:
         entry = await get_entry(
             path,
             ["write:metadata", "register"],
@@ -1668,7 +1668,7 @@ def get_router(
     async def patch_array_full(
         request: Request,
         path: str,
-        offset=Depends(offset_param),
+        offset: int = Depends(offset_param),
         shape=Depends(shape_param),
         extend: bool = False,
         principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),

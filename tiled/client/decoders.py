@@ -6,7 +6,7 @@ from ..utils import modules_available
 if modules_available("blosc2"):
 
     class Blosc2Decoder:
-        def __init__(self):
+        def __init__(self) -> None:
             # Blosc seems to have no streaming interface.
             # Accumulate response data in a cache here,
             # and concatenate and decode at the end.
@@ -33,7 +33,7 @@ if modules_available("zstandard"):
     import zstandard
 
     class ZStandardDecoder:
-        def __init__(self):
+        def __init__(self) -> None:
             self._context = zstandard.ZstdDecompressor()
             self._obj = self._context.decompressobj()
 

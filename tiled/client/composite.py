@@ -1,5 +1,8 @@
 import time
+from typing import Iterator
 from urllib.parse import parse_qs, urlparse
+
+import xarray
 
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
@@ -7,7 +10,7 @@ from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_conte
 
 
 class Composite(Container):
-    def get_contents(self, maxlen=None, include_metadata=False):
+    def get_contents(self, maxlen=None, include_metadata: bool = False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
         while (next_page_url is not None) or (
@@ -52,20 +55,24 @@ class Composite(Container):
         return result
 
     @property
-    def parts(self):
+    def parts(self) -> "CompositeParts":
         return CompositeParts(self)
 
-    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _keys_slice(
+        self, start: int, stop, direction: int, _ignore_inlined_contents: bool = False
+    ):
         yield from self._flat_keys_mapping.keys()
 
-    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _items_slice(
+        self, start, stop, direction, _ignore_inlined_contents: bool = False
+    ):
         for key in self._flat_keys_mapping.keys():
             yield key, self[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._keys_slice(0, None, 1)
 
-    def __len__(self):
+    def __len__(self) -> int:
         if self._cached_len is not None:
             length, deadline = self._cached_len
             if time.monotonic() < deadline:
@@ -74,7 +81,7 @@ class Composite(Container):
 
         return len(self._flat_keys_mapping)
 
-    def __getitem__(self, key: str, _ignore_inlined_contents=False):
+    def __getitem__(self, key: str, _ignore_inlined_contents: bool = False):
         if isinstance(key, tuple):
             key = "/".join(key)
         if key in self._flat_keys_mapping:
@@ -86,7 +93,7 @@ class Composite(Container):
 
         return super().__getitem__(key, _ignore_inlined_contents)
 
-    def __contains__(self, key):
+    def __contains__(self, key) -> bool:
         return key in self._flat_keys_mapping.keys()
 
     def create_container(self, key=None, *, metadata=None, specs=None):
@@ -97,7 +104,7 @@ class Composite(Container):
         """Composite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
-    def read(self, variables=None, dim0=None):
+    def read(self, variables=None, dim0=None) -> xarray.core.dataset.Dataset:
         """Download the contents of a composite node as an xarray.Dataset.
 
         Parameters
@@ -185,13 +192,13 @@ class Composite(Container):
 
 
 class CompositeParts:
-    def __init__(self, node):
+    def __init__(self, node) -> None:
         self.contents = node.get_contents(include_metadata=True)
         self.context = node.context
         self.structure_clients = node.structure_clients
         self._include_data_sources = node._include_data_sources
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"<{type(self).__name__} {{"
             + ", ".join(f"'{item}'" for item in self.contents)
@@ -216,7 +223,7 @@ class CompositeParts:
         else:
             return client
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         for key in self.contents:
             yield key
 

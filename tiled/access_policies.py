@@ -26,7 +26,7 @@ if log_level:
 class DummyAccessPolicy:
     "Impose no access restrictions."
 
-    async def allowed_scopes(self, node, principal, authn_scopes):
+    async def allowed_scopes(self, node, principal, authn_scopes) -> frozenset:
         return ALL_SCOPES
 
     async def filters(self, node, principal, authn_scopes, scopes):
@@ -51,7 +51,7 @@ class SimpleAccessPolicy:
 
     def __init__(
         self, access_lists, *, provider, key=None, scopes=None, public=None, admins=None
-    ):
+    ) -> None:
         self.access_lists = {}
         self.provider = provider
         self.key = key
@@ -77,7 +77,7 @@ class SimpleAccessPolicy:
             )
         return id
 
-    async def allowed_scopes(self, node, principal, authn_scopes):
+    async def allowed_scopes(self, node, principal, authn_scopes) -> frozenset:
         # If this is being called, filter_access has let us get this far.
         if principal is SpecialUsers.public:
             allowed = PUBLIC_SCOPES
@@ -128,10 +128,10 @@ class AccessTagsParser:
         db = sqlite3.connect(f"{uri}?ro", uri=True, check_same_thread=False)
         return cls(db)
 
-    def __init__(self, db):
+    def __init__(self, db) -> None:
         self.db = db
 
-    def is_tag_defined(self, name):
+    def is_tag_defined(self, name: str) -> bool:
         with closing(self.db.cursor()) as cursor:
             cursor.execute("SELECT 1 FROM tags WHERE name = ?;", (name,))
             row = cursor.fetchone()
@@ -144,7 +144,7 @@ class AccessTagsParser:
             public_tags = {name for (name,) in cursor.fetchall()}
         return public_tags
 
-    def get_scopes_from_tag(self, tagname, username):
+    def get_scopes_from_tag(self, tagname: str, username: str):
         with closing(self.db.cursor()) as cursor:
             cursor.execute(
                 "SELECT scope_name FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?;",
@@ -153,7 +153,7 @@ class AccessTagsParser:
             user_tag_scopes = {scope for (scope,) in cursor.fetchall()}
         return user_tag_scopes
 
-    def is_tag_owner(self, tagname, username):
+    def is_tag_owner(self, tagname: str, username: str) -> bool:
         with closing(self.db.cursor()) as cursor:
             cursor.execute(
                 "SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?;",
@@ -163,14 +163,14 @@ class AccessTagsParser:
             found_owner = bool(row)
         return found_owner
 
-    def is_tag_public(self, name):
+    def is_tag_public(self, name: str) -> bool:
         with closing(self.db.cursor()) as cursor:
             cursor.execute("SELECT 1 FROM public_tags WHERE name = ?;", (name,))
             row = cursor.fetchone()
             found_public = bool(row)
         return found_public
 
-    def get_tags_from_scope(self, scope, username):
+    def get_tags_from_scope(self, scope, username: str):
         with closing(self.db.cursor()) as cursor:
             cursor.execute(
                 "SELECT tag_name FROM user_tag_scopes WHERE user_name = ? AND scope_name = ?;",
@@ -188,7 +188,7 @@ class TagBasedAccessPolicy:
         tags_db,
         access_tags_parser,
         scopes=None,
-    ):
+    ) -> None:
         self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
 
@@ -216,7 +216,7 @@ class TagBasedAccessPolicy:
                 f"The Principal's identities are: {principal.identities}"
             )
 
-    def _is_admin(self, authn_scopes):
+    def _is_admin(self, authn_scopes) -> bool:
         if all(s in authn_scopes for s in self.admin_scopes):
             return True
         return False

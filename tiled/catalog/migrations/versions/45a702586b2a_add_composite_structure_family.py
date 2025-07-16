@@ -15,7 +15,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade() -> None:
     connection = op.get_bind()
 
     if connection.engine.dialect.name == "postgresql":
@@ -27,7 +27,7 @@ def upgrade():
             )
 
 
-def downgrade():
+def downgrade() -> None:
     # PostgreSQL does not support dropping values from enums.
     # (The enum would need to be destroyed and recreated, migrating
     # the data in the process.) Fortunately, an extra unused values does

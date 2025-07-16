@@ -16,7 +16,7 @@ _server_is_running = False
 
 
 class ThreadedServer(uvicorn.Server):
-    def install_signal_handlers(self):
+    def install_signal_handlers(self) -> None:
         pass
 
     @contextlib.contextmanager
@@ -91,7 +91,7 @@ class SimpleTiledServer:
         api_key: Optional[str] = None,
         port: int = 0,
         readable_storage: Optional[Union[str, pathlib.Path]] = None,
-    ):
+    ) -> None:
         # Delay import to avoid circular import.
         from ..catalog import from_uri as catalog_from_uri
         from .app import build_app
@@ -147,10 +147,10 @@ class SimpleTiledServer:
         self.uri = f"{base_url}/api/v1?api_key={quote_plus(api_key)}"
         self.web_ui_link = f"{base_url}?api_key={quote_plus(api_key)}"
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<{type(self).__name__} '{self.uri}'>"
 
-    def _repr_html_(self):
+    def _repr_html_(self) -> str:
         # For Jupyter
         return f"""
 <table>
@@ -163,15 +163,15 @@ class SimpleTiledServer:
   </tr>
 </table>"""
 
-    def close(self):
+    def close(self) -> None:
         self._cm.__exit__(None, None, None)
         if self._cleanup_directory and (platform.system() != "Windows"):
             # Windows cannot delete the logfiles because the global Python
             # logging system still has the logfiles open for appending.
             shutil.rmtree(self.directory)
 
-    def __enter__(self):
+    def __enter__(self) -> "SimpleTiledServer":
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args) -> None:
         self.close()

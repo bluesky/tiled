@@ -1,5 +1,7 @@
 import io
 
+import pandas
+
 from ..media_type_registration import (
     default_deserialization_registry,
     default_serialization_registry,
@@ -8,7 +10,7 @@ from ..utils import modules_available
 
 if modules_available("h5py"):
 
-    def serialize_hdf5(sparse_arr, metadata):
+    def serialize_hdf5(sparse_arr, metadata) -> memoryview:
         """
         Place coords and data in HDF5 datasets with those names.
         """
@@ -27,8 +29,6 @@ if modules_available("h5py"):
     )
 
 if modules_available("pandas", "pyarrow"):
-    import pandas
-
     from .table import (
         APACHE_ARROW_FILE_MIME_TYPE,
         XLSX_MIME_TYPE,
@@ -52,7 +52,7 @@ if modules_available("pandas", "pyarrow"):
 
     # Support DataFrame formats by first converting to DataFrame.
     # naming columns like dim0, dim1, ..., dimN, data.
-    def to_dataframe(sparse_arr):
+    def to_dataframe(sparse_arr) -> pandas.core.frame.DataFrame:
         d = {f"dim{i}": coords for i, coords in enumerate(sparse_arr.coords)}
         d["data"] = sparse_arr.data
         return pandas.DataFrame(d)
@@ -98,7 +98,7 @@ if modules_available("pandas", "pyarrow"):
     if modules_available("orjson"):
         import orjson
 
-        def serialize_json(sparse_arr, metadata):
+        def serialize_json(sparse_arr, metadata) -> bytes:
             df = to_dataframe(sparse_arr)
             return orjson.dumps(
                 {column: df[column].tolist() for column in df},

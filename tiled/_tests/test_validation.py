@@ -67,7 +67,7 @@ def client(tmpdir_module):
         yield from_context(context)
 
 
-def test_validators(client):
+def test_validators(client) -> None:
     # valid example
     df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
     client.write_dataframe(df, metadata={"foo": 1}, specs=["foo"])
@@ -102,7 +102,7 @@ def test_validators(client):
     pd.testing.assert_frame_equal(result_df, df)
 
 
-def test_unknown_spec_strict(tmpdir):
+def test_unknown_spec_strict(tmpdir) -> None:
     "Test unknown spec rejected for upload."
     config = {
         "trees": [
@@ -127,7 +127,7 @@ def test_unknown_spec_strict(tmpdir):
             client.write_array(a, metadata={}, specs=["b"])
 
 
-def test_unknown_spec_permissive(client):
+def test_unknown_spec_permissive(client) -> None:
     "Test unknown spec rejected for upload."
     a = np.ones((5, 7))
     client.write_array(a, metadata={}, specs=["a"])

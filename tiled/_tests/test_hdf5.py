@@ -107,7 +107,7 @@ def example_file_with_links(tmp_path_factory):
     return ensure_uri(file_path)
 
 
-def test_from_file(example_file, buffer):
+def test_from_file(example_file, buffer) -> None:
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file)
@@ -121,7 +121,7 @@ def test_from_file(example_file, buffer):
 
 
 @pytest.mark.parametrize("key", ["d", "e", "f", "g", "h", "i"])
-def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
+def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key) -> None:
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file_with_empty_data)
@@ -135,7 +135,7 @@ def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
 
 
 @pytest.mark.parametrize("key", ["int", "float", "str", "bytes", "bool"])
-def test_from_file_with_scalars(example_file_with_scalars, buffer, key):
+def test_from_file_with_scalars(example_file_with_scalars, buffer, key) -> None:
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file_with_scalars)
@@ -148,7 +148,9 @@ def test_from_file_with_scalars(example_file_with_scalars, buffer, key):
         file["a"]["b"]["c"][key]
 
 
-def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
+def test_from_file_with_vlen_str_dataset(
+    example_file_with_vlen_str_in_dataset, buffer
+) -> None:
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file_with_vlen_str_in_dataset)
@@ -163,7 +165,7 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, 
     file["a"]["b"]["c"]["d"]
 
 
-def test_from_group(example_file, buffer):
+def test_from_group(example_file, buffer) -> None:
     """Serve a Group within an HDF5 file."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file, dataset="a/b")
@@ -176,7 +178,7 @@ def test_from_group(example_file, buffer):
     file["c"]["d"]
 
 
-def test_from_multiple(example_file, buffer):
+def test_from_multiple(example_file, buffer) -> None:
     """Serve two files within a mapping."""
     h5py = pytest.importorskip("h5py")
     tree = MapAdapter(
@@ -197,7 +199,7 @@ def test_from_multiple(example_file, buffer):
     file["B"]["a"]["b"]["c"]["d"]
 
 
-def test_inlined_contents(example_file):
+def test_inlined_contents(example_file) -> None:
     """Test that the recursive structure and metadata are inlined into one request."""
     tree = HDF5Adapter.from_uris(example_file)
     assert hdf5_adapters.INLINED_DEPTH > 1
@@ -220,7 +222,7 @@ def test_inlined_contents(example_file):
         hdf5_adapters.INLINED_DEPTH = original
 
 
-def test_file_with_links(example_file_with_links, buffer):
+def test_file_with_links(example_file_with_links, buffer) -> None:
     """Serve an HDF5 file with internal and external links."""
 
     h5py = pytest.importorskip("h5py")
@@ -261,7 +263,7 @@ def test_file_with_links(example_file_with_links, buffer):
     assert numpy.allclose(numpy.array(file["a/b/extr_link/x"]), 2 * numpy.ones((5, 5)))
 
 
-def test_file_with_broken_links(example_file_with_links):
+def test_file_with_broken_links(example_file_with_links) -> None:
     """Raise an error when accessing non-existing keys."""
 
     h5py = pytest.importorskip("h5py")
@@ -328,7 +330,7 @@ def test_file_with_broken_links(example_file_with_links):
         client["a/b/extr_link"]
 
 
-def test_register_broken_hdf5_file(context, example_file_with_links):
+def test_register_broken_hdf5_file(context, example_file_with_links) -> None:
     """Test that a broken HDF5 file can be registered and accessed."""
 
     client = from_context(context)

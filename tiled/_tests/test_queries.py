@@ -128,7 +128,7 @@ async def client(request, tmpdir_module):
         assert False
 
 
-def test_key(client):
+def test_key(client) -> None:
     "Binary operators with Key create query objects."
     assert (Key("a") == 1) == Eq("a", 1)
     assert (Key("a") != 2) == NotEq("a", 2)
@@ -138,7 +138,7 @@ def test_key(client):
     assert (Key("a") <= 1) == Comparison("le", "a", 1)
 
 
-def test_eq(client):
+def test_eq(client) -> None:
     # Test encoding letters and ints.
     assert list(client.search(Eq("letter", "a"))) == ["a"]
     assert list(client.search(Eq("letter", "b"))) == ["b"]
@@ -148,7 +148,7 @@ def test_eq(client):
     assert list(client.search(Eq("number", "0"))) == []
 
 
-def test_noteq(client):
+def test_noteq(client) -> None:
     # Test encoding letters and ints.
     assert list(client.search(NotEq("letter", "a"))) != ["a"]
     assert list(client.search(NotEq("letter", "b"))) != ["b"]
@@ -156,18 +156,18 @@ def test_noteq(client):
     assert list(client.search(NotEq("number", 1))) != ["b"]
 
 
-def test_comparison(client):
+def test_comparison(client) -> None:
     assert list(client.search(Comparison("gt", "number", 24))) == ["z"]
     assert list(client.search(Comparison("ge", "number", 24))) == ["y", "z"]
     assert list(client.search(Comparison("lt", "number", 1))) == ["a"]
     assert list(client.search(Comparison("le", "number", 1))) == ["a", "b"]
 
 
-def test_contains(client):
+def test_contains(client) -> None:
     assert list(client.search(Contains("letters", "z"))) == ["does_contain_z"]
 
 
-def test_full_text(client):
+def test_full_text(client) -> None:
     "Basic test of FullText query"
     assert list(client.search(FullText("z"))) == ["z", "does_contain_z"]
     # plainto_tsquery fails to find certain words, weirdly, so it is a useful
@@ -176,7 +176,7 @@ def test_full_text(client):
     assert list(client.search(FullText("urple"))) == ["full_text_test_case_urple"]
 
 
-def test_full_text_after_migration():
+def test_full_text_after_migration() -> None:
     # Load a SQL database created by an older version of Tiled, predating FullText
     # support, and verify that the migration indexes the pre-existing metadata.
     with sqlite_from_dump("before_creating_fts5_virtual_table.sql") as database_path:
@@ -192,7 +192,7 @@ def test_full_text_after_migration():
             assert list(client.search(FullText("red"))) == []  # does not exist
 
 
-def test_full_text_update(client):
+def test_full_text_update(client) -> None:
     if client.metadata["backend"] == "map":
         pytest.skip("Updating not supported")
     # Update the fulltext index and check that it is current with the main data.
@@ -205,7 +205,7 @@ def test_full_text_update(client):
         client["full_text_test_case"].update_metadata({"color": "purple"})
 
 
-def test_full_text_delete(client):
+def test_full_text_delete(client) -> None:
     if client.metadata["backend"] == "map":
         pytest.skip("Updating not supported")
     # Delete a record the fulltext index and check that it is current with the main data.
@@ -217,7 +217,7 @@ def test_full_text_delete(client):
     assert list(client.search(FullText("toaster"))) == []
 
 
-def test_regex(client):
+def test_regex(client) -> None:
     if client.metadata["backend"] in {"postgresql", "sqlite"}:
 
         def cm():
@@ -244,7 +244,7 @@ def test_regex(client):
         assert list(client.search(Regex("letters", "anything"))) == []
 
 
-def test_not_and_and_or(client):
+def test_not_and_and_or(client) -> None:
     with pytest.raises(TypeError):
         not (Key("color") == "red")
     with pytest.raises(TypeError):
@@ -262,7 +262,7 @@ def test_not_and_and_or(client):
         {"a", "k", "z", "a", "z", "z"},
     ],
 )
-def test_in(client, query_values):
+def test_in(client, query_values) -> None:
     assert sorted(list(client.search(In("letter", query_values)))) == [
         "a",
         "k",
@@ -270,7 +270,7 @@ def test_in(client, query_values):
     ]
 
 
-def test_in_empty(client):
+def test_in_empty(client) -> None:
     assert list(client.search(In("letter", []))) == []
 
 
@@ -283,7 +283,7 @@ def test_in_empty(client):
         {"a", "k", "z", "a", "z", "z"},
     ],
 )
-def test_notin(client, query_values):
+def test_notin(client, query_values) -> None:
     # TODO: Postgres and SQlite ACTUALLY treat this query differently in external testing.
     # SQLite WILL NOT include fields that do not have the key, which is correct.
     # Postgres WILL include fields that do not have the key,
@@ -300,7 +300,7 @@ def test_notin(client, query_values):
     )
 
 
-def test_not_in_empty(client):
+def test_not_in_empty(client) -> None:
     assert sorted(list(client.search(NotIn("letter", [])))) == sorted(list(client))
 
 
@@ -313,26 +313,26 @@ def test_not_in_empty(client):
         ({"foo", "bar", "foo", "bar", "bar"}, {"baz", "baz", "baz"}),
     ],
 )
-def test_specs(client, include_values, exclude_values):
+def test_specs(client, include_values, exclude_values) -> None:
     assert list(
         client.search(SpecsQuery(include=include_values, exclude=exclude_values))
     ) == ["specs_foo_bar"]
 
 
-def test_structure_families(client):
+def test_structure_families(client) -> None:
     with pytest.raises(ValueError):
         StructureFamilyQuery("foo")
 
     assert set(client.search(StructureFamilyQuery("array"))) == set(mapping)
 
 
-def test_keys_filter(client):
+def test_keys_filter(client) -> None:
     expected = ["a", "b", "c"]
     results = client.search(KeysFilter(keys=expected))
     assert set(results) == set(expected)
 
 
-def test_like(client):
+def test_like(client) -> None:
     if client.metadata["backend"] == "map":
         pytest.skip("No 'LIKE' support on MapAdapter")
     expected = ["full_text_test_case", "full_text_test_case_urple"]

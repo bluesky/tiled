@@ -27,7 +27,7 @@ class SparseClient(BaseClient):
     def ndim(self):
         return len(self.structure().shape)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         structure = self.structure()
         attrs = {"shape": structure.shape, "chunks": structure.chunks}
         if structure.dims:
@@ -45,7 +45,7 @@ class SparseClient(BaseClient):
         "Return a dense numpy array. May be large."
         return self.read().todense(*args, **kwargs)
 
-    def read_block(self, block, slice=None):
+    def read_block(self, block, slice=None) -> sparse.numba_backend._coo.core.COO:
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
@@ -75,7 +75,7 @@ class SparseClient(BaseClient):
             shape=sliced_shape,
         )
 
-    def read(self, slice=None):
+    def read(self, slice=None) -> sparse.numba_backend._coo.core.COO:
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
@@ -104,7 +104,7 @@ class SparseClient(BaseClient):
             shape=sliced_shape,
         )
 
-    def write(self, coords, data):
+    def write(self, coords, data) -> None:
         import pandas
 
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
@@ -120,7 +120,7 @@ class SparseClient(BaseClient):
                     )
                 )
 
-    def write_block(self, coords, data, block):
+    def write_block(self, coords, data, block) -> None:
         import pandas
 
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
@@ -136,7 +136,7 @@ class SparseClient(BaseClient):
                     )
                 )
 
-    def __getitem__(self, slice):
+    def __getitem__(self, slice) -> sparse.numba_backend._coo.core.COO:
         return self.read(slice)
 
     def export(self, filepath, *, format=None, slice=None):
