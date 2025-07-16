@@ -10,8 +10,9 @@ from tiled.client.context import Context
 
 
 class Subscription:
-    def __init__(self, context: Context, segments: List[str], start=None):
-        self.context = context
+    def __init__(self, context: Context, segments: List[str] = None, start: int = None):
+        self._context = context
+        self._segments = segments
         segments = segments or ["/"]
         params = {"envelope_format": "msgpack"}
         if start is not None:
@@ -26,6 +27,14 @@ class Subscription:
         self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._callbacks = weakref.WeakSet()
         self._close_event = threading.Event()
+
+    @property
+    def context(self):
+        return self._context
+
+    @property
+    def segments(self):
+        return self._segments
 
     def add_callback(self, callback):
         self._callbacks.add(callback)
@@ -42,7 +51,7 @@ class Subscription:
                 continue
             data = msgpack.unpackb(data_bytes)
             for callback in self._callbacks:
-                callback(callback, data)
+                callback(self, data)
 
     def start(self):
         if self._close_event.is_set():
