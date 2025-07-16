@@ -121,6 +121,10 @@ def error():
     1 / 0  # error!
 
 
+@pytest.mark.filterwarnings("ignore: websockets.legacy is deprecated")
+@pytest.mark.filterwarnings(
+    "ignore: websockets.server.WebSocketServerProtocol is deprecated"
+)
 def test_500_response(server):
     """
     Test that unexpected server error returns 500 response.

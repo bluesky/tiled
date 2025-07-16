@@ -120,6 +120,7 @@ def test_from_file(example_file, buffer):
         file["a"]["b"]["c"]["d"]
 
 
+@pytest.mark.filterwarnings("ignore: The dataset")
 @pytest.mark.parametrize("key", ["d", "e", "f", "g", "h", "i"])
 def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
     """Serve a single HDF5 file at top level."""
@@ -134,6 +135,7 @@ def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
         file["a"]["b"]["c"][key]
 
 
+@pytest.mark.filterwarnings("ignore: The dataset")
 @pytest.mark.parametrize("key", ["int", "float", "str", "bytes", "bool"])
 def test_from_file_with_scalars(example_file_with_scalars, buffer, key):
     """Serve a single HDF5 file at top level."""
@@ -148,6 +150,7 @@ def test_from_file_with_scalars(example_file_with_scalars, buffer, key):
         file["a"]["b"]["c"][key]
 
 
+@pytest.mark.filterwarnings("ignore: The dataset")
 def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
     """Serve a single HDF5 file at top level."""
     h5py = pytest.importorskip("h5py")
