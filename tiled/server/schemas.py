@@ -494,7 +494,7 @@ class PutMetadataRequest(pydantic.BaseModel):
         return v
 
 
-def JSONPatchType(dtype=Any):
+def JSONPatchType(dtype: type = Any):
     # we use functional syntax with TypedDict here since "from" is a keyword
     return TypedDict(
         "JSONPatchType",

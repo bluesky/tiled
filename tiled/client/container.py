@@ -142,7 +142,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def new_variation(
         self,
         *,
-        structure_clients=UNCHANGED,
+        structure_clients: Sentinel = UNCHANGED,
         queries=UNCHANGED,
         sorting=UNCHANGED,
         **kwargs,
@@ -392,9 +392,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def _keys_slice(
         self,
-        start,
-        stop,
-        direction,
+        start: int,
+        stop: int,
+        direction: int,
         page_size: Optional[int] = None,
         *,
         _ignore_inlined_contents: bool = False,
@@ -521,13 +521,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     return
             next_page_url = content["links"]["next"]
 
-    def keys(self):
+    def keys(self) -> KeysView:
         return KeysView(lambda: len(self), self._keys_slice)
 
-    def values(self):
+    def values(self) -> ValuesView:
         return ValuesView(lambda: len(self), self._items_slice)
 
-    def items(self):
+    def items(self) -> ItemsView:
         return ItemsView(lambda: len(self), self._items_slice)
 
     def search(self, query):
@@ -658,7 +658,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def new(
         self,
-        structure_family,
+        structure_family: StructureFamily,
         data_sources,
         *,
         key=None,

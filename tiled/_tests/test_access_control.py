@@ -43,11 +43,11 @@ server_common_config = {
 }
 
 
-def tree_a(access_policy=None):
+def tree_a(access_policy=None) -> MapAdapter:
     return MapAdapter({"A1": arr_ad, "A2": arr_ad})
 
 
-def tree_b(access_policy=None):
+def tree_b(access_policy=None) -> MapAdapter:
     return MapAdapter({"B1": arr_ad, "B2": arr_ad})
 
 
@@ -593,7 +593,7 @@ class CustomAttributesAccessPolicy:
         return []
 
 
-def tree_enriched_metadata():
+def tree_enriched_metadata() -> MapAdapter:
     return MapAdapter(
         {
             "A": ArrayAdapter.from_array(

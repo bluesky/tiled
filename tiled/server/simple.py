@@ -170,7 +170,7 @@ class SimpleTiledServer:
             # logging system still has the logfiles open for appending.
             shutil.rmtree(self.directory)
 
-    def __enter__(self):
+    def __enter__(self) -> "SimpleTiledServer":
         return self
 
     def __exit__(self, *args) -> None:

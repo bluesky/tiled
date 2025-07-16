@@ -56,7 +56,7 @@ class KeysView(IterViewBase):
         # except page_size set to n.
         return type(self)(self._get_length, self._keys_slice, page_size=n)
 
-    def __getitem__(self, index_or_slice):
+    def __getitem__(self, index_or_slice: slice):
         if isinstance(index_or_slice, int):
             if index_or_slice < 0:
                 index_or_slice = -1 - index_or_slice
@@ -110,7 +110,7 @@ class ItemsView(IterViewBase):
         # except page_size set to n.
         return type(self)(self._get_length, self._items_slice, page_size=n)
 
-    def __getitem__(self, index_or_slice):
+    def __getitem__(self, index_or_slice: slice):
         if isinstance(index_or_slice, int):
             if index_or_slice < 0:
                 index_or_slice = -1 - index_or_slice
@@ -202,7 +202,7 @@ class ValuesView(IterViewBase):
             yield value
 
 
-def slice_to_interval(slice_):
+def slice_to_interval(slice_: slice):
     """
     Convert slice object to (start, stop, direction).
     """

@@ -9,9 +9,12 @@ from weakref import WeakValueDictionary
 
 import httpx
 import msgpack
+import stamina
 import stamina.instrumentation
 
-from ..utils import path_from_uri
+from tiled.client.context import Context
+
+from ..utils import OneShotCachedMap, path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -64,7 +67,7 @@ def raise_for_status(response) -> None:
     raise httpx.HTTPStatusError(message, request=request, response=response)
 
 
-def handle_error(response):
+def handle_error(response: httpx.Response):
     if not response.is_error:
         return response
     try:
@@ -113,7 +116,7 @@ TILED_RETRY_ATTEMPTS = int(os.getenv("TILED_RETRY_ATTEMPTS", "10"))
 TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_TIMEOUT", "45.0"))
 
 
-def retry_context():
+def retry_context() -> stamina._core._RetryContextIterator:
     "Iterable that yields a context manager per retry attempt"
     return stamina.retry_context(
         on=should_retry,
@@ -245,7 +248,11 @@ def export_util(file, format, get, link, params):
 
 
 def client_for_item(
-    context, structure_clients, item, structure=None, include_data_sources: bool = False
+    context: Context,
+    structure_clients: OneShotCachedMap,
+    item,
+    structure=None,
+    include_data_sources: bool = False,
 ):
     """
     Create an instance of the appropriate client class for an item.

@@ -52,7 +52,7 @@ def _dtype_itemsize(itemsize: int, *dtypes):
     return next(dt for dt in dtypes if np.dtype(dt).itemsize >= itemsize)
 
 
-def _dtype_bits(kind, bits, itemsize: int = 1):
+def _dtype_bits(kind: str, bits: int, itemsize: int = 1):
     """Return dtype of `kind` that can store a `bits` wide unsigned int
     Parameters:
     kind: str
@@ -76,7 +76,7 @@ def _dtype_bits(kind, bits, itemsize: int = 1):
     return np.dtype(kind + str(s))
 
 
-def _scale(a, n, m, copy: bool = True):
+def _scale(a, n, m: int, copy: bool = True):
     """Scale an array of unsigned/positive integers from `n` to `m` bits.
     Numbers can be represented exactly only if `m` is a multiple of `n`.
     Parameters

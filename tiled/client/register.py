@@ -21,7 +21,7 @@ from .utils import ClientError
 logger = logging.getLogger(__name__)
 
 
-def strip_suffixes(filename):
+def strip_suffixes(filename) -> str:
     """
     For use with key_from_filename parameter.
 
@@ -55,7 +55,7 @@ def default_filter(path) -> bool:
     return not path.name.startswith(".")
 
 
-def resolve_mimetype(path, mimetypes_by_file_ext, mimetype_detection_hook=None):
+def resolve_mimetype(path: Path, mimetypes_by_file_ext, mimetype_detection_hook=None):
     """
     Given a filepath (file or directory) detect the mimetype.
 
@@ -136,7 +136,7 @@ class Settings:
 
 async def register(
     node,
-    path,
+    path: str,
     prefix: str = "/",
     walkers=None,
     adapters_by_mimetype=None,
@@ -199,7 +199,7 @@ async def register(
 
 async def _walk(
     node,
-    path,
+    path: Path,
     walkers,
     settings,
 ) -> None:
@@ -276,7 +276,7 @@ async def one_node_per_item(
 
 async def register_single_item(
     node,
-    item,
+    item: Path,
     is_directory: bool,
     settings,
 ):
@@ -469,7 +469,7 @@ DEFAULT_WALKERS = [group_image_sequences, one_node_per_item]
 
 async def watch(
     node,
-    path,
+    path: str,
     prefix: str = "/",
     walkers=None,
     adapters_by_mimetype=None,

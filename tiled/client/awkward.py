@@ -1,3 +1,5 @@
+from types import EllipsisType
+
 import awkward
 
 from ..serialization.awkward import from_zipped_buffers, to_zipped_buffers
@@ -48,7 +50,7 @@ class AwkwardClient(BaseClient):
                     )
                 )
 
-    def read(self, slice=...):
+    def read(self, slice: EllipsisType = ...):
         structure = self.structure()
         form = awkward.forms.from_dict(structure.form)
         typetracer, report = awkward.typetracer.typetracer_with_report(form)

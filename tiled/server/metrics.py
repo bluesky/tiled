@@ -97,7 +97,7 @@ for code in ["200", "304", "500"]:
             )
 
 
-def capture_request_metrics(request, response) -> None:
+def capture_request_metrics(request: Request, response: Response) -> None:
     method = request.method
     code = response.status_code
     metrics = request.state.metrics

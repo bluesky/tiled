@@ -220,7 +220,7 @@ def serve_directory(
     async def run_server() -> None:
         await server.serve()
 
-    async def wait_for_server():
+    async def wait_for_server() -> str:
         "Wait for server to start up, or raise TimeoutError."
         for _ in range(100):
             await asyncio.sleep(0.1)
@@ -695,7 +695,7 @@ def serve_config(
     uvicorn.run(web_app, **uvicorn_kwargs)
 
 
-def _setup_log_config(log_config, log_timestamps):
+def _setup_log_config(log_config, log_timestamps: bool):
     if log_config is None:
         from ..server.logging_config import LOGGING_CONFIG
 

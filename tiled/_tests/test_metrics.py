@@ -21,7 +21,7 @@ def error() -> None:
     1 / 0  # error!
 
 
-def total_request_time(client, code):
+def total_request_time(client, code: int):
     metrics = client.context.http_client.get("/api/v1/metrics").read().splitlines()
     pattern = re.compile(
         rf'^tiled_request_duration_seconds_bucket{{code="{code}",.*}} (\d+.\d+)$'.encode()

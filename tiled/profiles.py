@@ -10,6 +10,7 @@ but the user-facing functionality is straightforward.
 import collections
 import collections.abc
 import os
+import pathlib
 import shutil
 import sys
 import warnings
@@ -253,7 +254,7 @@ def list_profiles():
     return {name: source_filepath for name, (source_filepath, _) in profiles.items()}
 
 
-def _compose_profile(name: str, *, uri, verify):
+def _compose_profile(name: str, *, uri: str, verify: bool):
     "Compose profile YAML."
     import yaml
 
@@ -261,7 +262,9 @@ def _compose_profile(name: str, *, uri, verify):
     return yaml.dump(content)
 
 
-def create_profile(uri, name: str, verify: bool = True, overwrite: bool = False):
+def create_profile(
+    uri: str, name: str, verify: bool = True, overwrite: bool = False
+) -> pathlib.PosixPath:
     """
     Create a new profile.
 

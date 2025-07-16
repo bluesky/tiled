@@ -78,7 +78,7 @@ def identity_provider_input(
     return spec
 
 
-def username_input():
+def username_input() -> str:
     raise_if_cannot_prompt()
     return input("Username: ")
 
@@ -300,7 +300,7 @@ class Context:
         auth_repr = " ".join(auth_info)
         return f"<{type(self).__name__} {auth_repr}>"
 
-    def __enter__(self):
+    def __enter__(self) -> "Context":
         return self
 
     def __exit__(self, *args) -> None:
@@ -698,7 +698,7 @@ class Context:
         # Confirm the state of properties that authentication consists of
         return (self.api_key is not None) or (self.http_client.auth is not None)
 
-    def _token_directory(self):
+    def _token_directory(self) -> Path:
         # e.g. ~/.config/tiled/tokens/{host:port}
         # with the templated element URL-encoded so it is a valid filename.
         path = Path(
@@ -976,7 +976,9 @@ def _can_prompt() -> bool:
     return False
 
 
-def password_grant(http_client, auth_endpoint, provider, username: str, password: str):
+def password_grant(
+    http_client, auth_endpoint: str, provider: str, username: str, password: str
+):
     form_data = {
         "grant_type": "password",
         "username": username,
@@ -989,7 +991,7 @@ def password_grant(http_client, auth_endpoint, provider, username: str, password
     return token_response.json()
 
 
-def device_code_grant(http_client, auth_endpoint):
+def device_code_grant(http_client, auth_endpoint: str):
     for attempt in retry_context():
         with attempt:
             verification_response = http_client.post(auth_endpoint, json={}, auth=None)

@@ -2,6 +2,8 @@ import time
 from typing import Iterator
 from urllib.parse import parse_qs, urlparse
 
+import xarray
+
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
 from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
@@ -53,11 +55,11 @@ class Composite(Container):
         return result
 
     @property
-    def parts(self):
+    def parts(self) -> "CompositeParts":
         return CompositeParts(self)
 
     def _keys_slice(
-        self, start, stop, direction, _ignore_inlined_contents: bool = False
+        self, start: int, stop, direction: int, _ignore_inlined_contents: bool = False
     ):
         yield from self._flat_keys_mapping.keys()
 
@@ -102,7 +104,7 @@ class Composite(Container):
         """Composite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
 
-    def read(self, variables=None, dim0=None):
+    def read(self, variables=None, dim0=None) -> xarray.core.dataset.Dataset:
         """Download the contents of a composite node as an xarray.Dataset.
 
         Parameters

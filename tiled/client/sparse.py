@@ -45,7 +45,7 @@ class SparseClient(BaseClient):
         "Return a dense numpy array. May be large."
         return self.read().todense(*args, **kwargs)
 
-    def read_block(self, block, slice=None):
+    def read_block(self, block, slice=None) -> sparse.numba_backend._coo.core.COO:
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
@@ -75,7 +75,7 @@ class SparseClient(BaseClient):
             shape=sliced_shape,
         )
 
-    def read(self, slice=None):
+    def read(self, slice=None) -> sparse.numba_backend._coo.core.COO:
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
@@ -136,7 +136,7 @@ class SparseClient(BaseClient):
                     )
                 )
 
-    def __getitem__(self, slice):
+    def __getitem__(self, slice) -> sparse.numba_backend._coo.core.COO:
         return self.read(slice)
 
     def export(self, filepath, *, format=None, slice=None):

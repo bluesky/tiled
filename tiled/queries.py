@@ -458,7 +458,7 @@ class SpecsQuery:
         return cls(include=json.loads(include), exclude=json.loads(exclude))
 
 
-def SpecQuery(spec):
+def SpecQuery(spec) -> SpecsQuery:
     """
     Convenience function for querying if specs list contains a given spec
 
@@ -578,22 +578,22 @@ class Key:
     def __init__(self, key) -> None:
         self.key = key
 
-    def __eq__(self, value):
+    def __eq__(self, value) -> Eq:
         return Eq(self.key, value)
 
-    def __ne__(self, value):
+    def __ne__(self, value: int) -> NotEq:
         return NotEq(self.key, value)
 
-    def __lt__(self, value):
+    def __lt__(self, value: int) -> Comparison:
         return Comparison("lt", self.key, value)
 
-    def __gt__(self, value):
+    def __gt__(self, value: int) -> Comparison:
         return Comparison("gt", self.key, value)
 
-    def __le__(self, value):
+    def __le__(self, value: int) -> Comparison:
         return Comparison("le", self.key, value)
 
-    def __ge__(self, value):
+    def __ge__(self, value: int) -> Comparison:
         return Comparison("ge", self.key, value)
 
     # Note: __contains__ cannot be supported because the language coerces

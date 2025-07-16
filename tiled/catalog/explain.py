@@ -2,6 +2,7 @@
 import contextlib
 import os
 
+import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.expression import ClauseElement, Executable
@@ -68,7 +69,13 @@ class ExplainAsyncSession(AsyncSession):
     3. Execute normally.
     """
 
-    async def execute(self, statement, *args, explain=None, **kwargs):
+    async def execute(
+        self,
+        statement: sqlalchemy.sql.elements.TextClause,
+        *args,
+        explain=None,
+        **kwargs,
+    ):
         if explain is None:
             explain = bool(EXPLAIN_SQL or _query_explanation_callbacks)
         if explain:

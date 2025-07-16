@@ -3,6 +3,8 @@ import contextlib
 import logging
 import os
 
+import httpx
+
 from ..utils import bytesize_repr
 
 # By default, the token in the authentication header is redacted from the logs.
@@ -11,7 +13,7 @@ TILED_LOG_AUTH_TOKEN = int(os.getenv("TILED_LOG_AUTH_TOKEN", False))
 
 
 class ClientLogRecord(logging.LogRecord):
-    def getMessage(self):
+    def getMessage(self) -> str:
         if hasattr(self, "request"):
             request = self.request
             if "content-length" in request.headers:
@@ -58,7 +60,7 @@ def patched_make_record(
     func=None,
     extra=None,
     sinfo=None,
-):
+) -> ClientLogRecord:
     rv = ClientLogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
     if extra is not None:
         for key in extra:
@@ -81,15 +83,15 @@ log_format = "%(asctime)s.%(msecs)03d %(message)s"
 handler.setFormatter(logging.Formatter(log_format, datefmt="%H:%M:%S"))
 
 
-def log_request(request) -> None:
+def log_request(request: httpx.Request) -> None:
     logger.debug("", extra={"request": request})
 
 
-def log_response(response) -> None:
+def log_response(response: httpx.Response) -> None:
     logger.debug("", extra={"response": response})
 
 
-def collect_request(request) -> None:
+def collect_request(request: httpx.Request) -> None:
     if _history is not None:
         _history.requests.append(request)
 

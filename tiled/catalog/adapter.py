@@ -16,6 +16,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Union
 from urllib.parse import urlparse
 
 import anyio
+import sqlalchemy
 from fastapi import HTTPException
 from sqlalchemy import (
     delete,
@@ -55,6 +56,7 @@ from tiled.queries import (
     SpecsQuery,
     StructureFamilyQuery,
 )
+from tiled.utils import Sentinel
 
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
@@ -195,7 +197,7 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
 
-    def session(self):
+    def session(self) -> ExplainAsyncSession:
         "Convenience method for constructing an AsyncSession context"
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
@@ -527,11 +529,11 @@ class CatalogNodeAdapter:
         return adapter
 
     def new_variation(
-        self,
-        *args,
-        sorting=UNCHANGED,
-        conditions=UNCHANGED,
-        queries=UNCHANGED,
+        self: Sentinel,
+        *args: Sentinel,
+        sorting: Sentinel = UNCHANGED,
+        conditions: Sentinel = UNCHANGED,
+        queries: Sentinel = UNCHANGED,
         # must_revalidate=UNCHANGED,
         **kwargs,
     ):
@@ -554,7 +556,7 @@ class CatalogNodeAdapter:
             **kwargs,
         )
 
-    def search(self, query):
+    def search(self, query: KeysFilter) -> "CatalogNodeAdapter":
         if self.data_sources:
             # Stand queries, which will be passed down to the adapter
             # when / if get_adapter() is called.
@@ -635,7 +637,7 @@ class CatalogNodeAdapter:
 
     async def create_node(
         self,
-        structure_family,
+        structure_family: StructureFamily,
         metadata,
         key=None,
         specs=None,
@@ -1082,7 +1084,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
 
 class CatalogCompositeAdapter(CatalogContainerAdapter):
-    async def resolve_flat_key(self, key):
+    async def resolve_flat_key(self, key) -> str:
         for _key, item in await self.items_range(offset=0, limit=None):
             if key == _key:
                 return _key
@@ -1241,7 +1243,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
-def delete_asset(data_uri, is_directory: bool):
+def delete_asset(data_uri: str, is_directory: bool):
     url = urlparse(data_uri)
     if url.scheme == "file":
         path = path_from_uri(data_uri)
@@ -1301,7 +1303,7 @@ _TYPE_CONVERSION_MAP = {
 }
 
 
-def _get_value(value, type):
+def _get_value(value: sqlalchemy.sql.operators.ColumnOperators, type):
     # This is used only for SQLite, to get the types right
     # so that that index is used. There is probably a
     # cleaner way to handle this.
@@ -1310,7 +1312,7 @@ def _get_value(value, type):
     return getattr(value, _TYPE_CONVERSION_MAP[type])()
 
 
-def _prepare_structure(structure_family, structure):
+def _prepare_structure(structure_family: StructureFamily, structure):
     "Convert from pydantic model to dict."
     if structure is None:
         return None
@@ -1514,11 +1516,11 @@ def in_memory(
     *,
     metadata=None,
     specs=None,
-    writable_storage=None,
+    writable_storage: bool = None,
     readable_storage=None,
-    echo=DEFAULT_ECHO,
+    echo: bool = DEFAULT_ECHO,
     adapters_by_mimetype=None,
-):
+) -> CatalogContainerAdapter:
     uri = "sqlite:///:memory:"
     return from_uri(
         uri=uri,
@@ -1538,13 +1540,13 @@ def from_uri(
     metadata=None,
     specs=None,
     writable_storage=None,
-    readable_storage=None,
+    readable_storage: bool = None,
     init_if_not_exists: bool = False,
-    echo=DEFAULT_ECHO,
+    echo: bool = DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
-):
+) -> CatalogContainerAdapter:
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
         # The alembic stamping can only be does synchronously.
@@ -1616,7 +1618,7 @@ class Collision(Conflicts):
     pass
 
 
-def json_serializer(obj):
+def json_serializer(obj) -> str:
     "The PostgreSQL JSON serializer requires str, not bytes."
     return safe_json_dump(obj).decode()
 

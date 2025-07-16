@@ -132,7 +132,7 @@ class _DaskArrayClient(BaseClient):
             dask_array = dask_array[slice]
         return dask_array
 
-    def read(self, slice=None):
+    def read(self, slice=None) -> dask.array.core.Array:
         """
         Access the entire array or a slice.
 
@@ -284,7 +284,7 @@ class _DaskArrayClient(BaseClient):
         structure_type = STRUCTURE_TYPES[self.structure_family]
         self._structure = structure_type.from_json(new_structure)
 
-    def __getitem__(self, slice):
+    def __getitem__(self, slice) -> dask.array.core.Array:
         return self.read(slice)
 
     # The default object.__iter__ works as expected here, no need to

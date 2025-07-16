@@ -13,7 +13,7 @@ def apply_update_patch(*objs, **kw):
     return result
 
 
-def _update_obj(result, obj, position=None):
+def _update_obj(result, obj: dict, position=None):
     # adapted from https://github.com/OpenDataServices/json-merge-patch
     if not isinstance(result, dict):
         result = OrderedDict() if position else {}

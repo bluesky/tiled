@@ -9,7 +9,7 @@ else:
     from dask.base import tokenize as dask_tokenize
 
 
-def tokenize(obj):
+def tokenize(obj) -> str:
     # This just uses dask for now but may evolve to something custom in future.
     return dask_tokenize(obj)
 

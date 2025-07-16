@@ -24,7 +24,7 @@ class TiledAuth(httpx.Auth):
         self.tokens = {}
 
     @staticmethod
-    def _check_writable_token_directory(token_directory):
+    def _check_writable_token_directory(token_directory: Path):
         if not os.access(token_directory, os.W_OK | os.X_OK):
             raise ValueError(f"The token_directory {token_directory} is not writable.")
 
@@ -50,7 +50,7 @@ class TiledAuth(httpx.Auth):
         self.token_directory = token_directory
         self._sync_lock = sync_lock
 
-    def sync_get_token(self, key, reload_from_disk: bool = False):
+    def sync_get_token(self, key: str, reload_from_disk: bool = False):
         if not reload_from_disk:
             # Use in-memory cached copy.
             try:
@@ -68,7 +68,7 @@ class TiledAuth(httpx.Auth):
             except FileNotFoundError:
                 return None
 
-    def sync_set_token(self, key, value):
+    def sync_set_token(self, key: str, value):
         with self._sync_lock:
             if not isinstance(value, str):
                 raise ValueError("Expected string value, got {value!r}")
@@ -79,7 +79,7 @@ class TiledAuth(httpx.Auth):
                     file.write(value)
             self.tokens[key] = value  # Update cached value.
 
-    def sync_clear_token(self, key) -> None:
+    def sync_clear_token(self, key: str) -> None:
         with self._sync_lock:
             if self.token_directory is not None:
                 filepath = self.token_directory / key
@@ -145,7 +145,7 @@ class TiledAuth(httpx.Auth):
         raise NotImplementedError("Async support is planned but not yet implemented.")
 
 
-def build_refresh_request(refresh_url, refresh_token, csrf_token):
+def build_refresh_request(refresh_url, refresh_token, csrf_token: str) -> httpx.Request:
     return httpx.Request(
         "POST",
         refresh_url,

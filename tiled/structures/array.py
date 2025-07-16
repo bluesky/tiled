@@ -200,7 +200,7 @@ class StructDtype:
     def to_numpy_descr(self):
         return [f.to_numpy_descr() for f in self.fields]
 
-    def max_depth(self):
+    def max_depth(self) -> int:
         return max(
             1 if isinstance(f.dtype, BuiltinDtype) else 1 + f.dtype.max_depth()
             for f in self.fields

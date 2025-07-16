@@ -4,6 +4,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import _io
 import asyncpg
 import pytest
 import pytest_asyncio
@@ -69,7 +70,7 @@ def buffer():
 def buffer_factory(request):
     buffers = []
 
-    def _buffer():
+    def _buffer() -> _io.BytesIO:
         buf = io.BytesIO()
         buffers.append(buf)
         return buf

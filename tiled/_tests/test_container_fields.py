@@ -1,3 +1,4 @@
+import _pytest
 import anyio
 import h5py
 import pandas
@@ -68,7 +69,9 @@ def test_excel_fields(client, fields, buffer) -> None:
     assert_requested_fields_fetched(buffer, fields, client)
 
 
-def mark_xfail(value, unsupported: str = "UNSPECIFIED ADAPTER"):
+def mark_xfail(
+    value, unsupported: str = "UNSPECIFIED ADAPTER"
+) -> _pytest.mark.structures.ParameterSet:
     "Indicate that this parameterized value is expected to fail"
     reason = f"Tiled does not currently support selecting 'fields' for {unsupported}"
     return pytest.param(value, marks=pytest.mark.xfail(reason=reason))

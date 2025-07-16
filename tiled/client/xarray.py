@@ -32,7 +32,7 @@ class DaskDatasetClient(Container):
         """
         return list(self)
 
-    def _build_arrays(self, variables, optimize_wide_table):
+    def _build_arrays(self, variables, optimize_wide_table: bool):
         data_vars = {}
         coords = {}
         # Optimization: Download scalar columns in batch as DataFrame.
@@ -110,7 +110,9 @@ class DaskDatasetClient(Container):
                     )
         return data_vars, coords
 
-    def read(self, variables=None, *, optimize_wide_table: bool = True):
+    def read(
+        self, variables=None, *, optimize_wide_table: bool = True
+    ) -> xarray.core.dataset.Dataset:
         data_vars, coords = self._build_arrays(variables, optimize_wide_table)
         return xarray.Dataset(
             data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
@@ -118,7 +120,9 @@ class DaskDatasetClient(Container):
 
 
 class DatasetClient(DaskDatasetClient):
-    def read(self, variables=None, *, optimize_wide_table: bool = True):
+    def read(
+        self, variables=None, *, optimize_wide_table: bool = True
+    ) -> xarray.core.dataset.Dataset:
         return (
             super()
             .read(variables=variables, optimize_wide_table=optimize_wide_table)
@@ -201,7 +205,7 @@ class _WideTableFetcher:
         return deserialize_arrow(content)
 
 
-def write_xarray_dataset(client_node, dataset, key=None):
+def write_xarray_dataset(client_node, dataset: xarray.core.dataset.Dataset, key=None):
     dataset_client = client_node.create_container(
         key=key, specs=[Spec("xarray_dataset")], metadata={"attrs": dataset.attrs}
     )

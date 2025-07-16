@@ -41,7 +41,7 @@ class ListView(collections.abc.Sequence):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._internal_list!r})"
 
-    def _repr_pretty_(self, p, cycle) -> None:
+    def _repr_pretty_(self, p, cycle: bool) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -87,7 +87,7 @@ class DictView(collections.abc.Mapping):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._internal_dict!r})"
 
-    def _repr_pretty_(self, p, cycle) -> None:
+    def _repr_pretty_(self, p, cycle: bool) -> None:
         """
         Provide "pretty" display in IPython/Jupyter.
 
@@ -148,7 +148,7 @@ class OneShotCachedMap(collections.abc.Mapping):
                 v = self.__mapping[key] = v.func()
         return v
 
-    def set(self, key, value_factory):
+    def set(self, key: str, value_factory):
         """
         Set key to a callable the returns value.
         """
@@ -178,7 +178,7 @@ class OneShotCachedMap(collections.abc.Mapping):
     def __iter__(self) -> Iterator:
         return iter(self.__mapping)
 
-    def __contains__(self, k) -> bool:
+    def __contains__(self, k: str) -> bool:
         # make sure checking 'in' does not trigger evaluation
         return k in self.__mapping
 
@@ -220,7 +220,7 @@ class CachingMap(collections.abc.Mapping):
         self.__mapping = mapping
         self.__cache = cache
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str):
         try:
             return self.__cache[key]
         except KeyError:
@@ -228,7 +228,7 @@ class CachingMap(collections.abc.Mapping):
             self.__cache[key] = value
             return value
 
-    def set(self, key, value_factory):
+    def set(self, key: str, value_factory):
         """
         Set key to a callable the returns value.
         """
@@ -240,21 +240,21 @@ class CachingMap(collections.abc.Mapping):
         # This may be replacing (updating) an existing key. Clear any cached value.
         self.evict(key)
 
-    def discard(self, key) -> None:
+    def discard(self, key: str) -> None:
         """
         Discard a key if it is present. This is idempotent.
         """
         self.__mapping.pop(key, None)
         self.evict(key)
 
-    def remove(self, key) -> None:
+    def remove(self, key: str) -> None:
         """
         Remove a key. Raises KeyError if key not present.
         """
         del self.__mapping[key]
         self.evict(key)
 
-    def evict(self, key) -> None:
+    def evict(self, key: str) -> None:
         """
         Evict a key from the internal cache. This is idempotent.
 
@@ -269,7 +269,7 @@ class CachingMap(collections.abc.Mapping):
     def __iter__(self) -> Iterator:
         return iter(self.__mapping)
 
-    def __contains__(self, key) -> bool:
+    def __contains__(self, key: str) -> bool:
         # Ensure checking 'in' does not trigger evaluation.
         return key in self.__mapping
 
@@ -523,13 +523,13 @@ def prepend_to_sys_path(*paths):
             sys.path.pop(0)
 
 
-def safe_json_dump(content):
+def safe_json_dump(content) -> bytes:
     """
     Baes64-encode raw bytes, and provide a fallback if orjson numpy handling fails.
     """
     import orjson
 
-    def default(content):
+    def default(content) -> str:
         if isinstance(content, bytes):
             content = f"data:application/octet-stream;base64,{base64.b64encode(content).decode('utf-8')}"
             return content
@@ -674,7 +674,7 @@ TIME_STRING_UNITS = {
 }
 
 
-def parse_time_string(s):
+def parse_time_string(s: str) -> int:
     """
     Accept strings like '1y', '1d', '24h'; return int seconds.
 
@@ -710,7 +710,7 @@ async def ensure_awaitable(func, *args, **kwargs):
         return await anyio.to_thread.run_sync(functools.partial(func, **kwargs), *args)
 
 
-def path_from_uri(uri) -> Path:
+def path_from_uri(uri: str) -> Path:
     """
     Give a URI, return a Path.
 
@@ -818,7 +818,7 @@ class catch_warning_msg(warnings.catch_warnings):
             append=append,
         )
 
-    def __enter__(self):
+    def __enter__(self) -> "catch_warning_msg":
         super().__enter__()
         self.apply_filter()
         return self

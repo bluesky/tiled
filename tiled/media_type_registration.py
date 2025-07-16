@@ -3,6 +3,8 @@ import gzip
 import mimetypes
 from collections import defaultdict
 
+from tiled.structures.core import StructureFamily
+
 from .utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
     XLSX_MIME_TYPE,
@@ -51,7 +53,7 @@ class SerializationRegistry:
         for ext, media_type in self.DEFAULT_ALIASES.items():
             self.register_alias(ext, media_type)
 
-    def media_types(self, structure_family):
+    def media_types(self, structure_family: StructureFamily) -> DictView:
         """
         List the supported media types for a given structure family.
         """
@@ -131,17 +133,17 @@ class SerializationRegistry:
             return dec
         return dec(func)
 
-    def register_alias(self, ext, media_type) -> None:
+    def register_alias(self, ext: str, media_type: str) -> None:
         self._custom_aliases_by_type[media_type].append(ext)
         self._custom_aliases[ext] = media_type
 
-    def resolve_alias(self, alias):
+    def resolve_alias(self, alias) -> str:
         try:
             return mimetypes.types_map[f".{alias}"]
         except KeyError:
             return self._custom_aliases.get(alias, alias)
 
-    def dispatch(self, structure_family, media_type):
+    def dispatch(self, structure_family, media_type: str):
         """
         Look up a writer for a given structure and media type.
         """
@@ -164,7 +166,7 @@ class CompressionRegistry:
         # ones will get tried first (if the client accepts them).
         return reversed(self._lookup.get(media_type, []))
 
-    def register(self, media_type, encoding, func) -> None:
+    def register(self, media_type: str, encoding: str, func) -> None:
         """
         Register a new media_type for a structure family.
 

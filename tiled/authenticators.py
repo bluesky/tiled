@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from typing import Any, Mapping, Optional, cast
 
 import httpx
+import ldap3
 from fastapi import APIRouter, Request
 from jose import JWTError, jwt
 from pydantic import Secret
@@ -595,7 +596,7 @@ class LDAPAuthenticator(InternalAuthenticator):
         else:
             return 389  # default plaintext port for LDAP
 
-    async def resolve_username(self, username_supplied_by_user):
+    async def resolve_username(self, username_supplied_by_user: str):
         import ldap3
 
         search_dn = self.lookup_dn_search_user
@@ -676,7 +677,7 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         return (user_dn, response[0]["dn"])
 
-    def get_connection(self, userdn, password: str):
+    def get_connection(self, userdn, password: str) -> ldap3.core.connection.Connection:
         import ldap3
 
         # NOTE: setting 'active=False' essentially disables exclusion of inactive servers from the pool.

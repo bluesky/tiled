@@ -16,9 +16,13 @@ import anyio
 import dateutil.tz
 import jmespath
 import msgpack
+import starlette
 from fastapi import HTTPException, Response
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
+
+from tiled.media_type_registration import SerializationRegistry
+from tiled.query_registration import QueryRegistry
 
 # Some are not directly used, but they register things on import.
 from .. import queries
@@ -65,7 +69,7 @@ DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
 
 
-async def len_or_approx(tree):
+async def len_or_approx(tree: MapAdapter) -> int:
     """
     Prefer approximate length if implemented. (It's cheaper.)
     """
@@ -77,7 +81,9 @@ async def len_or_approx(tree):
         return await anyio.to_thread.run_sync(len, tree)
 
 
-def pagination_links(base_url, route, path_parts, offset: int, limit: int, length_hint):
+def pagination_links(
+    base_url: str, route: str, path_parts, offset: int, limit: int, length_hint: int
+):
     path_str = "/".join(path_parts)
     links = {
         "self": f"{base_url}{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
@@ -106,7 +112,7 @@ def pagination_links(base_url, route, path_parts, offset: int, limit: int, lengt
     return links
 
 
-async def apply_search(tree, filters, query_registry):
+async def apply_search(tree, filters, query_registry: QueryRegistry) -> MapAdapter:
     queries = defaultdict(
         dict
     )  # e.g. {"text": {"text": "dog"}, "lookup": {"key": "..."}}
@@ -169,7 +175,7 @@ async def apply_search(tree, filters, query_registry):
     return tree
 
 
-def apply_sort(tree, sort):
+def apply_sort(tree: MapAdapter, sort) -> MapAdapter:
     sorting = []
     if sort is not None:
         for item in sort.split(","):
@@ -190,20 +196,20 @@ def apply_sort(tree, sort):
 
 
 async def construct_entries_response(
-    query_registry,
-    tree,
-    route,
-    path,
+    query_registry: QueryRegistry,
+    tree: str,
+    route: str,
+    path: str,
     offset: int,
     limit: int,
-    fields,
-    select_metadata,
-    omit_links,
-    include_data_sources,
-    filters,
+    fields: bool,
+    select_metadata: bool,
+    omit_links: bool,
+    include_data_sources: bool,
+    filters: str,
     sort,
-    base_url,
-    media_type,
+    base_url: str,
+    media_type: str,
     max_depth,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
@@ -268,13 +274,13 @@ DEFAULT_MEDIA_TYPES = {
 
 
 async def construct_revisions_response(
-    entry,
-    base_url,
-    route,
-    path,
+    entry: str,
+    base_url: str,
+    route: str,
+    path: str,
     offset: int,
     limit: int,
-    media_type,
+    media_type: str,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
     revisions = await entry.revisions(offset, limit)
@@ -297,11 +303,11 @@ async def construct_revisions_response(
 
 
 async def construct_data_response(
-    structure_family,
-    serialization_registry,
-    payload,
+    structure_family: StructureFamily,
+    serialization_registry: SerializationRegistry,
+    payload: starlette.requests.Request,
     metadata,
-    request,
+    request: starlette.requests.Request,
     format=None,
     specs=None,
     expires=None,
@@ -400,14 +406,14 @@ async def construct_data_response(
 
 
 async def construct_resource(
-    base_url,
+    base_url: str,
     path_parts,
     entry,
-    fields,
-    select_metadata,
-    omit_links,
-    include_data_sources,
-    media_type,
+    fields: bool,
+    select_metadata: bool,
+    omit_links: bool,
+    include_data_sources: bool,
+    media_type: str,
     max_depth,
     depth: int = 0,
 ):
@@ -572,7 +578,7 @@ class NumpySafeJSONResponse(JSONResponse):
             return safe_json_dump(content)
 
 
-def _fallback_msgpack_encoder(obj):
+def _fallback_msgpack_encoder(obj) -> str:
     # If numpy has not been imported yet, then we can be sure that obj
     # is not a numpy object, and we want to avoid triggering a numpy
     # import. (The server does not have a hard numpy dependency.)
@@ -641,7 +647,7 @@ MSGPACK_MIME_TYPE = "application/x-msgpack"
 HTTP_EXPIRES_HEADER_FORMAT = "%a, %d %b %Y %H:%M:%S GMT"
 
 
-def resolve_media_type(request):
+def resolve_media_type(request: starlette.requests.Request) -> str:
     media_types = request.headers.get("Accept", JSON_MIME_TYPE).split(", ")
     for media_type in media_types:
         if media_type == "*/*":
@@ -662,7 +668,11 @@ def resolve_media_type(request):
 
 
 def json_or_msgpack(
-    request, content, expires=None, headers=None, status_code=HTTP_200_OK
+    request: starlette.requests.Request,
+    content,
+    expires=None,
+    headers=None,
+    status_code: int = HTTP_200_OK,
 ):
     media_type = resolve_media_type(request)
     with record_timing(request.state.metrics, "tok"):

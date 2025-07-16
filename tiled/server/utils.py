@@ -3,6 +3,7 @@ import time
 from collections.abc import Generator
 from typing import Any, Mapping
 
+import pydantic_settings
 from fastapi import Request
 from starlette.types import Scope
 
@@ -68,8 +69,13 @@ def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> 
 
 
 async def filter_for_access(
-    entry, access_policy, principal, authn_scopes, scopes, metrics
-):
+    entry: pydantic_settings.main.BaseSettings,
+    access_policy,
+    principal,
+    authn_scopes,
+    scopes,
+    metrics: dict,
+) -> MapAdapter:
     if access_policy is not None and hasattr(entry, "search"):
         with record_timing(metrics, "acl"):
             queries = await access_policy.filters(

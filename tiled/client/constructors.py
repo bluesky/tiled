@@ -13,7 +13,7 @@ from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_conte
 
 
 def from_uri(
-    uri,
+    uri: str,
     structure_clients: str = "numpy",
     *,
     cache=UNSET,

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
+import starlette
 from fastapi import (
     APIRouter,
     Depends,
@@ -38,6 +39,7 @@ from starlette.status import (
 )
 
 from tiled.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from tiled.server.schemas import APIKeyRequestParams
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -81,7 +83,7 @@ DEVICE_CODE_MAX_AGE = timedelta(minutes=15)
 DEVICE_CODE_POLLING_INTERVAL = 5  # seconds
 
 
-def utcnow():
+def utcnow() -> datetime:
     "UTC now with second resolution"
     return datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -124,7 +126,7 @@ class StrictAPIKeyHeader(APIKeyHeader):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="PLACEHOLDER", auto_error=False)
 
 
-def create_access_token(data, secret_key, expires_delta):
+def create_access_token(data, secret_key: str, expires_delta: timedelta):
     to_encode = data.copy()
     expire = utcnow() + expires_delta
     to_encode.update({"exp": expire, "type": "access"})
@@ -132,7 +134,7 @@ def create_access_token(data, secret_key, expires_delta):
     return encoded_jwt
 
 
-def create_refresh_token(session_id, secret_key, expires_delta):
+def create_refresh_token(session_id, secret_key: str, expires_delta: timedelta):
     expire = utcnow() + expires_delta
     to_encode = {
         "type": "refresh",
@@ -143,7 +145,7 @@ def create_refresh_token(session_id, secret_key, expires_delta):
     return encoded_jwt
 
 
-def decode_token(token, secret_keys):
+def decode_token(token: str, secret_keys):
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -425,7 +427,11 @@ async def create_pending_session(db):
 
 
 async def create_session(
-    settings, db, identity_provider, id, state: UserSessionState = None
+    settings: Settings,
+    db,
+    identity_provider: str,
+    id: str,
+    state: UserSessionState = None,
 ):
     # Have we seen this Identity before?
     identity = (
@@ -484,7 +490,7 @@ async def create_session(
     return fully_loaded_session
 
 
-async def create_tokens_from_session(settings, db, session, provider):
+async def create_tokens_from_session(settings: Settings, db, session, provider: str):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -602,7 +608,7 @@ def add_external_routes(
     async def device_code_user_code_form_route(
         request: Request,
         code: str,
-    ):
+    ) -> starlette.templating._TemplateResponse:
         action = (
             f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
         )
@@ -624,7 +630,7 @@ def add_external_routes(
         user_code: str = Form(),
         settings: Settings = Depends(get_settings),
         db: Optional[AsyncSession] = Depends(get_database_session),
-    ):
+    ) -> starlette.templating._TemplateResponse:
         request.state.endpoint = "auth"
         action = (
             f"{get_base_url(request)}/auth/provider/{provider}/device_code?code={code}"
@@ -749,7 +755,12 @@ def add_internal_routes(
         return tokens
 
 
-async def generate_apikey(db, principal, apikey_params, request):
+async def generate_apikey(
+    db,
+    principal,
+    apikey_params: APIKeyRequestParams,
+    request: Request,
+):
     if apikey_params.scopes is None:
         scopes = ["inherit"]
     else:
@@ -992,7 +1003,7 @@ def authentication_router() -> APIRouter:
         refresh_token: schemas.RefreshToken,
         settings: Settings = Depends(get_settings),
         db: Optional[AsyncSession] = Depends(get_database_session),
-    ):
+    ) -> Response:
         "Mark a Session as revoked so it cannot be refreshed again."
         request.state.endpoint = "auth"
         payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
@@ -1014,7 +1025,7 @@ def authentication_router() -> APIRouter:
             get_current_principal
         ),
         db: Optional[AsyncSession] = Depends(get_database_session),
-    ):
+    ) -> Response:
         "Mark a Session as revoked so it cannot be refreshed again."
         request.state.endpoint = "auth"
         # Find this session in the database.

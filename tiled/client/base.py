@@ -197,7 +197,7 @@ class BaseClient:
     def context(self):
         return self._context
 
-    def refresh(self):
+    def refresh(self) -> "BaseClient":
         params = {
             **parse_qs(urlparse(self.uri).query),
         }
@@ -294,7 +294,7 @@ class BaseClient:
             return None
         return [DataSource.from_json(d) for d in data_sources_json]
 
-    def include_data_sources(self):
+    def include_data_sources(self) -> "BaseClient":
         """
         Ensure that data source and asset information is fetched.
 
@@ -651,7 +651,7 @@ class BaseClient:
         )
         return patch.patch
 
-    def _build_metadata_revisions(self):
+    def _build_metadata_revisions(self) -> MetadataRevisions:
         if self._metadata_revisions is None:
             link = self.item["links"]["self"].replace("/metadata", "/revisions", 1)
             self._metadata_revisions = MetadataRevisions(self.context, link)
@@ -663,7 +663,7 @@ class BaseClient:
         metadata_patch=None,
         specs_patch=None,
         access_blob_patch=None,
-        content_type=patch_mimetypes.JSON_PATCH,
+        content_type: str = patch_mimetypes.JSON_PATCH,
         drop_revision: bool = False,
     ) -> None:
         """

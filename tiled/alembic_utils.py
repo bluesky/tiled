@@ -2,13 +2,14 @@ import contextlib
 import os.path
 import tempfile
 
+import sqlalchemy
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
 
 
 def write_alembic_ini(
-    alembic_ini_template_path, alembic_dir, path, database_uri
+    alembic_ini_template_path, alembic_dir, path: str, database_uri
 ) -> None:
     """Write a complete alembic.ini from our template.
 
@@ -66,7 +67,9 @@ def temp_alembic_ini(alembic_ini_template_path, alembic_dir, database_uri):
         yield alembic_ini
 
 
-def stamp_head(alembic_ini_template_path, alembic_dir, engine_url) -> None:
+def stamp_head(
+    alembic_ini_template_path: str, alembic_dir: str, engine_url: str
+) -> None:
     """
     Upgrade schema to the specified revision.
     """
@@ -77,7 +80,9 @@ def stamp_head(alembic_ini_template_path, alembic_dir, engine_url) -> None:
         command.stamp(alembic_cfg, "head")
 
 
-def upgrade(alembic_ini_template_path, alembic_dir, engine_url, revision) -> None:
+def upgrade(
+    alembic_ini_template_path: str, alembic_dir: str, engine_url: str, revision: str
+) -> None:
     """
     Upgrade schema to the specified revision.
     """
@@ -88,7 +93,9 @@ def upgrade(alembic_ini_template_path, alembic_dir, engine_url, revision) -> Non
         command.upgrade(alembic_cfg, revision)
 
 
-def downgrade(alembic_ini_template_path, alembic_dir, engine_url, revision) -> None:
+def downgrade(
+    alembic_ini_template_path: str, alembic_dir: str, engine_url: str, revision: str
+) -> None:
     """
     Downgrade schema to the specified revision.
     """
@@ -111,7 +118,9 @@ class DatabaseUpgradeNeeded(Exception):
     pass
 
 
-async def get_current_revision(engine, known_revisions):
+async def get_current_revision(
+    engine: sqlalchemy.ext.asyncio.engine.AsyncEngine, known_revisions
+):
     redacted_url = engine.url._replace(password="[redacted]")
     async with engine.connect() as conn:
         context = await conn.run_sync(migration.MigrationContext.configure)
@@ -134,7 +143,11 @@ async def get_current_revision(engine, known_revisions):
     return revision
 
 
-async def check_database(engine, required_revision, known_revisions):
+async def check_database(
+    engine: sqlalchemy.ext.asyncio.engine.AsyncEngine,
+    required_revision: str,
+    known_revisions,
+):
     revision = await get_current_revision(engine, known_revisions)
     redacted_url = engine.url._replace(password="[redacted]")
     if revision is None:

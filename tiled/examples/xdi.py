@@ -130,7 +130,9 @@ class XDIAdapter(TableAdapter):
         return cls(data_uri, **kwargs)
 
 
-def read_xdi(data_uri, structure=None, metadata=None, specs=None, access_policy=None):
+def read_xdi(
+    data_uri, structure=None, metadata=None, specs=None, access_policy=None
+) -> TableAdapter:
     "Read XDI-formatted file."
     filepath = path_from_uri(data_uri)
     with open(filepath, "r") as file:
@@ -203,7 +205,7 @@ def read_xdi(data_uri, structure=None, metadata=None, specs=None, access_policy=
     )
 
 
-def write_xdi(df, metadata):
+def write_xdi(df, metadata) -> str:
     output = io.StringIO()
 
     xdi_version = metadata.get("xdi_version")
