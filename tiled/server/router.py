@@ -77,7 +77,7 @@ from .core import (
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
-    get_websocket_encoder,
+    get_websocket_envelope_formatter,
     json_or_msgpack,
     resolve_media_type,
 )
@@ -692,7 +692,7 @@ def get_router(
             },
             getattr(websocket.app.state, "access_policy", None),
         )
-        encoder = get_websocket_encoder(
+        encoder = get_websocket_envelope_formatter(
             envelope_format, entry, deserialization_registry
         )
         handler = entry.make_ws_handler(websocket, encoder)
