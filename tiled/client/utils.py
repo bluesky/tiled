@@ -245,7 +245,7 @@ def export_util(file, format, get, link, params):
 
 
 def client_for_item(
-    context, structure_clients, item, structure=None, include_data_sources=False
+    context, structure_clients, item, structure=None, include_data_sources: bool = False
 ):
     """
     Create an instance of the appropriate client class for an item.

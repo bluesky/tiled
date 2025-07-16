@@ -48,7 +48,7 @@ class ClientLogRecord(logging.LogRecord):
 
 
 def patched_make_record(
-    name,
+    name: str,
     level,
     fn,
     lno,

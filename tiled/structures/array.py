@@ -240,7 +240,9 @@ class ArrayStructure:
         )
 
     @classmethod
-    def from_array(cls, array, shape=None, chunks=None, dims=None) -> "ArrayStructure":
+    def from_array(
+        cls, array, shape=None, chunks=None, dims: Optional[Tuple[str, ...]] = None
+    ) -> "ArrayStructure":
         from dask.array.core import normalize_chunks
 
         if not hasattr(array, "__array__"):

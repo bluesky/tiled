@@ -1,7 +1,7 @@
 import base64
 import io
 from dataclasses import dataclass
-from typing import List, Tuple, Union
+from typing import List, Sequence, Tuple, Union
 
 import pyarrow
 
@@ -65,7 +65,7 @@ class TableStructure:
         data_uri = B64_ENCODED_PREFIX + schema_b64
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(d.keys()))
 
-    def from_arrays(cls, arr, names):
+    def from_arrays(cls, arr, names: Sequence[str]):
         import pyarrow
 
         schema_bytes = pyarrow.Table.from_arrays(arr, names).schema.serialize()
@@ -81,7 +81,7 @@ class TableStructure:
         return cls(arrow_schema=data_uri, npartitions=npartitions, columns=schema.names)
 
     @classmethod
-    def from_arrow_table(cls, table, npartitions=1) -> "TableStructure":
+    def from_arrow_table(cls, table, npartitions: int = 1) -> "TableStructure":
         schema_bytes = table.schema.serialize()
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64

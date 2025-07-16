@@ -137,14 +137,14 @@ class Settings:
 async def register(
     node,
     path,
-    prefix="/",
+    prefix: str = "/",
     walkers=None,
     adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
     mimetype_detection_hook=None,
     key_from_filename=None,
     filter=None,
-    overwrite=True,
+    overwrite: bool = True,
 ) -> None:
     "Register a file or directory (recursively)."
     settings = Settings.init(
@@ -277,7 +277,7 @@ async def one_node_per_item(
 async def register_single_item(
     node,
     item,
-    is_directory,
+    is_directory: bool,
     settings,
 ):
     "Register a single file or directory as a node."
@@ -398,7 +398,7 @@ async def group_image_sequences(
     return unhandled_files, unhandled_directories
 
 
-async def register_image_sequence(node, name, sequence, settings):
+async def register_image_sequence(node, name: str, sequence, settings):
     suffixes = Path(sequence[0]).suffixes
     file_ext = suffixes[-1] if len(suffixes) > 0 else None
     if file_ext and file_ext in IMG_SEQUENCE_MIMETYPES:
@@ -470,7 +470,7 @@ DEFAULT_WALKERS = [group_image_sequences, one_node_per_item]
 async def watch(
     node,
     path,
-    prefix="/",
+    prefix: str = "/",
     walkers=None,
     adapters_by_mimetype=None,
     mimetypes_by_file_ext=None,
@@ -528,7 +528,7 @@ async def _watch(
     stop_event,
     node,
     path,
-    prefix,
+    prefix: str,
     walkers,
     settings,
 ) -> None:
@@ -581,7 +581,7 @@ async def process_changes(
     batch,
     node,
     path,
-    prefix,
+    prefix: str,
     walkers,
     settings,
 ) -> None:

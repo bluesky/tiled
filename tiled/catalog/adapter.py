@@ -12,7 +12,7 @@ import sys
 import uuid
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Sequence, Union
 from urllib.parse import urlparse
 
 import anyio
@@ -565,7 +565,9 @@ class CatalogNodeAdapter:
     def sort(self, sorting):
         return self.new_variation(sorting=sorting)
 
-    async def get_distinct(self, metadata, structure_families, specs, counts):
+    async def get_distinct(
+        self, metadata, structure_families, specs, counts: Sequence[int]
+    ):
         if self.data_sources:
             return (await self.get_adapter()).get_disinct(
                 metadata, structure_families, specs, counts
@@ -839,7 +841,7 @@ class CatalogNodeAdapter:
     # async def patch_node(datasources=None):
     #     ...
 
-    async def revisions(self, offset, limit):
+    async def revisions(self, offset: int, limit: int):
         async with self.context.session() as db:
             revision_orms = (
                 await db.execute(
@@ -891,7 +893,7 @@ class CatalogNodeAdapter:
             ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
-    async def delete_tree(self, external_only=True):
+    async def delete_tree(self, external_only: bool = True):
         """
         Delete a Node and of the Nodes beneath it in the tree.
 
@@ -950,7 +952,7 @@ class CatalogNodeAdapter:
             await db.commit()
         return result.rowcount
 
-    async def delete_revision(self, number):
+    async def delete_revision(self, number: int):
         async with self.context.session() as db:
             result = await db.execute(
                 delete(orm.Revision)
@@ -969,7 +971,12 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def replace_metadata(
-        self, metadata=None, specs=None, access_blob=None, *, drop_revision=False
+        self,
+        metadata=None,
+        specs=None,
+        access_blob=None,
+        *,
+        drop_revision: bool = False,
     ) -> None:
         values = {}
         if metadata is not None:
@@ -1014,7 +1021,7 @@ class CatalogNodeAdapter:
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
-    async def keys_range(self, offset, limit):
+    async def keys_range(self, offset: int, limit: int):
         if self.data_sources:
             return it.islice(
                 (await self.get_adapter()).keys(),
@@ -1036,7 +1043,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 .all()
             )
 
-    async def items_range(self, offset, limit):
+    async def items_range(self, offset: int, limit: int):
         if self.data_sources:
             return it.islice(
                 (await self.get_adapter()).items(),
@@ -1234,7 +1241,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
-def delete_asset(data_uri, is_directory):
+def delete_asset(data_uri, is_directory: bool):
     url = urlparse(data_uri)
     if url.scheme == "file":
         path = path_from_uri(data_uri)
@@ -1532,7 +1539,7 @@ def from_uri(
     specs=None,
     writable_storage=None,
     readable_storage=None,
-    init_if_not_exists=False,
+    init_if_not_exists: bool = False,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
@@ -1591,7 +1598,7 @@ def _set_sqlite_pragma(conn, record) -> None:
     cursor.close()
 
 
-def format_distinct_result(results, counts):
+def format_distinct_result(results, counts: Sequence[int]):
     if counts:
         formatted_result = [
             {"value": value, "count": count} for value, count in results

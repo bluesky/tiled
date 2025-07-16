@@ -6,7 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Sequence, Union
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -44,7 +44,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
     @classmethod
-    def _discover_entrypoints(cls, entrypoint_name):
+    def _discover_entrypoints(cls, entrypoint_name: str):
         return OneShotCachedMap(
             {
                 name: entrypoint.load
@@ -86,7 +86,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         queries=None,
         sorting=None,
         structure=None,
-        include_data_sources=False,
+        include_data_sources: bool = False,
     ) -> None:
         "This is not user-facing. Use Node.from_uri."
 
@@ -204,7 +204,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # https://www.python.org/dev/peps/pep-0424/
         return len(self)
 
-    def __iter__(self, _ignore_inlined_contents=False):
+    def __iter__(self, _ignore_inlined_contents: bool = False) -> Iterator:
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
@@ -240,7 +240,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 yield item["id"]
             next_page_url = content["links"]["next"]
 
-    def __getitem__(self, keys, _ignore_inlined_contents=False):
+    def __getitem__(self, keys, _ignore_inlined_contents: bool = False):
         # These are equivalent:
         #
         # >>> node['a']['b']['c']
@@ -391,7 +391,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # The following two methods are used by keys(), values(), items().
 
     def _keys_slice(
-        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+        self,
+        start,
+        stop,
+        direction,
+        page_size: Optional[int] = None,
+        *,
+        _ignore_inlined_contents: bool = False,
     ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
@@ -443,7 +449,13 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             next_page_url = content["links"]["next"]
 
     def _items_slice(
-        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+        self,
+        start,
+        stop,
+        direction,
+        page_size: Optional[int] = None,
+        *,
+        _ignore_inlined_contents: bool = False,
     ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
@@ -531,7 +543,11 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return self.new_variation(queries=self._queries + [query])
 
     def distinct(
-        self, *metadata_keys, structure_families=False, specs=False, counts=False
+        self,
+        *metadata_keys,
+        structure_families: bool = False,
+        specs: bool = False,
+        counts: bool = False,
     ):
         """
         Get the unique values and optionally counts of metadata_keys,
@@ -832,7 +848,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         key=None,
         metadata=None,
-        dims=None,
+        dims: Optional[Sequence[int]] = None,
         specs=None,
         access_tags=None,
     ):
@@ -930,7 +946,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         key=None,
         metadata=None,
-        dims=None,
+        dims: Optional[Sequence[int]] = None,
         specs=None,
         access_tags=None,
     ):
@@ -986,7 +1002,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         *,
         key=None,
         metadata=None,
-        dims=None,
+        dims: Optional[Sequence[int]] = None,
         specs=None,
         access_tags=None,
     ):
@@ -1226,7 +1242,7 @@ DESCENDING = Descending("DESCENDING")
 
 class _LazyLoad:
     # This exists because lambdas and closures cannot be pickled.
-    def __init__(self, import_module_args, attr_name) -> None:
+    def __init__(self, import_module_args, attr_name: str) -> None:
         self.import_module_args = import_module_args
         self.attr_name = attr_name
 

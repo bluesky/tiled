@@ -110,7 +110,7 @@ class DaskDatasetClient(Container):
                     )
         return data_vars, coords
 
-    def read(self, variables=None, *, optimize_wide_table=True):
+    def read(self, variables=None, *, optimize_wide_table: bool = True):
         data_vars, coords = self._build_arrays(variables, optimize_wide_table)
         return xarray.Dataset(
             data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
@@ -118,7 +118,7 @@ class DaskDatasetClient(Container):
 
 
 class DatasetClient(DaskDatasetClient):
-    def read(self, variables=None, *, optimize_wide_table=True):
+    def read(self, variables=None, *, optimize_wide_table: bool = True):
         return (
             super()
             .read(variables=variables, optimize_wide_table=optimize_wide_table)
@@ -140,7 +140,7 @@ class _WideTableFetcher:
         # to ask for the data should trigger a request.
         self._lock = threading.Lock()
 
-    def register(self, name, array_client, array_structure):
+    def register(self, name: str, array_client, array_structure):
         if self._dataframe is not None:
             raise RuntimeError("Cannot add variables; already fetched.")
         self.variables.append(name)
@@ -167,7 +167,7 @@ class _WideTableFetcher:
                 self._dataframe = dataframe.reset_index()
         return self._dataframe
 
-    def _fetch_variables(self, variables, method="GET"):
+    def _fetch_variables(self, variables, method: str = "GET"):
         if method == "GET":
             return self._fetch_variables__get(variables)
         if method == "POST":

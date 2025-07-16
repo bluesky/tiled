@@ -241,7 +241,7 @@ record_arrays_examples = [
 
 
 @pytest.mark.parametrize("name, data", record_arrays_examples)
-def test_record_arrays(client, name, data) -> None:
+def test_record_arrays(client, name: str, data) -> None:
     array = awkward.Array(data)
     returned = client.write_awkward(array, key=f"test_{name}")
 

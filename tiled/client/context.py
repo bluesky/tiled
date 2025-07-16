@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -154,12 +154,12 @@ class Context:
         uri,
         *,
         headers=None,
-        api_key=None,
+        api_key: Optional[str] = None,
         cache=UNSET,
         timeout=None,
-        verify=True,
+        verify: bool = True,
         app=None,
-        raise_server_exceptions=True,
+        raise_server_exceptions: bool = True,
     ) -> None:
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -373,10 +373,10 @@ class Context:
         uri,
         *,
         headers=None,
-        api_key=None,
+        api_key: Optional[str] = None,
         cache=UNSET,
         timeout=None,
-        verify=True,
+        verify: bool = True,
         app=None,
     ):
         """
@@ -442,8 +442,8 @@ class Context:
         cache=UNSET,
         headers=None,
         timeout=None,
-        api_key=UNSET,
-        raise_server_exceptions=True,
+        api_key: str = UNSET,
+        raise_server_exceptions: bool = True,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -487,7 +487,7 @@ class Context:
             return match.group(1)
 
     @api_key.setter
-    def api_key(self, api_key) -> None:
+    def api_key(self, api_key: str) -> None:
         if api_key is None:
             if self.http_client.headers.get("Authorization", "").startswith("Apikey "):
                 self.http_client.headers.pop("Authorization")
@@ -608,7 +608,7 @@ class Context:
     def authenticate(
         self,
         *,
-        remember_me=True,
+        remember_me: bool = True,
     ) -> None:
         """
         Log in to a Tiled server.
@@ -644,7 +644,7 @@ class Context:
     # These two methods are aliased for convenience.
     login = authenticate
 
-    def configure_auth(self, tokens, remember_me=True):
+    def configure_auth(self, tokens, remember_me: bool = True):
         """
         Configure Tiled client with tokens for refresh flow.
 
@@ -851,7 +851,7 @@ class Admin:
         self.context = context
         self.base_url = context.server_info.links["self"]
 
-    def list_principals(self, offset=0, limit=100):
+    def list_principals(self, offset: int = 0, limit: int = 100):
         "List Principals (users and services) in the authentication database."
         url_path = f"{self.base_url}/auth/principal"
         params = {
@@ -976,7 +976,7 @@ def _can_prompt() -> bool:
     return False
 
 
-def password_grant(http_client, auth_endpoint, provider, username, password):
+def password_grant(http_client, auth_endpoint, provider, username: str, password: str):
     form_data = {
         "grant_type": "password",
         "username": username,

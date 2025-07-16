@@ -179,9 +179,9 @@ class Cache:
     def __init__(
         self,
         filepath=None,
-        capacity=500_000_000,
-        max_item_size=500_000,
-        readonly=False,
+        capacity: int = 500_000_000,
+        max_item_size: int = 500_000,
+        readonly: bool = False,
     ) -> None:
         if filepath is None:
             # Resolve this here, not at module scope, because the test suite
@@ -262,7 +262,7 @@ class Cache:
         return self._max_item_size
 
     @max_item_size.setter
-    def max_item_size(self, max_item_size) -> None:
+    def max_item_size(self, max_item_size: int) -> None:
         self._max_item_size = max_item_size
 
     @with_thread_lock

@@ -223,7 +223,7 @@ def generate_schema_documentation(header, schema, target) -> None:
     with open(schema, "r") as f:
         data = yaml.safe_load(f)
 
-    def parse_schema(d, md=[], depth=0, pre=""):
+    def parse_schema(d, md=[], depth: int = 0, pre: str = ""):
         """
         Generate markdown headers from a passed python dictionary created by
         parsing a schema.yaml file.

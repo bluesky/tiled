@@ -195,7 +195,9 @@ class _DaskArrayClient(BaseClient):
                     )
                 )
 
-    def patch(self, array: NDArray, offset: Union[int, tuple[int, ...]], extend=False):
+    def patch(
+        self, array: NDArray, offset: Union[int, tuple[int, ...]], extend: bool = False
+    ):
         """
         Write data into a slice of an array, maybe extending the shape.
 

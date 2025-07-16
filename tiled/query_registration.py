@@ -6,7 +6,7 @@ This intentionally only uses built-in dataclasses, not pydantic models.
 """
 import inspect
 from dataclasses import fields
-from typing import Any
+from typing import Any, Optional
 
 from .utils import DictView, UnsupportedQueryType
 
@@ -34,7 +34,12 @@ class QueryRegistry:
     def query_type_to_name(self):
         return DictView(self._query_type_to_name)
 
-    def register(self, name=None, overwrite=False, must_revalidate=True):
+    def register(
+        self,
+        name: Optional[str] = None,
+        overwrite: bool = False,
+        must_revalidate: bool = True,
+    ):
         """
         Register a new type of query.
         """

@@ -1,4 +1,5 @@
 import functools
+from typing import Iterator
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -210,7 +211,7 @@ class _DaskDataFrameClient(BaseClient):
         item = content["data"]
         return client_for_item(self.context, self.structure_clients, item)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self.structure().columns
 
     # __len__ is intentionally not implemented. For DataFrames it means "number

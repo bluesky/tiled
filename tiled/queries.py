@@ -50,7 +50,7 @@ class FullText(NoBool):
         return {"text": self.text}
 
     @classmethod
-    def decode(cls, *, text):
+    def decode(cls, *, text: str):
         return cls(text=text)
 
 
@@ -143,7 +143,7 @@ class Regex(NoBool):
         }
 
     @classmethod
-    def decode(cls, *, key, pattern, case_sensitive=True):
+    def decode(cls, *, key, pattern: str, case_sensitive: bool = True):
         # Note: FastAPI decodes case_sensitive into a boolean for us.
         return cls(
             key=key,
@@ -409,7 +409,7 @@ class Like(NoBool):
         return {"key": self.key, "pattern": json.dumps(self.pattern)}
 
     @classmethod
-    def decode(cls, *, key, pattern):
+    def decode(cls, *, key, pattern: str):
         return cls(key=key, pattern=json.loads(pattern))
 
 

@@ -50,7 +50,7 @@ class TiledAuth(httpx.Auth):
         self.token_directory = token_directory
         self._sync_lock = sync_lock
 
-    def sync_get_token(self, key, reload_from_disk=False):
+    def sync_get_token(self, key, reload_from_disk: bool = False):
         if not reload_from_disk:
             # Use in-memory cached copy.
             try:
@@ -86,7 +86,7 @@ class TiledAuth(httpx.Auth):
                 filepath.unlink(missing_ok=True)
             self.tokens.pop(key, None)  # Clear cached value.
 
-    def sync_auth_flow(self, request, attempt=0):
+    def sync_auth_flow(self, request, attempt: int = 0):
         access_token = self.sync_get_token("access_token")
         if access_token is not None:
             request.headers["Authorization"] = f"Bearer {access_token}"

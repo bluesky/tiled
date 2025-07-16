@@ -553,7 +553,7 @@ def principals_context(enter_username_password, config):
     ),
 )
 def test_admin_api_key_any_principal(
-    enter_username_password, principals_context, username, scopes, resource
+    enter_username_password, principals_context, username: str, scopes, resource
 ) -> None:
     """
     Admin can create usable API keys for any prinicipal, within that principal's scopes.
@@ -624,7 +624,7 @@ def test_admin_api_key_any_principal_exceeds_scopes(
 
 @pytest.mark.parametrize("username", ("alice", "bob"))
 def test_api_key_any_principal(
-    enter_username_password, principals_context, username
+    enter_username_password, principals_context, username: str
 ) -> None:
     """
     Ordinary user cannot create API key for another principal.

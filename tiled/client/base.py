@@ -127,7 +127,7 @@ class BaseClient:
         item,
         structure_clients,
         structure=None,
-        include_data_sources=False,
+        include_data_sources: bool = False,
     ) -> None:
         self._context = context
         self._item = item
@@ -367,7 +367,7 @@ class BaseClient:
                 manifests[asset.id] = manifest
         return manifests
 
-    def raw_export(self, destination_directory=None, max_workers=4):
+    def raw_export(self, destination_directory=None, max_workers: int = 4):
         """
         Download the raw assets backing this node.
 
@@ -461,7 +461,12 @@ class BaseClient:
         return sorted(formats)
 
     def update_metadata(
-        self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
+        self,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+        *,
+        drop_revision: bool = False,
     ) -> None:
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
@@ -659,7 +664,7 @@ class BaseClient:
         specs_patch=None,
         access_blob_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
-        drop_revision=False,
+        drop_revision: bool = False,
     ) -> None:
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
@@ -776,7 +781,7 @@ class BaseClient:
                 )
 
     def replace_metadata(
-        self, metadata=None, specs=None, access_tags=None, drop_revision=False
+        self, metadata=None, specs=None, access_tags=None, drop_revision: bool = False
     ) -> None:
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).

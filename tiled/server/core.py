@@ -77,7 +77,7 @@ async def len_or_approx(tree):
         return await anyio.to_thread.run_sync(len, tree)
 
 
-def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
+def pagination_links(base_url, route, path_parts, offset: int, limit: int, length_hint):
     path_str = "/".join(path_parts)
     links = {
         "self": f"{base_url}{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
@@ -194,8 +194,8 @@ async def construct_entries_response(
     tree,
     route,
     path,
-    offset,
-    limit,
+    offset: int,
+    limit: int,
     fields,
     select_metadata,
     omit_links,
@@ -272,8 +272,8 @@ async def construct_revisions_response(
     base_url,
     route,
     path,
-    offset,
-    limit,
+    offset: int,
+    limit: int,
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
@@ -409,7 +409,7 @@ async def construct_resource(
     include_data_sources,
     media_type,
     max_depth,
-    depth=0,
+    depth: int = 0,
 ):
     path_str = "/".join(path_parts)
     id_ = path_parts[-1] if path_parts else ""
@@ -616,7 +616,7 @@ class MsgpackResponse(Response):
         self.__metrics = metrics
         super().__init__(*args, **kwargs)
 
-    def render(self, content: Any, _reentered=False) -> bytes:
+    def render(self, content: Any, _reentered: bool = False) -> bytes:
         try:
             with record_timing(self.__metrics, "pack"):
                 return msgpack.packb(

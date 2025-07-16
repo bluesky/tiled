@@ -545,7 +545,7 @@ class CustomAttributesAuthenticator(DictionaryAuthenticator):
             confirmation_message,
         )
 
-    async def authenticate(self, username, password):
+    async def authenticate(self, username: str, password: str):
         state = await super().authenticate(username, password)
         if isinstance(state, UserSessionState):
             # enrich the auth state
@@ -675,7 +675,11 @@ def custom_attributes_context():
     ],
 )
 def test_custom_attributes_with_data_access(
-    enter_username_password, custom_attributes_context, username, password, nodes
+    enter_username_password,
+    custom_attributes_context,
+    username: str,
+    password: str,
+    nodes,
 ) -> None:
     """Test that the user has access to the data based on their auth attributes."""
     with enter_username_password(username, password):
@@ -704,7 +708,11 @@ def test_custom_attributes_with_data_access(
     ],
 )
 def test_custom_attributes_without_data_access(
-    enter_username_password, custom_attributes_context, username, password, nodes
+    enter_username_password,
+    custom_attributes_context,
+    username: str,
+    password: str,
+    nodes,
 ) -> None:
     """Test that the user cannot access data due to missing auth attributes."""
     with enter_username_password(username, password):

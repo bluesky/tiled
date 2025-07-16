@@ -131,7 +131,7 @@ class AccessTagsParser:
     def __init__(self, db) -> None:
         self.db = db
 
-    def is_tag_defined(self, name):
+    def is_tag_defined(self, name: str):
         with closing(self.db.cursor()) as cursor:
             cursor.execute("SELECT 1 FROM tags WHERE name = ?;", (name,))
             row = cursor.fetchone()
@@ -144,7 +144,7 @@ class AccessTagsParser:
             public_tags = {name for (name,) in cursor.fetchall()}
         return public_tags
 
-    def get_scopes_from_tag(self, tagname, username):
+    def get_scopes_from_tag(self, tagname: str, username: str):
         with closing(self.db.cursor()) as cursor:
             cursor.execute(
                 "SELECT scope_name FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?;",
@@ -153,7 +153,7 @@ class AccessTagsParser:
             user_tag_scopes = {scope for (scope,) in cursor.fetchall()}
         return user_tag_scopes
 
-    def is_tag_owner(self, tagname, username):
+    def is_tag_owner(self, tagname: str, username: str):
         with closing(self.db.cursor()) as cursor:
             cursor.execute(
                 "SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?;",
@@ -163,14 +163,14 @@ class AccessTagsParser:
             found_owner = bool(row)
         return found_owner
 
-    def is_tag_public(self, name):
+    def is_tag_public(self, name: str):
         with closing(self.db.cursor()) as cursor:
             cursor.execute("SELECT 1 FROM public_tags WHERE name = ?;", (name,))
             row = cursor.fetchone()
             found_public = bool(row)
         return found_public
 
-    def get_tags_from_scope(self, scope, username):
+    def get_tags_from_scope(self, scope, username: str):
         with closing(self.db.cursor()) as cursor:
             cursor.execute(
                 "SELECT tag_name FROM user_tag_scopes WHERE user_name = ? AND scope_name = ?;",

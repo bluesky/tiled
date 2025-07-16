@@ -33,7 +33,7 @@ dtype_range.update(_integer_ranges)
 _supported_types = list(dtype_range.keys())
 
 
-def _dtype_itemsize(itemsize, *dtypes):
+def _dtype_itemsize(itemsize: int, *dtypes):
     """Return first of `dtypes` with itemsize greater than `itemsize`
     Parameters
     ----------
@@ -52,7 +52,7 @@ def _dtype_itemsize(itemsize, *dtypes):
     return next(dt for dt in dtypes if np.dtype(dt).itemsize >= itemsize)
 
 
-def _dtype_bits(kind, bits, itemsize=1):
+def _dtype_bits(kind, bits, itemsize: int = 1):
     """Return dtype of `kind` that can store a `bits` wide unsigned int
     Parameters:
     kind: str
@@ -76,7 +76,7 @@ def _dtype_bits(kind, bits, itemsize=1):
     return np.dtype(kind + str(s))
 
 
-def _scale(a, n, m, copy=True):
+def _scale(a, n, m, copy: bool = True):
     """Scale an array of unsigned/positive integers from `n` to `m` bits.
     Numbers can be represented exactly only if `m` is a multiple of `n`.
     Parameters
@@ -146,7 +146,7 @@ def _scale(a, n, m, copy=True):
             return a
 
 
-def _convert(image, dtype, force_copy=False, uniform=False):
+def _convert(image, dtype, force_copy: bool = False, uniform: bool = False):
     """
     Convert an image to the requested data-type.
     Warnings are issued in case of precision loss, or when negative values
@@ -320,7 +320,7 @@ def _convert(image, dtype, force_copy=False, uniform=False):
     return image.astype(dtype_out)
 
 
-def img_as_uint(image, force_copy=False):
+def img_as_uint(image, force_copy: bool = False):
     """Convert an image to 16-bit unsigned integer format.
     Parameters
     ----------
@@ -340,7 +340,7 @@ def img_as_uint(image, force_copy=False):
     return _convert(image, np.uint16, force_copy)
 
 
-def img_as_float(image, force_copy=False):
+def img_as_float(image, force_copy: bool = False):
     """Convert an image to floating point format.
     This function is similar to `img_as_float64`, but will not convert
     lower-precision floating point arrays to `float64`.
@@ -364,7 +364,7 @@ def img_as_float(image, force_copy=False):
     return _convert(image, np.floating, force_copy)
 
 
-def img_as_ubyte(image, force_copy=False):
+def img_as_ubyte(image, force_copy: bool = False):
     """Convert an image to 8-bit unsigned integer format.
     Parameters
     ----------

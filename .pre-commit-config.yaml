@@ -21,7 +21,7 @@ repos:
     -   id: autotyping
         stages: [pre-commit]
         types: [python]
-        args: [--safe]
+        args: [--aggressive]
 
 -   repo: https://github.com/pycqa/flake8
     rev: 6.1.0

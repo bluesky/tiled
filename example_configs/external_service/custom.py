@@ -79,11 +79,11 @@ class AuthenticatedAdapter:
         # or something custom, or another AuthenticatedAdapter...
         return ArrayAdapter.from_array(data, metadata=metadata)
 
-    async def keys_range(self, offset, limit):
+    async def keys_range(self, offset: int, limit: int):
         url = ...  # based on self._segments
         return await self._client.get_contents(url, token=self._token)
 
-    async def items_range(self, offset, limit):
+    async def items_range(self, offset: int, limit: int):
         # Ideally this would be a batched request to the external service.
         result = []
         for key in self._keys_range(offset, limit):

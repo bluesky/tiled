@@ -16,7 +16,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, Sequence
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -59,7 +59,7 @@ class ListView(collections.abc.Sequence):
     def __getitem__(self, index):
         return self._internal_list[index]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._internal_list
 
     def __len__(self) -> int:
@@ -105,7 +105,7 @@ class DictView(collections.abc.Mapping):
     def __getitem__(self, key):
         return self._internal_dict[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._internal_dict
 
     def __len__(self) -> int:
@@ -175,7 +175,7 @@ class OneShotCachedMap(collections.abc.Mapping):
     def __len__(self) -> int:
         return len(self.__mapping)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return iter(self.__mapping)
 
     def __contains__(self, k) -> bool:
@@ -266,7 +266,7 @@ class CachingMap(collections.abc.Mapping):
     def __len__(self) -> int:
         return len(self.__mapping)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return iter(self.__mapping)
 
     def __contains__(self, key) -> bool:
@@ -370,7 +370,7 @@ def gen_tree(tree, nodes=None, last=None):
             yield _line(nodes, last)
 
 
-def tree(tree, max_lines=20) -> None:
+def tree(tree, max_lines: int = 20) -> None:
     """
     Print a visual sketch of Tree structure akin to UNIX `tree`.
 
@@ -428,7 +428,7 @@ UNCHANGED = Sentinel("UNCHANGED")
 UNSET = Sentinel("UNSET")
 
 
-def import_object(colon_separated_string, accept_live_object=True):
+def import_object(colon_separated_string: str, accept_live_object: bool = True):
     if not isinstance(colon_separated_string, str):
         if not accept_live_object:
             raise ValueError(
@@ -455,7 +455,7 @@ def import_object(colon_separated_string, accept_live_object=True):
     return operator.attrgetter(obj_path)(module)
 
 
-def modules_available(*module_names) -> bool:
+def modules_available(*module_names: Sequence[str]) -> bool:
     for module_name in module_names:
         if not importlib.util.find_spec(module_name):
             break
@@ -652,7 +652,7 @@ def node_repr(tree, sample) -> str:
     return out
 
 
-def bytesize_repr(num):
+def bytesize_repr(num: int):
     # adapted from dask.utils
     for x in ["B", "KB", "MB", "GB", "TB"]:
         if num < 1024.0:
@@ -799,13 +799,13 @@ class catch_warning_msg(warnings.catch_warnings):
     def __init__(
         self,
         *,
-        action="",
-        message="",
+        action: str = "",
+        message: str = "",
         category=Warning,
-        module="",
-        lineno=0,
-        append=False,
-        record=False,
+        module: str = "",
+        lineno: int = 0,
+        append: bool = False,
+        record: bool = False,
     ) -> None:
         super().__init__(record=record)
         self.apply_filter = functools.partial(

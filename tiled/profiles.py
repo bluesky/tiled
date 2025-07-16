@@ -74,7 +74,7 @@ paths = [x for x in _all_paths if not (x in _seen or _seen.add(x))]
 del _seen
 
 
-def gather_profiles(paths, strict=True):
+def gather_profiles(paths, strict: bool = True):
     """
     For each path in paths, return a dict mapping filepath to content.
     """
@@ -253,7 +253,7 @@ def list_profiles():
     return {name: source_filepath for name, (source_filepath, _) in profiles.items()}
 
 
-def _compose_profile(name, *, uri, verify):
+def _compose_profile(name: str, *, uri, verify):
     "Compose profile YAML."
     import yaml
 
@@ -261,7 +261,7 @@ def _compose_profile(name, *, uri, verify):
     return yaml.dump(content)
 
 
-def create_profile(uri, name, verify=True, overwrite=False):
+def create_profile(uri, name: str, verify: bool = True, overwrite: bool = False):
     """
     Create a new profile.
 
@@ -285,7 +285,7 @@ def create_profile(uri, name, verify=True, overwrite=False):
     return filepath
 
 
-def delete_profile(name):
+def delete_profile(name: str):
     """
     Delete a profile by name.
 
@@ -313,7 +313,7 @@ def get_default_profile_name():
         return None
 
 
-def set_default_profile_name(name):
+def set_default_profile_name(name: str):
     filepath = paths[-1].parent / "default_profile"
     filepath.parent.mkdir(parents=True, exist_ok=True)
     if name is None:

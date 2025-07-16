@@ -150,7 +150,7 @@ def csv_file(tmpdir):
         ("sps", sps_arr.todense()),
     ],
 )
-def test_reading(context, name, expected) -> None:
+def test_reading(context, name: str, expected) -> None:
     client = from_context(context)
     actual = client["x"][name].read()
     if name == "sps":

@@ -12,7 +12,7 @@ from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_availab
 @default_serialization_registry.register(
     StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE
 )
-def serialize_arrow(df, metadata, preserve_index=True):
+def serialize_arrow(df, metadata, preserve_index: bool = True):
     import pyarrow
 
     if isinstance(df, pyarrow.Table):
@@ -39,7 +39,7 @@ def deserialize_arrow(buffer):
 # There seems to be no official Parquet MIME type.
 # https://issues.apache.org/jira/browse/PARQUET-1889
 @default_serialization_registry.register(StructureFamily.table, "application/x-parquet")
-def serialize_parquet(df, metadata, preserve_index=True):
+def serialize_parquet(df, metadata, preserve_index: bool = True):
     import pyarrow.parquet
 
     table = pyarrow.Table.from_pandas(df, preserve_index=preserve_index)
@@ -49,7 +49,7 @@ def serialize_parquet(df, metadata, preserve_index=True):
     return memoryview(sink.getvalue())
 
 
-def serialize_csv(df, metadata, preserve_index=False):
+def serialize_csv(df, metadata, preserve_index: bool = False):
     file = io.StringIO()
     df.to_csv(file, index=preserve_index)
     return file.getvalue().encode()
@@ -74,7 +74,7 @@ default_serialization_registry.register(
 
 
 @default_serialization_registry.register(StructureFamily.table, "text/html")
-def serialize_html(df, metadata, preserve_index=False):
+def serialize_html(df, metadata, preserve_index: bool = False):
     file = io.StringIO()
     df.to_html(file, index=preserve_index)
     return file.getvalue().encode()
@@ -85,7 +85,7 @@ if modules_available("openpyxl", "pandas"):
     import pandas
 
     @default_serialization_registry.register(StructureFamily.table, XLSX_MIME_TYPE)
-    def serialize_excel(df, metadata, preserve_index=False):
+    def serialize_excel(df, metadata, preserve_index: bool = False):
         file = io.BytesIO()
         df.to_excel(file, index=preserve_index)
         return file.getbuffer()

@@ -526,26 +526,26 @@ class LDAPAuthenticator(InternalAuthenticator):
         server_address,
         server_port=None,
         *,
-        use_ssl=False,
-        use_tls=True,
-        connect_timeout=5,
-        receive_timeout=60,
+        use_ssl: bool = False,
+        use_tls: bool = True,
+        connect_timeout: int = 5,
+        receive_timeout: int = 60,
         bind_dn_template=None,
         allowed_groups=None,
-        valid_username_regex=r"^[a-z][.a-z0-9_-]*$",
-        lookup_dn=False,
+        valid_username_regex: str = r"^[a-z][.a-z0-9_-]*$",
+        lookup_dn: bool = False,
         user_search_base=None,
         user_attribute=None,
-        lookup_dn_search_filter="({login_attr}={login})",
+        lookup_dn_search_filter: str = "({login_attr}={login})",
         lookup_dn_search_user=None,
         lookup_dn_search_password=None,
         lookup_dn_user_dn_attribute=None,
-        escape_userdn=False,
-        search_filter="",
+        escape_userdn: bool = False,
+        search_filter: str = "",
         attributes=None,
         auth_state_attributes=None,
-        use_lookup_dn_username=True,
-        confirmation_message="",
+        use_lookup_dn_username: bool = True,
+        confirmation_message: str = "",
     ) -> None:
         self.use_ssl = use_ssl
         self.use_tls = use_tls
@@ -676,7 +676,7 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         return (user_dn, response[0]["dn"])
 
-    def get_connection(self, userdn, password):
+    def get_connection(self, userdn, password: str):
         import ldap3
 
         # NOTE: setting 'active=False' essentially disables exclusion of inactive servers from the pool.

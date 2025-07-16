@@ -12,7 +12,7 @@ EXPLAIN_SQL = bool(int(os.getenv("TILED_EXPLAIN_SQL", "0") or "0"))
 class _explain(Executable, ClauseElement):
     inherit_cache = False
 
-    def __init__(self, stmt, analyze=False) -> None:
+    def __init__(self, stmt, analyze: bool = False) -> None:
         self.statement = stmt
         self.analyze = analyze
 

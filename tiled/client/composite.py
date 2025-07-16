@@ -1,4 +1,5 @@
 import time
+from typing import Iterator
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
@@ -7,7 +8,7 @@ from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_conte
 
 
 class Composite(Container):
-    def get_contents(self, maxlen=None, include_metadata=False):
+    def get_contents(self, maxlen=None, include_metadata: bool = False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
         while (next_page_url is not None) or (
@@ -55,14 +56,18 @@ class Composite(Container):
     def parts(self):
         return CompositeParts(self)
 
-    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _keys_slice(
+        self, start, stop, direction, _ignore_inlined_contents: bool = False
+    ):
         yield from self._flat_keys_mapping.keys()
 
-    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _items_slice(
+        self, start, stop, direction, _ignore_inlined_contents: bool = False
+    ):
         for key in self._flat_keys_mapping.keys():
             yield key, self[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         yield from self._keys_slice(0, None, 1)
 
     def __len__(self) -> int:
@@ -74,7 +79,7 @@ class Composite(Container):
 
         return len(self._flat_keys_mapping)
 
-    def __getitem__(self, key: str, _ignore_inlined_contents=False):
+    def __getitem__(self, key: str, _ignore_inlined_contents: bool = False):
         if isinstance(key, tuple):
             key = "/".join(key)
         if key in self._flat_keys_mapping:
@@ -216,7 +221,7 @@ class CompositeParts:
         else:
             return client
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         for key in self.contents:
             yield key
 

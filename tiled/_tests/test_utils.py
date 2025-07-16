@@ -95,7 +95,7 @@ def test_ensure_specified_sql_driver() -> None:
         ("2y", 2 * 365 * 24 * 60 * 60),
     ],
 )
-def test_parse_time_string_valid(string_input, expected) -> None:
+def test_parse_time_string_valid(string_input: str, expected) -> None:
     assert parse_time_string(string_input) == expected
 
 
@@ -108,7 +108,7 @@ def test_parse_time_string_valid(string_input, expected) -> None:
         "3 m",  # invalid character '-'
     ],
 )
-def test_parse_time_string_invalid(string_input) -> None:
+def test_parse_time_string_invalid(string_input: str) -> None:
     with pytest.raises(ValueError):
         parse_time_string(string_input)
 

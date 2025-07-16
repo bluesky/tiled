@@ -112,7 +112,7 @@ def build_app(
     compression_registry: Optional[CompressionRegistry] = None,
     validation_registry: Optional[ValidationRegistry] = None,
     tasks=None,
-    scalable=False,
+    scalable: bool = False,
     access_policy=None,
 ):
     """
@@ -232,7 +232,7 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             response = await lookup_file(path)
             return response
 
-        async def lookup_file(path, try_app=True):
+        async def lookup_file(path, try_app: bool = True):
             if not path:
                 path = "index.html"
             full_path = Path(SHARE_TILED_PATH, "ui", path)
@@ -825,7 +825,7 @@ Back up the database, and then run:
     return app
 
 
-def build_app_from_config(config, source_filepath=None, scalable=False):
+def build_app_from_config(config, source_filepath=None, scalable: bool = False):
     "Convenience function that calls build_app(...) given config as dict."
     kwargs = construct_build_app_kwargs(config, source_filepath=source_filepath)
     return build_app(scalable=scalable, **kwargs)
@@ -858,7 +858,7 @@ def app_factory():
     return web_app
 
 
-def __getattr__(name):
+def __getattr__(name: str):
     """
     This supports tiled.server.app.app by creating app on demand.
     """
