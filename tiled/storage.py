@@ -60,7 +60,7 @@ def _ensure_writable_location(uri: str) -> Path:
 
 
 @dataclasses.dataclass(frozen=True)
-class ObjectStorage:
+class ObjectStorage(Storage):
     "Bucket storage location for BLOBS"
 
     uri: str
