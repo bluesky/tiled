@@ -1,26 +1,29 @@
-import json
-
 import numpy
 import pytest
 from starlette.status import HTTP_403_FORBIDDEN
 
-from tiled.authenticators import DictionaryAuthenticator
-from tiled.server.protocols import UserSessionState
-
-from ..access_control.access_policies import NO_ACCESS
-from ..access_control.scopes import ALL_SCOPES, NO_SCOPES, USER_SCOPES
-from ..adapters.array import ArrayAdapter
-from ..adapters.mapping import MapAdapter
+from ..access_control.access_tags import AccessTagsCompiler
+from ..access_control.scopes import ALL_SCOPES
 from ..client import Context, from_context
-from ..client.utils import ClientError
 from ..server.app import build_app_from_config
 from .utils import enter_username_password, fail_with_status_code
 
 arr = numpy.ones((5, 5))
-arr_ad = ArrayAdapter.from_array(arr)
 
-server_common_config = {
+
+server_config = {
+    "access_control": {
+        "access_policy": "tiled.access_control.access_policies:TagBasedAccessPolicy",
+        "args": {
+            "provider": "toy",
+            "tags_db": {
+                "uri": "file:compiled_tags_mem?mode=memory&cache=shared"  # in-memory and shareable
+            },
+            "access_tags_parser": "tiled.access_control.access_tags:AccessTagsParser",
+        },
+    },
     "authentication": {
+        "tiled_admins": [{"provider": "toy", "id": "admin"}],
         "allow_anonymous_access": True,
         "secret_keys": ["SECRET"],
         "providers": [
@@ -29,8 +32,9 @@ server_common_config = {
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",
                 "args": {
                     "users_to_passwords": {
-                        "alice": "secret1",
-                        "bob": "secret2",
+                        "alice": "alice",
+                        "bob": "bob",
+                        "sue": "sue",
                         "admin": "admin",
                     },
                 },
@@ -43,248 +47,154 @@ server_common_config = {
 }
 
 
-def tree_a(access_policy=None):
-    return MapAdapter({"A1": arr_ad, "A2": arr_ad})
-
-
-def tree_b(access_policy=None):
-    return MapAdapter({"B1": arr_ad, "B2": arr_ad})
-
-
-@pytest.fixture(scope="module")
-def context_a(tmpdir_module):
-    config = {
-        "access_control": {
-            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {
-                    "alice": ["a", "A2"],
-                    # This should have no effect because bob
-                    # cannot access the parent node.
-                    "bob": ["A1", "A2"],
-                },
-                "admins": ["admin"],
-            },
-        },
-        "trees": [
-            {
-                "tree": f"{__name__}:tree_a",
-                "path": "/a",
-            },
-        ],
-    }
-
-    config.update(server_common_config)
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        yield context
+def group_parser(groupname):
+    return {
+        "chemists": ["bob", "mary"],
+        "biologists": ["chris", "fred"],
+        "physicists": ["sue", "tony"],
+    }[groupname]
 
 
 @pytest.fixture(scope="module")
-def context_b(tmpdir_module):
-    config = {
-        "access_control": {
-            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {
-                    "alice": [],
-                    "bob": [],
-                },
-                "admins": ["admin"],
-            },
-        },
-        "trees": [
-            {
-                "tree": f"{__name__}:tree_b",
-                "path": "/b",
-            },
-        ],
-    }
-
-    config.update(server_common_config)
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        yield context
-
-
-@pytest.fixture(scope="module")
-def context_c(tmpdir_module):
-    config = {
-        "trees": [
-            {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "c")},
-                "path": "/c",
-            },
-        ],
-        "access_control": {
-            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {
-                    "alice": "tiled.access_control.access_policies:ALL_ACCESS",
-                },
-                "admins": ["admin"],
-            },
-        },
-    }
-
-    config.update(server_common_config)
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        admin_client = from_context(context)
-        with enter_username_password("admin", "admin"):
-            admin_client.login()
-            for k in ["c"]:
-                admin_client[k].write_array(arr, key="A1")
-                admin_client[k].write_array(arr, key="A2")
-                admin_client[k].write_array(arr, key="x")
-        yield context
-
-
-@pytest.fixture(scope="module")
-def context_d(tmpdir_module):
-    config = {
-        "trees": [
-            {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "d")},
-                "path": "/d",
-            },
-        ],
-        "access_control": {
-            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {
-                    "alice": "tiled.access_control.access_policies:ALL_ACCESS",
-                },
-                "admins": ["admin"],
-                # Block writing.
-                "scopes": ["read:metadata", "read:data"],
-            },
-        },
-    }
-
-    config.update(server_common_config)
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        admin_client = from_context(context)
-        with enter_username_password("admin", "admin"):
-            admin_client.login()
-            for k in ["d"]:
-                admin_client[k].write_array(arr, key="A1")
-                admin_client[k].write_array(arr, key="A2")
-                admin_client[k].write_array(arr, key="x")
-        yield context
-
-
-@pytest.fixture(scope="module")
-def context_e(tmpdir_module):
-    config = {
-        "trees": [
-            {
-                "tree": "tiled.catalog:in_memory",
-                "args": {"writable_storage": str(tmpdir_module / "e")},
-                "path": "/e",
-            },
-        ],
-        "access_control": {
-            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {
-                    "alice": "tiled.access_control.access_policies:ALL_ACCESS",
-                },
-                "admins": ["admin"],
-                # Block creation.
+def compile_access_tags_db():
+    access_tag_config = {
+        "roles": {
+            "facility_admin": {
                 "scopes": [
-                    "read:metadata",
                     "read:data",
-                    "write:metadata",
+                    "read:metadata",
                     "write:data",
+                    "write:metadata",
+                    "create",
+                    "register",
+                ]
+            }
+        },
+        "tags": {
+            "alice_tag": {
+                "users": [
+                    {
+                        "name": "alice",
+                        "role": "facility_admin",
+                    },
+                ],
+            },
+            "chemists_tag": {
+                "users": [
+                    {
+                        "name": "sue",
+                        "scopes": ["write:data", "write:metadata"],
+                    },
+                ],
+                "groups": [
+                    {
+                        "name": "chemists",
+                        "scopes": ["read:data", "read:metadata"],
+                    },
+                ],
+                "auto_tags": [
+                    {
+                        "name": "alice_tag",
+                    },
+                ],
+            },
+            "physicists_tag": {
+                "groups": [
+                    {
+                        "name": "physicists",
+                        "role": "facility_admin",
+                    },
+                ],
+            },
+        },
+        "tag_owners": {
+            "alice_tag": {
+                "users": [
+                    {
+                        "name": "alice",
+                    },
+                ],
+            },
+            "chemists_tag": {
+                "users": [
+                    {
+                        "name": "sue",
+                    },
+                ],
+                "groups": [
+                    {
+                        "name": "chemists",
+                    },
+                ],
+            },
+            "physicists_tag": {
+                "groups": [
+                    {
+                        "name": "physicists",
+                    },
                 ],
             },
         },
     }
 
-    config.update(server_common_config)
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        admin_client = from_context(context)
-        with enter_username_password("admin", "admin"):
-            admin_client.login()
-            for k in ["e"]:
-                admin_client[k].write_array(arr, key="A1")
-                admin_client[k].write_array(arr, key="A2")
-                admin_client[k].write_array(arr, key="x")
-        yield context
+    access_tags_compiler = AccessTagsCompiler(
+        ALL_SCOPES,
+        access_tag_config,
+        {"uri": "file:compiled_tags_mem?mode=memory&cache=shared"},
+        group_parser,
+    )
+
+    access_tags_compiler.load_tag_config()
+    access_tags_compiler.compile()
+    yield
+    access_tags_compiler.connection.close()
 
 
 @pytest.fixture(scope="module")
-def context_f(tmpdir_module):
-    config = {
-        "access_control": {
-            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {},
-                "admins": ["admin"],
-                "public": ["f"],
-            },
-        },
-        "trees": [
-            {
-                "tree": ArrayAdapter.from_array(arr),
-                "path": "/f",
-            },
-        ],
-    }
-
-    config.update(server_common_config)
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        yield context
-
-
-@pytest.fixture(scope="module")
-def context_g(tmpdir_module):
+def access_control_test_context(tmpdir_module, compile_access_tags_db):
     config = {
         "trees": [
             {
                 "tree": "tiled.catalog:in_memory",
                 "args": {
-                    "writable_storage": str(tmpdir_module / "g"),
-                    "metadata": {"project": "all_projects"},
+                    "writable_storage": str(tmpdir_module / "foo"),
+                    "top_level_access_blob": {"tags": ["alice_tag"]},
                 },
-                "path": "/g",
+                "path": "/foo",
+            },
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {
+                    "writable_storage": str(tmpdir_module / "bar"),
+                    "top_level_access_blob": {"tags": ["chemists_tag"]},
+                },
+                "path": "/bar",
+            },
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {
+                    "writable_storage": str(tmpdir_module / "baz"),
+                    "top_level_access_blob": {"tags": ["physicists_tag"]},
+                },
+                "path": "/baz",
             },
         ],
-        "access_control": {
-            "access_policy": "tiled.access_control.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "key": "project",
-                "access_lists": {
-                    "alice": ["all_projects", "projectA"],
-                    "bob": ["projectB"],
-                },
-                "admins": ["admin"],
-                "public": ["projectC", "all_projects"],
-            },
-        },
     }
 
-    config.update(server_common_config)
+    config.update(server_config)
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
         admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
             admin_client.login()
-            for k, v in {"A3": "projectA", "A4": "projectB", "r": "projectC"}.items():
-                admin_client["g"].write_array(arr, key=k, metadata={"project": v})
+            for k in ["foo", "bar", "baz"]:
+                admin_client[k].write_array(
+                    arr, key="data_A", access_tags=["alice_tag"]
+                )
+                admin_client[k].write_array(
+                    arr, key="data_B", access_tags=["chemists_tag"]
+                )
+                admin_client[k].write_array(arr, key="data_C", access_tags=["public"])
         yield context
 
 
@@ -549,172 +459,143 @@ class CustomAttributesAuthenticator(DictionaryAuthenticator):
         return state
 
 
-class CustomAttributesAccessPolicy:
+def test_basic_access_control(access_control_test_context, enter_username_password):
     """
-    A policy that demonstrates comparing metadata against user information stored at login-time.
+    Test that basic access control and tag compilation are working.
+    Only tests simple visibility of the data (i.e. "read:metadata" scope),
+      does not tests writing or full reading of the data.
+
+    In other words, tests that compiled tags allow/disallow access including:
+      - top-level tags
+      - tags directly on datasets
+      - tags "inherited" on datasets (auto_tags)
+      - "public" tags on datasets
+      - groups compiled into tags
+      - scopes compiled into tags by a role
+      - scopes compiled into tags by a scopes list
+      - nested access blocked by upper tags (even if deeper tags would permit access)
+
+    Note: MapAdapter does not support access control. As such, the server root
+          does not currently filter top-level entries.
+    """
+    alice_client = from_context(access_control_test_context)
+    with enter_username_password("alice", "alice"):
+        alice_client.login()
+
+    top = "foo"
+    assert top in alice_client
+    for data in ["data_A", "data_B", "data_C"]:
+        assert data in alice_client[top]
+        alice_client[top][data]
+
+    top = "bar"
+    assert top in alice_client
+    for data in ["data_A", "data_B", "data_C"]:
+        assert data in alice_client[top]
+        alice_client[top][data]
+
+    alice_client.logout()
+
+    bob_client = from_context(access_control_test_context)
+    with enter_username_password("bob", "bob"):
+        bob_client.login()
+
+    top = "foo"
+    # no access control on MapAdapter
+    # assert top not in bob_client
+    for data in ["data_A", "data_B", "data_C"]:
+        with pytest.raises(KeyError):
+            bob_client[top][data]
+
+    top = "bar"
+    assert top in bob_client
+    for data in ["data_A"]:
+        assert data not in bob_client[top]
+        with pytest.raises(KeyError):
+            bob_client[top][data]
+    for data in ["data_B", "data_C"]:
+        assert data in bob_client[top]
+        bob_client[top][data]
+
+    bob_client.logout()
+
+
+def test_writing_access_control(access_control_test_context, enter_username_password):
+    """
+    Test that writing access control and tag ownership is working.
+    Only tests that the writing request does not fail.
+    Does not test the written data for validity.
+
+    This tests the following:
+      - Writing without applying an access tag
+      - Writing while applying an access tag the user owns
+      - Writing while applying an access tag the user does not own
+      - Writing while applying an access tag the user owns through group membership
+      - Writing while applying an access tag that is not defined
+      - Writing while applying the "public" tag (admin only)
+      - Writing while applying a tag which does not give the user the minimum scopes
     """
 
-    READ_METADATA = ["read:metadata"]
+    alice_client = from_context(access_control_test_context)
+    with enter_username_password("alice", "alice"):
+        alice_client.login()
 
-    def __init__(self):
-        pass
+    top = "foo"
+    alice_client[top].write_array(arr, key="data_Q")
+    alice_client[top].write_array(arr, key="data_R", access_tags=["alice_tag"])
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        alice_client[top].write_array(arr, key="data_S", access_tags=["chemists_tag"])
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        alice_client[top].write_array(arr, key="data_T", access_tags=["undefined_tag"])
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        alice_client[top].write_array(arr, key="data_U", access_tags=["public"])
+    alice_client.logout()
 
-    async def allowed_scopes(self, node, principal, authn_scopes):
-        if hasattr(principal, "sessions"):
-            if len(principal.sessions):
-                auth_state = principal.sessions[-1].state or {}
-                auth_attributes = auth_state.get("attributes", {})
-                if auth_attributes:
-                    if "admins" in auth_attributes.get("groups", []):
-                        return ALL_SCOPES
+    admin_client = from_context(access_control_test_context)
+    with enter_username_password("admin", "admin"):
+        admin_client.login()
 
-                    if not node.metadata():
-                        return self.READ_METADATA
+    top = "foo"
+    admin_client[top].write_array(arr, key="data_V", access_tags=["public"])
+    admin_client.logout()
 
-                    if node.metadata()["beamline"] in auth_attributes.get(
-                        "beamlines", []
-                    ) or node.metadata()["proposal"] in auth_attributes.get(
-                        "proposals", []
-                    ):
-                        return USER_SCOPES
+    sue_client = from_context(access_control_test_context)
+    with enter_username_password("sue", "sue"):
+        sue_client.login()
 
-            return self.READ_METADATA
-        return NO_SCOPES
-
-    async def filters(self, node, principal, authn_scopes, scopes):
-        if not scopes.issubset(
-            await self.allowed_scopes(node, principal, authn_scopes)
-        ):
-            return NO_ACCESS
-        return []
-
-
-def tree_enriched_metadata():
-    return MapAdapter(
-        {
-            "A": ArrayAdapter.from_array(
-                numpy.ones(10), metadata={"beamline": "bl1", "proposal": "prop1"}
-            ),
-            "B": ArrayAdapter.from_array(
-                numpy.ones(10), metadata={"beamline": "bl1", "proposal": "prop2"}
-            ),
-            "C": ArrayAdapter.from_array(
-                numpy.ones(10), metadata={"beamline": "bl2", "proposal": "prop2"}
-            ),
-            "D": ArrayAdapter.from_array(
-                numpy.ones(10), metadata={"beamline": "bl2", "proposal": "prop3"}
-            ),
-        },
-    )
+    top = "baz"
+    sue_client[top].write_array(arr, key="data_W", access_tags=["physicists_tag"])
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        sue_client[top].write_array(arr, key="data_X", access_tags=["chemists_tag"])
+    sue_client.logout()
 
 
-@pytest.fixture(scope="module")
-def custom_attributes_context():
-    config = {
-        "authentication": {
-            "allow_anonymous_access": False,
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": f"{__name__}:CustomAttributesAuthenticator",
-                    "args": {
-                        "users": {
-                            "alice": {
-                                "password": "secret1",
-                                "attributes": {"proposals": ["prop1"]},
-                            },
-                            "bob": {
-                                "password": "secret2",
-                                "attributes": {"beamlines": ["bl1"]},
-                            },
-                            "cara": {
-                                "password": "secret3",
-                                "attributes": {
-                                    "beamlines": ["bl2"],
-                                    "proposals": ["prop1"],
-                                },
-                            },
-                            "john": {"password": "secret4", "attributes": {}},
-                            "admin": {
-                                "password": "admin",
-                                "attributes": {"groups": ["admins"]},
-                            },
-                        }
-                    },
-                }
-            ],
-        },
-        "database": {
-            "uri": "sqlite://",  # in-memory
-        },
-        "access_control": {
-            "access_policy": f"{__name__}:CustomAttributesAccessPolicy",
-            "args": {},
-        },
-        "trees": [
-            {"tree": f"{__name__}:tree_enriched_metadata", "path": "/"},
-        ],
-    }
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        yield context
-
-
-@pytest.mark.parametrize(
-    ("username", "password", "nodes"),
-    [
-        ("admin", "admin", ["A", "B", "C", "D"]),
-        ("alice", "secret1", ["A"]),
-        ("bob", "secret2", ["A", "B"]),
-        ("cara", "secret3", ["A", "C", "D"]),
-    ],
-)
-def test_custom_attributes_with_data_access(
-    enter_username_password, custom_attributes_context, username, password, nodes
+# def test_bad_ops_on_tags(access_control_test_context, enter_username_password):
+def test_user_owned_node_access_control(
+    access_control_test_context, enter_username_password
 ):
-    """Test that the user has access to the data based on their auth attributes."""
-    with enter_username_password(username, password):
-        custom_attributes_context.authenticate()
-    key_info = custom_attributes_context.create_api_key()
-    custom_attributes_context.logout()
+    """
+    Test that user-owned nodes (i.e. nodes created without access tags applied)
+      are visible after creation and can be modified by the user.
+    Also test that the data is visible after a tag is applied.
+    """
 
-    try:
-        custom_attributes_context.api_key = key_info["secret"]
-        client = from_context(custom_attributes_context)
+    alice_client = from_context(access_control_test_context)
+    with enter_username_password("alice", "alice"):
+        alice_client.login()
 
-        for node in nodes:
-            client[node].read()
-
-    finally:
-        custom_attributes_context.api_key = None
-
-
-@pytest.mark.parametrize(
-    ("username", "password", "nodes"),
-    [
-        ("alice", "secret1", ["B", "C", "D"]),
-        ("bob", "secret2", ["C", "D"]),
-        ("cara", "secret3", ["B"]),
-        ("john", "secret4", ["A", "B", "C", "D"]),
-    ],
-)
-def test_custom_attributes_without_data_access(
-    enter_username_password, custom_attributes_context, username, password, nodes
-):
-    """Test that the user cannot access data due to missing auth attributes."""
-    with enter_username_password(username, password):
-        custom_attributes_context.authenticate()
-    key_info = custom_attributes_context.create_api_key()
-    custom_attributes_context.logout()
-
-    try:
-        custom_attributes_context.api_key = key_info["secret"]
-        client = from_context(custom_attributes_context)
-
-        for node in nodes:
-            with pytest.raises(ClientError):
-                client[node].read()
-
-    finally:
-        custom_attributes_context.api_key = None
+    top = "foo"
+    for data in ["data_Y"]:
+        alice_client[top].write_array(arr, key=data)
+        assert data in alice_client[top]
+        alice_client[top][data]
+        access_blob = alice_client[top][data].access_blob
+        assert "user" in access_blob
+        assert "alice" in access_blob["user"]
+        alice_client[top][data].replace_metadata(access_tags=["alice_tag"])
+        access_blob = alice_client[top][data].access_blob
+        assert "user" not in access_blob
+        assert "tags" in access_blob
+        assert "alice_tag" in access_blob["tags"]
+        assert data in alice_client[top]
+        alice_client[top][data]
