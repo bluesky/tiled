@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import h5py
+import numpy as np
 import pandas
 import pytest
 import zarr
@@ -42,13 +43,15 @@ async def test_zarr_array(tmpdir):
 @pytest.mark.asyncio
 async def test_zarr_group(tmp_path: Path):
     root = zarr.open(tmp_path / "zg.zarr", mode="w")
+    x_array = np.array([1, 2, 3])
+    y_array = np.array([4, 5, 6])
 
     if sys.version_info < (3, 11):
-        root.create_dataset("x", data=[1, 2, 3])
-        root.create_dataset("y", data=[4, 5, 6])
+        root.create_dataset("x", data=x_array)
+        root.create_dataset("y", data=y_array)
     else:
-        root.create_array(name="x", dtype="int32", shape=[1, 2, 3])
-        root.create_array(name="y", dtype="int32", shape=[4, 5, 6])
+        root.create_array(name="x", data=x_array)
+        root.create_array(name="y", data=y_array)
 
     catalog = in_memory(readable_storage=[tmp_path])
     with Context.from_app(build_app(catalog)) as context:
@@ -56,8 +59,8 @@ async def test_zarr_group(tmp_path: Path):
         await register(client, tmp_path)
         tree(client)
         client["zg"].export(tmp_path / "stuff.h5")
-        assert client["zg"]["x"].read().shape == (1, 2, 3)
-        assert client["zg"]["y"].read().shape == (4, 5, 6)
+        assert client["zg"]["x"].read().data == x_array
+        assert client["zg"]["y"].read().data == y_array
 
 
 @pytest.mark.asyncio
