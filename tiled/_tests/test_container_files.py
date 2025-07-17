@@ -41,7 +41,7 @@ async def test_zarr_array(tmpdir):
 
 @pytest.mark.asyncio
 async def test_zarr_group(tmp_path: Path):
-    root = zarr.open(str(tmp_path / "zg.zarr"), mode="w")
+    root = zarr.open(tmp_path / "zg.zarr", mode="w")
 
     if sys.version_info < (3, 11):
         root.create_dataset("x", data=[1, 2, 3])
