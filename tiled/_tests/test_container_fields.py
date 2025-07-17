@@ -85,9 +85,9 @@ def zarr_data_dir(tmpdir_factory):
         root = zarr.open(str(tmpdir / "zarr_group.zarr"), mode="w")
         for i, name in enumerate("abcde"):
             if sys.version_info < (3, 11):
-                root.create_dataset(name, data=range(i, i + 3))
+                root.create_dataset(name, data=np.arange(i, i + 3))
             else:
-                root.create_array(name, data=np.arange(i, i+3))
+                root.create_array(name, data=np.arange(i, i + 3))
     finally:
         # Ensure the Zarr group is closed properly
         print("Closed")
