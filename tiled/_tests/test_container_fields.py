@@ -1,6 +1,6 @@
+import sys
 import anyio
 import h5py
-import numpy
 import pandas
 import pytest
 import zarr
@@ -80,9 +80,12 @@ def zarr_data_dir(tmpdir_factory):
     "Generate a temporary Zarr group file with multiple datasets."
     tmpdir = tmpdir_factory.mktemp("zarr_files")
     try:
-        root = zarr.open(str(tmpdir / "zarr_group.zarr"), mode="w")
+        root = zarr.create_group(str(tmpdir / "zarr_group.zarr"))
         for i, name in enumerate("abcde"):
-            root.create_array(name,dtype=numpy.dtype("int32"),shape=range(i,i+3))
+            if sys.version_info < (3, 11):
+                root.create_dataset(name, data=range(i, i + 3))
+            else:
+                root.create_array(name, dtype="int32", shape=range(i, i + 3))
     finally:
         # Ensure the Zarr group is closed properly
         print("Closed")

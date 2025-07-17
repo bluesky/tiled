@@ -1,12 +1,17 @@
+from pathlib import Path
+import sys
 import h5py
 import pandas
 import pytest
 import zarr
-
 from ..catalog import in_memory
 from ..client import Context, from_context, tree
 from ..client.register import register
 from ..server.app import build_app
+if sys.version_info < (3, 11):
+    from zarr.storage import DirectoryStore as LocalStore
+else:
+    from zarr.storage import LocalStore
 
 
 @pytest.mark.asyncio
@@ -37,20 +42,24 @@ async def test_zarr_array(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_zarr_group(tmpdir):
-    root = zarr.open(str(tmpdir / "zg.zarr"), mode="w")
-    yield root
-    root.create_dataset("x", data=[1, 2, 3])
-    root.create_dataset("y", data=[4, 5, 6])
-    catalog = in_memory(readable_storage=[tmpdir])
-    context = Context.from_app(build_app(catalog))
-    yield context
-    client = from_context(context)
-    await register(client, tmpdir)
-    tree(client)
-    client["zg"].export(str(tmpdir / "stuff.h5"))
-    client["zg"]["x"].read()
-    client["zg"]["y"].read()
+async def test_zarr_group(tmp_path: Path):
+    root = zarr.create_group(LocalStore(tmp_path/"zg.zarr"))
+
+    if sys.version_info < (3, 11):
+        root.create_dataset("x", data=[1, 2, 3])
+        root.create_dataset("y", data=[4, 5, 6])
+    else:
+        root.create_array(name="x", dtype="int32", shape=[1, 2, 3])
+        root.create_array(name="y", dtype="int32", shape=[4, 5, 6])
+
+    catalog = in_memory(readable_storage=[tmp_path])
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        await register(client, tmp_path)
+        tree(client)
+        client["zg"].export(tmp_path / "stuff.h5")
+        assert client["zg"]["x"].read().shape == (1, 2, 3)
+        assert client["zg"]["y"].read().shape == (4, 5, 6)
 
 
 @pytest.mark.asyncio
