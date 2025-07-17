@@ -407,6 +407,25 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+def test_replace_metadata(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="revise_me_with_replace")
+        assert len(ac.metadata_revisions[:]) == 0
+        ac.replace_metadata(metadata={"a": 1})
+        assert ac.metadata["a"] == 1
+        client["revise_me_with_replace"].metadata["a"] == 1
+        assert len(ac.metadata_revisions[:]) == 1
+        ac.replace_metadata(metadata={"a": 2})
+        assert ac.metadata["a"] == 2
+        client["revise_me_with_replace"].metadata["a"] == 2
+        assert len(ac.metadata_revisions[:]) == 2
+        ac.metadata_revisions.delete_revision(1)
+        assert len(ac.metadata_revisions[:]) == 1
+        with fail_with_status_code(HTTP_404_NOT_FOUND):
+            ac.metadata_revisions.delete_revision(1)
+
+
 def test_drop_revision(tree):
     key = "test_drop_revision"
     with Context.from_app(build_app(tree)) as context:

@@ -80,7 +80,7 @@ def zarr_data_dir(tmpdir_factory):
     "Generate a temporary Zarr group file with multiple datasets."
     tmpdir = tmpdir_factory.mktemp("zarr_files")
     try:
-        root = zarr.open_group(str(tmpdir / "zarr_group.zarr"), mode="w")
+        root = zarr.open(str(tmpdir / "zarr_group.zarr"), mode="w")
         for i, name in enumerate("abcde"):
             root.create_array(name,dtype=numpy.dtype("int32"),shape=range(i,i+3))
     finally:

@@ -349,7 +349,10 @@ def parse_configs(config_path):
     elif not config_path.exists():
         raise ValueError(f"The config path {config_path!s} doesn't exist.")
     else:
-        assert False, "It should be impossible to reach this line."
+        # the path points to something we don't support, eg fifo/block_device/etc
+        raise ValueError(
+            f"The config path {config_path!s} exists but is not a file or directory."
+        )
 
     parsed_configs = {}
     # The sorting here is just to make the order of the results deterministic.
