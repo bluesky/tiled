@@ -74,7 +74,8 @@ class Subscription:
         if self._close_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
         API_KEY_LIFETIME = 30  # seconds
-        if self.context.server_info.authentication.providers:
+        needs_api_key = self.context.server_info.authentication.providers
+        if needs_api_key:
             # Request API key.
             key_info = self.context.create_api_key(
                 expires_in=API_KEY_LIFETIME, note="websocket"
@@ -86,6 +87,10 @@ class Subscription:
         self._websocket = connect(
             str(self._uri), additional_headers={"Authorization": api_key}
         )
+        # TODO: Implement single-use API keys so that revoking is not
+        # necessary.
+        if needs_api_key:
+            self.context.revoke_api_key(key_info["first_eight"])
         self._thread.start()
 
     def stop(self):
