@@ -12,7 +12,8 @@ from ..utils import InterningLoader
 class AccessTagsParser:
     @classmethod
     def from_uri(cls, uri):
-        db = sqlite3.connect(f"{uri}?ro", uri=True, check_same_thread=False)
+        uri = uri if "?" in uri else f"{uri}?mode=ro"
+        db = sqlite3.connect(uri, uri=True, check_same_thread=False)
         return cls(db)
 
     def __init__(self, db):
@@ -292,7 +293,7 @@ class AccessTagsCompiler:
         group_parser,
     ):
         self.scopes = scopes or {}
-        self.tag_config_path = Path(tag_config)
+        self.tag_config = tag_config
         self.connection = sqlite3.connect(
             tags_db["uri"], uri=True, check_same_thread=False
         )
@@ -311,16 +312,22 @@ class AccessTagsCompiler:
         create_access_tags_tables(self.connection)
 
     def load_tag_config(self):
-        try:
-            with open(self.tag_config_path) as tag_config:
-                tag_definitions = yaml.load(tag_config, Loader=InterningLoader)
-                self.roles.update(tag_definitions.get("roles", {}))
-                self.tags.update(tag_definitions["tags"])
-                self.tag_owners.update(tag_definitions.get("tag_owners", {}))
-        except FileNotFoundError as e:
-            raise ValueError(
-                f"The tag config path {self.tag_config_path!s} doesn't exist."
-            ) from e
+        if isinstance(self.tag_config, str) or isinstance(self.tag_config, Path):
+            try:
+                with open(Path(self.tag_config)) as tag_config_file:
+                    tag_definitions = yaml.load(tag_config_file, Loader=InterningLoader)
+                    self.roles.update(tag_definitions.get("roles", {}))
+                    self.tags.update(tag_definitions["tags"])
+                    self.tag_owners.update(tag_definitions.get("tag_owners", {}))
+            except FileNotFoundError as e:
+                raise ValueError(
+                    f"The tag config file {self.tag_config!s} doesn't exist."
+                ) from e
+        elif isinstance(self.tag_config, dict):
+            tag_definitions = self.tag_config
+            self.roles.update(tag_definitions.get("roles", {}))
+            self.tags.update(tag_definitions["tags"])
+            self.tag_owners.update(tag_definitions.get("tag_owners", {}))
 
     def _dfs(self, current_tag, tags, seen_tags, nested_level=0):
         if current_tag in self.compiled_tags:
