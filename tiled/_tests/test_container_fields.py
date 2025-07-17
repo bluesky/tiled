@@ -2,6 +2,7 @@ import sys
 
 import anyio
 import h5py
+import numpy as np
 import pandas
 import pytest
 import zarr
@@ -86,7 +87,7 @@ def zarr_data_dir(tmpdir_factory):
             if sys.version_info < (3, 11):
                 root.create_dataset(name, data=range(i, i + 3))
             else:
-                root.create_array(name, dtype="int32", shape=range(i, i + 3))
+                root.create_array(name, data=np.arange(i, i+3))
     finally:
         # Ensure the Zarr group is closed properly
         print("Closed")
