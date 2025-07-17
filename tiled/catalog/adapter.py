@@ -1479,6 +1479,7 @@ def in_memory(
     readable_storage=None,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    top_level_access_blob=None,
 ):
     uri = "sqlite:///:memory:"
     return from_uri(
@@ -1490,6 +1491,7 @@ def in_memory(
         init_if_not_exists=True,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
+        top_level_access_blob=top_level_access_blob,
     )
 
 
