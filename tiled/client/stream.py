@@ -1,3 +1,4 @@
+import inspect
 import threading
 import weakref
 from typing import List
@@ -25,7 +26,7 @@ class Subscription:
         )
         name = f"tiled-subscription-{self._uri}"
         self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
-        self._callbacks = weakref.WeakSet()
+        self._callbacks = set()
         self._close_event = threading.Event()
 
     @property
@@ -37,7 +38,21 @@ class Subscription:
         return self._segments
 
     def add_callback(self, callback):
-        self._callbacks.add(callback)
+        # Hold the reference to the method until the object it is
+        # bound to is garbage collected.
+        if inspect.ismethod(callback):
+
+            def cleanup(ref):
+                self._callbacks.remove(ref)
+
+            ref = weakref.WeakMethod(callback, cleanup)
+        else:
+
+            def cleanup(ref):
+                self._callbacks.remove(ref)
+
+            ref = weakref.ref(callback, cleanup)
+        self._callbacks.add(ref)
 
     def remove_callback(self, callback):
         self._callbacks.remove(callback)
@@ -50,8 +65,10 @@ class Subscription:
             except TimeoutError:
                 continue
             data = msgpack.unpackb(data_bytes)
-            for callback in self._callbacks:
-                callback(self, data)
+            for ref in self._callbacks:
+                callback = ref()
+                if callback is not None:
+                    callback(self, data)
 
     def start(self):
         if self._close_event.is_set():
