@@ -871,5 +871,12 @@ class BaseClient:
             with attempt:
                 handle_error(self.context.http_client.delete(endpoint))
 
+    def close_stream(self):
+        "Declare the end of a stream of writes to this node."
+        endpoint = self.uri.replace("/metadata/", "/stream/close/", 1)
+        for attempt in retry_context():
+            with attempt:
+                handle_error(self.context.http_client.delete(endpoint))
+
     def __dask_tokenize__(self):
         return (type(self), self.uri)

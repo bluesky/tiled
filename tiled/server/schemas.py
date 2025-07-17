@@ -416,6 +416,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     data_sources: List[DataSource] = []
     specs: Specs = []
     access_blob: Optional[Dict] = {}
+    is_streaming: Optional[bool] = False
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -561,6 +562,11 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     metadata: Optional[Dict]
     data_sources: Optional[List[DataSource]]
     access_blob: Optional[Dict]
+
+
+class EnvelopeFormat(str, enum.Enum):
+    json = "json"
+    msgpack = "msgpack"
 
 
 NodeStructure.model_rebuild()

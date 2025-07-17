@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import copy
 import dataclasses
@@ -10,13 +11,15 @@ import re
 import shutil
 import sys
 import uuid
+from datetime import datetime
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 import anyio
-from fastapi import HTTPException
+import orjson
+from fastapi import HTTPException, WebSocketDisconnect
 from sqlalchemy import (
     delete,
     event,
@@ -53,6 +56,7 @@ from tiled.queries import (
     NotIn,
     Operator,
     SpecsQuery,
+    Streaming,
     StructureFamilyQuery,
 )
 
@@ -140,6 +144,7 @@ class RootNode:
     structure_family = StructureFamily.container
 
     def __init__(self, metadata, specs, top_level_access_blob):
+        self.id = 0
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
         self.ancestors = []
@@ -155,6 +160,8 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        redis_client=None,
+        redis_ttl=None,
         key_maker=lambda: str(uuid.uuid4()),
     ):
         self.engine = engine
@@ -194,6 +201,8 @@ class Context:
             adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
+        self.redis_client = redis_client
+        self.redis_ttl = redis_ttl
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -639,6 +648,7 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
+        is_streaming=False,
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
@@ -651,6 +661,7 @@ class CatalogNodeAdapter:
             structure_family=structure_family,
             specs=[s.model_dump() for s in specs or []],
             access_blob=access_blob,
+            is_streaming=is_streaming,
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -767,6 +778,35 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
+            if self.context.redis_client:
+                # Allocate a counter for the new node.
+                await self.context.redis_client.setnx(f"sequence:{node.id}", 0)
+                # Notify subscribers of the *parent* node about the new child.
+                sequence = await self.context.redis_client.incr(
+                    f"sequence:{self.node.id}"
+                )
+                metadata = {
+                    "sequence": sequence,
+                    "timestamp": datetime.now().isoformat(),
+                    "key": key,
+                    "data_sources": [d.dict() for d in data_sources],
+                }
+
+                # Cache data in Redis with a TTL, and publish
+                # a notification about it.
+                pipeline = self.context.redis_client.pipeline()
+                pipeline.hset(
+                    f"data:{self.node.id}:{sequence}",
+                    mapping={
+                        "sequence": sequence,
+                        "metadata": orjson.dumps(metadata),
+                    },
+                )
+                pipeline.expire(
+                    f"data:{self.node.id}:{sequence}", self.context.redis_ttl
+                )
+                pipeline.publish(f"notify:{self.node.id}", sequence)
+                await pipeline.execute()
             return key, type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db, asset):
@@ -835,6 +875,27 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
+        if self.context.redis_client:
+            sequence = await self.context.redis_client.incr(f"sequence:{self.node.id}")
+            metadata = {
+                "sequence": sequence,
+                "timestamp": datetime.now().isoformat(),
+                "data_source": data_source.dict(),
+            }
+
+            # Cache data in Redis with a TTL, and publish
+            # a notification about it.
+            pipeline = self.context.redis_client.pipeline()
+            pipeline.hset(
+                f"data:{self.node.id}:{sequence}",
+                mapping={
+                    "sequence": sequence,
+                    "metadata": orjson.dumps(metadata),
+                },
+            )
+            pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.redis_ttl)
+            pipeline.publish(f"notify:{self.node.id}", sequence)
+            await pipeline.execute()
 
     # async def patch_node(datasources=None):
     #     ...
@@ -1012,6 +1073,109 @@ class CatalogNodeAdapter:
             )
             await db.commit()
 
+    async def close_stream(self):
+        async with self.context.session() as db:
+            await db.execute(
+                update(orm.Node)
+                .where(orm.Node.id == self.node.id)
+                .values(is_streaming=False)
+            )
+            await db.commit()
+
+        # Check if stream is already closed. If it is raise an exception
+        node_ttl = await self.context.redis_client.ttl(f"sequence:{self.node.id}")
+        if node_ttl > 0:
+            # Already closed, nothing to do
+            return
+        if node_ttl == -2:
+            # Key not found, must have already expired or never existed
+            return
+
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "end_of_stream": True,
+        }
+        # Increment the counter for this node.
+        sequence = await self.context.redis_client.incr(f"sequence:{self.node.id}")
+
+        # Cache data in Redis with a TTL, and publish
+        # a notification about it.
+        pipeline = self.context.redis_client.pipeline()
+        pipeline.hset(
+            f"data:{self.node.id}:{sequence}",
+            mapping={
+                "sequence": sequence,
+                "metadata": orjson.dumps(metadata),
+            },
+        )
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.redis_ttl)
+        pipeline.expire(f"sequence:{self.node.id}", self.context.redis_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
+        await pipeline.execute()
+
+    def make_ws_handler(self, websocket, formatter):
+        async def handler(sequence: Optional[int] = None):
+            await websocket.accept()
+            end_stream = asyncio.Event()
+            redis_client = self.context.redis_client
+
+            async def stream_data(sequence):
+                key = f"data:{self.node.id}:{sequence}"
+                payload_bytes, metadata_bytes = await redis_client.hmget(
+                    key, "payload", "metadata"
+                )
+                if metadata_bytes is None:
+                    # This means that redis ttl has expired for this sequence
+                    return
+                metadata = orjson.loads(metadata_bytes)
+                if metadata.get("end_of_stream"):
+                    # This means that the stream is closed by the producer
+                    end_stream.set()
+                    return
+                await formatter(websocket, metadata, payload_bytes)
+
+            # Setup buffer
+            stream_buffer = asyncio.Queue()
+
+            async def buffer_live_events():
+                pubsub = redis_client.pubsub()
+                await pubsub.subscribe(f"notify:{self.node.id}")
+                try:
+                    async for message in pubsub.listen():
+                        if message.get("type") == "message":
+                            try:
+                                live_seq = int(message["data"])
+                                await stream_buffer.put(live_seq)
+                            except Exception as e:
+                                print(f"Error parsing live message: {e}")
+                except Exception as e:
+                    print(f"Live subscription error: {e}")
+                finally:
+                    await pubsub.unsubscribe(f"notify:{self.node.id}")
+                    await pubsub.aclose()
+
+            live_task = asyncio.create_task(buffer_live_events())
+
+            if sequence is not None:
+                current_seq = await redis_client.get(f"sequence:{self.node.id}")
+                current_seq = int(current_seq) if current_seq is not None else 0
+                print("Replaying old data...")
+                for s in range(sequence, current_seq + 1):
+                    await stream_data(s)
+            # New data
+            try:
+                while not end_stream.is_set():
+                    live_seq = await stream_buffer.get()
+                    await stream_data(live_seq)
+                else:
+                    await websocket.close(code=1000, reason="Producer ended stream")
+            except WebSocketDisconnect:
+                print(f"Client disconnected from node {self.node.id}")
+            finally:
+                live_task.cancel()
+
+        return handler
+
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
     async def keys_range(self, offset, limit):
@@ -1092,6 +1256,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
         specs=None,
         data_sources=None,
         access_blob=None,
+        is_streaming=False,
     ):
         key = key or self.context.key_maker()
 
@@ -1134,6 +1299,7 @@ class CatalogCompositeAdapter(CatalogContainerAdapter):
             specs=specs,
             data_sources=data_sources,
             access_blob=access_blob,
+            is_streaming=is_streaming,
         )
 
 
@@ -1151,19 +1317,70 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).read_block, *args, **kwargs
         )
 
-    async def write(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+    async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
+        sequence = await self.context.redis_client.incr(f"sequence:{self.node.id}")
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "content-type": media_type,
+            "shape": shape,
+            "offset": offset,
+            "block": block,
+        }
 
-    async def write_block(self, *args, **kwargs):
+        pipeline = self.context.redis_client.pipeline()
+        pipeline.hset(
+            f"data:{self.node.id}:{sequence}",
+            mapping={
+                "sequence": sequence,
+                "metadata": orjson.dumps(metadata),
+                "payload": body,  # raw user input
+            },
+        )
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.redis_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
+        await pipeline.execute()
+
+    async def write(self, media_type, deserializer, entry, body):
+        shape = entry.structure().shape
+        if self.context.redis_client:
+            await self._stream(media_type, entry, body, shape)
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
+        return await ensure_awaitable((await self.get_adapter()).write, data)
+
+    async def write_block(self, block, media_type, deserializer, entry, body):
+        from tiled.adapters.array import slice_and_shape_from_block_and_chunks
+
+        _, shape = slice_and_shape_from_block_and_chunks(
+            block, entry.structure().chunks
+        )
+        if self.context.redis_client:
+            await self._stream(media_type, entry, body, shape, block=block)
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable(
-            (await self.get_adapter()).write_block, *args, **kwargs
+            (await self.get_adapter()).write_block, data, block
         )
 
-    async def patch(self, *args, **kwargs):
+    async def patch(self, shape, offset, extend, media_type, deserializer, entry, body):
+        if self.context.redis_client:
+            await self._stream(media_type, entry, body, shape, offset=offset)
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
         # assumes a single DataSource (currently only supporting zarr)
         async with self.context.session() as db:
             new_shape_and_chunks = await ensure_awaitable(
-                (await self.get_adapter()).patch, *args, **kwargs
+                (await self.get_adapter()).patch, data, offset, extend
             )
             node = await db.get(orm.Node, self.node.id)
             if len(node.data_sources) != 1:
@@ -1489,6 +1706,11 @@ def structure_family(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
+def streaming(query, tree):
+    condition = orm.Node.is_streaming == query.value
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 CatalogNodeAdapter.register_query(Eq, partial(binary_op, operation=operator.eq))
 CatalogNodeAdapter.register_query(NotEq, partial(binary_op, operation=operator.ne))
 CatalogNodeAdapter.register_query(Comparison, comparison)
@@ -1497,6 +1719,7 @@ CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
+CatalogNodeAdapter.register_query(Streaming, streaming)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
 CatalogNodeAdapter.register_query(FullText, full_text)
@@ -1537,6 +1760,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    redis_settings=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1576,8 +1800,24 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
+
+    if redis_settings:
+        from redis import asyncio as redis
+
+        redis_client = redis.from_url(redis_settings["uri"])
+        redis_ttl = redis_settings.get("ttl", 3600)
+    else:
+        redis_client = None
+        redis_ttl = 0
     adapter = CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
+        Context(
+            engine,
+            writable_storage,
+            readable_storage,
+            adapters_by_mimetype,
+            redis_client,
+            redis_ttl,
+        ),
         RootNode(metadata, specs, top_level_access_blob),
         mount_node=mount_node,
     )
