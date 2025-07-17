@@ -17,7 +17,7 @@ class Subscription:
         params = {"envelope_format": "msgpack"}
         if start is not None:
             params["start"] = start
-        scheme = "wss" if context.api_uri == "https" else "ws"
+        scheme = "wss" if context.api_uri.scheme == "https" else "ws"
         path = "stream/single" + "/".join(f"/{segment}" for segment in segments)
         self._uri = httpx.URL(
             str(context.api_uri.copy_with(scheme=scheme)) + path,
