@@ -13,7 +13,7 @@ if sys.version_info < (3, 11):
     from zarr.storage import init_array as create_array
 else:
     from zarr.storage import LocalStore, ObjectStore
-    from obstore.store import S3Store
+    from obstore.store import S3Store, AzureStore, GCSStore
     from zarr import create_array
 
 from numpy._typing import NDArray
@@ -22,7 +22,7 @@ from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..ndslice import NDSlice
-from ..storage import FileStorage, Storage, ObjectStorage
+from ..storage import FileStorage, ObjectStorage, Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -64,10 +64,11 @@ class ZarrArrayAdapter(ArrayAdapter):
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
 
         if isinstance(storage, ObjectStorage):
-            mapping = {"s3": S3Store}
+            mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
+            urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
             object_store_class = mapping[storage.provider]
             object_store = object_store_class(
-                endpoint=storage.uri,
+                **{urlProp[storage.provider]: storage.uri},
                 **storage.config,
             )
             store = ObjectStore(store=object_store)
