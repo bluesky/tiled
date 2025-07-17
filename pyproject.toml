@@ -84,6 +84,7 @@ all = [
     "numcodecs",
     "numpy",
     "numba >=0.59.0",  # indirect, pinned to assist uv solve
+    "obstore",
     "openpyxl",
     "packaging",
     "pandas",
@@ -246,6 +247,7 @@ server = [
     "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numcodecs",
     "numpy",
+    "obstore",
     "openpyxl",
     "packaging",
     "pandas",

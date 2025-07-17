@@ -27,6 +27,7 @@ __all__ = [
 @dataclasses.dataclass(frozen=True)
 class Storage:
     "Base class for representing storage location"
+
     uri: str
 
     def __post_init__(self):
@@ -56,6 +57,18 @@ def _ensure_writable_location(uri: str) -> Path:
     else:
         raise ValueError(f"The directory {directory} does not exist.")
     return filepath
+
+
+@dataclasses.dataclass(frozen=True)
+class ObjectStorage:
+    "Bucket storage location for BLOBS"
+
+    uri: str
+    provider: str
+    config: dict
+
+    def __post_init__(self):
+        object.__setattr__(self, "uri", ensure_uri(self.uri))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -190,24 +203,33 @@ class RemoteSQLStorage(SQLStorage):
 
 
 def parse_storage(
-    item: Union[Path, str],
+    item: Union[Path, str, dict],
     *,
     pool_size: int = 5,
     max_overflow: int = 10,
 ) -> Storage:
     "Create a Storage object from a URI or Path."
-    item = ensure_uri(item)
-    scheme = urlparse(item).scheme
-    if scheme == "file":
-        result = FileStorage(item)
-    elif scheme == "postgresql":
-        result = RemoteSQLStorage(item, pool_size=pool_size, max_overflow=max_overflow)
-    elif scheme in {"sqlite", "duckdb"}:
-        result = EmbeddedSQLStorage(
-            item, pool_size=pool_size, max_overflow=max_overflow
+    if isinstance(item, dict):
+        result = ObjectStorage(
+            uri=item["uri"],
+            provider=item["provider"],
+            config=item.get("config", {}),
         )
     else:
-        raise ValueError(f"writable_storage item {item} has unrecognized scheme")
+        item = ensure_uri(item)
+        scheme = urlparse(item).scheme
+        if scheme == "file":
+            result = FileStorage(item)
+        elif scheme == "postgresql":
+            result = RemoteSQLStorage(
+                item, pool_size=pool_size, max_overflow=max_overflow
+            )
+        elif scheme in {"sqlite", "duckdb"}:
+            result = EmbeddedSQLStorage(
+                item, pool_size=pool_size, max_overflow=max_overflow
+            )
+        else:
+            raise ValueError(f"writable_storage item {item} has unrecognized scheme")
     return result
 
 

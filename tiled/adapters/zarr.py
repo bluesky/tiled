@@ -17,7 +17,7 @@ from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..ndslice import NDSlice
-from ..storage import FileStorage, Storage
+from ..storage import FileStorage, ObjectStorage, Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -30,8 +30,10 @@ if ZARR_LIB_V2:
     from zarr.storage import DirectoryStore as LocalStore
     from zarr.storage import init_array as create_array
 else:
+    from obstore.store import S3Store
     from zarr import create_array
-    from zarr.storage import LocalStore
+    from zarr.storage import LocalStore, ObjectStore
+
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -60,16 +62,28 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         path_parts: List[str],
     ) -> DataSource[ArrayStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.uri + "".join(
-            f"/{quote_plus(segment)}" for segment in path_parts
-        )
+
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
-        directory = path_from_uri(data_uri)
-        directory.mkdir(parents=True, exist_ok=True)
-        store = LocalStore(str(directory))
+
+        if isinstance(storage, ObjectStorage):
+            mapping = {"s3": S3Store}
+            object_store_class = mapping[storage.provider]
+            object_store = object_store_class(
+                endpoint=storage.uri,
+                **storage.config,
+            )
+            store = ObjectStore(store=object_store)
+        if isinstance(storage, FileStorage):
+            # file-based
+            data_uri = storage.uri + "".join(
+                f"/{quote_plus(segment)}" for segment in path_parts
+            )
+            directory = path_from_uri(data_uri)
+            directory.mkdir(parents=True, exist_ok=True)
+            store = LocalStore(str(directory))
         create_array(
             store,
             shape=shape,

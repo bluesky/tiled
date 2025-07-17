@@ -174,8 +174,8 @@ class Context:
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
-        self.writable_storage = []
-        self.readable_storage = set()
+        self.writable_storage = {}
+        self.readable_storage = {}
 
         # Back-compat: `writable_storage` used to be a dict: we want its values.
         if isinstance(writable_storage, dict):
@@ -187,18 +187,18 @@ class Context:
             raise ValueError("readable_storage should be a list of URIs or paths")
 
         for item in writable_storage or []:
-            self.writable_storage.append(
-                parse_storage(
-                    item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
-                )
+            storage = parse_storage(
+                item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
             )
+            self.writable_storage[storage.uri] = storage
         for item in readable_storage or []:
-            self.readable_storage.add(parse_storage(item))
+            storage = parse_storage(item)
+            self.readable_storage[storage.uri] = storage
         # Writable storage should also be readable.
         self.readable_storage.update(self.writable_storage)
         # Register all storage in a registry that enables Adapters to access
         # credentials (if applicable).
-        for item in self.readable_storage:
+        for item in self.readable_storage.values():
             register_storage(item)
 
         self.key_maker = key_maker
@@ -524,7 +524,7 @@ class CatalogNodeAdapter:
                 asset_path = path_from_uri(asset.data_uri)
                 for readable_storage in {
                     item
-                    for item in self.context.readable_storage
+                    for item in self.context.readable_storage.values()
                     if isinstance(item, FileStorage)
                 }:
                     if (
@@ -714,7 +714,7 @@ class CatalogNodeAdapter:
                     supported_storage = getattr(
                         adapter_cls, "supported_storage", {FileStorage}
                     )()
-                    for storage in self.context.writable_storage:
+                    for storage in self.context.writable_storage.values():
                         if isinstance(storage, tuple(supported_storage)):
                             break
                     else:
