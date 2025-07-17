@@ -36,7 +36,7 @@ class FileStorage(Storage):
 
 
 @dataclasses.dataclass(frozen=True)
-class ObjectStorage:
+class ObjectStorage(Storage):
     "Bucket storage location for BLOBS"
 
     uri: str
