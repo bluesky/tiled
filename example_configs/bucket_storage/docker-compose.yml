@@ -12,7 +12,6 @@ services:
       MINIO_ROOT_PASSWORD: "minioadmin"
     command: server /data --console-address :9001
     restart: unless-stopped
-
   create-bucket:
     image: minio/mc:latest
     environment:
@@ -26,6 +25,5 @@ services:
         done
 
         mc mb --ignore-existing minio/buck
-
 volumes:
   minio-data:
