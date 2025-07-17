@@ -11,11 +11,6 @@ from ..client import Context, from_context, tree
 from ..client.register import register
 from ..server.app import build_app
 
-if sys.version_info < (3, 11):
-    from zarr.storage import DirectoryStore as LocalStore
-else:
-    from zarr.storage import LocalStore
-
 
 @pytest.mark.asyncio
 async def test_excel(tmpdir):
@@ -46,7 +41,7 @@ async def test_zarr_array(tmpdir):
 
 @pytest.mark.asyncio
 async def test_zarr_group(tmp_path: Path):
-    root = zarr.create_group(LocalStore(tmp_path / "zg.zarr"))
+    root = zarr.open(str(tmp_path / "zg.zarr"), mode="w")
 
     if sys.version_info < (3, 11):
         root.create_dataset("x", data=[1, 2, 3])
