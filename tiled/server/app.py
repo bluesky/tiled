@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
 from textwrap import dedent
-from typing import Optional, Union
+from typing import Any, Callable, Coroutine, Optional, TypedDict, Union
 
 import anyio
 import packaging.version
@@ -76,6 +76,10 @@ logger.addHandler(handler)
 current_principal = contextvars.ContextVar("current_principal")
 
 
+AppTask = Callable[[], Coroutine[None, None, Any]]
+"""Async function to be run as part of the app's lifecycle"""
+
+
 def custom_openapi(app):
     """
     The app's openapi method will be monkey-patched with this.
@@ -112,7 +116,7 @@ def build_app(
     deserialization_registry: Optional[SerializationRegistry] = None,
     compression_registry: Optional[CompressionRegistry] = None,
     validation_registry: Optional[ValidationRegistry] = None,
-    tasks=None,
+    tasks: Optional[dict[str, list[AppTask]]] = None,
     scalable=False,
     access_policy=None,
 ):
@@ -144,10 +148,12 @@ def build_app(
     )
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
-    tasks = tasks or {}
-    tasks.setdefault("startup", [])
-    tasks.setdefault("background", [])
-    tasks.setdefault("shutdown", [])
+
+    tasks: TaskMap = {
+        "startup": (tasks or {}).get("startup", []),
+        "background": (tasks or {}).get("background", []),
+        "shutdown": (tasks or {}).get("shutdown", []),
+    }
     # The tasks are collected at config-parsing time off of the sub-trees.
     # Collect the tasks off the root tree here, so that it works when
     # a single tree is passed to build_app(...) directly, as happens in the tests.
@@ -502,17 +508,17 @@ def build_app(
                 )
 
         # Run startup tasks collected from trees (adapters).
-        for task in tasks.get("startup", []):
+        for task in tasks["startup"]:
             await task()
 
         # Stash these to cancel this on shutdown.
         app.state.tasks = []
         # Trees and Authenticators can run tasks in the background.
-        background_tasks = []
-        background_tasks.extend(tasks.get("background_tasks", []))
+        background_tasks: list[AppTask] = []
+        background_tasks.extend(tasks["background"])
         for authenticator in authenticators:
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
-        for task in background_tasks or []:
+        for task in background_tasks:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
 
@@ -648,16 +654,16 @@ def build_app(
 
     async def shutdown_event():
         # Run shutdown tasks collected from trees (adapters).
-        for task in tasks.get("shutdown", []):
+        for task in tasks["shutdown"]:
             await task()
 
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
             from ..authn_database.connection_pool import close_database_connection_pool
 
-            for task in app.state.tasks:
-                task.cancel()
             await close_database_connection_pool(settings.database_settings)
+        for task in app.state.tasks:
+            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,
@@ -929,3 +935,9 @@ def print_server_info(
 
 class UnscalableConfig(Exception):
     pass
+
+
+class TaskMap(TypedDict):
+    background: list[AppTask]
+    startup: list[AppTask]
+    shutdown: list[AppTask]
