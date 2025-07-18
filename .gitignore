@@ -74,3 +74,9 @@ tiled/_version.py
 .env
 .asv/
 venv/
+# pixi environments
+.pixi
+pixi.lock
+# uv environments
+uv.lock
+.venv
