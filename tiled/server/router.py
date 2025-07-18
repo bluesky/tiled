@@ -2300,6 +2300,52 @@ def get_router(
             manifest.extend(Path(root, file) for file in files)
         return json_or_msgpack(request, {"manifest": manifest})
 
+    @router.get("{path:path}.zattrs", name="Zarr .zattrs metadata")
+    @router.get("/{path:path}/.zattrs", name="Zarr .zattrs metadata")
+    async def get_zarr_attrs(
+        request: Request,
+        path: str,
+        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+    ):
+        """Return Zarr attributes metadata (.zattrs).
+        If entry.metadata() (or entry.metadata) includes "zattrs", return them.
+        """
+        entry = await get_entry(
+            path,
+            ["read:data", "read:metadata"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            metrics=request.state.metrics,
+            structure_families={
+                StructureFamily.table,
+                StructureFamily.container,
+                StructureFamily.array,
+            },
+            access_policy=getattr(request.app.state, "access_policy", None),
+        )
+        # If it's an unstructured array, we do not treat it as a group for .zattrs
+        if entry.structure_family == StructureFamily.array and not isinstance(
+            entry.structure().data_type, StructDtype
+        ):
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND)
+
+        # Attempt to retrieve .zattrs from entry.metadata
+        try:
+            metadata_dict = entry.metadata()  # if it's callable
+        except TypeError:
+            metadata_dict = entry.metadata  # if it's a property
+
+        return Response(
+            json.dumps(metadata_dict),
+            status_code=200,
+            media_type="application/json",
+        )
+
     async def validate_metadata(
         metadata: dict,
         structure_family: StructureFamily,
