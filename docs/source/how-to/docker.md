@@ -153,7 +153,7 @@ docker run -d \
 Initialize the database. (This creates the tables, indexes, and so on used by Tiled.)
 
 ```
-export TILED_DATABASE_URI=postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@tiled-test-postgres:5432
+export TILED_DATABASE_URI=postgresql://postgres:${TILED_DATABASE_PASSWORD}@tiled-test-postgres:5432
 
 docker run --net=tilednet ghcr.io/bluesky/tiled:latest tiled catalog init $TILED_DATABASE_URI
 ```
@@ -171,13 +171,13 @@ Replace the line:
 
 
 ```yaml
-uri: "sqlite+aiosqlite:////storage/catalog.db"
+uri: "sqlite:////storage/catalog.db"
 ```
 
 with a PostgreSQL database URI, such as:
 
 ```yaml
-uri: "postgresql+asyncpg://postgres:${TILED_DATABASE_PASSWORD}@tiled-test-postgres:5432"
+uri: "postgresql://postgres:${TILED_DATABASE_PASSWORD}@tiled-test-postgres:5432"
 ```
 
 Start the server, potentially multiple servers across many hosts.

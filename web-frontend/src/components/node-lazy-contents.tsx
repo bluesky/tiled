@@ -25,8 +25,8 @@ function CustomToolbar() {
   return (
     // working around https://github.com/mui/mui-x/issues/2383
     <GridToolbarContainer>
-      <GridToolbarColumnsButton {...({} as any)} />
-      <GridToolbarDensitySelector {...({} as any)} />
+      <GridToolbarColumnsButton />
+      <GridToolbarDensitySelector />
     </GridToolbarContainer>
   );
 }
@@ -67,7 +67,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
       hide: !props.defaultColumns.includes(column.field),
     })
   );
-  const settings = useContext(SettingsContext)
+  const settings = useContext(SettingsContext);
   const [rowsState, setRowsState] = useState<RowsState>({
     page: 0,
     pageSize: DEFAULT_PAGE_SIZE,
@@ -83,8 +83,8 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     async function loadItems(): Promise<
       components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
     > {
-      var selectMetadata: string | null;
-      var fields: string[];
+      let selectMetadata: string | null;
+      let fields: string[];
       const controller = new AbortController();
       if (props.columns.length === 0) {
         // No configuration on which columns to show. Fetch only the ID.
@@ -101,7 +101,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
             .join(",") +
           "}";
       }
-      var data = await search(
+      const data = await search(
         settings.api_url,
         props.segments,
         controller.signal,
@@ -118,7 +118,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     (async () => {
       setRowsState((prev) => ({ ...prev, loading: true }));
       const newItems = await loadItems();
-      var idsToAncestors: IdsToAncestors = {};
+      const idsToAncestors: IdsToAncestors = {};
       newItems.map(
         (
           item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]
@@ -164,10 +164,15 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           rowCount={rowCount}
           {...rowsState}
           paginationMode="server"
-          rowsPerPageOptions={[10, 30, 100]}
-          onPageChange={(page) => setRowsState((prev) => ({ ...prev, page }))}
-          onPageSizeChange={(pageSize) => {
-            setRowsState((prev) => ({ ...prev, pageSize }));
+          pageSizeOptions={[10, 30, 100]}
+          onPaginationModelChange={({
+            page,
+            pageSize,
+          }: {
+            page: number;
+            pageSize: number;
+          }) => {
+            setRowsState((prev) => ({ ...prev, page, pageSize }));
           }}
           onRowClick={(params: GridRowParams) => {
             navigate(
@@ -178,8 +183,8 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
                 .join("")}/${params.id}`
             );
           }}
-          components={{
-            Toolbar: CustomToolbar,
+          slots={{
+            toolbar: CustomToolbar,
           }}
           disableColumnFilter
           autoHeight

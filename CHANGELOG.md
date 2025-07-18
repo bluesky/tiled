@@ -8,6 +8,373 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - zarr v2 endpoints for read access
+## v0.1.0-b30 (2025-07-18)
+
+## Changed
+
+- Refactored internal server function ``get_entry()`` to not use the FastAPI
+  dependencies injection
+- Updated front-end dependencies, and updated node version used for building
+  front-end.
+
+## Fixed
+
+- Restored authentication check for API key
+- Updated usage for change in Zarr 3.x API.
+- Improved error message if config location is non-file
+
+## v0.1.0-b29 (2025-06-06)
+
+### Added
+
+- It is now possible to explicitly control the page size used for fetching
+  batches of metadata, e.g. `client.values().page_size(N)`.
+- Writable tabular SQL storage in SimpleTiledServer.
+- The `pyproject.toml` now includes integration with [pixi](https://pixi.sh/).
+
+### Fixed
+
+- An auth bug that prevented a user to create a table with empty access_tags.
+- When accessing a small number of results, the page size is set appropriately
+  to avoid needlessly downloading additional results.
+- The `tiled serve config ...` CLI command silently ignored `--port 0` and
+  used the default port (`8000`).
+
+## v0.1.0-b28 (2025-05-21)
+
+### Changed
+
+- Accept (allowed) special characters in SQL column names, e.g. "-".
+- The large `TagBasedAccessPolicy` class introduced in the previous release
+  was refactored into separate objects.
+
+## 0.1.0-b27 (2025-05-08)
+
+_This release requires a database migration of the catalog database._
+
+```none
+tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
+```
+
+### Added
+
+- New access policy `TagBasedAccessPolicy` which introduces more robust
+  authorization based on the concept of tagging. When this policy is used,
+  access to data is controlled by the node's `access_blob` (i.e the tags applied
+  to that node).
+- Added new `access_blob` column to catalog database, in support of the new
+  authorization. This blob typically contains one of: resource owner (creator),
+  or a list of access tags.
+- Added new filter type `AccessBlobFilter` which filters nodes based upon their
+  `access_blob` contents. In support of the new authorization.
+
+### Changed
+- Tiled now accepts a single `access_control` configuraton for the entire
+  server, only. Access policies are now a server-wide singleton used for
+  all access requests. Access control can no longer be specified on
+  individual trees.
+- Removed `path_parts` arg from access policy signatures and related.
+- Effective scopes for the principal (from authN) are now threaded into
+  access policies and related.
+- Removed `access_policy` from `MapAdapter` and `CatalogAdapter`; accesss policies
+  are now set server-wide only.
+
+## 0.1.0-b26 (2025-05-07)
+
+### Added
+
+- New query parameter `drop_revision` on endpoints `PUT /metadata/{path}`
+  and `PATCH /metadata/{path}`. If set to true, the version replaced by
+  the update is _not_ saved as a revision. This is exposed in the Python
+  client via a new keyword-only argument `drop_revision` in
+  `update_metadata`, `patch_metadata`, and `replace_metadata`.
+
+### Fixed
+
+- A critical bug in the `mount_node` feature introduced in the
+  previous release prohibited the server from starting when
+  `mount_node` was used with a PostgreSQL database.
+- Accept (allowed) special characters in SQL column names, e.g. "-".
+
+## 0.1.0-b25 (2025-05-06)
+
+### Added
+
+- New optional parameter to catalog configuration, `mount_node`
+  enables mounting different sub-trees of one catalog database
+  at different prefixes. This is an advanced feature to facilitate
+  migration from many catalogs to one. See
+  `tiled/_tests/test_mount_node.py` for usage.
+
+## 0.1.0-b24 (2025-05-06)
+
+### Added
+
+- Support for reading numpy's on-disk format, `.npy` files.
+
+### Changed
+
+- In server configuration, `writable_storage` now takes a list of URIs,
+  given in order of decreasing priority.
+- Adapters should implement a `supported_storage` attribute, as specified
+  in `tiled.adapters.protocols.BaseAdapter`. This is optional, for
+  backward-compatiblity with existing Adapters, which are assumed to
+  use file-based storage.
+
+### Fixed
+
+- When using SQL-backed storage and file-backed storage, Tiled treated SQLite
+  or DuckDB files as if they were directories of readable files, and
+  included them superfluously in a check on whether assets were situated
+  in a readable area.
+- Update data_sources in the client after receiving a response from the server.
+  Removed the (unused) `data_source` parameter from the `PUT /data_source/`
+  endpoint; the id of the updated data source must be included in the structure
+  within the body of the request.
+
+## 0.1.0-b23 (2025-04-24)
+
+### Added
+
+- New query type `Like` enables partial string match using SQL `LIKE`
+  condition.
+
+### Changed
+
+- Exposed `Session.state` information from database to enhance custom access
+  control developments.
+
+## 0.1.0-b22 (2025-04-21)
+
+### Added
+
+- Tiled now retries HTTP requests that fail due to server-side (`5XX`) or
+  connection-level problems.
+- Support for `async` streaming serializers (exporters)
+
+### Changed
+
+- Iteration over a `Composite` client yields its (flattened) keys, not its
+  internal parts. This makes `__iter__` and `__getitem__` consistent.
+
+## 0.1.0-b21 (2025-04-15)
+
+### Added
+
+- `Composite` structure family to enable direct access to table columns in a single namespace.
+- Added a `parent` property to BaseClass that returns a client pointing to the parent node
+- New CLI flag `tiled --version` shows the current version and exits.
+
+### Changed
+
+- Adjust arguments of `print_admin_api_key_if_generated` and rename `print_server_info`
+- Allow `SQLAdapter.append_partition` to accept `pyarrow.Table` as its argument
+- Fix streaming serialization of tables keeping the dtypes of individual columns
+
+### Maintenance
+
+- Extract API key handling
+- Extract scope fetching and checking
+- Refactor router construction
+- Adjust environment loading
+  - This is a breaking change if setting `TILED_SERVER_SECRET_KEYS` or
+    `TILED_ALLOW_ORIGINS`. `TILED_SERVER_SECRET_KEYS` is now
+    `TILED_SECRET_KEYS` and these fields now require passing a json
+    list e.g. ``TILED_SECRET_KEYS='["one", "two"]'``
+- More type hinting
+- Refactor authentication router construction
+- Set minimum version of FastAPI required.
+
+## 0.1.0-b20 (2025-03-07)
+
+### Added
+
+- `tiled.server.SimpleTiledServer` can be used for tutorials or development.
+  It launches a tiled server on a background thread with basic security.
+
+### Changed
+
+- Added an hdf5plugin import to handle reading lzf-compressed data from Dectris Eiger HDF5 files.
+- Removed no-op `?include_data_sources=false` (which is the default) from some
+  requests issued by the Python client.
+- Added a try-except statement to gracefully skip over broken external links in HDF5 files.
+
+### Maintenance
+
+- Remove a redundant dependency declaration.
+
+## 0.1.0-b19 (2025-02-19)
+
+### Maintenance
+
+- Run authentication tests againts PostgreSQL as well as SQLite.
+- Tighten up handling of `time_created` and `time_updated` in authentication
+  database.
+- New authentication database migration fixes error in migration in previous release.
+
+## 0.1.0-b18 (2025-02-18)
+
+### Added
+
+- Added `SQLAdapter` which can save and interact with table structured data in
+  `sqlite` , `postgresql` and `duckdb` databases using `arrow-adbc` API calls.
+- Coverage status shows the missing uncovered lines now.
+- Added few more tests to `SQLAdapter`.
+
+### Changed
+
+- Removed pydantic-based definitions of structures, which had duplicated
+  the dataclass-based defintions in order to work around a pydantic bug
+  which has since been resolved. All modules named `tiled.server.pydantic_*`
+  have been removed. These were used internally by the server and should
+  not affect user code.
+- Publish Container image and Helm chart only during a tagged release.
+- Stop warning when `data_sources()` are fetched after the item was already
+  fetched. (Too noisy.)
+- In Tiled's authentication database, when PostgreSQL is used, all datetimes
+  are stored explicitly localized to UTC. This requires a database migration
+  to update existing rows.
+
+## 0.1.0-b17 (2025-01-29)
+
+### Changed
+
+- Refactor and standardize Adapter API: implement from_uris and from_catalog
+  classmethods for instantiation from files and registered Tiled nodes, respectively.
+- Refactor CSVAdapter to allow pd.read_csv kwargs
+- Removed `tiled.adapters.zarr.read_zarr` utility function.
+- Server declares authentication provider modes are `external` or `internal`. The
+  latter was renamed from `password`. Client accepts either `internal` or `password`
+  for backward-compatibility with older servers.
+- Make context switch to HTTPS URI, if available, upon creation
+
+### Added
+
+- Added `.get` methods on TableAdapter and ParquetDatasetAdapter
+- Ability to read string-valued columns of data frames as arrays
+
+### Fixed
+
+- Do not attempt to use auth tokens if the server declares no authentication
+  providers.
+- Prevent "incognito mode" (remember_me=False) from failing after a previous
+  login session has since been logged out (no token files)
+
+### Maintenance
+
+- Make dependencies shared by client and server into core dependencies.
+- Use schemas for describing server configuration on the client side too.
+- Refactored Authentication providers to make use of inheritance, adjusted
+  mode in the `AboutAuthenticationProvider` schema to be `internal`|`external`.
+  Python clients older than v0.1.0b17 will be sent `password` for back-compat.
+- Improved type hinting and efficiency of caching singleton values
+
+## 0.1.0-b16 (2025-01-23)
+
+### Maintenance
+
+- Update GitHub Actions `upload-artifact` and `download-artifact`.
+
+## 0.1.0-b15 (2025-01-23)
+
+### Maintenance
+
+- Adjust for backward-incompatible change in dependency Starlette 0.45.0.
+
+## 0.1.0-b14 (2025-01-21)
+
+### Changed
+
+- Updated OIDC Authenticator configuration to expect `well_known_uri` and
+  `audience` and to no longer expect `token_uri`, `authorization_endpoint` and
+  `public_keys`, which can be fetched at initialization (server startup) time.
+  See examples `example_configs/orcid_auth.yml`,
+  `example_configs/google_auth.yml`, and `example_configs/simple_oidc`.
+
+### Maintenance
+
+- Addressed DeprecationWarnings from Python and dependencies
+- Update AccessPolicy Docs to match new filter arguments
+- Refactored intialization of dask DataFrame to be compatible with dask 2025.1
+
+## v0.1.0-b13 (2025-01-09)
+
+### Added
+
+- `docker-compose.yml` now uses the healthcheck endpoint `/healthz`
+- In client, support specifying API key expiration time as string with
+  units, like ``"7d"` or `"10m"`.
+- Fix bug where access policies were not applied to child nodes during request
+- Add metadata-based access control to SimpleAccessPolicy
+- Add example test of metadata-based allowed_scopes which requires the path to the target node
+- Added Helm chart with deployable default configuration
+
+### Fixed
+
+- Bug in Python client resulted in error when accessing data sources on a
+  just-created object.
+- Fix bug where access policies were not applied to child nodes during request
+
+### Changed
+
+- The argument `prompt_for_reauthentication` is now ignored and warns.
+  Tiled will never prompt for reauthentication after the client is constructed;
+  if a session expires or is revoked, it will raise `CannotRefreshAuthentication`.
+- The arguments `username` and `password` have been removed from the client
+  constructor functions. Tiled will always prompt for these interactively.
+  See the Authentication How-to Guide for more information, including on
+  how applications built on Tiled can customize this.
+- The argument `remember_me` has been added to the client constructor
+  functions and to `Context.authenticate` and its alias `Context.login`.
+  This can be used to clear and avoid storing any tokens related to
+  the session.
+- Change access policy API to be async for filters and allowed_scopes
+- Pinned zarr to `<3` because Zarr 3 is still working on adding support for
+  certain features that we rely on from Zarr 2.
+
+
+## v0.1.0b12 (2024-12-09)
+
+### Added
+
+- Add HTTP endpoint `PATCH /array/full/{path}` to enable updating and
+  optionally _extending_ an existing array.
+- Add associated Python client method `ArrayClient.patch`.
+- Hook to authentication prompt to make password login available without TTY.
+
+### Fixed
+
+- Fix curl and httpie installation in docker image.
+- Minor fix to api key docs to reflect correct CLI usage.
+- Fix the construction of urls by passing query parameters as kwargs,
+  adapting to a behavior change in httpx v0.28.0.
+
+### Changed
+
+- Switch from appdirs to platformdirs.
+
+## v0.1.0b11 (2024-11-14)
+
+### Added
+
+- Add adapters for reading back assets with the image/jpeg and
+  multipart/related;type=image/jpeg mimetypes.
+- Automatic reshaping of tiff data by the adapter to account for
+  extra/missing singleton dimension
+- Add a check for the `openpyxcl` module when importing excel serializer.
+
+### Changed
+
+- Drop support for Python 3.8, which is reached end of life
+  upstream on 7 October 2024.
+- Do not require SQL database URIs to specify a "driver" (Python
+  library to be used for connecting).
+
+### Fixed
+
+- A regression in the container broke support for `tiled register ...` and
+  `tiled serve directory ...`. When these became client-side operations, the
+  container needed to add the client-side dependencies to support them.
 
 ## v0.1.0b10 (2024-10-11)
 

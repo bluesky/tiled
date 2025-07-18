@@ -3,29 +3,32 @@ This module handles server configuration.
 
 See profiles.py for client configuration.
 """
+
 import copy
 import os
 import warnings
 from collections import defaultdict
 from datetime import timedelta
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
+from typing import Optional
 
 import jsonschema
 
 from .adapters.mapping import MapAdapter
 from .media_type_registration import (
-    compression_registry as default_compression_registry,
+    CompressionRegistry,
+    SerializationRegistry,
+    default_compression_registry,
+    default_deserialization_registry,
+    default_serialization_registry,
 )
-from .media_type_registration import (
-    serialization_registry as default_serialization_registry,
-)
-from .query_registration import query_registry as default_query_registry
+from .query_registration import QueryRegistry, default_query_registry
 from .utils import import_object, parse, prepend_to_sys_path
-from .validation_registration import validation_registry as default_validation_registry
+from .validation_registration import ValidationRegistry, default_validation_registry
 
 
-@lru_cache(maxsize=1)
+@cache
 def schema():
     "Load the schema for service-side configuration."
     import yaml
@@ -40,10 +43,11 @@ def construct_build_app_kwargs(
     config,
     *,
     source_filepath=None,
-    query_registry=None,
-    compression_registry=None,
-    serialization_registry=None,
-    validation_registry=None,
+    query_registry: Optional[QueryRegistry] = None,
+    compression_registry: Optional[CompressionRegistry] = None,
+    serialization_registry: Optional[SerializationRegistry] = None,
+    deserialization_registry: Optional[SerializationRegistry] = None,
+    validation_registry: Optional[ValidationRegistry] = None,
 ):
     """
     Given parsed configuration, construct arguments for build_app(...).
@@ -61,6 +65,8 @@ def construct_build_app_kwargs(
         query_registry = default_query_registry
     if serialization_registry is None:
         serialization_registry = default_serialization_registry
+    if deserialization_registry is None:
+        deserialization_registry = default_deserialization_registry
     if compression_registry is None:
         compression_registry = default_compression_registry
     if validation_registry is None:
@@ -77,7 +83,7 @@ def construct_build_app_kwargs(
         for age in ["refresh_token_max_age", "session_max_age", "access_token_max_age"]:
             if age in auth_spec:
                 auth_spec[age] = timedelta(seconds=auth_spec[age])
-        root_access_control = config.get("access_control", {}) or {}
+        access_control = config.get("access_control", {}) or {}
         auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
         providers = list(auth_spec.get("providers", []))
         provider_names = [p["provider"] for p in providers]
@@ -94,31 +100,20 @@ def construct_build_app_kwargs(
             authenticator = authenticator_class(**authenticator.get("args", {}))
             # Replace "package.module:Object" with live instance.
             auth_spec["providers"][i]["authenticator"] = authenticator
-        if root_access_control.get("access_policy") is not None:
-            root_policy_import_path = root_access_control["access_policy"]
-            root_policy_class = import_object(
-                root_policy_import_path, accept_live_object=True
+        if access_control.get("access_policy") is not None:
+            access_policy_import_path = access_control["access_policy"]
+            access_policy_class = import_object(
+                access_policy_import_path, accept_live_object=True
             )
-            root_access_policy = root_policy_class(
-                **root_access_control.get("args", {})
-            )
+            access_policy = access_policy_class(**access_control.get("args", {}))
         else:
-            root_access_policy = None
+            access_policy = None
         # TODO Enable entrypoint to extend aliases?
         tree_aliases = {
             "catalog": "tiled.catalog:from_uri",
         }
         trees = {}
         for item in config.get("trees", []):
-            access_control = item.get("access_control", {}) or {}
-            if access_control.get("access_policy") is not None:
-                policy_import_path = access_control["access_policy"]
-                policy_class = import_object(
-                    policy_import_path, accept_live_object=True
-                )
-                access_policy = policy_class(**access_control.get("args", {}))
-            else:
-                access_policy = None
             segments = tuple(segment for segment in item["path"].split("/") if segment)
             tree_spec = item["tree"]
             if isinstance(tree_spec, str) and tree_spec == "files":
@@ -129,7 +124,7 @@ See documentation section "Serve a Directory of Files"."""
                 )
             import_path = tree_aliases.get(tree_spec, tree_spec)
             obj = import_object(import_path, accept_live_object=True)
-            if (("args" in item) or ("access_policy" in item)) and (not callable(obj)):
+            if ("args" in item) and (not callable(obj)):
                 raise ValueError(
                     f"Object imported from {import_path} cannot take args. "
                     "It is not callable."
@@ -138,15 +133,9 @@ See documentation section "Serve a Directory of Files"."""
                 # Interpret obj as a tree *factory*.
                 args = {}
                 args.update(item.get("args", {}))
-                if access_policy is not None:
-                    args["access_policy"] = access_policy
                 tree = obj(**args)
             else:
                 # Interpret obj as a tree *instance*.
-                if access_policy is not None:
-                    raise ValueError(
-                        f"Cannot apply access_policy to object {obj} which is already instantiated."
-                    )
                 tree = obj
             if segments in trees:
                 raise ValueError(f"The path {'/'.join(segments)} was specified twice.")
@@ -159,8 +148,6 @@ See documentation section "Serve a Directory of Files"."""
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = tree
-            if root_access_policy is not None:
-                tree.access_policy = root_access_policy
         else:
             # There are one or more tree(s) to be served at
             # sub-paths. Merged them into one root MapAdapter.
@@ -181,7 +168,7 @@ See documentation section "Serve a Directory of Files"."""
                 for router in routers:
                     if router not in include_routers:
                         include_routers.append(router)
-            root_tree = MapAdapter(root_mapping, access_policy=root_access_policy)
+            root_tree = MapAdapter(root_mapping)
             root_tree.include_routers.extend(include_routers)
         server_settings = {}
         if root_path := config.get("root_path", ""):
@@ -220,6 +207,7 @@ See documentation section "Serve a Directory of Files"."""
         "server_settings": server_settings,
         "query_registry": query_registry,
         "serialization_registry": serialization_registry,
+        "deserialization_registry": deserialization_registry,
         "compression_registry": compression_registry,
         "validation_registry": validation_registry,
         "tasks": {
@@ -227,6 +215,7 @@ See documentation section "Serve a Directory of Files"."""
             "shutdown": shutdown_tasks,
             "background": background_tasks,
         },
+        "access_policy": access_policy,
     }
 
 
@@ -360,7 +349,10 @@ def parse_configs(config_path):
     elif not config_path.exists():
         raise ValueError(f"The config path {config_path!s} doesn't exist.")
     else:
-        assert False, "It should be impossible to reach this line."
+        # the path points to something we don't support, eg fifo/block_device/etc
+        raise ValueError(
+            f"The config path {config_path!s} exists but is not a file or directory."
+        )
 
     parsed_configs = {}
     # The sorting here is just to make the order of the results deterministic.

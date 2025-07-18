@@ -1,6 +1,7 @@
 const basename = import.meta.env.BASE_URL;
 
-const tiledUISettingsURL = basename.split('/').slice(0, -2).join('/') + '/tiled-ui-settings';
+const tiledUISettingsURL =
+  basename.split("/").slice(0, -2).join("/") + "/tiled-ui-settings";
 // Alternate idea
 // const tiledUISettingsURL = import.meta.env.TILED_UI_SETTINGS || "/tiled-ui-settings";
 
@@ -22,11 +23,9 @@ interface Settings {
   structure_families: any;
 }
 
-const fetchSettings = async (
-  signal: AbortSignal
-): Promise<Settings> => {
+const fetchSettings = async (signal: AbortSignal): Promise<Settings> => {
   const response = await fetch(tiledUISettingsURL, { signal });
-  return await response.json() as Settings;
+  return (await response.json()) as Settings;
 };
 
 export { fetchSettings };

@@ -1,4 +1,4 @@
-# This is a variation on starlette's FileRespones that adds support for the
+# This is a variation on starlette's FileResponse that adds support for the
 # 'Range' HTTP header.
 
 # It is adapted from a closed PR in starlette which was reviewed by a core
@@ -7,19 +7,13 @@
 # starlette adds support upstream, we should consider refactoring to use that.
 
 # Ref: https://github.com/encode/starlette/pull/1999
+import hashlib
 import os
 import stat
 import typing
 
 import anyio
-from starlette.responses import (
-    FileResponse,
-    Receive,
-    Scope,
-    Send,
-    formatdate,
-    md5_hexdigest,
-)
+from starlette.responses import FileResponse, Receive, Scope, Send, formatdate
 from starlette.status import HTTP_200_OK, HTTP_206_PARTIAL_CONTENT
 
 
@@ -52,7 +46,7 @@ class FileResponseWithRange(FileResponse):
             self.headers.setdefault("content-range", f"bytes {start}-{end}/{size}")
         else:
             content_length = size
-        etag = md5_hexdigest(etag_base.encode(), usedforsecurity=False)
+        etag = hashlib.md5(etag_base.encode(), usedforsecurity=False).hexdigest()
 
         self.headers.setdefault("content-length", content_length)
         self.headers.setdefault("last-modified", last_modified)

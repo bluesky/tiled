@@ -3,6 +3,8 @@ import io
 from dataclasses import dataclass
 from typing import List, Tuple, Union
 
+import pyarrow
+
 B64_ENCODED_PREFIX = "data:application/vnd.apache.arrow.file;base64,"
 
 
@@ -20,6 +22,13 @@ class TableStructure:
     npartitions: int
     columns: List[str]
     resizable: Union[bool, Tuple[bool, ...]] = False
+
+    def __post_init__(self):
+        for column in self.columns:
+            if column.startswith("_"):
+                raise ValueError(
+                    "Tiled reserved column names starting with '_' for internal use."
+                )
 
     @classmethod
     def from_dask_dataframe(cls, ddf) -> "TableStructure":
@@ -63,6 +72,13 @@ class TableStructure:
         schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
         data_uri = B64_ENCODED_PREFIX + schema_b64
         return cls(arrow_schema=data_uri, npartitions=1, columns=list(names))
+
+    @classmethod
+    def from_schema(cls, schema: pyarrow.Schema, npartitions: int = 1):
+        schema_bytes = schema.serialize()
+        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
+        data_uri = B64_ENCODED_PREFIX + schema_b64
+        return cls(arrow_schema=data_uri, npartitions=npartitions, columns=schema.names)
 
     @classmethod
     def from_arrow_table(cls, table, npartitions=1) -> "TableStructure":

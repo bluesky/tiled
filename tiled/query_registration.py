@@ -79,8 +79,8 @@ class QueryRegistry:
 
 
 # Make a global registry.
-query_registry = QueryRegistry()
-register = query_registry.register
+default_query_registry = QueryRegistry()
+register = default_query_registry.register
 """Register a new type of query."""
 
 

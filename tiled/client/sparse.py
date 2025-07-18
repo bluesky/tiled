@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import numpy
 import sparse
 from ndindex import ndindex
@@ -5,7 +7,7 @@ from ndindex import ndindex
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice
+from .utils import export_util, handle_error, params_from_slice, retry_context
 
 
 class SparseClient(BaseClient):
@@ -47,15 +49,18 @@ class SparseClient(BaseClient):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
-        params = params_from_slice(slice)
+        url_path = self.item["links"]["block"]
+        params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
         params["block"] = ",".join(map(str, block))
-        content = handle_error(
-            self.context.http_client.get(
-                self.item["links"]["block"],
-                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                params=params,
-            )
-        ).read()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        url_path,
+                        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                        params=params,
+                    )
+                ).read()
         df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
@@ -74,14 +79,17 @@ class SparseClient(BaseClient):
         # Fetch the data as an Apache Arrow table
         # with columns named dim0, dim1, ..., dimN, data.
         structure = self.structure()
-        params = params_from_slice(slice)
-        content = handle_error(
-            self.context.http_client.get(
-                self.item["links"]["full"],
-                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                params=params,
-            )
-        ).read()
+        url_path = self.item["links"]["full"]
+        params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        url_path,
+                        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                        params=params,
+                    )
+                ).read()
         df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
@@ -102,13 +110,15 @@ class SparseClient(BaseClient):
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
         d["data"] = data
         df = pandas.DataFrame(d)
-        handle_error(
-            self.context.http_client.put(
-                self.item["links"]["full"],
-                content=bytes(serialize_arrow(df, {})),
-                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["full"],
+                        content=bytes(serialize_arrow(df, {})),
+                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    )
+                )
 
     def write_block(self, coords, data, block):
         import pandas
@@ -116,13 +126,15 @@ class SparseClient(BaseClient):
         d = {f"dim{i}": coords for i, coords in enumerate(coords)}
         d["data"] = data
         df = pandas.DataFrame(d)
-        handle_error(
-            self.context.http_client.put(
-                self.item["links"]["block"].format(*block),
-                content=bytes(serialize_arrow(df, {})),
-                headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["block"].format(*block),
+                        content=bytes(serialize_arrow(df, {})),
+                        headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
+                    )
+                )
 
     def __getitem__(self, slice):
         return self.read(slice)
@@ -140,7 +152,7 @@ class SparseClient(BaseClient):
             from the name, like 'table.csv' implies format="text/csv". The format
             may be given as a file extension ("csv") or a media type ("text/csv").
         slice : List[slice], optional
-            List of slice objects. A convenient way to generate these is shown
+            List of slice objects. A convenient way to generate these are shown
             in the examples.
 
         Examples

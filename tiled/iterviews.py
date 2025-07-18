@@ -4,7 +4,7 @@ Iterables for KeysView, ValuesView, ItemsView that are sliceable.
 
 
 class IterViewBase:
-    __slots__ = ("_get_length",)
+    __slots__ = ("_get_length", "_page_size")
 
     def __init__(self, get_length) -> None:
         self._get_length = get_length
@@ -44,9 +44,16 @@ class KeysView(IterViewBase):
     __slots__ = ("_keys_slice",)
     _name = "key"
 
-    def __init__(self, get_length, keys_slice) -> None:
+    def __init__(self, get_length, keys_slice, page_size=None) -> None:
         self._keys_slice = keys_slice
+        self._page_size = page_size
         super().__init__(get_length)
+
+    def page_size(self, n):
+        "Set page size, to tune performance."
+        # Return a new instance of this object with all the same state
+        # except page_size set to n.
+        return type(self)(self._get_length, self._keys_slice, page_size=n)
 
     def __getitem__(self, index_or_slice):
         if isinstance(index_or_slice, int):
@@ -55,7 +62,9 @@ class KeysView(IterViewBase):
                 direction = -1
             else:
                 direction = 1
-            keys = list(self._keys_slice(index_or_slice, 1 + index_or_slice, direction))
+            keys = list(
+                self._keys_slice(index_or_slice, 1 + index_or_slice, direction, 1)
+            )
             try:
                 (key,) = keys
             except ValueError:
@@ -63,14 +72,20 @@ class KeysView(IterViewBase):
             return key
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return list(self._keys_slice(start, stop, direction))
+            if stop is not None:
+                page_size = abs(start - stop)
+                if self._page_size is not None:
+                    page_size = min(page_size, self._page_size)
+            else:
+                page_size = None
+            return list(self._keys_slice(start, stop, direction, page_size))
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
     def __iter__(self):
-        yield from self._keys_slice(0, None, 1)
+        yield from self._keys_slice(0, None, 1, self._page_size)
 
 
 class ItemsView(IterViewBase):
@@ -81,9 +96,16 @@ class ItemsView(IterViewBase):
     __slots__ = ("_items_slice",)
     _name = "item"
 
-    def __init__(self, get_length, items_slice) -> None:
+    def __init__(self, get_length, items_slice, page_size=None) -> None:
         self._items_slice = items_slice
+        self._page_size = page_size
         super().__init__(get_length)
+
+    def page_size(self, n):
+        "Set page size, to tune performance."
+        # Return a new instance of this object with all the same state
+        # except page_size set to n.
+        return type(self)(self._get_length, self._items_slice, page_size=n)
 
     def __getitem__(self, index_or_slice):
         if isinstance(index_or_slice, int):
@@ -93,7 +115,7 @@ class ItemsView(IterViewBase):
             else:
                 direction = 1
             items = list(
-                self._items_slice(index_or_slice, 1 + index_or_slice, direction)
+                self._items_slice(index_or_slice, 1 + index_or_slice, direction, 1)
             )
             try:
                 (item,) = items
@@ -102,14 +124,20 @@ class ItemsView(IterViewBase):
             return item
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return list(self._items_slice(start, stop, direction))
+            if stop is not None:
+                page_size = abs(start - stop)
+                if self._page_size is not None:
+                    page_size = min(page_size, self._page_size)
+            else:
+                page_size = None
+            return list(self._items_slice(start, stop, direction, page_size))
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
     def __iter__(self):
-        yield from self._items_slice(0, None, 1)
+        yield from self._items_slice(0, None, 1, self._page_size)
 
 
 class ValuesView(IterViewBase):
@@ -120,9 +148,16 @@ class ValuesView(IterViewBase):
     __slots__ = ("_items_slice",)
     _name = "value"
 
-    def __init__(self, get_length, items_slice) -> None:
+    def __init__(self, get_length, items_slice, page_size=None) -> None:
         self._items_slice = items_slice
+        self._page_size = page_size
         super().__init__(get_length)
+
+    def page_size(self, n):
+        "Set page size, to tune performance."
+        # Return a new instance of this object with all the same state
+        # except page_size set to n.
+        return type(self)(self._get_length, self._items_slice, page_size=n)
 
     def __getitem__(self, index_or_slice):
         if isinstance(index_or_slice, int):
@@ -132,7 +167,7 @@ class ValuesView(IterViewBase):
             else:
                 direction = 1
             items = list(
-                self._items_slice(index_or_slice, 1 + index_or_slice, direction)
+                self._items_slice(index_or_slice, 1 + index_or_slice, direction, 1)
             )
             try:
                 (item,) = items
@@ -142,14 +177,23 @@ class ValuesView(IterViewBase):
             return value
         elif isinstance(index_or_slice, slice):
             start, stop, direction = slice_to_interval(index_or_slice)
-            return [value for _key, value in self._items_slice(start, stop, direction)]
+            if stop is not None:
+                page_size = abs(start - stop)
+                if self._page_size is not None:
+                    page_size = min(page_size, self._page_size)
+            else:
+                page_size = None
+            return [
+                value
+                for _key, value in self._items_slice(start, stop, direction, page_size)
+            ]
         else:
             raise TypeError(
                 f"{index_or_slice} must be an int or slice, not {type(index_or_slice)}"
             )
 
     def __iter__(self):
-        for key, value in self._items_slice(0, None, 1):
+        for key, value in self._items_slice(0, None, 1, self._page_size):
             yield value
 
 

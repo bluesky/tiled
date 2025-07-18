@@ -167,13 +167,16 @@ as the user who is for. If an API key will be used for a specific task, it is
 good security hygiene to give it only the privileges it needs for that task.  It
 is also recommended to set a limited lifetimes so that if the key is
 unknowingly leaked it will not continue to work forever. For example, this
-command creates an API key that will expire in 10 minutes (600 seconds) and can
+command creates an API key that will expire in 10 minutes and can
 search/list metadata but cannot download array data.
 
 ```
-$ tiled api_key create --expires-in 600 --scopes read:metadata
+$ tiled api_key create --expires-in 10m --scopes read:metadata
 ba9af604023a829ab22edb786168d6e1b97cef68c54c6d95d7fad5e3e6347fa131263581
 ```
+
+Expiration can be given in units of years `y`, days `d`, hours `h`, minutes
+`m`, or seconds `s`.
 
 See {doc}`../reference/scopes` for the full list of scopes and their capabilities.
 
@@ -188,7 +191,7 @@ Finally, the `--note` option can be used to label an API key as a reminder of
 where or how it is being used.
 
 ```
-$ tiled api_key create --note="Data validation pipeline" --scopes read:metadata read:data
+$ tiled api_key create --note="Data validation pipeline" --scopes read:metadata --scopes read:data
 573928c62e53096321fb874847bcc6a90ea636eebd8acbd7c5e9d18d2859847b3bfb4f19
 $ tiled api_key list
 First 8   Expires at (UTC)     Latest activity      Note                      Scopes
@@ -198,7 +201,7 @@ ba9af604  2022-01-31T23:03:57  -                                              re
 ```
 
 If an API key is no longer need or accidentally leaked, it should be revoked. It
-can be identified by its first eight characters, as shown in the the output of
+can be identified by its first eight characters, as shown in the output of
 `tiled api_key list`.
 
 ```

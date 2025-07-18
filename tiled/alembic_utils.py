@@ -47,7 +47,7 @@ def temp_alembic_ini(alembic_ini_template_path, alembic_dir, database_uri):
     ----------
     alembic_ini_template_path: str
     alembic_dir: str
-    datbase_uri : str
+    database_uri : str
         The SQLAlchemy database url, e.g. `sqlite+aiosqlite:///tiled.sqlite`.
 
     Returns
@@ -126,7 +126,7 @@ async def get_current_revision(engine, known_revisions):
     (revision,) = heads
     if revision not in known_revisions:
         raise UnrecognizedDatabase(
-            f"The datbase {redacted_url} has an unrecognized revision {revision}. "
+            f"The database {redacted_url} has an unrecognized revision {revision}. "
             "It may have been created by a newer version of Tiled."
         )
     return revision

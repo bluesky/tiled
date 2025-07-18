@@ -7,14 +7,22 @@ from pathlib import Path
 import asyncpg
 import pytest
 import pytest_asyncio
+import stamina
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from .. import profiles
 from ..catalog import from_uri, in_memory
 from ..client.base import BaseClient
 from ..server.settings import get_settings
+from ..utils import ensure_specified_sql_driver
 from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres
+
+
+@pytest.fixture(autouse=True, scope="session")
+def deactivate_retries():
+    "Deactivate HTTP retries."
+    stamina.set_active(False)
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +63,23 @@ def buffer():
     "Generate a temporary buffer for testing file export + re-import."
     with io.BytesIO() as buffer:
         yield buffer
+
+
+@pytest.fixture(scope="function")
+def buffer_factory(request):
+    buffers = []
+
+    def _buffer():
+        buf = io.BytesIO()
+        buffers.append(buf)
+        return buf
+
+    def teardown():
+        for buf in buffers:
+            buf.close()
+
+    request.addfinalizer(teardown)
+    return _buffer
 
 
 @pytest.fixture
@@ -117,6 +142,29 @@ TILED_TEST_POSTGRESQL_URI = os.getenv("TILED_TEST_POSTGRESQL_URI")
 
 
 @pytest_asyncio.fixture
+async def sqlite_uri(tmp_path: Path):
+    yield f"sqlite:///{tmp_path}/tiled.sqlite"
+
+
+@pytest_asyncio.fixture
+async def duckdb_uri(tmp_path: Path):
+    yield f"duckdb:///{tmp_path}/tiled.duckdb"
+
+
+@pytest_asyncio.fixture
+async def postgres_uri():
+    if not TILED_TEST_POSTGRESQL_URI:
+        raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database:
+        yield uri_with_database
+
+
+@pytest.fixture(params=["sqlite_uri", "postgres_uri"])
+def sqlite_or_postgres_uri(request):
+    yield request.getfixturevalue(request.param)
+
+
+@pytest_asyncio.fixture
 async def postgresql_adapter(request, tmpdir):
     """
     Adapter instance
@@ -152,7 +200,7 @@ async def postgresql_with_example_data_adapter(request, tmpdir):
     if uri.endswith("/"):
         uri = uri[:-1]
     uri_with_database_name = f"{uri}/{DATABASE_NAME}"
-    engine = create_async_engine(uri_with_database_name)
+    engine = create_async_engine(ensure_specified_sql_driver(uri_with_database_name))
     try:
         async with engine.connect():
             pass
@@ -190,7 +238,7 @@ async def sqlite_with_example_data_adapter(request, tmpdir):
     if not SQLITE_DATABASE_PATH.is_file():
         raise pytest.skip(f"Could not find {SQLITE_DATABASE_PATH}")
     adapter = from_uri(
-        f"sqlite+aiosqlite:///{SQLITE_DATABASE_PATH}",
+        f"sqlite:///{SQLITE_DATABASE_PATH}",
         writable_storage=str(tmpdir),
     )
     yield adapter

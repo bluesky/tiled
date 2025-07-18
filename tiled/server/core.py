@@ -1,14 +1,14 @@
 import collections.abc
 import dataclasses
+import inspect
 import itertools
 import math
 import operator
 import re
 import sys
-import types
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hashlib import md5
 from typing import Any
 
@@ -28,6 +28,7 @@ from ..serialization import register_builtin_serializers
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
     APACHE_ARROW_FILE_MIME_TYPE,
+    BrokenLink,
     SerializationError,
     UnsupportedShape,
     ensure_awaitable,
@@ -151,11 +152,12 @@ async def apply_search(tree, filters, query_registry):
             tree = MapAdapter({})
         else:
             if hasattr(tree, "lookup_adapter"):
-                entry = await tree.lookup_adapter([key_lookup])
-                if entry is None:
-                    tree = MapAdapter({})
-                else:
+                try:
+                    entry = await tree.lookup_adapter([key_lookup])
                     tree = MapAdapter({key_lookup: entry}, must_revalidate=False)
+                except KeyError:
+                    # If caught NoEntry or BrokenLink
+                    tree = MapAdapter({})
             else:
                 try:
                     tree = MapAdapter(
@@ -225,7 +227,7 @@ async def construct_entries_response(
             keys = tree.keys()[offset : offset + limit]  # noqa: E203
         items = [(key, None) for key in keys]
     # This value will not leak out. It just used to seed comparisons.
-    metadata_stale_at = datetime.utcnow() + timedelta(days=1_000_000)
+    metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
     for key, entry in items:
         resource = await construct_resource(
@@ -240,7 +242,7 @@ async def construct_entries_response(
             max_depth=max_depth,
         )
         data.append(resource)
-        # If any entry has emtry.metadata_stale_at = None, then there will
+        # If any entry has entry.metadata_stale_at = None, then there will
         # be no 'Expires' header. We will pessimistically assume the values
         # are immediately stale.
         if metadata_stale_at is not None:
@@ -260,6 +262,7 @@ DEFAULT_MEDIA_TYPES = {
     StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
+    StructureFamily.composite: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
@@ -385,7 +388,7 @@ async def construct_data_response(
         raise UnsupportedMediaTypes(
             f"This type is supported in general but there was an error packing this specific data: {err.args[0]}",
         )
-    if isinstance(content, types.GeneratorType):
+    if inspect.isgenerator(content) or inspect.isasyncgen(content):
         response_class = StreamingResponse
     else:
         response_class = Response
@@ -420,6 +423,8 @@ async def construct_resource(
             }
         else:
             attributes["metadata"] = entry.metadata()
+    if schemas.EntryFields.access_blob in fields and hasattr(entry, "access_blob"):
+        attributes["access_blob"] = entry.access_blob
     if schemas.EntryFields.specs in fields:
         specs = []
         for spec in getattr(entry, "specs", []):
@@ -431,8 +436,11 @@ async def construct_resource(
             # for ease of going between dataclass and pydantic.
             specs.append(schemas.Spec(**spec.model_dump()))
         attributes["specs"] = specs
-    if (entry is not None) and entry.structure_family == StructureFamily.container:
-        attributes["structure_family"] = StructureFamily.container
+    if (entry is not None) and entry.structure_family in {
+        StructureFamily.container,
+        StructureFamily.composite,
+    }:
+        attributes["structure_family"] = entry.structure_family
 
         if schemas.EntryFields.structure in fields:
             if (
@@ -453,7 +461,7 @@ async def construct_resource(
                     # The size may change as we are walking the entry.
                     # Keep a *true* count separately from est_count.
                     count = 0
-                    for key, adapter in entry.items():
+                    for key in entry.keys():
                         count += 1
                         if count > INLINED_CONTENTS_LIMIT:
                             # The est_count was inaccurate or else the entry has grown
@@ -461,6 +469,13 @@ async def construct_resource(
                             count = await len_or_approx(entry)
                             contents = None
                             break
+                        try:
+                            adapter = entry[key]
+                        except BrokenLink:
+                            # If there are any broken links, just list the keys
+                            contents[key] = None
+                            continue
+
                         contents[key] = await construct_resource(
                             base_url,
                             path_parts + [key],
@@ -637,7 +652,7 @@ def resolve_media_type(request):
         if media_type == JSON_MIME_TYPE:
             break
     else:
-        # It is commmon in HTTP to fall back on a default representation if
+        # It is common in HTTP to fall back on a default representation if
         # none of the requested ones are available. We do not do this for
         # data payloads, but it makes some sense to do it for these metadata
         # messages.

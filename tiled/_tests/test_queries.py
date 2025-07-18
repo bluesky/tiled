@@ -21,6 +21,7 @@ from ..queries import (
     In,
     Key,
     KeysFilter,
+    Like,
     NotEq,
     NotIn,
     Regex,
@@ -78,7 +79,7 @@ async def client(request, tmpdir_module):
             yield client
     elif request.param == "sqlite":
         tree = in_memory(
-            writable_storage=tmpdir_module / "sqlite",
+            writable_storage=str(tmpdir_module / "sqlite"),
             metadata={"backend": request.param},
         )
         app = build_app(tree)
@@ -181,7 +182,7 @@ def test_full_text_after_migration():
     with sqlite_from_dump("before_creating_fts5_virtual_table.sql") as database_path:
         subprocess.check_call(
             [sys.executable]
-            + f"-m tiled catalog upgrade-database sqlite+aiosqlite:///{database_path}".split()
+            + f"-m tiled catalog upgrade-database sqlite:///{database_path}".split()
         )
         catalog = from_uri(database_path)
         app = build_app(catalog)
@@ -328,4 +329,12 @@ def test_structure_families(client):
 def test_keys_filter(client):
     expected = ["a", "b", "c"]
     results = client.search(KeysFilter(keys=expected))
+    assert set(results) == set(expected)
+
+
+def test_like(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("No 'LIKE' support on MapAdapter")
+    expected = ["full_text_test_case", "full_text_test_case_urple"]
+    results = client.search(Like("color", "%urple"))
     assert set(results) == set(expected)

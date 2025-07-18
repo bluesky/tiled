@@ -23,7 +23,9 @@ from tiled.server.app import build_app
 @contextlib.contextmanager
 def client_factory(readable_storage=None):
     with tempfile.TemporaryDirectory() as tempdir:
-        catalog = in_memory(writable_storage=tempdir, readable_storage=readable_storage)
+        catalog = in_memory(
+            writable_storage=str(tempdir), readable_storage=readable_storage
+        )
         app = build_app(catalog)
         with Context.from_app(app) as context:
             client = from_context(context)
@@ -65,7 +67,9 @@ def populate_internal(client):
         awkward.Array([1, [2, 3]]), key="d", metadata={"color": "red"}, specs=["alpha"]
     )
     # sparse
-    coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+    coo = sparse.COO(
+        coords=numpy.array([[2, 5]]), data=numpy.array([1.3, 7.5]), shape=(10,)
+    )
     client.write_sparse(key="e", coords=coo.coords, data=coo.data, shape=coo.shape)
 
     # nested

@@ -3,6 +3,7 @@ This tests tiled's writing routes with an in-memory store.
 
 Persistent stores are being developed externally to the tiled package.
 """
+
 import base64
 from datetime import datetime
 
@@ -11,12 +12,14 @@ import dask.dataframe
 import numpy
 import pandas
 import pandas.testing
+import pyarrow
 import pytest
 import sparse
 from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
+    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_422_UNPROCESSABLE_ENTITY,
 )
 
@@ -41,7 +44,12 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 @pytest.fixture
 def tree(tmpdir):
-    return in_memory(writable_storage=tmpdir)
+    return in_memory(
+        writable_storage=[
+            f"file://localhost{str(tmpdir / 'data')}",
+            f"duckdb:///{tmpdir / 'data.duckdb'}",
+        ]
+    )
 
 
 def test_write_array_full(tree):
@@ -120,6 +128,59 @@ def test_write_array_chunked(tree):
         numpy.testing.assert_equal(result_array, a.compute())
         assert result.metadata == metadata
         assert result.specs == specs
+
+
+def test_extend_array(tree):
+    "Extend an array with additional data, expanding its shape."
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+
+        a = numpy.ones((3, 2, 2))
+        new_data = numpy.ones((1, 2, 2)) * 2
+        full_array = numpy.concatenate((a, new_data), axis=0)
+
+        # Upload a (3, 2, 2) array.
+        ac = client.write_array(a)
+        assert ac.shape == a.shape
+
+        # Patching data into a region beyond the current extent of the array
+        # raises a ValueError (catching a 409 from the server).
+        with pytest.raises(ValueError):
+            ac.patch(new_data, offset=(3,))
+        # With extend=True, the array is expanded.
+        ac.patch(new_data, offset=(3,), extend=True)
+        # The local cache of the structure is updated.
+        assert ac.shape == full_array.shape
+        actual = ac.read()
+        # The array has the expected shape and data.
+        assert actual.shape == full_array.shape
+        numpy.testing.assert_equal(actual, full_array)
+
+        # Overwrite data (do not extend).
+        revised_data = numpy.ones((1, 2, 2)) * 3
+        revised_array = full_array.copy()
+        revised_array[3, :, :] = 3
+        ac.patch(revised_data, offset=(3,))
+        numpy.testing.assert_equal(ac.read(), revised_array)
+
+        # Extend out of order.
+        ones = numpy.ones((1, 2, 2))
+        ac.patch(ones * 7, offset=(7,), extend=True)
+        ac.patch(ones * 5, offset=(5,), extend=True)
+        ac.patch(ones * 6, offset=(6,), extend=True)
+        numpy.testing.assert_equal(ac[5:6], ones * 5)
+        numpy.testing.assert_equal(ac[6:7], ones * 6)
+        numpy.testing.assert_equal(ac[7:8], ones * 7)
+
+        # Offset given as an int is acceptable.
+        ac.patch(ones * 8, offset=8, extend=True)
+        numpy.testing.assert_equal(ac[8:9], ones * 8)
+
+        # Data type must match.
+        with pytest.raises(ValueError):
+            ac.patch(ones.astype("uint8"), offset=9, extend=True)
 
 
 def test_write_dataframe_full(tree):
@@ -201,8 +262,14 @@ def test_write_dataframe_dict(tree):
 @pytest.mark.parametrize(
     "coo",
     [
-        sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,)),
-        sparse.COO(coords=[[0, 1], [2, 3]], data=[3.8, 4.0], shape=(4, 4)),
+        sparse.COO(
+            coords=numpy.array([[2, 5]]), data=numpy.array([1.3, 7.5]), shape=(10,)
+        ),
+        sparse.COO(
+            coords=numpy.array([[0, 1], [2, 3]]),
+            data=numpy.array([3.8, 4.0]),
+            shape=(4, 4),
+        ),
     ],
 )
 def test_write_sparse_full(tree, coo):
@@ -271,7 +338,9 @@ def test_write_sparse_chunked(tree):
         assert numpy.array_equal(
             result_array.todense(),
             sparse.COO(
-                coords=[[2, 4, N + 0, N + 1]], data=[3.1, 2.8, 6.7, 1.2], shape=(10,)
+                coords=numpy.array([[2, 4, N + 0, N + 1]]),
+                data=numpy.array([3.1, 2.8, 6.7, 1.2]),
+                shape=(10,),
             ).todense(),
         )
 
@@ -345,6 +414,42 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
+def test_replace_metadata(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        ac = client.write_array([1, 2, 3], key="revise_me_with_replace")
+        assert len(ac.metadata_revisions[:]) == 0
+        ac.replace_metadata(metadata={"a": 1})
+        assert ac.metadata["a"] == 1
+        client["revise_me_with_replace"].metadata["a"] == 1
+        assert len(ac.metadata_revisions[:]) == 1
+        ac.replace_metadata(metadata={"a": 2})
+        assert ac.metadata["a"] == 2
+        client["revise_me_with_replace"].metadata["a"] == 2
+        assert len(ac.metadata_revisions[:]) == 2
+        ac.metadata_revisions.delete_revision(1)
+        assert len(ac.metadata_revisions[:]) == 1
+        with fail_with_status_code(HTTP_404_NOT_FOUND):
+            ac.metadata_revisions.delete_revision(1)
+
+
+def test_drop_revision(tree):
+    key = "test_drop_revision"
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        # Set metadata color=blue.
+        ac = client.write_array([1, 2, 3], metadata={"color": "blue"}, key=key)
+        assert ac.metadata["color"] == "blue"
+        assert client[key].metadata["color"] == "blue"
+        assert len(ac.metadata_revisions[:]) == 0
+        # Update metadata to color=red, but drop revision.
+        ac.update_metadata(metadata={"color": "red"}, drop_revision=True)
+        # Metadata is updated; no revision is saved.
+        assert ac.metadata["color"] == "red"
+        assert client[key].metadata["color"] == "red"
+        assert len(ac.metadata_revisions) == 0
+
+
 def test_merge_patching(tree):
     "Test merge patching of metadata and specs"
     with Context.from_app(build_app(tree)) as context:
@@ -396,9 +501,10 @@ def test_metadata_with_unsafe_objects(tree):
         ac = client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
+            key="x",
         )
-        ac.metadata
-        ac.read()
+        # Local copy matches copy fetched from remote.
+        assert ac.metadata == client["x"].metadata
 
 
 @pytest.mark.asyncio
@@ -408,7 +514,7 @@ async def test_delete(tree):
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_before_delete) == 1
@@ -426,10 +532,10 @@ async def test_delete(tree):
             client.write_array(
                 [1, 2, 3],
                 metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-                key="x",
+                key="delete_me",
             )
 
-        client.delete("x")
+        client.delete("delete_me")
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_after_delete) == 0
@@ -444,7 +550,7 @@ async def test_delete(tree):
         client.write_array(
             [1, 2, 3],
             metadata={"date": datetime.now(), "array": numpy.array([1, 2, 3])},
-            key="x",
+            key="delete_me",
         )
 
 
@@ -497,7 +603,9 @@ async def test_write_in_container(tree):
         client.delete("a")
 
         a = client.create_container("a")
-        coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+        coo = sparse.COO(
+            coords=numpy.array([[2, 5]]), data=numpy.array([1.3, 7.5]), shape=(10,)
+        )
         b = a.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape, key="b")
         b.read()
         a.delete("b")
@@ -544,7 +652,11 @@ def test_write_with_specified_mimetype(tree):
         df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
         structure = TableStructure.from_pandas(df)
 
-        for mimetype in [PARQUET_MIMETYPE, "text/csv", APACHE_ARROW_FILE_MIME_TYPE]:
+        for mimetype in [
+            PARQUET_MIMETYPE,
+            "text/csv",
+            APACHE_ARROW_FILE_MIME_TYPE,
+        ]:
             x = client.new(
                 "table",
                 [
@@ -561,7 +673,7 @@ def test_write_with_specified_mimetype(tree):
             assert x.data_sources()[0].mimetype == mimetype
 
         # Specifying unsupported mimetype raises expected error.
-        with fail_with_status_code(415):
+        with fail_with_status_code(HTTP_415_UNSUPPORTED_MEDIA_TYPE):
             client.new(
                 "table",
                 [
@@ -575,7 +687,7 @@ def test_write_with_specified_mimetype(tree):
 
 
 @pytest.mark.parametrize(
-    "orig_file, file_toappend, expected_file",
+    "orig_file, file_to_append, expected_file",
     [
         (
             {"A": [1, 2, 3], "B": [4, 5, 6]},
@@ -600,31 +712,141 @@ def test_write_with_specified_mimetype(tree):
 def test_append_partition(
     tree: CatalogContainerAdapter,
     orig_file: dict,
-    file_toappend: dict,
+    file_to_append: dict,
     expected_file: dict,
 ):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context, include_data_sources=True)
-        df = pandas.DataFrame(orig_file)
-        structure = TableStructure.from_pandas(df)
+        orig_table = pyarrow.Table.from_pydict(orig_file)
+        table_to_append = pyarrow.Table.from_pydict(file_to_append)
 
-        x = client.new(
-            "table",
-            [
-                DataSource(
-                    structure_family="table",
-                    structure=structure,
-                    mimetype="text/csv",
-                ),
-            ],
-            key="x",
-        )
-        x.write(df)
+        x = client.create_appendable_table(orig_table.schema, key="x")
+        x.append_partition(orig_table, 0)
+        x.append_partition(table_to_append, 0)
+        assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
 
-        df2 = pandas.DataFrame(file_toappend)
 
-        x.append_partition(df2, 0)
+@pytest.mark.parametrize(
+    "table_name, expected",
+    [
+        (None, None),
+        ("valid_table_name", None),
+        (
+            "_invalid_table_name",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        (
+            "invalid-table-name",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        (
+            "UPPERCASE_TABLE_NAME",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+        (
+            "",
+            pytest.raises(ValueError, match=r"Malformed SQL identifier.+"),
+        ),
+    ],
+)
+def test_create_table_with_custom_name(
+    tree: CatalogContainerAdapter,
+    table_name: str,
+    expected: str,
+):
+    table = pyarrow.Table.from_arrays([[1, 2, 3]], ["column_name"])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+        if isinstance(expected, type(pytest.raises(ValueError))):
+            with expected:
+                client.create_appendable_table(table.schema, table_name=table_name)
+        else:
+            x = client.create_appendable_table(table.schema, table_name=table_name)
+            x.append_partition(table, 0)
+            assert x.read()["column_name"].to_list() == [1, 2, 3]
 
-        df3 = pandas.DataFrame(expected_file)
 
-        assert_frame_equal(x.read(), df3, check_dtype=False)
+def test_composite_one_table(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        client.create_composite(key="x")
+        client["x"].write_dataframe(df)
+        assert len(client["x"].parts) == 1
+
+
+def test_composite_two_tables(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
+        x.parts["table1"].read()
+        x.parts["table2"].read()
+
+
+def test_composite_two_tables_colliding_names(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_dataframe(df2, key="table1")
+
+
+def test_composite_two_tables_colliding_keys(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_dataframe(df2, key="table2")
+
+
+def test_composite_two_tables_two_arrays(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        arr1 = numpy.ones((5, 5), dtype=numpy.float64)
+        arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
+        x = client.create_composite(key="x")
+
+        # Write by data source.
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
+        x.write_array(arr1, key="F")
+        x.write_array(arr2, key="G")
+
+        # Read by data source.
+        x.parts["table1"].read()
+        x.parts["table2"].read()
+        x.parts["F"].read()
+        x.parts["G"].read()
+
+        # Read by column.
+        for column in ["A", "B", "C", "D", "E", "F", "G"]:
+            x[column].read()
+
+
+def test_composite_table_column_array_key_collision(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        arr = numpy.array([1, 2, 3], dtype=numpy.float64)
+
+        x = client.create_composite(key="x")
+        x.write_dataframe(df, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_array(arr, key="A")
+
+        y = client.create_composite(key="y")
+        y.write_array(arr, key="A")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            y.write_dataframe(df, key="table1")

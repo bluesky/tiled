@@ -1,5 +1,7 @@
+import copy
 import itertools
 from typing import Any, List, Optional, Tuple, Union
+from urllib.parse import quote_plus
 
 import dask.base
 import dask.dataframe
@@ -9,12 +11,15 @@ import sparse
 from numpy._typing import NDArray
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
-from ..server.schemas import Asset
+from ..catalog.orm import Node
+from ..ndslice import NDSlice
+from ..storage import FileStorage, Storage
 from ..structures.core import Spec, StructureFamily
-from ..structures.sparse import COOStructure
+from ..structures.data_source import Asset, DataSource
+from ..structures.sparse import COOStructure, SparseStructure
+from ..type_aliases import JSON
 from ..utils import path_from_uri
-from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
+from .utils import init_adapter_from_catalog
 
 
 def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
@@ -40,6 +45,7 @@ class SparseBlocksParquetAdapter:
     """ """
 
     structure_family = StructureFamily.sparse
+    supported_storage = {FileStorage}
 
     def __init__(
         self,
@@ -47,7 +53,6 @@ class SparseBlocksParquetAdapter:
         structure: COOStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -57,7 +62,6 @@ class SparseBlocksParquetAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         num_blocks = (range(len(n)) for n in structure.chunks)
         self.blocks = {}
@@ -66,14 +70,24 @@ class SparseBlocksParquetAdapter:
         self._structure = structure
         self._metadata = metadata or {}
         self.specs = list(specs or [])
-        self.access_policy = access_policy
+
+    @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource[SparseStructure],
+        node: Node,
+        /,
+        **kwargs: Optional[Any],
+    ) -> "SparseBlocksParquetAdapter":
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
 
     @classmethod
     def init_storage(
         cls,
-        data_uri: str,
-        structure: COOStructure,
-    ) -> List[Asset]:
+        storage: Storage,
+        data_source: DataSource[COOStructure],
+        path_parts: List[str],
+    ) -> DataSource[COOStructure]:
         """
 
         Parameters
@@ -85,10 +99,14 @@ class SparseBlocksParquetAdapter:
         -------
 
         """
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
+        data_uri = storage.uri + "".join(
+            f"/{quote_plus(segment)}" for segment in path_parts
+        )
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
 
-        num_blocks = (range(len(n)) for n in structure.chunks)
+        num_blocks = (range(len(n)) for n in data_source.structure.chunks)
         assets = [
             Asset(
                 data_uri=f"{data_uri}/block-{'.'.join(map(str, block))}.parquet",
@@ -98,7 +116,8 @@ class SparseBlocksParquetAdapter:
             )
             for i, block in enumerate(itertools.product(*num_blocks))
         ]
-        return assets
+        data_source.assets.extend(assets)
+        return data_source
 
     def metadata(self) -> JSON:
         """
@@ -113,18 +132,13 @@ class SparseBlocksParquetAdapter:
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         block: Tuple[int, ...],
+        slice: NDSlice = NDSlice(...),
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-        block :
-
-        Returns
-        -------
-
-        """
+        if slice:
+            raise NotImplementedError(
+                "Writing into a slice of a sparse block is not yet supported."
+            )
+        "Write into a block of the array."
         uri = self.blocks[block]
         data.to_parquet(path_from_uri(uri))
 
@@ -144,7 +158,7 @@ class SparseBlocksParquetAdapter:
         uri = self.blocks[(0,) * len(self._structure.shape)]
         data.to_parquet(path_from_uri(uri))
 
-    def read(self, slice: NDSlice) -> sparse.COO:
+    def read(self, slice: NDSlice = NDSlice(...)) -> sparse.COO:
         """
 
         Parameters
@@ -171,10 +185,10 @@ class SparseBlocksParquetAdapter:
             coords=numpy.concatenate(all_coords, axis=-1),
             shape=self._structure.shape,
         )
-        return arr[slice]
+        return arr[slice] if slice else arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[NDSlice]
+        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
     ) -> sparse.COO:
         """
 
@@ -190,7 +204,7 @@ class SparseBlocksParquetAdapter:
         coords, data = load_block(self.blocks[block])
         _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
-        return arr[slice]
+        return arr[slice] if slice else arr
 
     def structure(self) -> COOStructure:
         """

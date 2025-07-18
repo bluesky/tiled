@@ -13,7 +13,7 @@ import sqlalchemy.exc
 import tifffile
 import xarray
 
-from ..adapters.csv import read_csv
+from ..adapters.csv import CSVAdapter
 from ..adapters.dataframe import ArrayAdapter
 from ..adapters.tiff import TiffAdapter
 from ..catalog import in_memory
@@ -31,7 +31,7 @@ from .utils import enter_username_password
 
 @pytest_asyncio.fixture
 async def a(adapter):
-    "Raw adapter, not to be used within an app becaues it is manually started and stopped."
+    "Raw adapter, not to be used within an app because it is manually started and stopped."
     await adapter.startup()
     yield adapter
     await adapter.shutdown()
@@ -141,7 +141,8 @@ async def test_search(a):
     # Looking up "d" inside search results should find nothing when
     # "d" is filtered out by a search query first.
     assert await a.lookup_adapter(["d"]) is not None
-    assert await a.search(Eq("letter", "c")).lookup_adapter(["d"]) is None
+    with pytest.raises(KeyError):
+        await a.search(Eq("letter", "c")).lookup_adapter(["d"])
 
     # Search on nested key.
     assert await a.search(Eq("x.y.z", "c")).keys_range(0, 5) == ["c"]
@@ -236,7 +237,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
     filepath = str(tmpdir / "file.csv")
     data_uri = ensure_uri(filepath)
     df.to_csv(filepath, index=False)
-    dfa = read_csv(data_uri)
+    dfa = CSVAdapter.from_uris(data_uri)
     structure = asdict(dfa.structure())
     await a.create_node(
         key="x",
@@ -268,7 +269,7 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 async def test_write_array_internal_direct(a, tmpdir):
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter.from_array(arr)
-    structure = asdict(ad.structure())
+    structure = ad.structure()
     await a.create_node(
         key="x",
         structure_family="array",
@@ -312,8 +313,8 @@ def test_write_dataframe_internal_via_client(client):
 
 def test_write_xarray_dataset(client):
     ds = xarray.Dataset(
-        {"temp": (["time"], [101, 102, 103])},
-        coords={"time": (["time"], [1, 2, 3])},
+        {"temp": (["time"], numpy.array([101, 102, 103]))},
+        coords={"time": (["time"], numpy.array([1, 2, 3]))},
     )
     dsc = write_xarray_dataset(client, ds, key="test_xarray_dataset")
     assert set(dsc) == {"temp", "time"}
@@ -328,7 +329,7 @@ async def test_delete_tree(tmpdir):
     # Do not use client fixture here.
     # The Context must be opened inside the test or we run into
     # event loop crossing issues with the Postgres test.
-    tree = in_memory(writable_storage=tmpdir)
+    tree = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
 
@@ -387,29 +388,29 @@ async def test_access_control(tmpdir):
                 }
             ],
         },
+        "access_control": {
+            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
+            "args": {
+                "provider": "toy",
+                "access_lists": {
+                    "alice": ["outer_x", "inner"],
+                    "bob": ["outer_y"],
+                },
+                "admins": ["admin"],
+                "public": ["outer_z", "inner"],
+            },
+        },
         "database": {
-            "uri": "sqlite+aiosqlite://",  # in-memory
+            "uri": "sqlite://",  # in-memory
         },
         "trees": [
             {
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": f"sqlite+aiosqlite:///{tmpdir}/catalog.db",
+                    "uri": f"sqlite:///{tmpdir}/catalog.db",
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
-                },
-                "access_control": {
-                    "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-                    "args": {
-                        "provider": "toy",
-                        "access_lists": {
-                            "alice": ["outer_x"],
-                            "bob": ["outer_y"],
-                        },
-                        "admins": ["admin"],
-                        "public": ["outer_z"],
-                    },
                 },
             },
         ],
@@ -417,14 +418,16 @@ async def test_access_control(tmpdir):
 
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
+        admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
-            admin_client = from_context(context, username="admin")
+            admin_client.login()
             for key in ["outer_x", "outer_y", "outer_z"]:
                 container = admin_client.create_container(key)
                 container.write_array([1, 2, 3], key="inner")
             admin_client.logout()
+        alice_client = from_context(context)
         with enter_username_password("alice", "secret1"):
-            alice_client = from_context(context, username="alice")
+            alice_client.login()
             alice_client["outer_x"]["inner"].read()
             with pytest.raises(KeyError):
                 alice_client["outer_y"]
@@ -521,10 +524,41 @@ async def test_constraints_on_parameter_and_num(a, assets):
                 DataSource(
                     structure_family=arr_adapter.structure_family,
                     mimetype="text/csv",
-                    structure=asdict(arr_adapter.structure()),
+                    structure=arr_adapter.structure(),
                     parameters={},
                     management=Management.external,
                     assets=assets,
                 )
             ],
         )
+
+
+@pytest.mark.asyncio
+async def test_init_db_logging(tmpdir, caplog):
+    config = {
+        "database": {
+            "uri": "sqlite://",  # in-memory
+        },
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": f"sqlite:///{tmpdir}/catalog.db",
+                    "writable_storage": str(tmpdir / "data"),
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+    }
+    # Issue 721 notes that the logging of the subprocess that creates
+    # a database logs normal things to error. This test looks at the log
+    # and fails if an error log happens. This could catch anything that is
+    # an error during the app build.
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        app = build_app_from_config(config)
+        for record in caplog.records:
+            assert record.levelname != "ERROR", f"Error found creating app {record.msg}"
+        assert app

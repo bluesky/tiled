@@ -16,6 +16,15 @@ docs/source/reference/generated/
 # pytest
 .pytest_cache/
 
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+cover/*
+
 # PyBuilder
 target/
 
@@ -32,7 +41,8 @@ target/
 .idea/
 
 #VSCode
-.vscode/
+.vscode/*
+!.vscode/launch.json
 
 #Ipython Notebook
 .ipynb_checkpoints
@@ -65,3 +75,9 @@ tiled/_version.py
 .env
 .asv/
 venv/
+# pixi environments
+.pixi
+pixi.lock
+# uv environments
+uv.lock
+.venv

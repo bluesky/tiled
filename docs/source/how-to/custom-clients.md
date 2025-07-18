@@ -143,7 +143,7 @@ class, and use it.
 ## Precedence
 
 A given item may have multiple specs (or none). It always has exactly one structure family.
-It's possible that clients have been registered for multiple specs in the in the list.
+It's possible that clients have been registered for multiple specs in the list.
 Tiled walks the spec list in order and uses the first one that it recognizes. If it
 recognizes none of the specs, or if there are no specs, it falls back to using the
 structure family. Specs should generally be sorted from most specific to least

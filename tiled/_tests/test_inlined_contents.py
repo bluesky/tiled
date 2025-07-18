@@ -20,8 +20,8 @@ tree = MapAdapter(
     {
         "dataset": DatasetAdapter.from_dataset(
             xarray.Dataset(
-                data_vars={"temperature": ("time", [100, 99, 98])},
-                coords={"time": [1, 2, 3]},
+                data_vars={"temperature": ("time", numpy.array([100, 99, 98]))},
+                coords={"time": numpy.array([1, 2, 3])},
             )
         ),
     },
@@ -116,10 +116,6 @@ def test_too_wide_for_inline():
 
     It is fetched in pages on demand, as usual with nodes.
     """
-
-    class Adapter(MapAdapter):
-        def inlined_contents_enabled(self):
-            return True
 
     a = numpy.array([1])
     tree = MapAdapter(

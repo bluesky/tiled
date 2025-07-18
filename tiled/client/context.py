@@ -1,5 +1,4 @@
 import getpass
-import json
 import os
 import re
 import sys
@@ -7,33 +6,142 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
+from typing import List
+from urllib.parse import parse_qs, urlparse
 
-import appdirs
 import httpx
+import platformdirs
+from pydantic import TypeAdapter
+
+from tiled.schemas import About, AboutAuthenticationProvider
 
 from .._version import __version__ as tiled_version
-from ..utils import UNSET, DictView
+from ..utils import UNSET, DictView, parse_time_string
 from .auth import CannotRefreshAuthentication, TiledAuth, build_refresh_request
 from .decoders import SUPPORTED_DECODERS
 from .transport import Transport
-from .utils import DEFAULT_TIMEOUT_PARAMS, MSGPACK_MIME_TYPE, handle_error
+from .utils import (
+    DEFAULT_TIMEOUT_PARAMS,
+    MSGPACK_MIME_TYPE,
+    handle_error,
+    retry_context,
+)
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
-PROMPT_FOR_REAUTHENTICATION = None
 
 
-def prompt_for_username(username):
+def raise_if_cannot_prompt():
+    if not _can_prompt() and not bool(int(os.environ.get("TILED_FORCE_PROMPT", "0"))):
+        raise CannotPrompt(
+            """
+Tiled has detected that it is running in a 'headless' context where it cannot
+prompt the user to provide credentials in the stdin. Options:
+
+- Provide an API key in the environment variable TILED_API_KEY for Tiled to
+  use.
+
+- If Tiled has detected wrongly, set the environment variable
+  TILED_FORCE_PROMPT=1 to override and force an interactive prompt.
+
+- If you are developing an application that is wraping Tiled,
+  obtain tokens using functions tiled.client.context.password_grant
+  and/or device_code_grant, and pass them like Context.authenticate(tokens=token).
+"""
+        )
+
+
+def identity_provider_input(
+    providers: List[AboutAuthenticationProvider],
+) -> AboutAuthenticationProvider:
+    while True:
+        print("Authentication providers:")
+        for i, spec in enumerate(providers, start=1):
+            print(f"{i} - {spec.provider}")
+        raw_choice = input(
+            "Choose an authentication provider (or press Enter to cancel): "
+        )
+        if not raw_choice:
+            print("No authentication provider chosen. Failed.")
+            break
+        try:
+            choice = int(raw_choice)
+        except TypeError:
+            print("Choice must be a number.")
+            continue
+        try:
+            spec = providers[choice - 1]
+        except IndexError:
+            print(f"Choice must be a number 1 through {len(providers)}.")
+            continue
+        break
+    return spec
+
+
+def username_input():
+    raise_if_cannot_prompt()
+    return input("Username: ")
+
+
+def password_input():
+    raise_if_cannot_prompt()
+    return getpass.getpass()
+
+
+class PasswordRejected(RuntimeError):
+    pass
+
+
+def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvider]):
     """
-    Utility function that displays a username prompt.
+    Prompt for credentials or third-party login at an interactive terminal.
     """
-    if username:
-        username_reprompt = input(f"Username [{username}]: ")
-        if len(username_reprompt.strip()) != 0:
-            username = username_reprompt
+    if len(providers) == 1:
+        # There is only one choice, so no need to prompt the user.
+        spec = providers[0]
     else:
-        username = input("Username: ")
-    return username
+        spec = identity_provider_input(providers)
+    auth_endpoint = spec.links["auth_endpoint"]
+    provider = spec.provider
+    mode = spec.mode
+    # Note: "password" is included here for back-compat with older servers;
+    # the new name for this mode is "internal".
+    if mode == "internal" or mode == "password":
+        # Prompt for username, password at terminal.
+        username = username_input()
+        PASSWORD_ATTEMPTS = 3
+        for _attempt in range(PASSWORD_ATTEMPTS):
+            password = password_input()
+            if not password:
+                raise PasswordRejected("Password empty.")
+            try:
+                tokens = password_grant(
+                    http_client, auth_endpoint, provider, username, password
+                )
+            except httpx.HTTPStatusError as err:
+                if err.response.status_code == httpx.codes.UNAUTHORIZED:
+                    print(
+                        "Username or password not recognized. Retry, or press Enter to cancel."
+                    )
+                    continue
+                raise
+            else:
+                # Success! We have tokens.
+                break
+        else:
+            # All attempts failed.
+            raise PasswordRejected
+    elif mode == "external":
+        # Display link and access code, and try to open web browser.
+        # Block while polling the server awaiting confirmation of authorization.
+        tokens = device_code_grant(http_client, auth_endpoint)
+    else:
+        raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
+    confirmation_message = spec.confirmation_message
+    if confirmation_message:
+        username = tokens["identity"]["id"]
+        print(confirmation_message.format(id=username))
+    return tokens
 
 
 class Context:
@@ -50,7 +158,6 @@ class Context:
         cache=UNSET,
         timeout=None,
         verify=True,
-        token_cache=None,
         app=None,
         raise_server_exceptions=True,
     ):
@@ -65,14 +172,12 @@ class Context:
         # Resolve this here, not at module scope, because the test suite
         # injects TILED_CACHE_DIR env var to use a temporary directory.
         TILED_CACHE_DIR = Path(
-            os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+            os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
         )
         headers.setdefault("accept-encoding", ACCEPT_ENCODING)
         # Set the User Agent to help the server fail informatively if the client
         # version is too old.
         headers.setdefault("user-agent", USER_AGENT)
-        if token_cache is None:
-            token_cache = TILED_CACHE_DIR / "tokens"
 
         # If ?api_key=... is present, move it from the query into a header.
         # The server would accept it in the query parameter, but using
@@ -136,39 +241,38 @@ class Context:
             # where the context starts and stops and the wrapped ASGI app.
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
-            if sys.version_info < (3, 9):
-                import atexit
 
-                atexit.register(client.__exit__)
-            else:
-                import threading
+            import threading
 
-                # The threading module has its own (internal) atexit
-                # mechanism that runs at thread shutdown, prior to the atexit
-                # mechanism that runs at interpreter shutdown.
-                # We need to intervene at that layer to close the portal, or else
-                # we will wait forever for a thread run by the portal to join().
-                threading._register_atexit(client.__exit__)
+            # The threading module has its own (internal) atexit
+            # mechanism that runs at thread shutdown, prior to the atexit
+            # mechanism that runs at interpreter shutdown.
+            # We need to intervene at that layer to close the portal, or else
+            # we will wait forever for a thread run by the portal to join().
+            threading._register_atexit(client.__exit__)
 
         self.http_client = client
         self._verify = verify
         self._cache = cache
-        self._token_cache = Path(token_cache)
+        self._token_cache = Path(TILED_CACHE_DIR / "tokens")
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        self.server_info = handle_error(
-            self.http_client.get(
-                self.api_uri,
-                headers={
-                    "Accept": MSGPACK_MIME_TYPE,
-                    "Cache-Control": "no-cache, no-store",
-                },
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                server_info = handle_error(
+                    self.http_client.get(
+                        self.api_uri,
+                        headers={
+                            "Accept": MSGPACK_MIME_TYPE,
+                            "Cache-Control": "no-cache, no-store",
+                        },
+                    )
+                ).json()
+        self.server_info: About = TypeAdapter(About).validate_python(server_info)
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
 
@@ -178,7 +282,7 @@ class Context:
             auth_info.append("(unauthenticated)")
         else:
             auth_info.append("authenticated")
-            if self.server_info["authentication"].get("links"):
+            if self.server_info.authentication.links:
                 whoami = self.whoami()
                 auth_info.append("as")
                 if whoami["type"] == "service":
@@ -273,7 +377,6 @@ class Context:
         cache=UNSET,
         timeout=None,
         verify=True,
-        token_cache=None,
         app=None,
     ):
         """
@@ -285,6 +388,17 @@ class Context:
         """
         uri = httpx.URL(uri)
         node_path_parts = []
+        # Ensure that HTTPS is used if available
+        # Logic will follow only one redirect, it is intended ONLY to toggle HTTPS.
+        # The redirect will be followed only if the netloc host is identical to the original.
+        if uri.scheme == "http":
+            for attempt in retry_context():
+                with attempt:
+                    response_from_http = httpx.get(uri)
+            if response_from_http.is_redirect:
+                redirect_uri = httpx.URL(response_from_http.headers["location"])
+                if redirect_uri.scheme == "https" and redirect_uri.host == uri.host:
+                    uri = redirect_uri
         if "/metadata" in uri.path:
             api_path, _, node_path = uri.path.partition("/metadata")
             api_uri = uri.copy_with(path=api_path)
@@ -316,7 +430,6 @@ class Context:
             cache=cache,
             timeout=timeout,
             verify=verify,
-            token_cache=token_cache,
             app=app,
         )
         return context, node_path_parts
@@ -327,7 +440,6 @@ class Context:
         app,
         *,
         cache=UNSET,
-        token_cache=None,
         headers=None,
         timeout=None,
         api_key=UNSET,
@@ -339,22 +451,25 @@ class Context:
         context = cls(
             uri="http://local-tiled-app/api/v1",
             headers=headers,
-            api_key=api_key,
+            api_key=None,
             cache=cache,
             timeout=timeout,
-            token_cache=token_cache,
             app=app,
             raise_server_exceptions=raise_server_exceptions,
         )
-        if (api_key is UNSET) and (
-            not context.server_info["authentication"]["providers"]
-        ):
-            # Extract the API key from the app and set it.
-            from ..server.settings import get_settings
+        if api_key is UNSET:
+            if not context.server_info.authentication.providers:
+                # This is a single-user server.
+                # Extract the API key from the app and set it.
+                from ..server.settings import get_settings
 
-            settings = app.dependency_overrides[get_settings]()
-            api_key = settings.single_user_api_key or None
-            context.api_key = api_key
+                settings = app.dependency_overrides[get_settings]()
+                api_key = settings.single_user_api_key or None
+            else:
+                # This is a multi-user server but no API key was passed,
+                # so we will leave it as None on the Context.
+                api_key = None
+        context.api_key = api_key
         return context
 
     @property
@@ -393,12 +508,14 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        return handle_error(
-            self.http_client.get(
-                self.server_info["authentication"]["links"]["apikey"],
-                headers={"Accept": MSGPACK_MIME_TYPE},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.http_client.get(
+                        self.server_info.authentication.links.apikey,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                    )
+                ).json()
 
     def create_api_key(self, scopes=None, expires_in=None, note=None):
         """
@@ -412,20 +529,25 @@ class Context:
         scopes : Optional[List[str]]
             Restrict the access available to the API key by listing specific scopes.
             By default, this will have the same access as the user.
-        expires_in : Optional[int]
-            Number of seconds until API key expires. If None,
-            it will never expire or it will have the maximum lifetime
-            allowed by the server.
+        expires_in : Optional[Union[int, str]]
+            Number of seconds until API key expires, given as integer seconds
+            or a string like: '3y' (years), '3d' (days), '5m' (minutes), '1h'
+            (hours), '30s' (seconds). If None, it will never expire or it will
+            have the maximum lifetime allowed by the server.
         note : Optional[str]
             Description (for humans).
         """
-        return handle_error(
-            self.http_client.post(
-                self.server_info["authentication"]["links"]["apikey"],
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                json={"scopes": scopes, "expires_in": expires_in, "note": note},
-            )
-        ).json()
+        if isinstance(expires_in, str):
+            expires_in = parse_time_string(expires_in)
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.http_client.post(
+                        self.server_info.authentication.links.apikey,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                    )
+                ).json()
 
     def revoke_api_key(self, first_eight):
         """
@@ -441,13 +563,19 @@ class Context:
             Identify the API key to be deleted by passing its first 8 characters.
             (Any additional characters passed will be truncated.)
         """
-        handle_error(
-            self.http_client.delete(
-                self.server_info["authentication"]["links"]["apikey"],
-                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-                params={"first_eight": first_eight[:8]},
-            )
-        )
+        url_path = self.server_info.authentication.links.apikey
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.http_client.delete(
+                        url_path,
+                        headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+                        params={
+                            **parse_qs(urlparse(url_path).query),
+                            "first_eight": first_eight[:8],
+                        },
+                    )
+                )
 
     @property
     def app(self):
@@ -479,161 +607,12 @@ class Context:
 
     def authenticate(
         self,
-        username=UNSET,
-        provider=UNSET,
-        prompt_for_reauthentication=UNSET,
-        set_default=True,
+        *,
+        remember_me=True,
     ):
         """
-        See login. This is for programmatic use.
-        """
-        if prompt_for_reauthentication is UNSET:
-            prompt_for_reauthentication = PROMPT_FOR_REAUTHENTICATION
-        if prompt_for_reauthentication is None:
-            prompt_for_reauthentication = _can_prompt()
-        if (username is UNSET) and (provider is UNSET):
-            default_identity = get_default_identity(self.api_uri)
-            if default_identity is not None:
-                username = default_identity["username"]
-                provider = default_identity["provider"]
-        if username is UNSET:
-            username = None
-        if provider is UNSET:
-            provider = None
-        providers = self.server_info["authentication"]["providers"]
-        spec = _choose_identity_provider(providers, provider)
-        provider = spec["provider"]
-        if self.api_key is not None:
-            # Check that API key authenticates us as this user,
-            # and then either return or raise.
-            identities = self.whoami()["identities"]
-            for identity in identities:
-                if (identity["provider"] == provider) and (identity["id"] == username):
-                    return
-            raise RuntimeError(
-                "An API key is set, and it is not associated with the username/provider "
-                f"{username}/{provider}. Unset the API key first."
-            )
+        Log in to a Tiled server.
 
-        refresh_url = self.server_info["authentication"]["links"]["refresh_session"]
-        csrf_token = self.http_client.cookies["tiled_csrf"]
-
-        # If we are passed a username, we can check whether we already have
-        # tokens stashed.
-        if username is not None:
-            token_directory = self._token_directory(provider, username)
-            self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
-            # This will either:
-            # * Use an access_token and succeed.
-            # * Use a refresh_token to attempt refresh flow and succeed.
-            # * Use a refresh_token to attempt refresh flow and fail, raise.
-            # * Find no tokens and raise.
-            try:
-                self.whoami()
-            except CannotRefreshAuthentication:
-                # Continue below, where we will prompt for log in.
-                self.http_client.auth = None
-                if not prompt_for_reauthentication:
-                    raise
-            else:
-                # We have a live session for the specified provider and username already.
-                # No need to log in again.
-                return
-
-        if not prompt_for_reauthentication:
-            raise CannotPrompt(
-                """Authentication is needed but Tiled has detected that it is running
-in a 'headless' context where it cannot prompt the user to provide
-credentials in the stdin. Options:
-
-- If Tiled has detected this wrongly, pass prompt_for_reauthentication=True
-  to force it to prompt.
-- Provide an API key in the environment variable TILED_API_KEY for Tiled to use.
-"""
-            )
-        self.http_client.auth = None
-        mode = spec["mode"]
-        auth_endpoint = spec["links"]["auth_endpoint"]
-        if mode == "password":
-            username = prompt_for_username(username)
-            password = getpass.getpass()
-            form_data = {
-                "grant_type": "password",
-                "username": username,
-                "password": password,
-            }
-            token_response = self.http_client.post(
-                auth_endpoint, data=form_data, auth=None
-            )
-            handle_error(token_response)
-            tokens = token_response.json()
-        elif mode == "external":
-            verification_response = self.http_client.post(
-                auth_endpoint, json={}, auth=None
-            )
-            handle_error(verification_response)
-            verification = verification_response.json()
-            authorization_uri = verification["authorization_uri"]
-            print(
-                f"""
-You have {int(verification['expires_in']) // 60} minutes visit this URL
-
-  {authorization_uri}
-
-and enter the code:
-
-  {verification['user_code']}
-
-"""
-            )
-            import webbrowser
-
-            webbrowser.open(authorization_uri)
-            deadline = verification["expires_in"] + time.monotonic()
-            print("Waiting...", end="", flush=True)
-            while True:
-                time.sleep(verification["interval"])
-                if time.monotonic() > deadline:
-                    raise Exception("Deadline expired.")
-                # Intentionally do not wrap this in handle_error(...).
-                # Check status codes manually below.
-                access_response = self.http_client.post(
-                    verification["verification_uri"],
-                    json={
-                        "device_code": verification["device_code"],
-                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    },
-                    auth=None,
-                )
-                if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
-                    access_response.json()["detail"]["error"] == "authorization_pending"
-                ):
-                    print(".", end="", flush=True)
-                    continue
-                handle_error(access_response)
-                print("")
-                break
-            tokens = access_response.json()
-
-        else:
-            raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
-        username = tokens["identity"]["id"]
-        token_directory = self._token_directory(provider, username)
-        auth = TiledAuth(refresh_url, csrf_token, token_directory)
-        auth.sync_set_token("access_token", tokens["access_token"])
-        auth.sync_set_token("refresh_token", tokens["refresh_token"])
-        self.http_client.auth = auth
-        confirmation_message = spec.get("confirmation_message")
-        if confirmation_message:
-            print(confirmation_message.format(id=username))
-        if set_default:
-            set_default_identity(
-                self.api_uri, username=username, provider=spec["provider"]
-            )
-        return spec, username
-
-    def login(self, username=None, provider=None, prompt_for_reauthentication=UNSET):
-        """
         Depending on the server's authentication method, this will prompt for username/password:
 
         >>> c.login()
@@ -643,28 +622,128 @@ and enter the code:
         or prompt you to open a link in a web browser to login with a third party:
 
         >>> c.login()
-        You have ... minutes visit this URL
+        You have ... minutes to visit this URL
 
         https://...
 
         and enter the code: XXXX-XXXX
-        """
-        self.authenticate(
-            username, provider, prompt_for_reauthentication=prompt_for_reauthentication
-        )
-        # For programmatic access to the return values, use authenticate().
-        # This returns None in order to provide a clean UX in an interpreter.
-        return None
 
-    def _token_directory(self, provider, username):
-        # ~/.config/tiled/tokens/{host:port}/{provider}/{username}
-        # with each templated element URL-encoded so it is a valid filename.
-        return Path(
+        Parameters
+        ----------
+        remember_me : bool
+            Next time, try to automatically authenticate using this session.
+        """
+        # Obtain tokens via OAuth2 unless the caller has passed them.
+        providers = self.server_info.authentication.providers
+        tokens = prompt_for_credentials(
+            self.http_client,
+            providers,
+        )
+        self.configure_auth(tokens, remember_me=remember_me)
+
+    # These two methods are aliased for convenience.
+    login = authenticate
+
+    def configure_auth(self, tokens, remember_me=True):
+        """
+        Configure Tiled client with tokens for refresh flow.
+
+        Parameters
+        ----------
+        tokens : dict, optional
+            Must include keys 'access_token' and 'refresh_token'
+        """
+        self.http_client.auth = None
+        if self.api_key is not None:
+            raise RuntimeError(
+                "An API key is set. Cannot use both API key and OAuth2 authentication."
+            )
+        # Configure an httpx.Auth instance on the http_client, which
+        # will manage refreshing the tokens as needed.
+        refresh_url = self.server_info.authentication.links.refresh_session
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+        if remember_me:
+            token_directory = self._token_directory()
+        else:
+            # Clear any existing tokens.
+            temp_auth = TiledAuth(refresh_url, csrf_token, self._token_directory())
+            temp_auth.sync_clear_token("access_token")
+            temp_auth.sync_clear_token("refresh_token")
+            # Store tokens in memory only, with no syncing to disk.
+            token_directory = None
+        auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        auth.sync_set_token("access_token", tokens["access_token"])
+        auth.sync_set_token("refresh_token", tokens["refresh_token"])
+        self.http_client.auth = auth
+
+    @property
+    def authenticated(self) -> bool:
+        """
+        Boolean indicated whether session is authenticated (true) or anonymous (false)
+
+        Examples
+        --------
+
+        An anonymous session at first, after login, is authenticated.
+
+        >>> client.context.authenticated
+        False
+        >>> client.login()
+        Username: USERNAME
+        Password: <input is hidden>
+        >>> client.context.authenticated
+        True
+
+        """
+        # Confirm the state of properties that authentication consists of
+        return (self.api_key is not None) or (self.http_client.auth is not None)
+
+    def _token_directory(self):
+        # e.g. ~/.config/tiled/tokens/{host:port}
+        # with the templated element URL-encoded so it is a valid filename.
+        path = Path(
             self._token_cache,
             urllib.parse.quote_plus(str(self.api_uri)),
-            urllib.parse.quote_plus(provider),
-            urllib.parse.quote_plus(username),
         )
+
+        # If this directory already exists, it might contain subdirectories
+        # left by older versions of tiled that supported caching tokens for
+        # multiple users of one server. Clean them up.
+        if path.is_dir():
+            import shutil
+
+            [shutil.rmtree(item) for item in path.iterdir() if item.is_dir()]
+
+        return path
+
+    def use_cached_tokens(self):
+        """
+        Attempt to reconnect using cached tokens.
+
+        Returns
+        -------
+        success : bool
+            Indicating whether valid cached tokens were found
+        """
+        refresh_url = self.server_info.authentication.links.refresh_session
+        csrf_token = self.http_client.cookies["tiled_csrf"]
+
+        # Try automatically authenticating using cached tokens, if any.
+        token_directory = self._token_directory()
+        # We have to make an HTTP request to let the server validate whether we
+        # have a valid session.
+        self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        # This will either:
+        # * Use an access_token and succeed.
+        # * Use a refresh_token to attempt refresh flow and succeed.
+        # * Use a refresh_token to attempt refresh flow and fail, raise.
+        # * Find no tokens and raise.
+        try:
+            self.whoami()
+            return True
+        except CannotRefreshAuthentication:
+            self.http_client.auth = None
+            return False
 
     def force_auth_refresh(self):
         """
@@ -691,12 +770,14 @@ and enter the code:
             refresh_token,
             csrf_token,
         )
-        token_response = self.http_client.send(refresh_request, auth=None)
-        if token_response.status_code == httpx.codes.UNAUTHORIZED:
-            raise CannotRefreshAuthentication(
-                "Session cannot be refreshed. Log in again."
-            )
-        handle_error(token_response)
+        for attempt in retry_context():
+            with attempt:
+                token_response = self.http_client.send(refresh_request, auth=None)
+                if token_response.status_code == httpx.codes.UNAUTHORIZED:
+                    raise CannotRefreshAuthentication(
+                        "Session cannot be refreshed. Log in again."
+                    )
+                handle_error(token_response)
         tokens = token_response.json()
         self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
         self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
@@ -704,14 +785,16 @@ and enter the code:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        return handle_error(
-            self.http_client.get(
-                self.server_info["authentication"]["links"]["whoami"],
-                headers={"Accept": MSGPACK_MIME_TYPE},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.http_client.get(
+                        self.server_info.authentication.links.whoami,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                    )
+                ).json()
 
-    def logout(self, clear_default=False):
+    def logout(self):
         """
         Log out of the current session (if any).
 
@@ -722,16 +805,18 @@ and enter the code:
 
         # Revoke the current session.
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
-        handle_error(
-            self.http_client.post(
-                f"{self.api_uri}auth/session/revoke",
-                json={"refresh_token": refresh_token},
-                # Circumvent auth because this request is not authenticated.
-                # The refresh_token in the body is the relevant proof, not the
-                # 'Authentication' header.
-                auth=None,
-            )
-        )
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.http_client.post(
+                        f"{self.api_uri}auth/session/revoke",
+                        json={"refresh_token": refresh_token},
+                        # Circumvent auth because this request is not authenticated.
+                        # The refresh_token in the body is the relevant proof, not the
+                        # 'Authentication' header.
+                        auth=None,
+                    )
+                )
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
@@ -741,85 +826,54 @@ and enter the code:
         self.http_client.headers.pop("Authorization", None)
         self.http_client.auth = None
 
-        # If requested, automatically clear the default identity
-        if clear_default:
-            clear_default_identity(self.api_uri)
-
     def revoke_session(self, session_id):
         """
         Revoke a Session so it cannot be refreshed.
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        handle_error(
-            self.http_client.delete(
-                self.server_info["authentication"]["links"]["revoke_session"].format(
-                    session_id=session_id
-                ),
-                headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
-            )
-        )
-
-
-def _choose_identity_provider(providers, provider=None):
-    if provider is not None:
-        for spec in providers:
-            if spec["provider"] == provider:
-                break
-        else:
-            raise ValueError(
-                f"No such provider {provider}. Choices are {[spec['provider'] for spec in providers]}"
-            )
-    else:
-        if len(providers) == 1:
-            # There is only one choice, so no need to prompt the user.
-            (spec,) = providers
-        else:
-            while True:
-                print("Authenticaiton providers:")
-                for i, spec in enumerate(providers, start=1):
-                    print(f"{i} - {spec['provider']}")
-                raw_choice = input(
-                    "Choose an authentication provider (or press Enter to escape): "
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.http_client.delete(
+                        self.server_info.authentication.links.revoke_session.format(
+                            session_id=session_id
+                        ),
+                        headers={"x-csrf": self.http_client.cookies["tiled_csrf"]},
+                    )
                 )
-                if not raw_choice:
-                    print("No authentication provider chosen. Failed.")
-                    break
-                try:
-                    choice = int(raw_choice)
-                except TypeError:
-                    print("Choice must be a number.")
-                    continue
-                try:
-                    spec = providers[choice - 1]
-                except IndexError:
-                    print(f"Choice must be a number 1 through {len(providers)}.")
-                    continue
-                break
-    return spec
 
 
 class Admin:
     "Accessor for requests that require administrative privileges."
 
-    def __init__(self, context):
+    def __init__(self, context: Context):
         self.context = context
-        self.base_url = context.server_info["links"]["self"]
+        self.base_url = context.server_info.links["self"]
 
     def list_principals(self, offset=0, limit=100):
-        "List Principals (users and services) in the authenticaiton database."
-        params = dict(offset=offset, limit=limit)
-        return handle_error(
-            self.context.http_client.get(
-                f"{self.base_url}/auth/principal", params=params
-            )
-        ).json()
+        "List Principals (users and services) in the authentication database."
+        url_path = f"{self.base_url}/auth/principal"
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            "offset": offset,
+            "limit": limit,
+        }
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.get(url_path, params=params)
+                ).json()
 
     def show_principal(self, uuid):
-        "Show one Principal (user or service) in the authenticaiton database."
-        return handle_error(
-            self.context.http_client.get(f"{self.base_url}/auth/principal/{uuid}")
-        ).json()
+        "Show one Principal (user or service) in the authentication database."
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.get(
+                        f"{self.base_url}/auth/principal/{uuid}"
+                    )
+                ).json()
 
     def create_api_key(self, uuid, scopes=None, expires_in=None, note=None):
         """
@@ -839,13 +893,15 @@ class Admin:
         note : Optional[str]
             Description (for humans).
         """
-        return handle_error(
-            self.context.http_client.post(
-                f"{self.base_url}/auth/principal/{uuid}/apikey",
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                json={"scopes": scopes, "expires_in": expires_in, "note": note},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.post(
+                        f"{self.base_url}/auth/principal/{uuid}/apikey",
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                    )
+                ).json()
 
     def create_service_principal(
         self,
@@ -859,13 +915,16 @@ class Admin:
         role : str
             Specify the role (e.g. user or admin)
         """
-        return handle_error(
-            self.context.http_client.post(
-                f"{self.base_url}/auth/principal",
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"role": role},
-            )
-        ).json()
+        url_path = f"{self.base_url}/auth/principal"
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.post(
+                        url_path,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={**parse_qs(urlparse(url_path).query), "role": role},
+                    )
+                ).json()
 
     def revoke_api_key(self, uuid, first_eight=None):
         """
@@ -881,13 +940,19 @@ class Admin:
             Identify the API key to be deleted by passing its first 8 characters.
             (Any additional characters passed will be truncated.)
         """
-        return handle_error(
-            self.context.http_client.delete(
-                f"{self.base_url}/auth/principal/{uuid}/apikey",
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"first_eight": first_eight[:8]},
-            )
-        )
+        url_path = f"{self.base_url}/auth/principal/{uuid}/apikey"
+        for attempt in retry_context():
+            with attempt:
+                return handle_error(
+                    self.context.http_client.delete(
+                        url_path,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(url_path).query),
+                            "first_eight": first_eight[:8],
+                        },
+                    )
+                )
 
 
 class CannotPrompt(Exception):
@@ -911,40 +976,66 @@ def _can_prompt():
     return False
 
 
-def _default_identity_filepath(api_uri):
-    # Resolve this here, not at module scope, because the test suite
-    # injects TILED_CACHE_DIR env var to use a temporary directory.
-    TILED_CACHE_DIR = Path(
-        os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+def password_grant(http_client, auth_endpoint, provider, username, password):
+    form_data = {
+        "grant_type": "password",
+        "username": username,
+        "password": password,
+    }
+    for attempt in retry_context():
+        with attempt:
+            token_response = http_client.post(auth_endpoint, data=form_data, auth=None)
+            handle_error(token_response)
+    return token_response.json()
+
+
+def device_code_grant(http_client, auth_endpoint):
+    for attempt in retry_context():
+        with attempt:
+            verification_response = http_client.post(auth_endpoint, json={}, auth=None)
+            handle_error(verification_response)
+    verification = verification_response.json()
+    authorization_uri = verification["authorization_uri"]
+    print(
+        f"""
+You have {int(verification['expires_in']) // 60} minutes to visit this URL
+
+{authorization_uri}
+
+and enter the code:
+
+{verification['user_code']}
+
+"""
     )
-    return Path(
-        TILED_CACHE_DIR, "default_identities", urllib.parse.quote_plus(str(api_uri))
-    )
+    import webbrowser
 
-
-def set_default_identity(api_uri, provider, username):
-    """
-    Stash the identity used with this API so that we can reuse it by default.
-    """
-    filepath = _default_identity_filepath(api_uri)
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    with open(filepath, "w") as file:
-        json.dump({"username": username, "provider": provider}, file)
-
-
-def get_default_identity(api_uri):
-    """
-    Look up the default identity to use with this API.
-    """
-    filepath = _default_identity_filepath(api_uri)
-    if filepath.exists():
-        return json.loads(filepath.read_text())
-
-
-def clear_default_identity(api_uri):
-    """
-    Clear the cached default identity for this API.
-    """
-    filepath = _default_identity_filepath(api_uri)
-    if filepath.exists():
-        filepath.unlink()
+    webbrowser.open(authorization_uri)
+    deadline = verification["expires_in"] + time.monotonic()
+    print("Waiting...", end="", flush=True)
+    while True:
+        time.sleep(verification["interval"])
+        if time.monotonic() > deadline:
+            raise Exception("Deadline expired.")
+        for attempt in retry_context():
+            with attempt:
+                # Intentionally do not wrap this in handle_error(...).
+                # Check status codes manually below.
+                access_response = http_client.post(
+                    verification["verification_uri"],
+                    json={
+                        "device_code": verification["device_code"],
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                    auth=None,
+                )
+                if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
+                    access_response.json()["detail"]["error"] == "authorization_pending"
+                ):
+                    print(".", end="", flush=True)
+                    continue
+                handle_error(access_response)
+        print("")
+        break
+    tokens = access_response.json()
+    return tokens

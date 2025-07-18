@@ -42,7 +42,7 @@ class CatalogSuite:
         self.df = pandas.DataFrame([])
 
         catalog = from_uri(
-            f"sqlite+aiosqlite:///{self.directory.name}/catalog.db",
+            f"sqlite:///{self.directory.name}/catalog.db",
             init_if_not_exists=True,
             writable_storage=self.directory.name,
         )

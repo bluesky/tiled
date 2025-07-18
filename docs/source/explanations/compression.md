@@ -139,7 +139,7 @@ vary: Accept-Encoding
 ```
 
 Finally, in this example. the server decides that the raw, compressed content is
-so small (304 bytes) that is isn't not worth compressing.
+so small (304 bytes) that it isn't worth compressing.
 
 ```
 $ http -p Hh :8000/metadata/

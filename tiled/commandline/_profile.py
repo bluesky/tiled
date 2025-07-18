@@ -1,6 +1,6 @@
 import typer
 
-profile_app = typer.Typer()
+profile_app = typer.Typer(no_args_is_help=True)
 
 
 @profile_app.command("paths")

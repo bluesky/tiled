@@ -5,7 +5,7 @@ import typer
 
 from ._utils import get_context, get_profile  # noqa E402
 
-admin_app = typer.Typer()
+admin_app = typer.Typer(no_args_is_help=True)
 
 
 @admin_app.command("initialize-database")
@@ -27,6 +27,9 @@ def initialize_database(database_uri: str):
         REQUIRED_REVISION,
         initialize_database,
     )
+    from ..utils import ensure_specified_sql_driver
+
+    database_uri = ensure_specified_sql_driver(database_uri)
 
     async def do_setup():
         engine = create_async_engine(database_uri)
@@ -71,6 +74,9 @@ def upgrade_database(
         ALEMBIC_INI_TEMPLATE_PATH,
     )
     from ..authn_database.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
+
+    database_uri = ensure_specified_sql_driver(database_uri)
 
     async def do_setup():
         engine = create_async_engine(database_uri)
@@ -107,6 +113,9 @@ def downgrade_database(
         ALEMBIC_INI_TEMPLATE_PATH,
     )
     from ..authn_database.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
+
+    database_uri = ensure_specified_sql_driver(database_uri)
 
     async def do_setup():
         engine = create_async_engine(database_uri)

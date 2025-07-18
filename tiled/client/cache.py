@@ -9,8 +9,8 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-import appdirs
 import httpx
+import platformdirs
 
 from .utils import SerializableLock, TiledResponse
 
@@ -187,7 +187,7 @@ class Cache:
             # Resolve this here, not at module scope, because the test suite
             # injects TILED_CACHE_DIR env var to use a temporary directory.
             TILED_CACHE_DIR = Path(
-                os.getenv("TILED_CACHE_DIR", appdirs.user_cache_dir("tiled"))
+                os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
             )
             # TODO Detect filesystem of TILED_CACHE_DIR. If it is a networked filesystem
             # use a temporary database instead.
