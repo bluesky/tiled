@@ -203,7 +203,7 @@ def read_xdi(data_uri, structure=None, metadata=None, specs=None, access_policy=
     )
 
 
-def write_xdi(df, metadata):
+def write_xdi(mimetype, df, metadata):
     output = io.StringIO()
 
     xdi_version = metadata.get("xdi_version")

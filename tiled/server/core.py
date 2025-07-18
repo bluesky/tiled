@@ -317,18 +317,23 @@ async def construct_data_response(
     if format is not None:
         media_types_or_aliases = format.split(",")
         # Resolve aliases, like "csv" -> "text/csv".
-        media_types = [
-            serialization_registry.resolve_alias(t) for t in media_types_or_aliases
-        ]
+        media_types = []
+        for t in media_types_or_aliases:
+            # Optional parameters must be ignored to resolve the alias first
+            if ";" in t:
+                t = t.split(";")[0]
+            media_types.append(serialization_registry.resolve_alias(t))
     else:
         # The HTTP spec says these should be separated by ", " but some
         # browsers separate with just "," (no space).
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Content_negotiation/List_of_default_Accept_values#default_values  # noqa
         # That variation is what we are handling below with lstrip.
-        media_types = [
-            s.lstrip(" ")
-            for s in request.headers.get("Accept", default_media_type).split(",")
-        ]
+        media_types = []
+        for s in request.headers.get("Accept", default_media_type).split(","):
+            s = s.lstrip(" ")
+            if ";" in s:
+                s = s.split(";")[0]
+            media_types.append(s)
 
     # The client may give us a choice of media types. Find the first one
     # that we support.
@@ -375,10 +380,10 @@ async def construct_data_response(
     try:
         if filter_for_access is not None:
             content = await ensure_awaitable(
-                serializer, payload, metadata, filter_for_access
+                serializer, format, payload, metadata, filter_for_access
             )
         else:
-            content = await ensure_awaitable(serializer, payload, metadata)
+            content = await ensure_awaitable(serializer, format, payload, metadata)
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
