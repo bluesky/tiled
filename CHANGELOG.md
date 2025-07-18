@@ -10,6 +10,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - It is now possible to explicitly control the page size used for fetching
   batches of metadata, e.g. `client.values().page_size(N)`.
 - Writable tabular SQL storage in SimpleTiledServer.
+- The `pyproject.toml` now includes integration with [pixi](https://pixi.sh/).
 
 ### Fixed
 
