@@ -5,6 +5,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b30 (Unreleased)
 
+### Added
+
+- Tests to ensure that CSVAdapter can be used with a subset of columns.
+
 ## Changed
 
 - Refactored get_entry() to not use the FastAPI dependencies injection
