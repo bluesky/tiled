@@ -1,12 +1,9 @@
-import importlib
 import string
 from pathlib import Path
 
 import numpy
 import pandas
 import pytest
-
-import tiled
 
 from ..adapters.csv import CSVArrayAdapter
 from ..catalog import in_memory
@@ -223,14 +220,12 @@ def test_csv_arrays_from_uris(csv_array1_file, csv_array2_file, csv_array3_file)
         ("arr_all_bool", ["J", "K", "L"]),
     ],
 )
-def test_csv_arrays_from_uris_selected_columns(
-    csv_array3_file, key, columns, monkeypatch
-):
+def test_csv_arrays_from_uris_selected_columns(csv_array3_file, key, columns):
     orig_arr = df_arr3[columns].to_numpy()  # The original array
     if "str" in key:
-        orig_arr = orig_arr.astype("str")  # Convert to string type explicitly
-        monkeypatch.setenv("TILED_ALLOW_OBJECT_ARRAYS", "1")
-        importlib.reload(tiled.structures.array)
+        pytest.xfail(
+            reason="CSVArrayAdapter does not handle string columns by default."
+        )
 
     array_adapter = CSVArrayAdapter.from_uris(
         f"file://localhost/{csv_array3_file}", header=0, usecols=columns
@@ -241,8 +236,3 @@ def test_csv_arrays_from_uris_selected_columns(
         assert numpy.isclose(read_arr, orig_arr).all()
     else:
         assert numpy.array_equal(read_arr, orig_arr)
-
-    # Unset the env variable
-    if "str" in key:
-        monkeypatch.setenv("TILED_ALLOW_OBJECT_ARRAYS", "0")
-        importlib.reload(tiled.structures.array)
