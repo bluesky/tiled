@@ -777,6 +777,9 @@ class CatalogNodeAdapter:
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
+                    "metadata": metadata,
+                    "specs": specs,
+                    "structure_family": structure_family,
                     "data_sources": [d.dict() for d in data_sources],
                 }
 
