@@ -29,6 +29,7 @@ from ..client import Context, from_context, record_history
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
+from ..structures.array import BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
@@ -312,7 +313,13 @@ def test_write_sparse_chunked(tree):
                 "sparse",
                 [
                     DataSource(
-                        structure=COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                        structure=COOStructure(
+                            shape=(2 * N,),
+                            chunks=((N, N),),
+                            data_type=BuiltinDtype.from_numpy_dtype(
+                                numpy.dtype("float64")
+                            ),
+                        ),
                         structure_family="sparse",
                     )
                 ],
