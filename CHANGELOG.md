@@ -3,16 +3,20 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0-b30 (Unreleased)
+## v0.1.0-b30 (2025-07-18)
 
 ## Changed
 
-- Refactored get_entry() to not use the FastAPI dependencies injection
+- Refactored internal server function ``get_entry()`` to not use the FastAPI
+  dependencies injection
+- Updated front-end dependencies, and updated node version used for building
+  front-end.
 
 ## Fixed
 
 - Restored authentication check for API key
 - Updated usage for change in Zarr 3.x API.
+- Improved error message if config location is non-file
 
 ## v0.1.0-b29 (2025-06-06)
 
