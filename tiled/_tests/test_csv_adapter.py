@@ -241,3 +241,8 @@ def test_csv_arrays_from_uris_selected_columns(
         assert numpy.isclose(read_arr, orig_arr).all()
     else:
         assert numpy.array_equal(read_arr, orig_arr)
+
+    # Unset the env variable
+    if "str" in key:
+        monkeypatch.setenv("TILED_ALLOW_OBJECT_ARRAYS", "0")
+        importlib.reload(tiled.structures.array)
