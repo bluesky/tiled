@@ -12,15 +12,18 @@ tutorials/login
 tutorials/serving-files
 tutorials/search
 tutorials/writing
+tutorials/simple-server
 tutorials/plotly-integration
 ```
 
 ```{toctree}
 :caption: How To Guides
 
+how-to/authentication
 how-to/profiles
 how-to/client-logger
 how-to/docker
+how-to/helm
 how-to/configuration
 how-to/read-custom-formats
 how-to/custom-export-formats
@@ -30,6 +33,7 @@ how-to/metrics
 how-to/direct-client
 how-to/tiled-authn-database
 how-to/register
+how-to/retries
 ```
 
 ```{toctree}

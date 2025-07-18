@@ -12,14 +12,15 @@ from starlette.status import HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.tiff import TiffAdapter
+from ..adapters.utils import init_adapter_from_catalog
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.register import (
     Settings,
-    group_tiff_sequences,
+    group_image_sequences,
     identity,
     register,
-    register_tiff_sequence,
+    register_image_sequence,
     skip_all,
     strip_suffixes,
 )
@@ -55,7 +56,7 @@ async def test_collision(example_data_dir, tmpdir):
     p = Path(example_data_dir, "a.tiff")
     tifffile.imwrite(str(p), data)
 
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(client, example_data_dir)
@@ -86,7 +87,7 @@ async def test_same_filename_separate_directory(tmpdir):
     Path(tmpdir, "two").mkdir()
     df1.to_csv(Path(tmpdir, "one", "a.csv"))
     df1.to_csv(Path(tmpdir, "two", "a.csv"))
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(client, tmpdir)
@@ -121,7 +122,7 @@ async def test_mimetype_detection_hook(tmpdir):
             return "text/csv"
         return mimetype
 
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         await register(
@@ -143,7 +144,7 @@ async def test_skip_all_in_combination(tmpdir):
     for i in range(2):
         tifffile.imwrite(Path(tmpdir, "one", f"image{i:05}.tif"), data)
 
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     # By default, both file and tiff sequence are registered.
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
@@ -155,14 +156,14 @@ async def test_skip_all_in_combination(tmpdir):
     # With skip_all, directories and tiff sequence are registered, but individual files are not
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register(client, tmpdir, walkers=[group_tiff_sequences, skip_all])
+        await register(client, tmpdir, walkers=[group_image_sequences, skip_all])
         assert list(client) == ["one"]
         assert "image" in client["one"]
 
 
 @pytest.mark.asyncio
 async def test_tiff_seq_custom_sorting(tmpdir):
-    "Register TIFFs that are not in alphanumeric order."
+    "Register images that are not in alphanumeric order."
     N = 10
     ordering = list(range(N))
     random.Random(0).shuffle(ordering)
@@ -174,10 +175,10 @@ async def test_tiff_seq_custom_sorting(tmpdir):
         tifffile.imwrite(file, i * data)
 
     settings = Settings.init()
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
-        await register_tiff_sequence(
+        await register_image_sequence(
             client,
             "image",
             files,
@@ -203,17 +204,29 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
     with open(metadata_filepath, "w") as file:
         yaml.dump(metadata, file)
 
-    def read_tiff_with_yaml_metadata(image_uri, metadata_uri, metadata=None, **kwargs):
-        with open(path_from_uri(metadata_uri)) as file:
-            metadata = yaml.safe_load(file)
-        return TiffAdapter(image_uri, metadata=metadata, **kwargs)
+    class TiffAdapterWithSidecar(TiffAdapter):
+        def __init__(self, image_uri, metadata_uri, metadata=None, **kwargs):
+            with open(path_from_uri(metadata_uri)) as file:
+                metadata = yaml.safe_load(file)
+
+            super().__init__(image_uri, metadata=metadata, **kwargs)
+
+        @classmethod
+        def from_catalog(
+            cls,
+            data_source,
+            node,
+            /,
+            **kwargs,
+        ):
+            return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     catalog = in_memory(
-        writable_storage=tmpdir,
-        adapters_by_mimetype={MIMETYPE: read_tiff_with_yaml_metadata},
+        writable_storage=str(tmpdir),
+        adapters_by_mimetype={MIMETYPE: TiffAdapterWithSidecar},
     )
     with Context.from_app(build_app(catalog)) as context:
-        adapter = read_tiff_with_yaml_metadata(
+        adapter = TiffAdapterWithSidecar(
             ensure_uri(image_filepath), ensure_uri(metadata_filepath)
         )
         client = from_context(context)
@@ -290,12 +303,12 @@ async def test_hdf5_virtual_datasets(tmpdir):
         Asset(
             data_uri=ensure_uri(filepath),
             is_directory=False,
-            parameter="data_uri",
+            parameter="data_uris",
         )
     )
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
-        adapter = HDF5Adapter.from_uri(ensure_uri(filepath))
+        adapter = HDF5Adapter.from_uris(ensure_uri(filepath))
         client = from_context(context)
         client.new(
             key="VDS",
@@ -317,7 +330,7 @@ async def test_hdf5_virtual_datasets(tmpdir):
 
 
 def test_unknown_mimetype(tmpdir):
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         asset = Asset(
@@ -345,7 +358,7 @@ def test_unknown_mimetype(tmpdir):
 
 
 def test_one_asset_two_data_sources(tmpdir):
-    catalog = in_memory(writable_storage=tmpdir)
+    catalog = in_memory(writable_storage=str(tmpdir))
     with Context.from_app(build_app(catalog)) as context:
         client = from_context(context)
         asset = Asset(

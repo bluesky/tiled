@@ -1,24 +1,34 @@
-import collections.abc
-import sys
 from abc import abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
+from collections.abc import Mapping
+from typing import Any, Dict, List, Literal, Optional, Protocol, Set, Tuple, Union
 
 import dask.dataframe
 import pandas
 import sparse
 from numpy.typing import NDArray
 
+from ..ndslice import NDSlice
 from ..server.schemas import Principal
+from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
+from ..type_aliases import JSON, Filters, Scopes
 from .awkward_directory_container import DirectoryContainer
-from .type_alliases import JSON, Filters, NDSlice, Scopes
 
 
 class BaseAdapter(Protocol):
+    supported_storage: Set[type[Storage]]
+
+    # @abstractmethod
+    # @classmethod
+    # def from_catalog(
+    #     cls, data_source: DataSource, node: Node, /, **kwargs: Optional[Any]
+    # ) -> "BaseAdapter":
+    #     pass
+
     @abstractmethod
     def metadata(self) -> JSON:
         pass
@@ -28,17 +38,7 @@ class BaseAdapter(Protocol):
         pass
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
-class ContainerAdapter(MappingType[str, "AnyAdapter"], BaseAdapter):
+class ContainerAdapter(Mapping[str, "AnyAdapter"], BaseAdapter):
     structure_family: Literal[StructureFamily.container]
 
     @abstractmethod
@@ -134,11 +134,20 @@ AnyAdapter = Union[
 
 class AccessPolicy(Protocol):
     @abstractmethod
-    def allowed_scopes(self, node: BaseAdapter, principal: Principal) -> Scopes:
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_scopes: Scopes,
+    ) -> Scopes:
         pass
 
     @abstractmethod
-    def filters(
-        self, node: BaseAdapter, principal: Principal, scopes: Scopes
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_scopes: Scopes,
+        scopes: Scopes,
     ) -> Filters:
         pass

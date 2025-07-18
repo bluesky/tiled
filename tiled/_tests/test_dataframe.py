@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import numpy
 import pandas.testing
 import pytest
@@ -37,6 +39,17 @@ tree = MapAdapter(
         # a dataframe with many columns
         "wide": DataFrameAdapter.from_pandas(
             pandas.DataFrame({f"column_{i:03d}": i * numpy.ones(5) for i in range(10)}),
+            npartitions=1,
+        ),
+        # a dataframe with mixed types
+        "diverse": DataFrameAdapter.from_pandas(
+            pandas.DataFrame(
+                {
+                    "A": numpy.array([1, 2, 3], dtype="|u8"),
+                    "B": numpy.array([1, 2, 3], dtype="<f8"),
+                    "C": ["one", "two", "three"],
+                }
+            ),
             npartitions=1,
         ),
     }
@@ -98,6 +111,17 @@ def test_dataframe_single_partition(context):
     pandas.testing.assert_frame_equal(actual, expected)
 
 
+def test_reading_diverse_dtypes(context):
+    client = from_context(context)
+    expected = tree["diverse"].read()
+    actual = client["diverse"].read()
+    pandas.testing.assert_frame_equal(actual, expected)
+
+    for col in expected.columns:
+        actual = client["diverse"][col].read()
+        assert numpy.array_equal(expected[col], actual)
+
+
 def test_dask(context):
     client = from_context(context, "dask")["basic"]
     expected = tree["basic"].read()
@@ -150,6 +174,7 @@ def test_http_fetch_columns(context, http_method, link):
     original_df = tree["wide"].read()
     columns = list(original_df.columns)[::2]  # Pick a subset of columns
     params = {
+        **parse_qs(urlparse(url_path).query),
         "partition": 0,  # Used by /table/partition; ignored by /table/full
         "column": columns,
     }
@@ -176,6 +201,7 @@ def test_deprecated_query_parameter(context):
     client = from_context(context)
     url_path = client["basic"].item["links"]["partition"]
     params = {
+        **parse_qs(urlparse(url_path).query),
         "partition": 0,
         "field": "x",
     }
@@ -189,6 +215,7 @@ def test_redundant_query_parameters(context):
     client = from_context(context)
     url_path = client["basic"].item["links"]["partition"]
     original_params = {
+        **parse_qs(urlparse(url_path).query),
         "partition": 0,
         "field": "x",
         "column": "y",

@@ -1,19 +1,21 @@
 import time
-import warnings
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
 import jsonpatch
 import orjson
 from httpx import URL
 
+from tiled.client.context import Context
+
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error
+from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
 
 
 class MetadataRevisions:
@@ -32,13 +34,19 @@ class MetadataRevisions:
                 # Used the cached value and do not make any request.
                 return length
 
-        content = handle_error(
-            self.context.http_client.get(
-                self._link,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"page[offset]": 0, "page[limit]": 0},
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        self._link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(self._link).query),
+                            "page[offset]": 0,
+                            "page[limit]": 0,
+                        },
+                    )
+                ).json()
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
@@ -50,13 +58,19 @@ class MetadataRevisions:
             offset = item_
             limit = 1
 
-            content = handle_error(
-                self.context.http_client.get(
-                    self._link,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={"page[offset]": offset, "page[limit]": limit},
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            self._link,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(self._link).query),
+                                "page[offset]": offset,
+                                "page[limit]": limit,
+                            },
+                        )
+                    ).json()
             (result,) = content["data"]
             return result
 
@@ -70,25 +84,33 @@ class MetadataRevisions:
                 limit = item_.stop - offset
                 params = f"?page[offset]={offset}&page[limit]={limit}"
 
-            next_page = self._link + params
+            next_page_url = self._link + params
             result = []
-            while next_page is not None:
-                content = handle_error(
-                    self.context.http_client.get(
-                        next_page,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
-                    )
-                ).json()
+            while next_page_url is not None:
+                for attempt in retry_context():
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.get(
+                                next_page_url, headers={"Accept": MSGPACK_MIME_TYPE}
+                            )
+                        ).json()
                 if len(result) == 0:
                     result = content.copy()
                 else:
                     result["data"].append(content["data"])
-                next_page = content["links"]["next"]
+                next_page_url = content["links"]["next"]
 
             return result["data"]
 
     def delete_revision(self, n):
-        handle_error(self.context.http_client.delete(self._link, params={"number": n}))
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.delete(
+                        self._link,
+                        params={**parse_qs(urlparse(self._link).query), "number": n},
+                    )
+                )
 
 
 class BaseClient:
@@ -100,7 +122,7 @@ class BaseClient:
 
     def __init__(
         self,
-        context,
+        context: Context,
         *,
         item,
         structure_clients,
@@ -120,7 +142,7 @@ class BaseClient:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family == StructureFamily.container:
+        elif structure_family in {StructureFamily.container, StructureFamily.composite}:
             self._structure = None
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
@@ -141,7 +163,7 @@ class BaseClient:
             )
         return self._structure
 
-    def login(self, username=None, provider=None):
+    def login(self):
         """
         Depending on the server's authentication method, this will prompt for username/password:
 
@@ -158,15 +180,15 @@ class BaseClient:
 
         and enter the code: XXXX-XXXX
         """
-        self.context.login(username=username, provider=provider)
+        self.context.authenticate()
 
-    def logout(self, clear_default=False):
+    def logout(self):
         """
         Log out.
 
         This method is idempotent: if you are already logged out, it will do nothing.
         """
-        self.context.logout(clear_default=clear_default)
+        self.context.logout()
 
     def __repr__(self):
         return f"<{type(self).__name__}>"
@@ -176,14 +198,29 @@ class BaseClient:
         return self._context
 
     def refresh(self):
-        content = handle_error(
-            self.context.http_client.get(
-                self.uri,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={"include_data_sources": self._include_data_sources},
-            )
-        ).json()
+        params = {
+            **parse_qs(urlparse(self.uri).query),
+        }
+        if self._include_data_sources:
+            params["include_data_sources"] = self._include_data_sources
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        self.uri,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params=params,
+                    )
+                ).json()
         self._item = content["data"]
+        if self.structure_family not in {
+            StructureFamily.container,
+            StructureFamily.composite,
+        }:
+            structure_type = STRUCTURE_TYPES[self.structure_family]
+            self._structure = structure_type.from_json(
+                self._item["attributes"]["structure"]
+            )
         return self
 
     @property
@@ -199,19 +236,45 @@ class BaseClient:
         # persistent.
         return DictView(self._item["attributes"]["metadata"])
 
+    @property
+    def parent(self):
+        "Returns a client for the parent of this node."
+        # this import takes about 230 ns.
+        from .constructors import from_context
+
+        return from_context(
+            context=self.context,
+            structure_clients=self.structure_clients,
+            node_path_parts=self._item["attributes"]["ancestors"],
+        )
+
     def metadata_copy(self):
         """
-        Generate a mutable copy of metadata and specs for validating metadata
-        (useful with update_metadata())
+        Generate a mutable copy of metadata, specs, and access_tags for
+        validating metadata (useful with update_metadata())
         """
         metadata = deepcopy(self._item["attributes"]["metadata"])
         specs = [Spec(**spec) for spec in self._item["attributes"]["specs"]]
-        return [metadata, specs]  # returning as list of mutable items
+        access_tags = deepcopy(self._item["attributes"]["access_blob"].get("tags", []))
+        return [
+            md for md in [metadata, specs, access_tags] if md is not None
+        ]  # returning as list of mutable items
 
     @property
     def specs(self):
         "List of specifications describing the structure of the metadata and/or data."
         return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
+
+    @property
+    def access_blob(self):
+        "Authorization information about this node, in blob form"
+        access_blob = self._item["attributes"]["access_blob"]
+        if access_blob is None:
+            raise AttributeError("Node has no attribute 'access_blob'")
+        # Ensure this is immutable (at the top level) to help the user avoid
+        # getting the wrong impression that editing this would update anything
+        # persistent.
+        return DictView(access_blob)
 
     @property
     def uri(self):
@@ -224,14 +287,6 @@ class BaseClient:
         return StructureFamily[self.item["attributes"]["structure_family"]]
 
     def data_sources(self):
-        if not self._include_data_sources:
-            warnings.warn(
-                """Calling include_data_sources().refresh().
-To fetch the data sources up front, call include_data_sources() on the
-client or pass the optional parameter `include_data_sources=True` to
-`from_uri(...)` or similar."""
-            )
-
         data_sources_json = (
             self.include_data_sources().item["attributes"].get("data_sources")
         )
@@ -253,6 +308,7 @@ client or pass the optional parameter `include_data_sources=True` to
         self,
         structure_clients=UNCHANGED,
         include_data_sources=UNCHANGED,
+        structure=UNCHANGED,
         **kwargs,
     ):
         """
@@ -262,9 +318,12 @@ client or pass the optional parameter `include_data_sources=True` to
             structure_clients = self.structure_clients
         if include_data_sources is UNCHANGED:
             include_data_sources = self._include_data_sources
+        if structure is UNCHANGED:
+            structure = self._structure
         return type(self)(
             self.context,
             item=self._item,
+            structure=structure,
             structure_clients=structure_clients,
             include_data_sources=include_data_sources,
             **kwargs,
@@ -292,11 +351,17 @@ client or pass the optional parameter `include_data_sources=True` to
             )
             for asset in data_source.assets:
                 if asset.is_directory:
-                    manifest = handle_error(
-                        self.context.http_client.get(
-                            manifest_link, params={"id": asset.id}
-                        )
-                    ).json()["manifest"]
+                    for attempt in retry_context():
+                        with attempt:
+                            manifest = handle_error(
+                                self.context.http_client.get(
+                                    manifest_link,
+                                    params={
+                                        **parse_qs(urlparse(manifest_link).query),
+                                        "id": asset.id,
+                                    },
+                                )
+                            ).json()["manifest"]
                 else:
                     manifest = None
                 manifests[asset.id] = manifest
@@ -355,6 +420,7 @@ client or pass the optional parameter `include_data_sources=True` to
                             URL(
                                 bytes_link,
                                 params={
+                                    **parse_qs(urlparse(bytes_link).query),
                                     "id": asset.id,
                                     "relative_path": relative_path,
                                 },
@@ -369,7 +435,15 @@ client or pass the optional parameter `include_data_sources=True` to
                         ]
                     )
                 else:
-                    urls.append(URL(bytes_link, params={"id": asset.id}))
+                    urls.append(
+                        URL(
+                            bytes_link,
+                            params={
+                                **parse_qs(urlparse(bytes_link).query),
+                                "id": asset.id,
+                            },
+                        )
+                    )
                     paths.append(Path(base_path, ATTACHMENT_FILENAME_PLACEHOLDER))
         return download(self.context.http_client, urls, paths, max_workers=max_workers)
 
@@ -378,15 +452,17 @@ client or pass the optional parameter `include_data_sources=True` to
         "List formats that the server can export this data as."
         formats = set()
         for spec in self.item["attributes"]["specs"]:
-            formats.update(self.context.server_info["formats"].get(spec["name"], []))
+            formats.update(self.context.server_info.formats.get(spec["name"], []))
         formats.update(
-            self.context.server_info["formats"][
+            self.context.server_info.formats[
                 self.item["attributes"]["structure_family"]
             ]
         )
         return sorted(formats)
 
-    def update_metadata(self, metadata=None, specs=None):
+    def update_metadata(
+        self, metadata=None, specs=None, access_tags=None, *, drop_revision=False
+    ):
         """
         EXPERIMENTAL: Update metadata via a `dict.update`- like interface.
 
@@ -401,6 +477,11 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -436,19 +517,19 @@ client or pass the optional parameter `include_data_sources=True` to
         >>> md['unwanted_key'] = DELETE_KEY
         >>> node.update_metadata(metadata=md)  # Update the copy on the server
         """
-        if isinstance(metadata, list) and len(metadata) == 2:
-            if specs is None:
-                # Likely [metadata, specs] form from node.metadata_copy()
-                metadata, specs = metadata
-            else:
-                raise ValueError("Duplicate specs provided after [metadata, specs]")
-
-        metadata_patch, specs_patch = self.build_metadata_patches(
-            metadata=metadata, specs=specs
+        metadata_patch, specs_patch, access_blob_patch = self.build_metadata_patches(
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
         )
-        self.patch_metadata(metadata_patch=metadata_patch, specs_patch=specs_patch)
+        self.patch_metadata(
+            metadata_patch=metadata_patch,
+            specs_patch=specs_patch,
+            access_blob_patch=access_blob_patch,
+            drop_revision=drop_revision,
+        )
 
-    def build_metadata_patches(self, metadata=None, specs=None):
+    def build_metadata_patches(self, metadata=None, specs=None, access_tags=None):
         """
         Build valid JSON Patches (RFC6902) for metadata and metadata validation
         specs accepted by `patch_metadata`.
@@ -462,6 +543,9 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : list[Spec], optional
             Metadata validation specifications.
 
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+
         Returns
         -------
         metadata_patch : list[dict]
@@ -470,6 +554,9 @@ client or pass the optional parameter `include_data_sources=True` to
         specs_patch : list[dict]
             A JSON serializable object representing a valid JSON patch (RFC6902)
             for metadata validation specifications.
+        access_blob_patch : list[dict]
+            A JSON serializable object representing a valid JSON patch (RFC6902)
+            for access control fields that are stored in the access_blob.
 
         See Also
         --------
@@ -532,7 +619,19 @@ client or pass the optional parameter `include_data_sources=True` to
                 ).patch
             )
 
-        return metadata_patch, specs_patch
+        if not access_tags:
+            # empty list of access_tags should be a no-op
+            access_blob_patch = None
+        else:
+            ab_copy = deepcopy(self._item["attributes"]["access_blob"])
+            access_blob = {"tags": access_tags}
+            access_blob_patch = jsonpatch.JsonPatch.from_diff(
+                self._item["attributes"]["access_blob"],
+                apply_update_patch(ab_copy, access_blob),
+                dumps=orjson.dumps,
+            ).patch
+
+        return metadata_patch, specs_patch, access_blob_patch
 
     def _build_json_patch(self, origin, update_patch):
         """
@@ -558,7 +657,9 @@ client or pass the optional parameter `include_data_sources=True` to
         self,
         metadata_patch=None,
         specs_patch=None,
+        access_blob_patch=None,
         content_type=patch_mimetypes.JSON_PATCH,
+        drop_revision=False,
     ):
         """
         EXPERIMENTAL: Patch metadata using a JSON Patch (RFC6902).
@@ -572,6 +673,8 @@ client or pass the optional parameter `include_data_sources=True` to
         specs_patch : List[dict], optional
             JSON-serializable patch to be applied to metadata validation
             specifications list
+        access_blob_patch : List[dict], optional
+            JSON-serializable patch to be applied to the access_blob
         content_type : str
             Mimetype of the patches. Acceptable values are:
 
@@ -579,6 +682,9 @@ client or pass the optional parameter `include_data_sources=True` to
               (See https://datatracker.ietf.org/doc/html/rfc6902)
             * "application/merge-patch+json"
               (See https://datatracker.ietf.org/doc/html/rfc7386)
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -628,14 +734,21 @@ client or pass the optional parameter `include_data_sources=True` to
             "content-type": content_type,
             "metadata": metadata_patch,
             "specs": normalized_specs_patch,
+            "access_blob": access_blob_patch,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
-        content = handle_error(
-            self.context.http_client.patch(
-                self.item["links"]["self"],
-                content=safe_json_dump(data),
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.patch(
+                        self.item["links"]["self"],
+                        content=safe_json_dump(data),
+                        params=params,
+                    )
+                ).json()
 
         if metadata_patch is not None:
             if "metadata" in content:
@@ -654,7 +767,17 @@ client or pass the optional parameter `include_data_sources=True` to
             patched_specs = patcher(current_specs, normalized_specs_patch, content_type)
             self._item["attributes"]["specs"] = patched_specs
 
-    def replace_metadata(self, metadata=None, specs=None):
+        if access_blob_patch is not None:
+            if "access_blob" in content:
+                self._item["attributes"]["access_blob"] = content["access_blob"]
+            else:
+                self._item["attributes"]["access_blob"] = patcher(
+                    dict(self.access_blob), access_blob_patch, content_type
+                )
+
+    def replace_metadata(
+        self, metadata=None, specs=None, access_tags=None, drop_revision=False
+    ):
         """
         EXPERIMENTAL: Replace metadata entirely (see update_metadata).
 
@@ -668,6 +791,11 @@ client or pass the optional parameter `include_data_sources=True` to
         specs : List[str], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+        drop_revision : bool, optional
+            Replace current version without saving current version as a revision.
+            Use with caution.
 
         See Also
         --------
@@ -685,16 +813,30 @@ client or pass the optional parameter `include_data_sources=True` to
                 if isinstance(spec, str):
                     spec = Spec(spec)
                 normalized_specs.append(asdict(spec))
+
+        if access_tags is None:
+            access_blob = None
+        else:
+            access_blob = {"tags": access_tags}
+
         data = {
             "metadata": metadata,
             "specs": normalized_specs,
+            "access_blob": access_blob,
         }
+        params = {}
+        if drop_revision:
+            params["drop_revision"] = True
 
-        content = handle_error(
-            self.context.http_client.put(
-                self.item["links"]["self"], content=safe_json_dump(data)
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.put(
+                        self.item["links"]["self"],
+                        content=safe_json_dump(data),
+                        params=params,
+                    )
+                ).json()
 
         if metadata is not None:
             if "metadata" in content:
@@ -702,12 +844,18 @@ client or pass the optional parameter `include_data_sources=True` to
                 # It is updated locally using the new version.
                 self._item["attributes"]["metadata"] = content["metadata"]
             else:
-                # Metadata was accepted as it si by the server.
-                # It is updated locally with the version submitted buy the client.
+                # Metadata was accepted as it is by the server.
+                # It is updated locally with the version submitted by the client.
                 self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
             self._item["attributes"]["specs"] = normalized_specs
+
+        if access_blob is not None:
+            if "access_blob" in content:
+                self._item["attributes"]["access_blob"] = content["access_blob"]
+            else:
+                self._item["attributes"]["access_blob"] = access_blob
 
     @property
     def metadata_revisions(self):
@@ -719,7 +867,9 @@ client or pass the optional parameter `include_data_sources=True` to
 
     def delete_tree(self):
         endpoint = self.uri.replace("/metadata/", "/nodes/", 1)
-        handle_error(self.context.http_client.delete(endpoint))
+        for attempt in retry_context():
+            with attempt:
+                handle_error(self.context.http_client.delete(endpoint))
 
     def __dask_tokenize__(self):
         return (type(self), self.uri)

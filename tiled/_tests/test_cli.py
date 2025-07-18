@@ -1,4 +1,5 @@
 import contextlib
+import os
 import re
 import subprocess
 import sys
@@ -48,6 +49,8 @@ def scrape_server_url_from_logs(process):
     # The thread will leak. This is the best reasonably simple,
     # portable approach available.
     thread.join()
+    _, port = url.rsplit(":", 1)
+    assert port != "8000"  # should be a random high port
     return url
 
 
@@ -104,10 +107,18 @@ trees:
   - path: /
     tree: catalog
     args:
-      uri: sqlite+aiosqlite:///{tmp_path / 'catalog.db'}
+      uri: sqlite:///{tmp_path / 'catalog.db'}
       writable_storage: {tmp_path / 'data'}
       init_if_not_exists: true
 """
         )
     with run_cli(f"tiled serve config {config_filepath} --port 0 " + args) as process:
         check_server_readiness(process)
+
+
+def test_cli_version():
+    from tiled import __version__
+
+    with run_cli("tiled --version") as process:
+        line = process.stdout.readline()
+    assert line.decode() == f"{__version__}{os.linesep}"

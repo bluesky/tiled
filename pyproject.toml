@@ -12,19 +12,30 @@ authors = [
 maintainers = [
   { name = "Brookhaven National Laboratory", email = "dallan@bnl.gov" },
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
-# All dependencies are optional; it depends on whether you are running
-# a client or server (or both) and what data structures you care about.
+# Dependencies common to both server and client; additional dependencies are
+# available depending on whether you are running client/server/both, and what
+# data structures you care about.
 # Use pip install tiled[all] to get everything.
-dependencies = []
+dependencies = [
+    "httpx >=0.20.0,!=0.23.1",
+    "json-merge-patch",
+    "jsonpatch",
+    "jsonschema",
+    "msgpack >=1.0.0",
+    "orjson",
+    "platformdirs",
+    "pydantic >=2, <3",
+    "pydantic-settings >=2, <3",
+    "pyyaml",
+    "typer",
+]
 
 classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -44,11 +55,13 @@ tiled = "tiled.commandline.main:main"
 
 # This is the union of all optional dependencies.
 all = [
+    "adbc_driver_manager",
+    "adbc_driver_postgresql",
+    "adbc_driver_sqlite",
     "aiofiles",
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
@@ -58,39 +71,33 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
+    "duckdb",
     "entrypoints",
-    "fastapi",
+    "fastapi >=0.115.8",
     "h5netcdf",
     "h5py",
-    "httpx >=0.20.0,!=0.23.1",
+    "hdf5plugin",
     "jinja2",
     "jmespath",
-    "json-merge-patch",
-    "jsonpatch",
-    "jsonschema",
     "lz4",
-    "msgpack >=1.0.0",
     "ndindex",
+    "numcodecs <0.16.0",
     "numpy",
     "openpyxl",
-    "orjson",
     "packaging",
     "pandas",
     "pillow",
     "prometheus_client",
     "pyarrow",
-    "pydantic >=2, <3",
-    "pydantic-settings >=2, <3",
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-    "pyyaml",
     "rich",
     "sparse",
     "sqlalchemy[asyncio] >=2",
+    "stamina",
     "starlette >=0.38.0",
     "tifffile",
-    "typer",
     "uvicorn[standard]",
     "watchfiles",
     "xarray",
@@ -104,27 +111,19 @@ array = [
 ]
 # This is the "kichen sink" fully-featured client dependency set.
 client = [
-    "appdirs",
     "awkward >=2.4.3",
     "blosc2; python_version >= '3.10'",
     "dask[array]",
     "dask[dataframe]",
     "entrypoints",
-    "httpx >=0.20.0,!=0.23.1",
-    "json-merge-patch",
-    "jsonpatch",
-    "jsonschema",
     "lz4",
-    "msgpack >=1.0.0",
     "ndindex",
     "numpy",
-    "orjson",
     "pandas",
     "pyarrow",
-    "pyyaml",
     "rich",
     "sparse",
-    "typer",
+    "stamina",
     "watchfiles",
     "xarray",
     "zstandard",
@@ -151,7 +150,7 @@ dev = [
     "ipython",
     "ldap3",
     "matplotlib",
-    "mistune <2.0.0",  # temporary while sphinx sorts this out,
+    "mistune",
     "myst-parser",
     "numpydoc",
     "pre-commit",
@@ -169,23 +168,16 @@ dev = [
 formats = [
     "h5netcdf",
     "h5py",
+    "hdf5plugin",
     "openpyxl",
     "pillow",
     "tifffile",
 ]
 # These are the requirements needed for basic client functionality.
 minimal-client = [
-    "appdirs",
     "entrypoints",
-    "httpx >=0.20.0,!=0.23.1",
-    "json-merge-patch",
-    "jsonpatch",
-    "jsonschema",
-    "msgpack >=1.0.0",
-    "orjson",
-    "pyyaml",
     "rich",
-    "typer",
+    "stamina",
     "watchfiles",
 ]
 # These are the requirements needed for basic server functionality.
@@ -194,42 +186,33 @@ minimal-server = [
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
     "asgi-correlation-id",
     "cachetools",
     "canonicaljson",
     "dask",
-    "fastapi",
-    "httpx >=0.20.0,!=0.23.1",
+    "fastapi >=0.115.8",
     "jinja2",
     "jmespath",
-    "json-merge-patch",
-    "jsonpatch",
-    "jsonschema",
-    "msgpack >=1.0.0",
-    "orjson",
+    "numcodecs <0.16.0",
     "packaging",
     "prometheus_client",
-    "pydantic >=2, <3",
-    "pydantic-settings >=2, <3",
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-    "pyyaml",
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
-    "starlette",
-    "typer",
     "uvicorn[standard]",
     "zarr",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
+    "adbc_driver_manager",
+    "adbc_driver_postgresql",
+    "adbc_driver_sqlite",
     "aiofiles",
     "aiosqlite",
     "alembic",
     "anyio",
-    "appdirs",
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
@@ -239,37 +222,30 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "fastapi",
+    "duckdb",
+    "fastapi >=0.115.8",
     "h5netcdf",
     "h5py",
-    "httpx >=0.20.0,!=0.23.1",
+    "hdf5plugin",
     "jinja2",
     "jmespath",
-    "json-merge-patch",
-    "jsonpatch",
-    "jsonschema",
     "lz4",
-    "msgpack >=1.0.0",
     "ndindex",
+    "numcodecs <0.16.0",
     "numpy",
     "openpyxl",
-    "orjson",
     "packaging",
     "pandas",
     "pillow",
     "prometheus_client",
     "pyarrow",
-    "pydantic >=2, <3",
-    "pydantic-settings >=2, <3",
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-    "pyyaml",
     "sparse",
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "tifffile",
-    "typer",
     "uvicorn[standard]",
     "xarray",
     "zarr",
@@ -297,7 +273,9 @@ Documentation = "https://blueskyproject.io/tiled"
 [tool.hatch]
 version.source = "vcs"
 version.fallback-version = "0.0.0"
-build.hooks.vcs.version-file = "tiled/_version.py"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "tiled/_version.py"
 
 # Defining this (empty) section invokes hatch_build.py
 [tool.hatch.build.hooks.custom]
@@ -331,3 +309,41 @@ exclude = '''
   | web-frontend
 )
 '''
+
+[tool.coverage.run]
+data_file = "/tmp/tiled.coverage"
+
+[tool.coverage.report]
+exclude_lines = ["if __name__ == '__main__':"]
+
+[tool.coverage.paths]
+source = ["."]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.pypi-dependencies]
+tiled = { path = ".", editable = true }
+
+[tool.pixi.feature.sparse.dependencies]
+# sparse setuptools-based build is not working, so override with conda
+# packages.
+ndindex = "*"
+pyarrow = "*"
+sparse = "*"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+all = { features = ["all"], solve-group = "default" }
+array = { features = ["array"], solve-group = "default" }
+client = { features = ["client"], solve-group = "default" }
+compression = { features = ["compression"], solve-group = "default" }
+dataframe = { features = ["dataframe"], solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+formats = { features = ["formats"], solve-group = "default" }
+minimal-client = { features = ["minimal-client"], solve-group = "default" }
+minimal-server = { features = ["minimal-server"], solve-group = "default" }
+server = { features = ["server"], solve-group = "default" }
+sparse = { features = ["sparse"], solve-group = "default" }
+xarray = { features = ["xarray"], solve-group = "default" }

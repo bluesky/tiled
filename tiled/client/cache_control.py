@@ -18,8 +18,8 @@ _PERMANENT_REDIRECT_STATUSES = (301, 308)
 def parse_headers_date(headers_date: tp.Optional[str]) -> tp.Optional[datetime]:
     """Parse a 'Date' header and return it as an optional datetime object.
 
-    If the 'Date' doe not exist return None
-    IF there is an error usirng parsing return None
+    If the 'Date' does not exist return None
+    If there is an error using parsing return None
 
     Args:
         headers: httpx.Headers
@@ -166,7 +166,7 @@ class CacheControl:
     def is_response_fresh(
         self, *, request: httpx.Request, response: httpx.Response
     ) -> bool:
-        """Checks wether a cached response is fresh or not.
+        """Checks whether a cached response is fresh or not.
 
         Args:
             request: httpx.Request
@@ -176,7 +176,7 @@ class CacheControl:
             True if request is fresh else False
         """
 
-        # check if response is a permanenet redirect
+        # check if response is a permanent redirect
         if response.status_code in _PERMANENT_REDIRECT_STATUSES:
             # logger.debug(
             #     "Cached response with permanent redirect status "
@@ -249,7 +249,7 @@ class CacheControl:
         response_age = now - response_date
         if isinstance(req_min_fresh, int):
             # logger.debug(
-            #     f"Adjsting response age ({response_age}) using request cache-control "
+            #     f"Adjusting response age ({response_age}) using request cache-control "
             #     "'min-fresh' header directive."
             # )
             response_age += timedelta(seconds=req_min_fresh)
@@ -269,7 +269,7 @@ class CacheControl:
     ) -> bool:
         """Check if an httpx response is cacheable.
 
-        A respons is cacheable if:
+        A response is cacheable if:
 
             - response status_code is cacheable
             - request method is cacheable
@@ -284,7 +284,7 @@ class CacheControl:
             response: httpx.Response
 
         Returns:
-            wether response is cacheable or not.
+            whether response is cacheable or not.
         """
         if request.url.is_relative_url:
             # logger.debug(
@@ -308,7 +308,7 @@ class CacheControl:
             # )
             return False
 
-        # always cache request, eevent if 'no-store' is set as header
+        # always cache request, event if 'no-store' is set as header
         if self.always_cache:
             # logger.debug("Caching Response because 'always_cache' is set to True.'")
             return True

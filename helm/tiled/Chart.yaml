@@ -1,0 +1,19 @@
+apiVersion: v2
+name: tiled
+description: Tiled is a data access service for data-aware portals and data science tools.
+
+# A chart can be either an 'application' or a 'library' chart.
+#
+# Application charts are a collection of templates that can be packaged into versioned archives
+# to be deployed.
+#
+# Library charts provide useful utilities or functions for the chart developer. They're included as
+# a dependency of application charts to inject those utilities and functions into the rendering
+# pipeline. Library charts do not define any templates and therefore cannot be deployed.
+type: application
+
+# Chart version, automatically incremented by CI during release
+version: 0.0.1
+
+# Container version, automatically incremented by CI during release
+appVersion: v0.1.0b12

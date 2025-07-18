@@ -4,21 +4,26 @@ This module handles client configuration.
 See config.py for server configuration.
 
 It contains several functions that are factored to facilitate testing,
-but the user-facing functionality is striaghtforward.
+but the user-facing functionality is straightforward.
 """
+
 import collections
 import collections.abc
 import os
+import shutil
 import sys
 import warnings
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
-import appdirs
 import jsonschema
+import platformdirs
 
 from .utils import parse
 
+TILED_CACHE_DIR = Path(
+    os.getenv("TILED_CACHE_DIR", platformdirs.user_cache_dir("tiled"))
+)
 __all__ = [
     "list_profiles",
     "load_profiles",
@@ -30,7 +35,7 @@ __all__ = [
 ]
 
 
-@lru_cache(maxsize=1)
+@cache
 def schema():
     "Load the schema for profiles."
     import yaml
@@ -49,7 +54,8 @@ _all_paths = [
     ),  # hard-coded system path
     Path(
         os.getenv(
-            "TILED_SITE_PROFILES", Path(appdirs.site_config_dir("tiled"), "profiles")
+            "TILED_SITE_PROFILES",
+            Path(platformdirs.site_config_dir("tiled"), "profiles"),
         )
     ),  # XDG-compliant system path
     Path(sys.prefix, "etc", "tiled", "profiles"),  # environment
@@ -57,7 +63,9 @@ _all_paths = [
         os.getenv("TILED_PROFILES", Path.home() / ".config/tiled/profiles")
     ),  # hard-coded user path
     Path(
-        os.getenv("TILED_PROFILES", Path(appdirs.user_config_dir("tiled"), "profiles"))
+        os.getenv(
+            "TILED_PROFILES", Path(platformdirs.user_config_dir("tiled"), "profiles")
+        )
     ),  # system-dependent user path
 ]
 # Remove duplicates (i.e. if XDG and hard-coded are the same on this system).
@@ -196,7 +204,7 @@ The profile will be ommitted. Fix this by removing one of the duplicates"""
     return combined
 
 
-@lru_cache(maxsize=1)
+@cache
 def load_profiles():
     """
     Return a mapping of profile_name to (source_path, content).
@@ -316,6 +324,10 @@ def set_default_profile_name(name):
         raise ProfileNotFound(name)
     with open(filepath, "w") as file:
         file.write(name)
+    # Clean up cruft from older versions of Tiled.
+    UNUSED_DIR = TILED_CACHE_DIR / "default_identities"
+    if UNUSED_DIR.is_dir():
+        shutil.rmtree(UNUSED_DIR)
 
 
 class ProfileNotFound(KeyError):

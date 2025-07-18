@@ -70,6 +70,7 @@ class Node(Timestamped, Base):
     structure_family = Column(Enum(StructureFamily), nullable=False)
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
+    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -96,6 +97,7 @@ class Node(Timestamped, Base):
             "time_created",
             "id",
             "metadata",
+            "access_blob",
             postgresql_using="gin",
         ),
         # This is used by ORDER BY with the default sorting.
@@ -440,7 +442,7 @@ class Asset(Timestamped, Base):
 
 class Revision(Timestamped, Base):
     """
-    This tracks history of metadata and specs, supporting 'undo' functionality.
+    This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
     """
 
     __tablename__ = "revisions"
@@ -456,6 +458,7 @@ class Revision(Timestamped, Base):
 
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
+    access_blob = Column("access_blob", JSONVariant, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(

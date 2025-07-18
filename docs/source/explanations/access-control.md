@@ -70,6 +70,7 @@ integrate with our proposal system.
 import cachetools
 import httpx
 from tiled.queries import In
+from tiled.scopes import PUBLIC_SCOPES
 
 
 # To reduce load on the external service and to expedite repeated lookups, use a
@@ -101,13 +102,13 @@ class PASSAccessPolicy:
                 f"Its identities are: {principal.identities}"
             )
 
-    def allowed_scopes(self, node, principal):
-        return {"read:metadata", "read:data"}
+    def allowed_scopes(self, node, principal, authn_scopes):
+        return PUBLIC_SCOPES
 
-    def filters(self, node, principal, scopes):
+    def filters(self, node, principal, authn_scopes, scopes):
         queries = []
         id = self._get_id(principal)
-        if not scopes.issubset({"read:metadata", "read:data"}):
+        if not scopes.issubset(PUBLIC_SCOPES):
             return NO_ACCESS
         try:
             response = response_cache[id]

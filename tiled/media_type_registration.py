@@ -197,13 +197,13 @@ class CompressionRegistry:
         return self.dispatch(media_type, encoder)(*args, **kwargs)
 
 
-serialization_registry = SerializationRegistry()
+default_serialization_registry = SerializationRegistry()
 "Global serialization registry. See Registry for usage examples."
 
-deserialization_registry = SerializationRegistry()
+default_deserialization_registry = SerializationRegistry()
 "Global deserialization registry. See Registry for usage examples."
 
-compression_registry = CompressionRegistry()
+default_compression_registry = CompressionRegistry()
 "Global compression registry. See Registry for usage examples."
 
 
@@ -211,7 +211,7 @@ for media_type in [
     "application/json",
     "application/x-msgpack",
 ]:
-    compression_registry.register(
+    default_compression_registry.register(
         media_type,
         "gzip",
         lambda buffer: gzip.GzipFile(mode="wb", fileobj=buffer, compresslevel=9),
@@ -225,7 +225,7 @@ for media_type in [
     "text/plain",
     "text/html",
 ]:
-    compression_registry.register(
+    default_compression_registry.register(
         media_type,
         "gzip",
         # Use a lower compression level. High compression is extremely slow
@@ -270,7 +270,7 @@ if modules_available("zstandard"):
         "text/html",
         "text/plain",
     ]:
-        compression_registry.register(media_type, "zstd", ZstdBuffer)
+        default_compression_registry.register(media_type, "zstd", ZstdBuffer)
 
 if modules_available("lz4"):
     import lz4
@@ -326,7 +326,7 @@ if modules_available("lz4"):
         "text/html",
         "text/plain",
     ]:
-        compression_registry.register(media_type, "lz4", LZ4Buffer)
+        default_compression_registry.register(media_type, "lz4", LZ4Buffer)
 
 if modules_available("blosc2"):
     import blosc2
@@ -355,4 +355,4 @@ if modules_available("blosc2"):
             pass
 
     for media_type in ["application/octet-stream", APACHE_ARROW_FILE_MIME_TYPE]:
-        compression_registry.register(media_type, "blosc2", BloscBuffer)
+        default_compression_registry.register(media_type, "blosc2", BloscBuffer)

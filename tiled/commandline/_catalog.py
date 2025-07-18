@@ -6,7 +6,7 @@ import typer
 
 from ._serve import serve_catalog
 
-catalog_app = typer.Typer()
+catalog_app = typer.Typer(no_args_is_help=True)
 # Support both `tiled serve catalog` and `tiled catalog serve` as synonyms
 # because I cannot decide which is right.
 catalog_app.command("serve")(serve_catalog)
@@ -34,21 +34,19 @@ def init(
     # Using a simple local file as an embedded "database" (SQLite)
     tiled init catalog.db
     tiled init path/to/catalog.db
-    tiled init sqlite+aiosqlite:////path/to/catalog.db
+    tiled init sqlite:////path/to/catalog.db
 
     # Using a client/serve database engine (PostgreSQL)
-    tiled init postgresql+asyncpg://uesrname:password@localhost/database_name:5432
+    tiled init postgresql://username:password@localhost/database_name:5432
     """
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from ..alembic_utils import UninitializedDatabase, check_database, stamp_head
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
-    from ..utils import SCHEME_PATTERN
+    from ..utils import ensure_specified_sql_driver
 
-    if not SCHEME_PATTERN.match(database):
-        # Interpret URI as filepath.
-        database = f"sqlite+aiosqlite:///{database}"
+    database = ensure_specified_sql_driver(database)
 
     async def do_setup():
         engine = create_async_engine(database)
@@ -94,6 +92,9 @@ def upgrade_database(
     from ..alembic_utils import get_current_revision, upgrade
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
+
+    database_uri = ensure_specified_sql_driver(database_uri)
 
     async def do_setup():
         engine = create_async_engine(database_uri)
@@ -127,6 +128,9 @@ def downgrade_database(
     from ..alembic_utils import downgrade, get_current_revision
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import ALL_REVISIONS
+    from ..utils import ensure_specified_sql_driver
+
+    database_uri = ensure_specified_sql_driver(database_uri)
 
     async def do_setup():
         engine = create_async_engine(database_uri)

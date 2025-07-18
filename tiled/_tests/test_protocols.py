@@ -1,16 +1,17 @@
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import dask.dataframe
 import numpy
 import pandas
+import pytest
 import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
-from tiled.access_policies import ALL_ACCESS, ALL_SCOPES
-from tiled.adapters.awkward_directory_container import DirectoryContainer
-from tiled.adapters.protocols import (
+from ..access_policies import ALL_ACCESS
+from ..adapters.awkward_directory_container import DirectoryContainer
+from ..adapters.protocols import (
     AccessPolicy,
     ArrayAdapter,
     AwkwardAdapter,
@@ -18,17 +19,21 @@ from tiled.adapters.protocols import (
     SparseAdapter,
     TableAdapter,
 )
-from tiled.adapters.type_alliases import JSON, Filters, NDSlice, Scopes
-from tiled.server.schemas import Principal, PrincipalType
-from tiled.structures.array import ArrayStructure, BuiltinDtype
-from tiled.structures.awkward import AwkwardStructure
-from tiled.structures.core import Spec, StructureFamily
-from tiled.structures.sparse import COOStructure
-from tiled.structures.table import TableStructure
+from ..ndslice import NDSlice
+from ..scopes import ALL_SCOPES
+from ..server.schemas import Principal, PrincipalType
+from ..storage import Storage
+from ..structures.array import ArrayStructure, BuiltinDtype
+from ..structures.awkward import AwkwardStructure
+from ..structures.core import Spec, StructureFamily
+from ..structures.sparse import COOStructure
+from ..structures.table import TableStructure
+from ..type_aliases import JSON, Filters, Scopes
 
 
 class CustomArrayAdapter:
     structure_family: Literal[StructureFamily.array] = StructureFamily.array
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -36,7 +41,6 @@ class CustomArrayAdapter:
         structure: ArrayStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         self._array = array
         self._structure = structure
@@ -85,8 +89,8 @@ def test_arrayadapter_protocol(mocker: MockFixture) -> None:
 
     array = numpy.random.rand(2, 512, 512)
     metadata: JSON = {"foo": "bar"}
-    anyslice = (1, 1, 1)
-    anyblock = (1, 1, 1)
+    anyslice = NDSlice(1, 1, 1)
+    anyblock = NDSlice(1, 1, 1)
 
     anyarrayadapter = CustomArrayAdapter(array, structure, metadata=metadata)
     assert anyarrayadapter.structure_family == StructureFamily.array
@@ -101,6 +105,7 @@ def test_arrayadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomAwkwardAdapter:
     structure_family: Literal[StructureFamily.awkward] = StructureFamily.awkward
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -108,13 +113,11 @@ class CustomAwkwardAdapter:
         structure: AwkwardStructure,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         self.container = container
         self._metadata = metadata or {}
         self._structure = structure
         self._specs = list(specs or [])
-        self.access_policy = access_policy
 
     def structure(self) -> AwkwardStructure:
         return self._structure
@@ -160,7 +163,7 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
     structure = AwkwardStructure(length=2, form={"a": "b"})
 
     metadata: JSON = {"foo": "bar"}
-    anyslice = (1, 1, 1)
+    anyslice = NDSlice(1, 1, 1)
     container = DirectoryContainer(directory=Path("somedirectory"), form={})
     form_keys = ["a", "b", "c"]
 
@@ -179,6 +182,7 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomSparseAdapter:
     structure_family: Literal[StructureFamily.sparse] = StructureFamily.sparse
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -187,7 +191,6 @@ class CustomSparseAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
         Construct from blocks with coords given in block-local reference frame.
@@ -197,13 +200,11 @@ class CustomSparseAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self.blocks = blocks
         self._metadata = metadata or {}
         self._structure = structure
         self._specs = specs or []
-        self.access_policy = access_policy
 
         all_coords = [[1], [1]]
         all_data = [[1], [1]]
@@ -256,8 +257,8 @@ def test_sparseadapter_protocol(mocker: MockFixture) -> None:
     )
     blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]] = {(1,): (array, (1,))}
     metadata: JSON = {"foo": "bar"}
-    anyslice = (1, 1, 1)
-    anyblock = (1, 1, 1)
+    anyslice = NDSlice(1, 1, 1)
+    anyblock = NDSlice(1, 1, 1)
 
     anysparseadapter = CustomSparseAdapter(blocks, structure, metadata=metadata)
     assert anysparseadapter.structure_family == StructureFamily.sparse
@@ -272,6 +273,7 @@ def test_sparseadapter_protocol(mocker: MockFixture) -> None:
 
 class CustomTableAdapter:
     structure_family: Literal[StructureFamily.table] = StructureFamily.table
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -280,7 +282,6 @@ class CustomTableAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -290,13 +291,11 @@ class CustomTableAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self._metadata = metadata or {}
         self._partitions = list(partitions)
         self._structure = structure
         self._specs = specs or []
-        self.access_policy = access_policy
 
     def structure(self) -> TableStructure:
         return self._structure
@@ -371,7 +370,7 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
     mock_call6.assert_called_once_with("abc")
 
 
-class CustomAccessPolicy:
+class CustomAccessPolicy(AccessPolicy):
     ALL = ALL_ACCESS
 
     def __init__(self, scopes: Optional[Scopes] = None) -> None:
@@ -380,27 +379,41 @@ class CustomAccessPolicy:
     def _get_id(self, principal: Principal) -> None:
         return None
 
-    def allowed_scopes(self, node: BaseAdapter, principal: Principal) -> Scopes:
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_scopes: Scopes,
+    ) -> Scopes:
         allowed = self.scopes
         somemetadata = node.metadata()  # noqa: 841
         return allowed
 
-    def filters(
-        self, node: BaseAdapter, principal: Principal, scopes: Scopes
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_scopes: Scopes,
+        scopes: Scopes,
     ) -> Filters:
         queries: Filters = []
         somespecs = node.specs()  # noqa: 841
         return queries
 
 
-def accesspolicy_protocol_functions(
-    policy: AccessPolicy, node: BaseAdapter, principal: Principal, scopes: Scopes
+async def accesspolicy_protocol_functions(
+    policy: AccessPolicy,
+    node: BaseAdapter,
+    principal: Principal,
+    authn_scopes: Scopes,
+    scopes: Scopes,
 ) -> None:
-    policy.allowed_scopes(node, principal)
-    policy.filters(node, principal, scopes)
+    await policy.allowed_scopes(node, principal, authn_scopes)
+    await policy.filters(node, principal, authn_scopes, scopes)
 
 
-def test_accesspolicy_protocol(mocker: MockFixture) -> None:
+@pytest.mark.asyncio  # type: ignore
+async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     mock_call = mocker.patch.object(CustomAwkwardAdapter, "metadata")
     mock_call2 = mocker.patch.object(CustomAwkwardAdapter, "specs")
 
@@ -413,12 +426,17 @@ def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
+    authn_scopes = {"abc", "baz"}
     scopes = {"abc"}
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
 
-    accesspolicy_protocol_functions(
-        anyaccesspolicy, anyawkwardadapter, principal, scopes
+    await accesspolicy_protocol_functions(
+        anyaccesspolicy,
+        anyawkwardadapter,
+        principal,
+        authn_scopes,
+        scopes,
     )
     mock_call.assert_called_once()
     mock_call2.assert_called_once()

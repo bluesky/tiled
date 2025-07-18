@@ -342,7 +342,7 @@ def gen_tree(tree, nodes=None, last=None):
     "A generator of lines for the tree utility"
 
     # Normally, traversing a Tree will cause the structure clients to be
-    # instanitated which in turn triggers import of the associated libraries like
+    # instantiated which in turn triggers import of the associated libraries like
     # numpy, pandas, and xarray. We want to avoid paying for that, especially
     # when this function is used in a CLI where import overhead can accumulate to
     # about 2 seconds, the bulk of the time. Therefore, we do something a bit
@@ -378,7 +378,7 @@ def tree(tree, max_lines=20):
     ----------
     tree : Tree
     max_lines: int or None, optional
-        By default, output is trucated at 20 lines. ``None`` means "Do not
+        By default, output is truncated at 20 lines. ``None`` means "Do not
         truncate."
 
     Examples
@@ -577,6 +577,11 @@ class Conflicts(Exception):
     pass
 
 
+class BrokenLink(Exception):
+    "Prompts the server to send 410 Gone with message"
+    pass
+
+
 # Arrow obtained an official MIME type 2021-06-23.
 # https://www.iana.org/assignments/media-types/application/vnd.apache.arrow.file
 APACHE_ARROW_FILE_MIME_TYPE = "application/vnd.apache.arrow.file"
@@ -589,7 +594,7 @@ def get_share_tiled_path():
     """
     Walk up until we find share/tiled.
 
-    Because it is outside the pacakge, its location relative to us is up to the
+    Because it is outside the package, its location relative to us is up to the
     package manager. Rather than assuming that it is a specific number of
     directory levels above us, we walk upward until we find it. A file with
     long unique name helps us confirm that we have found the right directory.
@@ -659,6 +664,34 @@ def bytesize_repr(num):
         num /= 1024.0
 
 
+TIME_STRING_PATTERN = re.compile(r"(\d+)(s|m|h|d|y)")
+TIME_STRING_UNITS = {
+    "s": 1,
+    "m": 60,
+    "h": 60 * 60,
+    "d": 60 * 60 * 24,
+    "y": 60 * 60 * 24 * 365,
+}
+
+
+def parse_time_string(s):
+    """
+    Accept strings like '1y', '1d', '24h'; return int seconds.
+
+    Accepted Units:
+    'y' = year
+    'd' = day
+    'h' = hour
+    'm' = minutes
+    's' = seconds
+    """
+    matched = TIME_STRING_PATTERN.match(s)
+    if matched is None:
+        raise ValueError(f"Could not parse {s} as a number and a unit like '5m'")
+    number, unit = matched.groups()
+    return int(number) * TIME_STRING_UNITS[unit]
+
+
 def is_coroutine_callable(call: Callable[..., Any]) -> bool:
     if inspect.isroutine(call):
         return inspect.iscoroutinefunction(call)
@@ -689,13 +722,20 @@ def path_from_uri(uri) -> Path:
     'C:/a/b/c'
     """
     parsed = urlparse(uri)
-    if parsed.scheme != "file":
-        raise ValueError(f"Only 'file' URIs are supported. URI: {uri}")
-    if platform.system() == "Windows":
-        # We slice because we need "C:/..." not "/C:/...".
+    if parsed.scheme == "file":
+        if platform.system() == "Windows":
+            # We slice because we need "C:/..." not "/C:/...".
+            path = Path(parsed.path[1:])
+        else:
+            path = Path(parsed.path)
+    elif parsed.scheme in {"sqlite", "duckdb"}:
+        # The path begins after the third slash.
         path = Path(parsed.path[1:])
     else:
-        path = Path(parsed.path)
+        raise ValueError(
+            "Supported schemes are 'file', 'sqlite', and 'duckdb'. "
+            f"Did not recognize scheme {parsed.scheme!r}"
+        )
     return path
 
 
@@ -719,6 +759,33 @@ def ensure_uri(uri_or_path) -> str:
             mutable[1] = "localhost"
             uri_str = urlunparse(mutable)
     return str(uri_str)
+
+
+SCHEME_TO_SCHEME_PLUS_DRIVER = {
+    "postgresql": "postgresql+asyncpg",
+    "sqlite": "sqlite+aiosqlite",
+}
+
+
+def ensure_specified_sql_driver(uri: str) -> str:
+    """
+    Given a URI without a driver in the scheme, add Tiled's preferred driver.
+
+    If a driver is already specified, the specified one will be used; it
+    will NOT be overridden by this function.
+
+    'postgresql://...' -> 'postgresql+asynpg://...'
+    'sqlite://...' -> 'sqlite+aiosqlite://...'
+    'postgresql+asyncpg://...' -> 'postgresql+asynpg://...'
+    'postgresql+my_custom_driver://...' -> 'postgresql+my_custom_driver://...'
+    '/path/to/file.db' -> 'sqlite+aiosqlite:////path/to/file.db'
+    """
+    if not SCHEME_PATTERN.match(str(uri)):
+        # Interpret URI as filepath.
+        uri = f"sqlite+aiosqlite:///{Path(uri)}"
+    scheme, rest = uri.split(":", 1)
+    new_scheme = SCHEME_TO_SCHEME_PLUS_DRIVER.get(scheme, scheme)
+    return ":".join([new_scheme, rest])
 
 
 class catch_warning_msg(warnings.catch_warnings):

@@ -3,14 +3,13 @@ import ErrorBoundary from "./components/error-boundary";
 import { Outlet } from "react-router-dom";
 import TiledAppBar from "./components/tiled-app-bar";
 import { useEffect, useState } from "react";
-import { fetchSettings } from "./settings"
-import { SettingsContext, emptySettings } from "./context/settings"
+import { fetchSettings } from "./settings";
+import { SettingsContext, emptySettings } from "./context/settings";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
 
 const Browse = lazy(() => import("./routes/browse"));
-
 
 function MainContainer() {
   return (
@@ -20,23 +19,22 @@ function MainContainer() {
         <Outlet />
       </ErrorBoundary>
     </Container>
-  )
+  );
 }
-
 
 // This is set in vite.config.js. It is the base path of the ui.
 const basename = import.meta.env.BASE_URL;
 
 function App() {
-  const [settings, setSettings] = useState(emptySettings)
-  useEffect( () => {
-    const controller = new AbortController()
+  const [settings, setSettings] = useState(emptySettings);
+  useEffect(() => {
+    const controller = new AbortController();
     async function initSettingsContext() {
-      var data = await fetchSettings(controller.signal)
-      setSettings(data)
+      const data = await fetchSettings(controller.signal);
+      setSettings(data);
     }
-    initSettingsContext()
-  } , []);
+    initSettingsContext();
+  }, []);
   return (
     <SettingsContext.Provider value={settings}>
       <BrowserRouter basename={basename}>
@@ -59,7 +57,7 @@ function App() {
         </ErrorBoundary>
       </BrowserRouter>
     </SettingsContext.Provider>
-  )
+  );
 }
 
 export default App;

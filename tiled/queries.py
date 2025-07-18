@@ -374,6 +374,45 @@ class NotIn:
         return cls(key=key, value=json.loads(value))
 
 
+@register(name="like")
+@dataclass
+class Like(NoBool):
+    """
+    Query for an approximate string match.
+
+    This uses the SQL 'LIKE' operator.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    pattern : str
+        e.g. "Ni%"
+
+    Examples
+    --------
+
+    Search for sample starting with "Ni"
+
+    >>> c.search(Like("sample", "Ni%"))
+
+    Search for detector ending with "image"
+
+    >>> c.search(Like("detector", "%image"))
+
+    """
+
+    key: str
+    pattern: str
+
+    def encode(self):
+        return {"key": self.key, "pattern": json.dumps(self.pattern)}
+
+    @classmethod
+    def decode(cls, *, key, pattern):
+        return cls(key=key, pattern=json.loads(pattern))
+
+
 @register(name="specs")
 @dataclass(init=False)
 class SpecsQuery:
@@ -438,6 +477,48 @@ def SpecQuery(spec):
     """
 
     return SpecsQuery([spec])
+
+
+@register(name="access_blob_filter")
+@dataclass
+class AccessBlobFilter:
+    """
+    Perform a query against the access_blob with two conditions.
+    1. Query for a user id (i.e. username) match against the "user" field
+    2. Query for if any tag in a list of tags is present in the "tags" field
+    The values for these conditions are independent.
+
+    Parameters
+    ----------
+    user_id : str
+        e.g. "bill", "amanda"
+    tags : List[JSONSerializable]
+        e.g. ["tag_for_bill", "amanda_only"]
+
+
+    Examples
+    --------
+
+    Search for user "bill", as well as tags in ["tag_for_bill", "useful_data"]
+
+    >>> c.search(AccessBlobFilter("bill", ["tag_for_bill", "useful_data"]))
+    """
+
+    user_id: str
+    tags: List[str]
+
+    def encode(self):
+        return {
+            "user_id": self.user_id,
+            "tags": self.tags,
+        }
+
+    @classmethod
+    def decode(cls, *, user_id, tags):
+        return cls(
+            user_id=user_id,
+            tags=tags,
+        )
 
 
 @register(name="structure_family")

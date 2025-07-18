@@ -112,15 +112,13 @@ const DownloadArray: React.FunctionComponent<DownloadArrayProps> = (props) => {
     // Strip any spaces.
     // The server rejects them as invalid characters, but we will
     // tolerate them as input for readability.
-    setSlice(event.target.value.replaceAll(" ", ""));
+    setSlice(event.target.value.replace(/ /g, ""));
   };
 
   return (
     <Box>
       <Stack spacing={2} direction="column">
-        <Container>
-          Dimensions: {props.structure.shape.join(" × ")}
-        </Container>
+        <Container>Dimensions: {props.structure.shape.join(" × ")}</Container>
         <Stack spacing={1} direction="row">
           <TextField
             label="Slice (Optional)"

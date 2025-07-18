@@ -1,13 +1,13 @@
 import numpy
 
 from tiled.adapters.array import ArrayAdapter
-from tiled.authenticators import Mode, UserSessionState
+from tiled.authenticators import UserSessionState
+from tiled.server.protocols import InternalAuthenticator
 from tiled.structures.core import StructureFamily
 
 
-class Authenticator:
+class Authenticator(InternalAuthenticator):
     "This accepts any password and stashes it in session state as 'token'."
-    mode = Mode.password
 
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         return UserSessionState(username, {"token": password})
@@ -82,10 +82,13 @@ class AuthenticatedAdapter:
     async def keys_range(self, offset, limit):
         url = ...  # based on self._segments
         return await self._client.get_contents(url, token=self._token)
-        return ["a", "b", "c"]
 
     async def items_range(self, offset, limit):
         # Ideally this would be a batched request to the external service.
-        return [
-            (key, self.lookup_adapter([key])) for key in self._keys_range(offset, limit)
-        ]
+        result = []
+        for key in self._keys_range(offset, limit):
+            try:
+                result.append((key, self.lookup_adapter([key])))
+            except KeyError:
+                result.append((key, None))  # for backcompatibility
+        return result

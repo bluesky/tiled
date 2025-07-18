@@ -1,4 +1,5 @@
 import threading
+from urllib.parse import parse_qs, urlparse
 
 import dask
 import dask.array
@@ -64,6 +65,7 @@ class DaskDatasetClient(Container):
             array_structure = array_structures[name]
             shape = array_structure.shape
             spec_names = set(spec.name for spec in array_client.specs)
+
             if optimize_wide_table and (
                 (not shape)  # empty
                 or (
@@ -176,7 +178,11 @@ class _WideTableFetcher:
         content = handle_error(
             self.http_client.get(
                 self.link,
-                params={"format": APACHE_ARROW_FILE_MIME_TYPE, "field": variables},
+                params={
+                    **parse_qs(urlparse(self.link).query),
+                    "format": APACHE_ARROW_FILE_MIME_TYPE,
+                    "field": variables,
+                },
             )
         ).read()
         return deserialize_arrow(content)
@@ -186,7 +192,10 @@ class _WideTableFetcher:
             self.http_client.post(
                 self.link,
                 json=variables,
-                params={"format": APACHE_ARROW_FILE_MIME_TYPE},
+                params={
+                    **parse_qs(urlparse(self.link).query),
+                    "format": APACHE_ARROW_FILE_MIME_TYPE,
+                },
             )
         ).read()
         return deserialize_arrow(content)

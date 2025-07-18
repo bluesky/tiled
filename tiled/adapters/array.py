@@ -1,12 +1,15 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
 import dask.array
+import numpy
+import pandas
 from numpy.typing import NDArray
 
+from ..ndslice import NDSlice
+from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from .protocols import AccessPolicy
-from .type_alliases import JSON, NDSlice
+from ..type_aliases import JSON
 
 
 class ArrayAdapter:
@@ -25,6 +28,7 @@ class ArrayAdapter:
     """
 
     structure_family = StructureFamily.array
+    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -33,7 +37,6 @@ class ArrayAdapter:
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> None:
         """
 
@@ -43,7 +46,6 @@ class ArrayAdapter:
         structure :
         metadata :
         specs :
-        access_policy :
         """
         self._array = array
         self._structure = structure
@@ -60,7 +62,6 @@ class ArrayAdapter:
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "ArrayAdapter":
         """
 
@@ -72,12 +73,22 @@ class ArrayAdapter:
         dims :
         metadata :
         specs :
-        access_policy :
 
         Returns
         -------
 
         """
+        # May be a list of something; convert to array
+        if not hasattr(array, "__array__"):
+            array = numpy.asanyarray(array)
+
+        # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
+        is_likely_string_dtype = isinstance(array.dtype, pandas.StringDtype) or (
+            array.dtype == "object" and array.dtype.fields is None
+        )
+        if is_likely_string_dtype:
+            array = numpy.array([str(x) for x in array])  # becomes "<Un" dtype
+
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims
         )
@@ -86,7 +97,6 @@ class ArrayAdapter:
             structure=structure,
             metadata=metadata,
             specs=specs,
-            access_policy=access_policy,
         )
 
     def __repr__(self) -> str:
@@ -100,35 +110,17 @@ class ArrayAdapter:
 
     @property
     def dims(self) -> Optional[Tuple[str, ...]]:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure.dims
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         return self._metadata
 
     def structure(self) -> ArrayStructure:
-        """
-
-        Returns
-        -------
-
-        """
         return self._structure
 
     def read(
         self,
-        slice: NDSlice = ...,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -140,7 +132,8 @@ class ArrayAdapter:
         -------
 
         """
-        array = self._array[slice]
+        # _array[...] requires an actual tuple, not just a subclass of tuple
+        array = self._array[tuple(slice)] if slice else self._array
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
@@ -148,7 +141,7 @@ class ArrayAdapter:
     def read_block(
         self,
         block: Tuple[int, ...],
-        slice: NDSlice = ...,
+        slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         """
 
@@ -163,10 +156,10 @@ class ArrayAdapter:
         """
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
-        array = self._array[slice_]
+        # _array[...] requires an actual tuple, not just a subclass of tuple
+        array = self._array[tuple(slice_)]
         # Slice within the block.
-        if slice is not None:
-            array = array[slice]
+        array = array[slice] if slice else array
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
@@ -174,7 +167,7 @@ class ArrayAdapter:
 
 def slice_and_shape_from_block_and_chunks(
     block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
-) -> Tuple[NDSlice, Tuple[int, ...]]:
+) -> tuple[NDSlice, NDSlice]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
     Parameters
@@ -193,4 +186,4 @@ def slice_and_shape_from_block_and_chunks(
         dim = c[b]
         slice_.append(slice(start, start + dim))
         shape.append(dim)
-    return tuple(slice_), tuple(shape)
+    return NDSlice(*slice_), NDSlice(*shape)

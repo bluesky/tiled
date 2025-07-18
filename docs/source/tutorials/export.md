@@ -17,7 +17,7 @@ from tiled.client import from_uri
 client = from_uri("http://localhost:8000")
 ```
 
-The Tiled server can encode its structures structures in various formats.
+The Tiled server can encode its structures in various formats.
 These are just a couple of the supported formats:
 
 ```python
@@ -131,7 +131,7 @@ While it is easy to add or change the set exporters, the user does not have
 any options for customizing the output of a given exporter. For example, while
 the CSV export *does* let the user choose which columns to export, it does
 *not* let the user rename the column headings or choose a different value
-separator from the default (`,`). Tiled focuses on getting you the precisely
+separator from the default (`,`). Tiled focuses on getting you the precise
 data you want, not on formatting it "just so". To do more refined export, use
 standard Python tools, as in:
 

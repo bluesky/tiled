@@ -52,7 +52,7 @@ def client(tmpdir_module):
             {
                 "tree": "tiled.catalog:in_memory",
                 "path": "/",
-                "args": {"writable_storage": tmpdir_module},
+                "args": {"writable_storage": str(tmpdir_module)},
             },
         ],
         "specs": [
@@ -109,7 +109,7 @@ def test_unknown_spec_strict(tmpdir):
             {
                 "tree": "tiled.catalog:in_memory",
                 "path": "/",
-                "args": {"writable_storage": tmpdir},
+                "args": {"writable_storage": str(tmpdir)},
             },
         ],
         "specs": [

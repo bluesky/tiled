@@ -10,12 +10,12 @@ from pydantic import ConfigDict, Field, StringConstraints
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
-from ..structures.core import StructureFamily
+from ..structures.array import ArrayStructure
+from ..structures.awkward import AwkwardStructure
+from ..structures.core import STRUCTURE_TYPES, StructureFamily
 from ..structures.data_source import Management
-from .pydantic_array import ArrayStructure
-from .pydantic_awkward import AwkwardStructure
-from .pydantic_sparse import SparseStructure
-from .pydantic_table import TableStructure
+from ..structures.sparse import SparseStructure
+from ..structures.table import TableStructure
 
 if TYPE_CHECKING:
     import tiled.authn_database.orm
@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
+StructureT = TypeVar("StructureT")
+
 
 MAX_ALLOWED_SPECS = 20
 
@@ -65,6 +67,7 @@ class EntryFields(str, enum.Enum):
     specs = "specs"
     data_sources = "data_sources"
     none = ""
+    access_blob = "access_blob"
 
 
 class NodeStructure(pydantic.BaseModel):
@@ -76,7 +79,7 @@ class NodeStructure(pydantic.BaseModel):
 
 class SortingDirection(int, enum.Enum):
     ASCENDING = 1
-    DECENDING = -1
+    DESCENDING = -1
 
 
 class SortingItem(pydantic.BaseModel):
@@ -124,6 +127,7 @@ class Revision(pydantic.BaseModel):
     revision_number: int
     metadata: dict
     specs: Specs
+    access_blob: dict
     time_updated: datetime
 
     @classmethod
@@ -134,22 +138,15 @@ class Revision(pydantic.BaseModel):
             revision_number=orm.revision_number,
             metadata=orm.metadata_,
             specs=orm.specs,
+            access_blob=orm.access_blob,
             time_updated=orm.time_updated,
         )
 
 
-class DataSource(pydantic.BaseModel):
+class DataSource(pydantic.BaseModel, Generic[StructureT]):
     id: Optional[int] = None
-    structure_family: Optional[StructureFamily] = None
-    structure: Optional[
-        Union[
-            ArrayStructure,
-            AwkwardStructure,
-            SparseStructure,
-            NodeStructure,
-            TableStructure,
-        ]
-    ] = None
+    structure_family: StructureFamily
+    structure: Optional[StructureT]
     mimetype: Optional[str] = None
     parameters: dict = {}
     assets: List[Asset] = []
@@ -159,10 +156,15 @@ class DataSource(pydantic.BaseModel):
 
     @classmethod
     def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
+        if hasattr(orm.structure, "structure"):
+            structure_cls = STRUCTURE_TYPES[orm.structure_family]
+            structure = structure_cls.from_json(orm.structure.structure)
+        else:
+            structure = None
         return cls(
             id=orm.id,
             structure_family=orm.structure_family,
-            structure=getattr(orm.structure, "structure", None),
+            structure=structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
             assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
@@ -184,6 +186,7 @@ class NodeAttributes(pydantic.BaseModel):
             TableStructure,
         ]
     ] = None
+    access_blob: Optional[Dict] = None  # free-form, access_policy-specified dict
 
     sorting: Optional[List[SortingItem]] = None
     data_sources: Optional[List[DataSource]] = None
@@ -233,6 +236,7 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
+    StructureFamily.composite: ContainerLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
@@ -270,43 +274,6 @@ class RefreshToken(pydantic.BaseModel):
 class DeviceCode(pydantic.BaseModel):
     device_code: str
     grant_type: str
-
-
-class AuthenticationMode(str, enum.Enum):
-    password = "password"
-    external = "external"
-
-
-class AboutAuthenticationProvider(pydantic.BaseModel):
-    provider: str
-    mode: AuthenticationMode
-    links: Dict[str, str]
-    confirmation_message: Optional[str] = None
-
-
-class AboutAuthenticationLinks(pydantic.BaseModel):
-    whoami: str
-    apikey: str
-    refresh_session: str
-    revoke_session: str
-    logout: str
-
-
-class AboutAuthentication(pydantic.BaseModel):
-    required: bool
-    providers: List[AboutAuthenticationProvider]
-    links: Optional[AboutAuthenticationLinks] = None
-
-
-class About(pydantic.BaseModel):
-    api_version: int
-    library_version: str
-    formats: Dict[str, List[str]]
-    aliases: Dict[str, Dict[str, List[str]]]
-    queries: List[str]
-    authentication: AboutAuthentication
-    links: Dict[str, str]
-    meta: Dict
 
 
 class PrincipalType(str, enum.Enum):
@@ -387,11 +354,15 @@ class Session(pydantic.BaseModel):
     uuid: uuid.UUID
     expiration_time: datetime
     revoked: bool
+    state: Optional[Dict[Any, Any]]
 
     @classmethod
     def from_orm(cls, orm: tiled.authn_database.orm.Session) -> Session:
         return cls(
-            uuid=orm.uuid, expiration_time=orm.expiration_time, revoked=orm.revoked
+            uuid=orm.uuid,
+            expiration_time=orm.expiration_time,
+            revoked=orm.revoked,
+            state=orm.state,
         )
 
 
@@ -444,6 +415,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     metadata: Dict = {}
     data_sources: List[DataSource] = []
     specs: Specs = []
+    access_blob: Optional[Dict] = {}
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -456,6 +428,21 @@ class PostMetadataRequest(pydantic.BaseModel):
                 raise ValueError
         return v
 
+    @pydantic.model_validator(mode="after")
+    def narrow_structure_type(self):
+        "Convert the structure on each data_source from a dict to the appropriate pydantic model."
+        for data_source in self.data_sources:
+            if self.structure_family not in {
+                StructureFamily.container,
+                StructureFamily.composite,
+            }:
+                structure_cls = STRUCTURE_TYPES[self.structure_family]
+                if data_source.structure is not None:
+                    data_source.structure = structure_cls.from_json(
+                        data_source.structure
+                    )
+        return self
+
 
 class PutDataSourceRequest(pydantic.BaseModel):
     data_source: DataSource
@@ -466,6 +453,7 @@ class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     links: Union[ArrayLinks, DataFrameLinks, SparseLinks]
     metadata: Dict
     data_sources: List[DataSource]
+    access_blob: Dict
 
 
 class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -474,6 +462,7 @@ class PutMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     # May be None if not altered
     metadata: Optional[Dict] = None
     data_sources: Optional[List[DataSource]] = None
+    access_blob: Optional[Dict] = None
 
 
 class DistinctValueInfo(pydantic.BaseModel):
@@ -491,6 +480,7 @@ class PutMetadataRequest(pydantic.BaseModel):
     # These fields are optional because None means "no changes; do not update".
     metadata: Optional[Dict] = None
     specs: Optional[Specs] = None
+    access_blob: Optional[Dict] = None
 
     # Wait for fix https://github.com/pydantic/pydantic/issues/3957
     # to do this with `unique_items` parameters to `pydantic.constr`.
@@ -540,6 +530,11 @@ class PatchMetadataRequest(HyphenizedBaseModel):
         union_mode="left_to_right"
     )
 
+    # These fields are optional because None means "no changes; do not update".
+    # Dict for merge-patch:
+    # Define an alias to override parent class alias generator
+    access_blob: Optional[Union[List[JSONPatchAny], Dict]] = Field(alias="access_blob")
+
     @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
         if v is None:
@@ -565,6 +560,7 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     # May be None if not altered
     metadata: Optional[Dict]
     data_sources: Optional[List[DataSource]]
+    access_blob: Optional[Dict]
 
 
 NodeStructure.model_rebuild()

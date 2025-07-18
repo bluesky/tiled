@@ -41,7 +41,7 @@ is required to view or edit the dashboard. Do not use it "in production", or
 anyone will be able to view (or vandalize) your dashboard.
 
 Also, the example Prometheus configuration in
-`montioring_example/prometheus/prometheus.yml` contains a dummy credential
+`monitoring_example/prometheus/prometheus.yml` contains a dummy credential
 (`secret`). To run the example, it must match the secret set by
 `TILED_SINGLE_USER_API_KEY`.
 

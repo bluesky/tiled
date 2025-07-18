@@ -49,7 +49,7 @@ $ http :8000/api/v1/ | jq .authentication
   "providers": [
     {
       "provider": "toy",
-      "mode": "password",
+      "mode": "internal",
       "links": {
         "auth_endpoint": "http://localhost:8000/api/v1/auth/provider/toy/token"
       },
@@ -242,7 +242,7 @@ authentication:
         - "SECRET"
 ```
 
-or by setting the ``TILED_SERVER_SECRET_KEYS``.
+or by setting the ``TILED_SECRET_KEYS`` environment variable.
 
 If you prefer, you can extract the keys from the environment like:
 
@@ -261,10 +261,10 @@ authentication:
         - "OLD_SECRET"
 ```
 
-or set ``TILED_SERVER_SECRET_KEYS`` to ``;``-separated values, as in
+or set ``TILED_SECRET_KEYS`` as a json list, e.g.
 
 ```
-TILED_SERVER_SECRET_KEYS=NEW_SECRET;OLD_SECRET
+TILED_SECRET_KEYS='["NEW_SECRET", "OLD_SECRET"]'
 ```
 
 The first secret value is always used to *encode* new tokens, but all values are

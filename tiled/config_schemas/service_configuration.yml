@@ -73,34 +73,6 @@ properties:
               args:
                 uri: "catalog.db"
             ```
-        access_control:
-          description: |
-            AccessPolicy object encoding rules for which users can see which entries.
-            If this is set (not null) then an authenticator must also be set.
-
-            Example:
-
-            ```yaml
-            access_control:
-              access_policy: "tiled.adapters.mapping:SimpleAccessPolicy"
-              args:
-                access_lists:
-                  alice: ["A", "B"]
-                  bob: ["C"]
-                  cara: "tiled.adapters.mapping:SimpleAccessPolicy.ALL"
-            ```
-
-          type: [object, "null"]
-          additionalProperties: false
-          required:
-            - access_policy
-            - args
-          properties:
-            args:
-              type: object
-              additionalProperties: true
-            access_policy:
-              type: string
   media_types:
     type: object
     additionalProperties: true
@@ -300,7 +272,7 @@ properties:
           used without authentication providers, no database is used.)
 
           If Tiled is configured with authentication providers above but a database
-          URI is not specified, `sqlite+aiosqlite:///./tiled.sqlite` (i.e. a SQLite database in
+          URI is not specified, `sqlite:///./tiled.sqlite` (i.e. a SQLite database in
           the current working directory) will be used.
 
           Tiled officially supports PostgreSQL and SQLite, but any database engine
@@ -337,12 +309,12 @@ properties:
 
           ```yaml
           access_control:
-            access_policy: "tiled.adapters.mapping:SimpleAccessPolicy"
+            access_policy: "tiled.access_policies:SimpleAccessPolicy"
             args:
               access_lists:
                 alice: ["A", "B"]
                 bob: ["C"]
-                cara: "tiled.adapters.mapping:SimpleAccessPolicy.ALL"
+                cara: "tiled.access_policies:ALL_ACCESS"
           ```
       args:
         type: object

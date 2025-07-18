@@ -13,14 +13,14 @@ interface NodeContentsProps {
 }
 
 const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
-  const settings = useContext(SettingsContext)
+  const settings = useContext(SettingsContext);
   const [items, setItems] = useState<
     components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
   >([]);
   useEffect(() => {
     const controller = new AbortController();
-    var selectMetadata: string | null;
-    var fields: string[];
+    let selectMetadata: string | null;
+    let fields: string[];
     if (props.columns.length === 0) {
       // No configuration on which columns to show. Fetch only the ID.
       fields = [];
@@ -37,7 +37,7 @@ const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
         "}";
     }
     async function loadData() {
-      var data = await search(
+      const data = await search(
         settings.api_url,
         props.segments,
         controller.signal,

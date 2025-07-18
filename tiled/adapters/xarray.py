@@ -1,6 +1,5 @@
-import collections.abc
 import itertools
-import sys
+from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional
 
 import xarray
@@ -8,7 +7,6 @@ import xarray
 from ..structures.core import Spec
 from .array import ArrayAdapter
 from .mapping import MapAdapter
-from .protocols import AccessPolicy
 
 
 class DatasetAdapter(MapAdapter):
@@ -22,7 +20,6 @@ class DatasetAdapter(MapAdapter):
         dataset: Any,
         *,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
     ) -> "DatasetAdapter":
         """
 
@@ -30,7 +27,6 @@ class DatasetAdapter(MapAdapter):
         ----------
         dataset :
         specs :
-        access_policy :
 
         Returns
         -------
@@ -44,7 +40,6 @@ class DatasetAdapter(MapAdapter):
             mapping,
             metadata={"attrs": dataset.attrs},
             specs=specs,
-            access_policy=access_policy,
         )
 
     def __init__(
@@ -52,7 +47,6 @@ class DatasetAdapter(MapAdapter):
         mapping: Any,
         *args: Any,
         specs: Optional[List[Spec]] = None,
-        access_policy: Optional[AccessPolicy] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -62,16 +56,13 @@ class DatasetAdapter(MapAdapter):
         mapping :
         args :
         specs :
-        access_policy :
         kwargs :
         """
         if isinstance(mapping, xarray.Dataset):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
             )
-        super().__init__(
-            mapping, *args, specs=specs, access_policy=access_policy, **kwargs
-        )
+        super().__init__(mapping, *args, specs=specs, **kwargs)
 
     def inlined_contents_enabled(self, depth: int) -> bool:
         """
@@ -90,17 +81,7 @@ class DatasetAdapter(MapAdapter):
         return True
 
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping
-
-    MappingType = Mapping
-else:
-    import collections
-
-    MappingType = collections.abc.Mapping
-
-
-class _DatasetMap(MappingType[str, Any]):
+class _DatasetMap(Mapping[str, Any]):
     def __init__(self, dataset: Any) -> None:
         """
 

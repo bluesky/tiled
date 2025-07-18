@@ -5,9 +5,12 @@ from typing import List, Optional
 
 import typer
 
-serve_app = typer.Typer()
+from tiled.server.settings import get_settings
+
+serve_app = typer.Typer(no_args_is_help=True)
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
+DUCKDB_TABULAR_DATA_FILENAME = "data.duckdb"
 DATA_SUBDIRECTORY = "data"
 
 
@@ -35,7 +38,7 @@ def serve_directory(
             "this option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -54,7 +57,7 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
-    ext: List[str] = typer.Option(
+    ext: Optional[List[str]] = typer.Option(
         None,
         "--ext",
         help=(
@@ -63,7 +66,7 @@ def serve_directory(
             "extension."
         ),
     ),
-    mimetype_detection_hook: str = typer.Option(
+    mimetype_detection_hook: Optional[str] = typer.Option(
         None,
         "--mimetype-hook",
         help=(
@@ -72,7 +75,7 @@ def serve_directory(
             "Specify here as 'package.module:function'"
         ),
     ),
-    adapters: List[str] = typer.Option(
+    adapters: Optional[List[str]] = typer.Option(
         None,
         "--adapter",
         help=(
@@ -80,7 +83,7 @@ def serve_directory(
             "Specify here as 'mimetype=package.module:function'"
         ),
     ),
-    walkers: List[str] = typer.Option(
+    walkers: Optional[List[str]] = typer.Option(
         None,
         "--walker",
         help=(
@@ -115,7 +118,7 @@ def serve_directory(
         f"Creating catalog database at {temp_directory / SQLITE_CATALOG_FILENAME}",
         err=True,
     )
-    database = f"sqlite+aiosqlite:///{Path(temp_directory, SQLITE_CATALOG_FILENAME)}"
+    database = f"sqlite:///{Path(temp_directory, SQLITE_CATALOG_FILENAME)}"
 
     # Because this is a tempfile we know this is a fresh database and we do not
     # need to check its current state.
@@ -129,13 +132,15 @@ def serve_directory(
     from ..alembic_utils import stamp_head
     from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
     from ..catalog.core import initialize_database
+    from ..utils import ensure_specified_sql_driver
 
+    database = ensure_specified_sql_driver(database)
     engine = create_async_engine(database)
     asyncio.run(initialize_database(engine))
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
     from ..catalog import from_uri as catalog_from_uri
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
 
     server_settings = {}
     if keep_ext:
@@ -172,11 +177,15 @@ def serve_directory(
         mimetype, obj_ref = match.groups()
         adapters_by_mimetype[mimetype] = obj_ref
     catalog_adapter = catalog_from_uri(
-        database,
+        ensure_specified_sql_driver(database),
         readable_storage=[directory],
         adapters_by_mimetype=adapters_by_mimetype,
     )
     if verbose:
+        from tiled.catalog.adapter import logger as catalog_logger
+
+        catalog_logger.addHandler(StreamHandler())
+        catalog_logger.setLevel("INFO")
         register_logger.addHandler(StreamHandler())
         register_logger.setLevel("INFO")
     # Set the API key manually here, rather than letting the server do it,
@@ -185,9 +194,7 @@ def serve_directory(
     if api_key is None:
         api_key = os.getenv("TILED_SINGLE_USER_API_KEY")
         if api_key is None:
-            import secrets
-
-            api_key = secrets.token_hex(32)
+            api_key = get_settings().single_user_api_key
             generated = True
 
     web_app = build_app(
@@ -205,7 +212,7 @@ def serve_directory(
 
     from ..client import from_uri as client_from_uri
 
-    print_admin_api_key_if_generated(web_app, host=host, port=port, force=generated)
+    print_server_info(web_app, host=host, port=port, include_api_key=generated)
     log_config = _setup_log_config(log_config, log_timestamps)
     config = uvicorn.Config(web_app, host=host, port=port, log_config=log_config)
     server = uvicorn.Server(config)
@@ -280,20 +287,20 @@ def serve_directory(
 
 
 def serve_catalog(
-    database: str = typer.Argument(
+    database: Optional[str] = typer.Argument(
         None, help="A filepath or database URI, e.g. 'catalog.db'"
     ),
-    read: List[str] = typer.Option(
+    read: Optional[List[str]] = typer.Option(
         None,
         "--read",
         "-r",
         help="Locations that the server may read from",
     ),
-    write: str = typer.Option(
+    write: Optional[List[str]] = typer.Option(
         None,
         "--write",
         "-w",
-        help="Location that the server may write to",
+        help="Locations that the server may write to",
     ),
     temp: bool = typer.Option(
         False,
@@ -314,7 +321,7 @@ def serve_catalog(
             "this option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -344,17 +351,24 @@ def serve_catalog(
     log_timestamps: bool = typer.Option(
         False, help="Include timestamps in log output."
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=("Log details of catalog creation."),
+    ),
 ):
     "Serve a catalog."
     import urllib.parse
 
     from ..catalog import from_uri
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
 
     parsed_database = urllib.parse.urlparse(database)
     if parsed_database.scheme in ("", "file"):
-        database = f"sqlite+aiosqlite:///{parsed_database.path}"
+        database = f"sqlite:///{parsed_database.path}"
 
+    write = write or []
     if temp:
         if database is not None:
             typer.echo(
@@ -366,16 +380,12 @@ def serve_catalog(
         import tempfile
 
         directory = Path(tempfile.TemporaryDirectory().name)
+        typer.echo(
+            f"Initializing temporary storage in {directory}",
+            err=True,
+        )
         directory.mkdir()
-        typer.echo(
-            f"Creating catalog database at {directory / SQLITE_CATALOG_FILENAME}",
-            err=True,
-        )
-        typer.echo(
-            f"Creating writable catalog data directory at {directory / DATA_SUBDIRECTORY}",
-            err=True,
-        )
-        database = f"sqlite+aiosqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
+        database = f"sqlite:///{Path(directory, SQLITE_CATALOG_FILENAME)}"
 
         # Because this is a tempfile we know this is a fresh database and we do not
         # need to check its current state.
@@ -389,14 +399,33 @@ def serve_catalog(
         from ..alembic_utils import stamp_head
         from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
         from ..catalog.core import initialize_database
+        from ..utils import ensure_specified_sql_driver
 
+        database = ensure_specified_sql_driver(database)
+        typer.echo(
+            f"  catalog database:          {directory / SQLITE_CATALOG_FILENAME}",
+            err=True,
+        )
         engine = create_async_engine(database)
         asyncio.run(initialize_database(engine))
         stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
-        if write is None:
-            write = directory / DATA_SUBDIRECTORY
-            write.mkdir()
+        if not write:
+            typer.echo(
+                f"  writable file storage:     {directory / DATA_SUBDIRECTORY}",
+                err=True,
+            )
+            writable_dir = directory / DATA_SUBDIRECTORY
+            writable_dir.mkdir()
+            write.append(writable_dir)
+            typer.echo(
+                f"  writable tabular storage:  {directory / DUCKDB_TABULAR_DATA_FILENAME}",
+                err=True,
+            )
+            tabular_data_database = (
+                f"duckdb:///{Path(directory, DUCKDB_TABULAR_DATA_FILENAME)}"
+            )
+            write.append(tabular_data_database)
         # TODO Hook into server lifecycle hooks to delete this at shutdown.
     elif database is None:
         typer.echo(
@@ -416,13 +445,21 @@ or use an existing one:
             err=True,
         )
         raise typer.Abort()
+    elif verbose:
+        from logging import StreamHandler
 
-    if write is None:
+        from tiled.catalog.adapter import logger as catalog_logger
+
+        catalog_logger.addHandler(StreamHandler())
+        catalog_logger.setLevel("INFO")
+
+    if not write:
         typer.echo(
             "This catalog will be served as read-only. "
             "To make it writable, specify a writable directory with --write.",
             err=True,
         )
+
     server_settings = {}
     tree = from_uri(
         database,
@@ -439,7 +476,7 @@ or use an existing one:
         server_settings,
         scalable=scalable,
     )
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+    print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)
 
     import uvicorn
 
@@ -464,7 +501,7 @@ def serve_pyobject(
             "option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -496,7 +533,7 @@ def serve_pyobject(
     ),
 ):
     "Serve a Tree instance from a Python module."
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
     from ..utils import import_object
 
     tree = import_object(object_path)
@@ -510,7 +547,7 @@ def serve_pyobject(
         server_settings,
         scalable=scalable,
     )
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+    print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)
 
     import uvicorn
 
@@ -531,13 +568,13 @@ def serve_demo(
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
 ):
     "Start a public server with example data."
-    from ..server.app import build_app, print_admin_api_key_if_generated
+    from ..server.app import build_app, print_server_info
     from ..utils import import_object
 
     EXAMPLE = "tiled.examples.generated:tree"
     tree = import_object(EXAMPLE)
     web_app = build_app(tree, {"allow_anonymous_access": True}, {})
-    print_admin_api_key_if_generated(web_app, host=host, port=port)
+    print_server_info(web_app, host=host, port=port, include_api_key=True)
 
     import uvicorn
 
@@ -546,7 +583,7 @@ def serve_demo(
 
 @serve_app.command("config")
 def serve_config(
-    config_path: Path = typer.Argument(
+    config_path: Optional[Path] = typer.Argument(
         None,
         help=(
             "Path to a config file or directory of config files. "
@@ -563,7 +600,7 @@ def serve_config(
             "option selected."
         ),
     ),
-    api_key: str = typer.Option(
+    api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
         help=(
@@ -571,7 +608,7 @@ def serve_config(
             "By default, a random key is generated at startup and printed."
         ),
     ),
-    host: str = typer.Option(
+    host: Optional[str] = typer.Option(
         None,
         help=(
             "Bind socket to this host. Use `--host 0.0.0.0` to make the application "
@@ -579,7 +616,7 @@ def serve_config(
             "example: --host `'::'`. Uses value in config by default."
         ),
     ),
-    port: int = typer.Option(
+    port: Optional[int] = typer.Option(
         None, help="Bind to a socket with this port. Uses value in config by default."
     ),
     scalable: bool = typer.Option(
@@ -621,17 +658,15 @@ def serve_config(
 
     # Delay this import so that we can fail faster if config-parsing fails above.
 
-    from ..server.app import (
-        build_app_from_config,
-        logger,
-        print_admin_api_key_if_generated,
-    )
+    from ..server.app import build_app_from_config, logger, print_server_info
 
     # Extract config for uvicorn.
     uvicorn_kwargs = parsed_config.pop("uvicorn", {})
     # If --host is given, it overrides host in config. Same for --port and --log-config.
     uvicorn_kwargs["host"] = host or uvicorn_kwargs.get("host", "127.0.0.1")
-    uvicorn_kwargs["port"] = port or uvicorn_kwargs.get("port", 8000)
+    if port is None:
+        port = uvicorn_kwargs.get("port", 8000)
+    uvicorn_kwargs["port"] = port
     uvicorn_kwargs["log_config"] = _setup_log_config(
         log_config or uvicorn_kwargs.get("log_config"),
         log_timestamps,
@@ -646,8 +681,11 @@ def serve_config(
     web_app = build_app_from_config(
         parsed_config, source_filepath=config_path, scalable=scalable
     )
-    print_admin_api_key_if_generated(
-        web_app, host=uvicorn_kwargs["host"], port=uvicorn_kwargs["port"]
+    print_server_info(
+        web_app,
+        host=uvicorn_kwargs["host"],
+        port=uvicorn_kwargs["port"],
+        include_api_key=api_key is None,
     )
 
     # Likewise, delay this import.

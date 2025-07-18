@@ -6,14 +6,17 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
+from typing import TYPE_CHECKING, Any, Optional, Union
+from urllib.parse import parse_qs, urlparse
 
 import entrypoints
 import httpx
+import orjson
 
 from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
-from ..query_registration import query_registry
+from ..query_registration import default_query_registry
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
@@ -24,7 +27,12 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
+    retry_context,
 )
+
+if TYPE_CHECKING:
+    import pandas
+    import pyarrow
 
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -172,17 +180,21 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             if now < deadline:
                 # Used the cached value and do not make any request.
                 return length
-        content = handle_error(
-            self.context.http_client.get(
-                self.item["links"]["search"],
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    "fields": "",
-                    **self._queries_as_params,
-                    **self._sorting_params,
-                },
-            )
-        ).json()
+        link = self.item["links"]["search"]
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "fields": "",
+                            **self._queries_as_params,
+                            **self._sorting_params,
+                        },
+                    )
+                ).json()
         length = content["meta"]["count"]
         self._cached_len = (length, now + LENGTH_CACHE_TTL)
         return length
@@ -206,17 +218,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             return (yield from contents)
         next_page_url = self.item["links"]["search"]
         while next_page_url is not None:
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "fields": "",
-                        **self._queries_as_params,
-                        **self._sorting_params,
-                    },
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                "fields": "",
+                                **self._queries_as_params,
+                                **self._sorting_params,
+                            },
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -246,7 +261,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             keys = (keys,)
         for key in keys:
             if not isinstance(key, str):
-                raise TypeError("Containers can only be indexed strings")
+                raise TypeError("Containers can only be indexed by strings")
+        keys = tuple("/".join(keys).strip("/").split("/"))  # Remove any slashes
         if self._queries:
             # Lookup this key *within the search results* of this Node.
             key, *tail = keys
@@ -258,13 +274,16 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             }
             if self._include_data_sources:
                 params["include_data_sources"] = True
-            content = handle_error(
-                self.context.http_client.get(
-                    self.item["links"]["search"],
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params=params,
-                )
-            ).json()
+            link = self.item["links"]["search"]
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            link,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={**parse_qs(urlparse(link).query), **params},
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
@@ -274,7 +293,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 raise KeyError(key)
             assert (
                 len(data) == 1
-            ), "The key lookup query must never result more than one result."
+            ), "The key lookup query must never return more than one result."
             (item,) = data
             result = client_for_item(
                 self.context,
@@ -301,24 +320,39 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # intermediate parents.
             for i, key in enumerate(keys):
                 item = (self.item["attributes"]["structure"]["contents"] or {}).get(key)
-                if (item is None) or _ignore_inlined_contents:
+                if item is not None and not _ignore_inlined_contents:
+                    # The item was inlined, and we should return it as is
+                    result = client_for_item(
+                        self.context,
+                        self.structure_clients,
+                        item,
+                        include_data_sources=self._include_data_sources,
+                    )
+                    return (
+                        result[keys[i + 1 :]] if keys[i + 1 :] else result  # noqa: E203
+                    )
+                else:
                     # The item was not inlined, either because nothing was inlined
                     # or because it was added after we fetched the inlined contents.
                     # Make a request for it.
                     try:
-                        self_link = self.item["links"]["self"]
-                        if self_link.endswith("/"):
-                            self_link = self_link[:-1]
+                        self_link = self.item["links"]["self"].rstrip("/")
                         params = {}
                         if self._include_data_sources:
                             params["include_data_sources"] = True
-                        content = handle_error(
-                            self.context.http_client.get(
-                                self_link + "".join(f"/{key}" for key in keys[i:]),
-                                headers={"Accept": MSGPACK_MIME_TYPE},
-                                params=params,
-                            )
-                        ).json()
+                        link = self_link + "".join(f"/{key}" for key in keys[i:])
+                        for attempt in retry_context():
+                            with attempt:
+                                content = handle_error(
+                                    self.context.http_client.get(
+                                        link,
+                                        headers={"Accept": MSGPACK_MIME_TYPE},
+                                        params={
+                                            **parse_qs(urlparse(link).query),
+                                            **params,
+                                        },
+                                    )
+                                ).json()
                     except ClientError as err:
                         if err.response.status_code == httpx.codes.NOT_FOUND:
                             # If this is a scalar lookup, raise KeyError("X") not KeyError(("X",)).
@@ -328,6 +362,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             raise KeyError(err_arg)
                         raise
                     item = content["data"]
+
+                    # Tables that belong to composite nodes cannot be addressed directly
+                    if (
+                        item["attributes"]["structure_family"] == StructureFamily.table
+                    ) and (
+                        "flattened" in (s["name"] for s in item["attributes"]["specs"])
+                    ):
+                        raise KeyError(
+                            f"Attempting to access a table in a composite container; use .parts['{keys[-1]}'] instead."  # noqa
+                        )
+
                     break
             result = client_for_item(
                 self.context,
@@ -339,11 +384,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     def delete(self, key):
         self._cached_len = None
-        handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
+        for attempt in retry_context():
+            with attempt:
+                handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
 
     # The following two methods are used by keys(), values(), items().
 
-    def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _keys_slice(
+        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+    ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
@@ -365,30 +414,37 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         assert start >= 0
         assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
+        if page_size is not None:
+            next_page_url += f"&page[limit]={page_size}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params={
-                        "fields": "",
-                        **self._queries_as_params,
-                        **sorting_params,
-                    },
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params={
+                                **parse_qs(urlparse(next_page_url).query),
+                                "fields": "",
+                                **self._queries_as_params,
+                                **sorting_params,
+                            },
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
             )
             for item in content["data"]:
-                if stop is not None and next(item_counter) == stop:
-                    return
                 yield item["id"]
+                if stop is not None and next(item_counter) == stop - 1:
+                    return
             next_page_url = content["links"]["next"]
 
-    def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
+    def _items_slice(
+        self, start, stop, direction, page_size=None, *, _ignore_inlined_contents=False
+    ):
         # If the contents of this node was provided in-line, and we don't need
         # to apply any filtering or sorting, we can slice the in-lined data
         # without fetching anything from the server.
@@ -417,29 +473,31 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         assert start >= 0
         assert (stop is None) or (stop >= 0)
         next_page_url = f"{self.item['links']['search']}?page[offset]={start}"
+        if page_size is not None:
+            next_page_url += f"&page[limit]={page_size}"
         item_counter = itertools.count(start)
         while next_page_url is not None:
             params = {
+                **parse_qs(urlparse(next_page_url).query),
                 **self._queries_as_params,
                 **sorting_params,
             }
             if self._include_data_sources:
                 params["include_data_sources"] = True
-            content = handle_error(
-                self.context.http_client.get(
-                    next_page_url,
-                    headers={"Accept": MSGPACK_MIME_TYPE},
-                    params=params,
-                )
-            ).json()
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            next_page_url,
+                            headers={"Accept": MSGPACK_MIME_TYPE},
+                            params=params,
+                        )
+                    ).json()
             self._cached_len = (
                 content["meta"]["count"],
                 time.monotonic() + LENGTH_CACHE_TTL,
             )
-
             for item in content["data"]:
-                if stop is not None and next(item_counter) == stop:
-                    return
                 key = item["id"]
                 yield key, client_for_item(
                     self.context,
@@ -447,6 +505,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     item,
                     include_data_sources=self._include_data_sources,
                 )
+                if stop is not None and next(item_counter) == stop - 1:
+                    return
             next_page_url = content["links"]["next"]
 
     def keys(self):
@@ -490,19 +550,22 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
 
         link = self.item["links"]["self"].replace("/metadata", "/distinct", 1)
-        distinct = handle_error(
-            self.context.http_client.get(
-                link,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                params={
-                    "metadata": metadata_keys,
-                    "structure_families": structure_families,
-                    "specs": specs,
-                    "counts": counts,
-                    **self._queries_as_params,
-                },
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                distinct = handle_error(
+                    self.context.http_client.get(
+                        link,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        params={
+                            **parse_qs(urlparse(link).query),
+                            "metadata": metadata_keys,
+                            "structure_families": structure_families,
+                            "specs": specs,
+                            "counts": counts,
+                            **self._queries_as_params,
+                        },
+                    )
+                ).json()
         return distinct
 
     def sort(self, *sorting):
@@ -566,7 +629,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         try:
             if len(self) > MAX_ENTRIES_SUPPORTED:
                 MSG = (
-                    "Tab-completition is not supported on this particular Node "
+                    "Tab-completion is not supported on this particular Node "
                     "because it has a large number of entries."
                 )
                 warnings.warn(MSG)
@@ -585,6 +648,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
     ):
         """
         Create a new item within this Node.
@@ -599,6 +663,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         self._cached_len = None
         metadata = metadata or {}
+        access_blob = {"tags": access_tags} if access_tags is not None else {}
         specs = specs or []
         normalized_specs = []
         for spec in specs:
@@ -612,6 +677,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalized_specs,
                 "data_sources": [asdict(data_source) for data_source in data_sources],
+                "access_blob": access_blob,
             }
         }
         body = dict(item["attributes"])
@@ -624,15 +690,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             endpoint = self.uri
 
-        document = handle_error(
-            self.context.http_client.post(
-                endpoint,
-                headers={"Accept": MSGPACK_MIME_TYPE},
-                content=safe_json_dump(body),
-            )
-        ).json()
+        for attempt in retry_context():
+            with attempt:
+                document = handle_error(
+                    self.context.http_client.post(
+                        endpoint,
+                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        content=safe_json_dump(body),
+                    )
+                ).json()
 
-        if structure_family == StructureFamily.container:
+        if structure_family in {StructureFamily.container, StructureFamily.composite}:
             structure = {"contents": None, "count": None}
         else:
             # Only containers can have multiple data_sources right now.
@@ -640,14 +708,32 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             structure = data_source.structure
         item["attributes"]["structure"] = structure
 
-        # if server returned modified metadata update the local copy
+        # If server returned modified metadata update the local copy.
+        # Otherwise, round-trip it through a JSON serializer locally
+        # to ensure that any special types (e.g. datetimes, numpy arrays)
+        # are normalized to natively JSON serializable types.
         if "metadata" in document:
             item["attributes"]["metadata"] = document.pop("metadata")
+        else:
+            item["attributes"]["metadata"] = orjson.loads(
+                safe_json_dump(item["attributes"]["metadata"])
+            )
+
         # Ditto for structure
         if "structure" in document:
             item["attributes"]["structure"] = STRUCTURE_TYPES[structure_family](
                 document.pop("structure")
             )
+
+        # And for data sources
+        if "data_sources" in document:
+            item["attributes"]["data_sources"] = [
+                ds for ds in document.pop("data_sources")
+            ]
+
+        # And for access_blob
+        if "access_blob" in document:
+            item["attributes"]["access_blob"] = document.pop("access_blob")
 
         # Merge in "id" and "links" returned by the server.
         item.update(document)
@@ -655,9 +741,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Ensure this is a dataclass, not a dict.
         # When we apply type hints and mypy to the client it should be possible
         # to dispense with this.
-        if (structure_family != StructureFamily.container) and isinstance(
-            structure, dict
-        ):
+        if (
+            structure_family
+            not in {StructureFamily.container, StructureFamily.composite}
+        ) and isinstance(structure, dict):
             structure_type = STRUCTURE_TYPES[structure_family]
             structure = structure_type.from_json(structure)
 
@@ -673,9 +760,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
-    def create_container(self, key=None, *, metadata=None, dims=None, specs=None):
-        """
-        EXPERIMENTAL: Create a new, empty container.
+    def create_composite(
+        self,
+        key=None,
+        *,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
+        """Create a new, empty composite container.
 
         Parameters
         ----------
@@ -684,11 +777,44 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata : dict, optional
             User metadata. May be nested. Must contain only basic types
             (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        dims : List[str], optional
-            A label for each dimension of the array.
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+
+        """
+        return self.new(
+            StructureFamily.composite,
+            [],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+        )
+
+    def create_container(
+        self,
+        key=None,
+        *,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
+        """Create a new, empty container.
+
+        Parameters
+        ----------
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         """
         return self.new(
@@ -697,9 +823,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
 
-    def write_array(self, array, *, key=None, metadata=None, dims=None, specs=None):
+    def write_array(
+        self,
+        array,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        access_tags=None,
+    ):
         """
         EXPERIMENTAL: Write an array.
 
@@ -716,6 +852,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         """
         import dask.array
@@ -761,6 +899,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
@@ -793,6 +932,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
+        access_tags=None,
     ):
         """
         Write an AwkwardArray.
@@ -810,6 +950,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
         """
         import awkward
 
@@ -831,6 +973,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         client.write(container)
         return client
@@ -845,6 +988,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         dims=None,
         specs=None,
+        access_tags=None,
     ):
         """
         EXPERIMENTAL: Write a sparse array.
@@ -864,6 +1008,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
 
         Examples
         --------
@@ -871,7 +1017,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         Write a sparse.COO array.
 
         >>> import sparse
-        >>> coo = sparse.COO(coords=[[2, 5]], data=[1.3, 7.5], shape=(10,))
+        >>> from numpy import array
+        >>> coo = sparse.COO(coords=array([[2, 5]]), data=array([1.3, 7.5]), shape=(10,))
         >>> c.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape)
 
         This only supports a single chunk. For chunked upload, use lower-level methods.
@@ -883,8 +1030,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> x = c.new("sparse", [data_source])
         # Upload the data in each chunk.
         # Coords are given with in the reference frame of each chunk.
-        >>> x.write_block(coords=[[2, 4]], data=[3.1, 2.8], block=(0,))
-        >>> x.write_block(coords=[[0, 1]], data=[6.7, 1.2], block=(1,))
+        >>> x.write_block(coords=array([[2, 4]]), data=array([3.1, 2.8]), block=(0,))
+        >>> x.write_block(coords=array([[0, 1]]), data=array([6.7, 1.2]), block=(1,))
         """
         from ..structures.array import BuiltinDtype
         from ..structures.sparse import COOStructure
@@ -907,26 +1054,29 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             key=key,
             metadata=metadata,
             specs=specs,
+            access_tags=access_tags,
         )
         client.write(coords, data)
         return client
 
-    def write_dataframe(
+    def create_appendable_table(
         self,
-        dataframe,
+        schema: "pyarrow.Schema",
+        npartitions: int = 1,
         *,
         key=None,
         metadata=None,
         specs=None,
+        access_tags=None,
+        table_name: Optional[str] = None,
     ):
-        """
-        EXPERIMENTAL: Write a DataFrame.
-
-        This is subject to change or removal without notice
+        """Initialize a table whose rows can be appended to a partition.
 
         Parameters
         ----------
-        dataframe : pandas.DataFrame
+        schema : column names and dtypes info in the form of pyarrow.Schema
+        npartitions : int, optional
+            Number of partitions to create. Default is 1.
         key : str, optional
             Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
@@ -935,28 +1085,95 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs : List[Spec], optional
             List of names that are used to label that the data and/or metadata
             conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+        table_name : str, optional
+            Optionally provide a name for the table this should be stored in.
+            By default a name unique to the schema will be chosen.
+
+        See Also
+        --------
+        write_dataframe
+        """
+        parameters = {}
+        if table_name is not None:
+            parameters["table_name"] = table_name
+
+        from ..structures.table import TableStructure
+
+        structure = TableStructure.from_schema(schema, npartitions)
+
+        client = self.new(
+            StructureFamily.table,
+            [
+                DataSource(
+                    structure=structure,
+                    structure_family=StructureFamily.table,
+                    mimetype="application/x-tiled-sql-table",
+                    parameters=parameters,
+                )
+            ],
+            key=key,
+            metadata=metadata or {},
+            specs=specs or [],
+            access_tags=access_tags,
+        )
+
+        return client
+
+    def write_dataframe(
+        self,
+        dataframe: Union["pandas.DataFrame", dict[str, Any]],
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
+        """Write a DataFrame.
+
+        Parameters
+        ----------
+        dataframe : pandas.DataFrame or dict
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+
+        See Also
+        --------
+        create_appendable_table
         """
         import dask.dataframe
 
         from ..structures.table import TableStructure
 
-        metadata = metadata or {}
-        specs = specs or []
-
         if isinstance(dataframe, dask.dataframe.DataFrame):
             structure = TableStructure.from_dask_dataframe(dataframe)
         elif isinstance(dataframe, dict):
+            # table as dict, e.g. {"a": [1,2,3], "b": [4,5,6]}
             structure = TableStructure.from_dict(dataframe)
         else:
             structure = TableStructure.from_pandas(dataframe)
+
         client = self.new(
             StructureFamily.table,
             [
-                DataSource(structure=structure, structure_family=StructureFamily.table),
+                DataSource(
+                    structure=structure,
+                    structure_family=StructureFamily.table,
+                )
             ],
             key=key,
-            metadata=metadata,
-            specs=specs,
+            metadata=metadata or {},
+            specs=specs or [],
+            access_tags=access_tags,
         )
 
         if hasattr(dataframe, "partitions"):
@@ -980,7 +1197,7 @@ def _queries_to_params(*queries):
     "Compute GET params from the queries."
     params = collections.defaultdict(list)
     for query in queries:
-        name = query_registry.query_type_to_name[type(query)]
+        name = default_query_registry.query_type_to_name[type(query)]
         for field, value in query.encode().items():
             if value is not None:
                 params[f"filter[{name}][condition][{field}]"].append(value)
@@ -1007,7 +1224,7 @@ class Descending(Sentinel):
 ASCENDING = Ascending("ASCENDING")
 "Ascending sort order. An alias for 1."
 DESCENDING = Descending("DESCENDING")
-"Decending sort order. An alias for -1."
+"Descending sort order. An alias for -1."
 
 
 class _LazyLoad:
@@ -1040,6 +1257,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
             "container": _Wrap(Container),
+            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
             "awkward": _LazyLoad(("..awkward", Container.__module__), "AwkwardClient"),
             "dataframe": _LazyLoad(
@@ -1057,6 +1275,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "dask": OneShotCachedMap(
         {
             "container": _Wrap(Container),
+            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
             # TODO Create DaskAwkwardClient
             # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),

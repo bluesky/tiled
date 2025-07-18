@@ -11,7 +11,7 @@ import watchfiles
 
 from ..mimetypes import (
     DEFAULT_MIMETYPES_BY_FILE_EXT,
-    DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE,
+    DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE,
 )
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
@@ -103,14 +103,14 @@ class Settings:
         key_from_filename=None,
         filter=None,
     ):
-        # If parameters come from a configuration file, they are given
+        # If parameters come from a configuration file, they
         # are given as importable strings, like "package.module:Reader".
         adapters_by_mimetype = adapters_by_mimetype or {}
         for key, value in list((adapters_by_mimetype).items()):
             if isinstance(value, str):
                 adapters_by_mimetype[key] = import_object(value)
         merged_adapters_by_mimetype = collections.ChainMap(
-            adapters_by_mimetype, DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE
+            adapters_by_mimetype, DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE
         )
         if isinstance(key_from_filename, str):
             key_from_filename = import_object(key_from_filename)
@@ -171,6 +171,7 @@ async def register(
                 metadata={},
                 specs=[],
                 key=key,
+                access_tags=[],
             )
             # TODO When we have a tiled AsyncClient, use that.
             child_node = await anyio.to_thread.run_sync(node.get, segment)
@@ -230,6 +231,7 @@ async def _walk(
             data_sources=[],
             metadata={},
             specs=[],
+            access_tags=[],
         )
         # TODO When we have a tiled AsyncClient, use that.
         child_node = await anyio.to_thread.run_sync(node.get, key)
@@ -296,10 +298,12 @@ async def register_single_item(
         )
         unhandled_items.append(item)
         return
-    adapter_factory = settings.adapters_by_mimetype[mimetype]
+    adapter_class = settings.adapters_by_mimetype[mimetype]
     logger.info("    Resolved mimetype '%s' with adapter for '%s'", mimetype, item)
     try:
-        adapter = await anyio.to_thread.run_sync(adapter_factory, ensure_uri(item))
+        adapter = await anyio.to_thread.run_sync(
+            adapter_class.from_uris, ensure_uri(item)
+        )
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s':", item)
         return
@@ -340,11 +344,25 @@ async def register_single_item(
 
 # Matches filename with (optional) prefix characters followed by digits \d
 # and then the file extension .tif or .tiff.
-TIFF_SEQUENCE_STEM_PATTERN = re.compile(r"^(.*?)(\d+)\.(?:tif|tiff)$")
-TIFF_SEQUENCE_EMPTY_NAME_ROOT = "_unnamed"
+IMG_SEQUENCE_STEM_PATTERNS = {
+    ".tif": re.compile(r"^(.*?)(\d+)\.(?:tif|tiff)$"),
+    ".tiff": re.compile(r"^(.*?)(\d+)\.(?:tif|tiff)$"),
+    ".jpg": re.compile(r"^(.*?)(\d+)\.(?:jpg|jpeg)$"),
+    ".jpeg": re.compile(r"^(.*?)(\d+)\.(?:jpg|jpeg)$"),
+    ".npy": re.compile(r"^(.*?)(\d+)\.npy$"),
+}
+IMG_SEQUENCE_EMPTY_NAME_ROOT = "_unnamed"
+
+IMG_SEQUENCE_MIMETYPES = {
+    ".tif": "multipart/related;type=image/tiff",
+    ".tiff": "multipart/related;type=image/tiff",
+    ".jpg": "multipart/related;type=image/npy",
+    ".jpeg": "multipart/related;type=image/jpeg",
+    ".npy": "multipart/related;type=application/x-npy",
+}
 
 
-async def group_tiff_sequences(
+async def group_image_sequences(
     node,
     path,
     files,
@@ -365,29 +383,40 @@ async def group_tiff_sequences(
     unhandled_files = []
     sequences = collections.defaultdict(list)
     for file in files:
-        if file.is_file():
-            match = TIFF_SEQUENCE_STEM_PATTERN.match(file.name)
+        file_ext = Path(file).suffixes[-1] if len(Path(file).suffixes) > 0 else None
+        if file.is_file() and file_ext and file_ext in IMG_SEQUENCE_STEM_PATTERNS:
+            match = IMG_SEQUENCE_STEM_PATTERNS[file_ext].match(file.name)
             if match:
                 sequence_name, _sequence_number = match.groups()
                 if sequence_name == "":
-                    sequence_name = TIFF_SEQUENCE_EMPTY_NAME_ROOT
+                    sequence_name = IMG_SEQUENCE_EMPTY_NAME_ROOT
                 sequences[sequence_name].append(file)
                 continue
         unhandled_files.append(file)
     for name, sequence in sequences.items():
-        await register_tiff_sequence(node, name, sorted(sequence), settings)
+        await register_image_sequence(node, name, sorted(sequence), settings)
     return unhandled_files, unhandled_directories
 
 
-TIFF_SEQ_MIMETYPE = "multipart/related;type=image/tiff"
-
-
-async def register_tiff_sequence(node, name, sequence, settings):
-    logger.info("    Grouped %d TIFFs into a sequence '%s'", len(sequence), name)
-    adapter_class = settings.adapters_by_mimetype[TIFF_SEQ_MIMETYPE]
+async def register_image_sequence(node, name, sequence, settings):
+    suffixes = Path(sequence[0]).suffixes
+    file_ext = suffixes[-1] if len(suffixes) > 0 else None
+    if file_ext and file_ext in IMG_SEQUENCE_MIMETYPES:
+        mimetype = IMG_SEQUENCE_MIMETYPES[file_ext]
+    else:
+        raise RuntimeError(f"Cannot register image sequence {name}.")
+    logger.info(
+        "    Grouped %d %s images into a sequence '%s'",
+        len(sequence),
+        mimetype.split("/")[-1],
+        name,
+    )
+    adapter_class = settings.adapters_by_mimetype[mimetype]
     key = settings.key_from_filename(name)
     try:
-        adapter = adapter_class([ensure_uri(filepath) for filepath in sequence])
+        adapter = adapter_class.from_uris(
+            *[ensure_uri(filepath) for filepath in sequence]
+        )
     except Exception:
         logger.exception("    SKIPPED: Error constructing adapter for '%s'", name)
         return
@@ -400,7 +429,7 @@ async def register_tiff_sequence(node, name, sequence, settings):
         data_sources=[
             DataSource(
                 structure_family=adapter.structure_family,
-                mimetype=TIFF_SEQ_MIMETYPE,
+                mimetype=mimetype,
                 structure=dict_or_none(adapter.structure()),
                 parameters={},
                 management=Management.external,
@@ -435,7 +464,7 @@ async def skip_all(
     return [], directories
 
 
-DEFAULT_WALKERS = [group_tiff_sequences, one_node_per_item]
+DEFAULT_WALKERS = [group_image_sequences, one_node_per_item]
 
 
 async def watch(

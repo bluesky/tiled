@@ -11,6 +11,7 @@ PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"
 ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
+TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
     {
         "image/tiff": lambda: importlib.import_module(
@@ -18,22 +19,41 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).TiffAdapter,
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
-        ).TiffSequenceAdapter.from_uris,
+        ).TiffSequenceAdapter,
+        "image/jpeg": lambda: importlib.import_module(
+            "..adapters.jpeg", __name__
+        ).JPEGAdapter,
+        "multipart/related;type=image/jpeg": lambda: importlib.import_module(
+            "..adapters.jpeg", __name__
+        ).JPEGSequenceAdapter,
         "text/csv": lambda: importlib.import_module(
             "..adapters.csv", __name__
         ).CSVAdapter,
-        # "text/csv": lambda: importlib.import_module(
-        #    "..adapters.csv", __name__
-        # ).CSVAdapter.from_single_file,
+        "multipart/related;type=text/csv": lambda: importlib.import_module(
+            "..adapters.csv", __name__
+        ).CSVAdapter,
+        # https://www.rfc-editor.org/rfc/rfc4180#section-3
+        "text/csv;header=present": lambda: importlib.import_module(
+            "..adapters.csv", __name__
+        ).CSVAdapter,
+        "text/csv;header=absent": lambda: importlib.import_module(
+            "..adapters.csv", __name__
+        ).CSVArrayAdapter,
         XLSX_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.excel", __name__
-        ).ExcelAdapter.from_uri,
+        ).ExcelAdapter,
         "application/x-hdf5": lambda: importlib.import_module(
             "..adapters.hdf5", __name__
-        ).hdf5_lookup,
+        ).HDF5Adapter,
         "application/x-netcdf": lambda: importlib.import_module(
             "..adapters.netcdf", __name__
-        ).read_netcdf,
+        ).NetCDFAdapter,
+        "application/x-npy": lambda: importlib.import_module(
+            "..adapters.npy", __name__
+        ).NPYAdapter,
+        "multipart/related;type=application/x-npy": lambda: importlib.import_module(
+            "..adapters.npy", __name__
+        ).NPYSequenceAdapter,
         PARQUET_MIMETYPE: lambda: importlib.import_module(
             "..adapters.parquet", __name__
         ).ParquetDatasetAdapter,
@@ -42,23 +62,24 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         ).SparseBlocksParquetAdapter,
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "..adapters.zarr", __name__
-        ).read_zarr,
+        ).ZarrAdapter,
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "..adapters.awkward_buffers", __name__
-        ).AwkwardBuffersAdapter.from_directory,
+        ).AwkwardBuffersAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.arrow", __name__
         ).ArrowAdapter,
+        TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
+            "..adapters.sql", __name__
+        ).SQLAdapter,
     }
 )
 
-DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE = copy.deepcopy(DEFAULT_ADAPTERS_BY_MIMETYPE)
+DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE = copy.deepcopy(DEFAULT_ADAPTERS_BY_MIMETYPE)
 
-DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE.set(
+DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE.set(
     "text/csv",
-    lambda: importlib.import_module(
-        "..adapters.csv", __name__
-    ).CSVAdapter.from_single_file,
+    lambda: importlib.import_module("..adapters.csv", __name__).CSVAdapter,
 )
 
 
@@ -68,6 +89,8 @@ DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE.set(
 DEFAULT_MIMETYPES_BY_FILE_EXT = {
     # This is the "official" file extension.
     ".h5": "application/x-hdf5",
+    # This is the Numpy on-disk format.
+    ".npy": "application/x-npy",
     # This is NeXus. We may want to invent a special media type
     # like 'application/x-nexus' for this, but I'll punt that for now.
     # Needs thought about how to encode the various types of NeXus

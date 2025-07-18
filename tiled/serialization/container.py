@@ -1,8 +1,9 @@
 import io
 
-from ..media_type_registration import serialization_registry
+from ..media_type_registration import default_serialization_registry
 from ..structures.core import StructureFamily
 from ..utils import (
+    BrokenLink,
     SerializationError,
     ensure_awaitable,
     modules_available,
@@ -25,11 +26,16 @@ async def walk(node, filter_for_access, pre=None):
     pre = pre[:] if pre else []
     if node.structure_family != StructureFamily.array:
         if hasattr(node, "items_range"):
-            for key, value in await filter_for_access(node).items_range(0, None):
+            for key, value in await (await filter_for_access(node)).items_range(
+                0, None
+            ):
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
+        elif node.structure_family == StructureFamily.table:
+            for key in node.structure().columns:
+                yield (pre + [key], await filter_for_access(node))
         else:
-            for key, value in filter_for_access(node).items():
+            for key, value in (await filter_for_access(node)).items():
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
     else:
@@ -59,7 +65,10 @@ if modules_available("h5py"):
                 node = root_node
                 for key in key_path[:-1]:
                     if hasattr(node, "lookup_adapter"):
-                        node = await node.lookup_adapter([key])
+                        try:
+                            node = await node.lookup_adapter([key])
+                        except BrokenLink:
+                            continue
                     else:
                         node = node[key]
                     if key in group:
@@ -76,8 +85,11 @@ if modules_available("h5py"):
                     dataset.attrs.create(k, v)
         return buffer.getbuffer()
 
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.container, "application/x-hdf5", serialize_hdf5
+    )
+    default_serialization_registry.register(
+        StructureFamily.composite, "application/x-hdf5", serialize_hdf5
     )
 
 if modules_available("orjson"):
@@ -91,7 +103,10 @@ if modules_available("orjson"):
             node = root_node
             for key in key_path:
                 if hasattr(node, "lookup_adapter"):
-                    node = await node.lookup_adapter([key])
+                    try:
+                        node = await node.lookup_adapter([key])
+                    except BrokenLink:
+                        continue
                 else:
                     node = node[key]
                 if key not in d:
@@ -99,6 +114,9 @@ if modules_available("orjson"):
                 d = d[key]["contents"]
         return safe_json_dump(to_serialize)
 
-    serialization_registry.register(
+    default_serialization_registry.register(
         StructureFamily.container, "application/json", serialize_json
+    )
+    default_serialization_registry.register(
+        StructureFamily.composite, "application/json", serialize_json
     )

@@ -1,22 +1,23 @@
+from abc import ABC
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Optional
 
 from fastapi import Request
 
 
 @dataclass
 class UserSessionState:
-    """Data transfer class to communicate custom session state infromation."""
+    """Data transfer class to communicate custom session state information."""
 
     user_name: str
     state: dict = None
 
 
-class UsernamePasswordAuthenticator(Protocol):
-    def authenticate(self, username: str, password: str) -> UserSessionState:
-        pass
+class InternalAuthenticator(ABC):
+    def authenticate(self, username: str, password: str) -> Optional[UserSessionState]:
+        raise NotImplementedError
 
 
-class Authenticator(Protocol):
-    def authenticate(self, request: Request) -> UserSessionState:
-        pass
+class ExternalAuthenticator(ABC):
+    def authenticate(self, request: Request) -> Optional[UserSessionState]:
+        raise NotImplementedError

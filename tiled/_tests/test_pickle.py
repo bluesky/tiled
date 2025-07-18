@@ -30,21 +30,21 @@ def test_pickle_clients(structure_clients, tmpdir):
         httpx.get(API_URL).raise_for_status()
     except Exception:
         raise pytest.skip(f"Could not connect to {API_URL}")
-    with Context(API_URL) as context:
-        if parse(context.server_info["library_version"]) < parse(MIN_VERSION):
+    cache = Cache(tmpdir / "http_response_cache.db")
+    with Context(API_URL, cache=cache) as context:
+        if parse(context.server_info.library_version) < parse(MIN_VERSION):
             raise pytest.skip(
                 f"Server at {API_URL} is running too old a version to test against."
             )
-        cache = Cache(tmpdir / "http_response_cache.db")
-        client = from_context(context, structure_clients, cache)
+        client = from_context(context, structure_clients)
         pickle.loads(pickle.dumps(client))
-        for segements in [
+        for segments in [
             ["generated"],
             ["generated", "small_image"],
             ["generated", "short_table"],
         ]:
             original = client
-            for segment in segements:
+            for segment in segments:
                 original = original[segment]
             roundtripped = pickle.loads(pickle.dumps(original))
             roundtripped_twice = pickle.loads(pickle.dumps(roundtripped))

@@ -3,7 +3,7 @@
 ## Design Principles
 
 Many institutions are building tools for structured data access.
-Tiled's particular approach to this problem is tuned to the needs its users.
+Tiled's particular approach to this problem is tuned to the needs of its users.
 Our users are opinionated scientists with highly varied data scales, access
 patterns, and conventions. From their requirements flow Tiled's design.
 
@@ -39,7 +39,7 @@ patterns, and conventions. From their requirements flow Tiled's design.
   think about files. The second group can use Tiled sitting on top of those files,
   and the first group can continue as they were.
 * I want to transition from a file-based workflow to a
-  database-backed workflow some day, and I don't want all my analysis scirpts to
+  database-backed workflow some day, and I don't want all my analysis scripts to
   break.
 
 ## What Tiled is Not
