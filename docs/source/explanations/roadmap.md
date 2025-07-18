@@ -2,6 +2,8 @@
 
 ## Path to v0.1.0 Release
 
+We aim to release v0.1.0 in August 2025.
+
 - Support for reading from and writing to blob storage
 - Adoption of "closure table" pattern for expressing
   tree structure of nodes with better performance and
