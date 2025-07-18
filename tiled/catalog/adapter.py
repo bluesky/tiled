@@ -778,7 +778,7 @@ class CatalogNodeAdapter:
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
                     "structure_family": structure_family,
-                    "specs": specs,
+                    "specs": [spec.dict() for spec in (specs or [])],
                     "metadata": metadata,
                     "data_sources": [d.dict() for d in data_sources],
                 }
@@ -790,7 +790,7 @@ class CatalogNodeAdapter:
                     f"data:{self.node.id}:{sequence}",
                     mapping={
                         "sequence": sequence,
-                        "metadata": orjson.dumps(metadata),
+                        "metadata": safe_json_dump(metadata),
                     },
                 )
                 pipeline.expire(
@@ -816,7 +816,7 @@ class CatalogNodeAdapter:
 
         return asset_id
 
-    async def put_data_source(self, data_source):
+    async def put_data_source(self, data_source, patch):
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
         structure = _prepare_structure(
@@ -872,6 +872,7 @@ class CatalogNodeAdapter:
                 "sequence": sequence,
                 "timestamp": datetime.now().isoformat(),
                 "data_source": data_source.dict(),
+                "patch": patch.dict() if patch else None,
             }
 
             # Cache data in Redis with a TTL, and publish

@@ -1609,7 +1609,7 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )
-        await entry.put_data_source(data_source=body.data_source)
+        await entry.put_data_source(data_source=body.data_source, patch=body.patch)
 
     @router.delete("/metadata/{path:path}")
     async def delete(
