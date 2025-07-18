@@ -8,6 +8,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - zarr v2 endpoints for read access
+- `data_type` and `coord_data_type` properties for sparse arrays in `COOAdapter` and `COOStructure`.
+
+
 ## v0.1.0-b30 (2025-07-18)
 
 ## Changed

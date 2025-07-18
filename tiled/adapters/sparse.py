@@ -51,6 +51,7 @@ class COOAdapter:
             shape=shape,
             chunks=tuple((dim,) for dim in shape),
             data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
             resizable=False,
         )
         return cls(
@@ -130,6 +131,7 @@ class COOAdapter:
             shape=shape,
             chunks=chunks,
             data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
             resizable=False,
         )
         return cls(
