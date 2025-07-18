@@ -1,4 +1,5 @@
 import copy
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
@@ -317,11 +318,20 @@ class CSVArrayAdapter(ArrayAdapter):
         nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
         _kwargs = {"dtype": dtype_numpy, "header": None}
         _kwargs.update(kwargs)
-        ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
+        try:
+            ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
+        except TypeError as e:
+            if re.search(r"dtype .* is not supported for parsing", str(e)):
+                _kwargs.pop(
+                    "dtype", None
+                )  # pandas doesn't support the given dtype, e.g. "<U1"
+                ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
+            else:
+                raise
         chunks_0: tuple[int, ...] = structure.chunks[
             0
         ]  # chunking along the rows dimension (when not stackable)
-        if not dtype_numpy.isbuiltin:
+        if dtype_numpy.hasobject:
             # Structural np dtype (0) -- return a records array
             # NOTE: dask.DataFrame.to_records() allows one to pass `index=False` to drop the index column, but as
             #       of desk ver. 2024.2.1 it seems broken and doesn't do anything. Instead, we set an index to any
@@ -329,7 +339,7 @@ class CSVArrayAdapter(ArrayAdapter):
             array = ddf.set_index(ddf.columns[0]).to_records(lengths=chunks_0)
         else:
             # Simple np dtype (1 or 2) -- all fields have the same type -- return a usual array
-            array = ddf.to_dask_array(lengths=chunks_0)
+            array = ddf.to_dask_array(lengths=chunks_0).astype(dtype_numpy)
 
         # Possibly extend or cut the table according the nrows parameter
         if nrows is not None:
@@ -362,7 +372,7 @@ class CSVArrayAdapter(ArrayAdapter):
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
         array = dask.dataframe.read_csv(
-            file_paths, header=None, **kwargs
+            file_paths, **{"header": None, **kwargs}
         ).to_dask_array()
         structure = ArrayStructure.from_array(array)
 
