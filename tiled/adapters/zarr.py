@@ -29,6 +29,11 @@ from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 
+if sys.version_info < (3, 9):
+    from typing_extensions import Mapping as MappingType
+else:
+    from collections.abc import Mapping as MappingType
+
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
@@ -84,6 +89,9 @@ class ZarrArrayAdapter(ArrayAdapter):
     def _stencil(self) -> Tuple[slice, ...]:
         """Trim overflow because Zarr always has equal-sized chunks."""
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
+
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
+        return None
 
     def read(
         self,
@@ -406,3 +414,38 @@ class ZarrAdapter:
         else:
             structure = ArrayStructure.from_array(zarr_obj)
             return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
+
+
+class ZarrAttrsAdapter:
+    """Adapter that exposes a Zarr node's .attrs as JSON.
+    """
+
+    structure_family = "container"
+    specs: List[Spec] = []
+
+    def __init__(self, node: Union[zarr.hierarchy.Group, zarr.core.Array]):
+        """
+        node: Zarr Group or Array whose attributes we want to serve
+        """
+        self._node = node
+
+    def metadata(self) -> JSON:
+        """
+        Return any extra metadata. In this example, it's empty.
+        """
+        return {}
+
+    def structure(self):
+        """
+        We have no numeric array data to describe, just JSON attributes.
+        """
+        return None
+
+    def read(self) -> JSON:
+        """
+        Return the node's attrs as a plain dictionary.
+        """
+        return dict(self._node.attrs)
+
+    def __repr__(self) -> str:
+        return f"<ZarrAttrsAdapter attrs_keys={list(self._node.attrs.keys())}>"
