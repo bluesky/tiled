@@ -21,6 +21,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - It is now possible to explicitly control the page size used for fetching
   batches of metadata, e.g. `client.values().page_size(N)`.
 - Writable tabular SQL storage in SimpleTiledServer.
+- The access tags compiler and db schema have been upstreamed into Tiled
+
+### Changed
+
+- Access control code is now in the `access_control` subdirectory
 
 ### Fixed
 
