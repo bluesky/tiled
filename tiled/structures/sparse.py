@@ -1,5 +1,5 @@
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Tuple, Union
 
 from .array import BuiltinDtype, Endianness, Kind, StructDtype
@@ -16,9 +16,11 @@ class COOStructure:
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     data_type: Optional[Union[BuiltinDtype, StructDtype]] = None
-    coord_data_type: Optional[BuiltinDtype] = BuiltinDtype(
-        Endianness("little"), Kind("u"), 8
-    )  # numpy 'uint' dtype
+    coord_data_type: Optional[BuiltinDtype] = field(
+        default_factory=lambda: BuiltinDtype(
+            Endianness("little"), Kind("u"), 8
+        )  # numpy 'uint' dtype
+    )
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False
     layout: SparseLayout = SparseLayout.COO
