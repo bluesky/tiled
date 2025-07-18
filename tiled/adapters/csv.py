@@ -328,9 +328,13 @@ class CSVArrayAdapter(ArrayAdapter):
                 ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
             else:
                 raise
-        chunks_0: tuple[int, ...] = structure.chunks[
-            0
-        ]  # chunking along the rows dimension (when not stackable)
+
+        # Ensure columns are in the same order as in the usecols parameter
+        if usecols := kwargs.get("usecols"):
+            ddf = ddf[usecols]
+
+        # Define chunking along the rows dimension (when not stackable)
+        chunks_0: tuple[int, ...] = structure.chunks[0]
         if dtype_numpy.hasobject:
             # Structural np dtype (0) -- return a records array
             # NOTE: dask.DataFrame.to_records() allows one to pass `index=False` to drop the index column, but as
@@ -371,9 +375,10 @@ class CSVArrayAdapter(ArrayAdapter):
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
-        array = dask.dataframe.read_csv(
-            file_paths, **{"header": None, **kwargs}
-        ).to_dask_array()
+        ddf = dask.dataframe.read_csv(file_paths, **{"header": None, **kwargs})
+        if usecols := kwargs.get("usecols"):
+            ddf = ddf[usecols]  # Ensure the order of columns is preserved
+        array = ddf.to_dask_array()
         structure = ArrayStructure.from_array(array)
 
         return cls(array, structure)
