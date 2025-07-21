@@ -577,7 +577,8 @@ def test_user_owned_node_access_control(
     """
     Test that user-owned nodes (i.e. nodes created without access tags applied)
       are visible after creation and can be modified by the user.
-    Also test that the data is visible after a tag is applied.
+    Also test that the data is visible after a tag is applied, and
+      that other users cannot see user-owned nodes.
     """
 
     alice_client = from_context(access_control_test_context)
@@ -599,3 +600,18 @@ def test_user_owned_node_access_control(
         assert "alice_tag" in access_blob["tags"]
         assert data in alice_client[top]
         alice_client[top][data]
+
+    top = "bar"
+    for data in ["data_Z"]:
+        alice_client[top].write_array(arr, key=data)
+    alice_client.logout()
+
+    bob_client = from_context(access_control_test_context)
+    with enter_username_password("bob", "bob"):
+        bob_client.login()
+
+    top = "bar"
+    for data in ["data_Z"]:
+        assert data not in bob_client[top]
+        with pytest.raises(KeyError):
+            bob_client[top][data]
