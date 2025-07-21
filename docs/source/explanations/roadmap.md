@@ -10,6 +10,8 @@ We aim to release v0.1.0 in August 2025.
   referential integrity
 - Experimental support for streaming live data over
   websockets
+- A read-only view of array data compatible with Zarr v2,
+  suct that Zarr readers can view Tiled as a Zarr store.
 
 ## Priorities for v0.2.0
 
