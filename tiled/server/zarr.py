@@ -208,13 +208,13 @@ def get_router(
                 keys = entry.keys()
             body = json.dumps([url + "/" + key for key in keys])
 
-            return Response(body, status_code=200, media_type="application/json")
+            return Response(body, status_code=200)
 
         elif entry.structure_family == StructureFamily.table:
             # List the columns of the table -- they will be accessed separately as arrays
             body = json.dumps([url + "/" + key for key in entry.structure().columns])
 
-            return Response(body, status_code=200, media_type="application/json")
+            return Response(body, status_code=200)
 
         elif entry.structure_family == StructureFamily.array and isinstance(
             entry.structure().data_type, StructDtype
@@ -224,7 +224,7 @@ def get_router(
                 [url + "/" + f.name for f in entry.structure().data_type.fields]
             )
 
-            return Response(body, status_code=200, media_type="application/json")
+            return Response(body, status_code=200)
 
         elif entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
             # Return the actual array values for a single block of zarr array
