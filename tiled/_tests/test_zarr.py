@@ -18,6 +18,8 @@ from ..adapters.mapping import MapAdapter
 from ..server.app import build_app
 from .utils import Server
 
+LEGACY_ZARR = zarr.__version__ < "3.0.0"  # Versions >= 3.0.0 require Python 3.11+
+
 rng = numpy.random.default_rng(seed=42)
 array_cases = {
     "dtype_b": (numpy.arange(10) % 2).astype("b"),
@@ -136,7 +138,9 @@ def server_url(app):
 @pytest.fixture(scope="module")
 def fs():
     headers = {"Authorization": "Apikey secret", "Content-Type": "application/json"}
-    fs = HTTPFileSystem(client_kwargs={"headers": headers})
+    fs = HTTPFileSystem(
+        client_kwargs={"headers": headers}, asynchronous=not LEGACY_ZARR
+    )
     return fs
 
 
@@ -246,8 +250,10 @@ def test_zarr_groups(suffix, path, slash, server_url, fs):
     assert numpy.array_equal(arr[...], expected)
 
 
-@pytest.mark.parametrize("kind", list(array_cases))
+@pytest.mark.parametrize("kind", list(array_cases.keys()))
 def test_array_dtypes(kind, server_url, fs):
+    if not LEGACY_ZARR and kind in {"dtype_c", "dtype_S", "dtype_U"}:
+        pytest.xfail("zarr >= 3.0.0 does not support complex, bytes, or unicode arrays")
     expected = array_cases[kind]
     url = f"{server_url}/zarr/v2/nested/array"
     grp = zarr.open(fs.get_mapper(url), mode="r")
@@ -257,6 +263,8 @@ def test_array_dtypes(kind, server_url, fs):
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
 def test_scalar_dtypes(kind, server_url, fs):
+    if not LEGACY_ZARR and kind in {"dtype_c", "dtype_S", "dtype_U"}:
+        pytest.xfail("zarr >= 3.0.0 does not support complex, bytes, or unicode arrays")
     expected = scalar_cases[kind]
     url = f"{server_url}/zarr/v2/scalar"
     grp = zarr.open(fs.get_mapper(url), mode="r")
@@ -326,6 +334,6 @@ def test_writing(server_url, fs):
     with pytest.raises(NotImplementedError):
         grp = zarr.open(fs.get_mapper(url), mode="w")
 
-    with pytest.raises(zarr.errors.ReadOnlyError):
+    with pytest.raises(zarr.errors.ReadOnlyError if LEGACY_ZARR else ValueError):
         grp = zarr.open(fs.get_mapper(url), mode="r")
         grp["random_2d"][0, 0] = 0.0
