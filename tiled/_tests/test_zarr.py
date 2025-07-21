@@ -16,7 +16,6 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..server.app import build_app
-from ..server.logging_config import LOGGING_CONFIG
 from .utils import Server
 
 rng = numpy.random.default_rng(seed=42)
@@ -128,10 +127,7 @@ def app():
 
 @pytest.fixture(scope="module")
 def server_url(app):
-    # config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="info")
-    config = uvicorn.Config(
-        app, host="127.0.0.1", port=0, loop="asyncio", log_config=LOGGING_CONFIG
-    )
+    config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="info")
     server = Server(config)
     with server.run_in_thread() as url:
         yield url
