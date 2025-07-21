@@ -50,7 +50,6 @@ from ..media_type_registration import (
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
-from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
@@ -420,9 +419,9 @@ def build_app(
     else:
         app.state.authenticated = False
 
-    @cache
-    def override_get_root_tree():
-        return tree
+    # Expose the root_tree here to make it accessible from endpoints via
+    # request.app.state and in tests via client.context.app.state
+    app.state.root_tree = tree
 
     @cache
     def override_get_settings():
@@ -523,10 +522,6 @@ def build_app(
             app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
-        # Expose the root_tree here to make it easier to access it from tests,
-        # in usages like:
-        # client.context.app.state.root_tree
-        app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_settings.uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
@@ -755,7 +750,6 @@ def build_app(
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
