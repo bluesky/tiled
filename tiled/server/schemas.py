@@ -154,8 +154,8 @@ class Revision(pydantic.BaseModel):
 
 
 class Patch(pydantic.BaseModel):
-    offset: Tuple[int]
-    shape: Tuple[int]
+    offset: Tuple[int, ...]
+    shape: Tuple[int, ...]
     extend: bool
 
 
