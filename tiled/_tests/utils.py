@@ -98,7 +98,7 @@ def sqlite_from_dump(filename):
         yield database_path
 
 
-class ThreadedServer(uvicorn.Server):
+class Server(uvicorn.Server):
     # https://github.com/encode/uvicorn/discussions/1103#discussioncomment-941726
 
     def install_signal_handlers(self):
@@ -116,10 +116,8 @@ class ThreadedServer(uvicorn.Server):
                     break
             else:
                 raise TimeoutError("Server did not start in 10 seconds.")
-
-            # Get the actual hostname and port number
-            self.host, self.port = self.servers[0].sockets[0].getsockname()
-            yield f"http://{self.host}:{self.port}"
+            host, port = self.servers[0].sockets[0].getsockname()
+            yield f"http://{host}:{port}"
         finally:
             self.should_exit = True
             thread.join()

@@ -26,6 +26,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -56,6 +57,7 @@ from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .zarr import get_router as get_zarr_router
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -373,6 +375,14 @@ def build_app(
         authenticators,
     )
     app.include_router(router, prefix="/api/v1")
+
+    zarr_router = get_zarr_router(
+        # query_registry,
+        # serialization_registry,
+        # deserialization_registry,
+        # validation_registry,
+        # authenticators,
+    )
     app.include_router(zarr_router, prefix=ZARR_PREFIX)
 
     # The Tree and Authenticator have the opportunity to add custom routes to
@@ -676,7 +686,9 @@ def build_app(
     )
 
     @app.middleware("http")
-    async def double_submit_cookie_csrf_protection(request: Request, call_next):
+    async def double_submit_cookie_csrf_protection(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
         if (request.method not in SAFE_METHODS) and set(request.cookies).intersection(
@@ -715,7 +727,9 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def client_compatibility_check(request: Request, call_next):
+    async def client_compatibility_check(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         user_agent = request.headers.get("user-agent", "")
         if user_agent.startswith("python-tiled/"):
             agent, _, raw_version = user_agent.partition("/")
@@ -747,7 +761,7 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def set_cookies(request: Request, call_next):
+    async def set_cookies(request: Request, call_next: RequestResponseEndpoint):
         "This enables dependencies to inject cookies that they want to be set."
         # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
@@ -763,7 +777,7 @@ def build_app(
     app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
-    async def capture_metrics(request: Request, call_next):
+    async def capture_metrics(request: Request, call_next: RequestResponseEndpoint):
         """
         Place metrics in Server-Timing header, in accordance with HTTP spec.
         """
@@ -821,7 +835,9 @@ def build_app(
         app.include_router(metrics.router, prefix="/api/v1")
 
         @app.middleware("http")
-        async def capture_metrics_prometheus(request: Request, call_next):
+        async def capture_metrics_prometheus(
+            request: Request, call_next: RequestResponseEndpoint
+        ):
             try:
                 response = await call_next(request)
             except Exception:
@@ -840,37 +856,37 @@ def build_app(
             return response
 
     @app.middleware("http")
-    async def current_principal_logging_filter(request: Request, call_next):
+    async def current_principal_logging_filter(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         request.state.principal = SpecialUsers.public
         response = await call_next(request)
         current_principal.set(request.state.principal)
         return response
 
     @app.middleware("http")
-    async def resolve_zarr_uris(request: Request, call_next):
-        response = await call_next(request)
-
+    async def resolve_zarr_uris(request: Request, call_next: RequestResponseEndpoint):
         # If a zarr block is requested, e.g. http://localhost:8000/zarr/v2/array/0.1.2.3, replace the block spec
         # with a properly formatted query parameter: http://localhost:8000/zarr/v2/array?block=0,1,2,3 (with ','
         # safely encoded)
-        if request.url.path.startswith(ZARR_PREFIX) and response.status_code == 404:
-            # Extract the last bit of the path
+        if request.url.path.startswith(ZARR_PREFIX):
+            # Extract the last part of the path
             zarr_path = (
                 request.url.path[len(ZARR_PREFIX) :]  # noqa: #E203
                 .strip("/")
                 .split("/")
             )
             zarr_block = zarr_path[-1] if len(zarr_path) > 0 else ""
-            if re.compile(r"^(?:\d+\.)*\d+$").fullmatch(zarr_block):
-                # Create a query string if the last part is in the zarr block form, e.g. `m.n.p. ... .q`
+            if re.fullmatch(r"^(?:\d+\.)*\d+$", zarr_block):
+                # Convert zarr block, e.g. `m.n.p. ... .q`, into query param, `block=m,n,p,...,q`
                 query = dict(urlparse.parse_qsl(request.url.query))
                 query.update({"block": zarr_block.replace(".", ",")})
+
+                # Modify the ASGI scope before the request is processed
                 request.scope["query_string"] = urlparse.urlencode(query).encode()
                 request.scope["path"] = ZARR_PREFIX + "/" + "/".join(zarr_path[:-1])
 
-                response = await call_next(request)
-
-        return response
+        return await call_next(request)
 
     app.add_middleware(
         CorrelationIdMiddleware,

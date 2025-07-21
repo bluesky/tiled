@@ -16,7 +16,8 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..server.app import build_app
-from .utils import ThreadedServer
+from ..server.logging_config import LOGGING_CONFIG
+from .utils import Server
 
 rng = numpy.random.default_rng(seed=42)
 array_cases = {
@@ -126,11 +127,14 @@ def app():
 
 
 @pytest.fixture(scope="module")
-def server(app):
-    config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="info")
-    server = ThreadedServer(config)
-    with server.run_in_thread():
-        yield server
+def server_url(app):
+    # config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="info")
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=0, loop="asyncio", log_config=LOGGING_CONFIG
+    )
+    server = Server(config)
+    with server.run_in_thread() as url:
+        yield url
 
 
 @pytest.fixture(scope="module")
@@ -216,8 +220,8 @@ async def test_authentication(path, app):
         assert response.status_code == HTTP_401_UNAUTHORIZED
 
 
-def test_zarr_integration(server, fs):
-    url = f"http://localhost:{server.port}/zarr/v2/"
+def test_zarr_integration(server_url, fs):
+    url = f"{server_url}/zarr/v2/"
     grp = zarr.open(fs.get_mapper(url), mode="r")
 
     assert grp.store.fs == fs
@@ -237,9 +241,9 @@ def test_zarr_integration(server, fs):
     ],
 )
 @pytest.mark.parametrize("slash", ["", "/"])
-def test_zarr_groups(suffix, path, slash, server, fs):
+def test_zarr_groups(suffix, path, slash, server_url, fs):
     expected = array_cases["random_2d"]
-    url = f"http://localhost:{server.port}/zarr/v2/{suffix}{slash}"
+    url = f"{server_url}/zarr/v2/{suffix}{slash}"
     arr = zarr.open(fs.get_mapper(url), mode="r")
     if path:
         arr = arr[path]
@@ -247,48 +251,48 @@ def test_zarr_groups(suffix, path, slash, server, fs):
 
 
 @pytest.mark.parametrize("kind", list(array_cases))
-def test_array_dtypes(kind, server, fs):
+def test_array_dtypes(kind, server_url, fs):
     expected = array_cases[kind]
-    url = f"http://localhost:{server.port}/zarr/v2/nested/array"
+    url = f"{server_url}/zarr/v2/nested/array"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     actual = grp[kind][...]
     assert numpy.array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
-def test_scalar_dtypes(kind, server, fs):
+def test_scalar_dtypes(kind, server_url, fs):
     expected = scalar_cases[kind]
-    url = f"http://localhost:{server.port}/zarr/v2/scalar"
+    url = f"{server_url}/zarr/v2/scalar"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     actual = grp[kind][...]
     assert numpy.array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("kind", list(cube_cases))
-def test_cube_cases(kind, server, fs):
+def test_cube_cases(kind, server_url, fs):
     expected = cube_cases[kind]
-    url = f"http://localhost:{server.port}/zarr/v2/nested/cube"
+    url = f"{server_url}/zarr/v2/nested/cube"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     actual = grp[kind][...]
     assert numpy.array_equal(actual, expected)
 
 
-def test_infinity(server, fs):
-    url = f"http://localhost:{server.port}/zarr/v2/inf/example"
+def test_infinity(server_url, fs):
+    url = f"{server_url}/zarr/v2/inf/example"
     actual = zarr.open(fs.get_mapper(url), mode="r")[...]
     mask = numpy.isnan(arr_with_inf)
     assert numpy.array_equal(actual[~mask], arr_with_inf[~mask])
     assert numpy.isnan(actual[mask]).all()
 
 
-def test_shape_with_zero(server, fs):
-    url = f"http://localhost:{server.port}/zarr/v2/zero/example"
+def test_shape_with_zero(server_url, fs):
+    url = f"{server_url}/zarr/v2/zero/example"
     actual = zarr.open(fs.get_mapper(url), mode="r")[...]
     assert numpy.array_equal(actual, arr_with_zero_dim)
 
 
-def test_dataframe_group(server, fs):
-    url = f"http://localhost:{server.port}/zarr/v2/table"
+def test_dataframe_group(server_url, fs):
+    url = f"{server_url}/zarr/v2/table"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     assert set(grp.keys()) == set(table_tree.keys())
 
@@ -300,8 +304,8 @@ def test_dataframe_group(server, fs):
 
 
 @pytest.mark.parametrize("key", list(table_tree.keys()))
-def test_dataframe_single(key, server, fs):
-    url = f"http://localhost:{server.port}/zarr/v2/table/{key}"
+def test_dataframe_single(key, server_url, fs):
+    url = f"{server_url}/zarr/v2/table/{key}"
     grp = zarr.open(fs.get_mapper(url), mode="r")
 
     for col in df.columns:
@@ -311,17 +315,17 @@ def test_dataframe_single(key, server, fs):
 
 
 @pytest.mark.parametrize("key", list(table_tree.keys()))
-def test_dataframe_column(key, server, fs):
+def test_dataframe_column(key, server_url, fs):
     for col in df.columns:
-        url = f"http://localhost:{server.port}/zarr/v2/table/{key}/{col}"
+        url = f"{server_url}/zarr/v2/table/{key}/{col}"
         arr = zarr.open(fs.get_mapper(url), mode="r")
         actual = arr[...]
         expected = df[col]
         assert numpy.array_equal(actual, expected)
 
 
-def test_writing(server, fs):
-    url = f"http://localhost:{server.port}/zarr/v2/nested/array"
+def test_writing(server_url, fs):
+    url = f"{server_url}/zarr/v2/nested/array"
 
     with pytest.raises(NotImplementedError):
         grp = zarr.open(fs.get_mapper(url), mode="w")

@@ -1,8 +1,5 @@
-import contextlib
 import subprocess
 import sys
-import threading
-import time
 
 import httpx
 import numpy
@@ -17,7 +14,7 @@ from ..catalog import in_memory
 from ..client import from_uri
 from ..server.app import build_app, build_app_from_config
 from ..server.logging_config import LOGGING_CONFIG
-from .utils import ThreadedServer
+from .utils import Server
 
 router = APIRouter()
 
@@ -30,7 +27,7 @@ def server(tmpdir):
     app = build_app(catalog, {"single_user_api_key": API_KEY})
     app.include_router(router)
     config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
-    server = ThreadedServer(config)
+    server = Server(config)
     with server.run_in_thread() as url:
         yield url
 

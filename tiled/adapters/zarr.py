@@ -29,11 +29,6 @@ from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 
-if sys.version_info < (3, 9):
-    from typing_extensions import Mapping as MappingType
-else:
-    from collections.abc import Mapping as MappingType
-
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
@@ -417,8 +412,7 @@ class ZarrAdapter:
 
 
 class ZarrAttrsAdapter:
-    """Adapter that exposes a Zarr node's .attrs as JSON.
-    """
+    """Adapter that exposes a Zarr node's .attrs as JSON."""
 
     structure_family = "container"
     specs: List[Spec] = []
@@ -435,7 +429,7 @@ class ZarrAttrsAdapter:
         """
         return {}
 
-    def structure(self):
+    def structure(self) -> None:
         """
         We have no numeric array data to describe, just JSON attributes.
         """
