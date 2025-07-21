@@ -374,6 +374,63 @@ class NotIn:
         return cls(key=key, value=json.loads(value))
 
 
+@register(name="keyin")
+@dataclass
+class KeyIn:
+    """
+    Query to retrieve containers that have a specific key.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    Examples
+    --------
+
+    Search for containers that have the key "color"
+
+    >>> c.search(KeyIn("color"))
+    """
+
+    key: str
+
+    def encode(self):
+        return {"key": self.key}
+
+    @classmethod
+    def decode(cls, *, key):
+        return cls(key=key)
+
+
+@register(name="keynotin")
+@dataclass
+class KeyNotIn:
+    """
+    Query for containers that do not have a specific key.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+
+    Examples
+    --------
+
+    Search for containers that do not have the key "color"
+
+    >>> c.search(KeyNotIn("color"))
+    """
+
+    key: str
+
+    def encode(self):
+        return {"key": self.key}
+
+    @classmethod
+    def decode(cls, *, key):
+        return cls(key=key)
+
+
 @register(name="like")
 @dataclass
 class Like(NoBool):
