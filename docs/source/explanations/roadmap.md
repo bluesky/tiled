@@ -13,7 +13,7 @@ We aim to release v0.1.0 in August 2025.
 - A read-only view of array data compatible with Zarr v2,
   suct that Zarr readers can view Tiled as a Zarr store.
 
-## Priorities for v0.2.0
+## Path to v1.0.0 Release
 
 - Optimize performance and scalability. Build out nascent
   [asv](https://asv.readthedocs.io/en/latest/) benchmarks, and
