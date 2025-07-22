@@ -1110,7 +1110,7 @@ class CatalogNodeAdapter:
         pipeline.publish(f"notify:{self.node.id}", sequence)
         await pipeline.execute()
 
-    def make_ws_handler(self, websocket, formatter):
+    def make_ws_handler(self, websocket, formatter, uri):
         async def handler(sequence: Optional[int] = None):
             await websocket.accept()
             end_stream = asyncio.Event()
@@ -1129,6 +1129,15 @@ class CatalogNodeAdapter:
                     # This means that the stream is closed by the producer
                     end_stream.set()
                     return
+                metadata["uri"] = uri
+                if metadata.get("patch"):
+                    s = ",".join(
+                        f"{offset}:{offset+shape}"
+                        for offset, shape in zip(
+                            metadata["patch"]["offset"], metadata["patch"]["shape"]
+                        )
+                    )
+                    metadata["uri"] = f"{uri}?slice={s}"
                 await formatter(websocket, metadata, payload_bytes)
 
             # Setup buffer

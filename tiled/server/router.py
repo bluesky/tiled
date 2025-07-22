@@ -26,6 +26,7 @@ from fastapi import (
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
+from starlette.requests import URL
 from starlette.status import (
     HTTP_200_OK,
     HTTP_206_PARTIAL_CONTENT,
@@ -88,7 +89,12 @@ from .dependencies import (
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
 from .settings import Settings, get_settings
-from .utils import filter_for_access, get_base_url, record_timing
+from .utils import (
+    filter_for_access,
+    get_base_url,
+    get_base_url_websocket,
+    record_timing,
+)
 
 T = TypeVar("T")
 
@@ -700,7 +706,12 @@ def get_router(
         formatter = get_websocket_envelope_formatter(
             envelope_format, entry, deserialization_registry
         )
-        handler = entry.make_ws_handler(websocket, formatter)
+        base_websocket_url = URL(get_base_url_websocket(websocket))
+        scheme = "https" if base_websocket_url.scheme == "wss" else "http"
+        path_parts = [segment for segment in path.split("/") if segment]
+        path_str = "/".join(path_parts)
+        uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
+        handler = entry.make_ws_handler(websocket, formatter, uri)
         await handler(start)
 
     @router.get(
