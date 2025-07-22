@@ -21,6 +21,7 @@ We aim to release v0.1.0 in August 2025.
 - Restructure codebase to separate FastAPI server from
   service, both to improve maintainability/readability and
   to enable a distinct GraphQL server to use the same service.
+- Type-hint more of the codebase.
 - Rationalize and simplify CLI and configuration management.
 - Support deployment with an API gateway.
 - Continue to develop streaming capabilities.
