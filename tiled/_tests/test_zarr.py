@@ -28,7 +28,7 @@ array_cases = {
     "dtype_uint16": numpy.arange(10, dtype="uint16"),
     "dtype_uint64": numpy.arange(10, dtype="uint64"),
     "dtype_f": numpy.arange(10, dtype="f"),
-    "dtype_c": (numpy.arange(10) * 1j).astype("c"),
+    "dtype_c": (numpy.arange(10) * 1j).astype("c8"),
     "dtype_S": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="S3"),
     "dtype_U": numpy.array([letter * 3 for letter in string.ascii_letters], dtype="U3"),
     "dtype_m": numpy.array(
@@ -252,8 +252,6 @@ def test_zarr_groups(suffix, path, slash, server_url, fs):
 
 @pytest.mark.parametrize("kind", list(array_cases.keys()))
 def test_array_dtypes(kind, server_url, fs):
-    if not LEGACY_ZARR and kind in {"dtype_c", "dtype_S", "dtype_U"}:
-        pytest.xfail("zarr >= 3.0.0 does not support complex, bytes, or unicode arrays")
     expected = array_cases[kind]
     url = f"{server_url}/zarr/v2/nested/array"
     grp = zarr.open(fs.get_mapper(url), mode="r")
@@ -263,8 +261,6 @@ def test_array_dtypes(kind, server_url, fs):
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
 def test_scalar_dtypes(kind, server_url, fs):
-    if not LEGACY_ZARR and kind in {"dtype_c", "dtype_S", "dtype_U"}:
-        pytest.xfail("zarr >= 3.0.0 does not support complex, bytes, or unicode arrays")
     expected = scalar_cases[kind]
     url = f"{server_url}/zarr/v2/scalar"
     grp = zarr.open(fs.get_mapper(url), mode="r")
@@ -328,7 +324,7 @@ def test_dataframe_column(key, server_url, fs):
         assert numpy.array_equal(actual, expected)
 
 
-def test_writing(server_url, fs):
+def test_writing_not_implemented(server_url, fs):
     url = f"{server_url}/zarr/v2/nested/array"
 
     with pytest.raises(NotImplementedError):

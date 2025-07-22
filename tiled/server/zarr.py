@@ -155,7 +155,7 @@ def get_router(
                 "chunks": convert_chunks_for_zarr(structure.chunks),
                 "compressor": ZARR_CODEC_SPEC,
                 "dtype": structure.data_type.to_numpy_str(),
-                "fill_value": 0,
+                "fill_value": None,
                 "filters": None,
                 "order": ZARR_BYTE_ORDER,
                 "shape": list(structure.shape),
