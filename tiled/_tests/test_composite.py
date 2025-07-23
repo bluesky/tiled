@@ -299,4 +299,4 @@ def test_read_selective_with_dim0(context, dim0):
 
     # Check the dimension names
     for var_name in ds.data_vars:
-        ds[var_name].dims[0] == dim0
+        ds[var_name].dims[0] == dim0  # TODO: Add assert

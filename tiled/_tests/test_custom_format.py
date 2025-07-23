@@ -51,7 +51,7 @@ async def test_xdi_round_trip(tmpdir):
         )
         client["example"].export(str(tmpdir / "exported.xdi"))
         actual = Path(tmpdir / "exported.xdi").read_text()
-        actual
+        assert actual
         # XDI uses a two-space spacing that pandas.to_csv does not support.
         # Need thought to get this exactly right.
         # assert actual == data
