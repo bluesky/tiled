@@ -57,7 +57,8 @@ from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
-from .zarr import get_router as get_zarr_router
+from .zarr import get_router as get_zarr_router_v2
+from .zarr import get_router_v3 as get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -65,7 +66,8 @@ SENSITIVE_COOKIES = {
 }
 CSRF_HEADER_NAME = "x-csrf"
 CSRF_QUERY_PARAMETER = "csrf"
-ZARR_PREFIX = "/zarr/v2"
+ZARR_PREFIX_V2 = "/zarr/v2"
+ZARR_PREFIX_V3 = "/zarr/v3"
 
 MINIMUM_SUPPORTED_PYTHON_CLIENT_VERSION = packaging.version.parse("0.1.0a104")
 
@@ -376,14 +378,15 @@ def build_app(
     )
     app.include_router(router, prefix="/api/v1")
 
-    zarr_router = get_zarr_router(
-        # query_registry,
-        # serialization_registry,
-        # deserialization_registry,
-        # validation_registry,
-        # authenticators,
-    )
-    app.include_router(zarr_router, prefix=ZARR_PREFIX)
+    # zarr_router = get_zarr_router_v2(
+    #     # query_registry,
+    #     # serialization_registry,
+    #     # deserialization_registry,
+    #     # validation_registry,
+    #     # authenticators,
+    # )
+    app.include_router(get_zarr_router_v2(), prefix=ZARR_PREFIX_V2)
+    app.include_router(get_zarr_router_v3(), prefix=ZARR_PREFIX_V3)
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
@@ -869,10 +872,10 @@ def build_app(
         # If a zarr block is requested, e.g. http://localhost:8000/zarr/v2/array/0.1.2.3, replace the block spec
         # with a properly formatted query parameter: http://localhost:8000/zarr/v2/array?block=0,1,2,3 (with ','
         # safely encoded)
-        if request.url.path.startswith(ZARR_PREFIX):
+        if request.url.path.startswith(ZARR_PREFIX_V2):
             # Extract the last part of the path
             zarr_path = (
-                request.url.path[len(ZARR_PREFIX) :]  # noqa: #E203
+                request.url.path[len(ZARR_PREFIX_V2) :]  # noqa: #E203
                 .strip("/")
                 .split("/")
             )
@@ -884,7 +887,7 @@ def build_app(
 
                 # Modify the ASGI scope before the request is processed
                 request.scope["query_string"] = urlparse.urlencode(query).encode()
-                request.scope["path"] = ZARR_PREFIX + "/" + "/".join(zarr_path[:-1])
+                request.scope["path"] = ZARR_PREFIX_V2 + "/" + "/".join(zarr_path[:-1])
 
         return await call_next(request)
 

@@ -30,6 +30,7 @@ data = {
     "short_column": rng.integers(10, size=100, dtype=numpy.dtype("uint8")),
     "tiny_column": rng.random(10),
     "long_column": rng.random(100_000),
+    "complex": rng.random((30, 50)) + 1j * rng.random((30, 50)),
 }
 temp = 15 + 8 * rng.normal(size=(2, 2, 3))
 precip = 10 * rng.uniform(size=(2, 2, 3))
@@ -73,6 +74,7 @@ mapping = {
                 },
                 metadata={"animal": "dog", "color": "red"},
             ),
+            "complex": ArrayAdapter.from_array(data["complex"]),
             "sparse_image": COOAdapter.from_coo(sparse.COO(sparse_arr)),
             "awkward_array": AwkwardAdapter.from_array(awkward_arr),
         },
