@@ -18,10 +18,10 @@ from ..adapters.mapping import MapAdapter
 from ..server.app import build_app
 from .utils import Server
 
-LEGACY_ZARR = zarr.__version__ < "3.0.0"  # Versions >= 3.0.0 require Python 3.11+
+IS_LEGACY_ZARR = zarr.__version__ < "3.0.0"  # Versions >= 3.0.0 require Python 3.11+
 
-prefixes = ["/zarr/v2"] if LEGACY_ZARR else ["/zarr/v2", "/zarr/v3"]
-pytestmark = pytest.mark.parametrize("version_prefix", prefixes)
+url_prefixes = ["/zarr/v2"] if IS_LEGACY_ZARR else ["/zarr/v2", "/zarr/v3"]
+pytestmark = pytest.mark.parametrize("prefix", url_prefixes)
 
 rng = numpy.random.default_rng(seed=42)
 array_cases = {
@@ -142,56 +142,56 @@ def server_url(app):
 def fs():
     headers = {"Authorization": "Apikey secret", "Content-Type": "application/json"}
     fs = HTTPFileSystem(
-        client_kwargs={"headers": headers}, asynchronous=not LEGACY_ZARR
+        client_kwargs={"headers": headers}, asynchronous=not IS_LEGACY_ZARR
     )
     return fs
 
 
 @pytest.mark.parametrize("path", ["", "/", "/nested", "/table/single"])
 @pytest.mark.asyncio
-async def test_zarr_group_routes(version_prefix, path, app):
+async def test_zarr_group_routes(prefix, path, app):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
         headers={"Authorization": "Apikey secret"},
         follow_redirects=True,
     ) as client:
-        response = await client.get(version_prefix + path)
+        response = await client.get(prefix + path)
         assert response.status_code == HTTP_200_OK
 
-        response = await client.get(version_prefix + path + "/.zarray")
+        response = await client.get(prefix + path + "/.zarray")
         assert response.status_code == HTTP_404_NOT_FOUND
 
-        response = await client.get(version_prefix + path + "/.zgroup")
+        response = await client.get(prefix + path + "/.zgroup")
         assert (
             response.status_code == HTTP_200_OK
-            if version_prefix == "/zarr/v2"
+            if prefix == "/zarr/v2"
             else HTTP_404_NOT_FOUND
         )
 
 
 @pytest.mark.parametrize("path", ["/nested/cube/tiny_cube", "/table/single/x"])
 @pytest.mark.asyncio
-async def test_zarr_array_routes(version_prefix, path, app):
+async def test_zarr_array_routes(prefix, path, app):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
         headers={"Authorization": "Apikey secret"},
         follow_redirects=True,
     ) as client:
-        response = await client.get(version_prefix + path)
+        response = await client.get(prefix + path)
         assert response.status_code == HTTP_200_OK
 
-        response = await client.get(version_prefix + path + "/.zgroup")
+        response = await client.get(prefix + path + "/.zgroup")
         assert response.status_code == HTTP_404_NOT_FOUND
 
-        if version_prefix == "/zarr/v2":
-            response = await client.get(version_prefix + path + "/.zarray")
+        if prefix == "/zarr/v2":
+            response = await client.get(prefix + path + "/.zarray")
             assert response.status_code == HTTP_200_OK
 
             ndim = len(response.json().get("shape"))
             indx = ".".join(["0"] * max(ndim, 0))
-            response = await client.get(version_prefix + path + f"/{indx}")
+            response = await client.get(prefix + path + f"/{indx}")
             assert response.status_code == HTTP_200_OK
 
 
@@ -207,25 +207,25 @@ async def test_zarr_array_routes(version_prefix, path, app):
     ],
 )
 @pytest.mark.asyncio
-async def test_authentication(version_prefix, path, app):
+async def test_authentication(prefix, path, app):
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
         headers={"Authorization": "Apikey not-secret"},
         follow_redirects=True,
     ) as client:
-        response = await client.get(version_prefix + path)
+        response = await client.get(prefix + path)
         assert response.status_code == HTTP_401_UNAUTHORIZED
 
-        response = await client.get(version_prefix + path + "/.zarray")
+        response = await client.get(prefix + path + "/.zarray")
         assert response.status_code == HTTP_401_UNAUTHORIZED
 
-        response = await client.get(version_prefix + path + "/.zgroup")
+        response = await client.get(prefix + path + "/.zgroup")
         assert response.status_code == HTTP_401_UNAUTHORIZED
 
 
-def test_zarr_integration(server_url, fs, version_prefix):
-    url = f"{server_url}{version_prefix}"
+def test_zarr_integration(server_url, fs, prefix):
+    url = f"{server_url}{prefix}"
     grp = zarr.open(fs.get_mapper(url), mode="r")
 
     assert grp.store.fs == fs
@@ -245,9 +245,9 @@ def test_zarr_integration(server_url, fs, version_prefix):
     ],
 )
 @pytest.mark.parametrize("slash", ["", "/"])
-def test_zarr_groups(version_prefix, path, suffix, slash, server_url, fs):
+def test_zarr_groups(prefix, path, suffix, slash, server_url, fs):
     expected = array_cases["random_2d"]
-    url = f"{server_url}{version_prefix}/{suffix}{slash}"
+    url = f"{server_url}{prefix}/{suffix}{slash}"
     arr = zarr.open(fs.get_mapper(url), mode="r")
     if path:
         arr = arr[path]
@@ -255,48 +255,48 @@ def test_zarr_groups(version_prefix, path, suffix, slash, server_url, fs):
 
 
 @pytest.mark.parametrize("kind", list(array_cases.keys()))
-def test_array_dtypes(kind, version_prefix, server_url, fs):
+def test_array_dtypes(kind, prefix, server_url, fs):
     expected = array_cases[kind]
-    url = f"{server_url}{version_prefix}/nested/array"
+    url = f"{server_url}{prefix}/nested/array"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     actual = grp[kind][...]
     assert numpy.array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("kind", list(scalar_cases))
-def test_scalar_dtypes(kind, version_prefix, server_url, fs):
+def test_scalar_dtypes(kind, prefix, server_url, fs):
     expected = scalar_cases[kind]
-    url = f"{server_url}{version_prefix}/scalar"
+    url = f"{server_url}{prefix}/scalar"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     actual = grp[kind][...]
     assert numpy.array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("kind", list(cube_cases))
-def test_cube_cases(kind, version_prefix, server_url, fs):
+def test_cube_cases(kind, prefix, server_url, fs):
     expected = cube_cases[kind]
-    url = f"{server_url}{version_prefix}/nested/cube"
+    url = f"{server_url}{prefix}/nested/cube"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     actual = grp[kind][...]
     assert numpy.array_equal(actual, expected)
 
 
-def test_infinity(version_prefix, server_url, fs):
-    url = f"{server_url}{version_prefix}/inf/example"
+def test_infinity(prefix, server_url, fs):
+    url = f"{server_url}{prefix}/inf/example"
     actual = zarr.open(fs.get_mapper(url), mode="r")[...]
     mask = numpy.isnan(arr_with_inf)
     assert numpy.array_equal(actual[~mask], arr_with_inf[~mask])
     assert numpy.isnan(actual[mask]).all()
 
 
-def test_shape_with_zero(version_prefix, server_url, fs):
-    url = f"{server_url}{version_prefix}/zero/example"
+def test_shape_with_zero(prefix, server_url, fs):
+    url = f"{server_url}{prefix}/zero/example"
     actual = zarr.open(fs.get_mapper(url), mode="r")[...]
     assert numpy.array_equal(actual, arr_with_zero_dim)
 
 
-def test_dataframe_group(version_prefix, server_url, fs):
-    url = f"{server_url}{version_prefix}/table"
+def test_dataframe_group(prefix, server_url, fs):
+    url = f"{server_url}{prefix}/table"
     grp = zarr.open(fs.get_mapper(url), mode="r")
     assert set(grp.keys()) == set(table_tree.keys())
 
@@ -308,8 +308,8 @@ def test_dataframe_group(version_prefix, server_url, fs):
 
 
 @pytest.mark.parametrize("key", list(table_tree.keys()))
-def test_dataframe_single(key, version_prefix, server_url, fs):
-    url = f"{server_url}{version_prefix}/table/{key}"
+def test_dataframe_single(key, prefix, server_url, fs):
+    url = f"{server_url}{prefix}/table/{key}"
     grp = zarr.open(fs.get_mapper(url), mode="r")
 
     for col in df.columns:
@@ -319,21 +319,21 @@ def test_dataframe_single(key, version_prefix, server_url, fs):
 
 
 @pytest.mark.parametrize("key", list(table_tree.keys()))
-def test_dataframe_column(key, version_prefix, server_url, fs):
+def test_dataframe_column(key, prefix, server_url, fs):
     for col in df.columns:
-        url = f"{server_url}{version_prefix}/table/{key}/{col}"
+        url = f"{server_url}{prefix}/table/{key}/{col}"
         arr = zarr.open(fs.get_mapper(url), mode="r")
         actual = arr[...]
         expected = df[col]
         assert numpy.array_equal(actual, expected)
 
 
-def test_writing_not_implemented(version_prefix, server_url, fs):
-    url = f"{server_url}{version_prefix}/nested/array"
+def test_writing_not_implemented(prefix, server_url, fs):
+    url = f"{server_url}{prefix}/nested/array"
 
     with pytest.raises(NotImplementedError):
         grp = zarr.open(fs.get_mapper(url), mode="w")
 
-    with pytest.raises(zarr.errors.ReadOnlyError if LEGACY_ZARR else ValueError):
+    with pytest.raises(zarr.errors.ReadOnlyError if IS_LEGACY_ZARR else ValueError):
         grp = zarr.open(fs.get_mapper(url), mode="r")
         grp["random_2d"][0, 0] = 0.0

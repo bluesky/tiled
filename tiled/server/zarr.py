@@ -24,7 +24,7 @@ from .utils import record_timing
 
 ZARR_BLOCK_SIZE = 10000
 ZARR_BYTE_ORDER = "C"
-ZARR_CODEC_SPEC = {"id": "zstd", "level": 0, "checksum": False}
+ZARR_CODEC_SPEC = {"id": "zstd", "level": 0}
 ZARR_DATETIME64_PRECISION = "ns"
 
 zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
