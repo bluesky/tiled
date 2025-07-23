@@ -13,7 +13,7 @@ from ..server.app import build_app_from_config
 
 def load_data(text: str) -> tuple[list[str], pd.DataFrame]:
     # remove comments
-    text = re.sub(r"#\s*\/+\r?\n(?:# .*\r?\n)*#\s*-+\r?\n", "", text)
+    text = re.sub(r"#\s*\/+\r?\n(?:#\s+.*\r?\n)*#\s*-+\r?\n", "", text)
     lines = text.strip().splitlines()
     metadata_lines = [line.replace(" ", "") for line in lines if line.startswith("#")]
     data_lines = [line.strip() for line in lines if not line.startswith("#")]
