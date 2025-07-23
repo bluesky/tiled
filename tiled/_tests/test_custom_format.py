@@ -68,4 +68,6 @@ async def test_xdi_round_trip(tmp_path: Path):
         metadata_actual, df_actual = load_data(actual)
         metadata_expected, df_expected = load_data(data)
         assert df_actual.equals(df_expected)
-        assert set(metadata_actual) == set(metadata_expected)
+        assert len(metadata_actual) == len(metadata_expected) and set(
+            metadata_actual
+        ) == set(metadata_expected)
