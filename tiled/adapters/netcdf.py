@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, List, Optional, Set, Union
+from typing import Any, Optional, Set
 
 import xarray
 

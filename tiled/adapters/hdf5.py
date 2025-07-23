@@ -237,7 +237,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 slice = NDSlice.from_numpy_str(slice)
             array = array[slice]
         if squeeze:
-            assert isinstance(array,dask.array.Array)
+            assert isinstance(array, dask.array.Array)
             array = array.squeeze()
 
         if array.shape != tuple(structure.shape):

@@ -200,13 +200,13 @@ class SQLAdapter:
                     "UPDATE _dataset_id_counter SET value = value + 1 "
                     "RETURNING value"
                 )
-                (dataset_id,) = cursor.fetchone() # type: ignore
+                (dataset_id,) = cursor.fetchone()  # type: ignore
         else:
             with conn.cursor() as cursor:
                 cursor.execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
             with conn.cursor() as cursor:
                 cursor.execute("SELECT nextval('_dataset_id_counter')")
-                (dataset_id,) = cursor.fetchone() # type: ignore
+                (dataset_id,) = cursor.fetchone()  # type: ignore
         data_source.parameters["dataset_id"] = dataset_id
         conn.commit()
 
