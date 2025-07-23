@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
@@ -8,7 +9,7 @@ import pytest
 import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
-import uuid
+
 from ..access_policies import ALL_ACCESS
 from ..adapters.awkward_directory_container import DirectoryContainer
 from ..adapters.protocols import (

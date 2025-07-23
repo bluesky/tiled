@@ -293,9 +293,7 @@ def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
         ("adapter_psql_many_partitions"),
     ],
 )
-def test_append_single_partition(
-    adapter: str, request: pytest.FixtureRequest
-) -> None:
+def test_append_single_partition(adapter: str, request: pytest.FixtureRequest) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
     assert isinstance(adapter, SQLAdapter)
