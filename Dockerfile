@@ -1,11 +1,11 @@
-FROM node:16-alpine AS web_frontend_builder
+FROM node:22-alpine AS web_frontend_builder
 WORKDIR /code
 COPY web-frontend .
 RUN npm install && npm run build
 
 # We cannot upgrade to Python 3.11 until numba supports it.
 # The `sparse` library relies on numba.
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 # We need git at build time in order for versioneer to work, which in turn is
 # needed for the server to correctly report the library_version in the /api/v1/
@@ -34,7 +34,7 @@ COPY . .
 
 # Skip building the UI here because we already did it in the stage
 # above using a node container.
-# Include server and client depedencies here because this container may be used
+# Include server and client dependencies here because this container may be used
 # for `tiled register ...` and `tiled server directory ...` which invokes
 # client-side code.
 RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
@@ -44,7 +44,7 @@ RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
 # RUN pip install '.[client,dev]'
 # RUN pytest -v
 
-FROM python:3.12-slim as runner
+FROM python:3.12-slim AS runner
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"

@@ -10,7 +10,8 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import Optional, Union
+from textwrap import dedent
+from typing import Any, Callable, Coroutine, Optional, TypedDict, Union
 
 import anyio
 import packaging.version
@@ -75,6 +76,10 @@ logger.addHandler(handler)
 current_principal = contextvars.ContextVar("current_principal")
 
 
+AppTask = Callable[[], Coroutine[None, None, Any]]
+"""Async function to be run as part of the app's lifecycle"""
+
+
 def custom_openapi(app):
     """
     The app's openapi method will be monkey-patched with this.
@@ -111,7 +116,7 @@ def build_app(
     deserialization_registry: Optional[SerializationRegistry] = None,
     compression_registry: Optional[CompressionRegistry] = None,
     validation_registry: Optional[ValidationRegistry] = None,
-    tasks=None,
+    tasks: Optional[dict[str, list[AppTask]]] = None,
     scalable=False,
     access_policy=None,
 ):
@@ -143,10 +148,12 @@ def build_app(
     )
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
-    tasks = tasks or {}
-    tasks.setdefault("startup", [])
-    tasks.setdefault("background", [])
-    tasks.setdefault("shutdown", [])
+
+    tasks: TaskMap = {
+        "startup": (tasks or {}).get("startup", []),
+        "background": (tasks or {}).get("background", []),
+        "shutdown": (tasks or {}).get("shutdown", []),
+    }
     # The tasks are collected at config-parsing time off of the sub-trees.
     # Collect the tasks off the root tree here, so that it works when
     # a single tree is passed to build_app(...) directly, as happens in the tests.
@@ -163,30 +170,35 @@ def build_app(
                 and "TILED_SECRET_KEYS" not in os.environ
             ):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, secret keys must be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured with an
+                        Authenticator, secret keys must be provided via configuration like
 
-authentication:
-  secret_keys:
-    - SECRET
-  ...
+                        authentication:
+                          secret_keys:
+                            - SECRET
+                          ...
 
-or via the environment variable TILED_SECRET_KEYS.""",
+                        or via the environment variable TILED_SECRET_KEYS.\
+                        """,
+                    )
                 )
             # Multi-user authentication requires a database. We cannot fall
             # back to the default of an in-memory SQLite database in a
             # horizontally scaled deployment.
             if not server_settings.get("database", {}).get("uri"):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, a persistent database must be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured with an
+                        Authenticator, a persistent database must be provided via configuration like
 
-database:
-  uri: sqlite:////path/to/database.sqlite
+                        database:
+                          uri: sqlite:////path/to/database.sqlite
 
-"""
+                        """
+                    )
                 )
         else:
             # No authentication provider is configured, so no secret keys are
@@ -196,18 +208,22 @@ database:
                 or ("TILED_SINGLE_USER_API_KEY" in os.environ)
             ):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured for
-single-user access (i.e. without an Authenticator) a single-user API key must
-be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured for
+                        single-user access (i.e. without an Authenticator) a single-user API key must
+                        be provided via configuration like
 
-authentication:
-  single_user_api_key: SECRET
-  ...
+                        authentication:
+                          single_user_api_key: SECRET
+                          ...
 
-or via the environment variable TILED_SINGLE_USER_API_KEY.""",
+                        or via the environment variable TILED_SINGLE_USER_API_KEY.\
+                        """,
+                    )
                 )
-        # If we reach here, the no configuration problems were found.
+
+    # If we reach here, the no configuration problems were found.
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -456,47 +472,53 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # Validate the single-user API key.
         settings: Settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
-        API_KEY_MSG = """
-Here are two ways to generate a good API key:
+        API_KEY_MSG = dedent(
+            """
+            Here are two ways to generate a good API key:
 
-# With openssl:
-openssl rand -hex 32
+            # With openssl:
+            openssl rand -hex 32
 
-# With Python:
-python -c "import secrets; print(secrets.token_hex(32))"
+            # With Python:
+            python -c "import secrets; print(secrets.token_hex(32))"
 
-"""
+            """
+        )
         if single_user_api_key is not None:
             if not single_user_api_key:
                 raise ValueError(
-                    """
-The single-user API key is set to an empty value. Perhaps the environment
-variable TILED_SINGLE_USER_API_KEY is set to an empty string.
-"""
-                    + API_KEY_MSG
+                    dedent(
+                        """
+                        The single-user API key is set to an empty value. Perhaps the environment
+                        variable TILED_SINGLE_USER_API_KEY is set to an empty string.
+                        """
+                        + API_KEY_MSG
+                    )
                 )
             if not single_user_api_key.isalnum():
                 raise ValueError(
-                    """
-The API key must only contain alphanumeric characters. We enforce this because
-pasting other characters into a URL, as in ?api_key=..., can result in
-confusing behavior due to ambiguous encodings.
-"""
+                    dedent(
+                        """
+                        The API key must only contain alphanumeric characters. We enforce this because
+                        pasting other characters into a URL, as in ?api_key=..., can result in
+                        confusing behavior due to ambiguous encodings.
+                        """
+                    )
                     + API_KEY_MSG
                 )
 
         # Run startup tasks collected from trees (adapters).
-        for task in tasks.get("startup", []):
+        for task in tasks["startup"]:
             await task()
 
         # Stash these to cancel this on shutdown.
         app.state.tasks = []
         # Trees and Authenticators can run tasks in the background.
-        background_tasks = []
-        background_tasks.extend(tasks.get("background_tasks", []))
+        background_tasks: list[AppTask] = []
+        background_tasks.extend(tasks["background"])
         for authenticator in authenticators:
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
-        for task in background_tasks or []:
+        for task in background_tasks:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
 
@@ -559,29 +581,33 @@ confusing behavior due to ambiguous encodings.
                         )
                     else:
                         print(
-                            f"""
+                            dedent(
+                                f"""
 
-No database found at {redacted_url}
+                                No database found at {redacted_url}
 
-To create one, run:
+                                To create one, run:
 
-    tiled admin init-database {redacted_url}
-""",
+                                    tiled admin init-database {redacted_url}
+                                """
+                            ),
                             file=sys.stderr,
                         )
                         raise
                 except DatabaseUpgradeNeeded as err:
                     print(
-                        f"""
+                        dedent(
+                            f"""
 
-The database used by Tiled to store authentication-related information
-was created using an older version of Tiled. It needs to be upgraded to
-work with this version of Tiled.
+                            The database used by Tiled to store authentication-related information
+                            was created using an older version of Tiled. It needs to be upgraded to
+                            work with this version of Tiled.
 
-Back up the database, and then run:
+                            Back up the database, and then run:
 
-    tiled admin upgrade-database {redacted_url}
-""",
+                                tiled admin upgrade-database {redacted_url}
+                            """
+                        ),
                         file=sys.stderr,
                     )
                     raise err from None
@@ -628,16 +654,16 @@ Back up the database, and then run:
 
     async def shutdown_event():
         # Run shutdown tasks collected from trees (adapters).
-        for task in tasks.get("shutdown", []):
+        for task in tasks["shutdown"]:
             await task()
 
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
             from ..authn_database.connection_pool import close_database_connection_pool
 
-            for task in app.state.tasks:
-                task.cancel()
             await close_database_connection_pool(settings.database_settings)
+        for task in app.state.tasks:
+            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,
@@ -909,3 +935,9 @@ def print_server_info(
 
 class UnscalableConfig(Exception):
     pass
+
+
+class TaskMap(TypedDict):
+    background: list[AppTask]
+    startup: list[AppTask]
+    shutdown: list[AppTask]
