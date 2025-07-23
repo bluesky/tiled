@@ -120,6 +120,6 @@ def test_cli_version():
     from tiled import __version__
 
     with run_cli("tiled --version") as process:
-        assert process.stdout
+        assert process.stdout is not None
         line = process.stdout.readline()
     assert line.decode() == f"{__version__}{os.linesep}"
