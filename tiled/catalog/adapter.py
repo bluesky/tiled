@@ -347,6 +347,7 @@ class CatalogNodeAdapter:
     async def startup(self):
         if (self.context.engine.dialect.name == "sqlite") and (
             self.context.engine.url.database == ":memory:"
+            or self.context.engine.url.query.get("mode", None) == "memory"
         ):
             # Special-case for in-memory SQLite: Because it is transient we can
             # skip over anything related to migrations.
@@ -1505,6 +1506,7 @@ CatalogNodeAdapter.register_query(Like, like)
 
 def in_memory(
     *,
+    named_memory=None,
     metadata=None,
     specs=None,
     writable_storage=None,
@@ -1513,7 +1515,10 @@ def in_memory(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
 ):
-    uri = "sqlite:///:memory:"
+    if not named_memory:
+        uri = "sqlite:///:memory:"
+    else:
+        uri = f"sqlite:///file:{named_memory}?mode=memory&cache=shared&uri=true"
     return from_uri(
         uri=uri,
         metadata=metadata,
@@ -1561,8 +1566,10 @@ def from_uri(
         logger.info(f"Subprocess stderr: {stderr}")
 
     parsed_url = make_url(uri)
-    if (parsed_url.get_dialect().name == "sqlite") and (
-        parsed_url.database != ":memory:"
+    if (
+        (parsed_url.get_dialect().name == "sqlite")
+        and (parsed_url.database != ":memory:")
+        and (parsed_url.query.get("mode", None) != "memory")
     ):
         # For file-backed SQLite databases, connection pooling offers a
         # significant performance boost. For SQLite databases that exist
