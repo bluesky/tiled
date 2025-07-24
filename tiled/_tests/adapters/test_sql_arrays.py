@@ -1,12 +1,16 @@
-from collections.abc import Generator
-from pathlib import Path
 from typing import Callable
 
-import adbc_driver_duckdb
-import numpy
+import numpy as np
 import pyarrow as pa
 import pytest
 
+from tiled._tests.adapters.test_sql import adapter_duckdb_many_partitions  # noqa: F401
+from tiled._tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
+from tiled._tests.adapters.test_sql import adapter_psql_many_partitions  # noqa: F401
+from tiled._tests.adapters.test_sql import adapter_psql_one_partition  # noqa: F401
+from tiled._tests.adapters.test_sql import adapter_sql_many_partitions  # noqa: F401
+from tiled._tests.adapters.test_sql import adapter_sql_one_partition  # noqa: F401
+from tiled._tests.adapters.test_sql import assert_same_rows
 from tiled.adapters.sql import SQLAdapter
 from tiled.storage import parse_storage, register_storage
 from tiled.structures.core import StructureFamily
@@ -15,28 +19,28 @@ from tiled.structures.table import TableStructure
 
 names = ["f0", "f1", "f2", "f3", "f4", "f5"]
 data0 = [
-    pa.array([numpy.ones(3, dtype=numpy.int8) * i for i in range(1, 6)]),
-    pa.array([numpy.ones(3, dtype=numpy.int16) * i for i in range(1, 6)]),
-    pa.array([numpy.ones(3, dtype=numpy.int32) * i for i in range(1, 6)]),
-    pa.array([numpy.ones(3, dtype=numpy.int64) * i for i in range(1, 6)]),
-    pa.array([numpy.ones(3, dtype=numpy.float32) * i for i in range(1, 6)]),
-    pa.array([numpy.ones(3, dtype=numpy.float64) * i for i in range(1, 6)]),
+    pa.array([np.ones(3, dtype=np.int8) * i for i in range(1, 6)]),
+    pa.array([np.ones(3, dtype=np.int16) * i for i in range(1, 6)]),
+    pa.array([np.ones(3, dtype=np.int32) * i for i in range(1, 6)]),
+    pa.array([np.ones(3, dtype=np.int64) * i for i in range(1, 6)]),
+    pa.array([np.ones(3, dtype=np.float32) * i for i in range(1, 6)]),
+    pa.array([np.ones(3, dtype=np.float64) * i for i in range(1, 6)]),
 ]
 data1 = [
-    pa.array([numpy.ones(3, dtype=numpy.int8) * i for i in range(6, 13)]),
-    pa.array([numpy.ones(3, dtype=numpy.int16) * i for i in range(6, 13)]),
-    pa.array([numpy.ones(3, dtype=numpy.int32) * i for i in range(6, 13)]),
-    pa.array([numpy.ones(3, dtype=numpy.int64) * i for i in range(6, 13)]),
-    pa.array([numpy.ones(3, dtype=numpy.float32) * i for i in range(6, 13)]),
-    pa.array([numpy.ones(3, dtype=numpy.float64) * i for i in range(6, 13)]),
+    pa.array([np.ones(3, dtype=np.int8) * i for i in range(6, 13)]),
+    pa.array([np.ones(3, dtype=np.int16) * i for i in range(6, 13)]),
+    pa.array([np.ones(3, dtype=np.int32) * i for i in range(6, 13)]),
+    pa.array([np.ones(3, dtype=np.int64) * i for i in range(6, 13)]),
+    pa.array([np.ones(3, dtype=np.float32) * i for i in range(6, 13)]),
+    pa.array([np.ones(3, dtype=np.float64) * i for i in range(6, 13)]),
 ]
 data2 = [
-    pa.array([numpy.ones(3, dtype=numpy.int8) * i for i in range(13, 15)]),
-    pa.array([numpy.ones(3, dtype=numpy.int16) * i for i in range(13, 15)]),
-    pa.array([numpy.ones(3, dtype=numpy.int32) * i for i in range(13, 15)]),
-    pa.array([numpy.ones(3, dtype=numpy.int64) * i for i in range(13, 15)]),
-    pa.array([numpy.ones(3, dtype=numpy.float32) * i for i in range(13, 15)]),
-    pa.array([numpy.ones(3, dtype=numpy.float64) * i for i in range(13, 15)]),
+    pa.array([np.ones(3, dtype=np.int8) * i for i in range(13, 15)]),
+    pa.array([np.ones(3, dtype=np.int16) * i for i in range(13, 15)]),
+    pa.array([np.ones(3, dtype=np.int32) * i for i in range(13, 15)]),
+    pa.array([np.ones(3, dtype=np.int64) * i for i in range(13, 15)]),
+    pa.array([np.ones(3, dtype=np.float32) * i for i in range(13, 15)]),
+    pa.array([np.ones(3, dtype=np.float64) * i for i in range(13, 15)]),
 ]
 
 batch0 = pa.record_batch(data0, names=names)
@@ -64,89 +68,6 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
     return _data_source_from_init_storage
-
-
-@pytest.fixture
-def adapter_duckdb_one_partition(
-    tmp_path: Path,
-    data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    duckdb_uri: str,
-) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(duckdb_uri, 1)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
-
-
-@pytest.fixture
-def adapter_duckdb_many_partitions(
-    tmp_path: Path,
-    data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    duckdb_uri: str,
-) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(duckdb_uri, 3)
-    yield SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
-
-
-def test_attributes_duckdb_one_part(adapter_duckdb_one_partition: SQLAdapter) -> None:
-    assert adapter_duckdb_one_partition.structure().columns == names
-    assert adapter_duckdb_one_partition.structure().npartitions == 1
-    assert isinstance(
-        adapter_duckdb_one_partition.conn, adbc_driver_duckdb.dbapi.Connection
-    )
-
-
-def test_attributes_duckdb_many_part(
-    adapter_duckdb_many_partitions: SQLAdapter,
-) -> None:
-    assert adapter_duckdb_many_partitions.structure().columns == names
-    assert adapter_duckdb_many_partitions.structure().npartitions == 3
-    assert isinstance(
-        adapter_duckdb_many_partitions.conn, adbc_driver_duckdb.dbapi.Connection
-    )
-
-
-@pytest.fixture
-def adapter_psql_one_partition(
-    data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    postgres_uri: str,
-) -> Generator[SQLAdapter, None, None]:
-    data_source = data_source_from_init_storage(postgres_uri, 1)
-    adapter = SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
-    yield adapter
-    adapter.close()
-
-
-@pytest.fixture
-def adapter_psql_many_partitions(
-    data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
-    postgres_uri: str,
-) -> SQLAdapter:
-    data_source = data_source_from_init_storage(postgres_uri, 3)
-    return SQLAdapter(
-        data_source.assets[0].data_uri,
-        data_source.structure,
-        data_source.parameters["table_name"],
-        data_source.parameters["dataset_id"],
-    )
-
-
-def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
-    assert adapter_psql_one_partition.structure().columns == names
-    assert adapter_psql_one_partition.structure().npartitions == 1
 
 
 @pytest.mark.parametrize(
@@ -205,15 +126,6 @@ def test_write_read_list_batch_one_part(
     result_read_partition = adapter.read_partition(0)
 
     assert test_table == pa.Table.from_pandas(result_read_partition)
-
-
-def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
-    "Verify that two tables have the same rows, regardless of order."
-    assert table1.num_rows == table2.num_rows
-
-    rows1 = {tuple(row) for row in table1.to_pylist()}
-    rows2 = {tuple(row) for row in table2.to_pylist()}
-    assert rows1 == rows2
 
 
 @pytest.mark.parametrize(
@@ -299,14 +211,14 @@ def test_write_read_one_batch_many_part(
 
     # read a specific field
     result_read = adapter.read_partition(0, fields=[field])
-    assert numpy.array_equal(
+    assert np.array_equal(
         [*data0[1].tolist(), *data2[1].tolist()], result_read[field].tolist()
     )
     result_read = adapter.read_partition(1, fields=[field])
-    assert numpy.array_equal(
+    assert np.array_equal(
         [*data1[0].tolist(), *data0[0].tolist()], result_read[field].tolist()
     )
     result_read = adapter.read_partition(2, fields=[field])
-    assert numpy.array_equal(
+    assert np.array_equal(
         [*data2[2].tolist(), *data1[2].tolist()], result_read[field].tolist()
     )
