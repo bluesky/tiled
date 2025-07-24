@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b31 (Unreleased)
+
+### Fixed
+
+- Uniform array columns read from Postgres/DuckDB are now aggregated to an
+  NDArray (e.g. scanned `waveform` PVs)
+
 ## v0.1.0-b30 (2025-07-18)
 
 ## Changed
