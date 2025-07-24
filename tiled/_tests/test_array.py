@@ -67,8 +67,8 @@ with warnings.catch_warnings():
 
 nd_array = numpy.arange(9).reshape((3, 3))
 uniform_array = numpy.empty((3,), dtype=object)
-for i, arr in enumerate(numpy.unstack(nd_array, axis=0)):
-    uniform_array[i] = arr
+for i in range(uniform_array.shape[0]):
+    uniform_array[i] = nd_array[i]
 ragged_array = numpy.array([numpy.arange(3), numpy.arange(4, 10)], dtype=object)
 object_array = numpy.full((10,), {"a": 1}, dtype=object)
 nested_arrays_tree = MapAdapter(
