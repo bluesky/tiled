@@ -41,6 +41,10 @@ array_cases = {
     "dtype_M": numpy.array(
         ["2007-07-13", "2006-01-13", "2010-08-13"], dtype="datetime64"
     ),
+    "dtype_struct": numpy.array(
+        [("Rex", 9, 81.0), ("Fido", 3, 27.0), ("Spot", 5, 45.0)],
+        dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
+    ),
     "random_2d": rng.random((10, 10)),
 }
 # TODO bitfield "t", void "v", and object "O" (which is not supported by default)
@@ -332,7 +336,7 @@ def test_writing_not_implemented(prefix, server_url, fs):
     url = f"{server_url}{prefix}/nested/array"
 
     with pytest.raises(NotImplementedError):
-        grp = zarr.open(fs.get_mapper(url), mode="w")
+        zarr.open(fs.get_mapper(url), mode="w")
 
     with pytest.raises(zarr.errors.ReadOnlyError if IS_LEGACY_ZARR else ValueError):
         grp = zarr.open(fs.get_mapper(url), mode="r")

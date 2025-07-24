@@ -7,13 +7,8 @@ import orjson
 import pydantic_settings
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.responses import Response
-from starlette.status import (
-    HTTP_400_BAD_REQUEST,
-    HTTP_404_NOT_FOUND,
-    HTTP_500_INTERNAL_SERVER_ERROR,
-)
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
-from ..structures.array import StructDtype
 from ..structures.core import StructureFamily
 from ..type_aliases import Scopes
 from ..utils import SpecialUsers, ensure_awaitable
@@ -25,7 +20,6 @@ from .utils import record_timing
 ZARR_BLOCK_SIZE = 10000
 ZARR_BYTE_ORDER = "C"
 ZARR_CODEC_SPEC = {"id": "zstd", "level": 0}
-ZARR_DATETIME64_PRECISION = "ns"
 
 zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
 
@@ -96,7 +90,7 @@ def get_router(
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
     ):
-        entry = await get_entry(
+        await get_entry(
             path,
             ["read:data", "read:metadata"],
             principal,
@@ -108,17 +102,10 @@ def get_router(
                 StructureFamily.table,
                 StructureFamily.composite,
                 StructureFamily.container,
-                StructureFamily.array,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
-        # Usual (unstructured) array; should respond to /.zarray instead
-        if entry.structure_family == StructureFamily.array and not isinstance(
-            entry.structure().data_type, StructDtype
-        ):
-            raise HTTPException(status_code=HTTP_404_NOT_FOUND)
 
-        # Structured numpy array, Container, or Table
         return Response(json.dumps({"zarr_format": 2}), status_code=200)
 
     @router.get("/{path:path}/.zarray", name="Zarr .zarray metadata")
@@ -141,18 +128,12 @@ def get_router(
             structure_families={StructureFamily.array, StructureFamily.sparse},
             access_policy=getattr(request.app.state, "access_policy", None),
         )
-        # Only StructureFamily.array and StructureFamily.sparse can respond to `/.zarray` querries. Zarr will try
-        # request .zarray on all other nodes in Tiled (not included in SecureEntry above), in which case the server
-        # will return an 404 error; this is the expected behaviour, which will signal zarr to try /.zgroup instead.
         structure = entry.structure()
-        if isinstance(structure.data_type, StructDtype):
-            # Structured numpy array should be treated as a DataFrame and will respond to /.zgroup instead
-            raise HTTPException(status_code=HTTP_404_NOT_FOUND)
         try:
             zarray_spec = {
                 "chunks": convert_chunks_for_zarr(structure.chunks),
                 "compressor": zarr_codec.get_config(),
-                "dtype": structure.data_type.to_numpy_str(),
+                "dtype": structure.data_type.to_numpy_descr(),
                 "fill_value": None,
                 "filters": None,
                 "order": ZARR_BYTE_ORDER,
@@ -215,16 +196,6 @@ def get_router(
         elif entry.structure_family == StructureFamily.table:
             # List the columns of the table -- they will be accessed separately as arrays
             body = json.dumps([url + "/" + key for key in entry.structure().columns])
-
-            return Response(body, status_code=200)
-
-        elif entry.structure_family == StructureFamily.array and isinstance(
-            entry.structure().data_type, StructDtype
-        ):
-            # List the column names of the structured array -- they will be accessed separately
-            body = json.dumps(
-                [url + "/" + f.name for f in entry.structure().data_type.fields]
-            )
 
             return Response(body, status_code=200)
 
@@ -322,22 +293,12 @@ def get_router_v3() -> APIRouter:
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
-        # # Usual (unstructured) array; should respond to /.zarray instead
-        # if entry.structure_family == StructureFamily.array and isinstance(
-        #     entry.structure().data_type, StructDtype
-        # ):
-        #     raise HTTPException(status_code=HTTP_404_NOT_FOUND)
 
         # Array or sparse array
         if entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
             structure = entry.structure()
-
-            if isinstance(structure.data_type, StructDtype):
-                # Structured numpy array should be treated as a DataFrame
-                raise HTTPException(status_code=HTTP_404_NOT_FOUND)
-
             zarr_dtype = parse_data_type(
-                structure.data_type.to_numpy_str(), zarr_format=3
+                structure.data_type.to_numpy_descr(), zarr_format=3
             )
             fill_value = (
                 zarr_dtype.default_scalar() if structure.shape else entry.read()[()]
@@ -404,7 +365,6 @@ def get_router_v3() -> APIRouter:
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
     ):
-        print(f"{block=}")
         entry = await get_entry(
             path,
             ["read:data"],
@@ -416,81 +376,64 @@ def get_router_v3() -> APIRouter:
             structure_families={
                 StructureFamily.array,
                 StructureFamily.sparse,
-                StructureFamily.table,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
-        # Remove query params and the trailing slash from the url
-        url = str(request.url).split("?")[0].rstrip("/")
 
-        if entry.structure_family == StructureFamily.array and isinstance(
-            entry.structure().data_type, StructDtype
-        ):
-            # List the column names of the structured array -- they will be accessed separately
-            body = json.dumps(
-                [url + "/" + f.name for f in entry.structure().data_type.fields]
-            )
+        if block is not None:
+            import numpy as np
+            from sparse import SparseArray
 
-            return Response(body, status_code=200)
-
-        elif entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
-            # Return the actual array values for a single block of zarr array
-            if block is not None:
-                import numpy as np
-                from sparse import SparseArray
-
-                zarr_block_indx = [int(i) for i in block.split("/")]
-                zarr_block_spec = convert_chunks_for_zarr(entry.structure().chunks)
-                if (not (zarr_block_spec == [] and zarr_block_indx == [0])) and (
-                    len(zarr_block_spec) != len(zarr_block_indx)
-                ):
-                    # Not a scalar and shape doesn't match
-                    raise HTTPException(
-                        status_code=HTTP_400_BAD_REQUEST,
-                        detail=f"Requested zarr block index {zarr_block_indx} is inconsistent with the shape of array, {entry.structure().shape}.",  # noqa
-                    )
-
-                # Indices of the array slices in each dimension that correspond to the requested zarr block
-                block_slices = tuple(
-                    [
-                        slice(i * c, (i + 1) * c)
-                        for i, c in zip(zarr_block_indx, zarr_block_spec)
-                    ]
+            zarr_block_indx = [int(i) for i in block.split("/")]
+            zarr_block_spec = convert_chunks_for_zarr(entry.structure().chunks)
+            if (not (zarr_block_spec == [] and zarr_block_indx == [0])) and (
+                len(zarr_block_spec) != len(zarr_block_indx)
+            ):
+                # Not a scalar and shape doesn't match
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Requested zarr block index {zarr_block_indx} is inconsistent with the shape of array, {entry.structure().shape}.",  # noqa
                 )
-                try:
-                    with record_timing(request.state.metrics, "read"):
-                        array = await ensure_awaitable(entry.read, slice=block_slices)
-                except IndexError:
-                    raise HTTPException(
-                        status_code=HTTP_400_BAD_REQUEST,
-                        detail=f"Index of zarr block {zarr_block_indx} is out of range.",
-                    )
 
-                if isinstance(array, SparseArray):
-                    array = array.todense()
-
-                # Pad the last slices with zeros if needed to ensure all zarr blocks have same shapes
-                padding_size = [
-                    max(0, sl.stop - sh)
-                    for sl, sh in zip(block_slices, entry.structure().shape)
+            # Indices of the array slices in each dimension that correspond to the requested zarr block
+            block_slices = tuple(
+                [
+                    slice(i * c, (i + 1) * c)
+                    for i, c in zip(zarr_block_indx, zarr_block_spec)
                 ]
-                if sum(padding_size) > 0:
-                    array = np.pad(
-                        array, [(0, p) for p in padding_size], mode="constant"
-                    )
+            )
+            try:
+                with record_timing(request.state.metrics, "read"):
+                    array = await ensure_awaitable(entry.read, slice=block_slices)
+            except IndexError:
+                raise HTTPException(
+                    status_code=HTTP_400_BAD_REQUEST,
+                    detail=f"Index of zarr block {zarr_block_indx} is out of range.",
+                )
 
-                # Ensure the array is contiguous and encode it; equivalent to `buf=zarr.array(array).store['0.0']`
-                array = array.astype(array.dtype, order=ZARR_BYTE_ORDER, copy=False)
-                buf = zarr_codec.encode(array)
-                if not isinstance(buf, bytes):
-                    buf = array.tobytes(order="A")
+            if isinstance(array, SparseArray):
+                array = array.todense()
 
-                return Response(buf, status_code=200)
+            # Pad the last slices with zeros if needed to ensure all zarr blocks have same shapes
+            padding_size = [
+                max(0, sl.stop - sh)
+                for sl, sh in zip(block_slices, entry.structure().shape)
+            ]
+            if sum(padding_size) > 0:
+                array = np.pad(array, [(0, p) for p in padding_size], mode="constant")
 
-            else:
-                # TODO:
-                # Entire array (root uri) is requested -- never happens, but need to decide what to return here
-                return Response(json.dumps({}), status_code=200)
+            # Ensure the array is contiguous and encode it; equivalent to `buf=zarr.array(array).store['0.0']`
+            array = array.astype(array.dtype, order=ZARR_BYTE_ORDER, copy=False)
+            buf = zarr_codec.encode(array)
+            if not isinstance(buf, bytes):
+                buf = array.tobytes(order="A")
+
+            return Response(buf, status_code=200)
+
+        else:
+            # TODO:
+            # Entire array (root uri) is requested -- never happens, but need to decide what to return here
+            return Response(json.dumps({}), status_code=200)
 
     @router.get("/{path:path}", name="Contents of a zarr group")
     async def get_zarr_group(
@@ -537,16 +480,6 @@ def get_router_v3() -> APIRouter:
         elif entry.structure_family == StructureFamily.table:
             # List the columns of the table -- they will be accessed separately as arrays
             body = json.dumps([url + "/" + key for key in entry.structure().columns])
-
-            return Response(body, status_code=200)
-
-        elif entry.structure_family == StructureFamily.array and isinstance(
-            entry.structure().data_type, StructDtype
-        ):
-            # List the column names of the structured array -- they will be accessed separately
-            body = json.dumps(
-                [url + "/" + f.name for f in entry.structure().data_type.fields]
-            )
 
             return Response(body, status_code=200)
 
