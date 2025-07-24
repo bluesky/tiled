@@ -503,10 +503,6 @@ ARROW_TO_PG_TYPES: dict[pyarrow.Field, str] = {
     # pyarrow.decimal128(precision=38, scale=9): "numeric",
     # pyarrow.decimal256(precision=76, scale=18): "numeric",
 }
-# extend with array types
-for arrow_type, pg_type in list(ARROW_TO_PG_TYPES.items()):
-    continue
-    ARROW_TO_PG_TYPES[pyarrow.list_(arrow_type)] = f"{pg_type} ARRAY"
 
 
 def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
@@ -639,9 +635,6 @@ ARROW_TO_DUCKDB_TYPES = {
     # pyarrow.duration('us'): 'INTERVAL',
     # pyarrow.duration('ns'): 'INTERVAL',
 }
-# extend with array types
-for arrow_type, pg_type in list(ARROW_TO_DUCKDB_TYPES.items()):
-    ARROW_TO_DUCKDB_TYPES[pyarrow.list_(arrow_type)] = f"{pg_type}[]"
 
 
 def arrow_field_to_duckdb_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str:
