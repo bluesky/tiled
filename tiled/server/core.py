@@ -103,7 +103,7 @@ def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
     if offset > 0:
         links[
             "prev"
-    ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
+        ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
