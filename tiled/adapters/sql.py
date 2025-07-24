@@ -200,13 +200,19 @@ class SQLAdapter:
                     "UPDATE _dataset_id_counter SET value = value + 1 "
                     "RETURNING value"
                 )
-                (dataset_id,) = cursor.fetchone()
+                result = cursor.fetchone()
+                if result is None:
+                    raise RuntimeError("Failed to fetch dataset_id from _dataset_id_counter.")
+                (dataset_id,) = result
         else:
             with conn.cursor() as cursor:
                 cursor.execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
             with conn.cursor() as cursor:
                 cursor.execute("SELECT nextval('_dataset_id_counter')")
-                (dataset_id,) = cursor.fetchone()
+                result = cursor.fetchone()
+                if result is None:
+                    raise RuntimeError("Failed to fetch nextval for _dataset_id_counter.")
+                (dataset_id,) = result
         data_source.parameters["dataset_id"] = dataset_id
         conn.commit()
 

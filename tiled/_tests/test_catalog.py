@@ -98,9 +98,9 @@ async def test_sorting(a):
     assert reversed_default_key_order == list(reversed(default_key_order))
 
     # Sort by key.
-    await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
+    assert await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
     # Test again, with items_range.
-    [k for k, v in await a.sort([("id", 1)]).items_range(0, 10)] == ordered_letters
+    assert [k for k, v in await a.sort([("id", 1)]).items_range(0, 10)] == ordered_letters
 
     # Sort by letter metadata.
     # Use explicit 'metadata.{key}' namespace.
