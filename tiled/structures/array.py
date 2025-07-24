@@ -3,16 +3,15 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, List, LiteralString, Optional, Tuple, Union
+from types import MappingProxyType
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy
 
 from tiled.structures.root import Structure
 
-NumpyDescr = List[
-    Tuple[LiteralString, LiteralString]
-    | tuple[LiteralString, LiteralString, Tuple[int, ...]]
-]
+# from dtype.descr
+NumpyDescr = List[Tuple[str, str] | Tuple[str, str, Tuple[int, ...]]]
 
 
 class Endianness(str, enum.Enum):
@@ -86,16 +85,18 @@ class BuiltinDtype:
     itemsize: int
     dt_units: Optional[str] = None
 
-    __endianness_map: Mapping[str, str] = {
-        ">": "big",
-        "<": "little",
-        "=": sys.byteorder,
-        "|": "not_applicable",
-    }
+    __endianness_map: MappingProxyType[str, str] = MappingProxyType(
+        {
+            ">": "big",
+            "<": "little",
+            "=": sys.byteorder,
+            "|": "not_applicable",
+        }
+    )
 
-    __endianness_reverse_map: Mapping[str, str] = {
-        v: k for k, v in __endianness_map.items() if k != "="
-    }
+    __endianness_reverse_map: MappingProxyType[str, str] = MappingProxyType(
+        {v: k for k, v in __endianness_map.items() if k != "="}
+    )
 
     @classmethod
     def from_numpy_dtype(cls, dtype: numpy.dtype) -> "BuiltinDtype":
