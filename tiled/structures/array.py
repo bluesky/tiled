@@ -3,8 +3,7 @@ import os
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from types import MappingProxyType
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 import numpy
 
@@ -85,18 +84,16 @@ class BuiltinDtype:
     itemsize: int
     dt_units: Optional[str] = None
 
-    __endianness_map: MappingProxyType[str, str] = MappingProxyType(
-        {
-            ">": "big",
-            "<": "little",
-            "=": sys.byteorder,
-            "|": "not_applicable",
-        }
-    )
+    _endianness_map: ClassVar[Mapping[str, str]] = {
+        ">": "big",
+        "<": "little",
+        "=": sys.byteorder,
+        "|": "not_applicable",
+    }
 
-    __endianness_reverse_map: MappingProxyType[str, str] = MappingProxyType(
-        {v: k for k, v in __endianness_map.items() if k != "="}
-    )
+    _endianness_reverse_map: ClassVar[Mapping[str, str]] = {
+        v: k for k, v in _endianness_map.items() if k != "="
+    }
 
     @classmethod
     def from_numpy_dtype(cls, dtype: numpy.dtype) -> "BuiltinDtype":
@@ -108,7 +105,7 @@ class BuiltinDtype:
             dt_units = f"[{count if count > 1 else ''}{unit}]"
 
         return cls(
-            endianness=cls.__endianness_map[dtype.byteorder],
+            endianness=cls._endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
             dt_units=dt_units,
@@ -118,7 +115,7 @@ class BuiltinDtype:
         return numpy.dtype(self.to_numpy_str())
 
     def to_numpy_str(self) -> str:
-        endianness = self.__endianness_reverse_map[self.endianness]
+        endianness = self._endianness_reverse_map[self.endianness]
         # dtype.itemsize always reports bytes.  The format string from the
         # numeric types the string format is: {type_code}{byte_count} so we can
         # directly use the item size.
