@@ -1,3 +1,4 @@
+import contextlib
 from typing import Any, List, Optional, Set, Tuple
 
 import dask.array
@@ -89,7 +90,9 @@ class ArrayAdapter:
             and isinstance(array[0], numpy.ndarray)
         )
         if is_array_of_arrays:
-            array = numpy.vstack(array)
+            with contextlib.suppress(ValueError):
+                # only uniform arrays (with same dimensions) are stackable
+                array = numpy.vstack(array)
 
         # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
         is_likely_string_dtype = isinstance(array.dtype, pandas.StringDtype) or (

@@ -65,6 +65,20 @@ with warnings.catch_warnings():
         }
     )
 
+nd_array = numpy.arange(9).reshape((3, 3))
+uniform_array = numpy.empty((3,), dtype=object)
+for i, arr in enumerate(numpy.unstack(nd_array, axis=0)):
+    uniform_array[i] = arr
+ragged_array = numpy.array([numpy.arange(3), numpy.arange(4, 10)], dtype=object)
+object_array = numpy.full((10,), {"a": 1}, dtype=object)
+nested_arrays_tree = MapAdapter(
+    {
+        "uniform": ArrayAdapter.from_array(uniform_array),
+        "ragged": ArrayAdapter.from_array(ragged_array),
+        "objects": ArrayAdapter.from_array(object_array),
+    }
+)
+
 
 @pytest.fixture(scope="module")
 def context():
@@ -75,6 +89,7 @@ def context():
             "inf": inf_tree,
             "scalar": scalar_tree,
             "zero": zero_tree,
+            "nested_arrays": nested_arrays_tree,
         }
     )
     app = build_app(tree)
@@ -164,6 +179,25 @@ def test_array_interface(context):
         # smoke test
         v.chunks
         v.dims
+
+
+def test_uniform_nested_array_projected_to_ndarray(context):
+    client = from_context(context)["nested_arrays"]["uniform"]
+    assert client.dtype == numpy.int_
+    assert client.read().dtype == numpy.int_
+    assert numpy.array_equal(client.read(), nd_array)
+
+
+@pytest.mark.parametrize("kind", ["ragged", "objects"])
+def test_unparsable_nested_array_stringified(kind, context):
+    # This behavior is due to the fact that ragged Numpy arrays, and those with
+    # non-numeric types (except for strings) will likely have dtype=object,
+    # which may not be parsable or reducible. As such we fallback to taking the
+    # string representations of the array elements.
+    client = from_context(context)["nested_arrays"][kind]
+    assert "<U" in client.dtype.str
+    assert "<U" in client.read().dtype.str
+    assert isinstance(client[0], str)
 
 
 @pytest.mark.parametrize("kind", list(array_cases))
