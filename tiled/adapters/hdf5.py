@@ -205,7 +205,17 @@ class HDF5ArrayAdapter(ArrayAdapter):
             )
             for (val, (shape, chunk_shape, dtype)) in zip(delayed, shapes_chunks_dtypes)
         ]
-        array = dask.array.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
+
+        if len(arrs) > 1:
+            if not any([arr.shape for arr in arrs]):
+                # All shapes are empty -> all arrays are zero-dimensional
+                array = dask.array.stack([a.compute() for a in arrs], axis=0)
+            else:
+                # Try to concatenate along the leftmost dimension
+                array = dask.array.concatenate(arrs, axis=0)
+        else:
+            # Only one array present
+            array = arrs[0]
 
         return array
 
