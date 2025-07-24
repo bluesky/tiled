@@ -19,6 +19,7 @@ __all__ = [
 @dataclasses.dataclass(frozen=True)
 class Storage:
     "Base class for representing storage location"
+
     uri: str
 
     def __post_init__(self):
@@ -35,6 +36,18 @@ class FileStorage(Storage):
 
 
 @dataclasses.dataclass(frozen=True)
+class ObjectStorage(Storage):
+    "Bucket storage location for BLOBS"
+
+    uri: str
+    provider: str
+    config: dict
+
+    def __post_init__(self):
+        object.__setattr__(self, "uri", ensure_uri(self.uri))
+
+
+@dataclasses.dataclass(frozen=True)
 class EmbeddedSQLStorage(Storage):
     "File-based SQL database storage location"
 
@@ -42,6 +55,7 @@ class EmbeddedSQLStorage(Storage):
 @dataclasses.dataclass(frozen=True)
 class SQLStorage(Storage):
     "File-based SQL database storage location"
+
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -85,17 +99,24 @@ class SQLStorage(Storage):
         return urlunparse(components)
 
 
-def parse_storage(item: Union[Path, str]) -> Storage:
-    item = ensure_uri(item)
-    scheme = urlparse(item).scheme
-    if scheme == "file":
-        result = FileStorage(item)
-    elif scheme == "postgresql":
-        result = SQLStorage(item)
-    elif scheme in {"sqlite", "duckdb"}:
-        result = EmbeddedSQLStorage(item)
+def parse_storage(item: Union[Path, str, dict]) -> Storage:
+    if isinstance(item, dict):
+        result = ObjectStorage(
+            uri=item["uri"],
+            provider=item["provider"],
+            config=item.get("config", {}),
+        )
     else:
-        raise ValueError(f"writable_storage item {item} has unrecognized scheme")
+        item = ensure_uri(item)
+        scheme = urlparse(item).scheme
+        if scheme == "file":
+            result = FileStorage(item)
+        elif scheme == "postgresql":
+            result = SQLStorage(item)
+        elif scheme in {"sqlite", "duckdb"}:
+            result = EmbeddedSQLStorage(item)
+        else:
+            raise ValueError(f"writable_storage item {item} has unrecognized scheme")
     return result
 
 
