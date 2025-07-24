@@ -10,7 +10,8 @@ import numpy
 from tiled.structures.root import Structure
 
 # from dtype.descr
-NumpyDescr = List[Tuple[str, str] | Tuple[str, str, Tuple[int, ...]]]
+FieldDescr = Union[Tuple[str, str], Tuple[str, str, Tuple[int, ...]]]
+NumpyDescr = List[FieldDescr]
 
 
 class Endianness(str, enum.Enum):
@@ -145,7 +146,7 @@ class Field:
     shape: Optional[Tuple[int, ...]]
 
     @classmethod
-    def from_numpy_descr(cls, field: NumpyDescr) -> "Field":
+    def from_numpy_descr(cls, field: FieldDescr) -> "Field":
         name, *rest = field
         if name == "":
             raise ValueError(
@@ -163,15 +164,15 @@ class Field:
             FType = StructDtype.from_numpy_dtype(numpy.dtype(f_type))
         return cls(name=name, dtype=FType, shape=shape)
 
-    def to_numpy_descr(self) -> NumpyDescr:
+    def to_numpy_descr(self) -> FieldDescr:
         if isinstance(self.dtype, BuiltinDtype):
             base = [self.name, self.dtype.to_numpy_str()]
         else:
             base = [self.name, self.dtype.to_numpy_descr()]
         if self.shape is None:
-            return list(base)
+            return tuple(base)
         else:
-            return list(base + [self.shape])
+            return tuple(base + [self.shape])
 
     @classmethod
     def from_json(cls, structure: Mapping[str, Any]) -> "Field":
