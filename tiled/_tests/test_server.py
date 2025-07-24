@@ -1,8 +1,5 @@
-import contextlib
 import subprocess
 import sys
-import threading
-import time
 
 import httpx
 import numpy
@@ -17,34 +14,9 @@ from ..catalog import in_memory
 from ..client import from_uri
 from ..server.app import build_app, build_app_from_config
 from ..server.logging_config import LOGGING_CONFIG
+from .utils import Server
 
 router = APIRouter()
-
-
-class Server(uvicorn.Server):
-    # https://github.com/encode/uvicorn/discussions/1103#discussioncomment-941726
-
-    def install_signal_handlers(self):
-        pass
-
-    @contextlib.contextmanager
-    def run_in_thread(self):
-        thread = threading.Thread(target=self.run)
-        thread.start()
-        try:
-            # Wait for server to start up, or raise TimeoutError.
-            for _ in range(100):
-                time.sleep(0.1)
-                if self.started:
-                    break
-            else:
-                raise TimeoutError("Server did not start in 10 seconds.")
-            host, port = self.servers[0].sockets[0].getsockname()
-            yield f"http://{host}:{port}"
-        finally:
-            self.should_exit = True
-            thread.join()
-
 
 API_KEY = "secret"
 

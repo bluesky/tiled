@@ -85,6 +85,9 @@ class ZarrArrayAdapter(ArrayAdapter):
         """Trim overflow because Zarr always has equal-sized chunks."""
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
 
+    def get(self, key: str) -> Union[ArrayAdapter, None]:
+        return None
+
     def read(
         self,
         slice: NDSlice = NDSlice(...),
