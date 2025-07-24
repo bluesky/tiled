@@ -847,3 +847,17 @@ class catch_warning_msg(warnings.catch_warnings):
         super().__enter__()
         self.apply_filter()
         return self
+
+
+def parse_mimetype(mimetype: str) -> tuple[str, dict]:
+    params = mimetype.split(";")
+    mimetp = params[0]
+    opt_params_ls = params[1:]
+    opt_params_dict = {}
+    for item in opt_params_ls:
+        opt_param = item.split("=")
+        if len(opt_param) == 2:
+            opt_params_dict[opt_param[0]] = opt_param[1]
+        else:
+            raise ValueError(f"Incorrect value passed as opt parameter: {opt_param}")
+    return mimetp, opt_params_dict

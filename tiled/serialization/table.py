@@ -6,7 +6,12 @@ from ..media_type_registration import (
     default_serialization_registry,
 )
 from ..structures.core import StructureFamily
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
+from ..utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    XLSX_MIME_TYPE,
+    modules_available,
+    parse_mimetype,
+)
 
 
 @default_serialization_registry.register(
@@ -51,9 +56,9 @@ def serialize_parquet(mimetype, df, metadata, preserve_index=True):
 
 def serialize_csv(mimetype, df, metadata, preserve_index=False):
     file = io.StringIO()
-    if ";" in mimetype:
-        opt_param = mimetype.split(";")[1:][0]
-        if "header" in opt_param and "absent" in opt_param:
+    opt_params = parse_mimetype(mimetype)[1]
+    if "header" in opt_params:
+        if opt_params["header"] == "absent":
             df.to_csv(file, index=preserve_index, header=False)
             return file.getvalue().encode()
     df.to_csv(file, index=preserve_index)
