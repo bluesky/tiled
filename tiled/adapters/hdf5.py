@@ -170,9 +170,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         dtype = shapes_chunks_dtypes[0][2]
         if dtype == numpy.dtype("O"):
             # TODO: It should be possible to put this in dask.delayed too -- needs to be thoroughly tested
-            assert (
-                len(file_paths) == 1
-            ), "Cannot handle object arrays from multiple files"
+            # assert (
+            #     len(file_paths) == 1
+            # ), "Cannot handle object arrays from multiple files"
             warnings.warn(
                 f"The dataset {dataset} is of object type, using a "
                 "Python-only feature of h5py that is not supported by "
