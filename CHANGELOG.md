@@ -3,16 +3,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+
+## v0.1.0-b31 (Unreleased)
+
+### Fixed
+
+- Tests were missing assertions to verify expected outcomes
+- Combining multiple hdf5 files containing scalar values by HDF5Adapter.
+
 ## v0.1.0-b30 (2025-07-18)
 
-## Changed
+### Changed
 
 - Refactored internal server function ``get_entry()`` to not use the FastAPI
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
 
-## Fixed
+### Fixed
 
 - Restored authentication check for API key
 - Updated usage for change in Zarr 3.x API.
