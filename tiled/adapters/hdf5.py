@@ -195,26 +195,22 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 return arr
             return dask.array.empty(shape=())
 
-        delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
-        arrs = [
-            dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(
-                chunks=chunk_shape or "auto"
-            )
-            for (val, (shape, chunk_shape, dtype)) in zip(delayed, shapes_chunks_dtypes)
-        ]
-
-        if len(arrs) > 1:
-            if not any([arr.shape for arr in arrs]):
-                # All shapes are empty -> all arrays are zero-dimensional (scalars)
-                # Need to compute before stacking because the arrays are implicitly sliced
-                # with [:] instead of [()], and h5py does not support this.
-                array = dask.array.stack([a.compute() for a in arrs], axis=0)
-            else:
-                # Try to concatenate along the leftmost dimension
-                array = dask.array.concatenate(arrs, axis=0)
+        if not any([shape for shape, _, _ in shapes_chunks_dtypes]):
+            # All shapes are empty -> all arrays are zero-dimensional (scalars)
+            array = dask.array.stack([_read_hdf5_array(fpath) for fpath in file_paths])
+            array = array[0] if len(file_paths) == 1 else array
         else:
-            # Only one array present
-            array = arrs[0]
+            # Use delayed loading to read the arrays from the files
+            delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
+            arrs = [
+                dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(
+                    chunks=chunk_shape or "auto"
+                )
+                for (val, (shape, chunk_shape, dtype)) in zip(
+                    delayed, shapes_chunks_dtypes
+                )
+            ]
+            array = dask.array.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
 
         return array
 
