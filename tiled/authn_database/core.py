@@ -26,40 +26,47 @@ ALL_REVISIONS = [
 REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
-async def create_default_roles(db: AsyncSession) -> None:
-    db.add_all(
-        [
-            Role(
-                name="user",
-                description="Default Role for users.",
-                scopes=[
-                    "read:metadata",
-                    "read:data",
-                    "create",
-                    "write:metadata",
-                    "write:data",
-                    "apikeys",
-                ],
-            ),
-            Role(
-                name="admin",
-                description="Role with elevated privileges.",
-                scopes=[
-                    "read:metadata",
-                    "read:data",
-                    "create",
-                    "register",
-                    "write:metadata",
-                    "write:data",
-                    "admin:apikeys",
-                    "read:principals",
-                    "write:principals",
-                    "metrics",
-                ],
-            ),
-        ]
-    )
-    await db.commit()
+async def create_default_roles(db):
+    default_roles = [
+        Role(
+            name="user",
+            description="Default Role for users.",
+            scopes=[
+                "read:metadata",
+                "read:data",
+                "create",
+                "write:metadata",
+                "write:data",
+                "apikeys",
+            ],
+        ),
+        Role(
+            name="admin",
+            description="Role with elevated privileges.",
+            scopes=[
+                "read:metadata",
+                "read:data",
+                "create",
+                "register",
+                "write:metadata",
+                "write:data",
+                "admin:apikeys",
+                "read:principals",
+                "write:principals",
+                "metrics",
+            ],
+        ),
+    ]
+
+    roles_result = await db.execute(select(Role.name))
+    existing_role_names = set(roles_result.scalars().all())
+    roles_to_add = [
+        role for role in default_roles if role.name not in existing_role_names
+    ]
+
+    if roles_to_add:
+        db.add_all(roles_to_add)
+        await db.commit()
 
 
 async def initialize_database(engine: AsyncEngine) -> None:
