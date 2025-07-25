@@ -1504,14 +1504,14 @@ def in_or_not_in(query, tree, method):
 
 def has_key(query, tree):
     if tree.engine.url.get_dialect().name == "sqlite":
-        raise ValueError(
-            "SQLite does not support 'has_key' yet. More information: https://github.com/sqlalchemy/sqlalchemy/discussions/7836"
+        # FTS5 includes KEYS
+        condition = orm.metadata_fts5.c.metadata.match(query.key)
+    else:
+        tsvector = func.jsonb_to_tsvector(
+            # TSVector can be configured to search key column only.
+            cast("simple", REGCONFIG), orm.Node.metadata_, cast(["key"], JSONB)
         )
-    tsvector = func.jsonb_to_tsvector(
-        cast("simple", REGCONFIG), orm.Node.metadata_, cast(["key"], JSONB)
-    )
-    condition = tsvector.op("@@")(func.to_tsquery("simple", query.key))
-    # condition = orm.Node.metadata_.op("?")(query.key)
+        condition = tsvector.op("@@")(func.to_tsquery("simple", query.key))
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
