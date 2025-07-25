@@ -202,7 +202,9 @@ class SQLAdapter:
                 )
                 result = cursor.fetchone()
                 if result is None:
-                    raise RuntimeError("Failed to fetch dataset_id from _dataset_id_counter.")
+                    raise RuntimeError(
+                        "Failed to fetch dataset_id from _dataset_id_counter."
+                    )
                 (dataset_id,) = result
         else:
             with conn.cursor() as cursor:
@@ -211,7 +213,9 @@ class SQLAdapter:
                 cursor.execute("SELECT nextval('_dataset_id_counter')")
                 result = cursor.fetchone()
                 if result is None:
-                    raise RuntimeError("Failed to fetch nextval for _dataset_id_counter.")
+                    raise RuntimeError(
+                        "Failed to fetch nextval for _dataset_id_counter."
+                    )
                 (dataset_id,) = result
         data_source.parameters["dataset_id"] = dataset_id
         conn.commit()

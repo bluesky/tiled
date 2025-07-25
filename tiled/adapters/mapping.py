@@ -404,7 +404,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
                 mapping = dict(
                     sorted(
                         mapping.items(),
-                        key=lambda item: item[1].metadata().get(key, _HIGH_SORTER),  # type: ignore
+                        key=lambda item: item[1].metadata().get(key, _HIGH_SORTER),
                     )
                 )
 

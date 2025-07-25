@@ -100,7 +100,9 @@ async def test_sorting(a):
     # Sort by key.
     assert await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
     # Test again, with items_range.
-    assert [k for k, v in await a.sort([("id", 1)]).items_range(0, 10)] == ordered_letters
+    assert [
+        k for k, v in await a.sort([("id", 1)]).items_range(0, 10)
+    ] == ordered_letters
 
     # Sort by letter metadata.
     # Use explicit 'metadata.{key}' namespace.
