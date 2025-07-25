@@ -779,6 +779,8 @@ def test_append_nullable(
     table_1 = pa.Table.from_arrays([appended], ["part_column"])
     adapter_part.append_partition(table_1, 0)
 
+    adapter_part.close()
+
     # Write the full table at once
     table_full = pa.Table.from_arrays([initial + appended], ["full_column"])
     data_source = DataSource(
