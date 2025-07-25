@@ -118,7 +118,7 @@ def multiuser_server(tmpdir):
 
 @router.get("/error")
 def error():
-    1 / 0  # error!
+    1 / 0  # type: ignore error!
 
 
 @pytest.mark.filterwarnings("ignore: websockets.legacy is deprecated")
