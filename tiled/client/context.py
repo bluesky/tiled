@@ -230,6 +230,7 @@ class Context:
             client = TestClient(
                 app=app,
                 raise_server_exceptions=raise_server_exceptions,
+                base_url=uri,
             )
             client.timeout = timeout
             client.headers = headers
@@ -444,12 +445,13 @@ class Context:
         timeout=None,
         api_key=UNSET,
         raise_server_exceptions=True,
+        uri=None,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
         """
         context = cls(
-            uri="http://local-tiled-app/api/v1",
+            uri="http://local-tiled-app/api/v1" if not uri else uri,
             headers=headers,
             api_key=None,
             cache=cache,
