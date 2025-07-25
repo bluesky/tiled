@@ -1,4 +1,8 @@
+import sys
+from pathlib import Path
+
 import h5py
+import numpy as np
 import pandas
 import pytest
 import zarr
@@ -23,7 +27,9 @@ async def test_excel(tmpdir):
 
 @pytest.mark.asyncio
 async def test_zarr_array(tmpdir):
-    z = zarr.open(str(tmpdir / "za.zarr"), "w", shape=(3,), chunks=(3,), dtype="i4")
+    z = zarr.open(
+        str(tmpdir / "za.zarr"), mode="w", shape=(3,), chunks=(3,), dtype="i4"
+    )
     z[:] = [1, 2, 3]
     catalog = in_memory(readable_storage=[tmpdir])
     with Context.from_app(build_app(catalog)) as context:
@@ -35,20 +41,26 @@ async def test_zarr_array(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_zarr_group(tmpdir):
-    root = zarr.open(str(tmpdir / "zg.zarr"), "w")
-    yield root
-    root.create_dataset("x", data=[1, 2, 3])
-    root.create_dataset("y", data=[4, 5, 6])
-    catalog = in_memory(readable_storage=[tmpdir])
-    context = Context.from_app(build_app(catalog))
-    yield context
-    client = from_context(context)
-    await register(client, tmpdir)
-    tree(client)
-    client["zg"].export(str(tmpdir / "stuff.h5"))
-    client["zg"]["x"].read()
-    client["zg"]["y"].read()
+async def test_zarr_group(tmp_path: Path):
+    root = zarr.open(tmp_path / "zg.zarr", mode="w")
+    x_array = np.array([1, 2, 3])
+    y_array = np.array([4, 5, 6])
+
+    if sys.version_info < (3, 11):
+        root.create_dataset("x", data=x_array)
+        root.create_dataset("y", data=y_array)
+    else:
+        root.create_array(name="x", data=x_array)
+        root.create_array(name="y", data=y_array)
+
+    catalog = in_memory(readable_storage=[tmp_path])
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        await register(client, tmp_path)
+        tree(client)
+        client["zg"].export(tmp_path / "stuff.h5")
+        assert client["zg"]["x"].read().data == x_array
+        assert client["zg"]["y"].read().data == y_array
 
 
 @pytest.mark.asyncio

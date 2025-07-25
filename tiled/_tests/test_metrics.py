@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.get("/error")
 def error():
-    1 / 0  # error!
+    1 / 0  # type: ignore error!
 
 
 def total_request_time(client, code):
