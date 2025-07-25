@@ -7,6 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Tests were missing assertions to verify expected outcomes
 - Uniform array columns read from Postgres/DuckDB are now aggregated to an
   NDArray (e.g. scanned `waveform` PVs)
 

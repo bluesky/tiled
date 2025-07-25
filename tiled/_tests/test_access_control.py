@@ -528,7 +528,7 @@ def test_service_principal_access(tmpdir):
         build_app_from_config(config), api_key=key_info["secret"]
     ) as context:
         sp_client = from_context(context)
-        list(sp_client) == ["x"]
+        assert list(sp_client) == ["x"]
 
 
 class CustomAttributesAuthenticator(DictionaryAuthenticator):
