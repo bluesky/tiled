@@ -44,7 +44,7 @@ async def walk(node, filter_for_access, pre=None):
 
 if modules_available("h5py"):
 
-    async def serialize_hdf5(node, metadata, filter_for_access):
+    async def serialize_hdf5(mimetype, node, metadata, filter_for_access):
         """
         Encode everything below this node as HDF5.
 
@@ -94,7 +94,7 @@ if modules_available("h5py"):
 
 if modules_available("orjson"):
 
-    async def serialize_json(node, metadata, filter_for_access):
+    async def serialize_json(mimetype, node, metadata, filter_for_access):
         "Export node to JSON, with each node having a 'contents' and 'metadata' sub-key."
         root_node = node
         to_serialize = {"contents": {}, "metadata": dict(root_node.metadata())}
