@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b31 (Unreleased)
+
+### Fixed
+
+- Tests were missing assertions to verify expected outcomes
+
 ## v0.1.0-b30 (2025-07-18)
 
 ## Changed
