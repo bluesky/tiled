@@ -1507,7 +1507,11 @@ def has_key(query, tree):
         raise ValueError(
             "SQLite does not support 'has_key' yet. More information: https://github.com/sqlalchemy/sqlalchemy/discussions/7836"
         )
-    condition = orm.Node.metadata_.op("?")(query.key)
+    tsvector = func.jsonb_to_tsvector(
+        cast("simple", REGCONFIG), orm.Node.metadata_, cast(["key"], JSONB)
+    )
+    condition = tsvector.op("@@")(func.to_tsquery("simple", query.key))
+    # condition = orm.Node.metadata_.op("?")(query.key)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
