@@ -28,9 +28,11 @@ from ..queries import (
     Eq,
     FullText,
     In,
+    KeyIn,
     KeysFilter,
     NotEq,
     NotIn,
+    KeyNotIn,
     Regex,
     SpecsQuery,
     StructureFamilyQuery,
@@ -751,6 +753,52 @@ def notin(query: Any, tree: MapAdapter) -> MapAdapter:
 
 
 MapAdapter.register_query(NotIn, notin)
+
+
+def keyin(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
+    matches = {}
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if term in query.key:
+            matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(KeyIn, keyin)
+
+
+def keynotin(query: Any, tree: MapAdapter) -> MapAdapter:
+    """
+
+    Parameters
+    ----------
+    query :
+    tree :
+
+    Returns
+    -------
+
+    """
+    matches = {}
+    if len(query.value) == 0:
+        return tree
+    for key, value, term in iter_child_metadata(query.key, tree):
+        if term not in query.value:
+            matches[key] = value
+    return tree.new_variation(mapping=matches)
+
+
+MapAdapter.register_query(KeyNotIn, keynotin)
 
 
 def specs(query: Any, tree: MapAdapter) -> MapAdapter:
