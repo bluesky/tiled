@@ -138,7 +138,7 @@ def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
 @pytest.mark.filterwarnings("ignore: The dataset")
 @pytest.mark.parametrize("key", ["bool", "int", "float", "str", "bytes"])
 @pytest.mark.parametrize("num", [1, 5])
-def test_from_file_with_scalars(example_file_with_scalars, buffer, key, num):
+def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num: int):
     """Serve HDF5 file(s) containing scalars."""
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(*[example_file_with_scalars] * num)
