@@ -775,13 +775,15 @@ def test_append_nullable(
     )
     adapter_part.append_partition(table_0, 0)
 
-    # Write the second part of the data to the table
+    # Write the second part of the data to the table and read it back
     table_1 = pa.Table.from_arrays([appended], ["part_column"])
     adapter_part.append_partition(table_1, 0)
+    result_part = adapter_part.read()["part_column"].to_numpy()
 
+    # Close the connection to the database
     adapter_part.close()
 
-    # Write the full table at once
+    # Write the full table at once and read it back
     table_full = pa.Table.from_arrays([initial + appended], ["full_column"])
     data_source = DataSource(
         management=Management.writable,
@@ -799,8 +801,7 @@ def test_append_nullable(
         dataset_id=data_source.parameters["dataset_id"],
     )
     adapter_full.append_partition(table_full, 0)
+    result_full = adapter_full.read()["full_column"].to_numpy()
 
     # Check if the data matches in both cases
-    result_part = adapter_part.read()["part_column"].to_numpy()
-    result_full = adapter_full.read()["full_column"].to_numpy()
     assert deep_array_equal(result_part, result_full)
