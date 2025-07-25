@@ -242,7 +242,7 @@ async def construct_entries_response(
             max_depth=max_depth,
         )
         data.append(resource)
-        # If any entry has emtry.metadata_stale_at = None, then there will
+        # If any entry has entry.metadata_stale_at = None, then there will
         # be no 'Expires' header. We will pessimistically assume the values
         # are immediately stale.
         if metadata_stale_at is not None:
@@ -652,7 +652,7 @@ def resolve_media_type(request):
         if media_type == JSON_MIME_TYPE:
             break
     else:
-        # It is commmon in HTTP to fall back on a default representation if
+        # It is common in HTTP to fall back on a default representation if
         # none of the requested ones are available. We do not do this for
         # data payloads, but it makes some sense to do it for these metadata
         # messages.

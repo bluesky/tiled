@@ -126,7 +126,7 @@ $ http :8000/api/v1/metadata/big_image | jq .data.attributes.structure
 ### Array (with a structured data type)
 
 This is a 1D array where each item has internal structure,
-as in numpy's [strucuted data types](https://numpy.org/doc/stable/user/basics.rec.html)
+as in numpy's [structured data types](https://numpy.org/doc/stable/user/basics.rec.html)
 
 ```
 $ http :8000/api/v1/metadata/structured_data/pets | jq .data.attributes.structure

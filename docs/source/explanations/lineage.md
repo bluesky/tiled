@@ -39,7 +39,7 @@ patterns, and conventions. From their requirements flow Tiled's design.
   think about files. The second group can use Tiled sitting on top of those files,
   and the first group can continue as they were.
 * I want to transition from a file-based workflow to a
-  database-backed workflow some day, and I don't want all my analysis scirpts to
+  database-backed workflow some day, and I don't want all my analysis scripts to
   break.
 
 ## What Tiled is Not

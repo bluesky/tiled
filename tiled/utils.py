@@ -342,7 +342,7 @@ def gen_tree(tree, nodes=None, last=None):
     "A generator of lines for the tree utility"
 
     # Normally, traversing a Tree will cause the structure clients to be
-    # instanitated which in turn triggers import of the associated libraries like
+    # instantiated which in turn triggers import of the associated libraries like
     # numpy, pandas, and xarray. We want to avoid paying for that, especially
     # when this function is used in a CLI where import overhead can accumulate to
     # about 2 seconds, the bulk of the time. Therefore, we do something a bit
@@ -378,7 +378,7 @@ def tree(tree, max_lines=20):
     ----------
     tree : Tree
     max_lines: int or None, optional
-        By default, output is trucated at 20 lines. ``None`` means "Do not
+        By default, output is truncated at 20 lines. ``None`` means "Do not
         truncate."
 
     Examples
@@ -594,7 +594,7 @@ def get_share_tiled_path():
     """
     Walk up until we find share/tiled.
 
-    Because it is outside the pacakge, its location relative to us is up to the
+    Because it is outside the package, its location relative to us is up to the
     package manager. Rather than assuming that it is a specific number of
     directory levels above us, we walk upward until we find it. A file with
     long unique name helps us confirm that we have found the right directory.
@@ -772,7 +772,7 @@ def ensure_specified_sql_driver(uri: str) -> str:
     Given a URI without a driver in the scheme, add Tiled's preferred driver.
 
     If a driver is already specified, the specified one will be used; it
-    will NOT be overriden by this function.
+    will NOT be overridden by this function.
 
     'postgresql://...' -> 'postgresql+asynpg://...'
     'sqlite://...' -> 'sqlite+aiosqlite://...'

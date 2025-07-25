@@ -53,7 +53,7 @@ class NDSlice(tuple):
 
     @classmethod
     def from_json(cls, ser: list[JSON]) -> "NDSlice":
-        "Deserialize a json represenattion of an NDSlice"
+        "Deserialize a json representation of an NDSlice"
         result = []
         for s in ser:
             if isinstance(s, dict):

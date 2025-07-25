@@ -629,7 +629,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         try:
             if len(self) > MAX_ENTRIES_SUPPORTED:
                 MSG = (
-                    "Tab-completition is not supported on this particular Node "
+                    "Tab-completion is not supported on this particular Node "
                     "because it has a large number of entries."
                 )
                 warnings.warn(MSG)
@@ -1221,7 +1221,7 @@ class Descending(Sentinel):
 ASCENDING = Ascending("ASCENDING")
 "Ascending sort order. An alias for 1."
 DESCENDING = Descending("DESCENDING")
-"Decending sort order. An alias for -1."
+"Descending sort order. An alias for -1."
 
 
 class _LazyLoad:

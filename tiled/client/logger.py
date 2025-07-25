@@ -72,7 +72,7 @@ logger = logging.getLogger("tiled.client")
 # Monkey-patch our logger!
 # The logging framework provides no way to look a custom record factory into
 # the global logging manager. I tried several ways to avoid monkey-patching
-# and this is the least bad. Notice that it only downloades the 'tiled.client'
+# and this is the least bad. Notice that it only downloads the 'tiled.client'
 # logger and will not affect the behavior of other loggers.
 logger.makeRecord = patched_make_record
 handler = logging.StreamHandler()

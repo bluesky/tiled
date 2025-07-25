@@ -152,7 +152,7 @@ class SparseClient(BaseClient):
             from the name, like 'table.csv' implies format="text/csv". The format
             may be given as a file extension ("csv") or a media type ("text/csv").
         slice : List[slice], optional
-            List of slice objects. A convenient way to generate these is shown
+            List of slice objects. A convenient way to generate these are shown
             in the examples.
 
         Examples

@@ -50,7 +50,7 @@ def test_slicing(client):
     returned = client.write_awkward(array, key="test")
     # Test with client returned, and with client from lookup.
     for aac in [returned, client["test"]]:
-        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        # Read the data back out from the AwkwardArrayClient, progressively sliced.
         assert awkward.almost_equal(aac.read(), array)
         assert awkward.almost_equal(aac[:], array)
         assert awkward.almost_equal(aac[0], array[0])
@@ -160,7 +160,7 @@ def test_more_slicing_1(client):
     returned = client.write_awkward(array, key="test")
     # Test with client returned, and with client from lookup.
     for aac in [returned, client["test"]]:
-        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        # Read the data back out from the AwkwardArrayClient, progressively sliced.
         assert awkward.almost_equal(aac.read(), array)
         assert awkward.almost_equal(aac[:], array)
         assert awkward.almost_equal(aac["file", "filename"], array["file", "filename"])
@@ -173,7 +173,7 @@ def test_more_slicing_2(client):
     returned = client.write_awkward(array, key="test")
     # Test with client returned, and with client from lookup.
     for aac in [returned, client["test"]]:
-        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        # Read the data back out from the AwkwardArrayClient, progressively sliced.
         assert awkward.almost_equal(aac.read(), array)
         assert awkward.almost_equal(aac[:], array)
         assert awkward.almost_equal(aac[1:], array[1:])
@@ -190,7 +190,7 @@ def test_more_slicing_3(client):
     returned = client.write_awkward(array, key="test")
     # Test with client returned, and with client from lookup.
     for aac in [returned, client["test"]]:
-        # Read the data back out from the AwkwardArrrayClient, progressively sliced.
+        # Read the data back out from the AwkwardArrayClient, progressively sliced.
         assert awkward.almost_equal(aac.read(), array)
         assert awkward.almost_equal(aac[:], array[:])
         assert awkward.almost_equal(aac["good"], array["good"])

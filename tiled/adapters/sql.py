@@ -336,7 +336,7 @@ class SQLAdapter:
         """Read the data from the database
 
         This is a helper function to read the data from the database. The result
-        is a pyarrow table conatining rows either from the entire table or from a
+        is a pyarrow table containing rows either from the entire table or from a
         specific partition. The retained columns are cast to the original type.
 
         Parameters

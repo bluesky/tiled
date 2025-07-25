@@ -126,7 +126,7 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
                     continue
                 raise
             else:
-                # Sucess! We have tokens.
+                # Success! We have tokens.
                 break
         else:
             # All attempts failed.
@@ -852,7 +852,7 @@ class Admin:
         self.base_url = context.server_info.links["self"]
 
     def list_principals(self, offset=0, limit=100):
-        "List Principals (users and services) in the authenticaiton database."
+        "List Principals (users and services) in the authentication database."
         url_path = f"{self.base_url}/auth/principal"
         params = {
             **parse_qs(urlparse(url_path).query),
@@ -866,7 +866,7 @@ class Admin:
                 ).json()
 
     def show_principal(self, uuid):
-        "Show one Principal (user or service) in the authenticaiton database."
+        "Show one Principal (user or service) in the authentication database."
         for attempt in retry_context():
             with attempt:
                 return handle_error(

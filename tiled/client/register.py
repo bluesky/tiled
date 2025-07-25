@@ -11,7 +11,7 @@ import watchfiles
 
 from ..mimetypes import (
     DEFAULT_MIMETYPES_BY_FILE_EXT,
-    DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE,
+    DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE,
 )
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
@@ -103,14 +103,14 @@ class Settings:
         key_from_filename=None,
         filter=None,
     ):
-        # If parameters come from a configuration file, they are given
+        # If parameters come from a configuration file, they
         # are given as importable strings, like "package.module:Reader".
         adapters_by_mimetype = adapters_by_mimetype or {}
         for key, value in list((adapters_by_mimetype).items()):
             if isinstance(value, str):
                 adapters_by_mimetype[key] = import_object(value)
         merged_adapters_by_mimetype = collections.ChainMap(
-            adapters_by_mimetype, DEFAULT_REGISTERATION_ADAPTERS_BY_MIMETYPE
+            adapters_by_mimetype, DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE
         )
         if isinstance(key_from_filename, str):
             key_from_filename = import_object(key_from_filename)

@@ -1,5 +1,10 @@
 import contextlib
 import time
+from collections.abc import Generator
+from typing import Any, Mapping
+
+from fastapi import Request
+from starlette.types import Scope
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
@@ -11,7 +16,7 @@ CSRF_COOKIE_NAME = "tiled_csrf"
 
 
 @contextlib.contextmanager
-def record_timing(metrics, key):
+def record_timing(metrics: dict[str, Any], key: str) -> Generator[None]:
     """
     Set timings[key] equal to the run time (in milliseconds) of the context body.
     """
@@ -20,21 +25,21 @@ def record_timing(metrics, key):
     metrics[key]["dur"] += time.perf_counter() - t0  # Units: seconds
 
 
-def get_root_url(request):
+def get_root_url(request: Request) -> str:
     """
     URL at which the app is being server, including API and UI
     """
     return f"{get_root_url_low_level(request.headers, request.scope)}"
 
 
-def get_base_url(request):
+def get_base_url(request: Request) -> str:
     """
     Base URL for the API
     """
     return f"{get_root_url(request)}/api/v1"
 
 
-def get_root_url_low_level(request_headers, scope):
+def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> str:
     # We want to get the scheme, host, and root_path (if any)
     # *as it appears to the client* for use in assembling links to
     # include in our responses.

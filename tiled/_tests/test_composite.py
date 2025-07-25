@@ -189,7 +189,7 @@ def test_metadata(context):
         assert c.metadata["md_key"] == f"md_for_{part}"
 
 
-def test_parts_not_direclty_accessible(context):
+def test_parts_not_directly_accessible(context):
     client = from_context(context)
     client["x"].parts["df1"].read()
     client["x"].parts["df1"]["A"].read()
@@ -299,4 +299,4 @@ def test_read_selective_with_dim0(context, dim0):
 
     # Check the dimension names
     for var_name in ds.data_vars:
-        ds[var_name].dims[0] == dim0
+        assert ds[var_name].dims[0] == dim0

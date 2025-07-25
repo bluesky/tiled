@@ -357,7 +357,7 @@ class ArrayClient(DaskArrayClient):
 
     def read(self, slice=None):
         """
-        Acess the entire array or a slice.
+        Access the entire array or a slice.
         """
         return super().read(slice).compute()
 

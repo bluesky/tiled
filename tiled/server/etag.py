@@ -15,7 +15,7 @@ def tokenize(obj):
 
 
 # When dask does not know how to deterministically tokenize something, it falls
-# back to normalize_object, which generates a random, nonderministic token
+# back to normalize_object, which generates a random, nondeterministic token
 # (UUID4). Here, we teach it how to tokenize HDF5 datasets. This function will
 # only be run if/when an h5py object is encountered.
 

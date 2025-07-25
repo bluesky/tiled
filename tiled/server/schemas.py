@@ -79,7 +79,7 @@ class NodeStructure(pydantic.BaseModel):
 
 class SortingDirection(int, enum.Enum):
     ASCENDING = 1
-    DECENDING = -1
+    DESCENDING = -1
 
 
 class SortingItem(pydantic.BaseModel):
@@ -429,7 +429,7 @@ class PostMetadataRequest(pydantic.BaseModel):
         return v
 
     @pydantic.model_validator(mode="after")
-    def narrow_strucutre_type(self):
+    def narrow_structure_type(self):
         "Convert the structure on each data_source from a dict to the appropriate pydantic model."
         for data_source in self.data_sources:
             if self.structure_family not in {

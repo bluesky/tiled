@@ -129,8 +129,8 @@ as it is easy to accidentally share or leak.
 
 Custom applications, such as a graphical interfaces that wrap Tiled, may not be
 able to use Tiled commandline-based prompts. They should avoid using the
-convenience functions `tiled.client.construtors.from_uri` and
-`tiled.client.construtors.from_profile`.
+convenience functions `tiled.client.constructors.from_uri` and
+`tiled.client.constructors.from_profile`.
 
 They may implement their own interfaces for collecting credentials (for
 password grants) or launching a browser and waiting for the user to authorize a

@@ -38,7 +38,7 @@ def parse_hdf5_tree(
 ) -> Union[dict[str, Union[Any, Sentinel]], Sentinel]:
     """Parse an HDF5 file or group into a nested dictionary structure
 
-    the resulting tree structure represenets any groups as nested dictionaries ans datasets as None.
+    the resulting tree structure represents any groups as nested dictionaries ans datasets as None.
 
     Parameters
     ----------
@@ -170,9 +170,6 @@ class HDF5ArrayAdapter(ArrayAdapter):
         dtype = shapes_chunks_dtypes[0][2]
         if dtype == numpy.dtype("O"):
             # TODO: It should be possible to put this in dask.delayed too -- needs to be thoroughly tested
-            assert (
-                len(file_paths) == 1
-            ), "Cannot handle object arrays from multiple files"
             warnings.warn(
                 f"The dataset {dataset} is of object type, using a "
                 "Python-only feature of h5py that is not supported by "
@@ -198,14 +195,22 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 return arr
             return dask.array.empty(shape=())
 
-        delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
-        arrs = [
-            dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(
-                chunks=chunk_shape or "auto"
-            )
-            for (val, (shape, chunk_shape, dtype)) in zip(delayed, shapes_chunks_dtypes)
-        ]
-        array = dask.array.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
+        if not any([shape for shape, _, _ in shapes_chunks_dtypes]):
+            # All shapes are empty -> all arrays are zero-dimensional (scalars)
+            array = dask.array.stack([_read_hdf5_array(fpath) for fpath in file_paths])
+            array = array[0] if len(file_paths) == 1 else array
+        else:
+            # Use delayed loading to read the arrays from the files
+            delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
+            arrs = [
+                dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(
+                    chunks=chunk_shape or "auto"
+                )
+                for (val, (shape, chunk_shape, dtype)) in zip(
+                    delayed, shapes_chunks_dtypes
+                )
+            ]
+            array = dask.array.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
 
         return array
 
@@ -388,7 +393,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
             )
 
         # Initialize adapter for the entire HDF5 tree
-        # If multiple data_uri assests are supplied, only the first one is traversed, but the rest of the uris
+        # If multiple data_uri assets are supplied, only the first one is traversed, but the rest of the uris
         # will be kept in case we need to read an array that spans all of them.
         assets = data_source.assets
         assert len(assets) > 0, "No assets found in data source"
