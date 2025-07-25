@@ -42,7 +42,7 @@ server_config = {
         ],
     },
     "database": {
-        "uri": "sqlite://",  # in-memory
+        "uri": "sqlite:///file:authn_mem?mode=memory&cache=shared&uri=true",  # in-memory
     },
 }
 
@@ -192,9 +192,9 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
         if client := clients.get(username, None):
             return client
         app = build_app_from_config(config)
-        context = Context.from_app(app)
+        context = Context.from_app(app, uri=f"http://local-tiled-app-{username}/api/v1")
         contexts.append(context)
-        client = from_context(context)
+        client = from_context(context, remember_me=False)
         clients[username] = client
         with enter_username_password(username, password):
             client.context.login(remember_me=False)
@@ -202,12 +202,8 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
 
     admin_client = _create_and_login_context("admin", "admin")
     for k in ["foo", "bar", "baz"]:
-        admin_client[k].write_array(
-            arr, key="data_A", access_tags=["alice_tag"]
-        )
-        admin_client[k].write_array(
-            arr, key="data_B", access_tags=["chemists_tag"]
-        )
+        admin_client[k].write_array(arr, key="data_A", access_tags=["alice_tag"])
+        admin_client[k].write_array(arr, key="data_B", access_tags=["chemists_tag"])
         admin_client[k].write_array(arr, key="data_C", access_tags=["public"])
 
     yield _create_and_login_context
@@ -216,7 +212,9 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
         context.close()
 
 
-def test_basic_access_control(access_control_test_context_factory, enter_username_password):
+def test_basic_access_control(
+    access_control_test_context_factory, enter_username_password
+):
     """
     Test that basic access control and tag compilation are working.
     Only tests simple visibility of the data (i.e. "read:metadata" scope),
@@ -264,7 +262,9 @@ def test_basic_access_control(access_control_test_context_factory, enter_usernam
         bob_client[top][data]
 
 
-def test_writing_access_control(access_control_test_context_factory, enter_username_password):
+def test_writing_access_control(
+    access_control_test_context_factory, enter_username_password
+):
     """
     Test that writing access control and tag ownership is working.
     Only tests that the writing request does not fail.
@@ -313,7 +313,6 @@ def test_user_owned_node_access_control(
     Also test that the data is visible after a tag is applied, and
       that other users cannot see user-owned nodes.
     """
-
 
     alice_client = access_control_test_context_factory("alice", "alice")
     bob_client = access_control_test_context_factory("bob", "bob")
