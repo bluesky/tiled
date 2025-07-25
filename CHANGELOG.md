@@ -5,6 +5,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b31 (Unreleased)
 
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+
+### Changed
+
+- Access control code is now in the `access_control` subdirectory
+
 ### Fixed
 
 - Tests were missing assertions to verify expected outcomes

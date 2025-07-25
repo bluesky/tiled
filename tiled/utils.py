@@ -20,6 +20,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse, urlunparse
 
 import anyio
+import yaml
 
 # helper for avoiding re-typing patch mimetypes
 # namedtuple for the lack of StrEnum in py<3.11
@@ -574,11 +575,13 @@ class UnsupportedQueryType(TypeError):
 
 class Conflicts(Exception):
     "Prompts the server to send 409 Conflicts with message"
+
     pass
 
 
 class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
+
     pass
 
 
@@ -822,3 +825,15 @@ class catch_warning_msg(warnings.catch_warnings):
         super().__enter__()
         self.apply_filter()
         return self
+
+
+class InterningLoader(yaml.loader.BaseLoader):
+    pass
+
+
+def interning_constructor(loader, node):
+    value = loader.construct_scalar(node)
+    return sys.intern(value)
+
+
+InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
