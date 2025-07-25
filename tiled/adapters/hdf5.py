@@ -170,9 +170,6 @@ class HDF5ArrayAdapter(ArrayAdapter):
         dtype = shapes_chunks_dtypes[0][2]
         if dtype == numpy.dtype("O"):
             # TODO: It should be possible to put this in dask.delayed too -- needs to be thoroughly tested
-            # assert (
-            #     len(file_paths) == 1
-            # ), "Cannot handle object arrays from multiple files"
             warnings.warn(
                 f"The dataset {dataset} is of object type, using a "
                 "Python-only feature of h5py that is not supported by "
@@ -208,7 +205,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         if len(arrs) > 1:
             if not any([arr.shape for arr in arrs]):
-                # All shapes are empty -> all arrays are zero-dimensional
+                # All shapes are empty -> all arrays are zero-dimensional (scalars)
+                # Need to compute before stacking because the arrays are implicitly sliced
+                # with [:] instead of [()], and h5py does not support this.
                 array = dask.array.stack([a.compute() for a in arrs], axis=0)
             else:
                 # Try to concatenate along the leftmost dimension
