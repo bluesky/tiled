@@ -2,12 +2,13 @@
 	"name": "tiled-devcontainer",
 	"build": {
 		"context": "..",
-		"dockerfile": "../Dockerfile"
+		"dockerfile": "../Dockerfile",
+		"target": "developer"
 	},
 	"features": {
 		"ghcr.io/devcontainers/features/git:1": {}
 	},
-
+	"postCreateCommand": "pip install $([ -f dev-requirements.txt ] && echo '-c dev-requirements.txt') -e '.[all,dev]' && pre-commit install",
 	"customizations": {
 		"vscode": {
 			"settings": {
