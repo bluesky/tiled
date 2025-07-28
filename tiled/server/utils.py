@@ -1,10 +1,14 @@
 import contextlib
 import time
 from collections.abc import Generator
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, Optional, Sequence
 
 from fastapi import Request
 from starlette.types import Scope
+
+from tiled.adapters.protocols import AccessPolicy
+from tiled.server.schemas import Principal
+from tiled.type_aliases import Scopes
 
 from ..access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
@@ -75,7 +79,12 @@ def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> 
 
 
 async def filter_for_access(
-    entry, access_policy, principal, authn_scopes, scopes, metrics
+    entry,
+    access_policy: Optional[AccessPolicy],
+    principal: Principal,
+    authn_scopes: Scopes,
+    scopes: Sequence[str],
+    metrics: dict[str, Any],
 ):
     if access_policy is not None and hasattr(entry, "search"):
         with record_timing(metrics, "acl"):

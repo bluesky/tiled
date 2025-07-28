@@ -19,6 +19,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   of Closure Table to track ancestors and descendands of the nodes.
 - Shorter string representation of chunks in `ArrayClient`.
 - Refactored internal Zarr version detection
+- Use common base type for all access policy types
 
 ### Fixed
 
