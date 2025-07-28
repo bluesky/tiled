@@ -38,7 +38,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const settings = useContext(SettingsContext);
   const formats = settings.structure_families[props.structureFamily].formats;
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
-    null
+    null,
   );
 
   const handleLinkClick = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -55,7 +55,7 @@ const Download: React.FunctionComponent<DownloadProps> = (props) => {
   const handleChange = (event: SelectChangeEvent) => {
     const mimetype = event.target.value as string;
     const format = formats.find(
-      (format: Format) => format.mimetype === mimetype
+      (format: Format) => format.mimetype === mimetype,
     );
     props.setFormat(format);
   };

@@ -20,7 +20,7 @@ interface DisplayRadioButtonsProps {
 }
 
 const DisplayRadioButtons: React.FunctionComponent<DisplayRadioButtonsProps> = (
-  props
+  props,
 ) => {
   return (
     <FormControl>
@@ -51,7 +51,7 @@ const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
   const [dataIsLoaded, setDataIsLoaded] = useState<boolean>(false);
 
   const handleDisplayTypeChange = (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     setDisplayType((event.target as HTMLInputElement).value);
   };
@@ -61,7 +61,7 @@ const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
     async function loadData() {
       const response = await axiosInstance.get(
         `${props.link}?format=application/json&slice=${props.range[0]}:${props.range[1]}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
       const data = response.data;
       setData(data);
@@ -89,7 +89,7 @@ const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
         return dataIsLoaded ? (
           <ItemList data={data} />
         ) : (
-          <Skeleton variant="rectangular" role="progressbar"  />
+          <Skeleton variant="rectangular" role="progressbar" />
         );
     }
   };
@@ -157,4 +157,4 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
 };
 
 export default Array1D;
-export {DataDisplay};
+export { DataDisplay };

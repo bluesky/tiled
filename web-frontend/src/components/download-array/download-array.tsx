@@ -17,12 +17,12 @@ interface DownloadArrayProps {
   structure: any;
   specs: string[];
   link: string;
-  format? :{mimetype:string};
+  format?: { mimetype: string };
 }
 
 function Examples() {
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
-    null
+    null,
   );
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {

@@ -4,7 +4,7 @@ import { Download, Format } from "../download-core/download-core";
 
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
-import ChoosePartition from "../choose-partition";
+import ChoosePartition from "../choose-partition/choose-partition";
 import ColumnList from "../column-list/column-list";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
@@ -33,7 +33,7 @@ const DownloadTable: React.FunctionComponent<DownloadTableProps> = (props) => {
     } else {
       link = `${props.partition_link.replace(
         "{index}",
-        partition.toString()
+        partition.toString(),
       )}&format=${format.mimetype}`;
     }
     // If a subset of the columns is selected, specify them.

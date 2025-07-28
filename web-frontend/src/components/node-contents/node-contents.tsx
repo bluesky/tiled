@@ -1,8 +1,8 @@
-import Contents, { Column } from "../components/contents/contents";
+import Contents, { Column } from "../../components/contents/contents";
 import { useContext, useEffect, useState } from "react";
-import { components } from "../openapi_schemas";
-import { search } from "../client";
-import { SettingsContext } from "../context/settings";
+import { components } from "../../openapi_schemas";
+import { search } from "../../client";
+import { SettingsContext } from "../../context/settings";
 
 interface NodeContentsProps {
   segments: string[];
@@ -41,7 +41,7 @@ const NodeContents: React.FunctionComponent<NodeContentsProps> = (props) => {
         props.segments,
         controller.signal,
         fields,
-        selectMetadata
+        selectMetadata,
       );
       setItems(data!.data!);
     }

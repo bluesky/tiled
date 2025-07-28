@@ -4,10 +4,10 @@ import { Suspense, lazy } from "react";
 
 import Alert from "@mui/material/Alert";
 import Skeleton from "@mui/material/Skeleton";
-import { components } from "../openapi_schemas";
+import { components } from "../../openapi_schemas";
 
-const Array1D = lazy(() => import("./array-1d/array-1d"));
-const ArrayND = lazy(() => import("../components/array-nd/array-nd"));
+const Array1D = lazy(() => import("../array-1d/array-1d"));
+const ArrayND = lazy(() => import("../array-nd/array-nd"));
 
 interface IProps {
   segments: string[];

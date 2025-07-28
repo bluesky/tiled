@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import ChoosePartition from "./choose-partition/choose-partition";
+import ChoosePartition from "../choose-partition/choose-partition";
 import Container from "@mui/material/Container";
 import { DataGrid } from "@mui/x-data-grid";
 import FormControl from "@mui/material/FormControl";
@@ -13,7 +13,7 @@ import FormHelperText from "@mui/material/FormHelperText";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
-import { axiosInstance } from "../client";
+import { axiosInstance } from "../../client";
 import { useNavigate } from "react-router-dom";
 
 interface IProps {
@@ -31,12 +31,12 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
     const controller = new AbortController();
     const templated_link = props.item.data.links.partition.replace(
       "{index}",
-      partition
+      partition,
     );
     async function loadRows() {
       const response = await axiosInstance.get(
         `${templated_link}&format=application/json-seq`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
       const rows = response.data
         .split("\n")
@@ -111,7 +111,7 @@ const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
         .map(function (segment) {
           return "/" + segment;
         })
-        .join("")}/${column}`
+        .join("")}/${column}`,
     );
   };
 

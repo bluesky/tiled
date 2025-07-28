@@ -48,7 +48,9 @@ interface NodeLazyContentsProps {
 
 const DEFAULT_PAGE_SIZE = 10;
 
-const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = ( props) => {
+const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
+  props,
+) => {
   let navigate = useNavigate();
   // const gridColumns = [
   //   {
@@ -67,23 +69,23 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = ( props
   //   })
   // );
   const gridColumns = [
-  {
-    field: "id",
-    headerName: "ID",
-    flex: 1,
-    hide: !props.defaultColumns.includes("id"),
-  },
-];
-props.columns
-  .filter((column) => column.field !== "id")
-  .forEach((column) =>
-    gridColumns.push({
-      field: column.field,
-      headerName: column.header,
+    {
+      field: "id",
+      headerName: "ID",
       flex: 1,
-      hide: !props.defaultColumns.includes(column.field),
-    })
-  );
+      hide: !props.defaultColumns.includes("id"),
+    },
+  ];
+  props.columns
+    .filter((column) => column.field !== "id")
+    .forEach((column) =>
+      gridColumns.push({
+        field: column.field,
+        headerName: column.header,
+        flex: 1,
+        hide: !props.defaultColumns.includes(column.field),
+      }),
+    );
   const settings = useContext(SettingsContext);
   const [rowsState, setRowsState] = useState<RowsState>({
     page: 0,
@@ -94,26 +96,23 @@ props.columns
   type IdsToAncestors = { [key: string]: string[] };
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
   const [rowCount, setRowCount] = useState<number>(0);
+  // Optional: error state
+  // const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    if(props.structureFamily !== "container"){
+    if (props.structureFamily !== "container") {
       return;
     }
 
-    // if(!props.columns || props.columns.length ===0){
-    //   return;
-    // }
-  
     let active = true;
 
     async function loadItems(): Promise<
       components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
     > {
-      console.log("loadItems called with columns:", props.columns);
       let selectMetadata: string | null;
       let fields: string[];
       const controller = new AbortController();
       if (props.columns.length === 0) {
-        // No configuration on which columns to show. Fetch only the ID.
         fields = [];
         selectMetadata = null;
       } else {
@@ -127,74 +126,85 @@ props.columns
             .join(",") +
           "}";
       }
-      
-  
-      const data = await search(
-        settings.api_url,
-        props.segments,
-        controller.signal,
-        fields,
-        selectMetadata,
-        rowsState.pageSize * rowsState.page,
-        rowsState.pageSize
-      );
-      setRowCount(data.meta!.count! as number);
-      const items = data.data;
-      return items!;
+
+      try {
+        const data = await search(
+          settings.api_url,
+          props.segments,
+          controller.signal,
+          fields,
+          selectMetadata,
+          rowsState.pageSize * rowsState.page,
+          rowsState.pageSize,
+        );
+        setRowCount(data.meta!.count! as number);
+        const items = data.data;
+        return items!;
+      } catch (err) {
+        // Optionally set error state here
+        // setError("Failed to load data");
+        setRowCount(0);
+        return [];
+      }
     }
 
     (async () => {
       setRowsState((prev) => ({ ...prev, loading: true }));
-      const newItems = await loadItems();
-      const idsToAncestors: IdsToAncestors = {};
-      newItems.map(
-        (
-          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]
-        ) => {
-          idsToAncestors[item.id as string] = item.attributes.ancestors;
-          return null;
-        }
-      );
-      const newRows = newItems.map(
-        (
-          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]
-        ) => {
-          const row: { [key: string]: any } = {};
-          row.id = item.id;
-          props.columns.map((column) => {
-            row[column.field] = item.attributes!.metadata![column.field];
+      try {
+        const newItems = await loadItems();
+        const idsToAncestors: IdsToAncestors = {};
+        newItems.map(
+          (
+            item: components["schemas"]["Resource_NodeAttributes__dict__dict_"],
+          ) => {
+            idsToAncestors[item.id as string] = item.attributes.ancestors;
             return null;
-          });
-          return row;
+          },
+        );
+        const newRows = newItems.map(
+          (
+            item: components["schemas"]["Resource_NodeAttributes__dict__dict_"],
+          ) => {
+            const row: { [key: string]: any } = {};
+            row.id = item.id;
+            props.columns.map((column) => {
+              row[column.field] = item.attributes!.metadata![column.field];
+              return null;
+            });
+            return row;
+          },
+        );
+
+        if (!active) {
+          return;
         }
-      );
 
-      if (!active) {
-        return;
+        setIdsToAncestors(idsToAncestors);
+        setRowsState((prev) => ({ ...prev, loading: false, rows: newRows }));
+      } catch (err) {
+        // Optionally set error state here
+        // setError("Failed to load data");
+        setIdsToAncestors({});
+        setRowsState((prev) => ({ ...prev, loading: false, rows: [] }));
       }
-
-      // TODO Synchronize these. (Clear rows first?)
-      setIdsToAncestors(idsToAncestors);
-      setRowsState((prev) => ({ ...prev, loading: false, rows: newRows }));
     })();
 
     return () => {
       active = false;
     };
-  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments, props.structureFamily]);
-  // if (!props.columns || props.columns.length === 0) {
-  //   return (
-  //     <Box sx={{ my: 4 }}>
-  //       <Container maxWidth="lg">
-  //         <div>Loading columns...</div>
-  //       </Container>
-  //     </Box>
-  //   );
-  // }
+  }, [
+    rowsState.page,
+    rowsState.pageSize,
+    props.columns,
+    props.segments,
+    props.structureFamily,
+  ]);
 
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
+        {/* Optionally show error message */}
+        {/* {error && <div data-testid="error-message">{error}</div>} */}
         <DataGrid
           columns={gridColumns}
           pagination
@@ -217,7 +227,7 @@ props.columns
                 .map(function (ancestor: string) {
                   return "/" + ancestor;
                 })
-                .join("")}/${params.id}`
+                .join("")}/${params.id}`,
             );
           }}
           slots={{
@@ -225,7 +235,6 @@ props.columns
           }}
           disableColumnFilter
           autoHeight
-          
         />
       </Container>
     </Box>

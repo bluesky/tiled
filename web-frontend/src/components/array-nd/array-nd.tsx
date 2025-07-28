@@ -2,7 +2,7 @@ import * as React from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import CutSlider from "../cut-slider";
+import CutSlider from "../cut-slider/cut-slider";
 import Typography from "@mui/material/Typography";
 import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
@@ -40,7 +40,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   // Compute a downsampling stride based on the largest dimension
   // among the last two.
   const stride = Math.ceil(
-    Math.max(...shape.slice(ndim - 2, ndim)) / maxImageSize
+    Math.max(...shape.slice(ndim - 2, ndim)) / maxImageSize,
   );
   const [cuts, setCuts] = useState<number[]>(middles);
   return (
@@ -77,7 +77,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
                   setCuts(newCuts);
                 },
                 100,
-                { maxWait: 200 }
+                { maxWait: 200 },
               )}
             />
           );
