@@ -3,6 +3,7 @@ import os
 
 from ..queries import AccessBlobFilter
 from ..utils import Sentinel, import_object
+from .protocols import AccessPolicy
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
@@ -20,7 +21,7 @@ if log_level:
     logger.setLevel(log_level.upper())
 
 
-class DummyAccessPolicy:
+class DummyAccessPolicy(AccessPolicy):
     "Impose no access restrictions."
 
     async def allowed_scopes(self, node, principal, authn_access_tags, authn_scopes):
@@ -30,7 +31,7 @@ class DummyAccessPolicy:
         return []
 
 
-class TagBasedAccessPolicy:
+class TagBasedAccessPolicy(AccessPolicy):
     def __init__(
         self,
         *,
