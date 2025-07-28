@@ -68,6 +68,7 @@ class Node(Timestamped, Base):
         Integer,
         ForeignKey("nodes.id", name="fk_nodes_parent", ondelete="CASCADE"),
         nullable=True,
+        index=True,  # An index to support parent lookups
     )
 
     key = Column(Unicode(1023), nullable=False)

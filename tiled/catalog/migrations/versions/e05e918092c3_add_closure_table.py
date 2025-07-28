@@ -105,6 +105,7 @@ def upgrade():
         batch_op.create_unique_constraint(
             "key_parent_unique_constraint", ["key", "parent"]
         )
+        batch_op.create_index("idx_nodes_parent", "nodes", ["parent"])
 
     # 2. Create the 'nodes_closure' table and create the uniqueness constraint
     op.create_table(
@@ -384,6 +385,7 @@ def downgrade():
 
     # 6. Drop the 'parent' column and related foreign key/unique constraint
     with op.batch_alter_table("nodes", schema=None) as batch_op:
+        batch_op.drop_index("idx_nodes_parent")
         batch_op.drop_constraint("fk_nodes_parent", type_="foreignkey")
         batch_op.drop_constraint("key_parent_unique_constraint", type_="unique")
         batch_op.create_unique_constraint(
