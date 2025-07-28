@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b31 (Unreleased)
 
+### Changed
+
+- Refactored internal server function ``get_root_tree()`` to not use FastAPI
+  dependencies injection
+
 ### Fixed
 
 - Tests were missing assertions to verify expected outcomes
