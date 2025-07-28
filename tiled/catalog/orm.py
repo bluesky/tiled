@@ -86,7 +86,7 @@ class Node(Timestamped, Base):
     )
     revisions = relationship(
         "Revision",
-        backref="revisions",
+        backref="node",
         passive_deletes=True,
     )
 
