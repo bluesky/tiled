@@ -11,6 +11,7 @@ TILED_TEST_LDAP = os.getenv("TILED_TEST_LDAP")
 
 
 # fmt: off
+@pytest.mark.filterwarnings("ignore", category=DeprecationWarning)
 @pytest.mark.parametrize("ldap_server_address, ldap_server_port", [
     ("localhost", 1389),
     ("localhost:1389", 904),  # Random port, ignored

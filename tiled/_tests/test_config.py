@@ -1,3 +1,6 @@
+from unittest.mock import Mock
+
+import pytest
 import yaml
 
 from ..adapters.array import ArrayAdapter
@@ -107,3 +110,16 @@ def test_extra_files(tmpdir):
     with open(tmpdir / "README.md", "w") as extra_file:
         extra_file.write("# Example")
     parse_configs(str(tmpdir))
+
+
+@pytest.mark.parametrize(
+    "exists,error", [(True, "not a file or directory"), (False, "doesn't exist")]
+)
+def test_invalid_config_file_path(exists: bool, error: str):
+    invalid = Mock()
+    invalid.is_file.return_value = False
+    invalid.is_dir.return_value = False
+    invalid.exists.return_value = exists
+
+    with pytest.raises(ValueError, match=error):
+        parse_configs(invalid)

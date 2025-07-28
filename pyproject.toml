@@ -101,8 +101,7 @@ all = [
     "uvicorn[standard]",
     "watchfiles",
     "xarray",
-    "zarr <3; python_version <= '3.10'",
-    "zarr >=3; python_version >= '3.11'",
+    "zarr",
     "zstandard",
 ]
 # These are needed by the client and server to transmit/receive arrays.
@@ -203,8 +202,7 @@ minimal-server = [
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "uvicorn[standard]",
-    "zarr <3; python_version <= '3.10'",
-    "zarr >=3; python_version >= '3.11'",
+    "zarr",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
@@ -250,8 +248,7 @@ server = [
     "tifffile",
     "uvicorn[standard]",
     "xarray",
-    "zarr <3; python_version <= '3.10'",
-    "zarr >=3; python_version >= '3.11'",
+    "zarr",
     "zstandard",
 ]
 # These are needed by the client and server to transmit/receive sparse arrays.
@@ -276,7 +273,9 @@ Documentation = "https://blueskyproject.io/tiled"
 [tool.hatch]
 version.source = "vcs"
 version.fallback-version = "0.0.0"
-build.hooks.vcs.version-file = "tiled/_version.py"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "tiled/_version.py"
 
 # Defining this (empty) section invokes hatch_build.py
 [tool.hatch.build.hooks.custom]
@@ -319,3 +318,32 @@ exclude_lines = ["if __name__ == '__main__':"]
 
 [tool.coverage.paths]
 source = ["."]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.pypi-dependencies]
+tiled = { path = ".", editable = true }
+
+[tool.pixi.feature.sparse.dependencies]
+# sparse setuptools-based build is not working, so override with conda
+# packages.
+ndindex = "*"
+pyarrow = "*"
+sparse = "*"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+all = { features = ["all"], solve-group = "default" }
+array = { features = ["array"], solve-group = "default" }
+client = { features = ["client"], solve-group = "default" }
+compression = { features = ["compression"], solve-group = "default" }
+dataframe = { features = ["dataframe"], solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+formats = { features = ["formats"], solve-group = "default" }
+minimal-client = { features = ["minimal-client"], solve-group = "default" }
+minimal-server = { features = ["minimal-server"], solve-group = "default" }
+server = { features = ["server"], solve-group = "default" }
+sparse = { features = ["sparse"], solve-group = "default" }
+xarray = { features = ["xarray"], solve-group = "default" }

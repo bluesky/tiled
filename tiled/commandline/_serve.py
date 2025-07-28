@@ -192,9 +192,11 @@ def serve_directory(
     if api_key is None:
         api_key = os.getenv("TILED_SINGLE_USER_API_KEY")
         if api_key is None:
-            import secrets
+            # Lazily import server settings here to avoid server dependencies
+            # in client-only environments.
+            from tiled.server.settings import get_settings
 
-            api_key = secrets.token_hex(32)
+            api_key = get_settings().single_user_api_key
             generated = True
 
     web_app = build_app(
