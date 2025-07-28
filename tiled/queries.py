@@ -378,12 +378,12 @@ class NotIn:
 @dataclass
 class KeyIn:
     """
-    Query to retrieve containers that have a specific key.
+    Query to retrieve containers that have a specific key at any level.
 
     Parameters
     ----------
     key : str
-        e.g. "color", "sample.name"
+        e.g. "color"
     Examples
     --------
 

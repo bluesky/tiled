@@ -790,10 +790,10 @@ def keynotin(query: Any, tree: MapAdapter) -> MapAdapter:
 
     """
     matches = {}
-    if len(query.value) == 0:
+    if len(query.key) == 0:
         return tree
     for key, value, term in iter_child_metadata(query.key, tree):
-        if term not in query.value:
+        if term not in query.key:
             matches[key] = value
     return tree.new_variation(mapping=matches)
 

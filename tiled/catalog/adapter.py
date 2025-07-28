@@ -1502,16 +1502,21 @@ def in_or_not_in(query, tree, method):
     return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
 
 
-def has_key(query, tree):
+def has_key(query, tree, invert):
     if tree.engine.url.get_dialect().name == "sqlite":
         # FTS5 includes KEYS
         condition = orm.metadata_fts5.c.metadata.match(query.key)
+        # Only supports top level keys
+        # condition = orm.Node.metadata_.op("->")(query.key) != None
     else:
         tsvector = func.jsonb_to_tsvector(
             # TSVector can be configured to search key column only.
-            cast("simple", REGCONFIG), orm.Node.metadata_, cast(["key"], JSONB)
+            cast("simple", REGCONFIG),
+            orm.Node.metadata_,
+            cast(["key"], JSONB),
         )
         condition = tsvector.op("@@")(func.to_tsquery("simple", query.key))
+    condition = not_(condition) if invert else condition
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
@@ -1531,8 +1536,8 @@ CatalogNodeAdapter.register_query(Comparison, comparison)
 CatalogNodeAdapter.register_query(Contains, contains)
 CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
-CatalogNodeAdapter.register_query(KeyIn, has_key)
-CatalogNodeAdapter.register_query(KeyNotIn, partial(in_or_not_in, method="not_in"))
+CatalogNodeAdapter.register_query(KeyIn, partial(has_key, invert=False))
+CatalogNodeAdapter.register_query(KeyNotIn, partial(has_key, invert=True))
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
