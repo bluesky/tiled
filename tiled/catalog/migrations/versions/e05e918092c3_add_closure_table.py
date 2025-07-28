@@ -105,7 +105,7 @@ def upgrade():
         batch_op.create_unique_constraint(
             "key_parent_unique_constraint", ["key", "parent"]
         )
-        batch_op.create_index("idx_nodes_parent", "nodes", ["parent"])
+        batch_op.create_index("idx_nodes_parent", ["parent"])
 
     # 2. Create the 'nodes_closure' table and create the uniqueness constraint
     op.create_table(
