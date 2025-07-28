@@ -1,6 +1,5 @@
-import Contents, { Column } from "../components/contents";
+import Contents, { Column } from "../components/contents/contents";
 import { useContext, useEffect, useState } from "react";
-
 import { components } from "../openapi_schemas";
 import { search } from "../client";
 import { SettingsContext } from "../context/settings";

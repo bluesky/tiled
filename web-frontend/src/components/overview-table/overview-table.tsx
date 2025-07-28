@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import ChoosePartition from "./choose-partition";
+import ChoosePartition from "./choose-partition/choose-partition";
 import Container from "@mui/material/Container";
 import { DataGrid } from "@mui/x-data-grid";
 import FormControl from "@mui/material/FormControl";

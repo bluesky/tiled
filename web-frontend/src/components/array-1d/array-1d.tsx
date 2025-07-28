@@ -2,16 +2,16 @@ import * as React from "react";
 
 import { useEffect, useState } from "react";
 
-import { ArrayLineChart } from "./line";
+import { ArrayLineChart } from "../line/line";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormLabel from "@mui/material/FormLabel";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
-import RangeSlider from "./range-slider";
+import RangeSlider from "../range-slider/range-slider";
 import Skeleton from "@mui/material/Skeleton";
-import { axiosInstance } from "../client";
-import { components } from "../openapi_schemas";
+import { axiosInstance } from "../../client";
+import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
 
 interface DisplayRadioButtonsProps {
@@ -83,13 +83,13 @@ const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
             name={props.name}
           />
         ) : (
-          <Skeleton variant="rectangular" />
+          <Skeleton variant="rectangular" role="progressbar" />
         );
       case "list":
         return dataIsLoaded ? (
           <ItemList data={data} />
         ) : (
-          <Skeleton variant="rectangular" />
+          <Skeleton variant="rectangular" role="progressbar"  />
         );
     }
   };
@@ -157,3 +157,4 @@ const Array1D: React.FunctionComponent<IProps> = (props) => {
 };
 
 export default Array1D;
+export {DataDisplay};

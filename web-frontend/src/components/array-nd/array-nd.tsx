@@ -2,9 +2,9 @@ import * as React from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import CutSlider from "./cut-slider";
+import CutSlider from "../cut-slider";
 import Typography from "@mui/material/Typography";
-import { components } from "../openapi_schemas";
+import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useState } from "react";

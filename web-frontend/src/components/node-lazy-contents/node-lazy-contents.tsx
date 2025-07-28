@@ -10,10 +10,10 @@ import { useContext, useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
-import { components } from "../openapi_schemas";
-import { search } from "../client";
+import { components } from "../../openapi_schemas";
+import { search } from "../../client";
 import { useNavigate } from "react-router-dom";
-import { SettingsContext } from "../context/settings";
+import { SettingsContext } from "../../context/settings";
 
 interface Column {
   header: string;
@@ -43,23 +43,40 @@ interface NodeLazyContentsProps {
   columns: Column[];
   defaultColumns: string[];
   specs: string[];
+  structureFamily?: string;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
 
-const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
-  props
-) => {
+const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = ( props) => {
   let navigate = useNavigate();
+  // const gridColumns = [
+  //   {
+  //     field: "id",
+  //     headerName: "ID",
+  //     flex: 1,
+  //     hide: !props.defaultColumns.includes("id"),
+  //   },
+  // ];
+  // props.columns.map((column) =>
+  //   gridColumns.push({
+  //     field: column.field,
+  //     headerName: column.header,
+  //     flex: 1,
+  //     hide: !props.defaultColumns.includes(column.field),
+  //   })
+  // );
   const gridColumns = [
-    {
-      field: "id",
-      headerName: "ID",
-      flex: 1,
-      hide: !props.defaultColumns.includes("id"),
-    },
-  ];
-  props.columns.map((column) =>
+  {
+    field: "id",
+    headerName: "ID",
+    flex: 1,
+    hide: !props.defaultColumns.includes("id"),
+  },
+];
+props.columns
+  .filter((column) => column.field !== "id")
+  .forEach((column) =>
     gridColumns.push({
       field: column.field,
       headerName: column.header,
@@ -78,11 +95,20 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
   const [rowCount, setRowCount] = useState<number>(0);
   useEffect(() => {
+    if(props.structureFamily !== "container"){
+      return;
+    }
+
+    // if(!props.columns || props.columns.length ===0){
+    //   return;
+    // }
+  
     let active = true;
 
     async function loadItems(): Promise<
       components["schemas"]["Resource_NodeAttributes__dict__dict_"][]
     > {
+      console.log("loadItems called with columns:", props.columns);
       let selectMetadata: string | null;
       let fields: string[];
       const controller = new AbortController();
@@ -101,6 +127,8 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
             .join(",") +
           "}";
       }
+      
+  
       const data = await search(
         settings.api_url,
         props.segments,
@@ -153,7 +181,16 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     return () => {
       active = false;
     };
-  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments]);
+  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments, props.structureFamily]);
+  // if (!props.columns || props.columns.length === 0) {
+  //   return (
+  //     <Box sx={{ my: 4 }}>
+  //       <Container maxWidth="lg">
+  //         <div>Loading columns...</div>
+  //       </Container>
+  //     </Box>
+  //   );
+  // }
 
   return (
     <Box sx={{ my: 4 }}>
@@ -188,6 +225,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           }}
           disableColumnFilter
           autoHeight
+          
         />
       </Container>
     </Box>

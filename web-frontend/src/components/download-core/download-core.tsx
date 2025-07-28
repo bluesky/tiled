@@ -15,10 +15,10 @@ import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
-import { about } from "../client";
-import { components } from "../openapi_schemas";
+import { about } from "../../client";
+import { components } from "../../openapi_schemas";
 import copy from "clipboard-copy";
-import { SettingsContext } from "../context/settings";
+import { SettingsContext } from "../../context/settings";
 
 interface Format {
   mimetype: string;

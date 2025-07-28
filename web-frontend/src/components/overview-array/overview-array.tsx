@@ -6,8 +6,8 @@ import Alert from "@mui/material/Alert";
 import Skeleton from "@mui/material/Skeleton";
 import { components } from "../openapi_schemas";
 
-const Array1D = lazy(() => import("../components/array-1d"));
-const ArrayND = lazy(() => import("../components/array-nd"));
+const Array1D = lazy(() => import("./array-1d/array-1d"));
+const ArrayND = lazy(() => import("../components/array-nd/array-nd"));
 
 interface IProps {
   segments: string[];

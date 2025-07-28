@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Download, Format } from "./download-core";
+import { Download, Format } from "../download-core/download-core";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -17,6 +17,7 @@ interface DownloadArrayProps {
   structure: any;
   specs: string[];
   link: string;
+  format? :{mimetype:string};
 }
 
 function Examples() {
