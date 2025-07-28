@@ -7,7 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Enable Tiled server to accept bearer access tokens for authentication
 
-## Unreleased
+## v0.2.0 (Unreleased)
 
 ### Added
 
@@ -17,6 +17,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Column names in `TableStructure` are explicitly converted to strings.
 - Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
+
+### Refactored
+
+- Use common base type for all access policy types
 
 
 ## v0.1.6 (2025-09-29)

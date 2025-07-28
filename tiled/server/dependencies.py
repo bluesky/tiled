@@ -4,13 +4,13 @@ import pydantic_settings
 from fastapi import HTTPException, Query, Request
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
-from tiled.adapters.protocols import AnyAdapter
-from tiled.server.schemas import Principal
-from tiled.structures.core import StructureFamily
-
+from ..access_control.protocols import AccessPolicy
+from ..adapters.protocols import AnyAdapter
+from ..structures.core import StructureFamily
 from ..type_aliases import Scopes
 from ..utils import BrokenLink
 from .core import NoEntry
+from .schemas import Principal
 from .utils import filter_for_access, record_timing
 
 
@@ -28,7 +28,7 @@ async def get_entry(
     session_state: dict,
     metrics: dict,
     structure_families: Optional[set[StructureFamily]] = None,
-    access_policy=None,
+    access_policy: Optional[AccessPolicy] = None,
 ) -> AnyAdapter:
     """
     Obtain a node in the tree from its path.
@@ -40,7 +40,6 @@ async def get_entry(
     """
     path_parts = [segment for segment in path.split("/") if segment]
     entry = root_tree
-    # access_policy = getattr(request.app.state, "access_policy", None)
     # If the entry/adapter can take a session state, pass it in.
     # The entry/adapter may return itself or a different object.
     if hasattr(entry, "with_session_state") and session_state:
