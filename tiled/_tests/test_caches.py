@@ -16,7 +16,7 @@ def test_one_shot_cached_map():
     d = OneShotCachedMap({"a": f})
     # These operations do not cause f to be called.
     len(d)
-    "a" in d
+    assert "a" in d
     list(d)
     assert counter == 0
 
@@ -47,7 +47,7 @@ def test_caching_map():
 
     # These operations do not cause f to be called.
     len(d)
-    "a" in d
+    assert "a" in d
     list(d)
     assert counter == 0
 

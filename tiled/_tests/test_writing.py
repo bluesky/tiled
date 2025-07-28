@@ -395,11 +395,11 @@ def test_metadata_revisions(tree):
         assert len(ac.metadata_revisions[:]) == 0
         ac.update_metadata(metadata={"a": 1})
         assert ac.metadata["a"] == 1
-        client["revise_me"].metadata["a"] == 1
+        assert client["revise_me"].metadata["a"] == 1
         assert len(ac.metadata_revisions[:]) == 1
         ac.update_metadata(metadata={"a": 2})
         assert ac.metadata["a"] == 2
-        client["revise_me"].metadata["a"] == 2
+        assert client["revise_me"].metadata["a"] == 2
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
@@ -414,11 +414,11 @@ def test_replace_metadata(tree):
         assert len(ac.metadata_revisions[:]) == 0
         ac.replace_metadata(metadata={"a": 1})
         assert ac.metadata["a"] == 1
-        client["revise_me_with_replace"].metadata["a"] == 1
+        assert client["revise_me_with_replace"].metadata["a"] == 1
         assert len(ac.metadata_revisions[:]) == 1
         ac.replace_metadata(metadata={"a": 2})
         assert ac.metadata["a"] == 2
-        client["revise_me_with_replace"].metadata["a"] == 2
+        assert client["revise_me_with_replace"].metadata["a"] == 2
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
