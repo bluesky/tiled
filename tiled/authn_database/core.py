@@ -1,6 +1,7 @@
 import hashlib
 import uuid as uuid_module
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.future import select
@@ -128,7 +129,7 @@ async def create_service(db: AsyncSession, role: str) -> Principal:
     return principal
 
 
-async def lookup_valid_session(db: AsyncSession, session_id: str) -> Session | None:
+async def lookup_valid_session(db: AsyncSession, session_id: str) -> Optional[Session]:
     if isinstance(session_id, int):
         # Old versions of tiled used an integer sid.
         # Reject any of those old sessions and force reauthentication.
@@ -157,7 +158,7 @@ async def lookup_valid_session(db: AsyncSession, session_id: str) -> Session | N
 
 async def lookup_valid_pending_session_by_device_code(
     db: AsyncSession, device_code: str
-) -> PendingSession | None:
+) -> Optional[PendingSession]:
     hashed_device_code = hashlib.sha256(device_code).digest()
     pending_session = (
         await db.execute(
@@ -185,7 +186,7 @@ async def lookup_valid_pending_session_by_device_code(
 
 async def lookup_valid_pending_session_by_user_code(
     db: AsyncSession, user_code: str
-) -> PendingSession | None:
+) -> Optional[PendingSession]:
     pending_session = (
         await db.execute(
             select(PendingSession).filter(PendingSession.user_code == user_code)
@@ -232,7 +233,7 @@ async def make_admin_by_identity(
     return principal
 
 
-async def lookup_valid_api_key(db: AsyncSession, secret: bytes) -> APIKey | None:
+async def lookup_valid_api_key(db: AsyncSession, secret: bytes) -> Optional[APIKey]:
     """
     Look up an API key. Ensure that it is valid.
     """
@@ -273,7 +274,7 @@ async def lookup_valid_api_key(db: AsyncSession, secret: bytes) -> APIKey | None
 
 async def latest_principal_activity(
     db: AsyncSession, principal: Principal
-) -> datetime | None:
+) -> Optional[datetime]:
     """
     The most recent time this Principal has logged in with an Identity,
     refreshed a Session, or used an APIKey.
