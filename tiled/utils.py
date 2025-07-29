@@ -16,7 +16,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -759,6 +759,31 @@ def ensure_uri(uri_or_path) -> str:
             mutable[1] = "localhost"
             uri_str = urlunparse(mutable)
     return str(uri_str)
+
+
+def sanitize_uri(uri: str) -> tuple[str, Optional[str], Optional[str]]:
+    "Remove the username and password from uri if they are present."
+    username, password = None, None
+    parsed_uri = urlparse(uri)
+    netloc = parsed_uri.netloc
+    if "@" in netloc:
+        auth, netloc = netloc.split("@")
+        # Remove username and password from the netloc.
+        if ":" in auth:
+            username, password = auth.split(":", 1)
+        else:
+            username = auth
+        # Create clean components with the updated netloc
+        clean_components = (
+            parsed_uri.scheme,
+            netloc,
+            parsed_uri.path,
+            parsed_uri.params,
+            parsed_uri.query,
+            parsed_uri.fragment,
+        )
+
+    return urlunparse(clean_components), username, password
 
 
 SCHEME_TO_SCHEME_PLUS_DRIVER = {

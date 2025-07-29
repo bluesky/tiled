@@ -11,7 +11,7 @@ import sqlalchemy.pool
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
 
-from .utils import ensure_uri, path_from_uri
+from .utils import ensure_uri, path_from_uri, sanitize_uri
 
 __all__ = [
     "EmbeddedSQLStorage",
@@ -74,8 +74,13 @@ class SQLStorage(Storage):
         return urlparse(self.uri).scheme
 
     @functools.cached_property
+    def _adbc_connection(self) -> "adbc_driver_manager.dbapi.Connection":
+        "A persistent connection to the database."
+        return self.create_adbc_connection()
+
+    @functools.cached_property
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
-        creator = self.create_adbc_connection().adbc_clone
+        creator = self._adbc_connection.adbc_clone
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             return sqlalchemy.pool.StaticPool(creator)
         else:
@@ -84,6 +89,11 @@ class SQLStorage(Storage):
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
         return self._connection_pool.connect()
+
+    def dispose(self) -> None:
+        "Close all connections and dispose of the connection pool."
+        self._connection_pool.dispose()
+        self._adbc_connection.close()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -111,28 +121,17 @@ class RemoteSQLStorage(SQLStorage):
     password: Optional[str] = None
 
     def __post_init__(self):
-        # Extract username, password from URI if given in URI.
-        parsed_uri = urlparse(self.uri)
-        netloc = parsed_uri.netloc
-        if "@" in netloc:
-            auth, netloc = netloc.split("@")
-            username, password = auth.split(":")
+        # Ensure the URI is sanitized and credentials are stored separately
+        uri, username, password = sanitize_uri(self.uri)
+        if (username is not None) or (password is not None):
             if (self.username is not None) or (self.password is not None):
                 raise ValueError(
                     "Credentials passed both in URI and in username/password fields."
                 )
+            object.__setattr__(self, "uri", uri)
             object.__setattr__(self, "username", username)
             object.__setattr__(self, "password", password)
-            # Create clean components with the updated netloc
-            clean_components = (
-                parsed_uri.scheme,
-                netloc,
-                parsed_uri.path,
-                parsed_uri.params,
-                parsed_uri.query,
-                parsed_uri.fragment,
-            )
-            object.__setattr__(self, "uri", urlunparse(clean_components))
+
         super().__post_init__()
 
     @functools.cached_property

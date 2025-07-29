@@ -234,7 +234,8 @@ def test_data_types(
     query = arrow_schema_to_create_table(table.schema, test_table_name, dialect)
 
     storage_cls = RemoteSQLStorage if dialect == "postgresql" else EmbeddedSQLStorage
-    conn = storage_cls(uri=db_uri).connect()
+    storage = storage_cls(uri=db_uri)
+    conn = storage.connect()
 
     with conn.cursor() as cursor:
         cursor.execute(query)
@@ -266,3 +267,4 @@ def test_data_types(
     assert result.cast(table.schema) == table
 
     conn.close()
+    storage.dispose()  # Close all connections
