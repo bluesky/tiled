@@ -1,8 +1,15 @@
 import dataclasses
 import functools
+import os
+from abc import abstractmethod
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 from urllib.parse import urlparse, urlunparse
+
+import sqlalchemy.pool
+
+if TYPE_CHECKING:
+    import adbc_driver_manager.dbapi
 
 from .utils import ensure_uri, path_from_uri
 
@@ -34,14 +41,71 @@ class FileStorage(Storage):
         return path_from_uri(self.uri)
 
 
-@dataclasses.dataclass(frozen=True)
-class EmbeddedSQLStorage(Storage):
-    "File-based SQL database storage location"
+def _ensure_writable_location(uri: str) -> Path:
+    "Ensure path is writable to avoid a confusing error message from driver."
+    filepath = path_from_uri(uri)
+    directory = Path(filepath).parent
+    if directory.exists():
+        if not os.access(directory, os.X_OK | os.W_OK):
+            raise ValueError(
+                f"The directory {directory} exists but is not writable and executable."
+            )
+        if Path(filepath).is_file() and (not os.access(filepath, os.W_OK)):
+            raise ValueError(f"The path {filepath} exists but is not writable.")
+    else:
+        raise ValueError(f"The directory {directory} does not exist.")
+    return filepath
 
 
 @dataclasses.dataclass(frozen=True)
 class SQLStorage(Storage):
+    "General purpose SQL database storage with connection pooling"
+
+    @abstractmethod
+    def create_adbc_connection(self) -> "adbc_driver_manager.dbapi.Connection":
+        "Create a connection to the database."
+
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @property
+    def dialect(self) -> str:
+        "The database dialect (e.g. 'postgresql', 'sqlite', or 'duckdb')."
+        return urlparse(self.uri).scheme
+
+    @functools.cached_property
+    def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
+        source = self.create_adbc_connection().adbc_clone
+        if (self.dialect == "duckdb") or (":memory:" in self.uri):
+            return sqlalchemy.pool.StaticPool(source)
+        else:
+            return sqlalchemy.pool.QueuePool(source, pool_size=3, max_overflow=0)
+
+    def connect(self) -> "adbc_driver_manager.dbapi.Connection":
+        "Get a connection from the pool."
+        return self._connection_pool.connect()
+
+
+@dataclasses.dataclass(frozen=True)
+class EmbeddedSQLStorage(SQLStorage):
     "File-based SQL database storage location"
+
+    def create_adbc_connection(self) -> "adbc_driver_manager.dbapi.Connection":
+        filepath = _ensure_writable_location(self.uri)
+
+        if self.uri.startswith("duckdb:"):
+            import adbc_driver_duckdb.dbapi
+
+            return adbc_driver_duckdb.dbapi.connect(str(filepath))
+
+        elif self.uri.startswith("sqlite:"):
+            import adbc_driver_sqlite.dbapi
+
+            return adbc_driver_sqlite.dbapi.connect(str(filepath))
+
+
+@dataclasses.dataclass(frozen=True)
+class RemoteSQLStorage(SQLStorage):
+    "Authenticated server-based SQL database storage location"
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -84,8 +148,14 @@ class SQLStorage(Storage):
 
         return urlunparse(components)
 
+    def create_adbc_connection(self) -> "adbc_driver_manager.dbapi.Connection":
+        import adbc_driver_postgresql.dbapi
+
+        return adbc_driver_postgresql.dbapi.connect(self.authenticated_uri)
+
 
 def parse_storage(item: Union[Path, str]) -> Storage:
+    "Create a Storage object from a URI or Path."
     item = ensure_uri(item)
     scheme = urlparse(item).scheme
     if scheme == "file":

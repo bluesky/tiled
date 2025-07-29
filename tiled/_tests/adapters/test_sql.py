@@ -1,8 +1,6 @@
 from pathlib import Path
-from typing import Any, Callable, Generator, Union
+from typing import Any, Callable, Generator, Union, cast
 
-import adbc_driver_duckdb
-import adbc_driver_sqlite
 import pyarrow as pa
 import pytest
 
@@ -12,7 +10,7 @@ from tiled.adapters.sql import (
     SQLAdapter,
     is_safe_identifier,
 )
-from tiled.storage import parse_storage, register_storage
+from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
@@ -57,7 +55,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
             assets=[],
         )
 
-        storage = parse_storage(data_uri)
+        storage = cast(SQLStorage, parse_storage(data_uri))
         register_storage(storage)
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
@@ -97,9 +95,6 @@ def adapter_duckdb_many_partitions(
 def test_attributes_duckdb_one_part(adapter_duckdb_one_partition: SQLAdapter) -> None:
     assert adapter_duckdb_one_partition.structure().columns == names
     assert adapter_duckdb_one_partition.structure().npartitions == 1
-    assert isinstance(
-        adapter_duckdb_one_partition.conn, adbc_driver_duckdb.dbapi.Connection
-    )
 
 
 def test_attributes_duckdb_many_part(
@@ -107,9 +102,6 @@ def test_attributes_duckdb_many_part(
 ) -> None:
     assert adapter_duckdb_many_partitions.structure().columns == names
     assert adapter_duckdb_many_partitions.structure().npartitions == 3
-    assert isinstance(
-        adapter_duckdb_many_partitions.conn, adbc_driver_duckdb.dbapi.Connection
-    )
 
 
 @pytest.fixture
@@ -145,17 +137,11 @@ def adapter_sql_many_partitions(
 def test_attributes_sql_one_part(adapter_sql_one_partition: SQLAdapter) -> None:
     assert adapter_sql_one_partition.structure().columns == names
     assert adapter_sql_one_partition.structure().npartitions == 1
-    assert isinstance(
-        adapter_sql_one_partition.conn, adbc_driver_sqlite.dbapi.Connection
-    )
 
 
 def test_attributes_sql_many_part(adapter_sql_many_partitions: SQLAdapter) -> None:
     assert adapter_sql_many_partitions.structure().columns == names
     assert adapter_sql_many_partitions.structure().npartitions == 3
-    assert isinstance(
-        adapter_sql_many_partitions.conn, adbc_driver_sqlite.dbapi.Connection
-    )
 
 
 @pytest.fixture
@@ -171,7 +157,6 @@ def adapter_psql_one_partition(
         data_source.parameters["dataset_id"],
     )
     yield adapter
-    adapter.close()
 
 
 @pytest.fixture
@@ -191,9 +176,6 @@ def adapter_psql_many_partitions(
 def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
     assert adapter_psql_one_partition.structure().columns == names
     assert adapter_psql_one_partition.structure().npartitions == 1
-    # assert isinstance(
-    #    adapter_psql.conn, adbc_driver_postgresql.dbapi.AdbcSqliteConnection
-    # )
 
 
 @pytest.mark.parametrize(
@@ -652,7 +634,7 @@ def test_can_query_with_valid_column_names(
         assets=[],
     )
     data_uri = request.getfixturevalue(data_uri)
-    storage = parse_storage(data_uri)
+    storage = cast(SQLStorage, parse_storage(data_uri))
     register_storage(storage)
     assert SQLAdapter.init_storage(data_source=data_source, storage=storage) is not None
 
@@ -663,7 +645,7 @@ def test_reject_colliding_uppercase_column_names(
 ) -> None:
     # Define a table and a storage
     data_uri = request.getfixturevalue(data_uri)
-    storage = parse_storage(data_uri)
+    storage = cast(SQLStorage, parse_storage(data_uri))
     register_storage(storage)
 
     # Create a table with colliding column names

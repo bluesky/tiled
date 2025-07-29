@@ -1,20 +1,7 @@
 import copy
 import hashlib
-import os
 import re
-from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Iterator,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import numpy
 import pandas
@@ -22,23 +9,13 @@ import pyarrow
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
 from ..catalog.orm import Node
-from ..storage import (
-    EmbeddedSQLStorage,
-    SQLStorage,
-    Storage,
-    get_storage,
-    parse_storage,
-)
+from ..storage import EmbeddedSQLStorage, RemoteSQLStorage, SQLStorage, get_storage
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
-from ..utils import path_from_uri
 from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
-
-if TYPE_CHECKING:
-    import adbc_driver_manager.dbapi
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -71,10 +48,23 @@ FORBIDDEN_CHARACTERS = re.compile(
 
 
 class SQLAdapter:
-    """SQLAdapter Class"""
+    """SQLAdapter Class
+
+    This class provides an interface for interacting with SQL databases.
+
+    Parameters
+    ----------
+    data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
+    structure : the structure of the data; structure is not optional for sql database
+    table_name : the name of the table in the database. Will be converted to lower case in
+        all SQL queries.
+    dataset_id : the dataset id of the data in the storage database.
+    metadata : the optional metadata of the data.
+    specs : the specs.
+    """
 
     structure_family = StructureFamily.table
-    supported_storage = {EmbeddedSQLStorage, SQLStorage}
+    supported_storage = {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
 
     def __init__(
         self,
@@ -85,34 +75,12 @@ class SQLAdapter:
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
-        """
-        Construct the SQLAdapter object.
-
-        Parameters
-        ----------
-        data_uri : the uri of the database, starting either with "duckdb://" or "postgresql://"
-        structure : the structure of the data; structure is not optional for sql database
-        table_name : the name of the table in the database. Will be converted to lower case in
-            all SQL queries.
-        dataset_id : the dataset id of the data in the storage database.
-        metadata : the optional metadata of the data.
-        specs : the specs.
-        """
-        storage = parse_storage(data_uri)
-        if isinstance(storage, SQLStorage):
-            # Obtain credentials
-            data_uri = cast(SQLStorage, get_storage(data_uri)).authenticated_uri
-        self.uri = data_uri
-        self.conn = create_connection(self.uri)
-
+        self.storage: SQLStorage = cast(SQLStorage, get_storage(data_uri))
         self._metadata = metadata or {}
         self._structure = structure
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
-
-    def close(self) -> None:
-        self.conn.close()
 
     def metadata(self) -> JSON:
         """The metadata representing the actual data.
@@ -126,7 +94,7 @@ class SQLAdapter:
     @classmethod
     def init_storage(
         cls,
-        storage: Storage,
+        storage: SQLStorage,
         data_source: DataSource[TableStructure],
         path_parts: Optional[List[str]] = None,
     ) -> DataSource[TableStructure]:
@@ -135,7 +103,7 @@ class SQLAdapter:
 
         Parameters
         ----------
-        storage: Storage
+        storage: SQLStorage
         data_source : DataSource
         path_parts : List[str]
             Not used by this adapter
@@ -153,20 +121,11 @@ class SQLAdapter:
         table_name = data_source.parameters.setdefault("table_name", default_table_name)
         is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
 
-        if isinstance(storage, SQLStorage):
-            uri = storage.authenticated_uri
-        elif isinstance(storage, EmbeddedSQLStorage):
-            # EmbeddedSQLStorage has no authentication.
-            uri = storage.uri
-        else:
-            raise ValueError(f"Unsupported storage {storage}")
-        conn = create_connection(uri)
-        dialect, _ = uri.split(":", 1)
         # Prefix columns with internal _dataset_id, _partition_id, ...
         schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
         schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
         create_table_statement = arrow_schema_to_create_table(
-            schema, table_name, cast(DIALECTS, dialect)
+            schema, table_name, cast(DIALECTS, storage.dialect)
         )
 
         create_index_statement = (
@@ -174,6 +133,7 @@ class SQLAdapter:
             f'ON "{table_name}"(_dataset_id, _partition_id)'
         )
 
+        conn = storage.connect()
         with conn.cursor() as cursor:
             cursor.execute(create_table_statement)
         with conn.cursor() as cursor:
@@ -183,7 +143,7 @@ class SQLAdapter:
         # (If it exists, do nothing.)
         # Then obtain the next value in the SEQUENCE for the dataset we are
         # initializing here.
-        if dialect == "sqlite":
+        if storage.dialect == "sqlite":
             # Create single-row table with a counter, if it does not exist.
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -325,9 +285,12 @@ class SQLAdapter:
             c: c.lower() for c in table.column_names if c != c.lower()
         }:
             table = table.rename_columns(upr_lwr_case_mapping)
-        with self.conn.cursor() as cursor:
+
+        conn = self.storage.connect()
+        with conn.cursor() as cursor:
             cursor.adbc_ingest(self.table_name, table, mode="append")
-        self.conn.commit()
+        conn.commit()
+        conn.close()
 
     def _read_full_table_or_partition(
         self, fields: Optional[List[str]] = None, partition: Optional[int] = None
@@ -363,10 +326,12 @@ class SQLAdapter:
             else "ORDER BY _partition_id"
         )
 
-        with self.conn.cursor() as cursor:
+        conn = self.storage.connect()
+        with conn.cursor() as cursor:
             cursor.execute(query)
             data = cursor.fetch_arrow_table()
-        self.conn.commit()
+        conn.commit()
+        conn.close()
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
@@ -412,55 +377,6 @@ class SQLAdapter:
         return self._read_full_table_or_partition(
             fields=fields, partition=partition
         ).to_pandas()
-
-
-def create_connection(
-    uri: str,
-) -> "adbc_driver_manager.dbapi.Connection":
-    """
-    Function to create an adbc connection of type duckdb , sqlite or postgresql.
-    Parameters
-    ----------
-    uri : the uri which is used to create a connection
-    Returns
-    -------
-    Returns a connection of type duckdb , sqlite or postgresql.
-    """
-    if uri.startswith("duckdb:"):
-        import adbc_driver_duckdb.dbapi
-
-        filepath = _ensure_writable_location(uri)
-        conn = adbc_driver_duckdb.dbapi.connect(str(filepath))
-    elif uri.startswith("sqlite:"):
-        import adbc_driver_sqlite.dbapi
-
-        filepath = _ensure_writable_location(uri)
-        conn = adbc_driver_sqlite.dbapi.connect(str(filepath))
-    elif uri.startswith("postgresql:"):
-        import adbc_driver_postgresql.dbapi
-
-        conn = adbc_driver_postgresql.dbapi.connect(uri)
-    else:
-        raise ValueError(
-            "The database uri must start with `duckdb:`, `sqlite:`, or `postgresql:`"
-        )
-    return conn
-
-
-def _ensure_writable_location(uri: str) -> Path:
-    "Ensure path is writable to avoid a confusing error message from driver."
-    filepath = path_from_uri(uri)
-    directory = Path(filepath).parent
-    if directory.exists():
-        if not os.access(directory, os.X_OK | os.W_OK):
-            raise ValueError(
-                f"The directory {directory} exists but is not writable and executable."
-            )
-        if Path(filepath).is_file() and (not os.access(filepath, os.W_OK)):
-            raise ValueError(f"The path {filepath} exists but is not writable.")
-    else:
-        raise ValueError(f"The directory {directory} does not exist.")
-    return filepath
 
 
 # Mapping between Arrow types and PostgreSQL column type name.

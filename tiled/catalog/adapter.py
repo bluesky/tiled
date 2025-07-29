@@ -311,7 +311,6 @@ class CatalogNodeAdapter:
         mount_node: Optional[Union[str, List[str]]] = None,
     ):
         self.context = context
-        self.engine = self.context.engine
         if isinstance(mount_node, str):
             mount_node = [segment for segment in mount_node.split("/") if segment]
         if mount_node:
@@ -486,7 +485,7 @@ class CatalogNodeAdapter:
     async def get_adapter(self):
         (data_source,) = self.data_sources
         try:
-            adapter_class = self.context.adapters_by_mimetype[data_source.mimetype]
+            adapter_cls = self.context.adapters_by_mimetype[data_source.mimetype]
         except KeyError:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
@@ -515,7 +514,7 @@ class CatalogNodeAdapter:
                     )
         adapter = await anyio.to_thread.run_sync(
             partial(
-                adapter_class.from_catalog,
+                adapter_cls.from_catalog,
                 data_source,
                 self.node,
                 **data_source.parameters,
@@ -685,26 +684,26 @@ class CatalogNodeAdapter:
                                 "is not one that the Tiled server knows how to write."
                             ),
                         )
-                    adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
+                    adapter_cls = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
                     # Choose writable storage. Use the first writable storage item
                     # with a scheme that is supported by this adapter. # For
                     # back-compat, if an adapter does not declare `supported_storage`
                     # assume it supports file-based storage only.
                     supported_storage = getattr(
-                        adapter, "supported_storage", {FileStorage}
+                        adapter_cls, "supported_storage", {FileStorage}
                     )
                     for storage in self.context.writable_storage:
                         if isinstance(storage, tuple(supported_storage)):
                             break
                     else:
                         raise RuntimeError(
-                            f"The adapter {adapter} supports storage types "
+                            f"The adapter {adapter_cls} supports storage types "
                             f"{[cls.__name__ for cls in supported_storage]} "
                             "but the only available storage types "
                             f"are {self.context.writable_storage}."
                         )
                     data_source = await ensure_awaitable(
-                        adapter.init_storage,
+                        adapter_cls.init_storage,
                         storage,
                         data_source,
                         self.segments + [key],
@@ -1313,7 +1312,7 @@ def _prepare_structure(structure_family, structure):
 
 
 def binary_op(query, tree, operation):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
@@ -1355,7 +1354,7 @@ def contains(query, tree):
 
 
 def full_text(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     if dialect_name == "sqlite":
         condition = orm.metadata_fts5.c.metadata.match(query.text)
     elif dialect_name == "postgresql":
@@ -1369,7 +1368,7 @@ def full_text(query, tree):
 
 
 def specs(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     conditions = []
     attr = orm.Node.specs
     if dialect_name == "sqlite":
@@ -1390,7 +1389,7 @@ def specs(query, tree):
 
 
 def access_blob_filter(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     access_blob = orm.Node.access_blob
     if not (query.user_id or query.tags):
         # Results cannot possibly match an empty value or list,
@@ -1475,7 +1474,7 @@ def in_or_not_in(query, tree, method):
     METHODS = {"in_", "not_in"}
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}")
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
 
 
