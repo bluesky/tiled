@@ -198,7 +198,6 @@ class HDF5ArrayAdapter(ArrayAdapter):
         if not any([shape for shape, _, _ in shapes_chunks_dtypes]):
             # All shapes are empty -> all arrays are zero-dimensional (scalars)
             array = dask.array.stack([_read_hdf5_array(fp)[()] for fp in file_paths])
-            array = array[0] if len(file_paths) == 1 else array
         else:
             # Use delayed loading to read the arrays from the files
             delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
