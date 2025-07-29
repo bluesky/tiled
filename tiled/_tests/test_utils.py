@@ -170,10 +170,10 @@ def test_dictview_repr_pretty(monkeypatch):
 
 def test_oneshotcachedmap_repr_lazy_and_evaluated():
     # Value factories
-    def factory1():
+    def factory1() -> int:
         return 42
 
-    def factory2():
+    def factory2() -> str:
         return "foo"
 
     # All values are lazy initially
@@ -198,10 +198,10 @@ def test_oneshotcachedmap_repr_lazy_and_evaluated():
 
 def test_cachingmap_repr_lazy_and_evaluated():
     # Value factories
-    def factory1():
+    def factory1() -> int:
         return 123
 
-    def factory2():
+    def factory2() -> str:
         return "bar"
 
     mapping = {"x": factory1, "y": factory2}

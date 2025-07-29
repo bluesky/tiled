@@ -16,7 +16,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Generic, Tuple, TypeVar
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -31,14 +31,17 @@ patch_mimetypes = namedtuple(
     MERGE_PATCH="application/merge-patch+json",
 )
 
+K = TypeVar("K")
+V = TypeVar("V")
 
-class ListView(collections.abc.Sequence):
+
+class ListView(collections.abc.Sequence[V], Generic[V]):
     "An immutable view of a list."
 
-    def __init__(self, seq):
+    def __init__(self, seq: collections.abc.Sequence[V]):
         self._internal_list = list(seq)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._internal_list!r})"
 
     def _repr_pretty_(self, p, cycle):
@@ -56,35 +59,35 @@ class ListView(collections.abc.Sequence):
             list_ = list(self._internal_list)
         p.text(pformat(list_))
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> V:
         return self._internal_list[index]
 
-    def __iter__(self):
+    def __iter__(self) -> collections.abc.Iterator[V]:
         yield from self._internal_list
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._internal_list)
 
-    def __setitem__(self, index, value):
+    def __setitem__(self, index: int, value: V):
         raise TypeError("Setting values is not allowed.")
 
-    def __delitem__(self, index):
+    def __delitem__(self, index: int):
         raise TypeError("Deleting values is not allowed.")
 
-    def __add__(self, other):
+    def __add__(self, other: collections.abc.Sequence[K]) -> "ListView[V | K]":
         return type(self)(self._internal_list + other)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return self._internal_list == other
 
 
-class DictView(collections.abc.Mapping):
+class DictView(collections.abc.Mapping[K, V], Generic[K, V]):
     "An immutable view of a dict."
 
-    def __init__(self, d):
+    def __init__(self, d: collections.abc.Mapping[K, V]):
         self._internal_dict = d
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self._internal_dict!r})"
 
     def _repr_pretty_(self, p, cycle):
@@ -102,22 +105,22 @@ class DictView(collections.abc.Mapping):
             d = dict(self._internal_dict)
         p.text(pformat(d))
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: K) -> V:
         return self._internal_dict[key]
 
-    def __iter__(self):
+    def __iter__(self) -> collections.abc.Iterator[K]:
         yield from self._internal_dict
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._internal_dict)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: K, value: V):
         raise TypeError("Setting items is not allowed.")
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: K):
         raise TypeError("Deleting items is not allowed.")
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return self._internal_dict == other
 
 
@@ -128,10 +131,10 @@ class DictView(collections.abc.Mapping):
 _OneShotCachedMapWrapper = collections.namedtuple("_OneShotCachedMapWrapper", ("func",))
 
 
-class OneShotCachedMap(collections.abc.Mapping):
+class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
     __slots__ = ("__mapping", "__lock")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs: Callable[[], V]):
         dictionary = dict(*args, **kwargs)
         wrap = _OneShotCachedMapWrapper
         # TODO should be recursive lock?
@@ -139,7 +142,7 @@ class OneShotCachedMap(collections.abc.Mapping):
         # TODO type validation?
         self.__mapping = {k: wrap(v) for k, v in dictionary.items()}
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: K) -> V:
         # TODO per-key locking?
         with self.__lock:
             v = self.__mapping[key]
@@ -148,7 +151,7 @@ class OneShotCachedMap(collections.abc.Mapping):
                 v = self.__mapping[key] = v.func()
         return v
 
-    def set(self, key, value_factory):
+    def set(self, key: K, value_factory: Callable[[], V]):
         """
         Set key to a callable the returns value.
         """
@@ -158,38 +161,38 @@ class OneShotCachedMap(collections.abc.Mapping):
             )
         self.__mapping[key] = _OneShotCachedMapWrapper(value_factory)
 
-    def discard(self, key):
+    def discard(self, key: K):
         """
         Discard a key if it is present. This is idempotent.
         """
         self.__mapping.pop(key, None)
         self.evict(key)
 
-    def remove(self, key):
+    def remove(self, key: K):
         """
         Remove a key. Raises KeyError if key not present.
         """
         del self.__mapping[key]
         self.evict(key)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.__mapping)
 
-    def __iter__(self):
+    def __iter__(self) -> collections.abc.Iterator[K]:
         return iter(self.__mapping)
 
-    def __contains__(self, k):
+    def __contains__(self, k: K) -> bool:
         # make sure checking 'in' does not trigger evaluation
         return k in self.__mapping
 
-    def __getstate__(self):
+    def __getstate__(self) -> collections.abc.Mapping[K, Callable[[], V] | V]:
         return self.__mapping
 
-    def __setstate__(self, mapping):
+    def __setstate__(self, mapping: collections.abc.Mapping[K, Callable[[], V] | V]):
         self.__mapping = mapping
         self.__lock = threading.Lock()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         d = {}
         for k, v in self.__mapping.items():
             if isinstance(v, _OneShotCachedMapWrapper):
@@ -202,7 +205,7 @@ class OneShotCachedMap(collections.abc.Mapping):
         )
 
 
-class CachingMap(collections.abc.Mapping):
+class CachingMap(collections.abc.Mapping[K, V], Generic[K, V]):
     """
     Mapping that computes values on read and caches them in a configured cache.
 
@@ -216,11 +219,13 @@ class CachingMap(collections.abc.Mapping):
 
     __slots__ = ("__mapping", "__cache")
 
-    def __init__(self, mapping, cache):
+    def __init__(
+        self, mapping: collections.abc.Mapping[K, Callable[[], V]], cache: dict[K, V]
+    ):
         self.__mapping = mapping
         self.__cache = cache
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: K) -> V:
         try:
             return self.__cache[key]
         except KeyError:
@@ -228,7 +233,7 @@ class CachingMap(collections.abc.Mapping):
             self.__cache[key] = value
             return value
 
-    def set(self, key, value_factory):
+    def set(self, key: K, value_factory: Callable[[], V]):
         """
         Set key to a callable the returns value.
         """
@@ -240,21 +245,21 @@ class CachingMap(collections.abc.Mapping):
         # This may be replacing (updating) an existing key. Clear any cached value.
         self.evict(key)
 
-    def discard(self, key):
+    def discard(self, key: K):
         """
         Discard a key if it is present. This is idempotent.
         """
         self.__mapping.pop(key, None)
         self.evict(key)
 
-    def remove(self, key):
+    def remove(self, key: K):
         """
         Remove a key. Raises KeyError if key not present.
         """
         del self.__mapping[key]
         self.evict(key)
 
-    def evict(self, key):
+    def evict(self, key: K):
         """
         Evict a key from the internal cache. This is idempotent.
 
@@ -263,25 +268,29 @@ class CachingMap(collections.abc.Mapping):
         """
         self.__cache.pop(key, None)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.__mapping)
 
-    def __iter__(self):
+    def __iter__(self) -> collections.abc.Iterator[K]:
         return iter(self.__mapping)
 
-    def __contains__(self, key):
+    def __contains__(self, key: K) -> bool:
         # Ensure checking 'in' does not trigger evaluation.
         return key in self.__mapping
 
-    def __getstate__(self):
+    def __getstate__(
+        self,
+    ) -> Tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]:
         return self.__mapping, self.__cache
 
-    def __setstate__(self, state):
+    def __setstate__(
+        self, state: Tuple[collections.abc.Mapping[K, Callable[[], V]], dict[K, V]]
+    ):
         mapping, cache = state
         self.__mapping = mapping
         self.__cache = cache
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.__cache is None:
             d = {k: "<lazy>" for k in self.__mapping}
         else:
