@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Set
 from pathlib import Path
 from typing import Any, List, Optional, Union
 from urllib.parse import quote_plus
@@ -6,9 +7,11 @@ from urllib.parse import quote_plus
 import dask.dataframe
 import pandas
 
+from tiled.adapters.table import TableAdapter
+
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import Spec
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
@@ -18,16 +21,12 @@ from .dataframe import DataFrameAdapter
 from .utils import init_adapter_from_catalog
 
 
-class ParquetDatasetAdapter:
-    """ """
-
-    structure_family = StructureFamily.table
-    supported_storage = {FileStorage}
-
+class ParquetDatasetAdapter(TableAdapter):
     def __init__(
         self,
         data_uris: List[str],
         structure: TableStructure,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -44,9 +43,11 @@ class ParquetDatasetAdapter:
         if isinstance(data_uris, str):
             data_uris = [data_uris]
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
-        self._metadata = metadata or {}
-        self._structure = structure
-        self.specs = list(specs or [])
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
 
     @classmethod
     def from_catalog(
@@ -57,9 +58,6 @@ class ParquetDatasetAdapter:
         **kwargs: Optional[Any],
     ) -> "ParquetDatasetAdapter":
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
-
-    def metadata(self) -> JSON:
-        return self._metadata
 
     @property
     def dataframe_adapter(self) -> DataFrameAdapter:
@@ -170,15 +168,6 @@ class ParquetDatasetAdapter:
 
         """
         return self.dataframe_adapter.read_partition(*args, **kwargs)
-
-    def structure(self) -> TableStructure:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         return self.dataframe_adapter.get(key)

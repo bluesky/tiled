@@ -1,17 +1,17 @@
-from typing import Any, Iterator, List, Optional, Set, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
-import dask.base
 import dask.dataframe
 import pandas
 
-from ..storage import Storage
+from tiled.adapters.core import Adapter
+
 from ..structures.core import Spec, StructureFamily
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
 
 
-class TableAdapter:
+class TableAdapter(Adapter[TableStructure]):
     """
     Wrap a dataframe-like object in an interface that Tiled can serve.
 
@@ -22,9 +22,6 @@ class TableAdapter:
     >>> DataFrameAdapter.from_pandas(df, npartitions=1)
 
     """
-
-    structure_family = StructureFamily.table
-    supported_storage: Set[type[Storage]] = set()
 
     def __init__(
         self,
@@ -43,10 +40,12 @@ class TableAdapter:
         metadata :
         specs :
         """
-        self._metadata = metadata or {}
         self._partitions = list(partitions)
-        self._structure = structure
-        self.specs = specs or []
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def structure_family(cls) -> StructureFamily:
+        return StructureFamily.table
 
     @classmethod
     def from_pandas(
@@ -108,6 +107,7 @@ class TableAdapter:
     def from_dask_dataframe(
         cls,
         ddf: dask.dataframe.DataFrame,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "TableAdapter":
@@ -149,12 +149,6 @@ class TableAdapter:
 
     def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
         yield from ((key, self[key]) for key in self._structure.columns)
-
-    def metadata(self) -> JSON:
-        return self._metadata
-
-    def structure(self) -> TableStructure:
-        return self._structure
 
     def read(
         self, fields: Optional[List[str]] = None

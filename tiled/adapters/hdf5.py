@@ -2,7 +2,6 @@ import copy
 import os
 import sys
 import warnings
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
@@ -13,6 +12,8 @@ import h5py
 import hdf5plugin  # noqa: F401
 import numpy
 from numpy._typing import NDArray
+
+from tiled.adapters.container import ContainerAdapter
 
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
@@ -301,7 +302,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         return cls(array, structure, metadata=metadata)
 
 
-class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], IndexersMixin):
+class HDF5Adapter(
+    ContainerAdapter[Union["HDF5Adapter", HDF5ArrayAdapter]], IndexersMixin
+):
     """Adapter for HDF5 files
 
     This map the structure of an HDF5 file onto a "Tree" of array structures.
@@ -335,8 +338,6 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
 
     """
 
-    structure_family = StructureFamily.container
-
     def __init__(
         self,
         tree: Union[dict[str, Any], Sentinel],
@@ -355,9 +356,8 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         self._tree: dict[str, Any] = tree  # type: ignore
         self.uris = data_uris
         self.dataset = dataset  # Referenced to the root of the file
-        self.specs = specs or []
-        self._metadata = metadata or {}
         self._kwargs = kwargs  # e.g. swmr, libver, etc.
+        super().__init__(metadata=metadata, specs=specs)
 
     @classmethod
     def from_catalog(

@@ -9,18 +9,15 @@ from tiled.type_aliases import JSON
 
 S = TypeVar("S", bound=Structure)
 
-
 class Adapter(ABC, Generic[S]):
     def __init__(
         self,
         structure: S,
-        supported_storage: Optional[Set[type[Storage]]] = None,
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ):
         self._structure = structure
-        self._supported_storage = supported_storage or set()
         self._metadata = metadata or {}
         self._specs = specs or []
 
@@ -32,7 +29,6 @@ class Adapter(ABC, Generic[S]):
     def specs(self) -> List[Spec]:
         return self._specs
 
-    @property
     def structure(self) -> S:
         return self._structure
 
@@ -40,3 +36,9 @@ class Adapter(ABC, Generic[S]):
     @abstractmethod
     def structure_family(cls) -> StructureFamily:
         ...
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return set()
+
+A = TypeVar("A", bound=Adapter[S])

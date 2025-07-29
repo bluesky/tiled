@@ -21,6 +21,8 @@ import pandas
 import pyarrow
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
+from tiled.adapters.table import TableAdapter
+
 from ..catalog.orm import Node
 from ..storage import (
     EmbeddedSQLStorage,
@@ -29,7 +31,7 @@ from ..storage import (
     get_storage,
     parse_storage,
 )
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import Spec
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
@@ -70,11 +72,8 @@ FORBIDDEN_CHARACTERS = re.compile(
 # Furthermore, user-specified table names can only be in lower case.
 
 
-class SQLAdapter:
+class SQLAdapter(TableAdapter):
     """SQLAdapter Class"""
-
-    structure_family = StructureFamily.table
-    supported_storage = {EmbeddedSQLStorage, SQLStorage}
 
     def __init__(
         self,
@@ -82,6 +81,7 @@ class SQLAdapter:
         structure: TableStructure,
         table_name: str,
         dataset_id: int,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -105,11 +105,13 @@ class SQLAdapter:
         self.uri = data_uri
         self.conn = create_connection(self.uri)
 
-        self._metadata = metadata or {}
-        self._structure = structure
-        self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def supported_storage(cls):
+        return {EmbeddedSQLStorage, SQLStorage}
 
     def close(self) -> None:
         self.conn.close()

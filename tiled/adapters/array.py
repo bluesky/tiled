@@ -1,18 +1,19 @@
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, List, Optional, Tuple
 
 import dask.array
 import numpy
 import pandas
 from numpy.typing import NDArray
 
+from tiled.adapters.core import Adapter
+
 from ..ndslice import NDSlice
-from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
 
 
-class ArrayAdapter:
+class ArrayAdapter(Adapter[ArrayStructure]):
     """
     Wrap an array-like object in an interface that Tiled can serve.
 
@@ -27,9 +28,6 @@ class ArrayAdapter:
 
     """
 
-    structure_family = StructureFamily.array
-    supported_storage: Set[type[Storage]] = set()
-
     def __init__(
         self,
         array: NDArray[Any],
@@ -38,19 +36,12 @@ class ArrayAdapter:
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        array :
-        structure :
-        metadata :
-        specs :
-        """
         self._array = array
-        self._structure = structure
-        self._metadata = metadata or {}
-        self.specs = specs or []
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def structure_family(cls) -> StructureFamily:
+        return StructureFamily.array
 
     @classmethod
     def from_array(
@@ -63,21 +54,6 @@ class ArrayAdapter:
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "ArrayAdapter":
-        """
-
-        Parameters
-        ----------
-        array :
-        shape :
-        chunks :
-        dims :
-        metadata :
-        specs :
-
-        Returns
-        -------
-
-        """
         # May be a list of something; convert to array
         if not hasattr(array, "__array__"):
             array = numpy.asanyarray(array)
@@ -99,39 +75,14 @@ class ArrayAdapter:
             specs=specs,
         )
 
-    def __repr__(self) -> str:
-        """
-
-        Returns
-        -------
-
-        """
-        return f"{type(self).__name__}({self._array!r})"
-
     @property
     def dims(self) -> Optional[Tuple[str, ...]]:
         return self._structure.dims
-
-    def metadata(self) -> JSON:
-        return self._metadata
-
-    def structure(self) -> ArrayStructure:
-        return self._structure
 
     def read(
         self,
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
-        """
-
-        Parameters
-        ----------
-        slice :
-
-        Returns
-        -------
-
-        """
         # _array[...] requires an actual tuple, not just a subclass of tuple
         array = self._array[tuple(slice)] if slice else self._array
         if isinstance(self._array, dask.array.Array):
@@ -143,17 +94,6 @@ class ArrayAdapter:
         block: Tuple[int, ...],
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
-        """
-
-        Parameters
-        ----------
-        block :
-        slice :
-
-        Returns
-        -------
-
-        """
         # Slice the whole array to get this block.
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         # _array[...] requires an actual tuple, not just a subclass of tuple
@@ -170,14 +110,6 @@ def slice_and_shape_from_block_and_chunks(
 ) -> tuple[NDSlice, NDSlice]:
     """
     Given dask-like chunks and block id, return slice and shape of the block.
-    Parameters
-    ----------
-    block :
-    chunks :
-
-    Returns
-    -------
-
     """
     slice_ = []
     shape = []
