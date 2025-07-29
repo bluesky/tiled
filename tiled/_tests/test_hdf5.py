@@ -146,7 +146,7 @@ def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num
         client = from_context(context)
         arr = client["a"]["b"]["c"][key].read()
         assert isinstance(arr, numpy.ndarray)
-        assert arr.shape == () if num == 1 else (num,)
+        assert arr.shape == (num,)
         client.export(buffer, format="application/x-hdf5")
         file = h5py.File(buffer, "r")
         assert file["a"]["b"]["c"][key] is not None
