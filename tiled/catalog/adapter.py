@@ -33,7 +33,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import selectinload
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast
@@ -151,7 +151,7 @@ class RootNode:
 class Context:
     def __init__(
         self,
-        engine,
+        engine: AsyncEngine,
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,

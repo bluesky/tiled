@@ -5,6 +5,7 @@ import tempfile
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 def write_alembic_ini(alembic_ini_template_path, alembic_dir, path, database_uri):
@@ -109,7 +110,7 @@ class DatabaseUpgradeNeeded(Exception):
     pass
 
 
-async def get_current_revision(engine, known_revisions):
+async def get_current_revision(engine: AsyncEngine, known_revisions):
     redacted_url = engine.url._replace(password="[redacted]")
     async with engine.connect() as conn:
         context = await conn.run_sync(migration.MigrationContext.configure)
@@ -132,7 +133,7 @@ async def get_current_revision(engine, known_revisions):
     return revision
 
 
-async def check_database(engine, required_revision, known_revisions):
+async def check_database(engine: AsyncEngine, required_revision, known_revisions):
     revision = await get_current_revision(engine, known_revisions)
     redacted_url = engine.url._replace(password="[redacted]")
     if revision is None:

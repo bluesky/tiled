@@ -397,7 +397,7 @@ async def get_current_principal(
     return principal
 
 
-async def create_pending_session(db):
+async def create_pending_session(db: AsyncSession):
     device_code = secrets.token_bytes(32)
     hashed_device_code = hashlib.sha256(device_code).digest()
     for _ in range(3):
