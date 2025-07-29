@@ -15,6 +15,7 @@ from .utils import ensure_uri, path_from_uri
 
 __all__ = [
     "EmbeddedSQLStorage",
+    "RemoteSQLStorage",
     "FileStorage",
     "SQLStorage",
     "Storage",
@@ -74,11 +75,11 @@ class SQLStorage(Storage):
 
     @functools.cached_property
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
-        source = self.create_adbc_connection().adbc_clone
+        creator = self.create_adbc_connection().adbc_clone
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
-            return sqlalchemy.pool.StaticPool(source)
+            return sqlalchemy.pool.StaticPool(creator)
         else:
-            return sqlalchemy.pool.QueuePool(source, pool_size=3, max_overflow=0)
+            return sqlalchemy.pool.QueuePool(creator, pool_size=3, max_overflow=0)
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
@@ -161,7 +162,7 @@ def parse_storage(item: Union[Path, str]) -> Storage:
     if scheme == "file":
         result = FileStorage(item)
     elif scheme == "postgresql":
-        result = SQLStorage(item)
+        result = RemoteSQLStorage(item)
     elif scheme in {"sqlite", "duckdb"}:
         result = EmbeddedSQLStorage(item)
     else:
