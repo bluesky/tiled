@@ -16,7 +16,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable, Generic, Tuple, TypeVar
+from typing import Any, Callable, Generic, Tuple, TypeVar, Union
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -135,7 +135,7 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
     __slots__ = ("__mapping", "__lock")
 
     def __init__(self, *args, **kwargs: Callable[[], V]):
-        dictionary = dict(*args, **kwargs)
+        dictionary: dict[K, Callable[[], V] | V] = dict(*args, **kwargs)
         wrap = _OneShotCachedMapWrapper
         # TODO should be recursive lock?
         self.__lock = threading.Lock()
@@ -185,10 +185,12 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
         # make sure checking 'in' does not trigger evaluation
         return k in self.__mapping
 
-    def __getstate__(self) -> collections.abc.Mapping[K, Callable[[], V] | V]:
+    def __getstate__(self) -> collections.abc.Mapping[K, Union[Callable[[], V] | V]]:
         return self.__mapping
 
-    def __setstate__(self, mapping: collections.abc.Mapping[K, Callable[[], V] | V]):
+    def __setstate__(
+        self, mapping: collections.abc.Mapping[K, Union[Callable[[], V] | V]]
+    ):
         self.__mapping = mapping
         self.__lock = threading.Lock()
 
