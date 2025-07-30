@@ -763,7 +763,6 @@ def ensure_uri(uri_or_path) -> str:
 
 def sanitize_uri(uri: str) -> tuple[str, Optional[str], Optional[str]]:
     "Remove the username and password from uri if they are present."
-    username, password = None, None
     parsed_uri = urlparse(uri)
     netloc = parsed_uri.netloc
     if "@" in netloc:
@@ -772,7 +771,7 @@ def sanitize_uri(uri: str) -> tuple[str, Optional[str], Optional[str]]:
         if ":" in auth:
             username, password = auth.split(":", 1)
         else:
-            username = auth
+            username, password = auth, None
         # Create clean components with the updated netloc
         clean_components = (
             parsed_uri.scheme,
@@ -782,8 +781,9 @@ def sanitize_uri(uri: str) -> tuple[str, Optional[str], Optional[str]]:
             parsed_uri.query,
             parsed_uri.fragment,
         )
+        return urlunparse(clean_components), username, password
 
-    return urlunparse(clean_components), username, password
+    return uri, None, None
 
 
 SCHEME_TO_SCHEME_PLUS_DRIVER = {
