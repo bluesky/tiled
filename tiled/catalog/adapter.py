@@ -1572,10 +1572,6 @@ def from_uri(
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
-        pool_size=50,  # default is 5
-        max_overflow=10,  # additional connections beyond the pool size
-        pool_timeout=30,  # wait for 30 seconds if no connections are available
-        pool_recycle=3600,  # recycle connections after 1 hour
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
