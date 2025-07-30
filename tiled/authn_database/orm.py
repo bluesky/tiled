@@ -1,6 +1,5 @@
 import json
 import uuid as uuid_module
-from typing import List
 
 from sqlalchemy import (
     JSON,
@@ -133,14 +132,14 @@ class Principal(Timestamped, Base):
     type = Column(Enum(PrincipalType), nullable=False)
     # In the future we may add other information.
 
-    identities: Mapped[List["Identity"]] = relationship(back_populates="principal")
-    api_keys: Mapped[List["APIKey"]] = relationship(back_populates="principal")
-    roles: Mapped[List["Role"]] = relationship(
+    identities: Mapped[list["Identity"]] = relationship(back_populates="principal")
+    api_keys: Mapped[list["APIKey"]] = relationship(back_populates="principal")
+    roles: Mapped[list["Role"]] = relationship(
         secondary=principal_role_association_table,
         back_populates="principals",
         lazy="joined",
     )
-    sessions: Mapped[List["Session"]] = relationship(
+    sessions: Mapped[list["Session"]] = relationship(
         "Session", back_populates="principal"
     )
 
@@ -165,7 +164,7 @@ class Role(Timestamped, Base):
     name = Column(Unicode(255), index=True, unique=True, nullable=False)
     description = Column(Unicode(1023), nullable=True)
     scopes = Column(JSONList(511), nullable=False)
-    principals: Mapped[List[Principal]] = relationship(
+    principals: Mapped[list[Principal]] = relationship(
         secondary=principal_role_association_table, back_populates="roles"
     )
 
