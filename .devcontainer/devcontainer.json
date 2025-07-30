@@ -5,6 +5,9 @@
 		"dockerfile": "../Dockerfile",
 		"target": "developer"
 	},
+	"containerEnv": {
+		"TILED_BUILD_SKIP_UI": "1"
+	},
 	"features": {
 		"ghcr.io/devcontainers/features/git:1": {}
 	},
