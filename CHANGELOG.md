@@ -8,7 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Changed
 
 - Refactored internal server function ``get_root_tree()`` to not use FastAPI
-  dependencies injection
+  dependency_overrides
 
 ### Fixed
 
