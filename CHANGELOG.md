@@ -7,6 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Make devcontainer work out of box to run e.g. tiled serve demo
 - Tests were missing assertions to verify expected outcomes
 
 ## v0.1.0-b30 (2025-07-18)

@@ -3,7 +3,7 @@ WORKDIR /code
 COPY web-frontend .
 RUN npm install && npm run build
 
-FROM python:3.12 AS developer
+FROM python:3.9 AS developer
 
 # We need gcc to compile thriftpy2, a secondary dependency.
 RUN apt-get -y update && apt-get install -y gcc
@@ -36,7 +36,7 @@ FROM developer AS builder
 # client-side code.
 RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
 
-FROM python:3.12-slim AS runner
+FROM python:3.9-slim AS runner
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
