@@ -4,6 +4,8 @@ import sqlite3
 from contextlib import closing
 from functools import partial
 
+from tiled.adapters.protocols import AccessPolicy
+
 from .queries import AccessBlobFilter, In, KeysFilter
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 from .utils import Sentinel, SpecialUsers, import_object
@@ -23,7 +25,7 @@ if log_level:
     logger.setLevel(log_level.upper())
 
 
-class DummyAccessPolicy:
+class DummyAccessPolicy(AccessPolicy):
     "Impose no access restrictions."
 
     async def allowed_scopes(self, node, principal, authn_scopes):
@@ -33,7 +35,7 @@ class DummyAccessPolicy:
         return []
 
 
-class SimpleAccessPolicy:
+class SimpleAccessPolicy(AccessPolicy):
     """
     A mapping of user names to lists of entries they have access to.
 
@@ -180,7 +182,7 @@ class AccessTagsParser:
         return user_scope_tags
 
 
-class TagBasedAccessPolicy:
+class TagBasedAccessPolicy(AccessPolicy):
     def __init__(
         self,
         *,

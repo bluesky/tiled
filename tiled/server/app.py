@@ -35,6 +35,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.adapters.protocols import AccessPolicy
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
@@ -118,7 +119,7 @@ def build_app(
     validation_registry: Optional[ValidationRegistry] = None,
     tasks: Optional[dict[str, list[AppTask]]] = None,
     scalable=False,
-    access_policy=None,
+    access_policy: Optional[AccessPolicy] = None,
 ):
     """
     Serve a Tree
@@ -132,7 +133,7 @@ def build_app(
         List of authenticator classes (one per support identity provider)
     server_settings: dict, optional
         Dict of other server configuration.
-    access_policy:
+    access_policy: AccessPolicy, optional
         AccessPolicy object encoding rules for which users can see which entries.
     """
     authentication = authentication or {}
