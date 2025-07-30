@@ -5,12 +5,12 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
-from typing import Any, Mapping, Optional, cast
+from typing import Annotated, Any, Mapping, Optional, TypeVar, cast
 
 import httpx
 from fastapi import APIRouter, Request
 from jose import JWTError, jwt
-from pydantic import Secret
+from pydantic import BeforeValidator, ConfigDict, Field, Secret, model_validator
 from starlette.responses import RedirectResponse
 
 from .server.protocols import (
@@ -32,9 +32,6 @@ class DummyAuthenticator(InternalAuthenticator):
 
     """
 
-    def __init__(self, confirmation_message: str = ""):
-        self.confirmation_message = confirmation_message
-
     async def authenticate(self, username: str, password: str) -> UserSessionState:
         return UserSessionState(username, {})
 
@@ -46,31 +43,12 @@ class DictionaryAuthenticator(InternalAuthenticator):
     Check passwords from a dictionary of usernames mapped to passwords.
     """
 
-    configuration_schema = """
-$schema": http://json-schema.org/draft-07/schema#
-type: object
-additionalProperties: false
-properties:
-  users_to_password:
-    type: object
-    description: |
-      Mapping usernames to password. Environment variable expansion should be
-      used to avoid placing passwords directly in configuration.
-  confirmation_message:
-    type: string
-    description: May be displayed by client after successful login.
-"""
-
-    def __init__(
-        self, users_to_passwords: Mapping[str, str], confirmation_message: str = ""
-    ):
-        self._users_to_passwords = users_to_passwords
-        self.confirmation_message = confirmation_message
+    users_to_passwords: Mapping[str, str]
 
     async def authenticate(
         self, username: str, password: str
     ) -> Optional[UserSessionState]:
-        true_password = self._users_to_passwords.get(username)
+        true_password = self.users_to_passwords.get(username)
         if not true_password:
             # Username is not valid.
             return
@@ -79,26 +57,13 @@ properties:
 
 
 class PAMAuthenticator(InternalAuthenticator):
-    configuration_schema = """
-$schema": http://json-schema.org/draft-07/schema#
-type: object
-additionalProperties: false
-properties:
-  service:
-    type: string
-    description: PAM service. Default is 'login'.
-  confirmation_message:
-    type: string
-    description: May be displayed by client after successful login.
-"""
+    service: str = "login"
 
-    def __init__(self, service: str = "login", confirmation_message: str = ""):
+    def model_post_init(self, __context: Any):
         if not modules_available("pamela"):
             raise ModuleNotFoundError(
                 "This PAMAuthenticator requires the module 'pamela' to be installed."
             )
-        self.service = service
-        self.confirmation_message = confirmation_message
         # TODO Try to open a PAM session.
 
     async def authenticate(
@@ -115,46 +80,16 @@ properties:
 
 
 class OIDCAuthenticator(ExternalAuthenticator):
-    configuration_schema = """
-$schema": http://json-schema.org/draft-07/schema#
-type: object
-additionalProperties: false
-properties:
-  audience:
-    type: string
-  client_id:
-    type: string
-  client_secret:
-    type: string
-  well_known_uri:
-    type: string
-  confirmation_message:
-    type: string
-"""
-
-    def __init__(
-        self,
-        audience: str,
-        client_id: str,
-        client_secret: str,
-        well_known_uri: str,
-        confirmation_message: str = "",
-    ):
-        self._audience = audience
-        self._client_id = client_id
-        self._client_secret = Secret(client_secret)
-        self._well_known_url = well_known_uri
-        self.confirmation_message = confirmation_message
+    audience: str
+    client_id: str
+    client_secret: Secret[str]
+    well_known_uri: str
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
-        response: httpx.Response = httpx.get(self._well_known_url)
+        response: httpx.Response = httpx.get(self.well_known_url)
         response.raise_for_status()
         return response.json()
-
-    @functools.cached_property
-    def client_id(self) -> str:
-        return self._client_id
 
     @functools.cached_property
     def id_token_signing_alg_values_supported(self) -> list[str]:
@@ -190,8 +125,8 @@ properties:
         response = await exchange_code(
             self.token_endpoint,
             code,
-            self._client_id,
-            self._client_secret.get_secret_value(),
+            self.client_id,
+            self.client_secret.get_secret_value(),
             redirect_uri,
         )
         response_body = response.json()
@@ -207,7 +142,7 @@ properties:
                 token=id_token,
                 key=keys,
                 algorithms=self.id_token_signing_alg_values_supported,
-                audience=self._audience,
+                audience=self.audience,
                 access_token=access_token,
             )
         except JWTError:
@@ -331,6 +266,18 @@ async def prepare_saml_from_fastapi_request(request: Request) -> Mapping[str, st
     return rv
 
 
+T = TypeVar("T")
+
+
+def one_or_many(value: Any) -> list[Any]:
+    if isinstance(value, str) or not isinstance(value, Iterable):
+        return [value]
+    return list(value)
+
+
+OneOrMany = BeforeValidator(one_or_many)
+
+
 class LDAPAuthenticator(InternalAuthenticator):
     """
     The authenticator code is based on https://github.com/jupyterhub/ldapauthenticator
@@ -357,10 +304,10 @@ class LDAPAuthenticator(InternalAuthenticator):
         Enable/disable TLS if ``use_ssl`` is False. By default TLS is enabled. It should not be disabled
         in production systems.
 
-    connect_timeout: float
+    connect_timeout: int
         Timeout used for connecting to the LDAP server. Default: 5.
 
-    receive_timeout: float
+    receive_timeout: int
         Timeout used for communication with the LDAP server, e.g. this timeout is used to wait for
         completion of 2FA. For smooth operation it should probably exceed timeout set at LDAP server.
         Default: 60.
@@ -389,7 +336,7 @@ class LDAPAuthenticator(InternalAuthenticator):
                 "uid={username},ou=people,dc=wikimedia,dc=org",
                 "uid={username},ou=Developers,dc=wikimedia,dc=org"
                 ]
-    allowed_groups: list or None
+    allowed_groups: list
         List of LDAP group DNs that users could be members of to be granted access.
 
         If a user is in any one of the listed groups, then that user is granted access.
@@ -486,7 +433,10 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         from bluesky_httpserver.authenticators import LDAPAuthenticator
         authenticator = LDAPAuthenticator(
-            "localhost", 1389, bind_dn_template="cn={username},ou=users,dc=example,dc=org", use_tls=False
+            server_address="localhost",
+            server_port=1389,
+            bind_dn_template="cn={username},ou=users,dc=example,dc=org",
+            use_tls=False
         )
         await authenticator.authenticate("user01", "password1")
         await authenticator.authenticate("user02", "password2")
@@ -514,79 +464,44 @@ class LDAPAuthenticator(InternalAuthenticator):
                 id: user02
     """
 
-    def __init__(
-        self,
-        server_address,
-        server_port=None,
-        *,
-        use_ssl=False,
-        use_tls=True,
-        connect_timeout=5,
-        receive_timeout=60,
-        bind_dn_template=None,
-        allowed_groups=None,
-        valid_username_regex=r"^[a-z][.a-z0-9_-]*$",
-        lookup_dn=False,
-        user_search_base=None,
-        user_attribute=None,
-        lookup_dn_search_filter="({login_attr}={login})",
-        lookup_dn_search_user=None,
-        lookup_dn_search_password=None,
-        lookup_dn_user_dn_attribute=None,
-        escape_userdn=False,
-        search_filter="",
-        attributes=None,
-        auth_state_attributes=None,
-        use_lookup_dn_username=True,
-        confirmation_message="",
-    ):
-        self.use_ssl = use_ssl
-        self.use_tls = use_tls
-        self.connect_timeout = connect_timeout
-        self.receive_timeout = receive_timeout
-        self.bind_dn_template = bind_dn_template
-        self.allowed_groups = allowed_groups
-        self.valid_username_regex = valid_username_regex
-        self.lookup_dn = lookup_dn
-        self.user_search_base = user_search_base
-        self.user_attribute = user_attribute
-        self.lookup_dn_search_filter = lookup_dn_search_filter
-        self.lookup_dn_search_user = lookup_dn_search_user
-        self.lookup_dn_search_password = lookup_dn_search_password
-        self.lookup_dn_user_dn_attribute = lookup_dn_user_dn_attribute
-        self.escape_userdn = escape_userdn
-        self.search_filter = search_filter
-        self.attributes = attributes if attributes else []
-        self.auth_state_attributes = (
-            auth_state_attributes if auth_state_attributes else []
-        )
-        self.use_lookup_dn_username = use_lookup_dn_username
+    model_config = ConfigDict(use_attribute_docstrings=True)
 
-        if isinstance(server_address, str):
-            server_address_list = [server_address]
-        elif isinstance(server_address, Iterable):
-            server_address_list = list(server_address)
-        else:
-            raise TypeError(
-                f"Unsupported type of `server_address` (list): server_address={server_address} "
-                f"type(server_address)={type(server_address)}"
-            )
-        if not server_address_list:
-            raise ValueError(
-                "No servers are specified: 'server_address' is an empty list"
-            )
+    server_address_list: Annotated[list[str], OneOrMany, Field(alias="server_address")]
+    server_port: Annotated[
+        int,
+        Field(
+            default_factory=lambda data: port
+            if (port := data.get("server_port") is not None)
+            else (636 if data.get("use_ssl") else 389)
+        ),
+    ]
+    use_ssl: bool = False
+    use_tls: bool = True
+    connect_timeout: int = 5
+    receive_timeout: int = 60
+    bind_dn_template: Annotated[list[str], OneOrMany] = []
+    allowed_groups: list[str] = []
+    valid_username_regex: str = r"^[a-z][.a-z0-9_-]*$"
+    lookup_dn: bool = False
+    user_search_base: Optional[str] = None
+    user_attribute: Optional[str] = None
+    lookup_dn_search_filter: Optional[str] = "({login_attr}={login})"
+    lookup_dn_search_user: Optional[str] = None
+    lookup_dn_search_password: Optional[str] = None
+    lookup_dn_user_dn_attribute: Optional[str] = None
+    escape_userdn: bool = False
+    search_filter: str = ""
+    attributes: list[str] = []
+    auth_state_attributes: list[str] = []
+    use_lookup_dn_username: bool = True
 
-        self.server_address_list = server_address_list
-        self.server_port = (
-            server_port if server_port is not None else self._server_port_default()
-        )
-        self.confirmation_message = confirmation_message
-
-    def _server_port_default(self):
-        if self.use_ssl:
-            return 636  # default SSL port for LDAP
-        else:
-            return 389  # default plaintext port for LDAP
+    @model_validator(mode="before")
+    @classmethod
+    def ignore_nones(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("server_port") is None:
+                data.pop("server_port", None)
+        return data
 
     async def resolve_username(self, username_supplied_by_user):
         import ldap3
