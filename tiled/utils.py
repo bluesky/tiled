@@ -135,7 +135,7 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
     __slots__ = ("__mapping", "__lock")
 
     def __init__(self, *args, **kwargs: Callable[[], V]):
-        dictionary: dict[K, Callable[[], V] | V] = dict(*args, **kwargs)
+        dictionary: dict[K, Union[Callable[[], V], V]] = dict(*args, **kwargs)
         wrap = _OneShotCachedMapWrapper
         # TODO should be recursive lock?
         self.__lock = threading.Lock()
@@ -185,11 +185,11 @@ class OneShotCachedMap(collections.abc.Mapping[K, V], Generic[K, V]):
         # make sure checking 'in' does not trigger evaluation
         return k in self.__mapping
 
-    def __getstate__(self) -> collections.abc.Mapping[K, Union[Callable[[], V] | V]]:
+    def __getstate__(self) -> collections.abc.Mapping[K, Union[Callable[[], V], V]]:
         return self.__mapping
 
     def __setstate__(
-        self, mapping: collections.abc.Mapping[K, Union[Callable[[], V] | V]]
+        self, mapping: collections.abc.Mapping[K, Union[Callable[[], V], V]]
     ):
         self.__mapping = mapping
         self.__lock = threading.Lock()
