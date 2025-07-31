@@ -1,5 +1,7 @@
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
+
 
 # Everything imports this so we put it in its own module to
 # avoid circular imports.
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
