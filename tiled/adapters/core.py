@@ -9,6 +9,7 @@ from tiled.type_aliases import JSON
 
 S = TypeVar("S", bound=Structure)
 
+
 class Adapter(ABC, Generic[S]):
     def __init__(
         self,
@@ -41,4 +42,5 @@ class Adapter(ABC, Generic[S]):
     def supported_storage(cls) -> Set[type[Storage]]:
         return set()
 
-A = TypeVar("A", bound=Adapter[S])
+
+A = TypeVar("A", bound=Adapter)

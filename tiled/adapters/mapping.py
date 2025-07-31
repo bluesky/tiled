@@ -12,13 +12,12 @@ from typing import (
     List,
     Optional,
     Tuple,
-    TypeVar,
     Union,
     cast,
 )
 
 from tiled.adapters.container import ContainerAdapter
-from tiled.adapters.core import A, S, Adapter
+from tiled.adapters.core import A
 from tiled.structures.container import ContainerStructure
 
 if TYPE_CHECKING:
@@ -41,13 +40,11 @@ from ..queries import (
     StructureFamilyQuery,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import SortingItem
+from ..server.schemas import SortingDirection, SortingItem
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
 from ..utils import UNCHANGED, Sentinel
 from .utils import IndexersMixin
-
-B = TypeVar("B", bound=Adapter[S])
 
 
 class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
@@ -95,7 +92,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             # This is a special case that means, "the given ordering".
             # By giving that a name ("_") we enable requests to asking for the
             # last N by requesting the sorting ("_", -1).
-            sorting = [SortingItem(key="_", direction=1)]
+            sorting = [SortingItem(key="_", direction=SortingDirection.ASCENDING)]
         self._sorting = sorting
         self._must_revalidate = must_revalidate
         self.include_routers: List[APIRouter] = []
@@ -238,12 +235,12 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
     def new_variation(
         self,
         *args: Any,
-        mapping: Union[Sentinel, Dict[str, B]] = UNCHANGED,
+        mapping: Union[Sentinel, Dict[str, A]] = UNCHANGED,
         metadata: Union[Sentinel, JSON] = UNCHANGED,
         sorting: Union[Sentinel, List[SortingItem]] = UNCHANGED,
         must_revalidate: Union[Sentinel, bool] = UNCHANGED,
         **kwargs: Any,
-    ) -> "MapAdapter[B]":
+    ) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -269,7 +266,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
             must_revalidate = self.must_revalidate
         return type(self)(
             # *args,
-            mapping=cast(Dict[str, B], mapping),
+            mapping=cast(Dict[str, A], mapping),
             sorting=cast(List[SortingItem], sorting),
             metadata=cast(JSON, self._metadata),
             specs=self.specs,
@@ -404,7 +401,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         """
         if direction > 0:
-            yield from itertools.islice(self._mapping.keys(), start, stop)
+            return itertools.islice(self._mapping.keys(), start, stop)
         else:
             keys_to_slice = list(
                 reversed(
