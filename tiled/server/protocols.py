@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Request
 from pydantic import BaseModel
@@ -11,7 +11,7 @@ class UserSessionState:
     """Data transfer class to communicate custom session state information."""
 
     user_name: str
-    state: dict = None
+    state: Optional[dict[str, Any]] = None
 
 
 class Authenticator(BaseModel, ABC):

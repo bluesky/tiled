@@ -10,7 +10,7 @@ from typing import Annotated, Any, Mapping, Optional, TypeVar, Union, cast
 import httpx
 from fastapi import APIRouter, Request
 from jose import JWTError, jwt
-from pydantic import BeforeValidator, Field, Secret, ConfigDict
+from pydantic import BeforeValidator, ConfigDict, Field, Secret
 from starlette.responses import RedirectResponse
 
 from .server.protocols import (
