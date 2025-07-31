@@ -25,6 +25,7 @@ TILED_TEST_LDAP = os.getenv("TILED_TEST_LDAP")
 ])
 # fmt: on
 @pytest.mark.parametrize("use_tls,use_ssl", [(False, False)])
+@pytest.mark.skipif(not TILED_TEST_LDAP, reason="Requires an LDAP container and TILED_TEST_LDAP to be set")
 def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server_port):
     """
     Basic test for ``LDAPAuthenticator``.
@@ -32,15 +33,14 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
     TODO: The test could be extended with enabled TLS or SSL, but it requires configuration
     of the LDAP server.
     """
-    if not TILED_TEST_LDAP:
-        pytest.skip("Run an LDAP container and set TILED_TEST_LDAP to run")
-    authenticator = LDAPAuthenticator(
-        ldap_server_address,
-        ldap_server_port,
-        bind_dn_template="cn={username},ou=users,dc=example,dc=org",
-        use_tls=use_tls,
-        use_ssl=use_ssl,
-    )
+
+    params = dict(server_address=ldap_server_address,
+                  bind_dn_template="cn={username},ou=users,dc=example,dc=org",
+                  use_ssl=use_ssl,
+                  use_tls=use_tls)
+    if ldap_server_port is not None:
+        params["server_port"] = ldap_server_port
+    authenticator = LDAPAuthenticator(**params)
 
     async def testing():
         assert (await authenticator.authenticate("user01", "password1")).user_name == "user01"
