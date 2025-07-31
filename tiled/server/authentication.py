@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, List, Optional, Sequence, Union
 
 from fastapi import (
     APIRouter,
@@ -143,12 +143,16 @@ def create_refresh_token(session_id, secret_key, expires_delta):
     return encoded_jwt
 
 
-def decode_token(token, secret_keys):
+def decode_token(token:str, secret_keys:List[str],allow_bearer_token:bool):
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    if allow_bearer_token:
+        ...
+        # payload = jwt.decode(token,settings.)
     # The first key in settings.secret_keys is used for *encoding*.
     # All keys are tried for *decoding* until one works or they all
     # fail. They supports key rotation.
@@ -212,7 +216,7 @@ async def get_decoded_access_token(
     if not access_token:
         return None
     try:
-        payload = decode_token(access_token, settings.secret_keys)
+        payload = decode_token(access_token, settings.secret_keys,settings.allow_bearer_token)
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
@@ -993,7 +997,7 @@ def authentication_router() -> APIRouter:
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
         request.state.endpoint = "auth"
-        payload = decode_token(refresh_token.refresh_token, settings.secret_keys)
+        payload = decode_token(refresh_token.refresh_token, settings.secret_keys,allow_bearer_token=False)
         session_id = payload["sid"]
         # Find this session in the database.
         session = await lookup_valid_session(db, session_id)
@@ -1032,7 +1036,7 @@ def authentication_router() -> APIRouter:
 
     async def slide_session(refresh_token, settings, db):
         try:
-            payload = decode_token(refresh_token, settings.secret_keys)
+            payload = decode_token(refresh_token, settings.secret_keys,settings.allow_bearer_token)
         except ExpiredSignatureError:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
