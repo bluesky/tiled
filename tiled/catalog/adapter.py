@@ -47,7 +47,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
-    KeyIn,
+    KeyExists,
     KeysFilter,
     Like,
     NotEq,
@@ -1481,13 +1481,13 @@ def in_or_not_in(query, tree, method):
     return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
 
 
-def has_key(query, tree, invert):
+def has_key(query, tree):
     if tree.engine.url.get_dialect().name == "sqlite":
         condition = orm.Node.metadata_.op("->")(query.key) != None
     else:
         keys = query.key.split(".")
         condition = orm.Node.metadata_.op("#>")(cast(keys, ARRAY(TEXT))) != None
-    condition = not_(condition) if invert else condition
+    condition = not_(condition) if getattr(query, "exists", False) else condition
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
@@ -1507,8 +1507,7 @@ CatalogNodeAdapter.register_query(Comparison, comparison)
 CatalogNodeAdapter.register_query(Contains, contains)
 CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
-CatalogNodeAdapter.register_query(KeyIn, partial(has_key, invert=False))
-CatalogNodeAdapter.register_query(KeyNotIn, partial(has_key, invert=True))
+CatalogNodeAdapter.register_query(KeyExists, has_key)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
