@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Tests were missing assertions to verify expected outcomes
+- Make principal type hints consistent in router
 
 ## v0.1.0-b30 (2025-07-18)
 
