@@ -7,19 +7,23 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    Generic,
     Iterator,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
     cast,
 )
 
+from tiled.adapters.container import ContainerAdapter
+from tiled.adapters.core import A
+from tiled.structures.container import ContainerStructure
+
 if TYPE_CHECKING:
     from fastapi import APIRouter
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
@@ -36,35 +40,17 @@ from ..queries import (
     StructureFamilyQuery,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.schemas import SortingItem
-from ..storage import Storage
+from ..server.schemas import SortingDirection, SortingItem
 from ..structures.core import Spec, StructureFamily
-from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from ..utils import UNCHANGED, Sentinel
-from .protocols import AnyAdapter
 from .utils import IndexersMixin
 
 
-class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
+class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
     """
     Adapt any mapping (dictionary-like object) to Tiled.
     """
-
-    __slots__ = (
-        "_mapping",
-        "_metadata",
-        "_sorting",
-        "_must_revalidate",
-        "background_tasks",
-        "entries_stale_after",
-        "include_routers",
-        "metadata_stale_after",
-        "specs",
-    )
-
-    structure_family = StructureFamily.container
-    supported_storage: Set[type[Storage]] = set()
 
     # Define classmethods for managing what queries this Adapter knows.
     query_registry = QueryTranslationRegistry()
@@ -73,9 +59,8 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
 
     def __init__(
         self,
-        mapping: Dict[str, Any],
+        mapping: Dict[str, A],
         *,
-        structure: Optional[TableStructure] = None,
         metadata: Optional[JSON] = None,
         sorting: Optional[List[SortingItem]] = None,
         specs: Optional[List[Spec]] = None,
@@ -102,26 +87,23 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         must_revalidate : bool
             Whether the client should strictly refresh stale cache items.
         """
-        if structure is not None:
-            raise ValueError(
-                f"structure is expected to be None for containers, not {structure}"
-            )
         self._mapping = mapping
         if sorting is None:
             # This is a special case that means, "the given ordering".
             # By giving that a name ("_") we enable requests to asking for the
             # last N by requesting the sorting ("_", -1).
-            sorting = [SortingItem(key="_", direction=1)]
+            sorting = [SortingItem(key="_", direction=SortingDirection.ASCENDING)]
         self._sorting = sorting
-        self._metadata = metadata or {}
-        self.specs = specs or []
         self._must_revalidate = must_revalidate
         self.include_routers: List[APIRouter] = []
         self.background_tasks: List[Any] = []
         self.entries_stale_after = entries_stale_after
         self.metadata_stale_after = metadata_stale_after
-        self.specs = specs or []
-        super().__init__()
+        super().__init__(
+            structure=ContainerStructure(keys=self._mapping.keys()),
+            metadata=metadata,
+            specs=specs,
+        )
 
     @property
     def must_revalidate(self) -> bool:
@@ -147,13 +129,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         """
         self._must_revalidate = value
 
-    def metadata(self) -> JSON:
-        "Metadata about this Adapter."
-        # Ensure this is immutable (at the top level) to help the user avoid
-        # getting the wrong impression that editing this would update anything
-        # persistent.
-        return self._metadata
-
     @property
     def sorting(self) -> List[SortingItem]:
         """
@@ -175,7 +150,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
             f"<{type(self).__name__}({{{', '.join(repr(k) for k in self._mapping)}}})>"
         )
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> A:
         """
 
         Parameters
@@ -206,7 +181,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         """
         return len(self._mapping)
 
-    def keys(self) -> KeysView:  # type: ignore
+    def keys(self) -> KeysView[str]:  # type: ignore
         """
 
         Returns
@@ -215,7 +190,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         """
         return KeysView(lambda: len(self), self._keys_slice)
 
-    def values(self) -> ValuesView:  # type: ignore
+    def values(self) -> ValuesView[A]:  # type: ignore
         """
 
         Returns
@@ -224,7 +199,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         """
         return ValuesView(lambda: len(self), self._items_slice)
 
-    def items(self) -> ItemsView:  # type: ignore
+    def items(self) -> ItemsView[str, A]:  # type: ignore
         """
 
         Returns
@@ -232,15 +207,6 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
 
         """
         return ItemsView(lambda: len(self), self._items_slice)
-
-    def structure(self) -> None:
-        """
-
-        Returns
-        -------
-
-        """
-        return None
 
     @property
     def metadata_stale_at(self) -> Optional[datetime]:
@@ -269,12 +235,12 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
     def new_variation(
         self,
         *args: Any,
-        mapping: Union[Sentinel, Dict[str, Any]] = UNCHANGED,
+        mapping: Union[Sentinel, Dict[str, A]] = UNCHANGED,
         metadata: Union[Sentinel, JSON] = UNCHANGED,
         sorting: Union[Sentinel, List[SortingItem]] = UNCHANGED,
         must_revalidate: Union[Sentinel, bool] = UNCHANGED,
         **kwargs: Any,
-    ) -> "MapAdapter":
+    ) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -300,7 +266,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
             must_revalidate = self.must_revalidate
         return type(self)(
             # *args,
-            mapping=cast(Dict[str, Any], mapping),
+            mapping=cast(Dict[str, A], mapping),
             sorting=cast(List[SortingItem], sorting),
             metadata=cast(JSON, self._metadata),
             specs=self.specs,
@@ -310,7 +276,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
             **kwargs,
         )
 
-    def read(self, fields: Optional[str] = None) -> "MapAdapter":
+    def read(self, fields: Optional[str] = None) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -383,7 +349,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
 
         return data
 
-    def sort(self, sorting: SortingItem) -> "MapAdapter":
+    def sort(self, sorting: SortingItem) -> "MapAdapter[A]":
         """
 
         Parameters
@@ -435,7 +401,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
 
         """
         if direction > 0:
-            yield from itertools.islice(self._mapping.keys(), start, stop)
+            return itertools.islice(self._mapping.keys(), start, stop)
         else:
             keys_to_slice = list(
                 reversed(
@@ -451,7 +417,7 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
 
     def _items_slice(
         self, start: int, stop: int, direction: int, page_size: Optional[int] = None
-    ) -> Iterator[Tuple[str, Any]]:
+    ) -> Iterator[Tuple[str, A]]:
         """
 
         Parameters
@@ -474,7 +440,9 @@ class MapAdapter(Mapping[str, AnyAdapter], IndexersMixin):
         )
 
 
-def walk_string_values(tree: MapAdapter, node: Optional[Any] = None) -> Iterator[str]:
+def walk_string_values(
+    tree: MapAdapter[Any], node: Optional[Any] = None
+) -> Iterator[str]:
     """
     >>> list(
     ...     walk_string_values(
@@ -529,7 +497,7 @@ def counter_to_dict(counter: Dict[str, Any], counts: Any) -> List[Dict[str, Any]
 
 
 def iter_child_metadata(
-    query_key: Any, tree: MapAdapter
+    query_key: Any, tree: MapAdapter[A]
 ) -> Iterator[Tuple[str, Any, Any]]:
     """
 
@@ -553,7 +521,7 @@ def iter_child_metadata(
             yield key, value, term
 
 
-def full_text_search(query: Any, tree: MapAdapter) -> MapAdapter:
+def full_text_search(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -585,7 +553,7 @@ def full_text_search(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(FullText, full_text_search)
 
 
-def regex(query: Any, tree: MapAdapter) -> MapAdapter:
+def regex(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -612,7 +580,7 @@ def regex(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Regex, regex)
 
 
-def eq(query: Any, tree: MapAdapter) -> MapAdapter:
+def eq(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -634,7 +602,7 @@ def eq(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Eq, eq)
 
 
-def noteq(query: Any, tree: MapAdapter) -> MapAdapter:
+def noteq(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -656,7 +624,7 @@ def noteq(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(NotEq, noteq)
 
 
-def contains(query: Any, tree: MapAdapter) -> MapAdapter:
+def contains(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -682,7 +650,7 @@ def contains(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Contains, contains)
 
 
-def comparison(query: Any, tree: MapAdapter) -> MapAdapter:
+def comparison(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -707,7 +675,7 @@ def comparison(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Comparison, comparison)
 
 
-def _in(query: Any, tree: MapAdapter) -> MapAdapter:
+def _in(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -729,7 +697,7 @@ def _in(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(In, _in)
 
 
-def notin(query: Any, tree: MapAdapter) -> MapAdapter:
+def notin(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -753,7 +721,7 @@ def notin(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(NotIn, notin)
 
 
-def specs(query: Any, tree: MapAdapter) -> MapAdapter:
+def specs(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -780,7 +748,7 @@ def specs(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(SpecsQuery, specs)
 
 
-def structure_family(query: Any, tree: MapAdapter) -> MapAdapter:
+def structure_family(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -803,7 +771,7 @@ def structure_family(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(StructureFamilyQuery, structure_family)
 
 
-def keys_filter(query: Any, tree: MapAdapter) -> MapAdapter:
+def keys_filter(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters

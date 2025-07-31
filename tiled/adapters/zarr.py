@@ -2,11 +2,12 @@ import builtins
 import copy
 import os
 import sys
-from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
 import zarr.core
+
+from tiled.adapters.container import ContainerAdapter
 
 if sys.version_info < (3, 11):
     from zarr.storage import DirectoryStore as LocalStore
@@ -227,18 +228,16 @@ class ZarrArrayAdapter(ArrayAdapter):
 
 
 class ZarrGroupAdapter(
-    Mapping[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    ContainerAdapter[Union["ArrayAdapter", "ZarrGroupAdapter"]],
     IndexersMixin,
 ):
     """ """
 
-    structure_family = StructureFamily.container
-
     def __init__(
         self,
         node: Any,
-        *,
         structure: Optional[ArrayStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -256,18 +255,13 @@ class ZarrGroupAdapter(
                 f"structure is expected to be None for containers, not {structure}"
             )
         self._node = node
-        self.specs = specs or []
-        self._provided_metadata = metadata or {}
-        super().__init__()
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     def __repr__(self) -> str:
         return node_repr(self, list(self))
 
     def metadata(self) -> Any:
         return self._node.attrs
-
-    def structure(self) -> None:
-        return None
 
     def __iter__(self) -> Iterator[Any]:
         yield from self._node

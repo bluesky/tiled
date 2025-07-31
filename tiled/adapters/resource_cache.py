@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Optional
 
-import cachetools  # type: ignore
+import cachetools
 
 # When items are evicted from the cache, a hard reference is dropped, freeing
 # the resource to be closed by the garbage collector if there are no other

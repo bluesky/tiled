@@ -1,10 +1,13 @@
 import copy
+from collections.abc import Set
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
 import dask.dataframe
 import pandas
+
+from tiled.adapters.table import TableAdapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
@@ -18,16 +21,14 @@ from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
 
-class CSVAdapter:
+class CSVAdapter(TableAdapter):
     """Adapter for tabular data stored as partitioned text (csv) files"""
-
-    structure_family = StructureFamily.table
-    supported_storage = {FileStorage}
 
     def __init__(
         self,
         data_uris: Iterable[str],
         structure: Optional[TableStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Any],
@@ -44,7 +45,6 @@ class CSVAdapter:
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
         self._file_paths = [path_from_uri(uri) for uri in data_uris]
-        self._metadata = metadata or {}
         self._read_csv_kwargs = kwargs
         if structure is None:
             table = dask.dataframe.read_csv(
@@ -52,8 +52,11 @@ class CSVAdapter:
             )
             structure = TableStructure.from_dask_dataframe(table)
             structure.npartitions = len(self._file_paths)
-        self._structure = structure
-        self.specs = list(specs or [])
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
 
     @classmethod
     def from_catalog(
@@ -75,9 +78,6 @@ class CSVAdapter:
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure.columns!r})"
-
-    def metadata(self) -> JSON:
-        return self._metadata
 
     @classmethod
     def init_storage(
@@ -204,9 +204,6 @@ class CSVAdapter:
             df = df[fields]
 
         return df.compute()
-
-    def structure(self) -> TableStructure:
-        return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         """
