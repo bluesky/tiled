@@ -470,7 +470,7 @@ class LDAPAuthenticator(InternalAuthenticator):
 
     model_config = ConfigDict(use_attribute_docstrings=True)
 
-    server_address_list: Annotated[list[str], OneOrMany]
+    server_address_list: Annotated[list[str], OneOrMany, Field(alias="server_address")]
     server_port: Annotated[
         int,
         Field(
@@ -485,18 +485,18 @@ class LDAPAuthenticator(InternalAuthenticator):
     receive_timeout: float = 60.0
     bind_dn_template: Annotated[list[str], OneOrMany] = []
     allowed_groups: list[str] = []
-    lookup_dn: bool
-    user_search_base: str
-    user_attribute: str
+    lookup_dn: bool = False
+    user_search_base: Optional[str] = None
+    user_attribute: Optional[str] = None
     lookup_dn_search_filter: Optional[str] = "({login_attr}={login})"
-    lookup_dn_search_user: Optional[str]
-    lookup_dn_search_password: Optional[str]
-    lookup_dn_user_dn_attribute: Optional[str]
-    escape_userdn: bool
-    search_filter: str
+    lookup_dn_search_user: Optional[str] = None
+    lookup_dn_search_password: Optional[str] = None
+    lookup_dn_user_dn_attribute: Optional[str] = None
+    escape_userdn: bool = False
+    search_filter: str = ""
     attributes: list[str] = []
     auth_state_attributes: list[str] = []
-    use_lookup_dn_username: bool
+    use_lookup_dn_username: bool = True
 
     async def resolve_username(self, username_supplied_by_user):
         import ldap3
