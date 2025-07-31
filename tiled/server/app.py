@@ -435,6 +435,7 @@ def build_app(
             "refresh_token_max_age",
             "session_max_age",
         ]:
+            # Need to add OIDC providers information somewhere here 
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
         for item in [
