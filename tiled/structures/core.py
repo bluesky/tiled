@@ -9,6 +9,8 @@ import importlib
 from dataclasses import asdict, dataclass
 from typing import Dict, Optional
 
+from tiled.catalog.orm import Structure
+
 from ..utils import OneShotCachedMap
 
 
@@ -47,7 +49,7 @@ class Spec:
     model_dump = dict  # For easy interoperability with pydantic 2.x models
 
 
-STRUCTURE_TYPES = OneShotCachedMap(
+STRUCTURE_TYPES = OneShotCachedMap[StructureFamily, type[Structure]](
     {
         StructureFamily.array: lambda: importlib.import_module(
             "...structures.array", StructureFamily.__module__
