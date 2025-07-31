@@ -1,5 +1,6 @@
 import decimal
 import os
+from contextlib import closing
 from pathlib import Path
 from typing import AsyncGenerator, Generator, Literal, cast
 
@@ -235,36 +236,34 @@ def test_data_types(
 
     storage_cls = RemoteSQLStorage if dialect == "postgresql" else EmbeddedSQLStorage
     storage = storage_cls(uri=db_uri)
-    conn = storage.connect()
+    with closing(storage.connect()) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+        conn.commit()
 
-    with conn.cursor() as cursor:
-        cursor.execute(query)
-    conn.commit()
+        # For SQLite specifically, some inference is needed by ADBC to get the type
+        # and on an empty table the value is not defined. As of this writing it is
+        # int64 by default; in the future it may be null.
+        # https://github.com/apache/arrow-adbc/issues/581
+        if dialect != "sqlite":
+            assert conn.adbc_get_table_schema(test_table_name) == expected_schema
 
-    # For SQLite specifically, some inference is needed by ADBC to get the type
-    # and on an empty table the value is not defined. As of this writing it is
-    # int64 by default; in the future it may be null.
-    # https://github.com/apache/arrow-adbc/issues/581
-    if dialect != "sqlite":
+        with conn.cursor() as cursor:
+            cursor.adbc_ingest(test_table_name, table, mode="append")
+
         assert conn.adbc_get_table_schema(test_table_name) == expected_schema
 
-    with conn.cursor() as cursor:
-        cursor.adbc_ingest(test_table_name, table, mode="append")
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT * FROM {test_table_name}")
+            result = cursor.fetch_arrow_table()
 
-    assert conn.adbc_get_table_schema(test_table_name) == expected_schema
+        # The result will match expected_schema, which may not be the same as
+        # the schema the data was uploaded as, if the databases does not support
+        # that precise type.
+        assert result.schema == expected_schema
 
-    with conn.cursor() as cursor:
-        cursor.execute(f"SELECT * FROM {test_table_name}")
-        result = cursor.fetch_arrow_table()
+        # Before comparing the Tables, we cast the Table into the original schema,
+        # which might use finer types.
+        assert result.cast(table.schema) == table
 
-    # The result will match expected_schema, which may not be the same as
-    # the schema the data was uploaded as, if the databases does not support
-    # that precise type.
-    assert result.schema == expected_schema
-
-    # Before comparing the Tables, we cast the Table into the original schema,
-    # which might use finer types.
-    assert result.cast(table.schema) == table
-
-    conn.close()
-    storage.dispose()  # Close all connections
+    storage.dispose()  # Close all connections before deleting the storage DB

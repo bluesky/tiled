@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import re
+from contextlib import closing
 from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import numpy
@@ -133,42 +134,42 @@ class SQLAdapter:
             f'ON "{table_name}"(_dataset_id, _partition_id)'
         )
 
-        conn = storage.connect()
-        with conn.cursor() as cursor:
-            cursor.execute(create_table_statement)
-        with conn.cursor() as cursor:
-            cursor.execute(create_index_statement)
-        # Just once, create a SEQUENCE (or the closest analogue in SQLite) to
-        # provide unique dataset_id for each dataset in this database.
-        # (If it exists, do nothing.)
-        # Then obtain the next value in the SEQUENCE for the dataset we are
-        # initializing here.
-        if storage.dialect == "sqlite":
-            # Create single-row table with a counter, if it does not exist.
+        with closing(storage.connect()) as conn:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    "CREATE TABLE IF NOT EXISTS _dataset_id_counter (value INTEGER NOT NULL)"
-                )
+                cursor.execute(create_table_statement)
             with conn.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO _dataset_id_counter (value) "
-                    "SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _dataset_id_counter)"
-                )
-            with conn.cursor() as cursor:
-                # Increment the counter.
-                cursor.execute(
-                    "UPDATE _dataset_id_counter SET value = value + 1 "
-                    "RETURNING value"
-                )
-                (dataset_id,) = cursor.fetchone()
-        else:
-            with conn.cursor() as cursor:
-                cursor.execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT nextval('_dataset_id_counter')")
-                (dataset_id,) = cursor.fetchone()
-        data_source.parameters["dataset_id"] = dataset_id
-        conn.commit()
+                cursor.execute(create_index_statement)
+            # Just once, create a SEQUENCE (or the closest analogue in SQLite) to
+            # provide unique dataset_id for each dataset in this database.
+            # (If it exists, do nothing.)
+            # Then obtain the next value in the SEQUENCE for the dataset we are
+            # initializing here.
+            if storage.dialect == "sqlite":
+                # Create single-row table with a counter, if it does not exist.
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "CREATE TABLE IF NOT EXISTS _dataset_id_counter (value INTEGER NOT NULL)"
+                    )
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO _dataset_id_counter (value) "
+                        "SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM _dataset_id_counter)"
+                    )
+                with conn.cursor() as cursor:
+                    # Increment the counter.
+                    cursor.execute(
+                        "UPDATE _dataset_id_counter SET value = value + 1 "
+                        "RETURNING value"
+                    )
+                    (dataset_id,) = cursor.fetchone()
+            else:
+                with conn.cursor() as cursor:
+                    cursor.execute("CREATE SEQUENCE IF NOT EXISTS _dataset_id_counter")
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT nextval('_dataset_id_counter')")
+                    (dataset_id,) = cursor.fetchone()
+            data_source.parameters["dataset_id"] = dataset_id
+            conn.commit()
 
         data_source.assets.append(
             Asset(
@@ -179,7 +180,6 @@ class SQLAdapter:
                 num=None,
             )
         )
-        conn.close()
         return data_source
 
     @classmethod
@@ -286,11 +286,10 @@ class SQLAdapter:
         }:
             table = table.rename_columns(upr_lwr_case_mapping)
 
-        conn = self.storage.connect()
-        with conn.cursor() as cursor:
-            cursor.adbc_ingest(self.table_name, table, mode="append")
-        conn.commit()
-        conn.close()
+        with closing(self.storage.connect()) as conn:
+            with conn.cursor() as cursor:
+                cursor.adbc_ingest(self.table_name, table, mode="append")
+            conn.commit()
 
     def _read_full_table_or_partition(
         self, fields: Optional[List[str]] = None, partition: Optional[int] = None
@@ -326,12 +325,11 @@ class SQLAdapter:
             else "ORDER BY _partition_id"
         )
 
-        conn = self.storage.connect()
-        with conn.cursor() as cursor:
-            cursor.execute(query)
-            data = cursor.fetch_arrow_table()
-        conn.commit()
-        conn.close()
+        with closing(self.storage.connect()) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query)
+                data = cursor.fetch_arrow_table()
+            conn.commit()
 
         # The database may have stored this in a coarser type, such as
         # storing uint8 data as int16. Cast it to the original type.
