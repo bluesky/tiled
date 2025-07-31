@@ -34,7 +34,7 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
-    def structure_family(cls):
+    def structure_family(cls) -> StructureFamily:
         return StructureFamily.awkward
 
     @classmethod

@@ -497,7 +497,7 @@ def counter_to_dict(counter: Dict[str, Any], counts: Any) -> List[Dict[str, Any]
 
 
 def iter_child_metadata(
-    query_key: Any, tree: MapAdapter
+    query_key: Any, tree: MapAdapter[A]
 ) -> Iterator[Tuple[str, Any, Any]]:
     """
 
@@ -521,7 +521,7 @@ def iter_child_metadata(
             yield key, value, term
 
 
-def full_text_search(query: Any, tree: MapAdapter) -> MapAdapter:
+def full_text_search(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -553,7 +553,7 @@ def full_text_search(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(FullText, full_text_search)
 
 
-def regex(query: Any, tree: MapAdapter) -> MapAdapter:
+def regex(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -580,7 +580,7 @@ def regex(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Regex, regex)
 
 
-def eq(query: Any, tree: MapAdapter) -> MapAdapter:
+def eq(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -602,7 +602,7 @@ def eq(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Eq, eq)
 
 
-def noteq(query: Any, tree: MapAdapter) -> MapAdapter:
+def noteq(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -624,7 +624,7 @@ def noteq(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(NotEq, noteq)
 
 
-def contains(query: Any, tree: MapAdapter) -> MapAdapter:
+def contains(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -650,7 +650,7 @@ def contains(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Contains, contains)
 
 
-def comparison(query: Any, tree: MapAdapter) -> MapAdapter:
+def comparison(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -675,7 +675,7 @@ def comparison(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(Comparison, comparison)
 
 
-def _in(query: Any, tree: MapAdapter) -> MapAdapter:
+def _in(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -697,7 +697,7 @@ def _in(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(In, _in)
 
 
-def notin(query: Any, tree: MapAdapter) -> MapAdapter:
+def notin(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -721,7 +721,7 @@ def notin(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(NotIn, notin)
 
 
-def specs(query: Any, tree: MapAdapter) -> MapAdapter:
+def specs(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -748,7 +748,7 @@ def specs(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(SpecsQuery, specs)
 
 
-def structure_family(query: Any, tree: MapAdapter) -> MapAdapter:
+def structure_family(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
@@ -771,7 +771,7 @@ def structure_family(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(StructureFamilyQuery, structure_family)
 
 
-def keys_filter(query: Any, tree: MapAdapter) -> MapAdapter:
+def keys_filter(query: Any, tree: MapAdapter[A]) -> MapAdapter[A]:
     """
 
     Parameters
