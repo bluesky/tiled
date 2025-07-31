@@ -1504,18 +1504,10 @@ def in_or_not_in(query, tree, method):
 
 def has_key(query, tree, invert):
     if tree.engine.url.get_dialect().name == "sqlite":
-        # FTS5 includes KEYS
-        condition = orm.metadata_fts5.c.metadata.match(query.key)
-        # Only supports top level keys
-        # condition = orm.Node.metadata_.op("->")(query.key) != None
+        condition = orm.Node.metadata_.op("->")(query.key) != None
     else:
-        tsvector = func.jsonb_to_tsvector(
-            # TSVector can be configured to search key column only.
-            cast("simple", REGCONFIG),
-            orm.Node.metadata_,
-            cast(["key"], JSONB),
-        )
-        condition = tsvector.op("@@")(func.to_tsquery("simple", query.key))
+        keys = query.key.split(".")
+        condition = orm.Node.metadata_.op("#>")(cast(keys, ARRAY(TEXT))) != None
     condition = not_(condition) if invert else condition
     return tree.new_variation(conditions=tree.conditions + [condition])
 
