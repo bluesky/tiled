@@ -113,6 +113,11 @@ class EmbeddedSQLStorage(SQLStorage):
 
             return adbc_driver_sqlite.dbapi.connect(str(filepath))
 
+        else:
+            raise ValueError(
+                f"Unsupported URI scheme {self.uri}: use 'duckdb:' or 'sqlite:'"
+            )
+
 
 @dataclasses.dataclass(frozen=True)
 class RemoteSQLStorage(SQLStorage):
@@ -122,6 +127,9 @@ class RemoteSQLStorage(SQLStorage):
 
     def __post_init__(self):
         # Ensure the URI is sanitized and credentials are stored separately
+        if not self.uri.startswith("postgresql:"):
+            raise ValueError(f"Unsupported URI scheme {self.uri}: use 'postgresql:'")
+
         uri, username, password = sanitize_uri(self.uri)
         if (username is not None) or (password is not None):
             if (self.username is not None) or (self.password is not None):
