@@ -440,7 +440,10 @@ class LDAPAuthenticator(InternalAuthenticator):
 
         from bluesky_httpserver.authenticators import LDAPAuthenticator
         authenticator = LDAPAuthenticator(
-            "localhost", 1389, bind_dn_template="cn={username},ou=users,dc=example,dc=org", use_tls=False
+            server_address="localhost",
+            server_port=1389,
+            bind_dn_template="cn={username},ou=users,dc=example,dc=org",
+            use_tls=False
         )
         await authenticator.authenticate("user01", "password1")
         await authenticator.authenticate("user02", "password2")
