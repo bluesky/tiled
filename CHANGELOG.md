@@ -10,6 +10,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Tests were missing assertions to verify expected outcomes
 - Combining multiple hdf5 files containing scalar values by HDF5Adapter.
+- Make principal type hints consistent in router
+- Typehinted database access methods
 
 ## v0.1.0-b30 (2025-07-18)
 
