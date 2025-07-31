@@ -2,16 +2,16 @@ import * as React from "react";
 
 import { useEffect, useState } from "react";
 
-import { ArrayLineChart } from "./line";
+import { ArrayLineChart } from "../line/line";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormLabel from "@mui/material/FormLabel";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
-import RangeSlider from "./range-slider";
+import RangeSlider from "../range-slider/range-slider";
 import Skeleton from "@mui/material/Skeleton";
-import { axiosInstance } from "../client";
-import { components } from "../openapi_schemas";
+import { axiosInstance } from "../../client";
+import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
 
 interface DisplayRadioButtonsProps {
@@ -20,7 +20,7 @@ interface DisplayRadioButtonsProps {
 }
 
 const DisplayRadioButtons: React.FunctionComponent<DisplayRadioButtonsProps> = (
-  props
+  props,
 ) => {
   return (
     <FormControl>
@@ -45,13 +45,15 @@ interface DataDisplayProps {
   range: number[];
 }
 
-const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
+export const DataDisplay: React.FunctionComponent<DataDisplayProps> = (
+  props,
+) => {
   const [displayType, setDisplayType] = useState<string>("chart");
   const [data, setData] = useState<any[]>([]);
   const [dataIsLoaded, setDataIsLoaded] = useState<boolean>(false);
 
   const handleDisplayTypeChange = (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     setDisplayType((event.target as HTMLInputElement).value);
   };
@@ -61,7 +63,7 @@ const DataDisplay: React.FunctionComponent<DataDisplayProps> = (props) => {
     async function loadData() {
       const response = await axiosInstance.get(
         `${props.link}?format=application/json&slice=${props.range[0]}:${props.range[1]}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
       const data = response.data;
       setData(data);
