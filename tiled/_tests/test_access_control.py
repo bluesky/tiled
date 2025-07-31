@@ -1,13 +1,13 @@
 import json
 import secrets
-from typing import Any, TypedDict
+from typing import Any
 
 import numpy
 import pytest
 from starlette.status import HTTP_403_FORBIDDEN
+from typing_extensions import TypedDict
 
-from tiled.authenticators import DictionaryAuthenticator
-from tiled.server.protocols import Authenticator, InternalAuthenticator, UserSessionState
+from tiled.server.protocols import InternalAuthenticator, UserSessionState
 
 from ..access_policies import NO_ACCESS
 from ..adapters.array import ArrayAdapter
@@ -532,19 +532,27 @@ def test_service_principal_access(tmpdir):
         sp_client = from_context(context)
         assert list(sp_client) == ["x"]
 
-UserAttributes = TypedDict("UserAttributes", {"password": str, "attributes": Any}, total=False)
+
+UserAttributes = TypedDict(
+    "UserAttributes", {"password": str, "attributes": dict[str, Any]}, total=False
+)
+
 
 class CustomAttributesAuthenticator(InternalAuthenticator):
     """An example authenticator that enriches the stored user information."""
+
     users: dict[str, UserAttributes] = {}
 
     async def authenticate(self, username, password):
-        print(f'Authenticating: {username=}, {password=}, {self.users=}')
+        print(f"Authenticating: {username=}, {password=}, {self.users=}")
         if (attrs := self.users.get(username)) and (pw := attrs.get("password")):
             if secrets.compare_digest(pw, password):
-                state =  UserSessionState(username, attrs.get("attributes", {}))
+                state = UserSessionState(
+                    username, {"attributes": attrs.get("attributes", {})}
+                )
                 print(f"{state=}")
                 return state
+
 
 class CustomAttributesAccessPolicy:
     """
