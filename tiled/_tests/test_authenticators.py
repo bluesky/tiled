@@ -35,8 +35,8 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
     if not TILED_TEST_LDAP:
         pytest.skip("Run an LDAP container and set TILED_TEST_LDAP to run")
     authenticator = LDAPAuthenticator(
-        ldap_server_address,
-        ldap_server_port,
+        server_address=ldap_server_address,
+        server_port=ldap_server_port,
         bind_dn_template="cn={username},ou=users,dc=example,dc=org",
         use_tls=use_tls,
         use_ssl=use_ssl,
