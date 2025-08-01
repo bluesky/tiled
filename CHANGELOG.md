@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - Pooling of ADBC connections to storage databases.
+- An index on the `node_id` column of the `data_sources` table.
 
 ### Fixed
 
