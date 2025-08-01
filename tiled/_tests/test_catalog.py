@@ -60,8 +60,8 @@ async def test_nested_node_creation(a):
         specs=[],
     )
     c = await b.lookup_adapter(["c"])
-    assert b.segments == ["b"]
-    assert c.segments == ["b", "c"]
+    assert await b.path_segments() == ["b"]
+    assert await c.path_segments() == ["b", "c"]
     assert (await a.keys_range(0, 1)) == ["b"]
     assert (await b.keys_range(0, 1)) == ["c"]
     # smoke test
@@ -344,7 +344,7 @@ async def test_delete_tree(tmpdir):
         d.write_array([7, 8, 9])
 
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_before_delete) == 7
+        assert len(nodes_before_delete) == 7 + 1  # +1 for the root node
         data_sources_before_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
@@ -361,7 +361,7 @@ async def test_delete_tree(tmpdir):
         await tree.delete_tree(external_only=False)
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_after_delete) == 0
+        assert len(nodes_after_delete) == 0 + 1  # the root node that should remain
         data_sources_after_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
@@ -371,7 +371,7 @@ async def test_delete_tree(tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_access_control(tmpdir):
+async def test_access_control(tmpdir, sqlite_or_postgres_uri):
     config = {
         "authentication": {
             "allow_anonymous_access": True,
@@ -410,7 +410,7 @@ async def test_access_control(tmpdir):
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": f"sqlite:///{tmpdir}/catalog.db",
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },
@@ -536,7 +536,7 @@ async def test_constraints_on_parameter_and_num(a, assets):
 
 
 @pytest.mark.asyncio
-async def test_init_db_logging(tmpdir, caplog):
+async def test_init_db_logging(sqlite_or_postgres_uri, tmpdir, caplog):
     config = {
         "database": {
             "uri": "sqlite://",  # in-memory
@@ -546,7 +546,7 @@ async def test_init_db_logging(tmpdir, caplog):
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": f"sqlite:///{tmpdir}/catalog.db",
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": str(tmpdir / "data"),
                     "init_if_not_exists": True,
                 },

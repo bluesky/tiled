@@ -34,7 +34,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast
 from sqlalchemy.sql.sqltypes import MatchType
@@ -140,10 +140,11 @@ class RootNode:
     structure_family = StructureFamily.container
 
     def __init__(self, metadata, specs, top_level_access_blob):
+        self.id = 0
+        self.parent = None
         self.metadata_ = metadata or {}
         self.specs = [Spec.model_validate(spec) for spec in specs or []]
-        self.ancestors = []
-        self.key = None
+        self.key = ""
         self.data_sources = None
         self.access_blob = top_level_access_blob or {}
 
@@ -199,94 +200,6 @@ class Context:
         "Convenience method for constructing an AsyncSession context"
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
-    # This is heading in a reasonable direction but does not actually work yet.
-    # Pausing development for now.
-    #
-    #     async def list_metadata_indexes(self):
-    #         dialect_name = self.engine.url.get_dialect().name
-    #         async with self.context.session() as db:
-    #             if dialect_name == "sqlite":
-    #                 statement = """
-    # SELECT name, sql
-    # FROM SQLite_master
-    # WHERE type = 'index'
-    # AND tbl_name = 'nodes'
-    # AND name LIKE 'tiled_md_%'
-    # ORDER BY tbl_name;
-    #
-    # """
-    #             elif dialect_name == "postgresql":
-    #                 statement = """
-    # SELECT
-    # indexname, indexdef
-    # FROM
-    # pg_indexes
-    # WHERE tablename = 'nodes'
-    # AND indexname LIKE 'tiled_md_%'
-    # ORDER BY
-    # indexname;
-    #
-    # """
-    #             else:
-    #                 raise NotImplementedError(
-    #                     f"Cannot list indexes for dialect {dialect_name}"
-    #                 )
-    #             indexes = (
-    #                 await db.execute(
-    #                     text(statement),
-    #                     explain=False,
-    #                 )
-    #             ).all()
-    #         return indexes
-    #
-    #     async def create_metadata_index(self, index_name, key):
-    #         """
-    #
-    #         References
-    #         ----------
-    #         https://scalegrid.io/blog/using-jsonb-in-postgresql-how-to-effectively-store-index-json-data-in-postgresql/
-    #         https://pganalyze.com/blog/gin-index
-    #         """
-    #         dialect_name = self.engine.url.get_dialect().name
-    #         if INDEX_PATTERN.match(index_name) is None:
-    #             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
-    #         if dialect_name == "sqlite":
-    #             expression = orm.Node.metadata_[key].as_string()
-    #         elif dialect_name == "postgresql":
-    #             expression = orm.Node.metadata_[key].label("md")
-    #         else:
-    #             raise NotImplementedError
-    #         index = Index(
-    #             f"tiled_md_{index_name}",
-    #             "ancestors",
-    #             expression,
-    #             # postgresql_ops={"md": "jsonb_ops"},
-    #             postgresql_using="gin",
-    #         )
-    #
-    #         def create_index(connection):
-    #             index.create(connection)
-    #
-    #         async with self.engine.connect() as connection:
-    #             await connection.run_sync(create_index)
-    #             await connection.commit()
-    #
-    #     async def drop_metadata_index(self, index_name):
-    #         if INDEX_PATTERN.match(index_name) is None:
-    #             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
-    #         if not index_name.startswith("tiled_md_"):
-    #             index_name = f"tiled_md_{index_name}"
-    #         async with self.context.session() as db:
-    #             await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
-    #             await db.commit()
-    #
-    #     async def drop_all_metadata_indexes(self):
-    #         indexes = await self.list_metadata_indexes()
-    #         async with self.context.session() as db:
-    #             for index_name, sql in indexes:
-    #                 await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
-    #             await db.commit()
-
     async def execute(self, statement, explain=None):
         "Debugging convenience utility, not exposed to server"
         async with self.session() as db:
@@ -308,33 +221,32 @@ class CatalogNodeAdapter:
         conditions=None,
         queries=None,
         sorting=None,
-        mount_node: Optional[Union[str, List[str]]] = None,
+        mount_path: Optional[list[str]] = None,
     ):
         self.context = context
-        if isinstance(mount_node, str):
-            mount_node = [segment for segment in mount_node.split("/") if segment]
-        if mount_node:
-            if not isinstance(node, RootNode):
-                # sanity-check -- this should not be reachable
-                raise RuntimeError("mount_node should only be passed with the RootNode")
-            node.ancestors.extend(mount_node[:-1])
-            node.key = mount_node[-1]
         self.node = node
-        if node.key is None:
-            # Special case for RootNode
-            self.segments = []
-        else:
-            self.segments = node.ancestors + [node.key]
         self.sorting = sorting or [("", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
         self.specs = [Spec.model_validate(spec) for spec in node.specs]
-        self.ancestors = node.ancestors
-        self.key = node.key
         self.startup_tasks = [self.startup]
+        if mount_path:
+            self.startup_tasks.append(partial(self.create_mount, mount_path))
         self.shutdown_tasks = [self.shutdown]
+
+    async def path_segments(self):
+        statement = (
+            select(orm.Node.key)
+            .where(orm.Node.id != 0)
+            .join(orm.NodesClosure, orm.NodesClosure.ancestor == orm.Node.id)
+            .where(orm.NodesClosure.descendant == self.node.id)
+            .order_by(orm.NodesClosure.depth.desc())
+        )
+
+        async with self.context.session() as db:
+            return (await db.execute(statement)).scalars().all()
 
     @property
     def access_blob(self):
@@ -353,6 +265,12 @@ class CatalogNodeAdapter:
         else:
             await check_catalog_database(self.context.engine)
 
+    async def create_mount(self, mount_path: list[str]):
+        statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
+        async with self.context.engine.connect() as conn:
+            self.node.id = (await conn.execute(statement)).scalar()
+        self.node.key = mount_path[-1]
+
     async def shutdown(self):
         await self.context.engine.dispose()
 
@@ -361,10 +279,10 @@ class CatalogNodeAdapter:
         return bool(self.context.writable_storage)
 
     def __repr__(self):
-        return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
+        return f"<{type(self).__name__} {self.node.key}>"
 
     async def __aiter__(self):
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
         for condition in self.conditions:
             statement = statement.filter(condition)
         async with self.context.session() as db:
@@ -373,7 +291,7 @@ class CatalogNodeAdapter:
                 .scalars()
                 .all()
             )
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar().all()
 
@@ -422,18 +340,16 @@ class CatalogNodeAdapter:
 
     async def async_len(self):
         statement = select(func.count(orm.Node.key)).filter(
-            orm.Node.ancestors == self.segments
+            orm.Node.parent == self.node.id
         )
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
-    async def lookup_adapter(
-        self, segments
-    ):  # TODO: Accept filter for predicate-pushdown.
+    async def lookup_adapter(self, segments: list[str]):
+        # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
-        *ancestors, key = segments
         if self.conditions and len(segments) > 1:
             # There are some conditions (i.e. WHERE clauses) applied to
             # this node, either via user search queries or via access
@@ -445,15 +361,15 @@ class CatalogNodeAdapter:
             # Search queries and access controls apply only at the top level.
             assert not first_level.conditions
             return await first_level.lookup_adapter(segments[1:])
-        statement = select(orm.Node)
-        statement = self.apply_conditions(statement)
-        statement = statement.filter(
-            orm.Node.ancestors == self.segments + ancestors
-        ).options(
+
+        statement = node_from_segments(segments, root_id=self.node.id)
+        statement = self.apply_conditions(statement)  # Conditions on the child node
+        statement = statement.options(
             selectinload(orm.Node.data_sources).selectinload(orm.DataSource.structure)
         )
+
         async with self.context.session() as db:
-            node = (await db.execute(statement.filter(orm.Node.key == key))).scalar()
+            node = (await db.execute(statement)).scalar()
         if node is None:
             # Maybe the node does not exist, or maybe we have jumped _inside_ a file
             # whose internal contents are not indexed.
@@ -645,7 +561,7 @@ class CatalogNodeAdapter:
 
         node = orm.Node(
             key=key,
-            ancestors=self.segments,
+            parent=self.node.id,
             metadata_=metadata,
             structure_family=structure_family,
             specs=[s.model_dump() for s in specs or []],
@@ -662,7 +578,7 @@ class CatalogNodeAdapter:
                 UNIQUE_CONSTRAINT_FAILED = "gkpj"
                 if exc.code == UNIQUE_CONSTRAINT_FAILED:
                     await db.rollback()
-                    raise Collision(f"/{'/'.join(self.segments + [key])}")
+                    raise Collision(f"/{'/'.join(await self.path_segments() + [key])}")
                 raise
             await db.refresh(node)
             for data_source in data_sources:
@@ -706,7 +622,7 @@ class CatalogNodeAdapter:
                         adapter_cls.init_storage,
                         storage,
                         data_source,
-                        self.segments + [key],
+                        await self.path_segments() + [key],
                     )
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
@@ -858,7 +774,7 @@ class CatalogNodeAdapter:
         those DataSources will also be deleted.
         """
         async with self.context.session() as db:
-            is_child = orm.Node.ancestors == self.ancestors + [self.key]
+            is_child = orm.Node.parent == self.node.id
             num_children = (
                 await db.execute(select(func.count(orm.Node.key)).where(is_child))
             ).scalar()
@@ -892,7 +808,7 @@ class CatalogNodeAdapter:
 
     async def delete_tree(self, external_only=True):
         """
-        Delete a Node and of the Nodes beneath it in the tree.
+        Delete a Node and all the Nodes beneath it in the tree.
 
         That is, delete all Nodes that have this Node as an ancestor, any number
         of "generators" up.
@@ -900,21 +816,23 @@ class CatalogNodeAdapter:
         Any DataSources belonging to those Nodes and any Assets associated (only) with
         those DataSources will also be deleted.
         """
-        conditions = []
-        segments = self.ancestors + [self.key]
-        for generation in range(len(segments)):
-            conditions.append(orm.Node.ancestors[generation] == segments[0])
+        ROOT_ID = 0  # Protect the root node from being deleted
+        condition = orm.Node.id.in_(
+            select(orm.NodesClosure.descendant)
+            .where(orm.NodesClosure.ancestor == self.node.id)
+            .where(orm.NodesClosure.descendant != ROOT_ID)
+        )
         async with self.context.session() as db:
             if external_only:
-                count_int_asset_statement = select(
-                    func.count(orm.Asset.data_uri)
-                ).filter(
-                    orm.Asset.data_sources.any(
-                        orm.DataSource.management != Management.external
+                count_int_asset_statement = (
+                    select(func.count(orm.Asset.data_uri))
+                    .filter(
+                        orm.Asset.data_sources.any(
+                            orm.DataSource.management != Management.external
+                        )
                     )
+                    .filter(condition)
                 )
-                for condition in conditions:
-                    count_int_asset_statement.filter(condition)
                 count_int_assets = (
                     await db.execute(count_int_asset_statement)
                 ).scalar()
@@ -925,26 +843,28 @@ class CatalogNodeAdapter:
                         "If you want to delete them, pass external_only=False."
                     )
             else:
-                sel_int_asset_statement = select(
-                    orm.Asset.data_uri, orm.Asset.is_directory
-                ).filter(
-                    orm.Asset.data_sources.any(
-                        orm.DataSource.management != Management.external
+                sel_int_asset_statement = (
+                    select(orm.Asset.data_uri, orm.Asset.is_directory)
+                    .filter(
+                        orm.Asset.data_sources.any(
+                            orm.DataSource.management != Management.external
+                        )
                     )
+                    .filter(condition)
+                    .distinct()
                 )
-                for condition in conditions:
-                    sel_int_asset_statement.filter(condition)
                 int_assets = (await db.execute(sel_int_asset_statement)).all()
                 for data_uri, is_directory in int_assets:
                     delete_asset(data_uri, is_directory)
             # TODO Deal with Assets belonging to multiple DataSources.
-            del_asset_statement = delete(orm.Asset)
-            for condition in conditions:
-                del_asset_statement.filter(condition)
+            # NOTE: sqlite does not support DELETE ... USING, so we need to
+            # first select the Asset ids to delete.
+
+            asset_ids = select(orm.Asset.id).filter(condition)
+            del_asset_statement = delete(orm.Asset).filter(orm.Asset.id.in_(asset_ids))
             await db.execute(del_asset_statement)
-            del_node_statement = delete(orm.Node)
-            for condition in conditions:
-                del_node_statement.filter(condition)
+
+            del_node_statement = delete(orm.Node).filter(condition)
             result = await db.execute(del_node_statement)
             await db.commit()
         return result.rowcount
@@ -1020,7 +940,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 offset,
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (
@@ -1042,7 +962,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 offset,
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
-        statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             nodes = (
@@ -1567,6 +1487,14 @@ def from_uri(
         poolclass = AsyncAdaptedQueuePool
     else:
         poolclass = None  # defer to sqlalchemy default
+
+    node = RootNode(metadata, specs, top_level_access_blob)
+    mount_path = (
+        [segment for segment in mount_node.split("/") if segment]
+        if isinstance(mount_node, str)
+        else mount_node
+    )
+
     engine = create_async_engine(
         uri,
         echo=echo,
@@ -1575,11 +1503,8 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    adapter = CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
-        RootNode(metadata, specs, top_level_access_blob),
-        mount_node=mount_node,
-    )
+    context = Context(engine, writable_storage, readable_storage, adapters_by_mimetype)
+    adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
     return adapter
 
 
@@ -1656,6 +1581,38 @@ def specs_array_to_json(specs):
     [{"name":"foo"},{"name":"bar"}]
     """
     return [{"name": spec} for spec in specs]
+
+
+def node_from_segments(segments, root_id=0):
+    """Create an SQLAlchemy select statement to find a node based on its path
+
+    Queries the database recursively to find the node with the given ancestors
+    and key.
+
+    Parameters
+    ----------
+        segments : list of str
+            The path segments leading to the node, e.g. ['A', 'x', 'i'].
+        root_id : int
+            The ID of the root node, typically 0 for the root of the catalog.
+
+    Returns
+    -------
+        sqlalchemy.sql.selectable.Select
+    """
+
+    # Create an alias for each ancestor node in the path and build the join chain
+    orm_NodeAliases = [aliased(orm.Node) for _ in range(len(segments))] + [orm.Node]
+    statement = select(orm_NodeAliases[-1])  # Select the child node
+    statement = statement.select_from(orm_NodeAliases[0])  # Start from the ancestor
+    statement = statement.where(orm_NodeAliases[0].id == root_id)
+    for i, segment in enumerate(segments):
+        parent, child = orm_NodeAliases[i], orm_NodeAliases[i + 1]
+        statement = statement.join(child, child.parent == parent.id).where(
+            child.key == segment
+        )
+
+    return statement
 
 
 STRUCTURES = {
