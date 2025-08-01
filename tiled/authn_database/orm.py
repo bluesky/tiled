@@ -14,7 +14,7 @@ from sqlalchemy import (
     Unicode,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
 
@@ -132,15 +132,16 @@ class Principal(Timestamped, Base):
     type = Column(Enum(PrincipalType), nullable=False)
     # In the future we may add other information.
 
-    identities = relationship("Identity", back_populates="principal")
-    api_keys = relationship("APIKey", back_populates="principal")
-    roles = relationship(
-        "Role",
+    identities: Mapped[list["Identity"]] = relationship(back_populates="principal")
+    api_keys: Mapped[list["APIKey"]] = relationship(back_populates="principal")
+    roles: Mapped[list["Role"]] = relationship(
         secondary=principal_role_association_table,
         back_populates="principals",
         lazy="joined",
     )
-    sessions = relationship("Session", back_populates="principal")
+    sessions: Mapped[list["Session"]] = relationship(
+        "Session", back_populates="principal"
+    )
 
 
 class Identity(Timestamped, Base):
@@ -153,7 +154,7 @@ class Identity(Timestamped, Base):
     latest_login = Column(DateTime(timezone=True), nullable=True)
     # In the future we may add a notion of "primary" identity.
 
-    principal = relationship("Principal", back_populates="identities")
+    principal: Mapped[Principal] = relationship(back_populates="identities")
 
 
 class Role(Timestamped, Base):
@@ -163,8 +164,8 @@ class Role(Timestamped, Base):
     name = Column(Unicode(255), index=True, unique=True, nullable=False)
     description = Column(Unicode(1023), nullable=True)
     scopes = Column(JSONList(511), nullable=False)
-    principals = relationship(
-        "Principal", secondary=principal_role_association_table, back_populates="roles"
+    principals: Mapped[list[Principal]] = relationship(
+        secondary=principal_role_association_table, back_populates="roles"
     )
 
 
@@ -189,7 +190,9 @@ class APIKey(Timestamped, Base):
     # without deleting them from the database, for forensics and
     # record-keeping.
 
-    principal = relationship("Principal", back_populates="api_keys", lazy="joined")
+    principal: Mapped[Principal] = relationship(
+        back_populates="api_keys", lazy="joined"
+    )
 
 
 class Session(Timestamped, Base):
@@ -214,7 +217,9 @@ class Session(Timestamped, Base):
     revoked = Column(Boolean, default=False, nullable=False)
     # State allows for custom  authenticator information to be stored in the session.
     state = Column(JSONVariant, nullable=False)
-    principal = relationship("Principal", back_populates="sessions", lazy="joined")
+    principal: Mapped[Principal] = relationship(
+        back_populates="sessions", lazy="joined"
+    )
 
 
 class PendingSession(Base):
@@ -230,5 +235,4 @@ class PendingSession(Base):
     user_code = Column(Unicode(8), index=True, nullable=False)
     expiration_time = Column(DateTime(timezone=True), nullable=False)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
-
-    session = relationship("Session", lazy="joined")
+    session: Mapped[Session] = relationship(lazy="joined")

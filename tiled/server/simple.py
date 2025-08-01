@@ -7,10 +7,13 @@ import shutil
 import tempfile
 import threading
 import time
-from typing import Optional, Union
+from typing import Optional, Union, cast
 from urllib.parse import quote_plus, urlparse
 
 import uvicorn
+
+from ..storage import SQLStorage, get_storage
+from ..utils import ensure_uri
 
 _server_is_running = False
 
@@ -104,6 +107,8 @@ class SimpleTiledServer:
             directory = pathlib.Path(directory).resolve()
             self._cleanup_directory = False
         (directory / "data").mkdir(parents=True, exist_ok=True)
+        storage_uri = ensure_uri(f"duckdb:///{str(directory / 'storage.duckdb')}")
+
         # In production we use a proper 32-bit token, but for brevity we
         # use just 8 here. This server only accepts connections on localhost
         # and is not intended for production use, so we think this is an
@@ -122,10 +127,7 @@ class SimpleTiledServer:
 
         self.catalog = catalog_from_uri(
             directory / "catalog.db",
-            writable_storage=[
-                directory / "data",
-                f"duckdb:///{str(directory / 'storage.duckdb')}",
-            ],
+            writable_storage=[directory / "data", storage_uri],
             init_if_not_exists=True,
             readable_storage=readable_storage,
         )
@@ -143,6 +145,7 @@ class SimpleTiledServer:
         # Stash attributes for easy introspection
         self.port = actual_port
         self.directory = directory
+        self.storage = cast(SQLStorage, get_storage(storage_uri))
         self.api_key = api_key
         self.uri = f"{base_url}/api/v1?api_key={quote_plus(api_key)}"
         self.web_ui_link = f"{base_url}?api_key={quote_plus(api_key)}"
@@ -164,6 +167,7 @@ class SimpleTiledServer:
 </table>"""
 
     def close(self):
+        self.storage.dispose()  # Close the connection to the storage DB
         self._cm.__exit__(None, None, None)
         if self._cleanup_directory and (platform.system() != "Windows"):
             # Windows cannot delete the logfiles because the global Python
