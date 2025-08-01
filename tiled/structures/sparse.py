@@ -1,6 +1,9 @@
 import enum
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
+
+from tiled.structures.root import Structure
 
 
 class SparseLayout(str, enum.Enum):
@@ -10,7 +13,7 @@ class SparseLayout(str, enum.Enum):
 
 
 @dataclass
-class COOStructure:
+class COOStructure(Structure):
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
@@ -19,7 +22,7 @@ class COOStructure:
     # TODO Include fill_value?
 
     @classmethod
-    def from_json(cls, structure):
+    def from_json(cls, structure: Mapping[str, Any]) -> "COOStructure":
         return cls(
             chunks=tuple(map(tuple, structure["chunks"])),
             shape=tuple(structure["shape"]),
