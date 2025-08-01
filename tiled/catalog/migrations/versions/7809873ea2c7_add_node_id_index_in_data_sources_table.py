@@ -15,10 +15,10 @@ depends_on = None
 
 
 def upgrade():
-    with op.batch_alter_table("data_sources", schema=None) as batch_op:
-        batch_op.create_index("idx_data_sources_node_id", ["node_id"])
+    op.create_index(
+        "idx_data_sources_node_id", table_name="data_sources", columns=["node_id"]
+    )
 
 
 def downgrade():
-    with op.batch_alter_table("data_sources", schema=None) as batch_op:
-        batch_op.drop_index("idx_data_sources_node_id")
+    op.drop_index("idx_data_sources_node_id", table_name="data_sources")
