@@ -155,7 +155,6 @@ jobs:
 
     - name: Build and push Docker image
       uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
-      if: github.ref_type == 'tag'
       with:
         context: .
         file: Dockerfile
@@ -166,4 +165,4 @@ jobs:
 
     - name: Validate container
       run: |
-        canary validate --file canary-validator.yml ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        canary validate --file canary-validator.yml tiled:latest
