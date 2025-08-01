@@ -166,4 +166,4 @@ jobs:
 
     - name: Validate container
       run: |
-        canary validate --file canary-validator.yml tiled:latest
+        canary validate --file canary-validator.yml ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
