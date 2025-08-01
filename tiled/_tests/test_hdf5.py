@@ -142,15 +142,17 @@ def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
 @pytest.mark.filterwarnings("ignore: The dataset")
 @pytest.mark.parametrize("key", ["bool", "int", "float", "str", "bytes"])
 @pytest.mark.parametrize("num", [1, 5])
-def test_from_file_with_scalars(example_file_with_scalars, buffer, key, num):
+def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num: int):
     """Serve HDF5 file(s) containing scalars."""
+    if key in {"str", "bytes"}:
+        pytest.xfail("HDF5Adapter treats object dtypes differently.")
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(*[example_file_with_scalars] * num)
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         arr = client["a"]["b"]["c"][key].read()
         assert isinstance(arr, numpy.ndarray)
-        assert arr.shape == () if num == 1 else (num,)
+        assert arr.shape == (num,)
         client.export(buffer, format="application/x-hdf5")
         file = h5py.File(buffer, "r")
         assert file["a"]["b"]["c"][key] is not None

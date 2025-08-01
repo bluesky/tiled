@@ -6,12 +6,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b31 (Unreleased)
 
+### Added
+
+- Pooling of ADBC connections to storage databases.
+- An index on the `node_id` column of the `data_sources` table.
+
 ### Fixed
 
-- Tests were missing assertions to verify expected outcomes.
-- Combining multiple hdf5 files containing scalar values by HDF5Adapter.
-- Explicit type conversion in SQL adapter when appending to an existing table.
+- Make devcontainer work out of box to run e.g. tiled serve demo
 - Tests were missing assertions to verify expected outcomes
+- Combining multiple hdf5 files containing scalar values by HDF5Adapter.
+- Make principal type hints consistent in router
+- Typehinted database access methods
+- Explicit type conversion in SQL adapter when appending to an existing table.
 
 ## v0.1.0-b30 (2025-07-18)
 

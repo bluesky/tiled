@@ -1,8 +1,6 @@
 from pathlib import Path
-from typing import Any, Callable, Generator, Union
+from typing import Any, Callable, Generator, Union, cast
 
-import adbc_driver_duckdb
-import adbc_driver_sqlite
 import numpy as np
 import pyarrow as pa
 import pytest
@@ -13,10 +11,11 @@ from tiled.adapters.sql import (
     SQLAdapter,
     is_safe_identifier,
 )
-from tiled.storage import parse_storage, register_storage
+from tiled.storage import SQLStorage, get_storage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
+from tiled.utils import sanitize_uri
 
 names = ["f0", "f1", "f2", "f3"]
 data0 = [
@@ -58,7 +57,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
             assets=[],
         )
 
-        storage = parse_storage(data_uri)
+        storage = cast(SQLStorage, parse_storage(data_uri))
         register_storage(storage)
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
@@ -98,9 +97,6 @@ def adapter_duckdb_many_partitions(
 def test_attributes_duckdb_one_part(adapter_duckdb_one_partition: SQLAdapter) -> None:
     assert adapter_duckdb_one_partition.structure().columns == names
     assert adapter_duckdb_one_partition.structure().npartitions == 1
-    assert isinstance(
-        adapter_duckdb_one_partition.conn, adbc_driver_duckdb.dbapi.Connection
-    )
 
 
 def test_attributes_duckdb_many_part(
@@ -108,9 +104,6 @@ def test_attributes_duckdb_many_part(
 ) -> None:
     assert adapter_duckdb_many_partitions.structure().columns == names
     assert adapter_duckdb_many_partitions.structure().npartitions == 3
-    assert isinstance(
-        adapter_duckdb_many_partitions.conn, adbc_driver_duckdb.dbapi.Connection
-    )
 
 
 @pytest.fixture
@@ -146,17 +139,11 @@ def adapter_sqlite_many_partitions(
 def test_attributes_sql_one_part(adapter_sqlite_one_partition: SQLAdapter) -> None:
     assert adapter_sqlite_one_partition.structure().columns == names
     assert adapter_sqlite_one_partition.structure().npartitions == 1
-    assert isinstance(
-        adapter_sqlite_one_partition.conn, adbc_driver_sqlite.dbapi.Connection
-    )
 
 
 def test_attributes_sql_many_part(adapter_sqlite_many_partitions: SQLAdapter) -> None:
     assert adapter_sqlite_many_partitions.structure().columns == names
     assert adapter_sqlite_many_partitions.structure().npartitions == 3
-    assert isinstance(
-        adapter_sqlite_many_partitions.conn, adbc_driver_sqlite.dbapi.Connection
-    )
 
 
 @pytest.fixture
@@ -165,36 +152,39 @@ def adapter_psql_one_partition(
     postgres_uri: str,
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 1)
-    adapter = SQLAdapter(
+    yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
         data_source.parameters["table_name"],
         data_source.parameters["dataset_id"],
     )
-    yield adapter
-    adapter.close()
+
+    # Close all connections and dispose of the storage
+    storage = get_storage(sanitize_uri(postgres_uri)[0])
+    cast(SQLStorage, storage).dispose()
 
 
 @pytest.fixture
 def adapter_psql_many_partitions(
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
     postgres_uri: str,
-) -> SQLAdapter:
+) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 3)
-    return SQLAdapter(
+    yield SQLAdapter(
         data_source.assets[0].data_uri,
         data_source.structure,
         data_source.parameters["table_name"],
         data_source.parameters["dataset_id"],
     )
 
+    # Close all connections and dispose of the storage
+    storage = get_storage(sanitize_uri(postgres_uri)[0])
+    cast(SQLStorage, storage).dispose()
+
 
 def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
     assert adapter_psql_one_partition.structure().columns == names
     assert adapter_psql_one_partition.structure().npartitions == 1
-    # assert isinstance(
-    #    adapter_psql.conn, adbc_driver_postgresql.dbapi.AdbcSqliteConnection
-    # )
 
 
 @pytest.mark.parametrize(
@@ -653,9 +643,10 @@ def test_can_query_with_valid_column_names(
         assets=[],
     )
     data_uri = request.getfixturevalue(data_uri)
-    storage = parse_storage(data_uri)
+    storage = cast(SQLStorage, parse_storage(data_uri))
     register_storage(storage)
     assert SQLAdapter.init_storage(data_source=data_source, storage=storage) is not None
+    storage.dispose()
 
 
 @pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
@@ -664,7 +655,7 @@ def test_reject_colliding_uppercase_column_names(
 ) -> None:
     # Define a table and a storage
     data_uri = request.getfixturevalue(data_uri)
-    storage = parse_storage(data_uri)
+    storage = cast(SQLStorage, parse_storage(data_uri))
     register_storage(storage)
 
     # Create a table with colliding column names
@@ -705,6 +696,8 @@ def test_reject_colliding_uppercase_column_names(
     adapter.append_partition(table, 0)
     assert adapter.table_name == "table_name"
     assert set(adapter.read().columns) == {"lower_case", "UPPER_CASE"}
+
+    storage.dispose()  # Close all connections
 
 
 @pytest.mark.parametrize(
@@ -751,7 +744,7 @@ def test_append_nullable(
 
     # Define a table and a storage
     data_uri = request.getfixturevalue(data_uri)
-    storage = parse_storage(data_uri)
+    storage = cast(SQLStorage, parse_storage(data_uri))
     register_storage(storage)
 
     # Create a table to be appended
@@ -780,9 +773,6 @@ def test_append_nullable(
     adapter_part.append_partition(table_1, 0)
     result_part = adapter_part.read()["part_column"].to_numpy()
 
-    # Close the connection to the database
-    adapter_part.close()
-
     # Write the full table at once and read it back
     table_full = pa.Table.from_arrays([initial + appended], ["full_column"])
     data_source = DataSource(
@@ -805,3 +795,5 @@ def test_append_nullable(
 
     # Check if the data matches in both cases
     assert deep_array_equal(result_part, result_full)
+
+    storage.dispose()  # Close all connections

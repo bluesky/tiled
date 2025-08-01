@@ -1,8 +1,9 @@
 import hashlib
 import uuid as uuid_module
 from datetime import datetime, timezone
+from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
@@ -25,7 +26,7 @@ ALL_REVISIONS = [
 REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
-async def create_default_roles(db):
+async def create_default_roles(db: AsyncSession) -> None:
     db.add_all(
         [
             Role(
@@ -61,10 +62,7 @@ async def create_default_roles(db):
     await db.commit()
 
 
-async def initialize_database(engine):
-    # The definitions in .orm alter Base.metadata.
-    from . import orm  # noqa: F401
-
+async def initialize_database(engine: AsyncEngine) -> None:
     async with engine.connect() as conn:
         # Create all tables.
         await conn.run_sync(Base.metadata.create_all)
@@ -75,7 +73,7 @@ async def initialize_database(engine):
             await create_default_roles(db)
 
 
-async def purge_expired(db, cls):
+async def purge_expired(db: AsyncSession, cls) -> int:
     """
     Remove expired entries.
     """
@@ -95,7 +93,7 @@ async def purge_expired(db, cls):
     return num_expired
 
 
-async def create_user(db, identity_provider, id):
+async def create_user(db: AsyncSession, identity_provider: str, id: str) -> Principal:
     user_role = (await db.execute(select(Role).filter(Role.name == "user"))).scalar()
     assert user_role is not None, "User role is missing from Roles table"
     principal = Principal(type="user", roles=[user_role])
@@ -115,10 +113,13 @@ async def create_user(db, identity_provider, id):
             .options(selectinload(Principal.identities))
         )
     ).scalar()
+    assert (
+        refreshed_principal is not None
+    ), f"Newly created user {id} ({identity_provider}) missing from Principals table"
     return refreshed_principal
 
 
-async def create_service(db, role):
+async def create_service(db: AsyncSession, role: str) -> Principal:
     role_ = (await db.execute(select(Role).filter(Role.name == role))).scalar()
     if role_ is None:
         raise ValueError(f"Role named {role!r} is not found")
@@ -128,7 +129,7 @@ async def create_service(db, role):
     return principal
 
 
-async def lookup_valid_session(db, session_id):
+async def lookup_valid_session(db: AsyncSession, session_id: str) -> Optional[Session]:
     if isinstance(session_id, int):
         # Old versions of tiled used an integer sid.
         # Reject any of those old sessions and force reauthentication.
@@ -155,7 +156,9 @@ async def lookup_valid_session(db, session_id):
     return session
 
 
-async def lookup_valid_pending_session_by_device_code(db, device_code):
+async def lookup_valid_pending_session_by_device_code(
+    db: AsyncSession, device_code: str
+) -> Optional[PendingSession]:
     hashed_device_code = hashlib.sha256(device_code).digest()
     pending_session = (
         await db.execute(
@@ -181,7 +184,9 @@ async def lookup_valid_pending_session_by_device_code(db, device_code):
     return pending_session
 
 
-async def lookup_valid_pending_session_by_user_code(db, user_code):
+async def lookup_valid_pending_session_by_user_code(
+    db: AsyncSession, user_code: str
+) -> Optional[PendingSession]:
     pending_session = (
         await db.execute(
             select(PendingSession).filter(PendingSession.user_code == user_code)
@@ -200,7 +205,9 @@ async def lookup_valid_pending_session_by_user_code(db, user_code):
     return pending_session
 
 
-async def make_admin_by_identity(db, identity_provider, id):
+async def make_admin_by_identity(
+    db: AsyncSession, identity_provider: str, id: str
+) -> Principal:
     identity = (
         await db.execute(
             select(Identity)
@@ -226,7 +233,7 @@ async def make_admin_by_identity(db, identity_provider, id):
     return principal
 
 
-async def lookup_valid_api_key(db, secret):
+async def lookup_valid_api_key(db: AsyncSession, secret: bytes) -> Optional[APIKey]:
     """
     Look up an API key. Ensure that it is valid.
     """
@@ -265,7 +272,9 @@ async def lookup_valid_api_key(db, secret):
     return validated_api_key
 
 
-async def latest_principal_activity(db, principal):
+async def latest_principal_activity(
+    db: AsyncSession, principal: Principal
+) -> Optional[datetime]:
     """
     The most recent time this Principal has logged in with an Identity,
     refreshed a Session, or used an APIKey.
