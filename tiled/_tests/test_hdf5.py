@@ -35,7 +35,8 @@ def example_file(tmp_path_factory):
         b = a.create_group("b")
         c = b.create_group("c")
         c.create_dataset("d", data=numpy.ones((3, 3)))
-    return ensure_uri(file_path)
+
+    yield ensure_uri(file_path)
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +53,8 @@ def example_file_with_empty_data(tmp_path_factory):
         c.create_dataset("g", data=[])
         c.create_dataset("h", data="")
         c.create_dataset("i", data=numpy.empty(shape=()))
-    return ensure_uri(file_path)
+
+    yield ensure_uri(file_path)
 
 
 @pytest.fixture(scope="module")
@@ -68,7 +70,8 @@ def example_file_with_scalars(tmp_path_factory):
         c.create_dataset("str", data="hello")
         c.create_dataset("bytes", data=b"hello")
         c.create_dataset("bool", data=True)
-    return ensure_uri(file_path)
+
+    yield ensure_uri(file_path)
 
 
 @pytest.fixture(scope="module")
@@ -84,7 +87,8 @@ def example_file_with_vlen_str_in_dataset(tmp_path_factory):
         dset = c.create_dataset("d", (100,), dtype=dt)
         assert dset.dtype == "object"
         dset[0] = b"test"
-    return ensure_uri(file_path)
+
+    yield ensure_uri(file_path)
 
 
 @pytest.fixture(scope="function")
@@ -104,7 +108,7 @@ def example_file_with_links(tmp_path_factory):
         b["soft_link"] = h5py.SoftLink("/a/b/c/d")
         b["extr_link"] = h5py.ExternalLink("linked.h5", "/z/y")
 
-    return ensure_uri(file_path)
+    yield ensure_uri(file_path)
 
 
 def test_from_file(example_file, buffer):
@@ -117,7 +121,7 @@ def test_from_file(example_file, buffer):
         assert isinstance(arr, numpy.ndarray)
         client.export(buffer, format="application/x-hdf5")
         file = h5py.File(buffer, "r")
-        file["a"]["b"]["c"]["d"]
+        assert file["a"]["b"]["c"]["d"] is not None
 
 
 @pytest.mark.filterwarnings("ignore: The dataset")
@@ -132,7 +136,7 @@ def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
         assert isinstance(arr, numpy.ndarray)
         client.export(buffer, format="application/x-hdf5")
         file = h5py.File(buffer, "r")
-        file["a"]["b"]["c"][key]
+        assert file["a"]["b"]["c"][key] is not None
 
 
 @pytest.mark.filterwarnings("ignore: The dataset")
@@ -167,7 +171,7 @@ def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, 
     with pytest.warns(UserWarning):
         client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
-    file["a"]["b"]["c"]["d"]
+    assert file["a"]["b"]["c"]["d"] is not None
 
 
 def test_from_group(example_file, buffer):
@@ -180,7 +184,7 @@ def test_from_group(example_file, buffer):
     assert isinstance(arr, numpy.ndarray)
     client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
-    file["c"]["d"]
+    assert file["c"]["d"] is not None
 
 
 def test_from_multiple(example_file, buffer):
@@ -200,8 +204,8 @@ def test_from_multiple(example_file, buffer):
     assert isinstance(arr_B, numpy.ndarray)
     client.export(buffer, format="application/x-hdf5")
     file = h5py.File(buffer, "r")
-    file["A"]["a"]["b"]["c"]["d"]
-    file["B"]["a"]["b"]["c"]["d"]
+    assert file["A"]["a"]["b"]["c"]["d"] is not None
+    assert file["B"]["a"]["b"]["c"]["d"] is not None
 
 
 def test_inlined_contents(example_file):

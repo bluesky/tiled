@@ -146,7 +146,7 @@ async def sqlite_uri(tmp_path: Path):
     yield f"sqlite:///{tmp_path}/tiled.sqlite"
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def duckdb_uri(tmp_path: Path):
     yield f"duckdb:///{tmp_path}/tiled.duckdb"
 
