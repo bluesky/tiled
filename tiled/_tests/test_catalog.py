@@ -329,7 +329,7 @@ def test_write_xarray_dataset(client):
 
 
 @pytest.mark.asyncio
-async def test_delete_tree(tmpdir):
+async def test_delete_catalog_tree(tmpdir):
     # Do not use client fixture here.
     # The Context must be opened inside the test or we run into
     # event loop crossing issues with the Postgres test.
@@ -422,7 +422,7 @@ async def test_delete_with_external_nodes(tmpdir):
         assert len(assets_before_delete) == 4
 
         # Delete all children of b1, and b1 itself.
-        client["a"].delete("b1", recursive=True)
+        client["a"].delete_contents("b1", recursive=True)
 
         assert list(client) == ["a"]
         assert list(client["a"]) == ["b2"]
@@ -488,8 +488,9 @@ async def test_delete_sql_assets(tmpdir, scheme):
         assert len(assets_before_delete) == 1  # single sql asset
 
         # Delete all children of b1, but not b1 itself.
-        for child in client["a"]["b1"].keys():
-            client["a"]["b1"].delete(child, recursive=True, external_only=False)
+        client["a"]["b1"].delete_contents(
+            client["a"]["b1"].keys(), recursive=True, external_only=False
+        )
 
         assert list(client) == ["a"]
         assert list(client["a"]) == ["b1", "b2"]
@@ -544,7 +545,7 @@ async def test_delete_external_asset_registered_twice(tmpdir):
         assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
         assert len(assets_after_delete) == 3  # shared by two data sources
 
-        a.delete("b2", recursive=True)
+        a.delete_contents("b2", recursive=True)
 
         data_sources_after_delete = (
             await tree.context.execute("SELECT * from data_sources")
@@ -556,7 +557,7 @@ async def test_delete_external_asset_registered_twice(tmpdir):
         # The asset in b1 should still be accessible.
         client["a"]["b1"]["test_1"].read()
 
-        a.delete("b1", recursive=True)
+        a.delete_contents("b1", recursive=True)
         data_sources_after_second_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
