@@ -217,14 +217,6 @@ class CatalogNodeAdapter:
     def __init__(self, context, node, *, conditions=None, queries=None, sorting=None):
         self.context = context
         self.node = node
-        if isinstance(mount_node, str):
-            mount_node = [segment for segment in mount_node.split("/") if segment]
-        if mount_node and not isinstance(node, RootNode):
-            # sanity-check -- this should not be reachable
-            raise RuntimeError("mount_node should only be passed with the RootNode")
-        self.mount_node = mount_node or []
-
-        self.key = self.mount_node[-1] if self.mount_node else self.node.key
         self.sorting = sorting or [("", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
