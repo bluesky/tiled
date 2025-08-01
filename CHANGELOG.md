@@ -17,6 +17,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Make devcontainer work out of box to run e.g. tiled serve demo
 - Tests were missing assertions to verify expected outcomes
 - Make principal type hints consistent in router
 - Typehinted database access methods
@@ -30,12 +31,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
+- The logic of hierarchical organization of the Nodes table in Catalog: use the
+  concept of Closure Table to track ancestors and descendants of the nodes.
 
 ## Fixed
 
 - Restored authentication check for API key
 - Updated usage for change in Zarr 3.x API.
 - Improved error message if config location is non-file
+
 
 ## v0.1.0-b29 (2025-06-06)
 

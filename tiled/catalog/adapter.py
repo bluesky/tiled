@@ -20,7 +20,6 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
     and_,
-    create_engine,
     delete,
     event,
     exists,
@@ -223,7 +222,16 @@ class CatalogNodeAdapter:
     register_query = query_registry.register
     register_query_lazy = query_registry.register_lazy
 
-    def __init__(self, context, node, *, conditions=None, queries=None, sorting=None):
+    def __init__(
+        self,
+        context,
+        node,
+        *,
+        conditions=None,
+        queries=None,
+        sorting=None,
+        mount_path: Optional[list[str]] = None,
+    ):
         self.context = context
         self.node = node
         self.sorting = sorting or [("", 1)]
@@ -233,6 +241,8 @@ class CatalogNodeAdapter:
         self.structure_family = node.structure_family
         self.specs = [Spec.model_validate(spec) for spec in node.specs]
         self.startup_tasks = [self.startup]
+        if mount_path:
+            self.startup_tasks.append(partial(self.create_mount, mount_path))
         self.shutdown_tasks = [self.shutdown]
 
     async def path_segments(self):
@@ -263,6 +273,12 @@ class CatalogNodeAdapter:
             await initialize_database(self.context.engine)
         else:
             await check_catalog_database(self.context.engine)
+
+    async def create_mount(self, mount_path: list[str]):
+        statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
+        async with self.context.engine.connect() as conn:
+            self.node.id = (await conn.execute(statement)).scalar()
+        self.node.key = mount_path[-1]
 
     async def shutdown(self):
         await self.context.engine.dispose()
@@ -828,12 +844,14 @@ class CatalogNodeAdapter:
             ).all():
                 # Check if this asset is referenced by other UNAFFECTED nodes
                 is_referenced = select(
-                    exists().where(
+                    exists()
+                    .where(
                         orm.Asset.id == asset_id,
                         orm.Asset.data_sources.any(
                             orm.DataSource.node_id.notin_(affected_nodes_stmnt)
                         ),
                     )
+                    .distinct()
                 )
                 if not (await db.execute(is_referenced)).scalar():
                     # This asset is referenced only by AFFECTED nodes, so we can delete it
@@ -1504,18 +1522,11 @@ def from_uri(
         poolclass = None  # defer to sqlalchemy default
 
     node = RootNode(metadata, specs, top_level_access_blob)
-
-    if mount_node:
-        if isinstance(mount_node, str):
-            mount_node = [segment for segment in mount_node.split("/") if segment]
-        sync_uri = uri.replace("postgresql+asyncpg", "postgresql+psycopg2").replace(
-            "sqlite+aiosqlite", "sqlite"
-        )
-        sync_engine = create_engine(sync_uri)
-        statement = node_from_segments(mount_node).with_only_columns(orm.Node.id)
-        with sync_engine.connect() as conn:
-            node.id = conn.execute(statement).scalar()
-        node.key = mount_node[-1]
+    mount_path = (
+        [segment for segment in mount_node.split("/") if segment]
+        if isinstance(mount_node, str)
+        else mount_node
+    )
 
     engine = create_async_engine(
         uri,
@@ -1526,7 +1537,7 @@ def from_uri(
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     context = Context(engine, writable_storage, readable_storage, adapters_by_mimetype)
-    adapter = CatalogContainerAdapter(context, node)
+    adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
     return adapter
 
 
