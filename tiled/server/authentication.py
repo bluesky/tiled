@@ -397,7 +397,7 @@ async def get_current_principal(
     return principal
 
 
-async def create_pending_session(db):
+async def create_pending_session(db: AsyncSession):
     device_code = secrets.token_bytes(32)
     hashed_device_code = hashlib.sha256(device_code).digest()
     for _ in range(3):
@@ -423,7 +423,7 @@ async def create_pending_session(db):
 
 
 async def create_session(
-    settings, db, identity_provider, id, state: UserSessionState = None
+    settings, db: AsyncSession, identity_provider, id, state: UserSessionState = None
 ):
     # Have we seen this Identity before?
     identity = (
@@ -482,7 +482,7 @@ async def create_session(
     return fully_loaded_session
 
 
-async def create_tokens_from_session(settings, db, session, provider):
+async def create_tokens_from_session(settings, db: AsyncSession, session, provider):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -747,7 +747,7 @@ def add_internal_routes(
         return tokens
 
 
-async def generate_apikey(db, principal, apikey_params, request):
+async def generate_apikey(db: AsyncSession, principal, apikey_params, request):
     if apikey_params.scopes is None:
         scopes = ["inherit"]
     else:

@@ -9,6 +9,7 @@ from ..utils import (
     OneShotCachedMap,
     ensure_specified_sql_driver,
     parse_time_string,
+    sanitize_uri,
     walk,
 )
 
@@ -270,3 +271,71 @@ def test_cachingmap_repr_lazy_and_evaluated():
 def test_walk(mapping, expected):
     result = list(walk(mapping))
     assert result == expected
+
+
+@pytest.mark.parametrize(
+    "uri, expected_clean_uri, expected_username, expected_password",
+    [
+        # URI with username and password
+        (
+            "postgresql://user:pass@localhost:5432/db",
+            "postgresql://localhost:5432/db",
+            "user",
+            "pass",
+        ),
+        # URI with only username
+        (
+            "postgresql://user@localhost:5432/db",
+            "postgresql://localhost:5432/db",
+            "user",
+            None,
+        ),
+        # URI with no username/password
+        (
+            "postgresql://localhost:5432/db",
+            "postgresql://localhost:5432/db",
+            None,
+            None,
+        ),
+        # URI with username and password, no port
+        (
+            "sqlite://user:pass@localhost/db",
+            "sqlite://localhost/db",
+            "user",
+            "pass",
+        ),
+        # URI with username only, no port
+        (
+            "sqlite://user@localhost/db",
+            "sqlite://localhost/db",
+            "user",
+            None,
+        ),
+        # URI with username and password, with query and fragment
+        (
+            "postgresql://user:pass@localhost:5432/db?foo=bar#frag",
+            "postgresql://localhost:5432/db?foo=bar#frag",
+            "user",
+            "pass",
+        ),
+        # URI with username only, with query and fragment
+        (
+            "postgresql://user@localhost:5432/db?foo=bar#frag",
+            "postgresql://localhost:5432/db?foo=bar#frag",
+            "user",
+            None,
+        ),
+        # URI with no netloc (should not fail)
+        (
+            "sqlite:///db.sqlite",
+            "sqlite:///db.sqlite",
+            None,
+            None,
+        ),
+    ],
+)
+def test_sanitize_uri(uri, expected_clean_uri, expected_username, expected_password):
+    clean_uri, username, password = sanitize_uri(uri)
+    assert clean_uri == expected_clean_uri
+    assert username == expected_username
+    assert password == expected_password

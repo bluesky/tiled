@@ -5,9 +5,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b31 (Unreleased)
 
+### Added
+
+- Pooling of ADBC connections to storage databases.
+
 ### Fixed
 
 - Tests were missing assertions to verify expected outcomes
+- Make principal type hints consistent in router
+- Typehinted database access methods
 - Typehint utils collection implementations
 
 ## v0.1.0-b30 (2025-07-18)

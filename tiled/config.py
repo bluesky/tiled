@@ -55,7 +55,7 @@ def construct_build_app_kwargs(
     The parameters query_registry, compression_registry, and
     serialization_registry are used by the tests to inject separate registry
     instances. By default, the singleton global instances of these registries
-    and used (and modified).
+    are used (and modified).
     """
     config = copy.deepcopy(config)  # Avoid mutating input.
     startup_tasks = []
