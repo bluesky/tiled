@@ -11,6 +11,7 @@ import orjson
 from httpx import URL
 
 from tiled.client.context import Context
+from tiled.type_aliases import JSON
 
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -230,7 +231,7 @@ class BaseClient:
         return self._item
 
     @property
-    def metadata(self) -> DictView[Any, Any]:
+    def metadata(self) -> DictView[Any, JSON]:
         "Metadata about this data source."
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
@@ -267,7 +268,7 @@ class BaseClient:
         return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
 
     @property
-    def access_blob(self) -> DictView[Any, Any]:
+    def access_blob(self) -> DictView[Any, JSON]:
         "Authorization information about this node, in blob form"
         access_blob = self._item["attributes"]["access_blob"]
         if access_blob is None:

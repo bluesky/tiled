@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import Any, List
+from typing import List, Literal
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -473,7 +473,7 @@ class Context:
         return context
 
     @property
-    def tokens(self) -> DictView[Any, Any]:
+    def tokens(self) -> DictView[Literal["access_token", "refresh_token"], str]:
         "A view of the current access and refresh tokens."
         return DictView(self.http_client.auth.tokens)
 
