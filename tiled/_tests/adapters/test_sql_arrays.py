@@ -8,8 +8,6 @@ from tiled._tests.adapters.test_sql import adapter_duckdb_many_partitions  # noq
 from tiled._tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
 from tiled._tests.adapters.test_sql import adapter_psql_many_partitions  # noqa: F401
 from tiled._tests.adapters.test_sql import adapter_psql_one_partition  # noqa: F401
-from tiled._tests.adapters.test_sql import adapter_sql_many_partitions  # noqa: F401
-from tiled._tests.adapters.test_sql import adapter_sql_one_partition  # noqa: F401
 from tiled._tests.adapters.test_sql import assert_same_rows
 from tiled.adapters.sql import SQLAdapter
 from tiled.storage import SQLStorage, parse_storage, register_storage
