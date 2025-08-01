@@ -35,7 +35,11 @@ FROM developer AS builder
 # Include server and client dependencies here because this container may be used
 # for `tiled register ...` and `tiled server directory ...` which invokes
 # client-side code.
-RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
+RUN if [ "$(uname -m)" = "aarch64" ]; then \
+        DISABLE_NUMCODECS_SSE2=1 DISABLE_NUMCODECS_AVX2=1 TILED_BUILD_SKIP_UI=1 pip install '.[all]'; \
+    else \
+        TILED_BUILD_SKIP_UI=1 pip install '.[all]'; \
+    fi
 
 FROM python:${PYTHON_VERSION}-slim AS runner
 
