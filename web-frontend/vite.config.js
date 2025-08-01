@@ -5,8 +5,9 @@ import { webcrypto as crypto } from "crypto";
 
 // vite.config.js
 if (!global.crypto) {
-  global.crypto = require('crypto');
-  global.crypto.getRandomValues = (arr) => require('crypto').randomFillSync(arr);
+  global.crypto = require("crypto");
+  global.crypto.getRandomValues = (arr) =>
+    require("crypto").randomFillSync(arr);
 }
 
 export default defineConfig({
@@ -30,4 +31,10 @@ export default defineConfig({
       },
     }),
   ],
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: "./test/setup.ts",
+    include: ["src/components/**/*.test.tsx", "src/**/*.test.tsx"],
+  },
 });
