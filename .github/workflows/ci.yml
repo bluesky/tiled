@@ -165,6 +165,6 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
 
     - name: Validate container
-      env:
-        IMAGE_TAG: ${{ steps.meta.outputs.tags[0] }}
-      run: canary validate  --file canary-validator.yml $IMAGE_TAG
+      run: |
+        IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+        canary validate --file canary-validator.yml $IMAGE_TAG
