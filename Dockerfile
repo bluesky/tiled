@@ -7,7 +7,7 @@ RUN npm install && npm run build
 FROM python:${PYTHON_VERSION} AS developer
 
 # We need gcc to compile thriftpy2, a secondary dependency.
-RUN apt-get -y update && apt-get install -y gcc
+RUN apt-get -y update && apt-get install -y gcc build-essential python3-dev libbz2-dev liblzma-dev libzstd-dev libblosc-dev zlib1g-dev
 
 WORKDIR /code
 
@@ -24,6 +24,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install build dependencies.
 RUN pip install --no-cache-dir cython
+RUN pip install numcodecs
 
 COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
@@ -35,7 +36,11 @@ FROM developer AS builder
 # Include server and client dependencies here because this container may be used
 # for `tiled register ...` and `tiled server directory ...` which invokes
 # client-side code.
-RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
+RUN if [ "$(uname -m)" = "aarch64" ]; then \
+        DISABLE_NUMCODECS_SSE2=1 DISABLE_NUMCODECS_AVX2=1 TILED_BUILD_SKIP_UI=1 pip install '.[all]'; \
+    else \
+        TILED_BUILD_SKIP_UI=1 pip install '.[all]'; \
+    fi
 
 FROM python:${PYTHON_VERSION}-slim AS runner
 

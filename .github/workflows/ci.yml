@@ -141,8 +141,18 @@ jobs:
         curl -L https://github.com/NVIDIA/container-canary/releases/download/v0.2.1/canary_linux_amd64 > /usr/local/bin/canary
         chmod +x /usr/local/bin/canary
 
-    - name: Build Container
-      run: docker build -t bluesky/tiled:latest .
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
+      with:
+        context: .
+        file: Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: false
+        tags: latest
 
     - name: Validate container
-      run: canary validate  --file canary-validator.yml bluesky/tiled:latest
+      run: |
+        canary validate --file canary-validator.yml latest
