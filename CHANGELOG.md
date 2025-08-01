@@ -11,6 +11,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Pooling of ADBC connections to storage databases.
 - An index on the `node_id` column of the `data_sources` table.
 
+### Changed
+
+- Refactored internal server function ``get_root_tree()`` to not use FastAPI
+  dependency_overrides
+
 ### Fixed
 
 - Make devcontainer work out of box to run e.g. tiled serve demo
