@@ -18,7 +18,7 @@ interface ArrayLineChartProps {
 }
 
 const ArrayLineChart: React.FunctionComponent<ArrayLineChartProps> = (
-  props
+  props,
 ) => {
   return (
     <Box height={300}>

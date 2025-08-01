@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Callable, Generator, Union, cast
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -106,7 +107,7 @@ def test_attributes_duckdb_many_part(
 
 
 @pytest.fixture
-def adapter_sql_one_partition(
+def adapter_sqlite_one_partition(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
     sqlite_uri: str,
@@ -121,7 +122,7 @@ def adapter_sql_one_partition(
 
 
 @pytest.fixture
-def adapter_sql_many_partitions(
+def adapter_sqlite_many_partitions(
     tmp_path: Path,
     data_source_from_init_storage: Callable[[str, int], DataSource[TableStructure]],
     sqlite_uri: str,
@@ -135,14 +136,14 @@ def adapter_sql_many_partitions(
     )
 
 
-def test_attributes_sql_one_part(adapter_sql_one_partition: SQLAdapter) -> None:
-    assert adapter_sql_one_partition.structure().columns == names
-    assert adapter_sql_one_partition.structure().npartitions == 1
+def test_attributes_sql_one_part(adapter_sqlite_one_partition: SQLAdapter) -> None:
+    assert adapter_sqlite_one_partition.structure().columns == names
+    assert adapter_sqlite_one_partition.structure().npartitions == 1
 
 
-def test_attributes_sql_many_part(adapter_sql_many_partitions: SQLAdapter) -> None:
-    assert adapter_sql_many_partitions.structure().columns == names
-    assert adapter_sql_many_partitions.structure().npartitions == 3
+def test_attributes_sql_many_part(adapter_sqlite_many_partitions: SQLAdapter) -> None:
+    assert adapter_sqlite_many_partitions.structure().columns == names
+    assert adapter_sqlite_many_partitions.structure().npartitions == 3
 
 
 @pytest.fixture
@@ -189,7 +190,7 @@ def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
 @pytest.mark.parametrize(
     "adapter",
     [
-        ("adapter_sql_one_partition"),
+        ("adapter_sqlite_one_partition"),
         ("adapter_duckdb_one_partition"),
         ("adapter_psql_one_partition"),
     ],
@@ -221,7 +222,7 @@ def test_write_read_one_batch_one_part(
 @pytest.mark.parametrize(
     "adapter",
     [
-        ("adapter_sql_one_partition"),
+        ("adapter_sqlite_one_partition"),
         ("adapter_duckdb_one_partition"),
         ("adapter_psql_one_partition"),
     ],
@@ -278,7 +279,7 @@ def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
 @pytest.mark.parametrize(
     "adapter",
     [
-        ("adapter_sql_many_partitions"),
+        ("adapter_sqlite_many_partitions"),
         ("adapter_duckdb_many_partitions"),
         ("adapter_psql_many_partitions"),
     ],
@@ -306,7 +307,7 @@ def test_append_single_partition(
 @pytest.mark.parametrize(
     "adapter",
     [
-        ("adapter_sql_many_partitions"),
+        ("adapter_sqlite_many_partitions"),
         ("adapter_psql_many_partitions"),
     ],
 )
@@ -695,5 +696,104 @@ def test_reject_colliding_uppercase_column_names(
     adapter.append_partition(table, 0)
     assert adapter.table_name == "table_name"
     assert set(adapter.read().columns) == {"lower_case", "UPPER_CASE"}
+
+    storage.dispose()  # Close all connections
+
+
+@pytest.mark.parametrize(
+    "initial, appended",
+    [
+        ([1, 2, 3], [None, None, None]),
+        ([1.5, 2.5, 3.5], [None, None, None]),
+        (["a", "b", "c"], [None, None, None]),
+        ([[1], [2, 4], [3]], [[], [], []]),
+        ([[1], [2, 4], [3]], [None, None, None]),
+        ([[1], [2, 4], [3]], [[None], [None], [None]]),
+        ([[1.5], [2.5, 4.5], [3.5]], [[], [], []]),
+        ([[1.5], [2.5, 4.5], [3.5]], [None, None, None]),
+        ([[1.5], [2.5, 4.5], [3.5]], [[None], [None], [None]]),
+        ([["a"], ["b1", "b2"], ["c"]], [[], [], []]),
+        ([["a"], ["b1", "b2"], ["c"]], [[None], [None], [None]]),
+        ([["a"], ["b1", "b2"], ["c"]], [None, None, None]),
+    ],
+)
+@pytest.mark.parametrize("data_uri", ["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def test_append_nullable(
+    initial: list[Any],
+    appended: list[Any],
+    data_uri: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    "Test appending nullable data in an SQL table and reading them back."
+
+    if (data_uri == "sqlite_uri") and (isinstance(initial[0], list)):
+        pytest.xfail(reason="Unsupported PyArrow type in SQLite")
+
+    def deep_array_equal(a1: Any, a2: Any) -> bool:
+        "Compare two (possibly nested) arrays for equality, including NaN values."
+        if not (isinstance(a1, np.ndarray) and isinstance(a2, np.ndarray)):
+            # Both are scalar values
+            return bool((a1 == a2) or (np.isnan(a1) and np.isnan(a2)))
+        elif (len(a1) == 0) and (len(a2) == 0):
+            # Both are empty arrays
+            return True
+        elif len(a1) != len(a2):
+            return False
+        else:
+            return all(deep_array_equal(x1, x2) for x1, x2 in zip(a1, a2))
+
+    # Define a table and a storage
+    data_uri = request.getfixturevalue(data_uri)
+    storage = cast(SQLStorage, parse_storage(data_uri))
+    register_storage(storage)
+
+    # Create a table to be appended
+    table_0 = pa.Table.from_arrays([initial], ["part_column"])
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=TableStructure.from_arrow_table(table_0),
+        parameters={"table_name": "part_table"},
+        assets=[],
+    )
+    data_source = SQLAdapter.init_storage(data_source=data_source, storage=storage)
+
+    # Write the first part of the data to the table
+    adapter_part = SQLAdapter(
+        data_source.assets[0].data_uri,
+        structure=data_source.structure,
+        table_name=data_source.parameters["table_name"],
+        dataset_id=data_source.parameters["dataset_id"],
+    )
+    adapter_part.append_partition(table_0, 0)
+
+    # Write the second part of the data to the table and read it back
+    table_1 = pa.Table.from_arrays([appended], ["part_column"])
+    adapter_part.append_partition(table_1, 0)
+    result_part = adapter_part.read()["part_column"].to_numpy()
+
+    # Write the full table at once and read it back
+    table_full = pa.Table.from_arrays([initial + appended], ["full_column"])
+    data_source = DataSource(
+        management=Management.writable,
+        mimetype="application/x-tiled-sql-table",
+        structure_family=StructureFamily.table,
+        structure=TableStructure.from_arrow_table(table_full),
+        parameters={"table_name": "full_table"},
+        assets=[],
+    )
+    data_source = SQLAdapter.init_storage(data_source=data_source, storage=storage)
+    adapter_full = SQLAdapter(
+        data_source.assets[0].data_uri,
+        structure=data_source.structure,
+        table_name=data_source.parameters["table_name"],
+        dataset_id=data_source.parameters["dataset_id"],
+    )
+    adapter_full.append_partition(table_full, 0)
+    result_full = adapter_full.read()["full_column"].to_numpy()
+
+    # Check if the data matches in both cases
+    assert deep_array_equal(result_part, result_full)
 
     storage.dispose()  # Close all connections

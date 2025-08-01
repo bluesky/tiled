@@ -10,10 +10,10 @@ import { useContext, useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
-import { components } from "../openapi_schemas";
-import { search } from "../client";
+import { components } from "../../openapi_schemas";
+import { search } from "../../client";
 import { useNavigate } from "react-router-dom";
-import { SettingsContext } from "../context/settings";
+import { SettingsContext } from "../../context/settings";
 
 interface Column {
   header: string;
@@ -48,7 +48,7 @@ interface NodeLazyContentsProps {
 const DEFAULT_PAGE_SIZE = 10;
 
 const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
-  props
+  props,
 ) => {
   let navigate = useNavigate();
   const gridColumns = [
@@ -65,7 +65,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
       headerName: column.header,
       flex: 1,
       hide: !props.defaultColumns.includes(column.field),
-    })
+    }),
   );
   const settings = useContext(SettingsContext);
   const [rowsState, setRowsState] = useState<RowsState>({
@@ -108,7 +108,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
         fields,
         selectMetadata,
         rowsState.pageSize * rowsState.page,
-        rowsState.pageSize
+        rowsState.pageSize,
       );
       setRowCount(data.meta!.count! as number);
       const items = data.data;
@@ -121,15 +121,15 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
       const idsToAncestors: IdsToAncestors = {};
       newItems.map(
         (
-          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]
+          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"],
         ) => {
           idsToAncestors[item.id as string] = item.attributes.ancestors;
           return null;
-        }
+        },
       );
       const newRows = newItems.map(
         (
-          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]
+          item: components["schemas"]["Resource_NodeAttributes__dict__dict_"],
         ) => {
           const row: { [key: string]: any } = {};
           row.id = item.id;
@@ -138,7 +138,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
             return null;
           });
           return row;
-        }
+        },
       );
 
       if (!active) {
@@ -180,7 +180,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
                 .map(function (ancestor: string) {
                   return "/" + ancestor;
                 })
-                .join("")}/${params.id}`
+                .join("")}/${params.id}`,
             );
           }}
           slots={{

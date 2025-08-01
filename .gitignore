@@ -17,6 +17,7 @@ docs/source/reference/generated/
 .pytest_cache/
 
 # Unit test / coverage reports
+coverage/
 htmlcov/
 .tox/
 .coverage

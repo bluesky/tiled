@@ -10,7 +10,7 @@ import {
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
-import { components } from "../openapi_schemas";
+import { components } from "../../openapi_schemas";
 import { useNavigate } from "react-router-dom";
 
 interface Column {
@@ -59,7 +59,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
       headerName: column.header,
       flex: 1,
       hide: !props.defaultColumns.includes(column.field),
-    })
+    }),
   );
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const rows = props.items.map(
@@ -71,7 +71,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
         return null;
       });
       return row;
-    }
+    },
   );
   type IdToAncestors = { [key: string]: string[] };
   const idsToAncestors: IdToAncestors = {};
@@ -79,7 +79,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
     (item: components["schemas"]["Resource_NodeAttributes__dict__dict_"]) => {
       idsToAncestors[item.id as string] = item.attributes.ancestors;
       return null;
-    }
+    },
   );
   return (
     <Box sx={{ my: 4 }}>
@@ -95,7 +95,7 @@ const Contents: React.FunctionComponent<IProps> = (props) => {
                 .map(function (ancestor: string) {
                   return "/" + ancestor;
                 })
-                .join("")}/${params.id}`
+                .join("")}/${params.id}`,
             );
           }}
           slots={{

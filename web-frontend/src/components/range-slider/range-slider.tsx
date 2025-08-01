@@ -16,7 +16,7 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
   const handleSliderChange = (
     event: Event,
     newValue: number | number[],
-    activeThumb: number
+    activeThumb: number,
   ) => {
     const range = newValue as number[];
     let safeValue = [0, 0];
@@ -36,7 +36,7 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
         : [
             Number(event.target.value),
             Math.min(props.value[1], Number(event.target.value) + props.limit),
-          ]
+          ],
     );
   };
 
@@ -48,7 +48,7 @@ const RangeSlider: React.FunctionComponent<RangeSliderProps> = (props) => {
         : [
             Math.max(props.value[0], Number(event.target.value) - props.limit),
             Number(event.target.value),
-          ]
+          ],
     );
   };
 

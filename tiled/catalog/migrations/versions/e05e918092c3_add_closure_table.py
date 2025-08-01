@@ -1,7 +1,7 @@
 """Redefine the catalog tree using a closure table
 
 Revision ID: e05e918092c3
-Revises: 9331ed94d6ac
+Revises: 7809873ea2c7
 Create Date: 2025-06-16 10:38:46.797381
 
 This revision introduces a closure table to represent the hierarchical structure of nodes in the catalog.
@@ -89,7 +89,7 @@ from tiled.catalog.orm import JSONVariant
 
 # revision identifiers, used by Alembic.
 revision = "e05e918092c3"
-down_revision = "9331ed94d6ac"
+down_revision = "7809873ea2c7"
 branch_labels = None
 depends_on = None
 

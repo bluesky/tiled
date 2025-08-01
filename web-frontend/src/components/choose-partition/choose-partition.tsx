@@ -15,7 +15,7 @@ interface ChoosePartitionProps {
 }
 
 const ChoosePartition: React.FunctionComponent<ChoosePartitionProps> = (
-  props
+  props,
 ) => {
   const partitions = Array.from(Array(props.npartitions).keys());
   const handleChange = (event: SelectChangeEvent<typeof props.value>) => {
