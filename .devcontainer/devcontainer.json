@@ -3,7 +3,10 @@
 	"build": {
 		"context": "..",
 		"dockerfile": "../Dockerfile",
-		"target": "developer"
+		"target": "developer",
+		"args": {
+			"PYTHON_VERSION": "3.9"
+		}
 	},
 	"containerEnv": {
 		"TILED_BUILD_SKIP_UI": "1"
