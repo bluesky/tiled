@@ -24,6 +24,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install build dependencies.
 RUN pip install --no-cache-dir cython
+RUN pip install numcodecs
 
 COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
