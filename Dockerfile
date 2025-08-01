@@ -1,4 +1,4 @@
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 FROM node:22-alpine AS web_frontend_builder
 WORKDIR /code
 COPY web-frontend .
