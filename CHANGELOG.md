@@ -3,8 +3,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b32 (Unreleased)
 
-## v0.1.0-b31 (Unreleased)
+### Fixed
+
+- Uniform array columns read from Postgres/DuckDB are now aggregated to an
+  NDArray (e.g. scanned `waveform` PVs)
+
+## v0.1.0-b31 (2025-08-01)
 
 ### Added
 
@@ -18,8 +24,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Combining multiple hdf5 files containing scalar values by HDF5Adapter.
 - Make principal type hints consistent in router
 - Typehinted database access methods
-- Uniform array columns read from Postgres/DuckDB are now aggregated to an
-  NDArray (e.g. scanned `waveform` PVs)
 - Explicit type conversion in SQL adapter when appending to an existing table.
 
 ## v0.1.0-b30 (2025-07-18)
