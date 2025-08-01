@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, cast
 
 import numpy as np
 import pyarrow as pa
@@ -12,35 +12,64 @@ from tiled._tests.adapters.test_sql import adapter_sql_many_partitions  # noqa: 
 from tiled._tests.adapters.test_sql import adapter_sql_one_partition  # noqa: F401
 from tiled._tests.adapters.test_sql import assert_same_rows
 from tiled.adapters.sql import SQLAdapter
-from tiled.storage import parse_storage, register_storage
+from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
 
-names = ["f0", "f1", "f2", "f3", "f4", "f5"]
+rng = np.random.default_rng(42)
+
+names = ["i0", "i1", "i2", "i3", "f4", "f5"]
+batch_size = 5
 data0 = [
-    pa.array([np.ones(3, dtype=np.int8) * i for i in range(1, 6)]),
-    pa.array([np.ones(3, dtype=np.int16) * i for i in range(1, 6)]),
-    pa.array([np.ones(3, dtype=np.int32) * i for i in range(1, 6)]),
-    pa.array([np.ones(3, dtype=np.int64) * i for i in range(1, 6)]),
-    pa.array([np.ones(3, dtype=np.float32) * i for i in range(1, 6)]),
-    pa.array([np.ones(3, dtype=np.float64) * i for i in range(1, 6)]),
+    pa.array(
+        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
+    ),
+    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
 ]
+batch_size = 8
 data1 = [
-    pa.array([np.ones(3, dtype=np.int8) * i for i in range(6, 13)]),
-    pa.array([np.ones(3, dtype=np.int16) * i for i in range(6, 13)]),
-    pa.array([np.ones(3, dtype=np.int32) * i for i in range(6, 13)]),
-    pa.array([np.ones(3, dtype=np.int64) * i for i in range(6, 13)]),
-    pa.array([np.ones(3, dtype=np.float32) * i for i in range(6, 13)]),
-    pa.array([np.ones(3, dtype=np.float64) * i for i in range(6, 13)]),
+    pa.array(
+        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
+    ),
+    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
 ]
+batch_size = 3
 data2 = [
-    pa.array([np.ones(3, dtype=np.int8) * i for i in range(13, 15)]),
-    pa.array([np.ones(3, dtype=np.int16) * i for i in range(13, 15)]),
-    pa.array([np.ones(3, dtype=np.int32) * i for i in range(13, 15)]),
-    pa.array([np.ones(3, dtype=np.int64) * i for i in range(13, 15)]),
-    pa.array([np.ones(3, dtype=np.float32) * i for i in range(13, 15)]),
-    pa.array([np.ones(3, dtype=np.float64) * i for i in range(13, 15)]),
+    pa.array(
+        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
+    ),
+    pa.array(
+        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
+    ),
+    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
 ]
 
 batch0 = pa.record_batch(data0, names=names)
@@ -63,7 +92,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
             assets=[],
         )
 
-        storage = parse_storage(data_uri)
+        storage = cast(SQLStorage, parse_storage(data_uri))
         register_storage(storage)
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
@@ -71,13 +100,13 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
 
 
 @pytest.mark.parametrize(
-    "adapter", [("adapter_duckdb_one_partition"), ("adapter_psql_one_partition")]
+    "adapter_name", [("adapter_duckdb_one_partition"), ("adapter_psql_one_partition")]
 )
 def test_write_read_one_batch_one_part(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
+    adapter_name: str, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
-    adapter = request.getfixturevalue(adapter)
+    adapter: SQLAdapter = request.getfixturevalue(adapter_name)
 
     # test appending and reading a table as a whole
     test_table = pa.Table.from_arrays(data0, names)
@@ -92,13 +121,13 @@ def test_write_read_one_batch_one_part(
 
 
 @pytest.mark.parametrize(
-    "adapter", [("adapter_duckdb_one_partition"), ("adapter_psql_one_partition")]
+    "adapter_name", [("adapter_duckdb_one_partition"), ("adapter_psql_one_partition")]
 )
 def test_write_read_list_batch_one_part(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
+    adapter_name: str, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
-    adapter = request.getfixturevalue(adapter)
+    adapter: SQLAdapter = request.getfixturevalue(adapter_name)
 
     test_table = pa.Table.from_batches([batch0, batch1, batch2])
     # test appending a list of batches to a table and read as a whole
@@ -129,13 +158,14 @@ def test_write_read_list_batch_one_part(
 
 
 @pytest.mark.parametrize(
-    "adapter", [("adapter_duckdb_many_partitions"), ("adapter_psql_many_partitions")]
+    "adapter_name",
+    [("adapter_duckdb_many_partitions"), ("adapter_psql_many_partitions")],
 )
 def test_append_single_partition(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
+    adapter_name: str, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
-    adapter = request.getfixturevalue(adapter)
+    adapter: SQLAdapter = request.getfixturevalue(adapter_name)
 
     # test writing an entire pyarrow table to a single partition
     table = pa.Table.from_batches([batch0, batch1, batch2])
@@ -149,13 +179,13 @@ def test_append_single_partition(
     assert table == pa.Table.from_pandas(result_read_partition)
 
 
-@pytest.mark.parametrize("adapter", [("adapter_psql_many_partitions")])
+@pytest.mark.parametrize("adapter_name", [("adapter_psql_many_partitions")])
 @pytest.mark.parametrize("field", names)
 def test_write_read_one_batch_many_part(
-    adapter: SQLAdapter, request: pytest.FixtureRequest, field: str
+    adapter_name: str, request: pytest.FixtureRequest, field: str
 ) -> None:
     # get adapter from fixture
-    adapter = request.getfixturevalue(adapter)
+    adapter: SQLAdapter = request.getfixturevalue(adapter_name)
 
     # test writing to many partitions and reading it whole
     adapter.append_partition(batch0, 0)
@@ -211,14 +241,18 @@ def test_write_read_one_batch_many_part(
 
     # read a specific field
     result_read = adapter.read_partition(0, fields=[field])
+    field_index = names.index(field)
     assert np.array_equal(
-        [*data0[1].tolist(), *data2[1].tolist()], result_read[field].tolist()
+        [*data0[field_index].tolist(), *data2[field_index].tolist()],
+        result_read[field].tolist(),
     )
     result_read = adapter.read_partition(1, fields=[field])
     assert np.array_equal(
-        [*data1[0].tolist(), *data0[0].tolist()], result_read[field].tolist()
+        [*data1[field_index].tolist(), *data0[field_index].tolist()],
+        result_read[field].tolist(),
     )
     result_read = adapter.read_partition(2, fields=[field])
     assert np.array_equal(
-        [*data2[2].tolist(), *data1[2].tolist()], result_read[field].tolist()
+        [*data2[field_index].tolist(), *data1[field_index].tolist()],
+        result_read[field].tolist(),
     )
