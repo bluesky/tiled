@@ -99,7 +99,9 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
+
+# TODO: make type[Adapter] after #1047
+STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
