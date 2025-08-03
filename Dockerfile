@@ -7,7 +7,7 @@ RUN npm install && npm run build
 FROM python:${PYTHON_VERSION} AS developer
 
 # We need gcc to compile thriftpy2, a secondary dependency.
-RUN apt-get -y update && apt-get install -y gcc build-essential python3-dev libbz2-dev liblzma-dev libzstd-dev libblosc-dev zlib1g-dev
+RUN apt-get -y update && apt-get install -y gcc
 
 WORKDIR /code
 
