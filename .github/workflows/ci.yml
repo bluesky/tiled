@@ -8,6 +8,9 @@ on:
   schedule:
       - cron: '00 4 * * *'  # daily at 4AM
 
+env:
+  TEST_TAG: bluesky/tiled:test
+
 jobs:
   pre-commit:
     name: Static Code Checks
@@ -150,9 +153,10 @@ jobs:
         context: .
         file: Dockerfile
         platforms: linux/amd64,linux/arm64
+        load: true
         push: false
-        tags: latest
+        tags: ${{ env.TEST_TAG }}
 
     - name: Validate container
       run: |
-        canary validate --file canary-validator.yml latest
+        canary validate --file canary-validator.yml ${{ env.TEST_TAG }}
