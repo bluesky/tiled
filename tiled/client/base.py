@@ -867,7 +867,7 @@ class BaseClient:
         return self._metadata_revisions
 
     def delete(self, recursive: bool = False, external_only: bool = True) -> None:
-        """Delete the node and it's contents, if any.
+        """Delete the node and its contents, if any.
 
         Parameters
         ----------
