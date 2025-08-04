@@ -98,7 +98,7 @@ def context(tree):
         yield context
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def context_for_read(context):
     client = from_context(context)
 
@@ -153,7 +153,7 @@ def tiff_data_source(tiff_sequence):
         shape=(5, 13, 17, 3),
         chunks=((1, 1, 1, 1, 1), (13,), (17,), (3,)),
     )
-    return DataSource(
+    yield DataSource(
         mimetype="multipart/related;type=image/tiff",
         assets=tiff_assets,
         structure_family=StructureFamily.array,
@@ -171,7 +171,7 @@ def csv_data_source(csv_file):
             parameter="data_uris",
         )
     ]
-    return DataSource(
+    yield DataSource(
         mimetype="text/csv",
         assets=csv_assets,
         structure_family=StructureFamily.table,
@@ -298,8 +298,8 @@ def test_read_selective(context_for_read):
 
 
 @pytest.mark.parametrize("dim0", ["time", "col1"])
-def test_read_selective_with_dim0(context, dim0):
-    client = from_context(context)
+def test_read_selective_with_dim0(context_for_read, dim0):
+    client = from_context(context_for_read)
     ds = client["x"].read(variables=["arr2", "img", "col1"], dim0=dim0)
 
     assert isinstance(ds, xarray.Dataset)
@@ -313,8 +313,10 @@ def test_read_selective_with_dim0(context, dim0):
 def test_delete_contents(context, tiff_data_source, csv_data_source):
     client = from_context(context)
 
-    assert len(client["x"].parts) == 6
-    assert len(client["x"].keys()) == 9
+    parts_before = len(client["x"].parts)
+    keys_before = len(client["x"].keys())
+    assert parts_before == 6
+    assert keys_before == 9
 
     # Attempt to delete an array that is internally managed
     with pytest.raises(WouldDeleteData):
@@ -323,8 +325,8 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
     # Delete a single part
     client["x"].delete_contents("arr1", external_only=False)
     assert "arr1" not in client["x"].parts
-    assert len(client["x"].parts) == 6 - 1
-    assert len(client["x"].keys()) == 9 - 1
+    assert len(client["x"].parts) == parts_before - 1
+    assert len(client["x"].keys()) == keys_before - 1
 
     # Attempt to delete a DataFrame column
     assert "A" in client["x"].keys()
@@ -332,8 +334,8 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
         client["x"].delete_contents("A", external_only=False)
     client["x"].delete_contents("df1", external_only=False)
     assert "A" not in client["x"].keys()
-    assert len(client["x"].parts) == 6 - 2
-    assert len(client["x"].keys()) == 9 - 3
+    assert len(client["x"].parts) == parts_before - 2
+    assert len(client["x"].keys()) == keys_before - 3
 
     # Add and delete external data
     client["x"].new(
@@ -347,17 +349,17 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
         key="table",
     )
     # 6 original parts, 2 deleted, 2 added
-    assert len(client["x"].parts) == 6 - 2 + 2
-    assert len(client["x"].keys()) == 9 - 3 + 3
+    assert len(client["x"].parts) == parts_before - 2 + 2
+    assert len(client["x"].keys()) == keys_before - 3 + 3
     client["x"].delete_contents("image")
     assert "image" not in client["x"].parts
-    assert len(client["x"].parts) == 6 - 1
-    assert len(client["x"].keys()) == 9 - 1
+    assert len(client["x"].parts) == parts_before - 1
+    assert len(client["x"].keys()) == keys_before - 1
 
     # Passing an empty list does not delete anything
     client["x"].delete_contents([])
-    assert len(client["x"].parts) == 6 - 1
-    assert len(client["x"].keys()) == 9 - 1
+    assert len(client["x"].parts) == parts_before - 1
+    assert len(client["x"].keys()) == keys_before - 1
 
     # Delete multiple parts
     client["x"].delete_contents(["arr2", "df2"], external_only=False)
