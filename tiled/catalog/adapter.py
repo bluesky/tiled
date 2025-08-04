@@ -1502,11 +1502,14 @@ def in_or_not_in(query, tree, method):
 
 
 def has_key(query, tree):
+    # Functionally in SQLAlchemy 'is not None' does not work as expected
     if tree.engine.url.get_dialect().name == "sqlite":
-        condition = orm.Node.metadata_.op("->")(query.key) != None
+        condition = orm.Node.metadata_.op("->")(query.key) != None  # noqa: E711
     else:
         keys = query.key.split(".")
-        condition = orm.Node.metadata_.op("#>")(cast(keys, ARRAY(TEXT))) != None
+        condition = (
+            orm.Node.metadata_.op("#>")(cast(keys, ARRAY(TEXT))) != None  # noqa: E711
+        )
     condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
