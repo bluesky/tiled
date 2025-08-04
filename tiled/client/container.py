@@ -406,9 +406,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if keys is None:
             keys = self.keys()
         keys = [keys] if isinstance(keys, str) else keys
-        for attempt in retry_context():
-            with attempt:
-                for key in set(keys):
+        for key in set(keys):
+            for attempt in retry_context():
+                with attempt:
                     handle_error(
                         self.context.http_client.delete(
                             f"{self.uri}/{key}",

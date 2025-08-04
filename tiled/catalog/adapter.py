@@ -859,7 +859,7 @@ class CatalogNodeAdapter:
                     if management != Management.external:
                         assets_to_delete.append((data_uri, is_directory, parameters))
                 elif (management == Management.writable) and (
-                    urlparse(data_uri).scheme in {"duckdb", "sqlite"}
+                    urlparse(data_uri).scheme in {"duckdb", "sqlite", "postgresql"}
                 ):
                     # The tabular storage asset may be referenced by several data_sources
                     # and nodes, so we cannot delete it completely. However, we can delete
@@ -1171,14 +1171,14 @@ def delete_asset(data_uri, is_directory, parameters=None):
             shutil.rmtree(path)
         else:
             Path(path).unlink()
-    elif url.scheme in {"duckdb", "sqlite"}:
+    elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
         storage = cast(SQLStorage, get_storage(data_uri))
         with closing(storage.connect()) as conn:
             table_name = parameters.get("table_name") if parameters else None
             dataset_id = parameters.get("dataset_id") if parameters else None
             with conn.cursor() as cursor:
                 cursor.execute(
-                    f'DELETE FROM "{table_name}" WHERE _dataset_id = ?;', (dataset_id,)
+                    f'DELETE FROM "{table_name}" WHERE _dataset_id = {dataset_id:d};',
                 )
             conn.commit()
             # If the table is empty, we can drop it
