@@ -20,6 +20,7 @@ from ..queries import (
     FullText,
     In,
     Key,
+    KeyExists,
     KeysFilter,
     Like,
     NotEq,
@@ -324,6 +325,25 @@ def test_structure_families(client):
         StructureFamilyQuery("foo")
 
     assert set(client.search(StructureFamilyQuery("array"))) == set(mapping)
+
+
+def test_key_exists(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("No 'KeyExists' support on MapAdapter")
+    # These containers have a "color" key.
+    assert list(client.search(KeyExists("color"))) == [
+        "full_text_test_case",
+        "full_text_test_case_urple",
+    ]
+    # These are all the containers that do not have a "number" key.
+    assert list(client.search(KeyExists("number", False))) == [
+        "does_contain_z",
+        "does_not_contain_z",
+        "full_text_test_case",
+        "full_text_test_case_urple",
+        "specs_foo_bar",
+        "specs_foo_bar_baz"
+    ]
 
 
 def test_keys_filter(client):

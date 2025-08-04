@@ -52,7 +52,6 @@ from tiled.queries import (
     Like,
     NotEq,
     NotIn,
-    KeyNotIn,
     Operator,
     SpecsQuery,
     StructureFamilyQuery,
@@ -1487,7 +1486,7 @@ def has_key(query, tree):
     else:
         keys = query.key.split(".")
         condition = orm.Node.metadata_.op("#>")(cast(keys, ARRAY(TEXT))) != None
-    condition = not_(condition) if getattr(query, "exists", False) else condition
+    condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
