@@ -342,7 +342,7 @@ def test_key_exists(client):
         "full_text_test_case",
         "full_text_test_case_urple",
         "specs_foo_bar",
-        "specs_foo_bar_baz"
+        "specs_foo_bar_baz",
     ]
 
 
