@@ -63,7 +63,7 @@ async def test_xdi_round_trip(tmp_path: Path):
             adapters_by_mimetype={"application/x-xdi": "tiled.examples.xdi:XDIAdapter"},
             mimetypes_by_file_ext={".xdi": "application/x-xdi"},
         )
-        
+
         client["example"].export(str(tmp_path / "exported.xdi"))
         actual = Path(tmp_path / "exported.xdi").read_text()
         metadata_actual, df_actual = load_data(actual)
