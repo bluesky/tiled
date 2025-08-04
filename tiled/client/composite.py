@@ -114,7 +114,7 @@ class Composite(Container):
             The key(s) to delete. If a list, all keys in the list will be deleted.
             If None (default), delete all contents.
         external_only : bool, optional
-            If True, only delete externally-managed data keys. Defaults to True.
+            If True, only delete externally-managed data. Defaults to True.
         """
 
         if keys is not None:

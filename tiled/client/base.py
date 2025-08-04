@@ -867,7 +867,7 @@ class BaseClient:
         return self._metadata_revisions
 
     def delete(self, recursive: bool = False, external_only: bool = True) -> None:
-        """Delete the node and it's contents, if any.
+        """Delete the node and its contents, if any.
 
         Parameters
         ----------
@@ -875,7 +875,7 @@ class BaseClient:
             If True, descend into sub-nodes and delete their contents too.
             Defaults to False.
         external_only : bool, optional
-            If True, only delete externally-managed data keys. Defaults to True.
+            If True, only delete externally-managed data. Defaults to True.
         """
 
         self._cached_len = None
