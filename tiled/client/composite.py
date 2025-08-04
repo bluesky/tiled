@@ -117,16 +117,15 @@ class Composite(Container):
             If True, only delete externally-managed data keys. Defaults to True.
         """
 
-        if keys is None:
-            keys = set(self.parts)
-        keys = [keys] if isinstance(keys, str) else keys
-        extra_keys = set(keys).difference(self.parts)
-        if extra_keys:
-            raise KeyError(
-                f"Keys {keys} not found in composite node parts. "
-                "If the keys reference column names of a constituent "
-                "table, deleting them is not supported."
-            )
+        if keys is not None:
+            keys = [keys] if isinstance(keys, str) else keys
+            extra_keys = set(keys).difference(self.parts)
+            if extra_keys:
+                raise KeyError(
+                    f"Keys {keys} not found in composite node parts. "
+                    "If the keys reference column names of a constituent "
+                    "table, deleting them is not supported."
+                )
 
         return super().delete_contents(keys, external_only=external_only)
 

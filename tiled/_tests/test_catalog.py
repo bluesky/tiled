@@ -1,6 +1,7 @@
 import random
 import string
 from dataclasses import asdict
+from typing import cast
 
 import dask.array
 import numpy
@@ -9,7 +10,6 @@ import pandas.testing
 import pyarrow
 import pytest
 import pytest_asyncio
-import sqlalchemy.dialects.postgresql.asyncpg
 import sqlalchemy.exc
 import tifffile
 import xarray
@@ -26,6 +26,7 @@ from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
 from ..server.schemas import Asset, DataSource, Management
+from ..storage import SQLStorage, get_storage, parse_storage
 from ..structures.core import StructureFamily
 from ..utils import Conflicts, ensure_uri
 from .utils import enter_username_password
@@ -441,12 +442,11 @@ async def test_delete_with_external_nodes(tmpdir):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scheme", ["sqlite", "duckdb"])
-async def test_delete_sql_assets(tmpdir, scheme):
+async def test_delete_sql_assets(sql_storage_uri):
     # Do not use client fixture here.
     # The Context must be opened inside the test or we run into
     # event loop crossing issues with the Postgres test.
-    sql_storage_uri = f"{scheme}:///{tmpdir / 'storage.db'}"
+
     tree = in_memory(writable_storage={"sql": sql_storage_uri})
 
     # Create some tables to write
@@ -509,6 +509,10 @@ async def test_delete_sql_assets(tmpdir, scheme):
         assert len(data_sources_after_delete) == 1
         assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
         assert len(assets_after_delete) == 1
+
+        # Close and dispose the SQL storage
+        storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
+        storage.dispose()
 
 
 @pytest.mark.asyncio
