@@ -3,22 +3,33 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0-b31 (Unreleased)
+## v0.1.0-b31 (2025-08-01)
+
+### Added
+
+- Pooling of ADBC connections to storage databases.
+- An index on the `node_id` column of the `data_sources` table.
 
 ### Fixed
 
+- Make devcontainer work out of box to run e.g. tiled serve demo
 - Tests were missing assertions to verify expected outcomes
+- Combining multiple hdf5 files containing scalar values by HDF5Adapter.
+- Make principal type hints consistent in router
+- Typehinted database access methods
+- Explicit type conversion in SQL adapter when appending to an existing table.
+
 
 ## v0.1.0-b30 (2025-07-18)
 
-## Changed
+### Changed
 
 - Refactored internal server function ``get_entry()`` to not use the FastAPI
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
 
-## Fixed
+### Fixed
 
 - Restored authentication check for API key
 - Updated usage for change in Zarr 3.x API.

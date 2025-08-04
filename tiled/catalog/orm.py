@@ -359,7 +359,7 @@ class DataSource(Timestamped, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
     node_id = Column(
-        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     structure_id = Column(
         Unicode(32), ForeignKey("structures.id", ondelete="CASCADE"), nullable=True

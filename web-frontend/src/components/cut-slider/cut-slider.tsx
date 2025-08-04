@@ -17,7 +17,7 @@ const CutSlider: React.FunctionComponent<CutSliderProps> = (props) => {
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     props.setValue(
-      event.target.value === "" ? props.value : Number(event.target.value)
+      event.target.value === "" ? props.value : Number(event.target.value),
     );
   };
 
