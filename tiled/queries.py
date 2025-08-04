@@ -392,7 +392,7 @@ class KeyExists:
     Search for containers that have the key "color"
 
     >>> c.search(KeyExists("color"))
-    
+
     Search for containers that do not have the key "sample.name"
 
     >>> c.search(KeyExists("sample.name", exists=False))
