@@ -6,6 +6,7 @@ import dask.array
 import numpy
 import pandas
 import pandas.testing
+import pyarrow
 import pytest
 import pytest_asyncio
 import sqlalchemy.dialects.postgresql.asyncpg
@@ -20,6 +21,7 @@ from ..catalog import in_memory
 from ..catalog.adapter import WouldDeleteData
 from ..catalog.explain import record_explanations
 from ..client import Context, from_context
+from ..client.register import register
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
@@ -327,7 +329,7 @@ def test_write_xarray_dataset(client):
 
 
 @pytest.mark.asyncio
-async def test_delete_tree(tmpdir):
+async def test_delete_catalog_tree(tmpdir):
     # Do not use client fixture here.
     # The Context must be opened inside the test or we run into
     # event loop crossing issues with the Postgres test.
@@ -355,10 +357,10 @@ async def test_delete_tree(tmpdir):
         assert len(assets_before_delete) == 3
 
         with pytest.raises(WouldDeleteData):
-            await tree.delete_tree()  # external_only=True by default
+            await tree.delete(recursive=True)  # external_only=True by default
         with pytest.raises(WouldDeleteData):
-            await tree.delete_tree(external_only=True)
-        await tree.delete_tree(external_only=False)
+            await tree.delete(recursive=True, external_only=True)
+        await tree.delete(recursive=True, external_only=False)
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_after_delete) == 0 + 1  # the root node that should remain
@@ -368,6 +370,202 @@ async def test_delete_tree(tmpdir):
         assert len(data_sources_after_delete) == 0
         assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
         assert len(assets_after_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_with_external_nodes(tmpdir):
+    # Do not use client fixture here.
+    # The Context must be opened inside the test or we run into
+    # event loop crossing issues with the Postgres test.
+    (tmpdir / "readable").mkdir()
+    (tmpdir / "writable").mkdir()
+    tree = in_memory(
+        readable_storage=[str(tmpdir / "readable")],
+        writable_storage={"filesystem": str(tmpdir / "writable")},
+    )
+
+    # Create some external data to register
+    for i in range(1, 5):
+        with open(tmpdir / "readable" / f"test_{i}.csv", "w") as file:
+            file.write(
+                """a, b, c
+                    1, 2, 3
+                    4, 5, 6
+                """
+            )
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        # a has children b1 and b2, which each contain arrays
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        await register(b1, tmpdir / "readable" / "test_1.csv")
+        await register(b1, tmpdir / "readable" / "test_2.csv")
+        b2 = a.create_container("b2")
+        await register(b2, tmpdir / "readable" / "test_3.csv")
+        await register(b2, tmpdir / "readable" / "test_4.csv")
+
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b1", "b2"]
+        assert list(client["a"]["b1"]) == ["test_1", "test_2"]
+        assert list(client["a"]["b2"]) == ["test_3", "test_4"]
+
+        nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_before_delete) == 7 + 1  # +1 for the root node
+        data_sources_before_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_before_delete) == 4
+        assets_before_delete = (
+            await tree.context.execute("SELECT * from assets")
+        ).all()
+        assert len(assets_before_delete) == 4
+
+        # Delete all children of b1, and b1 itself.
+        client["a"].delete_contents("b1", recursive=True)
+
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b2"]
+        assert list(client["a"]["b2"]) == ["test_3", "test_4"]  # not affected
+        nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_after_delete) == 4 + 1  # +1 for the root node
+        data_sources_after_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_after_delete) == 2
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheme", ["sqlite", "duckdb"])
+async def test_delete_sql_assets(tmpdir, scheme):
+    # Do not use client fixture here.
+    # The Context must be opened inside the test or we run into
+    # event loop crossing issues with the Postgres test.
+    sql_storage_uri = f"{scheme}:///{tmpdir / 'storage.db'}"
+    tree = in_memory(writable_storage={"sql": sql_storage_uri})
+
+    # Create some tables to write
+    table_1 = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+    table_2 = pyarrow.Table.from_pydict({"c": [4, 5, 6], "d": ["7", "8", "9"]})
+
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        # a has children b1 and b2, which each contain arrays
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        t1 = b1.create_appendable_table(schema=table_1.schema, key="table_1")
+        t1.append_partition(table_1, 0)
+        t1.append_partition(table_1, 0)
+        t2 = b1.create_appendable_table(schema=table_2.schema, key="table_2")
+        t2.append_partition(table_2, 0)
+
+        assert t1.read() is not None
+        assert t2.read() is not None
+
+        b2 = a.create_container("b2")
+        t1c = b2.create_appendable_table(schema=table_1.schema, key="table_1_copy")
+        t1c.append_partition(table_1, 0)
+
+        assert t1c.read() is not None
+
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b1", "b2"]
+        assert list(client["a"]["b1"]) == ["table_1", "table_2"]
+        assert list(client["a"]["b2"]) == ["table_1_copy"]
+
+        nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_before_delete) == 6 + 1  # +1 for the root node
+        data_sources_before_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_before_delete) == 3
+        assets_before_delete = (
+            await tree.context.execute("SELECT * from assets")
+        ).all()
+        assert len(assets_before_delete) == 1  # single sql asset
+
+        # Delete all children of b1, but not b1 itself.
+        client["a"]["b1"].delete_contents(
+            client["a"]["b1"].keys(), recursive=True, external_only=False
+        )
+
+        assert list(client) == ["a"]
+        assert list(client["a"]) == ["b1", "b2"]
+        assert (
+            list(client["a"]["b1"]) == []
+        )  # children deleted (2 nodes, 2 data sources, 0 assets)
+        assert list(client["a"]["b2"]) == ["table_1_copy"]  # not affected
+        nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_after_delete) == 4 + 1  # +1 for the root node
+        data_sources_after_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_after_delete) == 1
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_external_asset_registered_twice(tmpdir):
+    # Do not use client fixture here.
+    # The Context must be opened inside the test or we run into
+    # event loop crossing issues with the Postgres test.
+    tree = in_memory(readable_storage=[str(tmpdir)])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        for i in range(1, 4):
+            with open(tmpdir / f"test_{i}.csv", "w") as file:
+                file.write(
+                    """a, b, c
+                        1, 2, 3
+                        4, 5, 6
+                    """
+                )
+        # a has children b1 and b2, which each contain arrays
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        await register(b1, tmpdir / "test_1.csv")
+        await register(b1, tmpdir / "test_2.csv")
+        b2 = a.create_container("b2")
+        await register(b2, tmpdir / "test_1.csv")
+        await register(b2, tmpdir / "test_3.csv")
+
+        # test_1.csv is registered in both b1 and b2
+        assert client["a"]["b1"]["test_1"].read() is not None
+        assert client["a"]["b2"]["test_1"].read() is not None
+
+        data_sources_before_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_before_delete) == 4
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 3  # shared by two data sources
+
+        a.delete_contents("b2", recursive=True)
+
+        data_sources_after_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_after_delete) == 2
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 2
+
+        # The asset in b1 should still be accessible.
+        client["a"]["b1"]["test_1"].read()
+
+        a.delete_contents("b1", recursive=True)
+        data_sources_after_second_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_after_second_delete) == 0
+        assets_after_second_delete = (
+            await tree.context.execute("SELECT * from assets")
+        ).all()
+        assert len(assets_after_second_delete) == 0
 
 
 @pytest.mark.asyncio

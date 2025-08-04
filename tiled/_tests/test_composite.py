@@ -9,6 +9,7 @@ import tifffile as tf
 import xarray
 
 from ..catalog import in_memory
+from ..catalog.adapter import WouldDeleteData
 from ..client import Context, from_context
 from ..server.app import build_app
 from ..structures.array import ArrayStructure, BuiltinDtype
@@ -102,7 +103,7 @@ def context_for_read(context):
     client = from_context(context)
 
     # Awkward arrays are not supported when building xarray, in general
-    client["x"].delete("awk")
+    client["x"].delete_contents("awk", external_only=False)
     # Add an image array and a table with 5 rows
     client["x"].write_array(img_data, key="img")
     client["x"].write_dataframe(df3, key="df3")
@@ -111,8 +112,8 @@ def context_for_read(context):
 
     # Restore the original context
     client["x"].write_awkward(awk_arr, key="awk", metadata={"md_key": "md_for_awk"})
-    client["x"].delete("img")
-    client["x"].delete("df3")
+    client["x"].delete_contents("img", external_only=False)
+    client["x"].delete_contents("df3", external_only=False)
 
 
 @pytest.fixture
@@ -134,6 +135,49 @@ def csv_file(tmpdir):
     df3.to_csv(fpath, index=False)
 
     yield fpath
+
+
+@pytest.fixture
+def tiff_data_source(tiff_sequence):
+    tiff_assets = [
+        Asset(
+            data_uri=f"file://localhost/{fpath}",
+            is_directory=False,
+            parameter="data_uris",
+            num=i + 1,
+        )
+        for i, fpath in enumerate(tiff_sequence)
+    ]
+    tiff_structure_0 = ArrayStructure(
+        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+        shape=(5, 13, 17, 3),
+        chunks=((1, 1, 1, 1, 1), (13,), (17,), (3,)),
+    )
+    return DataSource(
+        mimetype="multipart/related;type=image/tiff",
+        assets=tiff_assets,
+        structure_family=StructureFamily.array,
+        structure=tiff_structure_0,
+        management=Management.external,
+    )
+
+
+@pytest.fixture
+def csv_data_source(csv_file):
+    csv_assets = [
+        Asset(
+            data_uri=f"file://localhost/{csv_file}",
+            is_directory=False,
+            parameter="data_uris",
+        )
+    ]
+    return DataSource(
+        mimetype="text/csv",
+        assets=csv_assets,
+        structure_family=StructureFamily.table,
+        structure=TableStructure.from_pandas(df3),
+        management=Management.external,
+    )
 
 
 @pytest.mark.parametrize(
@@ -200,44 +244,8 @@ def test_parts_not_directly_accessible(context):
         client["x/df1"].read()
 
 
-def test_external_assets(context, tiff_sequence, csv_file):
+def test_external_assets(context, tiff_data_source, csv_data_source):
     client = from_context(context)
-    tiff_assets = [
-        Asset(
-            data_uri=f"file://localhost/{fpath}",
-            is_directory=False,
-            parameter="data_uris",
-            num=i + 1,
-        )
-        for i, fpath in enumerate(tiff_sequence)
-    ]
-    tiff_structure_0 = ArrayStructure(
-        data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
-        shape=(5, 13, 17, 3),
-        chunks=((1, 1, 1, 1, 1), (13,), (17,), (3,)),
-    )
-    tiff_data_source = DataSource(
-        mimetype="multipart/related;type=image/tiff",
-        assets=tiff_assets,
-        structure_family=StructureFamily.array,
-        structure=tiff_structure_0,
-        management=Management.external,
-    )
-
-    csv_assets = [
-        Asset(
-            data_uri=f"file://localhost/{csv_file}",
-            is_directory=False,
-            parameter="data_uris",
-        )
-    ]
-    csv_data_source = DataSource(
-        mimetype="text/csv",
-        assets=csv_assets,
-        structure_family=StructureFamily.table,
-        structure=TableStructure.from_pandas(df3),
-        management=Management.external,
-    )
 
     y = client.create_composite(key="y")
     y.new(
@@ -300,3 +308,63 @@ def test_read_selective_with_dim0(context, dim0):
     # Check the dimension names
     for var_name in ds.data_vars:
         assert ds[var_name].dims[0] == dim0
+
+
+def test_delete_contents(context, tiff_data_source, csv_data_source):
+    client = from_context(context)
+
+    assert len(client["x"].parts) == 6
+    assert len(client["x"].keys()) == 9
+
+    # Attempt to delete an array that is internally managed
+    with pytest.raises(WouldDeleteData):
+        client["x"].delete_contents("arr1")
+
+    # Delete a single part
+    client["x"].delete_contents("arr1", external_only=False)
+    assert "arr1" not in client["x"].parts
+    assert len(client["x"].parts) == 6 - 1
+    assert len(client["x"].keys()) == 9 - 1
+
+    # Attempt to delete a DataFrame column
+    assert "A" in client["x"].keys()
+    with pytest.raises(KeyError):
+        client["x"].delete_contents("A", external_only=False)
+    client["x"].delete_contents("df1", external_only=False)
+    assert "A" not in client["x"].keys()
+    assert len(client["x"].parts) == 6 - 2
+    assert len(client["x"].keys()) == 9 - 3
+
+    # Add and delete external data
+    client["x"].new(
+        structure_family=StructureFamily.array,
+        data_sources=[tiff_data_source],
+        key="image",
+    )
+    client["x"].new(
+        structure_family=StructureFamily.table,
+        data_sources=[csv_data_source],
+        key="table",
+    )
+    # 6 original parts, 2 deleted, 2 added
+    assert len(client["x"].parts) == 6 - 2 + 2
+    assert len(client["x"].keys()) == 9 - 3 + 3
+    client["x"].delete_contents("image")
+    assert "image" not in client["x"].parts
+    assert len(client["x"].parts) == 6 - 1
+    assert len(client["x"].keys()) == 9 - 1
+
+    # Passing an empty list does not delete anything
+    client["x"].delete_contents([])
+    assert len(client["x"].parts) == 6 - 1
+    assert len(client["x"].keys()) == 9 - 1
+
+    # Delete multiple parts
+    client["x"].delete_contents(["arr2", "df2"], external_only=False)
+    assert "arr2" not in client["x"].parts
+    assert "df1" not in client["x"].parts
+
+    # Delete all parts
+    client["x"].delete_contents(external_only=False)
+    assert len(client["x"].parts) == 0
+    assert len(client["x"].keys()) == 0

@@ -1,4 +1,5 @@
 import time
+from typing import Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
@@ -96,6 +97,38 @@ class Composite(Container):
     def create_composite(self, key=None, *, metadata=None, specs=None):
         """Composite nodes can not include nested composites by design."""
         raise NotImplementedError("Cannot create a composite within a composite node.")
+
+    def delete_contents(
+        self,
+        keys: Optional[Union[str, Iterable[str]]] = None,
+        external_only: bool = True,
+    ) -> "Composite":
+        """Delete the contents of this Composite node.
+
+        Only constituent arrays or entire tables (with keys listed in `parts`)
+        can be deleted.
+
+        Parameters
+        ----------
+        keys : str or list of str
+            The key(s) to delete. If a list, all keys in the list will be deleted.
+            If None (default), delete all contents.
+        external_only : bool, optional
+            If True, only delete externally-managed data keys. Defaults to True.
+        """
+
+        if keys is None:
+            keys = set(self.parts)
+        keys = [keys] if isinstance(keys, str) else keys
+        extra_keys = set(keys).difference(self.parts)
+        if extra_keys:
+            raise KeyError(
+                f"Keys {keys} not found in composite node parts. "
+                "If the keys reference column names of a constituent "
+                "table, deleting them is not supported."
+            )
+
+        return super().delete_contents(keys, external_only=external_only)
 
     def read(self, variables=None, dim0=None):
         """Download the contents of a composite node as an xarray.Dataset.
