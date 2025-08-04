@@ -150,6 +150,7 @@ dev = [
     "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
+    "locust",
     "matplotlib",
     "mistune",
     "myst-parser",
@@ -348,3 +349,4 @@ minimal-server = { features = ["minimal-server"], solve-group = "default" }
 server = { features = ["server"], solve-group = "default" }
 sparse = { features = ["sparse"], solve-group = "default" }
 xarray = { features = ["xarray"], solve-group = "default" }
+
