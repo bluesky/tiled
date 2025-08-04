@@ -399,7 +399,7 @@ class KeyExists:
     """
 
     key: str
-    exists: bool
+    exists: bool = True
 
     def encode(self):
         return {"key": self.key, "exists": self.exists}
