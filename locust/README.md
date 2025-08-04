@@ -1,69 +1,45 @@
-# Tiled Load Testing
+# Tiled Load Testing with Locust
 
-Load testing for the Tiled data management system.
+Simple load testing for Tiled using the `test_user.py` file.
 
 ## Quick Start
 
 ```bash
+# Install dependencies
 pixi install
-pixi run locust -f locustfile.py --host http://localhost:8000
+
+# Run locust with the test user
+pixi run locust -f test_user.py --host http://localhost:8000
 ```
 
-## User Types
-
-- **TiledUser**: Tests basic endpoints like root and metadata with API key authentication
+This will start the Locust web interface at http://localhost:8089 where you can configure the number of users and spawn rate.
 
 ## Configuration
 
+### API Key
+Set the API key environment variable (defaults to 'secret'):
 ```bash
-# Set API key (default: secret)
-TILED_SINGLE_USER_API_KEY=secret pixi run locust -f locustfile.py --host http://localhost:8000
-
-# Headless mode (100 users, 10/sec spawn rate, 60s duration)
-pixi run locust -f locustfile.py --host http://localhost:8000 --headless -u 100 -r 10 -t 60s
-
-# Reduce logging noise
-pixi run locust -f locustfile.py --host http://localhost:8000 -L WARNING
+TILED_SINGLE_USER_API_KEY=your-api-key pixi run locust -f test_user.py --host http://localhost:8000
 ```
 
-## Kubernetes Testing
-
+### Headless Mode
+Run without the web interface:
 ```bash
-# Deploy Tiled and PostgreSQL
-kubectl apply -f kube/postgres-deployment.yml
-kubectl apply -f kube/tiled.yml
+pixi run locust -f test_user.py --host http://localhost:8000 --headless -u 100 -r 10 -t 60s
+```
+- `-u 100`: 100 concurrent users
+- `-r 10`: Spawn 10 users per second
+- `-t 60s`: Run for 60 seconds
 
-# Initialize database
-kubectl exec -it deployment/postgres -- psql -U postgres -c "CREATE USER tiled WITH SUPERUSER PASSWORD 'secret';"
-kubectl exec -it deployment/postgres -- psql -U postgres -c "CREATE DATABASE catalog ENCODING 'utf-8' OWNER tiled;"
-kubectl exec -it deployment/postgres -- psql -U postgres -c "CREATE DATABASE storage ENCODING 'utf-8' OWNER tiled;"
-
-# Port forward and test
-kubectl port-forward svc/tiled 8000:8000
-pixi run locust -f locustfile.py --host http://localhost:8000
+### Reduce Logging
+```bash
+pixi run locust -f test_user.py --host http://localhost:8000 -L WARNING
 ```
 
-## PostgreSQL Commands
+## What the Test Does
 
-```bash
-# Connect to PostgreSQL
-kubectl port-forward svc/postgres-service 5432:5432
-psql -h localhost -U postgres -d tiled
-
-# Check database contents
-kubectl exec -it deployment/postgres -- psql -U postgres -c "\l"
-```
-
-## Monitoring Resources
-
-```bash
-# Monitor Tiled and PostgreSQL resources
-watch -n 5 ./monitor_resources.sh
-```
-
-## Remove Deployments
-
-```bash
-kubectl delete -f kube/tiled.yml
-kubectl delete -f kube/postgres-deployment.yml
-```
+The `TiledUser` class in `test_user.py` simulates users that:
+- Wait 1-3 seconds between requests
+- Test the root endpoint (`/`)
+- Test the metadata endpoint (`/api/v1/metadata`)
+- Use Bearer token authentication with the configured API key
