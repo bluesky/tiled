@@ -31,10 +31,11 @@ presents the data to clients. Each row represents one node in the logical
 "tree" of data represented by Tiled.
 
 - `metadata` --- user-controlled JSON object, with arbitrary metadata
-- `ancestors` and `key` --- together specify the unique path of the data
+- `key` --- the name of the Node; together with ancestors specify the unique path of the data
 - `structre_family` --- enum of structure types (`"container"`, `"array"`, `"table"`, ...)
 - `specs` --- user-controlled JSON list of specs, such as `[{"name": "XDI", "version": "1"}]`
-- `id` an internal integer primary key, not exposed by the API
+- `id` --- an internal integer primary key, not exposed by the API
+- `parent` --- the `id` of the node's parent
 - `time_created` and `time_updated` --- for forensics, not exposed by the API
 
 The `time_created` and `time_updated` columns, which appear in this table and

@@ -17,6 +17,11 @@ continuous deployment processes.
 
 ## v0.1.0-b31 (2025-08-01)
 
+### Changed
+
+- The logic of hierarchical organization of the Nodes table in Catalog: use the concept
+  of Closure Table to track ancestors and descendands of the nodes.
+
 ### Added
 
 - Pooling of ADBC connections to storage databases.
@@ -39,12 +44,15 @@ continuous deployment processes.
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
+- The logic of hierarchical organization of the Nodes table in Catalog: use the
+  concept of Closure Table to track ancestors and descendants of the nodes.
 
 ### Fixed
 
 - Restored authentication check for API key
 - Updated usage for change in Zarr 3.x API.
 - Improved error message if config location is non-file
+
 
 ## v0.1.0-b29 (2025-06-06)
 
