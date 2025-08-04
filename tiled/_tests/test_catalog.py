@@ -27,7 +27,7 @@ from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
 from ..server.schemas import Asset, DataSource, Management
 from ..structures.core import StructureFamily
-from ..utils import ensure_uri
+from ..utils import Conflicts, ensure_uri
 from .utils import enter_username_password
 
 
@@ -355,6 +355,9 @@ async def test_delete_catalog_tree(tmpdir):
             await tree.context.execute("SELECT * from assets")
         ).all()
         assert len(assets_before_delete) == 3
+
+        with pytest.raises(Conflicts):
+            await tree.delete()
 
         with pytest.raises(WouldDeleteData):
             await tree.delete(recursive=True)  # external_only=True by default
