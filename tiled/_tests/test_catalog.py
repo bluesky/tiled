@@ -1,5 +1,6 @@
 import random
 import string
+from contextlib import closing
 from dataclasses import asdict
 from typing import cast
 
@@ -29,7 +30,7 @@ from ..server.schemas import Asset, DataSource, Management
 from ..storage import SQLStorage, get_storage, parse_storage
 from ..structures.core import StructureFamily
 from ..utils import Conflicts, ensure_uri
-from .utils import enter_username_password
+from .utils import enter_username_password, sql_table_exists
 
 
 @pytest_asyncio.fixture
@@ -448,6 +449,7 @@ async def test_delete_sql_assets(sql_storage_uri):
     # event loop crossing issues with the Postgres test.
 
     tree = in_memory(writable_storage={"sql": sql_storage_uri})
+    storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
 
     # Create some tables to write
     table_1 = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
@@ -464,21 +466,42 @@ async def test_delete_sql_assets(sql_storage_uri):
         t1.append_partition(table_1, 0)
         t2 = b1.create_appendable_table(schema=table_2.schema, key="table_2")
         t2.append_partition(table_2, 0)
-
         assert t1.read() is not None
         assert t2.read() is not None
 
+        # Check the SQL storage directly
+        t1_table_name = t1.data_sources()[0].parameters["table_name"]
+        t1_dataset_id = t1.data_sources()[0].parameters["dataset_id"]
+        t2_table_name = t2.data_sources()[0].parameters["table_name"]
+        t2_dataset_id = t2.data_sources()[0].parameters["dataset_id"]
+        with closing(storage.connect()) as conn:
+            assert sql_table_exists(conn, storage.dialect, t1_table_name)
+            assert sql_table_exists(conn, storage.dialect, t2_table_name)
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{t1_table_name}" '
+                    f"WHERE _dataset_id = {t1_dataset_id:d};",
+                )
+                assert cursor.fetchone()[0] == 6
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{t2_table_name}" '
+                    f"WHERE _dataset_id = {t2_dataset_id:d};",
+                )
+                assert cursor.fetchone()[0] == 3
+
+        # Add another table to b2 -- a copy of table_1 with the same schema
         b2 = a.create_container("b2")
         t1c = b2.create_appendable_table(schema=table_1.schema, key="table_1_copy")
         t1c.append_partition(table_1, 0)
-
         assert t1c.read() is not None
 
+        # Check the catalog state before deletion
         assert list(client) == ["a"]
         assert list(client["a"]) == ["b1", "b2"]
         assert list(client["a"]["b1"]) == ["table_1", "table_2"]
         assert list(client["a"]["b2"]) == ["table_1_copy"]
 
+        # Check the number of nodes, data sources, and assets
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_before_delete) == 6 + 1  # +1 for the root node
         data_sources_before_delete = (
@@ -490,10 +513,40 @@ async def test_delete_sql_assets(sql_storage_uri):
         ).all()
         assert len(assets_before_delete) == 1  # single sql asset
 
-        # Delete all children of b1, but not b1 itself.
+        # Check the SQL storage directly
+        t1c_table_name = t1c.data_sources()[0].parameters["table_name"]
+        t1c_dataset_id = t1c.data_sources()[0].parameters["dataset_id"]
+        assert t1c_table_name == t1_table_name
+        assert t1c_dataset_id != t1_dataset_id
+        with closing(storage.connect()) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{t1_table_name}";',
+                )
+                assert cursor.fetchone()[0] == 9
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{t2_table_name}";',
+                )
+                assert cursor.fetchone()[0] == 3
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{t1c_table_name}" '
+                    f"WHERE _dataset_id = {t1c_dataset_id:d};",
+                )
+                assert cursor.fetchone()[0] == 3
+
+        # Delete all children of b1 (tables t1 and t2), but not b1 itself.
         client["a"]["b1"].delete_contents(
             client["a"]["b1"].keys(), recursive=True, external_only=False
         )
+        with closing(storage.connect()) as conn:
+            with conn.cursor() as cursor:
+                assert sql_table_exists(conn, storage.dialect, t1_table_name)
+                cursor.execute(
+                    f'SELECT COUNT(*) FROM "{t1_table_name}";',
+                )
+                assert cursor.fetchone()[0] == 3  # 6 rows deleted
+                # Entire t2 deleted
+                assert not sql_table_exists(conn, storage.dialect, t2_table_name)
 
         assert list(client) == ["a"]
         assert list(client["a"]) == ["b1", "b2"]
@@ -511,7 +564,6 @@ async def test_delete_sql_assets(sql_storage_uri):
         assert len(assets_after_delete) == 1
 
         # Close and dispose the SQL storage
-        storage = cast(SQLStorage, get_storage(parse_storage(sql_storage_uri).uri))
         storage.dispose()
 
 
