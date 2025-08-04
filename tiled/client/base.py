@@ -875,7 +875,7 @@ class BaseClient:
             If True, descend into sub-nodes and delete their contents too.
             Defaults to False.
         external_only : bool, optional
-            If True, only delete externally-managed data keys. Defaults to True.
+            If True, only delete externally-managed data. Defaults to True.
         """
 
         self._cached_len = None
