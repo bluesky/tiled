@@ -4,6 +4,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## v0.1.0-b32 (2025-08-04)
+
+This release is identical to the previous one; it was made to fix our
+continuous deployment processes.
+
 ## v0.1.0-b31 (2025-08-01)
 
 ### Added
