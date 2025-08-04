@@ -7,7 +7,7 @@ class TiledUser(HttpUser):
 
     def on_start(self):
         self.api_key = os.environ.get('TILED_DEV_API_KEY', 'secret')
-        self.headers = {'Authorization': f'Bearer {self.api_key}'}
+        self.headers = {'Authorization': f'Apikey {self.api_key}'}
 
     @task
     def get_root(self):

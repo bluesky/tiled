@@ -11,7 +11,7 @@ class WritingUser(HttpUser):
     
     def on_start(self):
         self.api_key = os.environ.get('TILED_SINGLE_USER_API_KEY', 'secret')
-        self.headers = {'Authorization': f'Bearer {self.api_key}'}
+        self.headers = {'Authorization': f'Apikey {self.api_key}'}
         self.written_paths = []  # Keep track of what we've written
     
     @task(3)
@@ -88,7 +88,7 @@ class ReadingUser(HttpUser):
     
     def on_start(self):
         self.api_key = os.environ.get('TILED_SINGLE_USER_API_KEY', 'secret')
-        self.headers = {'Authorization': f'Bearer {self.api_key}'}
+        self.headers = {'Authorization': f'Apikey {self.api_key}'}
         self.discovered_paths = []
         self.discover_data()
     
