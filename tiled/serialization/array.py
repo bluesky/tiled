@@ -51,6 +51,9 @@ default_serialization_registry.register(
     "array", "text/x-comma-separated-values", serialize_csv
 )
 default_serialization_registry.register("array", "text/plain", serialize_csv)
+default_serialization_registry.register(
+    "array", "application/vnd.ms-excel", serialize_csv
+)
 default_deserialization_registry.register(
     "array",
     "application/octet-stream",
