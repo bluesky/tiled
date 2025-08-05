@@ -395,3 +395,27 @@ def get_asset_filepaths(node):
             # because it cannot provide a filepath.
             filepaths.append(path_from_uri(asset.data_uri))
     return filepaths
+
+
+def chunks_repr(chunks: tuple[tuple[int, ...], ...]) -> str:
+    """A human-friendly representation of the chunks spec
+
+    Avoids printing long line of repeated values when representing chunks
+    for large arrays.
+    """
+    result = "("
+    for dim in chunks:
+        if len(dim) <= 5:
+            # Short dimensions, e.g. (1, 1, 1)
+            result += str(tuple(dim)) + ", "
+        elif len(set(dim)) == 1:
+            # All chunk sizes are the same, e.g. (1, 1, ..., 1)
+            result += f"({dim[0]}, {dim[0]}, ..., {dim[0]}), "
+        elif len(set(dim[:-1])) == 1:
+            # All chunk sizes but the last are the same, e.g. (1, ..., 1, 3)
+            result += f"({dim[0]}, ..., {dim[0]}, {dim[-1]}), "
+        else:
+            # Mixed chunk sizes, e.g. (1, 2, 3, 4, 5)
+            result += "variable, "
+    result = result.rstrip(", ") + ")"
+    return result
