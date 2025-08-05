@@ -8,7 +8,7 @@ The are encoded into and decoded from URL query parameters.
 import enum
 import json
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, List, Optional
 
 from .query_registration import register
 from .structures.core import StructureFamily as StructureFamilyEnum
@@ -88,8 +88,6 @@ class KeyLookup(NoBool):
 class KeysFilter(NoBool):
     """
     Filter entries that do not match one of these keys.
-
-    This is used by the SimpleAccessPolicy.
 
     Parameters
     ----------
@@ -539,7 +537,7 @@ class AccessBlobFilter:
     >>> c.search(AccessBlobFilter("bill", ["tag_for_bill", "useful_data"]))
     """
 
-    user_id: str
+    user_id: Optional[str]
     tags: List[str]
 
     def encode(self):

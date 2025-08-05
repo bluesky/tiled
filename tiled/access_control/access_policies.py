@@ -2,7 +2,7 @@ import logging
 import os
 
 from ..queries import AccessBlobFilter
-from ..utils import Sentinel, SpecialUsers, import_object
+from ..utils import Sentinel, import_object
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
@@ -248,8 +248,8 @@ class TagBasedAccessPolicy:
         elif self._is_admin(authn_scopes):
             allowed = self.scopes
         else:
-            if principal is SpecialUsers.public:
-                identifier = SpecialUsers.public.value
+            if principal is None:
+                identifier = None
             elif principal.type == "service":
                 identifier = str(principal.uuid)
             else:
@@ -267,7 +267,8 @@ class TagBasedAccessPolicy:
                             continue
                     elif not self.is_tag_defined(tag):
                         continue
-                    tag_scopes = self.get_scopes_from_tag(tag, identifier)
+                    if identifier is not None:
+                        tag_scopes = self.get_scopes_from_tag(tag, identifier)
                     allowed.update(
                         tag_scopes if tag_scopes.issubset(self.scopes) else set()
                     )
@@ -283,18 +284,22 @@ class TagBasedAccessPolicy:
         if not scopes.issubset(self.scopes):
             return NO_ACCESS
 
-        if principal is SpecialUsers.public:
-            identifier = SpecialUsers.public.value
-        elif principal.type == "service":
-            identifier = str(principal.uuid)
-        elif self._is_admin(authn_scopes):
-            return queries
+        tag_list = set()
+        if principal is None:
+            identifier = None
         else:
-            identifier = self._get_id(principal)
+            if principal.type == "service":
+                identifier = str(principal.uuid)
+            elif self._is_admin(authn_scopes):
+                return queries
+            else:
+                identifier = self._get_id(principal)
+            tag_list.update(
+                set.intersection(
+                    *[self.get_tags_from_scope(scope, identifier) for scope in scopes]
+                )
+            )
 
-        tag_list = set.intersection(
-            *[self.get_tags_from_scope(scope, identifier) for scope in scopes]
-        )
         tag_list.update(
             set.intersection(
                 *[
