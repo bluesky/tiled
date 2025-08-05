@@ -35,6 +35,7 @@ server_config = {
                         "alice": "alice",
                         "bob": "bob",
                         "sue": "sue",
+                        "zoe": "zoe",
                         "admin": "admin",
                     },
                 },
@@ -146,7 +147,7 @@ def compile_access_tags_db():
 
     access_tags_compiler.load_tag_config()
     access_tags_compiler.compile()
-    yield
+    yield access_tags_compiler
     access_tags_compiler.connection.close()
 
 
@@ -181,6 +182,15 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
                 },
                 "path": "/baz",
             },
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {
+                    "named_memory": "catalog_qux",
+                    "writable_storage": str(tmpdir_module / "qux"),
+                    "top_level_access_blob": {"tags": ["public"]},
+                },
+                "path": "/qux",
+            },
         ],
     }
 
@@ -201,7 +211,7 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
         return client
 
     admin_client = _create_and_login_context("admin", "admin")
-    for k in ["foo", "bar", "baz"]:
+    for k in ["foo", "bar", "baz", "qux"]:
         admin_client[k].write_array(arr, key="data_A", access_tags=["alice_tag"])
         admin_client[k].write_array(arr, key="data_B", access_tags=["chemists_tag"])
         admin_client[k].write_array(arr, key="data_C", access_tags=["public"])
@@ -212,9 +222,7 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
         context.close()
 
 
-def test_basic_access_control(
-    access_control_test_context_factory, enter_username_password
-):
+def test_basic_access_control(access_control_test_context_factory):
     """
     Test that basic access control and tag compilation are working.
     Only tests simple visibility of the data (i.e. "read:metadata" scope),
@@ -238,9 +246,14 @@ def test_basic_access_control(
 
     top = "foo"
     assert top in alice_client
-    # no access control on MapAdapter
+    # no access control on MapAdapter - can't filter top-level yet
     # assert top not in bob_client
     for data in ["data_A", "data_B", "data_C"]:
+        # Alice has access below the top-level, given by a direct tag
+        # Bob does not have access to any data, blocked by the top-level's tag
+        # data_A - alice has access given by a direct tag of which they are a user
+        # data_B - alice has access given by an inherited tag
+        # data_C - alice has access given by a public tag
         assert data in alice_client[top]
         alice_client[top][data]
         with pytest.raises(KeyError):
@@ -250,21 +263,26 @@ def test_basic_access_control(
     assert top in alice_client
     assert top in bob_client
     for data in ["data_A"]:
+        # Alice has access below the top-level, given by an inherited tag
+        # data_A - bob does not have access conferred by any tags
         assert data in alice_client[top]
         alice_client[top][data]
         assert data not in bob_client[top]
         with pytest.raises(KeyError):
             bob_client[top][data]
     for data in ["data_B", "data_C"]:
+        # Bob has access below the top-level, given by a direct tag of which they are in a group
+        # data_B - alice has scopes compiled in via role
+        # data_B - bob has access given by a direct tag of which they are in a group
+        # data_B - bob has scopes compiled in via list of scopes
+        # data_C - alice and bob are given access by a public tag
         assert data in alice_client[top]
         alice_client[top][data]
         assert data in bob_client[top]
         bob_client[top][data]
 
 
-def test_writing_access_control(
-    access_control_test_context_factory, enter_username_password
-):
+def test_writing_access_control(access_control_test_context_factory):
     """
     Test that writing access control and tag ownership is working.
     Only tests that the writing request does not fail.
@@ -274,14 +292,16 @@ def test_writing_access_control(
       - Writing without applying an access tag
       - Writing while applying an access tag the user owns
       - Writing while applying an access tag the user does not own
-      - Writing while applying an access tag the user owns through group membership
       - Writing while applying an access tag that is not defined
       - Writing while applying the "public" tag (admin only)
+      - Writing into a location where the user does not have write access
+      - Writing while applying an access tag the user owns through group membership
+      - Writing while applying multiple access tags
       - Writing while applying a tag which does not give the user the minimum scopes
     """
 
     alice_client = access_control_test_context_factory("alice", "alice")
-    admin_client = access_control_test_context_factory("admin", "admin")
+    bob_client = access_control_test_context_factory("bob", "bob")
     sue_client = access_control_test_context_factory("sue", "sue")
 
     top = "foo"
@@ -294,19 +314,22 @@ def test_writing_access_control(
     with fail_with_status_code(HTTP_403_FORBIDDEN):
         alice_client[top].write_array(arr, key="data_U", access_tags=["public"])
 
-    top = "foo"
-    admin_client[top].write_array(arr, key="data_V", access_tags=["public"])
+    top = "bar"
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        bob_client[top].write_array(arr, key="data_V")
 
     top = "baz"
-    sue_client[top].write_array(arr, key="data_W", access_tags=["physicists_tag"])
+    sue_client[top].write_array(
+        arr, key="data_W", access_tags=["physicists_tag", "chemists_tag"]
+    )
+    access_tags = sue_client[top]["data_W"].access_blob["tags"]
+    assert "physicists_tag" in access_tags
+    assert "chemists_tag" in access_tags
     with fail_with_status_code(HTTP_403_FORBIDDEN):
         sue_client[top].write_array(arr, key="data_X", access_tags=["chemists_tag"])
 
 
-# def test_bad_ops_on_tags(access_control_test_context_factory, enter_username_password):
-def test_user_owned_node_access_control(
-    access_control_test_context_factory, enter_username_password
-):
+def test_user_owned_node_access_control(access_control_test_context_factory):
     """
     Test that user-owned nodes (i.e. nodes created without access tags applied)
       are visible after creation and can be modified by the user.
@@ -319,12 +342,14 @@ def test_user_owned_node_access_control(
 
     top = "foo"
     for data in ["data_Y"]:
+        # Create a new user-owned node
         alice_client[top].write_array(arr, key=data)
         assert data in alice_client[top]
         alice_client[top][data]
         access_blob = alice_client[top][data].access_blob
         assert "user" in access_blob
         assert "alice" in access_blob["user"]
+        # Convert from user-owned node to a tagged node
         alice_client[top][data].replace_metadata(access_tags=["alice_tag"])
         access_blob = alice_client[top][data].access_blob
         assert "user" not in access_blob
@@ -335,7 +360,96 @@ def test_user_owned_node_access_control(
 
     top = "bar"
     for data in ["data_Z"]:
+        # Create a user-owned node and check that it is access restricted
         alice_client[top].write_array(arr, key=data)
         assert data not in bob_client[top]
         with pytest.raises(KeyError):
             bob_client[top][data]
+
+
+def test_public_anonymous_access_control(access_control_test_context_factory):
+    """
+    Test that data which is tagged public is visible to unauthenticated
+      (anonymous) users when the server allows anonymous access.
+    """
+    zoe_client = access_control_test_context_factory("zoe", "zoe")
+    zoe_client.logout()
+    anon_client = zoe_client
+
+    top = "qux"
+    assert top in anon_client
+    for data in ["data_A", "data_B"]:
+        assert data not in anon_client[top]
+        with pytest.raises(KeyError):
+            anon_client[top][data]
+    for data in ["data_C"]:
+        assert data in anon_client[top]
+        anon_client[top][data]
+
+
+def test_admin_access_control(access_control_test_context_factory):
+    """
+    Test that admin accounts have various elevated privileges, including:
+    - Apply/remove public tag to/from a node
+    - Apply/remove tags while ignoring minimum scopes
+    - Apply/remove tags that the user does not own
+    - View all data regardless of tags
+    - Apply an access tag that is not defined (disallowed)
+    - Remove all tags from a node, but still view that node
+    - Also includes test of an empty tags list blocking access for regular users
+    """
+    admin_client = access_control_test_context_factory("admin", "admin")
+    alice_client = access_control_test_context_factory("alice", "alice")
+
+    top = "foo"
+    for data in ["data_L"]:
+        # create a node and tag it public
+        admin_client[top].write_array(arr, key=data, access_tags=["public"])
+        assert data in alice_client[top]
+        alice_client[top][data]
+        # remove public access, in fact remove all tags and ignore missing scopes
+        admin_client[top][data].replace_metadata(access_tags=[])
+        assert data in admin_client[top]
+        admin_client[top][data]
+        assert data not in alice_client[top]
+        with pytest.raises(KeyError):
+            alice_client[top][data]
+        # apply a tag that the admin user does not own and ignore missing scopes
+        admin_client[top][data].replace_metadata(access_tags=["chemists_tag"])
+        assert data in admin_client[top]
+        admin_client[top][data]
+        assert data in alice_client[top]
+        alice_client[top][data]
+        # remove a tag that the admin user does not own
+        admin_client[top][data].replace_metadata(access_tags=["chemists_tag"])
+        # apply a tag which is not defined
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            admin_client[top][data].replace_metadata(access_tags=["undefined_tag"])
+
+
+def test_empty_access_blob_access_control(access_control_test_context_factory):
+    """
+    Test the cases where a node in the catalog has an empty access blob.
+    This case occurs when migrating an older catalog without also
+      populating the access_blob column.
+    """
+    import sqlite3
+
+    admin_client = access_control_test_context_factory("admin", "admin")
+    alice_client = access_control_test_context_factory("alice", "alice")
+
+    top = "qux"
+    for data in ["data_M"]:
+        admin_client[top].write_array(arr, key=data, access_tags=["alice_tag"])
+        db = sqlite3.connect(f"file:catalog_{top}?mode=memory&cache=shared", uri=True)
+        cursor = db.cursor()
+        cursor.execute(
+            "UPDATE nodes SET access_blob = json('{}') WHERE key == 'data_M'"
+        )
+        db.commit()
+
+        assert data in admin_client[top]
+        admin_client[top][data]
+        assert data not in alice_client[top]
+        with pytest.raises(KeyError):
+            alice_client[top][data]
