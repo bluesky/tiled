@@ -6,13 +6,18 @@ from ..media_type_registration import (
     default_serialization_registry,
 )
 from ..structures.core import StructureFamily
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, XLSX_MIME_TYPE, modules_available
+from ..utils import (
+    APACHE_ARROW_FILE_MIME_TYPE,
+    XLSX_MIME_TYPE,
+    modules_available,
+    parse_mimetype,
+)
 
 
 @default_serialization_registry.register(
     StructureFamily.table, APACHE_ARROW_FILE_MIME_TYPE
 )
-def serialize_arrow(df, metadata, preserve_index=True):
+def serialize_arrow(mimetype, df, metadata, preserve_index=True):
     import pyarrow
 
     if isinstance(df, pyarrow.Table):
@@ -39,7 +44,7 @@ def deserialize_arrow(buffer):
 # There seems to be no official Parquet MIME type.
 # https://issues.apache.org/jira/browse/PARQUET-1889
 @default_serialization_registry.register(StructureFamily.table, "application/x-parquet")
-def serialize_parquet(df, metadata, preserve_index=True):
+def serialize_parquet(mimetype, df, metadata, preserve_index=True):
     import pyarrow.parquet
 
     table = pyarrow.Table.from_pandas(df, preserve_index=preserve_index)
@@ -49,14 +54,16 @@ def serialize_parquet(df, metadata, preserve_index=True):
     return memoryview(sink.getvalue())
 
 
-def serialize_csv(df, metadata, preserve_index=False):
+def serialize_csv(mimetype, df, metadata, preserve_index=False):
     file = io.StringIO()
-    df.to_csv(file, index=preserve_index)
+    opt_params = parse_mimetype(mimetype)[1]
+    include_header = opt_params.get("header", "present") != "absent"
+    df.to_csv(file, header=include_header, index=preserve_index)
     return file.getvalue().encode()
 
 
 @default_deserialization_registry.register(StructureFamily.table, "text/csv")
-def deserialize_csv(buffer):
+def deserialize_csv(mimetype, buffer):
     import pandas
 
     return pandas.read_csv(io.BytesIO(buffer), header=None)
@@ -77,7 +84,7 @@ default_serialization_registry.register(
 
 
 @default_serialization_registry.register(StructureFamily.table, "text/html")
-def serialize_html(df, metadata, preserve_index=False):
+def serialize_html(mimetype, df, metadata, preserve_index=False):
     file = io.StringIO()
     df.to_html(file, index=preserve_index)
     return file.getvalue().encode()
@@ -88,13 +95,15 @@ if modules_available("openpyxl", "pandas"):
     import pandas
 
     @default_serialization_registry.register(StructureFamily.table, XLSX_MIME_TYPE)
-    def serialize_excel(df, metadata, preserve_index=False):
+    def serialize_excel(mimetype, df, metadata, preserve_index=False):
         file = io.BytesIO()
         df.to_excel(file, index=preserve_index)
         return file.getbuffer()
 
     default_deserialization_registry.register(
-        StructureFamily.table, XLSX_MIME_TYPE, pandas.read_excel
+        StructureFamily.table,
+        XLSX_MIME_TYPE,
+        lambda mimetype, buffer: pandas.read_excel(buffer),
     )
     mimetypes.types_map.setdefault(".xlsx", XLSX_MIME_TYPE)
 if modules_available("orjson"):
@@ -103,7 +112,7 @@ if modules_available("orjson"):
     default_serialization_registry.register(
         StructureFamily.table,
         "application/json",
-        lambda df, metadata: orjson.dumps(
+        lambda mimetype, df, metadata: orjson.dumps(
             {column: df[column].tolist() for column in df},
         ),
     )
@@ -121,7 +130,7 @@ if modules_available("orjson"):
         StructureFamily.table,
         "application/json-seq",  # official mimetype for newline-delimited JSON
     )
-    def json_sequence(df, metadata):
+    def json_sequence(mimetype, df, metadata):
         if rows := df.to_dict(orient="records"):
             # The first row is a special case; the rest start with a newline.
             yield orjson.dumps(rows[0])
