@@ -99,7 +99,7 @@ class ArrayAdapter:
             array.dtype == "object" and array.dtype.fields is None
         )
         if is_likely_string_dtype:
-            array = array.astype("str")  # becomes "<Un" dtype
+            array = numpy.array([str(x) for x in array])  # becomes "<Un" dtype
 
         structure = ArrayStructure.from_array(
             array, shape=shape, chunks=chunks, dims=dims
