@@ -93,7 +93,7 @@ def test_serve_catalog_temp(args, tmp_path):
         "",
     ],
 )
-def test_serve_config(args, tmp_path):
+def test_serve_config(args, tmp_path, sqlite_or_postgres_uri):
     "Test 'tiled serve config' with a tmp config file."
     (tmp_path / "data").mkdir()
     (tmp_path / "config").mkdir()
@@ -107,7 +107,7 @@ trees:
   - path: /
     tree: catalog
     args:
-      uri: sqlite:///{tmp_path / 'catalog.db'}
+      uri: {sqlite_or_postgres_uri}
       writable_storage: {tmp_path / 'data'}
       init_if_not_exists: true
 """

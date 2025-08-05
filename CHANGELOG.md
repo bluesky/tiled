@@ -3,8 +3,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b32 (Unreleased)
+
+### Fixed
+
+- Uniform array columns read from Postgres/DuckDB are now aggregated to an
+  NDArray (e.g. scanned `waveform` PVs)
+
+## v0.1.0-b32 (2025-08-04)
+
+This release is identical to the previous one; it was made to fix our
+continuous deployment processes.
 
 ## v0.1.0-b31 (2025-08-01)
+
+### Changed
+
+- The logic of hierarchical organization of the Nodes table in Catalog: use the concept
+  of Closure Table to track ancestors and descendands of the nodes.
 
 ### Added
 
@@ -28,12 +44,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
+- The logic of hierarchical organization of the Nodes table in Catalog: use the
+  concept of Closure Table to track ancestors and descendants of the nodes.
 
 ### Fixed
 
 - Restored authentication check for API key
 - Updated usage for change in Zarr 3.x API.
 - Improved error message if config location is non-file
+
 
 ## v0.1.0-b29 (2025-06-06)
 
