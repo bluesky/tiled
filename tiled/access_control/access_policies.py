@@ -2,7 +2,7 @@ import logging
 import os
 
 from ..queries import AccessBlobFilter
-from ..utils import Sentinel, import_object
+from ..utils import Sentinel, SpecialUsers, import_object
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
@@ -248,7 +248,9 @@ class TagBasedAccessPolicy:
         elif self._is_admin(authn_scopes):
             allowed = self.scopes
         else:
-            if principal.type == "service":
+            if principal is SpecialUsers.public:
+                identifier = SpecialUsers.public.value
+            elif principal.type == "service":
                 identifier = str(principal.uuid)
             else:
                 identifier = self._get_id(principal)
@@ -281,7 +283,9 @@ class TagBasedAccessPolicy:
         if not scopes.issubset(self.scopes):
             return NO_ACCESS
 
-        if principal.type == "service":
+        if principal is SpecialUsers.public:
+            identifier = SpecialUsers.public.value
+        elif principal.type == "service":
             identifier = str(principal.uuid)
         elif self._is_admin(authn_scopes):
             return queries
