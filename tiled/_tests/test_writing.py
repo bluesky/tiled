@@ -402,11 +402,11 @@ def test_metadata_revisions(tree):
         assert len(ac.metadata_revisions[:]) == 0
         ac.update_metadata(metadata={"a": 1})
         assert ac.metadata["a"] == 1
-        client["revise_me"].metadata["a"] == 1
+        assert client["revise_me"].metadata["a"] == 1
         assert len(ac.metadata_revisions[:]) == 1
         ac.update_metadata(metadata={"a": 2})
         assert ac.metadata["a"] == 2
-        client["revise_me"].metadata["a"] == 2
+        assert client["revise_me"].metadata["a"] == 2
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
@@ -421,11 +421,11 @@ def test_replace_metadata(tree):
         assert len(ac.metadata_revisions[:]) == 0
         ac.replace_metadata(metadata={"a": 1})
         assert ac.metadata["a"] == 1
-        client["revise_me_with_replace"].metadata["a"] == 1
+        assert client["revise_me_with_replace"].metadata["a"] == 1
         assert len(ac.metadata_revisions[:]) == 1
         ac.replace_metadata(metadata={"a": 2})
         assert ac.metadata["a"] == 2
-        client["revise_me_with_replace"].metadata["a"] == 2
+        assert client["revise_me_with_replace"].metadata["a"] == 2
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
@@ -517,7 +517,7 @@ async def test_delete(tree):
             key="delete_me",
         )
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_before_delete) == 1
+        assert len(nodes_before_delete) == 1 + 1  # +1 for the root node
         data_sources_before_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
@@ -538,7 +538,7 @@ async def test_delete(tree):
         client.delete("delete_me")
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_after_delete) == 0
+        assert len(nodes_after_delete) == 0 + 1  # the root node should still exist
         data_sources_after_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()

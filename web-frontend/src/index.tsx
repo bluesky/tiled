@@ -9,7 +9,7 @@ import { ThemeProvider } from "@mui/material/styles";
 import theme from "./theme";
 
 const root_element = ReactDOM.createRoot(
-  document.getElementById("root") as HTMLElement
+  document.getElementById("root") as HTMLElement,
 );
 
 root_element.render(
@@ -17,5 +17,5 @@ root_element.render(
     {/* CssBaseline kickstart an elegant, consistent, and simple baseline to build upon. */}
     <CssBaseline />
     <App />
-  </ThemeProvider>
+  </ThemeProvider>,
 );

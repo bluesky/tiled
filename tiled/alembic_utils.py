@@ -1,13 +1,19 @@
 import contextlib
 import os.path
 import tempfile
+from collections.abc import Generator
+from pathlib import Path
+from typing import Iterable, Optional
 
 from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 
-def write_alembic_ini(alembic_ini_template_path, alembic_dir, path, database_uri):
+def write_alembic_ini(
+    alembic_ini_template_path: Path, alembic_dir: Path, path: Path, database_uri: str
+):
     """Write a complete alembic.ini from our template.
 
     Parameters
@@ -36,7 +42,9 @@ def write_alembic_ini(alembic_ini_template_path, alembic_dir, path, database_uri
 
 
 @contextlib.contextmanager
-def temp_alembic_ini(alembic_ini_template_path, alembic_dir, database_uri):
+def temp_alembic_ini(
+    alembic_ini_template_path: Path, alembic_dir: Path, database_uri: str
+) -> Generator[str]:
     """
     Context manager for temporary alembic configuration file
 
@@ -64,7 +72,7 @@ def temp_alembic_ini(alembic_ini_template_path, alembic_dir, database_uri):
         yield alembic_ini
 
 
-def stamp_head(alembic_ini_template_path, alembic_dir, engine_url):
+def stamp_head(alembic_ini_template_path: Path, alembic_dir: Path, engine_url: str):
     """
     Upgrade schema to the specified revision.
     """
@@ -75,7 +83,9 @@ def stamp_head(alembic_ini_template_path, alembic_dir, engine_url):
         command.stamp(alembic_cfg, "head")
 
 
-def upgrade(alembic_ini_template_path, alembic_dir, engine_url, revision):
+def upgrade(
+    alembic_ini_template_path: Path, alembic_dir: Path, engine_url: str, revision: str
+):
     """
     Upgrade schema to the specified revision.
     """
@@ -86,7 +96,9 @@ def upgrade(alembic_ini_template_path, alembic_dir, engine_url, revision):
         command.upgrade(alembic_cfg, revision)
 
 
-def downgrade(alembic_ini_template_path, alembic_dir, engine_url, revision):
+def downgrade(
+    alembic_ini_template_path: Path, alembic_dir: Path, engine_url: str, revision: str
+):
     """
     Downgrade schema to the specified revision.
     """
@@ -109,7 +121,9 @@ class DatabaseUpgradeNeeded(Exception):
     pass
 
 
-async def get_current_revision(engine, known_revisions):
+async def get_current_revision(
+    engine: AsyncEngine, known_revisions: Iterable[str]
+) -> Optional[str]:
     redacted_url = engine.url._replace(password="[redacted]")
     async with engine.connect() as conn:
         context = await conn.run_sync(migration.MigrationContext.configure)
@@ -132,7 +146,9 @@ async def get_current_revision(engine, known_revisions):
     return revision
 
 
-async def check_database(engine, required_revision, known_revisions):
+async def check_database(
+    engine: AsyncEngine, required_revision: str, known_revisions: Iterable[str]
+):
     revision = await get_current_revision(engine, known_revisions)
     redacted_url = engine.url._replace(password="[redacted]")
     if revision is None:

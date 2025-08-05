@@ -93,7 +93,7 @@ def test_serve_catalog_temp(args, tmp_path):
         "",
     ],
 )
-def test_serve_config(args, tmp_path):
+def test_serve_config(args, tmp_path, sqlite_or_postgres_uri):
     "Test 'tiled serve config' with a tmp config file."
     (tmp_path / "data").mkdir()
     (tmp_path / "config").mkdir()
@@ -107,7 +107,7 @@ trees:
   - path: /
     tree: catalog
     args:
-      uri: sqlite:///{tmp_path / 'catalog.db'}
+      uri: {sqlite_or_postgres_uri}
       writable_storage: {tmp_path / 'data'}
       init_if_not_exists: true
 """
@@ -120,5 +120,6 @@ def test_cli_version():
     from tiled import __version__
 
     with run_cli("tiled --version") as process:
+        assert process.stdout is not None
         line = process.stdout.readline()
     assert line.decode() == f"{__version__}{os.linesep}"
