@@ -3,6 +3,7 @@ import dataclasses
 import logging
 import mimetypes
 import re
+from functools import partial
 from pathlib import Path
 
 import anyio
@@ -181,7 +182,7 @@ async def register(
         if overwrite:
             logger.info(f"  Overwriting '/{'/'.join(prefix_parts)}'")
             # TODO When we have a tiled AsyncClient, use that.
-            await anyio.to_thread.run_sync(node.delete_tree)
+            await anyio.to_thread.run_sync(partial(node.delete, recursive=True))
         await _walk(
             node,
             Path(path),
@@ -624,7 +625,7 @@ async def create_node_or_drop_collision(
         if err.response.status_code == httpx.codes.CONFLICT:
             # To avoid ambiguity include _neither_ the original nor the new one.
             offender = await anyio.to_thread.run_sync(node.get, key)
-            await anyio.to_thread.run_sync(offender.delete_tree)
+            await anyio.to_thread.run_sync(partial(offender.delete, recursive=True))
             logger.warning(
                 "   COLLISION: Multiple files would result in node at '%s'. Skipping all.",
                 err.args[0],
