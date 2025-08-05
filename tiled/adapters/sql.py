@@ -11,6 +11,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     Union,
     cast,
@@ -110,12 +111,13 @@ class SQLAdapter(TableAdapter):
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
-    def supported_storage(cls):
+    def supported_storage(cls) -> Set[type[Storage]]:
         return {EmbeddedSQLStorage, SQLStorage}
 
     def close(self) -> None:
         self.conn.close()
 
+    @property
     def metadata(self) -> JSON:
         """The metadata representing the actual data.
 

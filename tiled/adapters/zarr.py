@@ -120,7 +120,8 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         -------
 
         """
-        return self._array[self._stencil()][slice or ...]
+        arr = cast(NDArray, self._array[self._stencil()])
+        return arr[slice]
 
     def read_block(
         self,
