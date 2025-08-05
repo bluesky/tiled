@@ -3,7 +3,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0-b32 (Unreleased)
+## v0.1.0-b33 (Unreleased)
+
+### Added
+
+- Tests to ensure that CSVAdapter can be used with a subset of columns.
+
+### Changed
+
+- The logic of hierarchical organization of the Nodes table in Catalog: use the concept
+  of Closure Table to track ancestors and descendands of the nodes.
 
 ### Fixed
 
@@ -16,11 +25,6 @@ This release is identical to the previous one; it was made to fix our
 continuous deployment processes.
 
 ## v0.1.0-b31 (2025-08-01)
-
-### Changed
-
-- The logic of hierarchical organization of the Nodes table in Catalog: use the concept
-  of Closure Table to track ancestors and descendands of the nodes.
 
 ### Added
 
@@ -44,8 +48,6 @@ continuous deployment processes.
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
-- The logic of hierarchical organization of the Nodes table in Catalog: use the
-  concept of Closure Table to track ancestors and descendants of the nodes.
 
 ### Fixed
 
