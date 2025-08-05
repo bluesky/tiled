@@ -1,17 +1,13 @@
+ARG PYTHON_VERSION=3.12
 FROM node:22-alpine AS web_frontend_builder
 WORKDIR /code
 COPY web-frontend .
 RUN npm install && npm run build
 
-# We cannot upgrade to Python 3.11 until numba supports it.
-# The `sparse` library relies on numba.
-FROM python:3.12-slim AS builder
+FROM python:${PYTHON_VERSION} AS developer
 
-# We need git at build time in order for versioneer to work, which in turn is
-# needed for the server to correctly report the library_version in the /api/v1/
-# route.
 # We need gcc to compile thriftpy2, a secondary dependency.
-RUN apt-get -y update && apt-get install -y git gcc
+RUN apt-get -y update && apt-get install -y gcc
 
 WORKDIR /code
 
@@ -32,6 +28,8 @@ RUN pip install --no-cache-dir cython
 COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
 COPY . .
 
+FROM developer AS builder
+
 # Skip building the UI here because we already did it in the stage
 # above using a node container.
 # Include server and client dependencies here because this container may be used
@@ -39,12 +37,7 @@ COPY . .
 # client-side code.
 RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
 
-# FROM base as test
-#
-# RUN pip install '.[client,dev]'
-# RUN pytest -v
-
-FROM python:3.12-slim AS runner
+FROM python:${PYTHON_VERSION}-slim AS runner
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"

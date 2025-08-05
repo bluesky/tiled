@@ -1,5 +1,6 @@
 import decimal
 import os
+from contextlib import closing
 from pathlib import Path
 from typing import AsyncGenerator, Generator, Literal, cast
 
@@ -12,8 +13,8 @@ from tiled._tests.utils import temp_postgres
 from tiled.adapters.sql import (
     arrow_schema_to_column_defns,
     arrow_schema_to_create_table,
-    create_connection,
 )
+from tiled.storage import EmbeddedSQLStorage, RemoteSQLStorage
 
 
 @pytest_asyncio.fixture
@@ -233,7 +234,9 @@ def test_data_types(
 
     query = arrow_schema_to_create_table(table.schema, test_table_name, dialect)
 
-    with create_connection(db_uri) as conn:
+    storage_cls = RemoteSQLStorage if dialect == "postgresql" else EmbeddedSQLStorage
+    storage = storage_cls(uri=db_uri)
+    with closing(storage.connect()) as conn:
         with conn.cursor() as cursor:
             cursor.execute(query)
         conn.commit()
@@ -262,3 +265,5 @@ def test_data_types(
         # Before comparing the Tables, we cast the Table into the original schema,
         # which might use finer types.
         assert result.cast(table.schema) == table
+
+    storage.dispose()  # Close all connections before deleting the storage DB
