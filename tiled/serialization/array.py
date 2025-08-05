@@ -15,7 +15,7 @@ from ..utils import (
 )
 
 
-def as_buffer(array, metadata):
+def as_buffer(mimetype, array, metadata):
     "Give back a zero-copy memoryview of the array if possible. Otherwise, copy to bytes."
     # The memoryview path fails for datetime type (and possibly some others?)
     # but it generally works for standard types like int, float, bool, str.
@@ -34,11 +34,11 @@ if modules_available("orjson"):
     default_serialization_registry.register(
         "array",
         "application/json",
-        lambda array, metadata: safe_json_dump(array),
+        lambda mimetype, array, metadata: safe_json_dump(array),
     )
 
 
-def serialize_csv(array, metadata):
+def serialize_csv(mimetype, array, metadata):
     if array.ndim > 2:
         raise UnsupportedShape(array.shape)
     file = io.StringIO()
@@ -51,6 +51,9 @@ default_serialization_registry.register(
     "array", "text/x-comma-separated-values", serialize_csv
 )
 default_serialization_registry.register("array", "text/plain", serialize_csv)
+default_serialization_registry.register(
+    "array", "application/vnd.ms-excel", serialize_csv
+)
 default_deserialization_registry.register(
     "array",
     "application/octet-stream",
@@ -58,7 +61,7 @@ default_deserialization_registry.register(
 )
 if modules_available("PIL"):
 
-    def save_to_buffer_PIL(array, format):
+    def save_to_buffer_PIL(mimetype, array, format):
         # The logic of which shapes are support is subtle, and we'll leave the details
         # PIL ("beg forgiveness rather than ask permission"). But we can rule out
         # anything above 3 dimensions as definitely not supported.
@@ -96,21 +99,25 @@ if modules_available("PIL"):
         return numpy.asarray(image).asdtype(dtype).reshape(shape)
 
     default_serialization_registry.register(
-        "array", "image/png", lambda array, metadata: save_to_buffer_PIL(array, "png")
+        "array",
+        "image/png",
+        lambda mimetype, array, metadata: save_to_buffer_PIL("image/png", array, "png"),
     )
     default_deserialization_registry.register(
         "array",
         "image/png",
-        lambda buffer, dtype, shape: array_from_buffer_PIL(buffer, "png", dtype, shape),
+        lambda mimetype, buffer, dtype, shape: array_from_buffer_PIL(
+            buffer, "png", dtype, shape
+        ),
     )
 if modules_available("tifffile"):
 
-    def array_from_buffer_tifffile(buffer, dtype, shape):
+    def array_from_buffer_tifffile(mimetype, buffer, dtype, shape):
         from tifffile import imread
 
         return imread(buffer).astype(dtype).reshape(shape)
 
-    def save_to_buffer_tifffile(array, metadata):
+    def save_to_buffer_tifffile(mimetype, array, metadata):
         from tifffile import imwrite
 
         # Handle too *few* dimensions here, and let tifffile raise if there are too
@@ -133,7 +140,7 @@ if modules_available("tifffile"):
     )
 
 
-def serialize_html(array, metadata):
+def serialize_html(mimetype, array, metadata):
     "Try to display as image. Fall back to CSV."
     try:
         png_data = default_serialization_registry.dispatch("array", "image/png")(
