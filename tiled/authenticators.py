@@ -478,10 +478,11 @@ class LDAPAuthenticator(InternalAuthenticator):
         int,
         Field(
             default_factory=lambda data: port
-            if (port := data["server_port"] is not None)
-            else (636 if data["use_ssl"] else 389)
+            if (port := data.get("server_port") is not None)
+            else (636 if data.get("use_ssl") else 389)
         ),
     ]
+    valid_username_regex: Annotated[str, Field(r"^[a-z][.a-z0-9_-]*$")]
     use_ssl: bool = False
     use_tls: bool = True
     connect_timeout: float = 5.0

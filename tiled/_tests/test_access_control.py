@@ -544,7 +544,6 @@ class CustomAttributesAuthenticator(InternalAuthenticator):
     users: dict[str, UserAttributes] = {}
 
     async def authenticate(self, username, password):
-        print(f"Authenticating: {username=}, {password=}, {self.users=}")
         if (attrs := self.users.get(username)) and (pw := attrs.get("password")):
             if secrets.compare_digest(pw, password):
                 state = UserSessionState(

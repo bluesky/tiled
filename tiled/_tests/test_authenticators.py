@@ -34,13 +34,13 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
     of the LDAP server.
     """
 
-    params = dict(server_address=ldap_server_address,
-                  bind_dn_template="cn={username},ou=users,dc=example,dc=org",
-                  use_ssl=use_ssl,
-                  use_tls=use_tls)
-    if ldap_server_port is not None:
-        params["server_port"] = ldap_server_port
-    authenticator = LDAPAuthenticator(**params)
+    authenticator = LDAPAuthenticator(
+        server_address_list=[ldap_server_address],
+        bind_dn_template="cn={username},ou=users,dc=example,dc=org",
+        use_ssl=use_ssl,
+        use_tls=use_tls,
+        server_port=ldap_server_port
+    )
 
     async def testing():
         assert (await authenticator.authenticate("user01", "password1")).user_name == "user01"
