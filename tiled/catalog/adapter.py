@@ -10,16 +10,19 @@ import re
 import shutil
 import sys
 import uuid
+from contextlib import closing
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
 from fastapi import HTTPException
 from sqlalchemy import (
+    and_,
     delete,
     event,
+    exists,
     false,
     func,
     not_,
@@ -36,7 +39,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.pool import AsyncAdaptedQueuePool
-from sqlalchemy.sql.expression import cast
+from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
@@ -68,7 +71,13 @@ from ..mimetypes import (
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision, Spec
-from ..storage import FileStorage, parse_storage, register_storage
+from ..storage import (
+    FileStorage,
+    SQLStorage,
+    get_storage,
+    parse_storage,
+    register_storage,
+)
 from ..structures.core import StructureFamily
 from ..utils import (
     UNCHANGED,
@@ -751,9 +760,6 @@ class CatalogNodeAdapter:
 
             await db.commit()
 
-    # async def patch_node(datasources=None):
-    #     ...
-
     async def revisions(self, offset, limit):
         async with self.context.session() as db:
             revision_orms = (
@@ -766,107 +772,111 @@ class CatalogNodeAdapter:
             ).all()
             return [Revision.from_orm(o[0]) for o in revision_orms]
 
-    async def delete(self):
-        """
-        Delete a single Node.
+    async def delete(self, recursive=False, external_only=True):
+        """Delete the Node.
 
         Any DataSources belonging to this Node and any Assets associated (only) with
         those DataSources will also be deleted.
+
+        If `recursive` is True, delete all Nodes beneath this Node in the tree.
         """
         async with self.context.session() as db:
-            is_child = orm.Node.parent == self.node.id
-            num_children = (
-                await db.execute(select(func.count(orm.Node.key)).where(is_child))
-            ).scalar()
-            if num_children:
-                raise Conflicts(
-                    "Cannot delete container that is not empty. Delete contents first."
-                )
-            for data_source in self.data_sources:
-                if data_source.management != Management.external:
-                    # TODO Handle case where the same Asset is associated
-                    # with multiple DataSources. This is not possible yet
-                    # but it is expected to become possible in the future.
-                    for asset in data_source.assets:
-                        delete_asset(asset.data_uri, asset.is_directory)
-                        await db.execute(
-                            delete(orm.Asset).where(orm.Asset.id == asset.id)
-                        )
-            result = await db.execute(
-                delete(orm.Node).where(orm.Node.id == self.node.id)
-            )
-            if result.rowcount == 0:
-                # TODO Abstract this from FastAPI?
-                raise HTTPException(
-                    status_code=HTTP_404_NOT_FOUND,
-                    detail=f"No node {self.node.id}",
-                )
-            assert (
-                result.rowcount == 1
-            ), f"Deletion would affect {result.rowcount} rows; rolling back"
-            await db.commit()
-
-    async def delete_tree(self, external_only=True):
-        """
-        Delete a Node and all the Nodes beneath it in the tree.
-
-        That is, delete all Nodes that have this Node as an ancestor, any number
-        of "generators" up.
-
-        Any DataSources belonging to those Nodes and any Assets associated (only) with
-        those DataSources will also be deleted.
-        """
-        ROOT_ID = 0  # Protect the root node from being deleted
-        condition = orm.Node.id.in_(
-            select(orm.NodesClosure.descendant)
-            .where(orm.NodesClosure.ancestor == self.node.id)
-            .where(orm.NodesClosure.descendant != ROOT_ID)
-        )
-        async with self.context.session() as db:
-            if external_only:
-                count_int_asset_statement = (
-                    select(func.count(orm.Asset.data_uri))
-                    .filter(
-                        orm.Asset.data_sources.any(
-                            orm.DataSource.management != Management.external
+            if not recursive:
+                has_children_stmt = select(
+                    exists().where(
+                        and_(
+                            orm.NodesClosure.ancestor == self.node.id,
+                            orm.NodesClosure.descendant != self.node.id,
                         )
                     )
-                    .filter(condition)
                 )
-                count_int_assets = (
-                    await db.execute(count_int_asset_statement)
-                ).scalar()
-                if count_int_assets > 0:
+                if (await db.execute(has_children_stmt)).scalar():
+                    raise Conflicts(
+                        "Cannot delete a node that is not empty. "
+                        "Delete its contents first or pass `recursive=True`."
+                    )
+
+            affected_nodes_stmnt = (
+                select(orm.NodesClosure.descendant)
+                .where(orm.NodesClosure.ancestor == self.node.id)
+                .distinct()
+                .scalar_subquery()
+            )
+            if external_only:
+                int_asset_exists_stmt = select(
+                    exists()
+                    .where(orm.Asset.id == orm.DataSourceAssetAssociation.asset_id)
+                    .where(
+                        orm.DataSourceAssetAssociation.data_source_id
+                        == orm.DataSource.id
+                    )
+                    .where(orm.DataSource.node_id.in_(affected_nodes_stmnt))
+                    .where(orm.DataSource.management != Management.external)
+                )
+
+                if (await db.execute(int_asset_exists_stmt)).scalar():
                     raise WouldDeleteData(
                         "Some items in this tree are internally managed. "
-                        "Delete the records will also delete the underlying data files. "
+                        "Deleting the records will also delete the underlying data files. "
                         "If you want to delete them, pass external_only=False."
                     )
-            else:
-                sel_int_asset_statement = (
-                    select(orm.Asset.data_uri, orm.Asset.is_directory)
-                    .filter(
+
+            sel_asset_stmnt = (
+                select(
+                    orm.Asset.id,
+                    orm.Asset.data_uri,
+                    orm.Asset.is_directory,
+                    orm.DataSource.management,
+                    orm.DataSource.parameters,
+                )
+                .select_from(orm.Asset)
+                .join(
+                    orm.Asset.data_sources
+                )  # Join on secondary (mapping) relationship
+                .join(orm.DataSource.node)
+                .filter(orm.Node.id.in_(affected_nodes_stmnt))
+                .distinct()
+            )
+
+            assets_to_delete = []
+            for asset_id, data_uri, is_directory, management, parameters in (
+                await db.execute(sel_asset_stmnt)
+            ).all():
+                # Check if this asset is referenced by other UNAFFECTED nodes
+                is_referenced = select(
+                    exists()
+                    .where(
+                        orm.Asset.id == asset_id,
                         orm.Asset.data_sources.any(
-                            orm.DataSource.management != Management.external
-                        )
+                            orm.DataSource.node_id.notin_(affected_nodes_stmnt)
+                        ),
                     )
-                    .filter(condition)
                     .distinct()
                 )
-                int_assets = (await db.execute(sel_int_asset_statement)).all()
-                for data_uri, is_directory in int_assets:
-                    delete_asset(data_uri, is_directory)
-            # TODO Deal with Assets belonging to multiple DataSources.
-            # NOTE: sqlite does not support DELETE ... USING, so we need to
-            # first select the Asset ids to delete.
+                if not (await db.execute(is_referenced)).scalar():
+                    # This asset is referenced only by AFFECTED nodes, so we can delete it
+                    await db.execute(delete(orm.Asset).where(orm.Asset.id == asset_id))
+                    if management != Management.external:
+                        assets_to_delete.append((data_uri, is_directory, parameters))
+                elif (management == Management.writable) and (
+                    urlparse(data_uri).scheme in {"duckdb", "sqlite", "postgresql"}
+                ):
+                    # The tabular storage asset may be referenced by several data_sources
+                    # and nodes, so we cannot delete it completely. However, we can delete
+                    # the relevant rows and tables.
+                    assets_to_delete.append((data_uri, is_directory, parameters))
 
-            asset_ids = select(orm.Asset.id).filter(condition)
-            del_asset_statement = delete(orm.Asset).filter(orm.Asset.id.in_(asset_ids))
-            await db.execute(del_asset_statement)
-
-            del_node_statement = delete(orm.Node).filter(condition)
-            result = await db.execute(del_node_statement)
+            result = await db.execute(
+                delete(orm.Node)
+                .where(orm.Node.id.in_(affected_nodes_stmnt))
+                .where(orm.Node.parent.isnot(None))
+            )
             await db.commit()
+
+            # Finally, delete the physical assets that are not externally managed
+            for data_uri, is_directory, parameters in assets_to_delete:
+                delete_asset(data_uri, is_directory, parameters=parameters)
+
         return result.rowcount
 
     async def delete_revision(self, number):
@@ -1153,7 +1163,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
-def delete_asset(data_uri, is_directory):
+def delete_asset(data_uri, is_directory, parameters=None):
     url = urlparse(data_uri)
     if url.scheme == "file":
         path = path_from_uri(data_uri)
@@ -1161,8 +1171,27 @@ def delete_asset(data_uri, is_directory):
             shutil.rmtree(path)
         else:
             Path(path).unlink()
+    elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
+        storage = cast(SQLStorage, get_storage(data_uri))
+        with closing(storage.connect()) as conn:
+            table_name = parameters.get("table_name") if parameters else None
+            dataset_id = parameters.get("dataset_id") if parameters else None
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f'DELETE FROM "{table_name}" WHERE _dataset_id = {dataset_id:d};',
+                )
+            conn.commit()
+
+            # If the table is empty, we can drop it
+            with conn.cursor() as cursor:
+                cursor.execute(f'SELECT COUNT(*) FROM "{table_name}";')
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
+            conn.commit()
     else:
-        raise NotImplementedError(url.scheme)
+        raise NotImplementedError(
+            f"Cannot delete asset at {data_uri!r} because the scheme {url.scheme!r} is not supported."
+        )
 
 
 _STANDARD_SORT_KEYS = {
@@ -1279,7 +1308,9 @@ def full_text(query, tree):
         condition = orm.metadata_fts5.c.metadata.match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
-            cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
+            sql_cast("simple", REGCONFIG),
+            orm.Node.metadata_,
+            sql_cast(["string"], JSONB),
         )
         condition = tsvector.op("@@")(func.to_tsquery("simple", query.text))
     else:
@@ -1330,7 +1361,9 @@ def access_blob_filter(query, tree):
         condition = or_(contains_tags, user_match)
     elif dialect_name == "postgresql":
         access_blob_jsonb = type_coerce(access_blob, JSONB)
-        contains_tags = access_blob_jsonb["tags"].has_any(cast(query.tags, ARRAY(TEXT)))
+        contains_tags = access_blob_jsonb["tags"].has_any(
+            sql_cast(query.tags, ARRAY(TEXT))
+        )
         user_match = access_blob_jsonb["user"].astext == query.user_id
         condition = or_(contains_tags, user_match)
     else:

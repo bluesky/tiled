@@ -32,6 +32,7 @@ from ..utils import (
     SerializationError,
     UnsupportedShape,
     ensure_awaitable,
+    parse_mimetype,
     safe_json_dump,
 )
 from . import schemas
@@ -333,6 +334,7 @@ async def construct_data_response(
     # The client may give us a choice of media types. Find the first one
     # that we support.
     supported = set()
+    base_media_type = None
     for media_type in media_types:
         if media_type == "*/*":
             media_type = DEFAULT_MEDIA_TYPES[structure_family]["*/*"]
@@ -342,7 +344,8 @@ async def construct_data_response(
         # name and, finally, by the structure family.
         for spec in [spec.name for spec in specs] + [structure_family]:
             media_types_for_spec = serialization_registry.media_types(spec)
-            if media_type in media_types_for_spec:
+            base_media_type = parse_mimetype(media_type)[0]
+            if base_media_type in media_types_for_spec:
                 break
             supported.update(media_types_for_spec)
         else:
@@ -361,7 +364,7 @@ async def construct_data_response(
     with record_timing(request.state.metrics, "tok"):
         # Create an ETag that uniquely identifies this content and the media
         # type that it will be encoded as.
-        etag = tokenize((payload, media_type))
+        etag = tokenize((payload, base_media_type))
     headers = {"ETag": etag}
     if expires is not None:
         headers["Expires"] = expires.strftime(HTTP_EXPIRES_HEADER_FORMAT)
@@ -370,15 +373,15 @@ async def construct_data_response(
         return Response(status_code=HTTP_304_NOT_MODIFIED, headers=headers)
     if filename:
         headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-    serializer = serialization_registry.dispatch(spec, media_type)
+    serializer = serialization_registry.dispatch(spec, base_media_type)
     # This is the expensive step: actually serialize.
     try:
         if filter_for_access is not None:
             content = await ensure_awaitable(
-                serializer, payload, metadata, filter_for_access
+                serializer, media_type, payload, metadata, filter_for_access
             )
         else:
-            content = await ensure_awaitable(serializer, payload, metadata)
+            content = await ensure_awaitable(serializer, media_type, payload, metadata)
     except UnsupportedShape as err:
         raise UnsupportedMediaTypes(
             f"The shape of this data {err.args[0]} is incompatible with the requested format ({media_type}). "
