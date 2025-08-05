@@ -50,6 +50,7 @@ explanations/caching
 explanations/access-control
 explanations/catalog
 explanations/faq
+explanations/roadmap
 explanations/lineage
 ```
 
