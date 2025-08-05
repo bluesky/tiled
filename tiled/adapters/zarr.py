@@ -9,6 +9,7 @@ import zarr
 import zarr.core
 
 from tiled.adapters.container import ContainerAdapter
+from tiled.adapters.core import Adapter
 from tiled.structures.container import ContainerStructure
 
 if sys.version_info < (3, 11):
@@ -16,7 +17,7 @@ if sys.version_info < (3, 11):
     from zarr.storage import init_array as create_array
 else:
     from zarr.storage import LocalStore
-    from zarr import create_array
+    from zarr import create_array, Array
 
 from numpy._typing import NDArray
 
@@ -35,8 +36,23 @@ from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
-class ZarrArrayAdapter(ArrayAdapter):
+class ZarrArrayAdapter(Adapter[ArrayStructure]):
     """ """
+
+    def __init__(
+        self,
+        array: Array,
+        structure: ArrayStructure,
+        *,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+    ) -> None:
+        self._array = array
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def structure_family(cls) -> StructureFamily:
+        return StructureFamily.array
 
     @classmethod
     def init_storage(
@@ -81,6 +97,10 @@ class ZarrArrayAdapter(ArrayAdapter):
             )
         )
         return data_source
+
+    @property
+    def dims(self) -> Optional[Tuple[str, ...]]:
+        return self._structure.dims
 
     def _stencil(self) -> Tuple[slice, ...]:
         """Trim overflow because Zarr always has equal-sized chunks."""
@@ -275,7 +295,7 @@ class ZarrGroupAdapter(
         if isinstance(value, zarr.Group):
             return ZarrGroupAdapter(value)
         else:
-            return ZarrArrayAdapter.from_array(value)
+            return ArrayAdapter.from_array(value)
 
     def __len__(self) -> int:
         return len(self._node)
@@ -373,7 +393,7 @@ class ZarrAdapter:
         node: Node,
         /,
         **kwargs: Optional[Any],
-    ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
+    ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
         zarr_obj = zarr.open(
             path_from_uri(data_source.assets[0].data_uri)
         )  # Group or Array
