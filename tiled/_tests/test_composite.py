@@ -9,8 +9,8 @@ import tifffile as tf
 import xarray
 
 from ..catalog import in_memory
-from ..catalog.adapter import WouldDeleteData
 from ..client import Context, from_context
+from ..client.utils import ClientError
 from ..server.app import build_app
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
@@ -319,7 +319,7 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
     assert keys_before == 9
 
     # Attempt to delete an array that is internally managed
-    with pytest.raises(WouldDeleteData):
+    with pytest.raises(ClientError):
         client["x"].delete_contents("arr1")
 
     # Delete a single part
