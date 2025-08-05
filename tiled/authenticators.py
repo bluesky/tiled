@@ -314,7 +314,7 @@ class LDAPAuthenticator(InternalAuthenticator):
     connect_timeout: float
         Timeout used for connecting to the LDAP server. Default: 5.
 
-    receive_timeout: float
+    receive_timeout: int
         Timeout used for communication with the LDAP server, e.g. this timeout is used to wait for
         completion of 2FA. For smooth operation it should probably exceed timeout set at LDAP server.
         Default: 60.
@@ -486,7 +486,7 @@ class LDAPAuthenticator(InternalAuthenticator):
     use_ssl: bool = False
     use_tls: bool = True
     connect_timeout: float = 5.0
-    receive_timeout: float = 60.0
+    receive_timeout: int = 60
     bind_dn_template: Annotated[list[str], OneOrMany] = []
     allowed_groups: list[str] = []
     lookup_dn: bool = False
