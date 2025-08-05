@@ -1,13 +1,14 @@
-
-from locust import HttpUser, task, between
 import os
+
+from locust import HttpUser, between, task
+
 
 class TiledUser(HttpUser):
     wait_time = between(1, 3)
 
     def on_start(self):
-        self.api_key = os.environ.get('TILED_DEV_API_KEY', 'secret')
-        self.headers = {'Authorization': f'Apikey {self.api_key}'}
+        self.api_key = os.environ.get("TILED_DEV_API_KEY", "secret")
+        self.headers = {"Authorization": f"Apikey {self.api_key}"}
 
     @task
     def get_root(self):
@@ -17,4 +18,4 @@ class TiledUser(HttpUser):
     @task
     def get_metadata(self):
         """Test getting metadata endpoint"""
-        self.client.get("/api/v1/metadata", headers=self.headers)
+        self.client.get("/api/v1/metadata/", headers=self.headers)
