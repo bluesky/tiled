@@ -71,6 +71,9 @@ default_serialization_registry.register(
 default_serialization_registry.register(
     StructureFamily.table, "text/plain", serialize_csv
 )
+default_serialization_registry.register(
+    StructureFamily.table, "application/vnd.ms-excel", serialize_csv
+)
 
 
 @default_serialization_registry.register(StructureFamily.table, "text/html")
