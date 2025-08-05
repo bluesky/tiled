@@ -10,9 +10,10 @@ if sys.version_info < (3, 10):
 else:
     from types import EllipsisType
 
-from typing import Any, Dict, List, Set, Union
+from typing import Any, List, Mapping, Sequence, Set, Union
 
-JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
+JSON_ITEM = str | int | float | Mapping[str, "JSON_ITEM"] | Sequence["JSON_ITEM"] | None
+JSON = Mapping[str, JSON_ITEM]
 
 Scopes = Set[str]
 Query = Any  # for now...
