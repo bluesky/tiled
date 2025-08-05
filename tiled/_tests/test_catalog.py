@@ -421,7 +421,7 @@ async def test_delete_contents(tmpdir):
         ):
             client["a"].delete_contents(["b1"], recursive=False, external_only=True)
 
-        # Trying to delete internal data with external_only=False should raise
+        # Trying to delete internal data with external_only=True should raise
         with pytest.raises(
             WouldDeleteData, match="Some items in this tree are internally managed."
         ):
