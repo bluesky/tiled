@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE, HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from tiled.adapters.protocols import AnyAdapter
 from tiled.server.schemas import Principal
@@ -16,10 +16,7 @@ from .utils import filter_for_access, record_timing
 
 
 def get_root_tree(request: Request):
-    try:
-        return request.app.state.root_tree
-    except AttributeError as ae:
-        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="No root tree available in app") from ae
+    return request.app.state.root_tree
 
 
 async def get_entry(
