@@ -1,21 +1,14 @@
 import builtins
 import copy
 import os
-import sys
 from collections.abc import Mapping
+from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
 from urllib.parse import quote_plus
 
 import zarr.core
-
-if sys.version_info < (3, 11):
-    from zarr.storage import DirectoryStore as LocalStore
-    from zarr.storage import init_array as create_array
-else:
-    from zarr.storage import LocalStore
-    from zarr import create_array
-
 from numpy._typing import NDArray
+from packaging.version import Version
 
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
@@ -28,6 +21,14 @@ from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import Conflicts, node_repr, path_from_uri
 from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
+
+ZARR_LIB_V2 = Version(version("zarr")) < Version("3")
+if ZARR_LIB_V2:
+    from zarr.storage import DirectoryStore as LocalStore
+    from zarr.storage import init_array as create_array
+else:
+    from zarr import create_array
+    from zarr.storage import LocalStore
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
