@@ -2,12 +2,14 @@ import builtins
 import copy
 import os
 import sys
-from typing import Any, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
 from urllib.parse import quote_plus
 
+import zarr
 import zarr.core
 
 from tiled.adapters.container import ContainerAdapter
+from tiled.structures.container import ContainerStructure
 
 if sys.version_info < (3, 11):
     from zarr.storage import DirectoryStore as LocalStore
@@ -35,8 +37,6 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 class ZarrArrayAdapter(ArrayAdapter):
     """ """
-
-    supported_storage = {FileStorage}
 
     @classmethod
     def init_storage(
@@ -226,6 +226,10 @@ class ZarrArrayAdapter(ArrayAdapter):
         new_chunks_tuple = tuple(new_chunks)
         return new_shape_tuple, new_chunks_tuple
 
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
+
 
 class ZarrGroupAdapter(
     ContainerAdapter[Union["ArrayAdapter", "ZarrGroupAdapter"]],
@@ -235,8 +239,7 @@ class ZarrGroupAdapter(
 
     def __init__(
         self,
-        node: Any,
-        structure: Optional[ArrayStructure] = None,
+        node: zarr.Group,
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
@@ -250,18 +253,19 @@ class ZarrGroupAdapter(
         metadata :
         specs :
         """
-        if structure is not None:
-            raise ValueError(
-                f"structure is expected to be None for containers, not {structure}"
-            )
         self._node = node
-        super().__init__(structure, metadata=metadata, specs=specs)
+        super().__init__(
+            structure=ContainerStructure(keys=self.keys()),
+            metadata=metadata,
+            specs=specs,
+        )
 
     def __repr__(self) -> str:
         return node_repr(self, list(self))
 
-    def metadata(self) -> Any:
-        return self._node.attrs
+    @property
+    def metadata(self) -> JSON:
+        return dict(self._node.attrs)
 
     def __iter__(self) -> Iterator[Any]:
         yield from self._node
@@ -376,7 +380,6 @@ class ZarrAdapter:
         if node.structure_family == StructureFamily.container:
             return ZarrGroupAdapter(
                 zarr_obj,
-                structure=data_source.structure,
                 metadata=node.metadata_,
                 specs=node.specs,
                 **kwargs,

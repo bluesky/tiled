@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Set
-from typing import Generic, List, Optional, TypeVar
+from typing import Any, Generic, List, Optional, TypeVar
 
 from tiled.storage import Storage
 from tiled.structures.core import Spec, StructureFamily
@@ -43,4 +43,4 @@ class Adapter(ABC, Generic[S]):
         return set()
 
 
-A = TypeVar("A", bound=Adapter)
+A = TypeVar("A", bound=Adapter[Any])
