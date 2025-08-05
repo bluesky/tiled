@@ -23,6 +23,7 @@ from ..catalog.adapter import WouldDeleteData
 from ..catalog.explain import record_explanations
 from ..client import Context, from_context
 from ..client.register import register
+from ..client.utils import ClientError
 from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
@@ -358,7 +359,7 @@ async def test_delete_catalog_tree(tmpdir):
         ).all()
         assert len(assets_before_delete) == 3
 
-        with pytest.raises(Conflicts):
+        with pytest.raises(Conflicts, match="Cannot delete a node that is not empty."):
             await tree.delete()
 
         with pytest.raises(WouldDeleteData):
@@ -369,6 +370,78 @@ async def test_delete_catalog_tree(tmpdir):
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_after_delete) == 0 + 1  # the root node that should remain
+        data_sources_after_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_after_delete) == 0
+        assets_after_delete = (await tree.context.execute("SELECT * from assets")).all()
+        assert len(assets_after_delete) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_contents(tmpdir):
+    # Do not use client fixture here.
+    # The Context must be opened inside the test or we run into
+    # event loop crossing issues with the Postgres test.
+    tree = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+
+        # a has children b1 and b2, which each contain arrays
+        a = client.create_container("a")
+        b1 = a.create_container("b1")
+        b1.write_array([1, 2, 3], key="test_1")
+        b1.write_array([4, 5, 6], key="test_2")
+        b1.write_array([7, 8, 9], key="test_3")
+        b2 = a.create_container("b2")
+        b2.write_array([10, 11, 12], key="test_4")
+        b2.write_array([13, 14, 15], key="test_5")
+        a.create_container("b3")  # empty container
+
+        assert set(client) == {"a"}
+        assert set(client["a"]) == {"b1", "b2", "b3"}
+        assert set(client["a"]["b1"]) == {"test_1", "test_2", "test_3"}
+        assert set(client["a"]["b2"]) == {"test_4", "test_5"}
+
+        # Check the database state before deletion
+        nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_before_delete) == 9 + 1
+        data_sources_before_delete = (
+            await tree.context.execute("SELECT * from data_sources")
+        ).all()
+        assert len(data_sources_before_delete) == 5
+        assets_before_delete = (
+            await tree.context.execute("SELECT * from assets")
+        ).all()
+        assert len(assets_before_delete) == 5
+
+        # Trying to delete a non-empty node without recursive=True should raise
+        with pytest.raises(
+            ClientError, match="Cannot delete a node that is not empty."
+        ):
+            client["a"].delete_contents(["b1"], recursive=False, external_only=True)
+
+        # Trying to delete internal data with external_only=False should raise
+        with pytest.raises(
+            WouldDeleteData, match="Some items in this tree are internally managed."
+        ):
+            client["a"].delete_contents(["b1"], recursive=True, external_only=True)
+
+        # Delete arrays from b1 (as a scalar and as a list), and then b1 itself
+        b1.delete_contents("test_1", external_only=False)
+        assert set(client["a"]["b1"].keys()) == {"test_2", "test_3"}
+        b1.delete_contents(["test_2", "test_3"], external_only=False)
+        assert set(client["a"]["b1"].keys()) == set()
+        client["a"].delete_contents(["b1"], recursive=False, external_only=True)
+        assert set(client["a"]) == {"b2", "b3"}
+
+        # Delete all contents of a, including the non-empty b2 and the empty b3
+        client["a"].delete_contents(external_only=False, recursive=True)
+        assert set(client["a"]) == set()
+
+        # Check the database state; only a and the root node should remain.
+        nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
+        assert len(nodes_after_delete) == 1 + 1
         data_sources_after_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
