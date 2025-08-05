@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Optional, Sequence
 
 from fastapi import (
     APIRouter,
@@ -59,7 +59,7 @@ from ..authn_database.core import (
     lookup_valid_pending_session_by_user_code,
     lookup_valid_session,
 )
-from ..utils import SHARE_TILED_PATH, SpecialUsers
+from ..utils import SHARE_TILED_PATH
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
 from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
@@ -315,7 +315,7 @@ async def get_current_principal(
     db: Optional[AsyncSession] = Depends(get_database_session),
     # TODO: https://github.com/bluesky/tiled/issues/923
     # Remove non-Principal return types
-) -> Union[schemas.Principal, SpecialUsers]:
+) -> Optional[schemas.Principal]:
     """
     Get current Principal from:
     - API key in 'api_key' query parameter
@@ -372,7 +372,7 @@ async def get_current_principal(
         else:
             # Tiled is in a "single user" mode with only one API key.
             if secrets.compare_digest(api_key, settings.single_user_api_key):
-                principal = SpecialUsers.admin
+                principal = None
             else:
                 raise HTTPException(
                     status_code=HTTP_401_UNAUTHORIZED,
@@ -390,7 +390,7 @@ async def get_current_principal(
         )
     else:
         # No form of authentication is present.
-        principal = SpecialUsers.public
+        principal = None
     # This is used to pass the currently-authenticated principal into the logger.
     request.state.principal = principal
     return principal
@@ -819,9 +819,7 @@ def authentication_router() -> APIRouter:
         limit: Optional[int] = Query(
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["read:principals"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -859,9 +857,7 @@ def authentication_router() -> APIRouter:
     )
     async def create_service_principal(
         request: Request,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["write:principals"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
         role: str = Query(...),
@@ -960,9 +956,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         uuid: uuid_module.UUID,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["admin:apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1013,9 +1007,7 @@ def authentication_router() -> APIRouter:
     async def revoke_session_by_id(
         session_id: str,  # from path parameter
         request: Request,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
@@ -1106,9 +1098,7 @@ def authentication_router() -> APIRouter:
     async def new_apikey(
         request: Request,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1166,9 +1156,7 @@ def authentication_router() -> APIRouter:
     async def revoke_apikey(
         request: Request,
         first_eight: str,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1198,14 +1186,12 @@ def authentication_router() -> APIRouter:
     )
     async def whoami(
         request: Request,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         # TODO Permit filtering the fields of the response.
         request.state.endpoint = "auth"
-        if principal is SpecialUsers.public:
+        if principal is None:
             return json_or_msgpack(request, None)
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.
