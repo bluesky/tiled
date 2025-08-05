@@ -5,12 +5,12 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
-from typing import Annotated, Any, Mapping, Optional, TypeVar, Union, cast
+from typing import Annotated, Any, Mapping, Optional, TypeVar, cast
 
 import httpx
 from fastapi import APIRouter, Request
 from jose import JWTError, jwt
-from pydantic import BeforeValidator, ConfigDict, Field, Secret
+from pydantic import BeforeValidator, ConfigDict, Field, Secret, model_validator
 from starlette.responses import RedirectResponse
 
 from .server.protocols import (
@@ -276,7 +276,7 @@ async def prepare_saml_from_fastapi_request(request: Request) -> Mapping[str, st
 T = TypeVar("T")
 
 
-def one_or_many(value: Union[T, list[T]]) -> list[T]:
+def one_or_many(value: Any) -> list[Any]:
     if isinstance(value, str) or not isinstance(value, Iterable):
         return [value]
     return list(value)
@@ -501,6 +501,14 @@ class LDAPAuthenticator(InternalAuthenticator):
     attributes: list[str] = []
     auth_state_attributes: list[str] = []
     use_lookup_dn_username: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def ignore_nones(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("server_port") is None:
+                data.pop("server_port")
+        return data
 
     async def resolve_username(self, username_supplied_by_user):
         import ldap3
