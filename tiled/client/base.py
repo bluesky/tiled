@@ -866,11 +866,27 @@ class BaseClient:
 
         return self._metadata_revisions
 
-    def delete_tree(self):
-        endpoint = self.uri.replace("/metadata/", "/nodes/", 1)
+    def delete(self, recursive: bool = False, external_only: bool = True) -> None:
+        """Delete the node and its contents, if any.
+
+        Parameters
+        ----------
+        recursive : bool, optional
+            If True, descend into sub-nodes and delete their contents too.
+            Defaults to False.
+        external_only : bool, optional
+            If True, only delete externally-managed data. Defaults to True.
+        """
+
+        self._cached_len = None
         for attempt in retry_context():
             with attempt:
-                handle_error(self.context.http_client.delete(endpoint))
+                handle_error(
+                    self.context.http_client.delete(
+                        f"{self.uri}",
+                        params={"recursive": recursive, "external_only": external_only},
+                    )
+                )
 
     def __dask_tokenize__(self):
         return (type(self), self.uri)
