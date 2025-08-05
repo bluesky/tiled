@@ -9,12 +9,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - The logic of hierarchical organization of the Nodes table in Catalog: use the concept
   of Closure Table to track ancestors and descendands of the nodes.
-
-### Changed
-
 - Refactored internal server function ``get_root_tree()`` to not use FastAPI
   dependencies injection
 - Refactored internal Zarr version detection
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+
+### Changed
+
+- Access control code is now in the `access_control` subdirectory
 
 ### Fixed
 

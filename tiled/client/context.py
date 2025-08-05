@@ -226,10 +226,12 @@ class Context:
             # starlette is available.
             from starlette.testclient import TestClient
 
+            base_uri = f"{uri.scheme}://{uri.netloc}"
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
                 app=app,
                 raise_server_exceptions=raise_server_exceptions,
+                base_url=base_uri,
             )
             client.timeout = timeout
             client.headers = headers
@@ -444,12 +446,13 @@ class Context:
         timeout=None,
         api_key=UNSET,
         raise_server_exceptions=True,
+        uri=None,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
         """
         context = cls(
-            uri="http://local-tiled-app/api/v1",
+            uri="http://local-tiled-app/api/v1" if not uri else uri,
             headers=headers,
             api_key=None,
             cache=cache,
