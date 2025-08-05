@@ -549,7 +549,6 @@ class CustomAttributesAuthenticator(InternalAuthenticator):
                 state = UserSessionState(
                     username, {"attributes": attrs.get("attributes", {})}
                 )
-                print(f"{state=}")
                 return state
 
 
