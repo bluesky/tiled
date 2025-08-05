@@ -1,5 +1,3 @@
-import sys
-
 import anyio
 import h5py
 import numpy as np
@@ -7,6 +5,7 @@ import pandas
 import pytest
 import zarr
 
+from ..adapters.zarr import ZARR_LIB_V2
 from ..catalog import in_memory
 from ..client import Context, from_context, record_history
 from ..client.register import register
@@ -84,7 +83,7 @@ def zarr_data_dir(tmpdir_factory):
     try:
         root = zarr.open(str(tmpdir / "zarr_group.zarr"), mode="w")
         for i, name in enumerate("abcde"):
-            if sys.version_info < (3, 11):
+            if ZARR_LIB_V2:
                 root.create_dataset(name, data=np.arange(i, i + 3))
             else:
                 root.create_array(name, data=np.arange(i, i + 3))
