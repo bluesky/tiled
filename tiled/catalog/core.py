@@ -1,10 +1,13 @@
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ..alembic_utils import DatabaseUpgradeNeeded, UninitializedDatabase, check_database
 from .base import Base
 
 # This is list of all valid revisions (from current to oldest).
 ALL_REVISIONS = [
+    "e05e918092c3",
+    "7809873ea2c7",
     "9331ed94d6ac",
     "45a702586b2a",
     "ed3a4223a600",
@@ -20,7 +23,7 @@ ALL_REVISIONS = [
 REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
-async def initialize_database(engine):
+async def initialize_database(engine: AsyncEngine):
     # The definitions in .orm alter Base.metadata.
     from . import orm  # noqa: F401
 
@@ -38,7 +41,7 @@ async def initialize_database(engine):
         await connection.commit()
 
 
-async def check_catalog_database(engine):
+async def check_catalog_database(engine: AsyncEngine):
     redacted_url = engine.url._replace(password="[redacted]")
     try:
         await check_database(engine, REQUIRED_REVISION, ALL_REVISIONS)

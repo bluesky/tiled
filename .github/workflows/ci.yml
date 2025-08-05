@@ -8,6 +8,9 @@ on:
   schedule:
       - cron: '00 4 * * *'  # daily at 4AM
 
+env:
+  TEST_TAG: bluesky/tiled:test
+
 jobs:
   pre-commit:
     name: Static Code Checks
@@ -141,8 +144,23 @@ jobs:
         curl -L https://github.com/NVIDIA/container-canary/releases/download/v0.2.1/canary_linux_amd64 > /usr/local/bin/canary
         chmod +x /usr/local/bin/canary
 
-    - name: Build Container
-      run: docker build -t bluesky/tiled:latest .
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3
+
+    - name: Build Docker image on multiple arch
+      uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
+      with:
+        context: .
+        file: Dockerfile
+        platforms: linux/amd64,linux/arm64
+
+    - name: Tag and load Docker image on single arch for testing (will use cache)
+      uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
+      with:
+        load: true
+        push: false
+        tags: ${{ env.TEST_TAG }}
 
     - name: Validate container
-      run: canary validate  --file canary-validator.yml bluesky/tiled:latest
+      run: |
+        canary validate --file canary-validator.yml ${{ env.TEST_TAG }}

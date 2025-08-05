@@ -246,6 +246,7 @@ class BaseClient:
             context=self.context,
             structure_clients=self.structure_clients,
             node_path_parts=self._item["attributes"]["ancestors"],
+            include_data_sources=self._include_data_sources,
         )
 
     def metadata_copy(self):

@@ -1,7 +1,7 @@
 import Container from "@mui/material/Container";
-import ErrorBoundary from "./components/error-boundary";
+import ErrorBoundary from "./components/error-boundary/error-boundary";
 import { Outlet } from "react-router-dom";
-import TiledAppBar from "./components/tiled-app-bar";
+import TiledAppBar from "./components/tiled-app-bar/tiled-app-bar";
 import { useEffect, useState } from "react";
 import { fetchSettings } from "./settings";
 import { SettingsContext, emptySettings } from "./context/settings";

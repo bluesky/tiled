@@ -17,6 +17,7 @@ docs/source/reference/generated/
 .pytest_cache/
 
 # Unit test / coverage reports
+coverage/
 htmlcov/
 .tox/
 .coverage
@@ -74,3 +75,9 @@ tiled/_version.py
 .env
 .asv/
 venv/
+# pixi environments
+.pixi
+pixi.lock
+# uv environments
+uv.lock
+.venv
