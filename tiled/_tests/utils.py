@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..client import context
@@ -93,3 +94,31 @@ def sqlite_from_dump(filename):
             conn.executescript(path.read_text())
         conn.close()
         yield database_path
+
+
+def sql_table_exists(conn: Connection, dialect: str, table_name: str) -> bool:
+    """Check if a table exists in the SQLite database."""
+
+    # Use a dialect-specific query and parameter style
+    if dialect == "sqlite":
+        query = f"""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='{table_name}';
+        """
+    elif dialect == "duckdb":
+        query = f"""
+            SELECT table_name FROM information_schema.tables
+            WHERE table_schema = 'main' AND table_name = '{table_name}';
+        """
+    elif dialect == "postgresql":
+        query = f"""
+            SELECT tablename FROM pg_catalog.pg_tables
+            WHERE schemaname = 'public' AND tablename = '{table_name}'
+        """
+        # NOTE: no trailing semicolon in PostgreSQL query as it is run as a COPY
+    else:
+        raise ValueError(f"Unsupported database dialect: {dialect}")
+
+    with conn.cursor() as cursor:
+        cursor.execute(query)
+        return cursor.fetchone() is not None

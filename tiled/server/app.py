@@ -39,6 +39,7 @@ from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
+from ..catalog.adapter import WouldDeleteData
 from ..config import construct_build_app_kwargs
 from ..media_type_registration import (
     CompressionRegistry,
@@ -328,6 +329,15 @@ def build_app(
             content={
                 "detail": f"The query type {query_type!r} is not supported on this node."
             },
+        )
+
+    @app.exception_handler(WouldDeleteData)
+    async def would_delete_data_exception_handler(
+        request: Request, exc: WouldDeleteData
+    ):
+        return JSONResponse(
+            status_code=HTTP_409_CONFLICT,
+            content={"detail": exc.args[0]},
         )
 
     # This list will be mutated when settings are processed at app startup.

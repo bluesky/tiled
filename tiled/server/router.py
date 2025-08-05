@@ -1510,6 +1510,16 @@ def get_router(
     async def delete(
         request: Request,
         path: str,
+        recursive: Optional[bool] = Query(
+            False, description="Delete children recursively"
+        ),
+        external_only: Optional[bool] = Query(
+            True,
+            description=(
+                "Delete the node, but only if this would not "
+                "affect any internally-managed data sources"
+            ),
+        ),
         principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1528,41 +1538,11 @@ def get_router(
             getattr(request.app.state, "access_policy", None),
         )
         if hasattr(entry, "delete"):
-            await entry.delete()
+            await entry.delete(recursive=recursive, external_only=external_only)
         else:
             raise HTTPException(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node does not support deletion.",
-            )
-        return json_or_msgpack(request, None)
-
-    @router.delete("/nodes/{path:path}")
-    async def bulk_delete(
-        request: Request,
-        path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
-        root_tree=Depends(get_root_tree),
-        session_state: dict = Depends(get_session_state),
-        authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["write:data", "write:metadata"]),
-    ):
-        entry = await get_entry(
-            path,
-            ["write:data", "write:metadata"],
-            principal,
-            authn_scopes,
-            root_tree,
-            session_state,
-            request.state.metrics,
-            None,
-            getattr(request.app.state, "access_policy", None),
-        )
-        if hasattr(entry, "delete_tree"):
-            await entry.delete_tree()
-        else:
-            raise HTTPException(
-                status_code=HTTP_405_METHOD_NOT_ALLOWED,
-                detail="This node does not support bulk deletion.",
             )
         return json_or_msgpack(request, None)
 
