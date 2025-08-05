@@ -50,12 +50,18 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
 
     asyncio.run(testing())
 
-def test_ldap_validation():
-    # single address, port can be none
+
+def test_ldap_port_validation():
+    # port can be none
     auth = LDAPAuthenticator(server_address="http://ldap.example.com", server_port=None)
     assert auth.server_port is not None
+
+
+def test_auth_server_list_wrapping():
+    auth = LDAPAuthenticator(server_address="http://ldap.example.com", server_port=None)
     assert auth.server_address_list == ["http://ldap.example.com"]
 
-    # list of addresses aren't nested into extra list
+
+def test_list_of_addresses_not_nested_into_extra_list():
     auth = LDAPAuthenticator(server_address=["http://ldap.example.com"])
     assert auth.server_address_list == ["http://ldap.example.com"]

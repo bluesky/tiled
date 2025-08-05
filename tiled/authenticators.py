@@ -507,7 +507,7 @@ class LDAPAuthenticator(InternalAuthenticator):
     def ignore_nones(cls, data: Any) -> Any:
         if isinstance(data, dict):
             if data.get("server_port") is None:
-                data.pop("server_port")
+                data.pop("server_port", None)
         return data
 
     async def resolve_username(self, username_supplied_by_user):
