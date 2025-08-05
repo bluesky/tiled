@@ -49,7 +49,7 @@ from ..media_type_registration import (
     default_deserialization_registry,
     default_serialization_registry,
 )
-from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
 from .router import get_router
@@ -362,8 +362,6 @@ def build_app(
     ) -> JSONResponse:
         # The current_principal_logging_filter middleware will not have
         # had a chance to finish running, so set the principal here.
-        principal = getattr(request.state, "principal", None)
-        current_principal.set(principal)
         return await http_exception_handler(
             request,
             HTTPException(
@@ -855,7 +853,7 @@ def build_app(
     async def current_principal_logging_filter(
         request: Request, call_next: RequestResponseEndpoint
     ):
-        request.state.principal = SpecialUsers.public
+        request.state.principal = None
         response = await call_next(request)
         current_principal.set(request.state.principal)
         return response
