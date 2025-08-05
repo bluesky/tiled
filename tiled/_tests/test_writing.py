@@ -24,8 +24,9 @@ from starlette.status import (
 )
 
 from ..catalog import in_memory
-from ..catalog.adapter import CatalogContainerAdapter, WouldDeleteData
+from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
+from ..client.utils import ClientError
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
@@ -528,7 +529,7 @@ async def test_delete(tree):
                 key="delete_me",
             )
 
-        with pytest.raises(WouldDeleteData):
+        with pytest.raises(ClientError):
             client.delete_contents("delete_me")  # Cannot easily delete internal data
         client.delete_contents("delete_me", external_only=False)
 
