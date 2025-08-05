@@ -2,7 +2,6 @@ import base64
 import builtins
 import collections.abc
 import contextlib
-import enum
 import functools
 import importlib
 import importlib.util
@@ -300,11 +299,6 @@ class CachingMap(collections.abc.Mapping):
             f"<{type(self).__name__}"
             "({" + ", ".join(f"{k!r}: {v!s}" for k, v in d.items()) + "})>"
         )
-
-
-class SpecialUsers(str, enum.Enum):
-    public = "public"
-    admin = "admin"
 
 
 def _line(nodes, last):
