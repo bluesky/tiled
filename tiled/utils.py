@@ -16,7 +16,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional, TextIO, TypeVar, Union
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -30,6 +30,9 @@ patch_mimetypes = namedtuple(
     JSON_PATCH="application/json-patch+json",
     MERGE_PATCH="application/merge-patch+json",
 )
+
+
+T = TypeVar("T")
 
 
 class ListView(collections.abc.Sequence):
@@ -465,7 +468,7 @@ def modules_available(*module_names):
     return False
 
 
-def parse(file):
+def parse(file: TextIO) -> dict[Any, Any]:
     """
     Given a config file, parse it.
 
@@ -477,7 +480,7 @@ def parse(file):
     return expand_environment_variables(content)
 
 
-def expand_environment_variables(config):
+def expand_environment_variables(config: T) -> T:
     """Expand environment variables in a nested config dictionary
 
     VENDORED FROM dask.config.
@@ -500,7 +503,8 @@ def expand_environment_variables(config):
     {'x': [1, 2, 'my-username']}
     """
     if isinstance(config, collections.abc.Mapping):
-        return {k: expand_environment_variables(v) for k, v in config.items()}
+        # ignore type checks as type might change but it's still a mapping
+        return {k: expand_environment_variables(v) for k, v in config.items()}  # type: ignore
     elif isinstance(config, str):
         return os.path.expandvars(config)
     elif isinstance(config, (list, tuple, builtins.set)):
@@ -510,7 +514,7 @@ def expand_environment_variables(config):
 
 
 @contextlib.contextmanager
-def prepend_to_sys_path(*paths):
+def prepend_to_sys_path(*paths: Union[str, Path]) -> Iterator[None]:
     "Temporarily prepend items to sys.path."
 
     for item in reversed(paths):

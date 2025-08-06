@@ -11,6 +11,7 @@ from collections import defaultdict
 from datetime import timedelta
 from functools import cache
 from pathlib import Path
+from typing import Any, Optional, Union
 
 import jsonschema
 
@@ -36,7 +37,9 @@ def schema():
         return yaml.safe_load(file)
 
 
-def construct_build_app_kwargs(config, *, source_filepath=None):
+def construct_build_app_kwargs(
+    config, *, source_filepath: Union[Path, str, None] = None
+):
     """
     Given parsed configuration, construct arguments for build_app(...).
 
@@ -193,8 +196,8 @@ See documentation section "Serve a Directory of Files"."""
     }
 
 
-def merge(configs):
-    merged = {"trees": []}
+def merge(configs: dict[Path, dict[str, Any]]) -> dict[str, Any]:
+    merged: dict[str, Any] = {"trees": []}
 
     # These variables are used to produce error messages that point
     # to the relevant config file(s).
@@ -304,7 +307,7 @@ def merge(configs):
     return merged
 
 
-def parse_configs(config_path):
+def parse_configs(config_path: Union[str, Path]) -> dict[str, Any]:
     """
     Parse configuration file or directory of configuration files.
 
@@ -318,7 +321,9 @@ def parse_configs(config_path):
         filepaths = [config_path]
     elif config_path.is_dir():
         filepaths = [
-            fn for fn in config_path.iterdir() if fn.suffix in (".yml", ".yaml")
+            fn
+            for fn in config_path.iterdir()
+            if fn.suffix in (".yml", ".yaml") and fn.is_file()
         ]
     elif not config_path.exists():
         raise ValueError(f"The config path {config_path!s} doesn't exist.")
@@ -328,7 +333,7 @@ def parse_configs(config_path):
             f"The config path {config_path!s} exists but is not a file or directory."
         )
 
-    parsed_configs = {}
+    parsed_configs: dict[Path, dict[str, Any]] = {}
     # The sorting here is just to make the order of the results deterministic.
     # There is *not* any sorting-based precedence applied.
     for filepath in sorted(filepaths):
