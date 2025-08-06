@@ -142,7 +142,7 @@ def serve_directory(
 
     server_settings = {}
     if keep_ext:
-        from ..adapters.files import identity
+        from ..client.register import identity
 
         key_from_filename = identity
     else:
