@@ -26,26 +26,12 @@ jobs:
       with:
         fetch-depth: 1000  # should be enough to reach the most recent tag
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-
-    - name: Install
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/install.sh
-
-    - name: Install documentation-building requirements
-      shell: bash -l {0}
-      run: |
-        set -vxeuo pipefail
-        python -m pip install .[dev]
-        python -m pip list
+    - name: Setup pixi
+      uses: prefix-dev/setup-pixi@v0.8.14
 
     - name: Build Docs
       shell: bash -l {0}
-      run: make -C docs/ html
+      run: pixi run -e dev make -C docs/ html
 
     - name: Deploy documentation to blueskyproject.io.
       # We pin to the SHA, not the tag, for security reasons.
