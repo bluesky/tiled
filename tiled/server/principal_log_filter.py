@@ -1,16 +1,17 @@
 from logging import Filter, LogRecord
 
+from ..utils import Sentinel
 from .app import current_principal
 
-unset = object()
+UNSET = Sentinel("UNSET")
 
 
 class PrincipalFilter(Filter):
     """Logging filter to attach username or Service Principal UUID to LogRecord"""
 
     def filter(self, record: LogRecord) -> bool:
-        principal = current_principal.get(unset)
-        if principal is unset:
+        principal = current_principal.get(UNSET)
+        if principal is UNSET:
             # This will only occur if an uncaught exception was raised in the
             # server before the authentication code ran. This will always be
             # associated with a 500 Internal Server Error response.

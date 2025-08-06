@@ -371,9 +371,8 @@ async def get_current_principal(
                 )
         else:
             # Tiled is in a "single user" mode with only one API key.
-            if secrets.compare_digest(api_key, settings.single_user_api_key):
-                principal = None
-            else:
+            principal = None
+            if not secrets.compare_digest(api_key, settings.single_user_api_key):
                 raise HTTPException(
                     status_code=HTTP_401_UNAUTHORIZED,
                     detail="Invalid API key",
