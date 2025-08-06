@@ -340,7 +340,7 @@ array = { features = ["array"], solve-group = "default" }
 client = { features = ["client"], solve-group = "default" }
 compression = { features = ["compression"], solve-group = "default" }
 dataframe = { features = ["dataframe"], solve-group = "default" }
-dev = { features = ["dev"], solve-group = "default" }
+dev = { features = ["all", "dev"], solve-group = "default" }
 formats = { features = ["formats"], solve-group = "default" }
 minimal-client = { features = ["minimal-client"], solve-group = "default" }
 minimal-server = { features = ["minimal-server"], solve-group = "default" }
