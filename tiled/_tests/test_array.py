@@ -202,7 +202,7 @@ def test_unparsable_nested_array_stringified(kind, context):
 
 @pytest.mark.parametrize("kind", list(array_cases))
 def test_as_buffer(kind):
-    output = as_buffer(array_cases[kind], {})
+    output = as_buffer("application/octet-stream", array_cases[kind], {})
     assert len(output) == len(bytes(output))
 
 

@@ -847,3 +847,20 @@ class catch_warning_msg(warnings.catch_warnings):
         super().__enter__()
         self.apply_filter()
         return self
+
+
+def parse_mimetype(mimetype: str) -> tuple[str, dict]:
+    """
+    Parse 'text/csv;header=absent' -> ('text/csv', {'header': 'absent'})
+    """
+    base, *param_tokens = mimetype.split(";")
+    params = {}
+    for item in param_tokens:
+        try:
+            key, value = item.strip().split("=", 2)
+        except Exception:
+            raise ValueError(
+                f"Could not parse {item} as 'key=value' mimetype parameter"
+            )
+        params[key] = value
+    return base, params
