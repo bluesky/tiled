@@ -10,7 +10,13 @@ from numpy.typing import NDArray
 
 from ..structures.core import STRUCTURE_TYPES
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice, retry_context
+from .utils import (
+    chunks_repr,
+    export_util,
+    handle_error,
+    params_from_slice,
+    retry_context,
+)
 
 
 class _DaskArrayClient(BaseClient):
@@ -53,7 +59,7 @@ class _DaskArrayClient(BaseClient):
         structure = self.structure()
         attrs = {
             "shape": structure.shape,
-            "chunks": structure.chunks,
+            "chunks": chunks_repr(structure.chunks),
             "dtype": structure.data_type.to_numpy_dtype(),
         }
         if structure.dims:
