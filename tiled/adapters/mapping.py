@@ -23,7 +23,7 @@ from tiled.structures.container import ContainerStructure
 if TYPE_CHECKING:
     from fastapi import APIRouter
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
@@ -59,7 +59,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
     def __init__(
         self,
-        mapping: Dict[str, A],
+        mapping: Mapping[str, A],
         *,
         metadata: Optional[JSON] = None,
         sorting: Optional[List[SortingItem]] = None,
@@ -235,7 +235,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
     def new_variation(
         self,
         *args: Any,
-        mapping: Union[Sentinel, Dict[str, A]] = UNCHANGED,
+        mapping: Union[Sentinel, Mapping[str, A]] = UNCHANGED,
         metadata: Union[Sentinel, JSON] = UNCHANGED,
         sorting: Union[Sentinel, List[SortingItem]] = UNCHANGED,
         must_revalidate: Union[Sentinel, bool] = UNCHANGED,
