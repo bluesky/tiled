@@ -1,8 +1,8 @@
 import json
-from typing import Optional, Tuple, Union
+import re
+from typing import Tuple, Union
 
 import numcodecs
-import numpy
 import orjson
 import pydantic_settings
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -36,13 +36,7 @@ def convert_chunks_for_zarr(tiled_chunks: Tuple[Tuple[int]]):
     return [min(ZARR_BLOCK_SIZE, max(*tc, 1)) for tc in tiled_chunks]
 
 
-def get_router(
-    # query_registry: QueryRegistry,
-    # serialization_registry: SerializationRegistry,
-    # deserialization_registry: SerializationRegistry,
-    # validation_registry: ValidationRegistry,
-    # authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]],
-) -> APIRouter:
+def get_zarr_router_v2() -> APIRouter:
     router = APIRouter()
 
     @router.get("{path:path}.zattrs", name="Zarr .zattrs metadata")
@@ -158,8 +152,15 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        block: Optional[str] = None,
     ):
+        # If a zarr block is requested, e.g. http://localhost:8000/zarr/v2/array/0.1.2.3,
+        # extract it from last part of the path; use the remaining path to get the entry.
+        zarr_block_indx = None
+        if block := path.strip("/").split("/")[-1]:
+            if re.fullmatch(r"^(?:\d+\.)*\d+$", block):
+                zarr_block_indx = [int(i) for i in block.split(".")]
+                path = path[: -len(block)].rstrip("/")
+
         entry = await get_entry(
             path,
             ["read:data"],
@@ -177,8 +178,6 @@ def get_router(
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
-        # Remove query params and the trailing slash from the url
-        url = str(request.url).split("?")[0].rstrip("/")
 
         if entry.structure_family in {
             StructureFamily.container,
@@ -189,23 +188,24 @@ def get_router(
                 keys = await entry.keys_range(offset=0, limit=None)
             else:
                 keys = entry.keys()
+            url = str(request.url).rstrip("/")
             body = json.dumps([url + "/" + key for key in keys])
 
             return Response(body, status_code=200)
 
         elif entry.structure_family == StructureFamily.table:
             # List the columns of the table -- they will be accessed separately as arrays
+            url = str(request.url).rstrip("/")
             body = json.dumps([url + "/" + key for key in entry.structure().columns])
 
             return Response(body, status_code=200)
 
         elif entry.structure_family in {StructureFamily.array, StructureFamily.sparse}:
             # Return the actual array values for a single block of zarr array
-            if block is not None:
+            if zarr_block_indx is not None:
                 import numpy as np
                 from sparse import SparseArray
 
-                zarr_block_indx = [int(i) for i in block.split(",")]
                 zarr_block_spec = convert_chunks_for_zarr(entry.structure().chunks)
                 if (not (zarr_block_spec == [] and zarr_block_indx == [0])) and (
                     len(zarr_block_spec) != len(zarr_block_indx)
@@ -261,7 +261,7 @@ def get_router(
     return router
 
 
-def get_router_v3() -> APIRouter:
+def get_zarr_router_v3() -> APIRouter:
     router = APIRouter()
 
     @router.get("/{path:path}/zarr.json", name="Zarr v3 group or array metadata")
@@ -344,11 +344,6 @@ def get_router_v3() -> APIRouter:
                 "node_type": "group",
                 "attributes": entry.metadata(),
             }
-
-        def default(content):
-            if isinstance(content, numpy.ndarray):
-                return content.item()
-            raise TypeError
 
         return Response(
             orjson.dumps(result, option=orjson.OPT_SERIALIZE_NUMPY),
