@@ -412,8 +412,8 @@ def chunks_repr(chunks: tuple[tuple[int, ...], ...]) -> str:
             # All chunk sizes are the same, e.g. (1, 1, ..., 1)
             result += f"({dim[0]}, {dim[0]}, ..., {dim[0]}), "
         elif len(set(dim[:-1])) == 1:
-            # All chunk sizes but the last are the same, e.g. (1, ..., 1, 3)
-            result += f"({dim[0]}, ..., {dim[0]}, {dim[-1]}), "
+            # All chunk sizes but the last are the same, e.g. (1, 1, ..., 1, 3)
+            result += f"({dim[0]}, {dim[0]}, ..., {dim[0]}, {dim[-1]}), "
         else:
             # Mixed chunk sizes, e.g. (1, 2, 3, 4, 5)
             result += "variable, "
