@@ -112,12 +112,6 @@ class ArrayAdapter:
         )
 
     def __repr__(self) -> str:
-        """
-
-        Returns
-        -------
-
-        """
         return f"{type(self).__name__}({self._array!r})"
 
     @property
