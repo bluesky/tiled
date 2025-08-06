@@ -360,8 +360,6 @@ def build_app(
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
-        # The current_principal_logging_filter middleware will not have
-        # had a chance to finish running, so set the principal here.
         return await http_exception_handler(
             request,
             HTTPException(
@@ -853,6 +851,7 @@ def build_app(
     async def current_principal_logging_filter(
         request: Request, call_next: RequestResponseEndpoint
     ):
+        # Set a default, which may be overridden below by authentication code.
         request.state.principal = None
         response = await call_next(request)
         current_principal.set(request.state.principal)
