@@ -88,7 +88,7 @@ all = [
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=21.0.0",
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
@@ -120,7 +120,7 @@ client = [
     "ndindex",
     "numpy",
     "pandas",
-    "pyarrow",
+    "pyarrow >=21.0.0",
     "rich",
     "sparse",
     "stamina",
@@ -139,7 +139,7 @@ compression = [
 dataframe = [
     "dask[dataframe]",
     "pandas",
-    "pyarrow",
+    "pyarrow >=21.0.0",
 ]
 # These are required for developing the package (running the tests, building
 # the documentation) but not necessarily required for _using_ it.
@@ -238,7 +238,7 @@ server = [
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=21.0.0",
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
@@ -254,14 +254,14 @@ server = [
 # These are needed by the client and server to transmit/receive sparse arrays.
 sparse = [
     "ndindex",
-    "pyarrow",
+    "pyarrow >=21.0.0",
     "sparse",
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [
     "dask[array]",
     "pandas",
-    "pyarrow",
+    "pyarrow >=21.0.0",
     "xarray",
 ]
 
@@ -330,7 +330,7 @@ tiled = { path = ".", editable = true }
 # sparse setuptools-based build is not working, so override with conda
 # packages.
 ndindex = "*"
-pyarrow = "*"
+pyarrow = ">=21.0.0"
 sparse = "*"
 
 [tool.pixi.environments]
