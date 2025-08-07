@@ -84,7 +84,6 @@ def construct_build_app_kwargs(
             if age in auth_spec:
                 auth_spec[age] = timedelta(seconds=auth_spec[age])
         access_control = config.get("access_control", {}) or {}
-        auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
         providers = list(auth_spec.get("providers", []))
         provider_names = [p["provider"] for p in providers]
         if len(set(provider_names)) != len(provider_names):
@@ -93,10 +92,9 @@ def construct_build_app_kwargs(
                 f"Found duplicates in {providers}"
             )
         for i, authenticator in enumerate(providers):
-            import_path = auth_aliases.get(
-                authenticator["authenticator"], authenticator["authenticator"]
+            authenticator_class = import_object(
+                authenticator["authenticator"], accept_live_object=True
             )
-            authenticator_class = import_object(import_path, accept_live_object=True)
             authenticator = authenticator_class(**authenticator.get("args", {}))
             # Replace "package.module:Object" with live instance.
             auth_spec["providers"][i]["authenticator"] = authenticator
