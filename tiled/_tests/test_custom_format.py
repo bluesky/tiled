@@ -12,7 +12,26 @@ from ..server.app import build_app_from_config
 
 
 def load_data(text: str) -> tuple[list[str], pd.DataFrame]:
-    # remove comments
+    # This regular expression matches and removes a block of comment lines
+    #
+    # Pattern breakdown:
+    #   - #\s*\/+\r?\n
+    #       Matches a line starting with '#', optional whitespace, one or more '/',
+    #       then a newline(unix or windows).
+    #       Example #  //////// newline
+    #   - (?:#\s+.*\r?\n)*
+    #       Matches zero or more lines starting with '#', at least one space, then any text,
+    #       then a newline(unix or windows).
+    #       Example #    Comment here newline
+    #   - #\s*-+\r?\n
+    #       Matches a line starting with '#', optional whitespace, one or more '-',
+    #       then a newline(unix or windows).
+    #       Example #      -----------newline
+    # Example matched block:
+    #   # ////////
+    #   # Comment Here
+    #   # More Comments
+    #   # -------
     text = re.sub(r"#\s*\/+\r?\n(?:#\s+.*\r?\n)*#\s*-+\r?\n", "", text)
     lines = text.strip().splitlines()
     metadata_lines = [line.replace(" ", "") for line in lines if line.startswith("#")]
