@@ -29,11 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version:
-        - "3.9"
-        - "3.10"
-        - "3.11"
-        - "3.12"
+        environment:
+        - "py39"
+        - "py310"
+        - "py311"
+        - "py312"
       fail-fast: false
     steps:
 
@@ -44,6 +44,7 @@ jobs:
       with:
         cache: true
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+        environments: ${{ matrix.environment }}
 
     - name: Start LDAP service in container.
       shell: bash -l {0}
@@ -93,7 +94,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        environment: ["py312"]
       fail-fast: false
     steps:
 
@@ -104,6 +105,7 @@ jobs:
       with:
         cache: true
         cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+        environments: ${{ matrix.environment }}
 
     - name: Test with pytest
       run: pixi run -e dev pytest -v

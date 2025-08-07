@@ -351,6 +351,18 @@ ndindex = "*"
 pyarrow-all = ">=21.0.0"
 sparse = "*"
 
+[tool.pixi.feature.py39.dependencies]
+python = "3.9.*"
+
+[tool.pixi.feature.py310.dependencies]
+python = "3.10.*"
+
+[tool.pixi.feature.py311.dependencies]
+python = "3.11.*"
+
+[tool.pixi.feature.py312.dependencies]
+python = "3.12.*"
+
 [tool.pixi.environments]
 default = { solve-group = "default" }
 all = { features = ["all"], solve-group = "default" }
@@ -365,3 +377,9 @@ minimal-server = { features = ["minimal-server"], solve-group = "default" }
 server = { features = ["server"], solve-group = "default" }
 sparse = { features = ["sparse"], solve-group = "default" }
 xarray = { features = ["xarray"], solve-group = "default" }
+
+# environments used for CI
+py39 = { features = ["all", "dev", "py39"] }
+py310 = { features = ["all", "dev", "py310"] }
+py311 = { features = ["all", "dev", "py311"] }
+py312 = { features = ["all", "dev", "py312"] }
