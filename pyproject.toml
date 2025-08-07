@@ -88,7 +88,7 @@ all = [
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow >=21.0.0",
+    "pyarrow",
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
@@ -120,7 +120,7 @@ client = [
     "ndindex",
     "numpy",
     "pandas",
-    "pyarrow >=21.0.0",
+    "pyarrow",
     "rich",
     "sparse",
     "stamina",
@@ -139,7 +139,7 @@ compression = [
 dataframe = [
     "dask[dataframe]",
     "pandas",
-    "pyarrow >=21.0.0",
+    "pyarrow",
 ]
 # These are required for developing the package (running the tests, building
 # the documentation) but not necessarily required for _using_ it.
@@ -238,7 +238,7 @@ server = [
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow >=21.0.0",
+    "pyarrow",
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
@@ -254,14 +254,14 @@ server = [
 # These are needed by the client and server to transmit/receive sparse arrays.
 sparse = [
     "ndindex",
-    "pyarrow >=21.0.0",
+    "pyarrow",
     "sparse",
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [
     "dask[array]",
     "pandas",
-    "pyarrow >=21.0.0",
+    "pyarrow",
     "xarray",
 ]
 
