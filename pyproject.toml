@@ -83,6 +83,7 @@ all = [
     "ndindex",
     "numcodecs",
     "numpy",
+    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
     "openpyxl",
     "packaging",
     "pandas",
@@ -118,6 +119,7 @@ client = [
     "entrypoints",
     "lz4",
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
     "numpy",
     "pandas",
     "pyarrow",
@@ -231,6 +233,7 @@ server = [
     "jmespath",
     "lz4",
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
     "numcodecs",
     "numpy",
     "openpyxl",
@@ -254,6 +257,7 @@ server = [
 # These are needed by the client and server to transmit/receive sparse arrays.
 sparse = [
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
     "pyarrow",
     "sparse",
 ]
@@ -343,13 +347,6 @@ pyarrow-all = ">=21.0.0"
 
 [tool.pixi.feature.server.dependencies]
 pyarrow-all = ">=21.0.0"
-
-[tool.pixi.feature.sparse.dependencies]
-# sparse setuptools-based build is not working, so override with conda
-# packages.
-ndindex = "*"
-pyarrow-all = ">=21.0.0"
-sparse = "*"
 
 [tool.pixi.feature.py39.dependencies]
 python = "3.9.*"
