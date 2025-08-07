@@ -67,7 +67,7 @@ The resulting object is a zarr.Group, which represents the root of the Tiled cat
  │       └── time (3,) datetime64[ns]
  └── tables
      ├── long_table
-     │   ...  
+     │   ...
      │   └── C (100000,) float64
      └── wide_table
          ├── A (10,) float64
@@ -78,7 +78,7 @@ The resulting object is a zarr.Group, which represents the root of the Tiled cat
 > **_NOTE:_**  To access Tiled servers that require authentication, one can pass an api-key in the header of the HTTP requests. With `fsspec`, this is done by explicitly constructing an `HTTPFileSystem` object and mapping it to zarr:
 > ```python
 > from fsspec.implementations.http import HTTPFileSystem
-> 
+>
 > headers = {"Authorization": "Apikey your-api-key-goes-here",
 >            "Content-Type": "application/json"}
 > fs = HTTPFileSystem(client_kwargs={"headers": headers})

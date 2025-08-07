@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.responses import Response
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
-from ..adapters.zarr import ZARR_LIB_V2
 from ..structures.core import StructureFamily
 from ..type_aliases import Scopes
 from ..utils import SpecialUsers, ensure_awaitable
@@ -20,17 +19,14 @@ from .utils import record_timing
 
 ZARR_BLOCK_SIZE = 10000
 ZARR_BYTE_ORDER = "C"
-ZARR_CODEC_SPEC = (
-    {
-        "blocksize": 0,
-        "clevel": 5,
-        "cname": "lz4",
-        "id": "blosc",
-        "shuffle": 1,
-    }
-    if ZARR_LIB_V2
-    else {"id": "zstd", "level": 0}
-)
+ZARR_CODEC_SPEC = {
+    "blocksize": 0,
+    "clevel": 5,
+    "cname": "lz4",
+    "id": "blosc",
+    "shuffle": 1,
+}
+
 zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
 
 
@@ -334,9 +330,14 @@ def get_zarr_router_v3() -> APIRouter:
                     {
                         "name": zarr_codec.codec_id,
                         "configuration": {
-                            k: v
-                            for k, v in zarr_codec.get_config().items()
-                            if k != "id"
+                            "typesize": zarr_dtype.item_size,
+                            **{
+                                k: v
+                                if k != "shuffle"
+                                else {1: "shuffle", 0: "no_shuffle", 2: "bitshuffle"}[v]
+                                for k, v in zarr_codec.get_config().items()
+                                if k != "id"
+                            },
                         },
                     },
                 ],
