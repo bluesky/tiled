@@ -41,6 +41,9 @@ jobs:
 
     - name: Setup pixi
       uses: prefix-dev/setup-pixi@v0.8.14
+      with:
+        cache: true
+        cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
 
     - name: Start LDAP service in container.
       shell: bash -l {0}
@@ -98,6 +101,9 @@ jobs:
 
     - name: Setup pixi
       uses: prefix-dev/setup-pixi@v0.8.14
+      with:
+        cache: true
+        cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
 
     - name: Test with pytest
       run: pixi run -e dev pytest -v

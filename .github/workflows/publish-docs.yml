@@ -28,6 +28,9 @@ jobs:
 
     - name: Setup pixi
       uses: prefix-dev/setup-pixi@v0.8.14
+      with:
+        cache: true
+        cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
 
     - name: Build Docs
       shell: bash -l {0}
