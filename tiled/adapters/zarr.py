@@ -203,15 +203,12 @@ class ZarrGroupAdapter(
     def __repr__(self) -> str:
         return node_repr(self, list(self))
 
-    def metadata(self) -> Any:
-        if ZARR_LIB_V2:
-            return (
-                {"attributes": self._zarr_group.attrs.asdict()}
-                if self._zarr_group.attrs
-                else {}
-            )
-        else:
-            return self._zarr_group.metadata.to_dict()
+    def metadata(self) -> dict[str, Any]:
+        return (
+            {"attributes": self._zarr_group.attrs.asdict()}
+            if ZARR_LIB_V2
+            else cast(dict[str, Any], self._zarr_group.metadata.to_dict())
+        )
 
     def structure(self) -> None:
         return None
