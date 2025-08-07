@@ -13,6 +13,8 @@ Tiled supports both versions of zarr, `v2` and `v3`, which are exposed at the `/
 | Data Frame Column | Array |
 
 
+## Examples
+
 In the following examples, we use the local demo Tiled server exposed on `127.0.0.1:8000` with the `tiled serve demo` command and demonstrate how it can be integrated into workflows that rely on zarr.
 
 
