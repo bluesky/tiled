@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     tree: Any = None
     allow_anonymous_access: bool = False
+    allow_bearer_token: bool = False
     allow_origins: List[str] = Field(default_factory=list)
     authenticator: Any = None
     # These 'single user' settings are only applicable if authenticator is None.
