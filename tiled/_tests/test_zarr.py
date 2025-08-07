@@ -15,12 +15,11 @@ from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FO
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
+from ..adapters.zarr import ZARR_LIB_V2
 from ..server.app import build_app
 from .utils import Server
 
-IS_LEGACY_ZARR = zarr.__version__ < "3.0.0"  # Versions >= 3.0.0 require Python 3.11+
-
-url_prefixes = ["/zarr/v2"] if IS_LEGACY_ZARR else ["/zarr/v2", "/zarr/v3"]
+url_prefixes = ["/zarr/v2"] if ZARR_LIB_V2 else ["/zarr/v2", "/zarr/v3"]
 pytestmark = pytest.mark.parametrize("prefix", url_prefixes)
 
 rng = numpy.random.default_rng(seed=42)
@@ -146,7 +145,7 @@ def server_url(app):
 def fs():
     headers = {"Authorization": "Apikey secret", "Content-Type": "application/json"}
     fs = HTTPFileSystem(
-        client_kwargs={"headers": headers}, asynchronous=not IS_LEGACY_ZARR
+        client_kwargs={"headers": headers}, asynchronous=not ZARR_LIB_V2
     )
     return fs
 
@@ -338,6 +337,6 @@ def test_writing_not_implemented(prefix, server_url, fs):
     # with pytest.raises(NotImplementedError):
     #     zarr.open(fs.get_mapper(url), mode="w")
 
-    with pytest.raises(zarr.errors.ReadOnlyError if IS_LEGACY_ZARR else ValueError):
+    with pytest.raises(zarr.errors.ReadOnlyError if ZARR_LIB_V2 else ValueError):
         grp = zarr.open(fs.get_mapper(url), mode="r")
         grp["random_2d"][0, 0] = 0.0

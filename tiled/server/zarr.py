@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.responses import Response
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
+from ..adapters.zarr import ZARR_LIB_V2
 from ..structures.core import StructureFamily
 from ..type_aliases import Scopes
 from ..utils import SpecialUsers, ensure_awaitable
@@ -19,8 +20,17 @@ from .utils import record_timing
 
 ZARR_BLOCK_SIZE = 10000
 ZARR_BYTE_ORDER = "C"
-ZARR_CODEC_SPEC = {"id": "zstd", "level": 0}
-
+ZARR_CODEC_SPEC = (
+    {
+        "blocksize": 0,
+        "clevel": 5,
+        "cname": "lz4",
+        "id": "blosc",
+        "shuffle": 1,
+    }
+    if ZARR_LIB_V2
+    else {"id": "zstd", "level": 0}
+)
 zarr_codec = numcodecs.get_codec(ZARR_CODEC_SPEC)
 
 
@@ -69,7 +79,7 @@ def get_zarr_router_v2() -> APIRouter:
         )
 
         return Response(
-            json.dumps(entry.metadata()),
+            json.dumps(entry.metadata().get("attributes", {})),
             status_code=200,
             media_type="application/json",
         )
