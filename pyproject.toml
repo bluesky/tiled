@@ -154,7 +154,7 @@ dev = [
     "myst-parser",
     "numpydoc",
     "pre-commit",
-    "pytest <8",  # TMP pin while plugins catch up
+    "pytest",
     "pytest-asyncio",
     "pytest-mock",
     "pytest-rerunfailures",
