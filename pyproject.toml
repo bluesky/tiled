@@ -326,11 +326,29 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 [tool.pixi.pypi-dependencies]
 tiled = { path = ".", editable = true }
 
+# For each feature where 'pyarrow' is a dependency, guide pixi to use the
+# pyarrow-all conda-forge package to avoid:
+#   ImportError: The pyarrow installation is not built with support for 'dataset'
+#   (libarrow_dataset.so.2100: cannot open shared object file: No such file or
+#   directory)
+
+[tool.pixi.feature.all.dependencies]
+pyarrow-all = ">=21.0.0"
+
+[tool.pixi.feature.client.dependencies]
+pyarrow-all = ">=21.0.0"
+
+[tool.pixi.feature.dataframe.dependencies]
+pyarrow-all = ">=21.0.0"
+
+[tool.pixi.feature.server.dependencies]
+pyarrow-all = ">=21.0.0"
+
 [tool.pixi.feature.sparse.dependencies]
 # sparse setuptools-based build is not working, so override with conda
 # packages.
 ndindex = "*"
-pyarrow = ">=21.0.0"
+pyarrow-all = ">=21.0.0"
 sparse = "*"
 
 [tool.pixi.environments]
