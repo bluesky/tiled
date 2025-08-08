@@ -58,9 +58,6 @@ class ReadingUser(HttpUser):
             "Authorization": f"Apikey {self.environment.parsed_options.api_key}"
         }
 
-        # Create a dataset using the Tiled client for testing
-        # known_dataset_key = "bbe6484d-8873-4a03-9baf-aa69df11c2f1"
-
     @task(1)
     def read_table_data(self):
         """Read table data from our known dataset"""
