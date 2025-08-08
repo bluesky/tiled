@@ -25,20 +25,27 @@ Tiled provides a utility for visualizing a nested structure.
 ```python
 >>> from tiled.utils import tree
 >>> tree(client)
-├── big_image
-├── small_image
-├── medium_image
-├── sparse_image
-├── awkward_array
-├── tiny_image
-├── tiny_cube
-├── tiny_hypercube
-├── short_table
-├── long_table
-├── wide_table
-├── structured_data
-│   ├── pets
-│   └── xarray_dataset
+├── scalars
+│   ├── pi
+│   ├── e_arr
+│   ├── fsc
+│   └── fortytwo
+├── nested
+│   ├── images
+│   │   ├── tiny_image
+│   │   ├── small_image
+│   │   ├── medium_image
+│   │   └── big_image
+│   ├── cubes
+│   │   ├── tiny_cube
+│   │   └── tiny_hypercube
+│   ├── complex
+│   ├── sparse_image
+│   └── awkward_array
+├── tables
+│   ├── short_table
+│   ├── long_table
+<Output truncated at 20 lines. Adjust tree's max_lines parameter to see more.>
 ```
 
 Each (sub)tree displays the names of a couple of its entries---up to
@@ -47,33 +54,47 @@ however many fit on one line.
 
 ```python
 >>> client
-<Container {'big_image', 'small_image', 'medium_image', ...} ~16 entries>
+<Container {'scalars', 'nested', 'tables', 'structured_data', ...} ~8 entries>
 ```
 
 Containers act like (nested) mappings in Python. All the (read-only) methods
-that work on Python dictionaries work on Containers. We can lookup a specific
-value by its key
+that work on Python dictionaries work on Containers. We can
+
+* lookup a specific value by its key
 
 ```python
 >>> client['structured_data']
 <Container {'pets', 'xarray_dataset'}>
 ```
 
-list all the keys
+* easily access nested hierarchies
+
+```python
+>>> client['nested']['images']['tiny_image']
+<ArrayClient shape=(50, 50) chunks=((50,), (50,)) dtype=float64>
+```
+
+* or using a simplified syntax
+
+```python
+>>> client['nested', 'images', 'tiny_image']
+<ArrayClient shape=(50, 50) chunks=((50,), (50,)) dtype=float64>
+```
+
+* or even
+
+```python
+>>> client['nested/images/tiny_image']
+<ArrayClient shape=(50, 50) chunks=((50,), (50,)) dtype=float64>
+```
+
+* list all the keys
 
 ```python
 >>> list(client)
-['big_image',
- 'small_image',
- 'medium_image',
- 'sparse_image',
- 'awkward_array',
- 'tiny_image',
- 'tiny_cube',
- 'tiny_hypercube',
- 'short_table',
- 'long_table',
- 'wide_table',
+['scalars',
+ 'nested',
+ 'tables',
  'structured_data',
  'flat_array',
  'low_entropy',
@@ -81,7 +102,7 @@ list all the keys
  'dynamic']
 ```
 
-and loop over keys, values, or ``(key, value)`` pairs.
+* and loop over keys, values, or ``(key, value)`` pairs
 
 ```python
 for key in client:
@@ -104,37 +125,49 @@ need to start from the middle.
 
 ```python
 >>> client.keys().first()  # Access the first key.
-'big_image'
+'scalars'
 
 >>> client.keys().head()  # Access the first several keys.
-['big_image',
- 'small_image',
- 'medium_image',
- 'sparse_image',
- 'awkward_array']
+['scalars',
+'nested',
+'tables',
+'structured_data',
+'flat_array']
 
 >>> client.keys().head(3)  # Access the first N keys.
-['big_image',
- 'small_image',
- 'medium_image']
+['scalars',
+'nested',
+'tables']
 
 >>> client.keys()[1:3]  # Access just the keys for entries 1:3.
-['small_image', 'medium_image']
+['nested', 'tables']
 ```
 
-All the same methods work for values
+All the same methods work for values, which return string representations of the
+container contents:
 
 ```python
 >>> client.values()[1:3]  # Access the values (which may be more expensive).
-[<ArrayClient shape=(300, 300) chunks=((300,), (300,)) dtype=float64>, <ArrayClient shape=(1000, 1000) chunks=((1000,), (1000,)) dtype=float64>]
+[<Container {'images', 'cubes', 'complex', 'sparse_image', ...} ~5 entries>,
+ <Container {'short_table', 'long_table', 'wide_table'}>]
+```
+
+or
+
+```python
+>>> client['nested/images'].values()[:2]  # Access the values of a nested container
+[<ArrayClient shape=(50, 50) chunks=((50,), (50,)) dtype=float64>,
+ <ArrayClient shape=(300, 300) chunks=((300,), (300,)) dtype=float64>]
 ```
 
 and `(key, value)` pairs ("items").
 
 ```python
->>> client.items()[1:3]  # Access (key, value) pairs.
-[('small_image', <ArrayClient shape=(300, 300) chunks=((300,), (300,)) dtype=float64>),
-('medium_image', <ArrayClient shape=(1000, 1000) chunks=((1000,), (1000,)) dtype=float64>)]
+>>> client['nested/images'].items()[:2]  # Access (key, value) pairs.
+[('tiny_image',
+  <ArrayClient shape=(50, 50) chunks=((50,), (50,)) dtype=float64>),
+ ('small_image',
+  <ArrayClient shape=(300, 300) chunks=((300,), (300,)) dtype=float64>)]
 ```
 
 Each item has ``metadata``, which is a simple dict.
@@ -145,7 +178,7 @@ space to use or not.
 >>> client.metadata  # happens to be empty
 DictView({})
 
->>> client['short_table'].metadata  # happens to have some stuff
+>>> client['tables/short_table'].metadata  # happens to have some stuff
 DictView({'animal': 'dog', 'color': 'red'})
 ```
 

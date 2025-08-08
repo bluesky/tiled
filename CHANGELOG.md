@@ -5,6 +5,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b33 (Unreleased)
 
+### Added
+
+- Endpoints for (read) data access with zarr v2 and v3 protocols.
+- `data_type` and `coord_data_type` properties for sparse arrays in `COOAdapter`
+  and `COOStructure`.
+
 ### Changed
 
 - Refactored internal server function ``get_root_tree()`` to not use FastAPI

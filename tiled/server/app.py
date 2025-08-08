@@ -24,6 +24,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -54,6 +55,7 @@ from .compression import CompressionMiddleware
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -380,6 +382,9 @@ def build_app(
     )
     app.include_router(router, prefix="/api/v1")
 
+    app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
+    app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
+
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
@@ -677,7 +682,9 @@ def build_app(
     )
 
     @app.middleware("http")
-    async def double_submit_cookie_csrf_protection(request: Request, call_next):
+    async def double_submit_cookie_csrf_protection(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
         if (request.method not in SAFE_METHODS) and set(request.cookies).intersection(
@@ -716,7 +723,9 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def client_compatibility_check(request: Request, call_next):
+    async def client_compatibility_check(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         user_agent = request.headers.get("user-agent", "")
         if user_agent.startswith("python-tiled/"):
             agent, _, raw_version = user_agent.partition("/")
@@ -748,7 +757,7 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def set_cookies(request: Request, call_next):
+    async def set_cookies(request: Request, call_next: RequestResponseEndpoint):
         "This enables dependencies to inject cookies that they want to be set."
         # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
@@ -763,7 +772,7 @@ def build_app(
     app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
-    async def capture_metrics(request: Request, call_next):
+    async def capture_metrics(request: Request, call_next: RequestResponseEndpoint):
         """
         Place metrics in Server-Timing header, in accordance with HTTP spec.
         """
@@ -821,7 +830,9 @@ def build_app(
         app.include_router(metrics.router, prefix="/api/v1")
 
         @app.middleware("http")
-        async def capture_metrics_prometheus(request: Request, call_next):
+        async def capture_metrics_prometheus(
+            request: Request, call_next: RequestResponseEndpoint
+        ):
             try:
                 response = await call_next(request)
             except Exception:
@@ -840,7 +851,9 @@ def build_app(
             return response
 
     @app.middleware("http")
-    async def current_principal_logging_filter(request: Request, call_next):
+    async def current_principal_logging_filter(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         request.state.principal = SpecialUsers.public
         response = await call_next(request)
         current_principal.set(request.state.principal)
