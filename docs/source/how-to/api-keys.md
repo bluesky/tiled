@@ -72,7 +72,7 @@ This text is the API key. **It should be handled as a secret.**
 We can use it in the Python client:
 
 ```py
->>> from tiled.client import from_url
+>>> from tiled.client import from_uri
 >>> API_KEY = "YOUR_KEY_HERE"
 >>> c = from_uri("http://localhost:8000", api_key=API_KEY)
 ```
@@ -88,7 +88,7 @@ and then start Python (or IPython, or Jupyter, or...). The Python client will
 use that, unless it is explicitly passed different credentials.
 
 ```py
->>> from tiled.client import from_url
+>>> from tiled.client import from_uri
 >>> c = from_uri("http://localhost:8000")  # uses TILED_API_KEY, if set
 ```
 
