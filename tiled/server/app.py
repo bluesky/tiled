@@ -41,7 +41,7 @@ from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from ..catalog.adapter import WouldDeleteData
-from ..config import construct_build_app_kwargs
+from ..config import construct_build_app_kwargs, parse_configs
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -887,13 +887,10 @@ def app_factory():
     config_path = os.getenv("TILED_CONFIG", "config.yml")
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    from ..config import construct_build_app_kwargs, parse_configs
-
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
-    web_app = build_app(**kwargs)
+    web_app = build_app_from_config(parsed_config, config_path)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_server_info(
         web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")

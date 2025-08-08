@@ -11,21 +11,19 @@ from collections import defaultdict
 from datetime import timedelta
 from functools import cache
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, Union
 
 import jsonschema
 
 from .adapters.mapping import MapAdapter
 from .media_type_registration import (
-    CompressionRegistry,
-    SerializationRegistry,
     default_compression_registry,
     default_deserialization_registry,
     default_serialization_registry,
 )
-from .query_registration import QueryRegistry, default_query_registry
+from .query_registration import default_query_registry
 from .utils import import_object, parse, prepend_to_sys_path
-from .validation_registration import ValidationRegistry, default_validation_registry
+from .validation_registration import default_validation_registry
 
 
 @cache
@@ -40,37 +38,18 @@ def schema():
 
 
 def construct_build_app_kwargs(
-    config,
-    *,
-    source_filepath=None,
-    query_registry: Optional[QueryRegistry] = None,
-    compression_registry: Optional[CompressionRegistry] = None,
-    serialization_registry: Optional[SerializationRegistry] = None,
-    deserialization_registry: Optional[SerializationRegistry] = None,
-    validation_registry: Optional[ValidationRegistry] = None,
+    config, *, source_filepath: Union[Path, str, None] = None
 ):
     """
     Given parsed configuration, construct arguments for build_app(...).
 
-    The parameters query_registry, compression_registry, and
-    serialization_registry are used by the tests to inject separate registry
-    instances. By default, the singleton global instances of these registries
-    are used (and modified).
+    The singleton global instances of the registries are used (and modified).
     """
     config = copy.deepcopy(config)  # Avoid mutating input.
     startup_tasks = []
     shutdown_tasks = []
     background_tasks = []
-    if query_registry is None:
-        query_registry = default_query_registry
-    if serialization_registry is None:
-        serialization_registry = default_serialization_registry
-    if deserialization_registry is None:
-        deserialization_registry = default_deserialization_registry
-    if compression_registry is None:
-        compression_registry = default_compression_registry
-    if validation_registry is None:
-        validation_registry = default_validation_registry
+
     sys_path_additions = []
     if source_filepath:
         if os.path.isdir(source_filepath):
@@ -84,7 +63,6 @@ def construct_build_app_kwargs(
             if age in auth_spec:
                 auth_spec[age] = timedelta(seconds=auth_spec[age])
         access_control = config.get("access_control", {}) or {}
-        auth_aliases = {}  # TODO Enable entrypoint as alias for authenticator_class?
         providers = list(auth_spec.get("providers", []))
         provider_names = [p["provider"] for p in providers]
         if len(set(provider_names)) != len(provider_names):
@@ -93,10 +71,9 @@ def construct_build_app_kwargs(
                 f"Found duplicates in {providers}"
             )
         for i, authenticator in enumerate(providers):
-            import_path = auth_aliases.get(
-                authenticator["authenticator"], authenticator["authenticator"]
+            authenticator_class = import_object(
+                authenticator["authenticator"], accept_live_object=True
             )
-            authenticator_class = import_object(import_path, accept_live_object=True)
             authenticator = authenticator_class(**authenticator.get("args", {}))
             # Replace "package.module:Object" with live instance.
             auth_spec["providers"][i]["authenticator"] = authenticator
@@ -186,11 +163,11 @@ See documentation section "Serve a Directory of Files"."""
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)
-                serialization_registry.register(
+                default_serialization_registry.register(
                     structure_family, media_type, serializer
                 )
         for ext, media_type in config.get("file_extensions", {}).items():
-            serialization_registry.register_alias(ext, media_type)
+            default_serialization_registry.register_alias(ext, media_type)
 
         for item in config.get("specs", []):
             if "validator" in item:
@@ -198,18 +175,18 @@ See documentation section "Serve a Directory of Files"."""
             else:
                 # no-op
                 validator = _no_op_validator
-            validation_registry.register(item["spec"], validator)
+            default_validation_registry.register(item["spec"], validator)
 
     # TODO Make compression_registry extensible via configuration.
     return {
         "tree": root_tree,
         "authentication": auth_spec,
         "server_settings": server_settings,
-        "query_registry": query_registry,
-        "serialization_registry": serialization_registry,
-        "deserialization_registry": deserialization_registry,
-        "compression_registry": compression_registry,
-        "validation_registry": validation_registry,
+        "query_registry": default_query_registry,
+        "serialization_registry": default_serialization_registry,
+        "deserialization_registry": default_deserialization_registry,
+        "compression_registry": default_compression_registry,
+        "validation_registry": default_validation_registry,
         "tasks": {
             "startup": startup_tasks,
             "shutdown": shutdown_tasks,
@@ -219,8 +196,8 @@ See documentation section "Serve a Directory of Files"."""
     }
 
 
-def merge(configs):
-    merged = {"trees": []}
+def merge(configs: dict[Path, dict[str, Any]]) -> dict[str, Any]:
+    merged: dict[str, Any] = {"trees": []}
 
     # These variables are used to produce error messages that point
     # to the relevant config file(s).
@@ -330,7 +307,7 @@ def merge(configs):
     return merged
 
 
-def parse_configs(config_path):
+def parse_configs(config_path: Union[str, Path]) -> dict[str, Any]:
     """
     Parse configuration file or directory of configuration files.
 
@@ -344,7 +321,9 @@ def parse_configs(config_path):
         filepaths = [config_path]
     elif config_path.is_dir():
         filepaths = [
-            fn for fn in config_path.iterdir() if fn.suffix in (".yml", ".yaml")
+            fn
+            for fn in config_path.iterdir()
+            if fn.suffix in (".yml", ".yaml") and fn.is_file()
         ]
     elif not config_path.exists():
         raise ValueError(f"The config path {config_path!s} doesn't exist.")
@@ -354,7 +333,7 @@ def parse_configs(config_path):
             f"The config path {config_path!s} exists but is not a file or directory."
         )
 
-    parsed_configs = {}
+    parsed_configs: dict[Path, dict[str, Any]] = {}
     # The sorting here is just to make the order of the results deterministic.
     # There is *not* any sorting-based precedence applied.
     for filepath in sorted(filepaths):
