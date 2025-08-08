@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
@@ -7,7 +7,6 @@ from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GO
 from tiled.adapters.protocols import AnyAdapter
 from tiled.server.schemas import Principal
 from tiled.structures.core import StructureFamily
-from tiled.utils import SpecialUsers
 
 from ..type_aliases import Scopes
 from ..utils import BrokenLink
@@ -22,7 +21,7 @@ def get_root_tree(request: Request):
 async def get_entry(
     path: str,
     security_scopes: List[str],
-    principal: Union[Principal, SpecialUsers],
+    principal: Optional[Principal],
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
