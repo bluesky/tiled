@@ -563,4 +563,8 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
     access_blob: Optional[Dict]
 
 
+SearchResponse = Response[
+    List[Resource[NodeAttributes, Dict, Dict]], PaginationLinks, Dict
+]
+
 NodeStructure.model_rebuild()

@@ -146,11 +146,13 @@ dataframe = [
 # These are required for developing the package (running the tests, building
 # the documentation) but not necessarily required for _using_ it.
 dev = [
+    "aiohttp",
     "coverage",
     "flake8",
     "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
+    "locust",
     "matplotlib",
     "mistune",
     "myst-parser",

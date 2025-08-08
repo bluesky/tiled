@@ -2,12 +2,15 @@ import contextlib
 import sqlite3
 import sys
 import tempfile
+import threading
+import time
 import uuid
 from enum import IntEnum
 from pathlib import Path
 
 import httpx
 import pytest
+import uvicorn
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -94,6 +97,31 @@ def sqlite_from_dump(filename):
             conn.executescript(path.read_text())
         conn.close()
         yield database_path
+
+
+class Server(uvicorn.Server):
+    # https://github.com/encode/uvicorn/discussions/1103#discussioncomment-941726
+
+    def install_signal_handlers(self):
+        pass
+
+    @contextlib.contextmanager
+    def run_in_thread(self):
+        thread = threading.Thread(target=self.run)
+        thread.start()
+        try:
+            # Wait for server to start up, or raise TimeoutError.
+            for _ in range(100):
+                time.sleep(0.1)
+                if self.started:
+                    break
+            else:
+                raise TimeoutError("Server did not start in 10 seconds.")
+            host, port = self.servers[0].sockets[0].getsockname()
+            yield f"http://{host}:{port}"
+        finally:
+            self.should_exit = True
+            thread.join()
 
 
 def sql_table_exists(conn: Connection, dialect: str, table_name: str) -> bool:
