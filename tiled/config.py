@@ -11,7 +11,7 @@ from collections import defaultdict
 from datetime import timedelta
 from functools import cache
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 import jsonschema
 
