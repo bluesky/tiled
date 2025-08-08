@@ -20,6 +20,11 @@ Run with custom API key:
 pixi run -e dev locust -f reader.py --host http://localhost:8000 --api-key your-api-key
 ```
 
+Run with custom container name (defaults to locust_testing):
+```bash
+pixi run -e dev locust -f reader.py --host http://localhost:8000 --container-name my_test_container
+```
+
 ## Headless Mode
 Run without the web interface:
 ```bash

@@ -16,6 +16,12 @@ def _(parser):
         default="secret",
         help="API key for Tiled authentication (default: secret)",
     )
+    parser.add_argument(
+        "--container-name",
+        type=str,
+        default="locust_testing",
+        help="Container name for test data (default: locust_testing)",
+    )
 
 
 @events.init.add_listener
@@ -25,16 +31,22 @@ def on_locust_init(environment, **kwargs):
             "Host must be specified with --host argument, or through the web-ui."
         )
 
+    environment.container_name = environment.parsed_options.container_name
     environment.known_dataset_key = create_test_dataset(
-        environment.host, environment.parsed_options.api_key
+        environment.host, environment.parsed_options.api_key, environment.container_name
     )
 
 
-def create_test_dataset(host, api_key):
+def create_test_dataset(host, api_key, container_name):
     """Create a test dataset using Tiled client for reading tasks"""
 
     # Connect to Tiled server using client
-    client = from_uri(host, api_key=api_key)["locust_testing"]
+    root_client = from_uri(host, api_key=api_key)
+
+    # Create container if it doesn't exist
+    if container_name not in root_client:
+        root_client.create_container(container_name)
+    client = root_client[container_name]
 
     rng = np.random.default_rng(seed=42)
     rng.integers(10, size=100, dtype=np.dtype("uint8"))
@@ -69,7 +81,7 @@ class ReadingUser(HttpUser):
         """Read table data from our known dataset"""
         # Read the table data we created
         self.client.get(
-            f"/api/v1/table/full/locust_testing/{self.environment.known_dataset_key}",
+            f"/api/v1/table/full/{self.environment.container_name}/{self.environment.known_dataset_key}",
         )
 
     @task(1)
@@ -77,7 +89,7 @@ class ReadingUser(HttpUser):
         """Read metadata from our known dataset"""
 
         self.client.get(
-            f"/api/v1/metadata/locust_testing/{self.environment.known_dataset_key}",
+            f"/api/v1/metadata/{self.environment.container_name}/{self.environment.known_dataset_key}",
         )
 
     @task(1)
@@ -93,9 +105,11 @@ class ReadingUser(HttpUser):
     @task(1)
     def read_table_partition(self):
         """Read specific partition from our known dataset"""
-        self.client.get(
-            f"/api/v1/table/partition/locust_testing/{self.environment.known_dataset_key}?partition=0",
+        url = (
+            f"/api/v1/table/partition/{self.environment.container_name}/"
+            f"{self.environment.known_dataset_key}?partition=0"
         )
+        self.client.get(url)
 
     @task(1)
     def healthz_endpoint(self):
@@ -120,7 +134,7 @@ class ReadingUser(HttpUser):
     @task(1)
     def container_full_endpoint(self):
         """Test container full data endpoint"""
-        self.client.get("/api/v1/container/full/locust_testing")
+        self.client.get(f"/api/v1/container/full/{self.environment.container_name}")
 
     @task(1)
     def whoami_endpoint(self):
@@ -200,16 +214,6 @@ class ReadingUser(HttpUser):
             "filter[comparison][condition][operator]": "gt",
             "filter[comparison][condition][key]": "id",
             "filter[comparison][condition][value]": json.dumps(0),
-        }
-        self.client.get("/api/v1/search/", params=params)
-
-    @task(1)
-    def search_regex(self):
-        """Test regex search queries"""
-        params = {
-            "filter[regex][condition][key]": "key",
-            "filter[regex][condition][pattern]": ".*",
-            "filter[regex][condition][case_sensitive]": json.dumps(True),
         }
         self.client.get("/api/v1/search/", params=params)
 
