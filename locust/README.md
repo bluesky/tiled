@@ -12,15 +12,10 @@ pixi install -e dev
 ### Examples
 Run with default localhost server (uses default API key 'secret'):
 ```bash
-pixi run -e dev locust -f reader.py
+pixi run -e dev locust -f reader.py --host http://localhost:8000
 ```
 
 Run with custom API key:
-```bash
-pixi run -e dev locust -f reader.py --api-key your-api-key
-```
-
-Run against remote server:
 ```bash
 pixi run -e dev locust -f reader.py --host http://localhost:8000 --api-key your-api-key
 ```
