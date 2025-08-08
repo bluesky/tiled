@@ -1,7 +1,8 @@
 import asyncio
+import random
 import string
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import awkward
 import numpy
@@ -27,8 +28,20 @@ data = {
     "tiny_hypercube": rng.random((50, 50, 50, 50, 50)),
     "high_entropy": rng.integers(-10, 10, size=(100, 100)),
     "low_entropy": numpy.ones((100, 100), dtype="int32"),
-    "short_column": rng.integers(10, size=100, dtype=numpy.dtype("uint8")),
     "tiny_column": rng.random(10),
+    "short_column_int": rng.integers(10, size=100, dtype=numpy.dtype("uint8")),
+    "short_column_float": rng.random(100),
+    "short_column_bool": numpy.array(random.choices([True, False], k=100)),
+    "short_column_datetime": numpy.arange(
+        datetime(2025, 1, 1),
+        datetime(2025, 4, 11),
+        timedelta(days=1),
+        dtype="datetime64[D]",
+    ),
+    "short_column_str": numpy.array(
+        random.choices([letter * 3 for letter in string.ascii_letters], k=100),
+        dtype="S3",
+    ),
     "long_column": rng.random(100_000),
     "complex": rng.random((30, 50)) + 1j * rng.random((30, 50)),
 }
@@ -85,12 +98,14 @@ mapping = {
             "short_table": DataFrameAdapter.from_pandas(
                 pandas.DataFrame(
                     {
-                        "A": data["short_column"],
-                        "B": 2 * data["short_column"],
-                        "C": 3 * data["short_column"],
+                        "A": data["short_column_int"],
+                        "B": data["short_column_float"],
+                        "C": data["short_column_str"],
+                        "D": data["short_column_datetime"],
+                        "E": data["short_column_bool"],
                     },
                     index=pandas.Index(
-                        numpy.arange(len(data["short_column"])), name="index"
+                        numpy.arange(len(data["short_column_int"])), name="index"
                     ),
                 ),
                 npartitions=1,
