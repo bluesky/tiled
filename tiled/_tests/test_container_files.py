@@ -58,6 +58,11 @@ async def test_zarr_group(tmp_path: Path):
         client = from_context(context)
         await register(client, tmp_path)
         tree(client)
+        # Normally, zarr would have 'attributes' stored as internal dictionary in the
+        # metadata, but HDF5 does not support nested dictionaries.
+        client["zg"].replace_metadata(
+            {"attributes": "", "zarr_format": 2 if ZARR_LIB_V2 else 3}
+        )
         client["zg"].export(tmp_path / "stuff.h5")
         assert client["zg"]["x"].read().data == x_array
         assert client["zg"]["y"].read().data == y_array
