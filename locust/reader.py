@@ -60,37 +60,23 @@ class ReadingUser(HttpUser):
 
         # Create a dataset using the Tiled client for testing
         # known_dataset_key = "bbe6484d-8873-4a03-9baf-aa69df11c2f1"
-        logging.debug(
-            f"Created test dataset with key: {self.environment.known_dataset_key}"
-        )
 
     @task(1)
     def read_table_data(self):
         """Read table data from our known dataset"""
         # Read the table data we created
-        response = self.client.get(
+        self.client.get(
             f"/api/v1/table/full/locust_testing/{self.environment.known_dataset_key}",
             headers=self.headers,
         )
-        logging.debug(
-            f"READ TABLE /api/v1/table/full/locust_testing/"
-            f"{self.environment.known_dataset_key} - Status: {response.status_code}"
-        )
-
-        if response.status_code != 200:
-            logging.error(f"Failed to read table data: {response.text}")
 
     @task(1)
     def read_metadata(self):
         """Read metadata from our known dataset"""
 
-        response = self.client.get(
+        self.client.get(
             f"/api/v1/metadata/locust_testing/{self.environment.known_dataset_key}",
             headers=self.headers,
-        )
-        logging.debug(
-            f"READ METADATA /api/v1/metadata/locust_testing/"
-            f"{self.environment.known_dataset_key} - Status: {response.status_code}"
         )
 
     @task(1)
@@ -111,10 +97,7 @@ class ReadingUser(HttpUser):
         ]
 
         params = np.random.choice(search_params)
-        response = self.client.get(
-            "/api/v1/search/", headers=self.headers, params=params
-        )
-        logging.debug(f"SEARCH /api/v1/search/ - Status: {response.status_code}")
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
 
     @task(1)
     def test_metadata_root(self):
@@ -124,13 +107,9 @@ class ReadingUser(HttpUser):
     @task(1)
     def read_table_partition(self):
         """Read specific partition from our known dataset"""
-        response = self.client.get(
+        self.client.get(
             f"/api/v1/table/partition/locust_testing/{self.environment.known_dataset_key}?partition=0",
             headers=self.headers,
-        )
-        logging.debug(
-            f"READ PARTITION /api/v1/table/partition/locust_testing/"
-            f"{self.environment.known_dataset_key}?partition=0 - Status: {response.status_code}"
         )
 
     @task(1)
@@ -165,13 +144,10 @@ class ReadingUser(HttpUser):
     def test_array_full_endpoint(self):
         """Test array full data endpoint (if available)"""
         # This might not work for table data, but test the endpoint
-        response = self.client.get(
+        self.client.get(
             f"/api/v1/array/full/locust_testing/{self.environment.known_dataset_key}",
             headers=self.headers,
         )
-        # Don't log errors for this as it's expected to fail for table data
-        if response.status_code == 200:
-            logging.debug(f"ARRAY FULL succeeded - Status: {response.status_code}")
 
     @task(1)
     def test_container_full_endpoint(self):
