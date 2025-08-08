@@ -79,6 +79,7 @@ all = [
     "hdf5plugin",
     "jinja2",
     "jmespath",
+    "locust",
     "lz4",
     "ndindex",
     "numcodecs",
