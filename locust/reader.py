@@ -1,3 +1,4 @@
+import json
 import logging
 
 import numpy as np
@@ -82,27 +83,12 @@ class ReadingUser(HttpUser):
         )
 
     @task(1)
-    def test_root_endpoint(self):
+    def root_endpoint(self):
         """Test root endpoint performance"""
         self.client.get("/", headers=self.headers)
 
     @task(1)
-    def search_data(self):
-        """Search for our known dataset and other data"""
-        search_params = [
-            {},
-            {"select_metadata": "scan_id"}
-            if self.environment.known_dataset_key
-            else {},
-            {"limit": 5},
-            {"offset": 0},
-        ]
-
-        params = np.random.choice(search_params)
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
-
-    @task(1)
-    def test_metadata_root(self):
+    def metadata_root(self):
         """Test metadata root endpoint"""
         self.client.get("/api/v1/metadata/", headers=self.headers)
 
@@ -115,48 +101,161 @@ class ReadingUser(HttpUser):
         )
 
     @task(1)
-    def test_healthz_endpoint(self):
+    def healthz_endpoint(self):
         """Test health check endpoint"""
         self.client.get("/healthz")
 
     @task(1)
-    def test_metrics_endpoint(self):
+    def metrics_endpoint(self):
         """Test Prometheus metrics endpoint"""
         self.client.get("/api/v1/metrics", headers=self.headers)
 
     @task(1)
-    def test_about_endpoint(self):
+    def about_endpoint(self):
         """Test API information endpoint"""
         self.client.get("/api/v1/", headers=self.headers)
 
-    @task(1)
-    def test_distinct_endpoint(self):
-        """Test distinct values endpoint"""
-        self.client.get(
-            f"/api/v1/distinct/locust_testing/{self.environment.known_dataset_key}",
-            headers=self.headers,
-        )
+    # @task(1)
+    # def distinct_endpoint(self):
+    #     """Test distinct values endpoint"""
+    #     self.client.get(
+    #         f"/api/v1/distinct/locust_testing/{self.environment.known_dataset_key}",
+    #         headers=self.headers,
+    #     )
 
     @task(1)
-    def test_search_root(self):
+    def search_root(self):
         """Test search at root level"""
         self.client.get("/api/v1/search/", headers=self.headers)
 
-    @task(0)
-    def test_array_full_endpoint(self):
-        """Test array full data endpoint (if available)"""
-        # This might not work for table data, but test the endpoint
-        self.client.get(
-            f"/api/v1/array/full/locust_testing/{self.environment.known_dataset_key}",
-            headers=self.headers,
-        )
-
     @task(1)
-    def test_container_full_endpoint(self):
+    def container_full_endpoint(self):
         """Test container full data endpoint"""
         self.client.get("/api/v1/container/full/locust_testing", headers=self.headers)
 
     @task(1)
-    def test_whoami_endpoint(self):
+    def whoami_endpoint(self):
         """Test user identity endpoint"""
         self.client.get("/api/v1/auth/whoami", headers=self.headers)
+
+    @task(1)
+    def search_fulltext(self):
+        """Test fulltext search queries"""
+        params = {"filter[fulltext][condition][text]": "test"}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_with_limit(self):
+        """Test search with limit parameter"""
+        params = {"page[limit]": 5}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_with_pagination(self):
+        """Test search with offset and limit parameters"""
+        params = {"page[offset]": 10, "page[limit]": 5}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_with_sort(self):
+        """Test search with sort parameter"""
+        params = {"sort": "key"}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_with_max_depth(self):
+        """Test search with max_depth parameter"""
+        params = {"max_depth": 1}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_structure_family(self):
+        """Test structure family search queries"""
+        params = {"filter[structure_family][condition][value]": ["table"]}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_with_omit_links(self):
+        """Test search with omit_links parameter"""
+        params = {"omit_links": "true"}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_with_data_sources(self):
+        """Test search with include_data_sources parameter"""
+        params = {"include_data_sources": "true"}
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_eq(self):
+        """Test equality search queries"""
+        params = {
+            "filter[eq][condition][key]": "structure_family",
+            "filter[eq][condition][value]": json.dumps("table"),
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_noteq(self):
+        """Test not equal search queries"""
+        params = {
+            "filter[noteq][condition][key]": "structure_family",
+            "filter[noteq][condition][value]": json.dumps("array"),
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_comparison(self):
+        """Test comparison search queries"""
+        params = {
+            "filter[comparison][condition][operator]": "gt",
+            "filter[comparison][condition][key]": "id",
+            "filter[comparison][condition][value]": json.dumps(0),
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_regex(self):
+        """Test regex search queries"""
+        params = {
+            "filter[regex][condition][key]": "key",
+            "filter[regex][condition][pattern]": ".*",
+            "filter[regex][condition][case_sensitive]": json.dumps(True),
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_like(self):
+        """Test like search queries"""
+        params = {
+            "filter[like][condition][key]": "key",
+            "filter[like][condition][pattern]": json.dumps("%"),
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_contains(self):
+        """Test contains search queries"""
+        params = {
+            "filter[contains][condition][key]": "key",
+            "filter[contains][condition][value]": json.dumps("locust"),
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_in(self):
+        """Test in search queries"""
+        params = {
+            "filter[in][condition][key]": "structure_family",
+            "filter[in][condition][value]": '["table", "array"]',
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+
+    @task(1)
+    def search_notin(self):
+        """Test not in search queries"""
+        params = {
+            "filter[notin][condition][key]": "structure_family",
+            "filter[notin][condition][value]": '["sparse"]',
+        }
+        self.client.get("/api/v1/search/", headers=self.headers, params=params)
