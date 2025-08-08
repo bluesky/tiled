@@ -19,11 +19,13 @@ def _(parser):
 
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
-    # Default to localhost if no host specified
-    host = environment.host or "http://localhost:8000"
+    if environment.host is None:
+        raise ValueError(
+            "Host must be specified with --host argument, or through the web-ui."
+        )
 
     environment.known_dataset_key = create_test_dataset(
-        host, environment.parsed_options.api_key
+        environment.host, environment.parsed_options.api_key
     )
 
 
