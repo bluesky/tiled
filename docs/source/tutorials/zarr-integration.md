@@ -2,7 +2,7 @@
 
 Tiled allows one to serve their data in the [zarr](https://zarr.dev/) format. Even though internally the data might be stored in any format supported by Tiled, they can be presented to a client in the standard zarr interface. This enables one to use any compatible external tools, for example, for fast (de-)serialization and intercative plotting of multidimensional arrays.
 
-Tiled supports both versions of zarr, `v2` and `v3`, which are exposed at the `/zarr/v2` and `/zarr/v3` API endpoints, respectively. The native Tiled datastructures are mapped to zarr as follows:
+Tiled supports Zarr specification versions 2 and 3, which are exposed at the `/zarr/v2` and `/zarr/v3` API endpoints, respectively. The native Tiled datastructures are mapped to zarr as follows:
 
 | Tiled | zarr |
 |------|-----|
