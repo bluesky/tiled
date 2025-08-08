@@ -67,29 +67,22 @@ class ReadingUser(HttpUser):
     @task(1)
     def read_table_data(self):
         """Read table data from our known dataset"""
-        try:
-            # Read the table data we created
-            response = self.client.get(
-                f"/api/v1/table/full/locust_testing/{self.environment.known_dataset_key}",
-                headers=self.headers,
-            )
-            logging.debug(
-                f"READ TABLE /api/v1/table/full/locust_testing/"
-                f"{self.environment.known_dataset_key} - Status: {response.status_code}"
-            )
+        # Read the table data we created
+        response = self.client.get(
+            f"/api/v1/table/full/locust_testing/{self.environment.known_dataset_key}",
+            headers=self.headers,
+        )
+        logging.debug(
+            f"READ TABLE /api/v1/table/full/locust_testing/"
+            f"{self.environment.known_dataset_key} - Status: {response.status_code}"
+        )
 
-            if response.status_code != 200:
-                logging.error(f"Failed to read table data: {response.text}")
-        except Exception:
-            logging.error("EXCEPTION")
+        if response.status_code != 200:
+            logging.error(f"Failed to read table data: {response.text}")
 
     @task(1)
     def read_metadata(self):
         """Read metadata from our known dataset"""
-        if not self.environment.known_dataset_key:
-            # Fallback to root metadata if no dataset was created
-            self.client.get("/api/v1/metadata/", headers=self.headers)
-            return
 
         response = self.client.get(
             f"/api/v1/metadata/locust_testing/{self.environment.known_dataset_key}",
@@ -131,10 +124,6 @@ class ReadingUser(HttpUser):
     @task(1)
     def read_table_partition(self):
         """Read specific partition from our known dataset"""
-        if not self.environment.known_dataset_key:
-            return
-
-        # Read partition 0 of our table
         response = self.client.get(
             f"/api/v1/table/partition/locust_testing/{self.environment.known_dataset_key}?partition=0",
             headers=self.headers,
@@ -153,3 +142,43 @@ class ReadingUser(HttpUser):
     def test_metrics_endpoint(self):
         """Test Prometheus metrics endpoint"""
         self.client.get("/api/v1/metrics", headers=self.headers)
+
+    @task(1)
+    def test_about_endpoint(self):
+        """Test API information endpoint"""
+        self.client.get("/api/v1/", headers=self.headers)
+
+    @task(1)
+    def test_distinct_endpoint(self):
+        """Test distinct values endpoint"""
+        self.client.get(
+            f"/api/v1/distinct/locust_testing/{self.environment.known_dataset_key}",
+            headers=self.headers,
+        )
+
+    @task(1)
+    def test_search_root(self):
+        """Test search at root level"""
+        self.client.get("/api/v1/search/", headers=self.headers)
+
+    @task(0)
+    def test_array_full_endpoint(self):
+        """Test array full data endpoint (if available)"""
+        # This might not work for table data, but test the endpoint
+        response = self.client.get(
+            f"/api/v1/array/full/locust_testing/{self.environment.known_dataset_key}",
+            headers=self.headers,
+        )
+        # Don't log errors for this as it's expected to fail for table data
+        if response.status_code == 200:
+            logging.debug(f"ARRAY FULL succeeded - Status: {response.status_code}")
+
+    @task(1)
+    def test_container_full_endpoint(self):
+        """Test container full data endpoint"""
+        self.client.get("/api/v1/container/full/locust_testing", headers=self.headers)
+
+    @task(1)
+    def test_whoami_endpoint(self):
+        """Test user identity endpoint"""
+        self.client.get("/api/v1/auth/whoami", headers=self.headers)
