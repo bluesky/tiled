@@ -60,7 +60,7 @@ class ReadingUser(HttpUser):
     wait_time = between(0.5, 2)
 
     def on_start(self):
-        self.headers = {
+        self.client.headers = {
             "Authorization": f"Apikey {self.environment.parsed_options.api_key}"
         }
 
@@ -70,7 +70,6 @@ class ReadingUser(HttpUser):
         # Read the table data we created
         self.client.get(
             f"/api/v1/table/full/locust_testing/{self.environment.known_dataset_key}",
-            headers=self.headers,
         )
 
     @task(1)
@@ -79,25 +78,23 @@ class ReadingUser(HttpUser):
 
         self.client.get(
             f"/api/v1/metadata/locust_testing/{self.environment.known_dataset_key}",
-            headers=self.headers,
         )
 
     @task(1)
     def root_endpoint(self):
         """Test root endpoint performance"""
-        self.client.get("/", headers=self.headers)
+        self.client.get("/")
 
     @task(1)
     def metadata_root(self):
         """Test metadata root endpoint"""
-        self.client.get("/api/v1/metadata/", headers=self.headers)
+        self.client.get("/api/v1/metadata/")
 
     @task(1)
     def read_table_partition(self):
         """Read specific partition from our known dataset"""
         self.client.get(
             f"/api/v1/table/partition/locust_testing/{self.environment.known_dataset_key}?partition=0",
-            headers=self.headers,
         )
 
     @task(1)
@@ -108,83 +105,75 @@ class ReadingUser(HttpUser):
     @task(1)
     def metrics_endpoint(self):
         """Test Prometheus metrics endpoint"""
-        self.client.get("/api/v1/metrics", headers=self.headers)
+        self.client.get("/api/v1/metrics")
 
     @task(1)
     def about_endpoint(self):
         """Test API information endpoint"""
-        self.client.get("/api/v1/", headers=self.headers)
-
-    # @task(1)
-    # def distinct_endpoint(self):
-    #     """Test distinct values endpoint"""
-    #     self.client.get(
-    #         f"/api/v1/distinct/locust_testing/{self.environment.known_dataset_key}",
-    #         headers=self.headers,
-    #     )
+        self.client.get("/api/v1/")
 
     @task(1)
     def search_root(self):
         """Test search at root level"""
-        self.client.get("/api/v1/search/", headers=self.headers)
+        self.client.get("/api/v1/search/")
 
     @task(1)
     def container_full_endpoint(self):
         """Test container full data endpoint"""
-        self.client.get("/api/v1/container/full/locust_testing", headers=self.headers)
+        self.client.get("/api/v1/container/full/locust_testing")
 
     @task(1)
     def whoami_endpoint(self):
         """Test user identity endpoint"""
-        self.client.get("/api/v1/auth/whoami", headers=self.headers)
+        self.client.get("/api/v1/auth/whoami")
 
     @task(1)
     def search_fulltext(self):
         """Test fulltext search queries"""
         params = {"filter[fulltext][condition][text]": "test"}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_with_limit(self):
         """Test search with limit parameter"""
         params = {"page[limit]": 5}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_with_pagination(self):
         """Test search with offset and limit parameters"""
         params = {"page[offset]": 10, "page[limit]": 5}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_with_sort(self):
         """Test search with sort parameter"""
         params = {"sort": "key"}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_with_max_depth(self):
         """Test search with max_depth parameter"""
         params = {"max_depth": 1}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_structure_family(self):
         """Test structure family search queries"""
         params = {"filter[structure_family][condition][value]": ["table"]}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_with_omit_links(self):
         """Test search with omit_links parameter"""
         params = {"omit_links": "true"}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_with_data_sources(self):
         """Test search with include_data_sources parameter"""
         params = {"include_data_sources": "true"}
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_eq(self):
@@ -193,7 +182,7 @@ class ReadingUser(HttpUser):
             "filter[eq][condition][key]": "structure_family",
             "filter[eq][condition][value]": json.dumps("table"),
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_noteq(self):
@@ -202,7 +191,7 @@ class ReadingUser(HttpUser):
             "filter[noteq][condition][key]": "structure_family",
             "filter[noteq][condition][value]": json.dumps("array"),
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_comparison(self):
@@ -212,7 +201,7 @@ class ReadingUser(HttpUser):
             "filter[comparison][condition][key]": "id",
             "filter[comparison][condition][value]": json.dumps(0),
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_regex(self):
@@ -222,7 +211,7 @@ class ReadingUser(HttpUser):
             "filter[regex][condition][pattern]": ".*",
             "filter[regex][condition][case_sensitive]": json.dumps(True),
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_like(self):
@@ -231,7 +220,7 @@ class ReadingUser(HttpUser):
             "filter[like][condition][key]": "key",
             "filter[like][condition][pattern]": json.dumps("%"),
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_contains(self):
@@ -240,7 +229,7 @@ class ReadingUser(HttpUser):
             "filter[contains][condition][key]": "key",
             "filter[contains][condition][value]": json.dumps("locust"),
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_in(self):
@@ -249,7 +238,7 @@ class ReadingUser(HttpUser):
             "filter[in][condition][key]": "structure_family",
             "filter[in][condition][value]": '["table", "array"]',
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
 
     @task(1)
     def search_notin(self):
@@ -258,4 +247,4 @@ class ReadingUser(HttpUser):
             "filter[notin][condition][key]": "structure_family",
             "filter[notin][condition][value]": '["sparse"]',
         }
-        self.client.get("/api/v1/search/", headers=self.headers, params=params)
+        self.client.get("/api/v1/search/", params=params)
