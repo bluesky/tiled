@@ -87,7 +87,6 @@ class ReadingUser(HttpUser):
     @task(1)
     def read_metadata(self):
         """Read metadata from our known dataset"""
-
         self.client.get(
             f"/api/v1/metadata/{self.environment.container_name}/{self.environment.known_dataset_key}",
         )
