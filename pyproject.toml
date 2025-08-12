@@ -94,7 +94,7 @@ all = [
     "python-jose[cryptography]",
     "python-multipart",
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "sqlalchemy[asyncio] >=2",
     "stamina",
     "starlette >=0.38.0",
@@ -124,7 +124,7 @@ client = [
     "pandas",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "stamina",
     "watchfiles",
     "xarray",
@@ -245,7 +245,7 @@ server = [
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-    "sparse",
+    "sparse >=0.15.5",
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "tifffile",
@@ -259,7 +259,7 @@ sparse = [
     "ndindex",
     "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
-    "sparse",
+    "sparse >=0.15.5",
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [

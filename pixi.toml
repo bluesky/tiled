@@ -100,13 +100,12 @@ zarr = "*"
 [feature.sparse.dependencies]
 ndindex = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
-sparse = "*"
+sparse = ">=0.15.5"
 
 [feature.xarray.dependencies]
 dask = "*"
 pandas = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
-sparse = "*"
 
 # These environments are used by CI
 
