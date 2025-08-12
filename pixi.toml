@@ -128,8 +128,8 @@ dev = { features = ["array", "client", "compression", "dataframe", "formats", "d
 server = { features = ["array", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
 
 # environments used for CI
-py39 = { features = ["dev", "py39"] }
-py310 = { features = ["dev", "py310"] }
-py311 = { features = ["dev", "py311"] }
-py312 = { features = ["dev", "py312"] }
-py313 = { features = ["dev", "py313"] }
+py39  = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py39"] }
+py310 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py310"] }
+py311 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
+py312 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
+py313 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }
