@@ -1,16 +1,13 @@
 # syntax=docker/dockerfile:1.9
 ARG PYTHON_VERSION=3.12
-FROM node:22-alpine AS web_frontend_build
+FROM docker.io/node:22-alpine AS web_frontend_build
 WORKDIR /src
 COPY web-frontend .
-RUN <<EOT
-set -ex
-npm install && npm run build
-EOT
+RUN set -ex && npm install && npm run build
 
 ##########################################################################
 
-FROM ubuntu:noble AS build
+FROM docker.io/ubuntu:noble AS build
 
 # Ensure apt-get doesn't open a menu on you.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -18,16 +15,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Ensure logs and error messages do not get stuck in a buffer.
 ENV PYTHONUNBUFFERED=1
 
-RUN <<EOT
-set -ex
-apt-get update -qy
+RUN set -ex && \
+apt-get update -qy && \
 apt-get install -qyy \
     -o APT::Install-Recommends=false \
     -o APT::Install-Suggests=false \
     build-essential \
     ca-certificates \
     gcc
-EOT
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
@@ -82,18 +77,17 @@ RUN --mount=type=cache,target=/root/.cache \
 
 ##########################################################################
 
-FROM ubuntu:noble
+FROM docker.io/ubuntu:noble
 SHELL ["sh", "-exc"]
 
 # Add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH
 
 # Don't run your app as root.
-RUN <<EOT
-set -ex
-groupadd -r app
+RUN
+set -ex && \
+groupadd -r app && \
 useradd -r -d /app -g app -N app
-EOT
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 # See <https://hynek.me/articles/docker-signals/>.
@@ -101,17 +95,15 @@ STOPSIGNAL SIGINT
 
 # Note how the runtime dependencies differ from build-time ones.
 # Notably, there is no uv either!
-RUN <<EOT
-set -ex
-apt-get update -qy
+RUN set -ex && \
+apt-get update -qy && \
 apt-get install -qyy \
     -o APT::Install-Recommends=false \
     -o APT::Install-Suggests=false \
-    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}
 
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-EOT
 
 COPY docker-entrypoint.sh /
 
@@ -124,12 +116,10 @@ USER app
 WORKDIR /app
 
 # Smoke test that the application can, in fact, be imported.
-RUN <<EOT
-set -ex
-python -V
-python -Im site
+RUN set -ex && \
+python -V && \
+python -Im site && \
 python -Ic 'import tiled'
-EOT
 
 WORKDIR /deploy
 RUN mkdir /deploy/config
