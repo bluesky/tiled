@@ -83,7 +83,7 @@ all = [
     "ndindex",
     "numcodecs",
     "numpy",
-    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "openpyxl",
     "packaging",
     "pandas",
@@ -119,7 +119,7 @@ client = [
     "entrypoints",
     "lz4",
     "ndindex",
-    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numpy",
     "pandas",
     "pyarrow",
@@ -233,7 +233,7 @@ server = [
     "jmespath",
     "lz4",
     "ndindex",
-    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numcodecs",
     "numpy",
     "openpyxl",
@@ -257,7 +257,7 @@ server = [
 # These are needed by the client and server to transmit/receive sparse arrays.
 sparse = [
     "ndindex",
-    "numba >=0.59.0",  # indirect, pinned to assist pixi solve
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "pyarrow",
     "sparse",
 ]
@@ -322,61 +322,3 @@ exclude_lines = ["if __name__ == '__main__':"]
 
 [tool.coverage.paths]
 source = ["."]
-
-[tool.pixi.workspace]
-channels = ["conda-forge"]
-platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
-
-[tool.pixi.pypi-dependencies]
-tiled = { path = ".", editable = true }
-
-# For each feature where 'pyarrow' is a dependency, guide pixi to use the
-# pyarrow-all conda-forge package to avoid:
-#   ImportError: The pyarrow installation is not built with support for 'dataset'
-#   (libarrow_dataset.so.2100: cannot open shared object file: No such file or
-#   directory)
-
-[tool.pixi.feature.all.dependencies]
-pyarrow-all = ">=21.0.0"
-
-[tool.pixi.feature.client.dependencies]
-pyarrow-all = ">=21.0.0"
-
-[tool.pixi.feature.dataframe.dependencies]
-pyarrow-all = ">=21.0.0"
-
-[tool.pixi.feature.server.dependencies]
-pyarrow-all = ">=21.0.0"
-
-[tool.pixi.feature.py39.dependencies]
-python = "3.9.*"
-
-[tool.pixi.feature.py310.dependencies]
-python = "3.10.*"
-
-[tool.pixi.feature.py311.dependencies]
-python = "3.11.*"
-
-[tool.pixi.feature.py312.dependencies]
-python = "3.12.*"
-
-[tool.pixi.environments]
-default = { solve-group = "default" }
-all = { features = ["all"], solve-group = "default" }
-array = { features = ["array"], solve-group = "default" }
-client = { features = ["client"], solve-group = "default" }
-compression = { features = ["compression"], solve-group = "default" }
-dataframe = { features = ["dataframe"], solve-group = "default" }
-dev = { features = ["all", "dev"], solve-group = "default" }
-formats = { features = ["formats"], solve-group = "default" }
-minimal-client = { features = ["minimal-client"], solve-group = "default" }
-minimal-server = { features = ["minimal-server"], solve-group = "default" }
-server = { features = ["server"], solve-group = "default" }
-sparse = { features = ["sparse"], solve-group = "default" }
-xarray = { features = ["xarray"], solve-group = "default" }
-
-# environments used for CI
-py39 = { features = ["all", "dev", "py39"] }
-py310 = { features = ["all", "dev", "py310"] }
-py311 = { features = ["all", "dev", "py311"] }
-py312 = { features = ["all", "dev", "py312"] }

@@ -1,0 +1,135 @@
+[workspace]
+authors = ["Dan Allan <dallan@bnl.gov>"]
+channels = ["conda-forge"]
+name = "tiled"
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+version = "0.1.0-b32"
+
+[tasks]
+
+[dependencies]
+httpx = ">=0.20.0,!=0.23.1"
+json-merge-patch = "*"
+jsonpatch = "*"
+jsonschema = "*"
+msgpack-python = ">=1.0.0"
+orjson = "*"
+platformdirs = "*"
+pydantic = ">=2,<3"
+pydantic-settings = ">=2,<3"
+pyyaml = "*"
+typer = "*"
+
+[pypi-dependencies]
+tiled = { path = ".", editable = true }
+
+[feature.array.dependencies]
+dask = "*"
+numpy = "*"
+
+[feature.client.dependencies]
+entrypoints = "*"
+rich = "*"
+stamina = "*"
+watchfiles = "*"
+
+[feature.compression.dependencies]
+python-blosc2 = "*"
+lz4 = "*"
+zstandard = "*"
+
+[feature.dataframe.dependencies]
+dask = "*"
+pandas = "*"
+pyarrow-all = "*"
+
+[feature.dev.dependencies]
+coverage = "*"
+flake8 = "*"
+ipython = "*"
+ldap3 = "*"
+matplotlib = "*"
+mistune = "*"
+myst-parser = "*"
+numpydoc = "*"
+pre-commit = "*"
+pytest = "*"
+pytest-asyncio = "*"
+pytest-mock = "*"
+pytest-rerunfailures = "*"
+sphinx = "!=4.1.0,!=4.1.1,!=4.1.2,!=4.2.0"
+sphinx-click = "*"
+sphinx-copybutton = "*"
+sphinx_rtd_theme = "*"
+sphinxcontrib-mermaid = "*"
+
+[feature.formats.dependencies]
+h5netcdf = "*"
+h5py = "*"
+hdf5plugin = "*"
+openpyxl = "*"
+pillow = "*"
+tifffile = "*"
+
+[feature.server.dependencies]
+aiofiles = "*"
+aiosqlite = "*"
+alembic = "*"
+anyio = "*"
+asgi-correlation-id = "*"
+cachetools = "*"
+canonicaljson = "*"
+dask = "*"
+fastapi = ">=0.115.8"
+jinja2 = "*"
+jmespath = "*"
+numcodecs = "*"
+packaging = "*"
+prometheus_client = "*"
+python-dateutil = "*"
+python-jose = "*"
+python-multipart = "*"
+sqlalchemy = ">=2"
+starlette = ">=0.38.0"
+uvicorn = "*"
+zarr = "*"
+
+[feature.sparse.dependencies]
+ndindex = "*"
+pyarrow = "*"
+sparse = "*"
+
+[feature.xarray.dependencies]
+dask = "*"
+pandas = "*"
+pyarrow = "*"
+xarray = "*"
+
+[feature.py39.dependencies]
+python = "3.9.*"
+
+[feature.py310.dependencies]
+python = "3.10.*"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[environments]
+default = { solve-group = "default" }
+all = { features = ["array", "client", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
+client = { features = ["array", "client", "compression", "dataframe", "formats", "sparse", "xarray"], solve-group = "default" }
+dev = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray"], solve-group = "default" }
+server = { features = ["array", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
+
+# environments used for CI
+py39 = { features = ["dev", "py39"] }
+py310 = { features = ["dev", "py310"] }
+py311 = { features = ["dev", "py311"] }
+py312 = { features = ["dev", "py312"] }
+py313 = { features = ["dev", "py313"] }
