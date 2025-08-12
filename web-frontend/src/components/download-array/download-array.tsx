@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Download, Format } from "./download-core";
+import { Download, Format } from "../download-core/download-core";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -21,7 +21,7 @@ interface DownloadArrayProps {
 
 function Examples() {
   const [anchorEl, setAnchorEl] = React.useState<HTMLButtonElement | null>(
-    null
+    null,
   );
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {

@@ -10,14 +10,14 @@ export const search = async (
   fields: string[] = [],
   selectMetadata: any = null,
   pageOffset: number = 0,
-  pageLimit: number = 100
+  pageLimit: number = 100,
 ): Promise<
   components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]
 > => {
   let url = `${apiURL}/search/${segments.join(
-    "/"
+    "/",
   )}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
-    "&fields="
+    "&fields=",
   )}`;
   if (selectMetadata !== null) {
     url = url.concat(`&select_metadata=${selectMetadata}`);
@@ -30,15 +30,15 @@ export const metadata = async (
   apiURL: string,
   segments: string[],
   signal: AbortSignal,
-  fields: string[] = []
+  fields: string[] = [],
 ): Promise<
   components["schemas"]["Response_Resource_NodeAttributes__dict__dict___dict__dict_"]
 > => {
   const response = await axiosInstance.get(
     `${apiURL}/metadata/${segments.join("/")}?fields=${fields.join(
-      "&fields="
+      "&fields=",
     )}`,
-    { signal: signal }
+    { signal: signal },
   );
   return response.data;
 };
