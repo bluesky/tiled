@@ -89,7 +89,7 @@ all = [
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >= 14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
@@ -122,7 +122,7 @@ client = [
     "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numpy",
     "pandas",
-    "pyarrow",
+    "pyarrow >= 14.0.1",  # includes fix to CVE 2023-47248
     "rich",
     "sparse",
     "stamina",
@@ -141,7 +141,7 @@ compression = [
 dataframe = [
     "dask[dataframe]",
     "pandas",
-    "pyarrow",
+    "pyarrow >= 14.0.1",  # includes fix to CVE 2023-47248
 ]
 # These are required for developing the package (running the tests, building
 # the documentation) but not necessarily required for _using_ it.
@@ -241,7 +241,7 @@ server = [
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >= 14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
@@ -258,7 +258,7 @@ server = [
 sparse = [
     "ndindex",
     "numba >=0.59.0",  # indirect, pinned to assist uv solve
-    "pyarrow",
+    "pyarrow >= 14.0.1",  # includes fix to CVE 2023-47248
     "sparse",
 ]
 # These are needed by the client and server to transmit/receive xarrays.

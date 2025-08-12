@@ -41,7 +41,7 @@ zstandard = "*"
 [feature.dataframe.dependencies]
 dask = "*"
 pandas = "*"
-pyarrow-all = "*"
+pyarrow-all = ">= 14.0.1"  # includes fix to CVE 2023-47248
 
 [feature.dev.dependencies]
 coverage = "*"
@@ -96,13 +96,18 @@ zarr = "*"
 
 [feature.sparse.dependencies]
 ndindex = "*"
-pyarrow = "*"
+pyarrow-all = ">= 14.0.1"  # includes fix to CVE 2023-47248
 sparse = "*"
 
 [feature.xarray.dependencies]
 dask = "*"
 pandas = "*"
-pyarrow = "*"
+pyarrow-all = ">= 14.0.1"  # includes fix to CVE 2023-47248
+sparse = "*"
+
+[feature.xarray.dependencies]
+dask = "*"
+pandas = "*"
 xarray = "*"
 
 [feature.py39.dependencies]
