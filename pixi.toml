@@ -105,11 +105,6 @@ pandas = "*"
 pyarrow-all = ">= 14.0.1"  # includes fix to CVE 2023-47248
 sparse = "*"
 
-[feature.xarray.dependencies]
-dask = "*"
-pandas = "*"
-xarray = "*"
-
 [feature.py39.dependencies]
 python = "3.9.*"
 
