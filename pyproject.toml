@@ -83,17 +83,18 @@ all = [
     "ndindex",
     "numcodecs",
     "numpy",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "openpyxl",
     "packaging",
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "sqlalchemy[asyncio] >=2",
     "stamina",
     "starlette >=0.38.0",
@@ -118,11 +119,12 @@ client = [
     "entrypoints",
     "lz4",
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numpy",
     "pandas",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "stamina",
     "watchfiles",
     "xarray",
@@ -139,7 +141,7 @@ compression = [
 dataframe = [
     "dask[dataframe]",
     "pandas",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
 ]
 # These are required for developing the package (running the tests, building
 # the documentation) but not necessarily required for _using_ it.
@@ -156,7 +158,7 @@ dev = [
     "myst-parser",
     "numpydoc",
     "pre-commit",
-    "pytest <8",  # TMP pin while plugins catch up
+    "pytest",
     "pytest-asyncio",
     "pytest-mock",
     "pytest-rerunfailures",
@@ -233,6 +235,7 @@ server = [
     "jmespath",
     "lz4",
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numcodecs",
     "numpy",
     "openpyxl",
@@ -240,11 +243,11 @@ server = [
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-    "sparse",
+    "sparse >=0.15.5",
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "tifffile",
@@ -256,8 +259,9 @@ server = [
 # These are needed by the client and server to transmit/receive sparse arrays.
 sparse = [
     "ndindex",
-    "pyarrow",
-    "sparse",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
+    "sparse >=0.15.5",
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [
