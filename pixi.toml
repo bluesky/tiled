@@ -27,6 +27,9 @@ tiled = { path = ".", editable = true }
 dask = "*"
 numpy = "*"
 
+[feature.awkward.dependencies]
+awkward = ">=2.4.3"
+
 [feature.client.dependencies]
 entrypoints = "*"
 rich = "*"
@@ -129,14 +132,14 @@ python-blosc2 = "*"
 
 [environments]
 default = { solve-group = "default" }
-all = { features = ["array", "client", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
-client = { features = ["array", "client", "compression", "dataframe", "formats", "sparse", "xarray"], solve-group = "default" }
-dev = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray"], solve-group = "default" }
-server = { features = ["array", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
+all = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
+client = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "sparse", "xarray"], solve-group = "default" }
+dev = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray"], solve-group = "default" }
+server = { features = ["array", "awkward", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
 
 # environments used for CI
-py39  = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py39"] }
-py310 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py310"] }
-py311 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
-py312 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
-py313 = { features = ["array", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }
+py39  = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py39"] }
+py310 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py310"] }
+py311 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
+py312 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
+py313 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }
