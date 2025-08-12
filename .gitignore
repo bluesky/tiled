@@ -17,6 +17,7 @@ docs/source/reference/generated/
 .pytest_cache/
 
 # Unit test / coverage reports
+coverage/
 htmlcov/
 .tox/
 .coverage
@@ -68,6 +69,7 @@ config.yml
 prometheus_data
 grafana_data
 data
+alembic.ini
 
 tiled/_version.py
 

@@ -146,7 +146,7 @@ async def sqlite_uri(tmp_path: Path):
     yield f"sqlite:///{tmp_path}/tiled.sqlite"
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def duckdb_uri(tmp_path: Path):
     yield f"duckdb:///{tmp_path}/tiled.duckdb"
 
@@ -161,6 +161,11 @@ async def postgres_uri():
 
 @pytest.fixture(params=["sqlite_uri", "postgres_uri"])
 def sqlite_or_postgres_uri(request):
+    yield request.getfixturevalue(request.param)
+
+
+@pytest.fixture(params=["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def sql_storage_uri(request):
     yield request.getfixturevalue(request.param)
 
 

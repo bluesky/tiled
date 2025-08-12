@@ -16,7 +16,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable, Generic, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Generic, Iterator, Optional, TextIO, Tuple, TypeVar, Union
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -476,7 +476,7 @@ def modules_available(*module_names):
     return False
 
 
-def parse(file):
+def parse(file: TextIO) -> dict[Any, Any]:
     """
     Given a config file, parse it.
 
@@ -488,7 +488,7 @@ def parse(file):
     return expand_environment_variables(content)
 
 
-def expand_environment_variables(config):
+def expand_environment_variables(config: T) -> T:
     """Expand environment variables in a nested config dictionary
 
     VENDORED FROM dask.config.
@@ -511,7 +511,8 @@ def expand_environment_variables(config):
     {'x': [1, 2, 'my-username']}
     """
     if isinstance(config, collections.abc.Mapping):
-        return {k: expand_environment_variables(v) for k, v in config.items()}
+        # ignore type checks as type might change but it's still a mapping
+        return {k: expand_environment_variables(v) for k, v in config.items()}  # type: ignore
     elif isinstance(config, str):
         return os.path.expandvars(config)
     elif isinstance(config, (list, tuple, builtins.set)):
@@ -521,7 +522,7 @@ def expand_environment_variables(config):
 
 
 @contextlib.contextmanager
-def prepend_to_sys_path(*paths):
+def prepend_to_sys_path(*paths: Union[str, Path]) -> Iterator[None]:
     "Temporarily prepend items to sys.path."
 
     for item in reversed(paths):
@@ -858,3 +859,20 @@ class catch_warning_msg(warnings.catch_warnings):
         super().__enter__()
         self.apply_filter()
         return self
+
+
+def parse_mimetype(mimetype: str) -> tuple[str, dict]:
+    """
+    Parse 'text/csv;header=absent' -> ('text/csv', {'header': 'absent'})
+    """
+    base, *param_tokens = mimetype.split(";")
+    params = {}
+    for item in param_tokens:
+        try:
+            key, value = item.strip().split("=", 2)
+        except Exception:
+            raise ValueError(
+                f"Could not parse {item} as 'key=value' mimetype parameter"
+            )
+        params[key] = value
+    return base, params
