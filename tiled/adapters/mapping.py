@@ -181,7 +181,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         return len(self._mapping)
 
-    def keys(self) -> KeysView[str]:  # type: ignore
+    def keys(self) -> KeysView:  # type: ignore
         """
 
         Returns
@@ -190,7 +190,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         return KeysView(lambda: len(self), self._keys_slice)
 
-    def values(self) -> ValuesView[A]:  # type: ignore
+    def values(self) -> ValuesView:  # type: ignore
         """
 
         Returns
@@ -199,7 +199,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         """
         return ValuesView(lambda: len(self), self._items_slice)
 
-    def items(self) -> ItemsView[str, A]:  # type: ignore
+    def items(self) -> ItemsView:  # type: ignore
         """
 
         Returns
