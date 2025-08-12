@@ -34,7 +34,7 @@ stamina = "*"
 watchfiles = "*"
 
 [feature.compression.dependencies]
-python-blosc2 = "*"
+# python-blosc2 = "*"  # not available on Python < 3.11
 lz4 = "*"
 zstandard = "*"
 
@@ -105,20 +105,27 @@ pandas = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 sparse = "*"
 
+# These environments are used by CI
+
 [feature.py39.dependencies]
 python = "3.9.*"
+# python-blosc2 is not available for Python 3.9
 
 [feature.py310.dependencies]
 python = "3.10.*"
+# python-blosc2 is not available for Python 3.10
 
 [feature.py311.dependencies]
 python = "3.11.*"
+python-blosc2 = "*"
 
 [feature.py312.dependencies]
 python = "3.12.*"
+python-blosc2 = "*"
 
 [feature.py313.dependencies]
 python = "3.13.*"
+python-blosc2 = "*"
 
 [environments]
 default = { solve-group = "default" }
