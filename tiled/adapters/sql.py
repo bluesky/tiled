@@ -32,7 +32,7 @@ from ..storage import (
     get_storage,
     parse_storage,
 )
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
@@ -113,6 +113,10 @@ class SQLAdapter(Adapter[TableStructure]):
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
         return {EmbeddedSQLStorage, SQLStorage}
+
+    @classmethod
+    def structure_family(cls) -> StructureFamily:
+        return StructureFamily.array
 
     def close(self) -> None:
         self.conn.close()
