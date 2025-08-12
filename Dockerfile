@@ -1,49 +1,135 @@
+# syntax=docker/dockerfile:1.9
 ARG PYTHON_VERSION=3.12
-FROM node:22-alpine AS web_frontend_builder
-WORKDIR /code
+FROM node:22-alpine AS web_frontend_build
+WORKDIR /src
 COPY web-frontend .
-RUN npm install && npm run build
+RUN <<EOT
+set -ex
+npm install && npm run build
+EOT
 
-FROM python:${PYTHON_VERSION} AS developer
+##########################################################################
 
-# We need gcc to compile thriftpy2, a secondary dependency.
-RUN apt-get -y update && apt-get install -y gcc
+FROM ubuntu:noble AS build
 
-WORKDIR /code
+# Ensure apt-get doesn't open a menu on you.
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Ensure logs and error messages do not get stuck in a buffer.
 ENV PYTHONUNBUFFERED=1
 
-# Use a venv to avoid interfering with system Python.
-ENV VIRTUAL_ENV=/opt/venv
-RUN python3 -m venv $VIRTUAL_ENV
-# This is equivalent to `source $VIRTUAL_ENV/bin/activate` but it
-# persists into the runtime so we avoid the need to account for it
-# in ENTRYPOINT or CMD.
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+RUN <<EOT
+set -ex
+apt-get update -qy
+apt-get install -qyy \
+    -o APT::Install-Recommends=false \
+    -o APT::Install-Suggests=false \
+    build-essential \
+    ca-certificates \
+    gcc
+EOT
 
-# Install build dependencies.
-RUN pip install --no-cache-dir cython
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-COPY --from=web_frontend_builder /code/dist /code/share/tiled/ui
-COPY . .
+# - Silence uv complaining about not being able to use hard links,
+# - tell uv to byte-compile packages for faster application startups,
+# - prevent uv from accidentally downloading isolated Python builds,
+# - pick a Python (use `/usr/bin/python3.12` on uv 0.5.0 and later),
+# - and finally declare `/app` as the target for `uv sync`.
+# - Skip building the UI here because we already did it in the stage
+#   above using a node container.
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PYTHON=python${PYTHON_VERSION} \
+    UV_PROJECT_ENVIRONMENT=/app \
+    TILED_BUILD_SKIP_UI=1
 
-FROM developer AS builder
+# Synchronize DEPENDENCIES without the application itself.
+# This layer is cached until uv.lock or pyproject.toml change, which are
+# only temporarily mounted into the build container since we don't need
+# them in the production one.
+# You can create `/app` using `uv venv` in a separate `RUN`
+# step to have it cached, but with uv it's so fast, it's not worth
+# it, so we let `uv sync` create it for us automagically.
+RUN --mount=type=cache,target=/root/.cache \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    set -ex
+    uv sync \
+	--all-extras \
+        --locked \
+        --no-dev \
+        --no-install-project
 
-# Skip building the UI here because we already did it in the stage
-# above using a node container.
-# Include server and client dependencies here because this container may be used
-# for `tiled register ...` and `tiled server directory ...` which invokes
-# client-side code.
-RUN TILED_BUILD_SKIP_UI=1 pip install '.[all]'
+# Now install the rest from `/src`: The APPLICATION w/o dependencies.
+# `/src` will NOT be copied into the runtime container.
+# LEAVE THIS OUT if your application is NOT a proper Python package.
+COPY . /src
+WORKDIR /src
+RUN --mount=type=cache,target=/root/.cache \
+    set -ex
+    uv sync \
+	--all-extras \
+        # We want as httpie as a developer convenience.
+	--with httpie \
+        --locked \
+        --no-dev \
+        --no-editable
 
-FROM python:${PYTHON_VERSION}-slim AS runner
 
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
-# We want cURL and httpie so healthchecks can be performed within the container
-RUN apt-get update && apt-get install -y curl httpie
+##########################################################################
+
+##########################################################################
+
+FROM ubuntu:noble
+SHELL ["sh", "-exc"]
+
+# Add the application virtualenv to search path.
+ENV PATH=/app/bin:$PATH
+
+# Don't run your app as root.
+RUN <<EOT
+set -ex
+groupadd -r app
+useradd -r -d /app -g app -N app
+EOT
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+# See <https://hynek.me/articles/docker-signals/>.
+STOPSIGNAL SIGINT
+
+# Note how the runtime dependencies differ from build-time ones.
+# Notably, there is no uv either!
+RUN <<EOT
+set -ex
+apt-get update -qy
+apt-get install -qyy \
+    -o APT::Install-Recommends=false \
+    -o APT::Install-Suggests=false \
+    python${PYTHON_VERSION} \
+
+apt-get clean
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+EOT
+
+COPY docker-entrypoint.sh /
+
+# Copy the pre-built `/app` directory to the runtime container
+# and change the ownership to user app and group app in one step.
+COPY --from=build --chown=app:app /app /app
+COPY --from=web_frontend_build --chown=app:app /src/dist /src/share/tiled/ui
+
+USER app
+WORKDIR /app
+
+# Smoke test that the application can, in fact, be imported.
+RUN <<EOT
+set -ex
+python -V
+python -Im site
+python -Ic 'import tiled'
+EOT
 
 WORKDIR /deploy
 RUN mkdir /deploy/config
