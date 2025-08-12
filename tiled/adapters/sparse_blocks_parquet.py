@@ -10,7 +10,7 @@ import pandas
 import sparse
 from numpy._typing import NDArray
 
-from tiled.adapters.protocols import SparseAdapter
+from tiled.adapters.core import Adapter
 
 from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..catalog.orm import Node
@@ -43,7 +43,7 @@ def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
     return coords, data
 
 
-class SparseBlocksParquetAdapter(SparseAdapter):
+class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
     def __init__(
         self,
         data_uris: List[str],
@@ -66,7 +66,7 @@ class SparseBlocksParquetAdapter(SparseAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "SparseBlocksParquetAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def init_storage(

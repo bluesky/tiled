@@ -22,7 +22,7 @@ import pandas
 import pyarrow
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
-from tiled.adapters.table import TableAdapter
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import (
@@ -73,7 +73,7 @@ FORBIDDEN_CHARACTERS = re.compile(
 # Furthermore, user-specified table names can only be in lower case.
 
 
-class SQLAdapter(TableAdapter):
+class SQLAdapter(Adapter[TableStructure]):
     """SQLAdapter Class"""
 
     def __init__(
@@ -234,7 +234,7 @@ class SQLAdapter(TableAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "SQLAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     def structure(self) -> TableStructure:
         """

@@ -8,7 +8,7 @@ import numpy as np
 from ndindex import ndindex
 from numpy._typing import NDArray
 
-from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
@@ -61,7 +61,7 @@ def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
     return arr
 
 
-class FileSequenceAdapter(ArrayAdapter):
+class FileSequenceAdapter(Adapter[ArrayStructure]):
     """Base adapter class for image (and other file) sequences
 
     Assumes that each file contains an array of the same shape and dtype, and the sequence of files defines the
@@ -99,7 +99,7 @@ class FileSequenceAdapter(ArrayAdapter):
                 # Assume all files have the same data type
                 data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
-        super().__init(structure, metadata=metadata, specs=specs)
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_uris(cls, *data_uris: str) -> "FileSequenceAdapter":
@@ -113,7 +113,7 @@ class FileSequenceAdapter(ArrayAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @abstractmethod
     def _load_from_files(
@@ -134,6 +134,7 @@ class FileSequenceAdapter(ArrayAdapter):
 
         pass
 
+    @property
     def metadata(self) -> JSON:
         # TODO How to deal with the many headers?
         return super().metadata
