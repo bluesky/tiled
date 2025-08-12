@@ -43,13 +43,6 @@ jobs:
     - name: Install tiled
       run: uv sync --all-extras
 
-    - name: Install test requirements
-      shell: bash -l {0}
-      run: |
-        set -vxeuo pipefail
-        python -m pip install .[dev]
-        python -m pip list
-
     - name: Start LDAP service in container.
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_LDAP.sh
