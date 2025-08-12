@@ -1443,7 +1443,8 @@ def has_key(query, tree):
     else:
         keys = query.key.split(".")
         condition = (
-            orm.Node.metadata_.op("#>")(cast(keys, ARRAY(TEXT))) != None  # noqa: E711
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
+            != None  # noqa: E711
         )
     condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])
