@@ -252,12 +252,8 @@ server = [
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-<<<<<<< HEAD
     "sparse >=0.15.5",
-=======
     "redis",
-    "sparse",
->>>>>>> 59f7e570 (Added:)
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "tifffile",
