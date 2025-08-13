@@ -1,5 +1,4 @@
 # syntax=docker/dockerfile:1.9
-ARG PYTHON_VERSION=3.12
 FROM docker.io/node:22-alpine AS web_frontend_build
 WORKDIR /src
 COPY web-frontend .
@@ -8,6 +7,7 @@ RUN set -ex && npm install && npm run build
 ##########################################################################
 
 FROM docker.io/ubuntu:noble AS build
+ARG PYTHON_VERSION=3.12
 
 # Ensure apt-get doesn't open a menu on you.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -78,6 +78,7 @@ RUN --mount=type=cache,target=/root/.cache \
 ##########################################################################
 
 FROM docker.io/ubuntu:noble
+ARG PYTHON_VERSION=3.12
 SHELL ["sh", "-exc"]
 
 # Add the application virtualenv to search path.
