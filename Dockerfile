@@ -64,9 +64,9 @@ WORKDIR /src
 RUN --mount=type=cache,target=/root/.cache \
     set -ex && \
     uv sync \
-	--extra server \
+        --extra server \
         # We want as httpie as a developer convenience.
-	--with httpie \
+        --with httpie \
         --no-dev \
         --no-editable
 
