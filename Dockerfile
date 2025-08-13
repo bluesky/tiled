@@ -41,14 +41,13 @@ ENV UV_LINK_MODE=copy \
     TILED_BUILD_SKIP_UI=1
 
 # Synchronize DEPENDENCIES without the application itself.
-# This layer is cached until uv.lock or pyproject.toml change, which are
+# This layer is cached until pyproject.toml changes, which is
 # only temporarily mounted into the build container since we don't need
-# them in the production one.
+# it in the production one.
 # You can create `/app` using `uv venv` in a separate `RUN`
 # step to have it cached, but with uv it's so fast, it's not worth
 # it, so we let `uv sync` create it for us automagically.
 RUN --mount=type=cache,target=/root/.cache \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     set -ex && \
     uv sync \
