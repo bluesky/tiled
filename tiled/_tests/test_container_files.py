@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import h5py
@@ -7,6 +6,7 @@ import pandas
 import pytest
 import zarr
 
+from ..adapters.zarr import ZARR_LIB_V2
 from ..catalog import in_memory
 from ..client import Context, from_context, tree
 from ..client.register import register
@@ -46,7 +46,7 @@ async def test_zarr_group(tmp_path: Path):
     x_array = np.array([1, 2, 3])
     y_array = np.array([4, 5, 6])
 
-    if sys.version_info < (3, 11):
+    if ZARR_LIB_V2:
         root.create_dataset("x", data=x_array)
         root.create_dataset("y", data=y_array)
     else:
@@ -58,6 +58,11 @@ async def test_zarr_group(tmp_path: Path):
         client = from_context(context)
         await register(client, tmp_path)
         tree(client)
+        # Normally, zarr would have 'attributes' stored as internal dictionary in the
+        # metadata, but HDF5 does not support nested dictionaries.
+        client["zg"].replace_metadata(
+            {"attributes": "", "zarr_format": 2 if ZARR_LIB_V2 else 3}
+        )
         client["zg"].export(tmp_path / "stuff.h5")
         assert client["zg"]["x"].read().data == x_array
         assert client["zg"]["y"].read().data == y_array

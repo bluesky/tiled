@@ -26,9 +26,11 @@ from starlette.status import (
 from ..catalog import in_memory
 from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
+from ..client.utils import ClientError
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
+from ..structures.array import BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
@@ -312,7 +314,13 @@ def test_write_sparse_chunked(tree):
                 "sparse",
                 [
                     DataSource(
-                        structure=COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                        structure=COOStructure(
+                            shape=(2 * N,),
+                            chunks=((N, N),),
+                            data_type=BuiltinDtype.from_numpy_dtype(
+                                numpy.dtype("float64")
+                            ),
+                        ),
                         structure_family="sparse",
                     )
                 ],
@@ -510,7 +518,7 @@ async def test_delete(tree):
             key="delete_me",
         )
         nodes_before_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_before_delete) == 1
+        assert len(nodes_before_delete) == 1 + 1  # +1 for the root node
         data_sources_before_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
@@ -528,10 +536,12 @@ async def test_delete(tree):
                 key="delete_me",
             )
 
-        client.delete("delete_me")
+        with pytest.raises(ClientError):
+            client.delete_contents("delete_me")  # Cannot easily delete internal data
+        client.delete_contents("delete_me", external_only=False)
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
-        assert len(nodes_after_delete) == 0
+        assert len(nodes_after_delete) == 0 + 1  # the root node should still exist
         data_sources_after_delete = (
             await tree.context.execute("SELECT * from data_sources")
         ).all()
@@ -559,20 +569,20 @@ async def test_delete_non_empty_node(tree):
         # Cannot delete non-empty nodes
         assert "a" in client
         with fail_with_status_code(HTTP_409_CONFLICT):
-            client.delete("a")
+            client.delete_contents("a")
         assert "b" in a
         with fail_with_status_code(HTTP_409_CONFLICT):
-            a.delete("b")
+            a.delete_contents("b")
         assert "c" in b
         with fail_with_status_code(HTTP_409_CONFLICT):
-            b.delete("c")
+            b.delete_contents("c")
         assert "d" in c
         assert not list(d)  # leaf is empty
         # Delete from the bottom up.
-        c.delete("d")
-        b.delete("c")
-        a.delete("b")
-        client.delete("a")
+        c.delete_contents("d")
+        b.delete_contents("c")
+        a.delete_contents("b")
+        client.delete_contents("a")
 
 
 @pytest.mark.asyncio
@@ -585,15 +595,15 @@ async def test_write_in_container(tree):
         df = pandas.DataFrame({"a": [1, 2, 3]})
         b = a.write_dataframe(df, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
         a = client.create_container("a")
         arr = numpy.array([1, 2, 3])
         b = a.write_array(arr, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
         a = client.create_container("a")
         coo = sparse.COO(
@@ -601,8 +611,8 @@ async def test_write_in_container(tree):
         )
         b = a.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
         a = client.create_container("a")
         array = awkward.Array(
@@ -614,8 +624,8 @@ async def test_write_in_container(tree):
         )
         b = a.write_awkward(array, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
 
 @pytest.mark.asyncio

@@ -222,7 +222,9 @@ class _DaskDataFrameClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=bytes(serialize_arrow(dataframe, {})),
+                        content=bytes(
+                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
+                        ),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )
@@ -233,7 +235,9 @@ class _DaskDataFrameClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["partition"].format(index=partition),
-                        content=bytes(serialize_arrow(dataframe, {})),
+                        content=bytes(
+                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
+                        ),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )
@@ -246,7 +250,9 @@ class _DaskDataFrameClient(BaseClient):
                 handle_error(
                     self.context.http_client.patch(
                         self.item["links"]["partition"].format(index=partition),
-                        content=bytes(serialize_arrow(dataframe, {})),
+                        content=bytes(
+                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
+                        ),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )

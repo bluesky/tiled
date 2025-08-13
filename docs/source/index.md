@@ -14,6 +14,7 @@ tutorials/search
 tutorials/writing
 tutorials/simple-server
 tutorials/plotly-integration
+tutorials/zarr-integration
 ```
 
 ```{toctree}

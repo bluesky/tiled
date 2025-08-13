@@ -142,6 +142,9 @@ class RemoteSQLStorage(SQLStorage):
 
         super().__post_init__()
 
+    def __repr__(self):
+        return f"SQLStorage(uri={self.uri!r}, username={self.username!r})"
+
     @functools.cached_property
     def authenticated_uri(self):
         parsed_uri = urlparse(self.uri)

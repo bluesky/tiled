@@ -6,7 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -382,11 +382,44 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         return result
 
-    def delete(self, key):
+    def delete_contents(
+        self,
+        keys: Optional[Union[str, Iterable[str]]] = None,
+        recursive: bool = False,
+        external_only: bool = True,
+    ) -> "Container":
+        """Delete the contents of this Container.
+
+        Parameters
+        ----------
+        keys : str or list of str
+            The key(s) to delete. If a list, all keys in the list will be deleted.
+            If None (default), delete all contents.
+        recursive : bool, optional
+            If True, descend into sub-containers and delete their contents too.
+            Defaults to False.
+        external_only : bool, optional
+            If True, only delete externally-managed data. Defaults to True.
+        """
+
         self._cached_len = None
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
+        if keys is None:
+            keys = self.keys()
+        keys = [keys] if isinstance(keys, str) else keys
+        for key in set(keys):
+            for attempt in retry_context():
+                with attempt:
+                    handle_error(
+                        self.context.http_client.delete(
+                            f"{self.uri}/{key}",
+                            params={
+                                "recursive": recursive,
+                                "external_only": external_only,
+                            },
+                        )
+                    )
+
+        return self
 
     # The following two methods are used by keys(), values(), items().
 
@@ -1033,6 +1066,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> x.write_block(coords=array([[2, 4]]), data=array([3.1, 2.8]), block=(0,))
         >>> x.write_block(coords=array([[0, 1]]), data=array([6.7, 1.2]), block=(1,))
         """
+        from ..structures.array import BuiltinDtype
         from ..structures.sparse import COOStructure
 
         structure = COOStructure(
@@ -1040,6 +1074,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # This method only supports single-chunk COO arrays.
             chunks=tuple((dim,) for dim in shape),
             dims=dims,
+            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
         )
         client = self.new(
             StructureFamily.sparse,

@@ -1,7 +1,7 @@
 from typing import List, Optional, Union
 
 import pydantic_settings
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Request
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from tiled.adapters.protocols import AnyAdapter
@@ -15,11 +15,8 @@ from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
 
-def get_root_tree():
-    raise NotImplementedError(
-        "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.build_app()."
-    )
+def get_root_tree(request: Request):
+    return request.app.state.root_tree
 
 
 async def get_entry(

@@ -65,6 +65,20 @@ with warnings.catch_warnings():
         }
     )
 
+nd_array = numpy.arange(9).reshape((3, 3))
+uniform_array = numpy.empty((3,), dtype=object)
+for i in range(uniform_array.shape[0]):
+    uniform_array[i] = nd_array[i]
+ragged_array = numpy.array([numpy.arange(3), numpy.arange(4, 10)], dtype=object)
+object_array = numpy.full((10,), {"a": 1}, dtype=object)
+nested_arrays_tree = MapAdapter(
+    {
+        "uniform": ArrayAdapter.from_array(uniform_array),
+        "ragged": ArrayAdapter.from_array(ragged_array),
+        "objects": ArrayAdapter.from_array(object_array),
+    }
+)
+
 
 @pytest.fixture(scope="module")
 def context():
@@ -75,6 +89,7 @@ def context():
             "inf": inf_tree,
             "scalar": scalar_tree,
             "zero": zero_tree,
+            "nested_arrays": nested_arrays_tree,
         }
     )
     app = build_app(tree)
@@ -166,7 +181,51 @@ def test_array_interface(context):
         v.dims
 
 
+def test_uniform_nested_array_projected_to_ndarray(context):
+    client = from_context(context)["nested_arrays"]["uniform"]
+    assert client.dtype == numpy.int_
+    assert client.read().dtype == numpy.int_
+    assert numpy.array_equal(client.read(), nd_array)
+
+
+@pytest.mark.parametrize("kind", ["ragged", "objects"])
+def test_unparsable_nested_array_stringified(kind, context):
+    # This behavior is due to the fact that ragged Numpy arrays, and those with
+    # non-numeric types (except for strings) will likely have dtype=object,
+    # which may not be parsable or reducible. As such we fallback to taking the
+    # string representations of the array elements.
+    client = from_context(context)["nested_arrays"][kind]
+    assert "<U" in client.dtype.str
+    assert "<U" in client.read().dtype.str
+    assert isinstance(client[0], str)
+
+
 @pytest.mark.parametrize("kind", list(array_cases))
 def test_as_buffer(kind):
-    output = as_buffer(array_cases[kind], {})
+    output = as_buffer("application/octet-stream", array_cases[kind], {})
     assert len(output) == len(bytes(output))
+
+
+@pytest.mark.parametrize(
+    "chunks, expected",
+    [
+        ((3, 13, 17), "((3, 3, 3, 3, 3), (13,), (17,))"),
+        ((1, 13, 17), "((1, 1, ..., 1), (13,), (17,))"),
+        ((2, 13, 17), "((2, 2, ..., 2, 1), (13,), (17,))"),
+        ((15, 13, 17), "((15,), (13,), (17,))"),
+        (((1, 1, 1, 1, 1, 2, 2, 2, 2, 2), 13, 17), "(variable, (13,), (17,))"),
+    ],
+)
+def test_array_client_repr(tmpdir, chunks, expected):
+    arr = dask.array.random.random(size=(15, 13, 17), chunks=chunks)
+    adapter = MapAdapter({"arr": ArrayAdapter.from_array(arr, dims=("x", "y", "z"))})
+    app = build_app(adapter)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        rep = repr(client["arr"])
+        assert rep.startswith("<ArrayClient")
+        assert "shape=(15, 13, 17)" in rep
+        assert f"dtype={client['arr'].dtype}" in rep
+        assert f"chunks={expected}" in rep
+        if client["arr"].dims:
+            assert "dims=('x', 'y', 'z')" in rep

@@ -67,7 +67,6 @@ from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, get_base_url
 
 ALGORITHM = "HS256"
-UNIT_SECOND = timedelta(seconds=1)
 
 # Max API keys and Sessions allowed to Principal.
 # This is here for at least two reasons:
@@ -423,7 +422,11 @@ async def create_pending_session(db: AsyncSession):
 
 
 async def create_session(
-    settings, db: AsyncSession, identity_provider, id, state: UserSessionState = None
+    settings: Settings,
+    db: AsyncSession,
+    identity_provider,
+    id,
+    state: UserSessionState = None,
 ):
     # Have we seen this Identity before?
     identity = (
@@ -482,7 +485,9 @@ async def create_session(
     return fully_loaded_session
 
 
-async def create_tokens_from_session(settings, db: AsyncSession, session, provider):
+async def create_tokens_from_session(
+    settings: Settings, db: AsyncSession, session, provider
+):
     # Provide enough information in the access token to reconstruct Principal
     # and its Identities sufficient for access policy enforcement without a
     # database hit.
@@ -520,9 +525,9 @@ async def create_tokens_from_session(settings, db: AsyncSession, session, provid
     ).scalar()
     return {
         "access_token": access_token,
-        "expires_in": settings.access_token_max_age / UNIT_SECOND,
+        "expires_in": settings.access_token_max_age.total_seconds(),
         "refresh_token": refresh_token,
-        "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+        "refresh_token_expires_in": settings.refresh_token_max_age.total_seconds(),
         "token_type": "bearer",
         "identity": {"id": identity.id, "provider": provider},
         "principal": principal.uuid.hex,
@@ -1088,9 +1093,9 @@ def authentication_router() -> APIRouter:
         )
         return {
             "access_token": access_token,
-            "expires_in": settings.access_token_max_age / UNIT_SECOND,
+            "expires_in": settings.access_token_max_age.total_seconds(),
             "refresh_token": new_refresh_token,
-            "refresh_token_expires_in": settings.refresh_token_max_age / UNIT_SECOND,
+            "refresh_token_expires_in": settings.refresh_token_max_age.total_seconds(),
             "token_type": "bearer",
         }
 

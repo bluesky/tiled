@@ -8,6 +8,7 @@ from ..utils import (
     ListView,
     OneShotCachedMap,
     ensure_specified_sql_driver,
+    parse_mimetype,
     parse_time_string,
     sanitize_uri,
     walk,
@@ -339,3 +340,28 @@ def test_sanitize_uri(uri, expected_clean_uri, expected_username, expected_passw
     assert clean_uri == expected_clean_uri
     assert username == expected_username
     assert password == expected_password
+
+
+@pytest.mark.parametrize(
+    "mimetype, expected",
+    [
+        ("text/csv", ("text/csv", {})),
+        ("text/csv;header=absent", ("text/csv", {"header": "absent"})),
+        (
+            "text/csv;header=absent; charset=utf-8",
+            ("text/csv", {"header": "absent", "charset": "utf-8"}),
+        ),
+        (
+            "text/csv; header=absent; charset=utf-8",
+            ("text/csv", {"header": "absent", "charset": "utf-8"}),
+        ),
+    ],
+)
+def test_parse_valid_mimetype(mimetype, expected):
+    assert parse_mimetype(mimetype) == expected
+
+
+def test_parse_invalid_mimetype():
+    with pytest.raises(ValueError):
+        # Parameter does not have form 'key=value'
+        assert parse_mimetype("text/csv;oops")
