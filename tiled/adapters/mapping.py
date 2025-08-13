@@ -754,7 +754,7 @@ def notin(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(NotIn, notin)
 
 
-def keypresent(query: Any, tree: MapAdapter) -> MapAdapter:
+def key_present(query: Any, tree: MapAdapter) -> MapAdapter:
     """
 
     Parameters
@@ -773,7 +773,7 @@ def keypresent(query: Any, tree: MapAdapter) -> MapAdapter:
     return tree.new_variation(mapping=matches)
 
 
-MapAdapter.register_query(KeyPresent, keypresent)
+MapAdapter.register_query(KeyPresent, key_present)
 
 
 def specs(query: Any, tree: MapAdapter) -> MapAdapter:
