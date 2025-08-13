@@ -89,7 +89,6 @@ set -ex && \
 groupadd -r app && \
 useradd -r -d /app -g app -N app
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
 # See <https://hynek.me/articles/docker-signals/>.
 STOPSIGNAL SIGINT
 
@@ -105,8 +104,6 @@ apt-get install -qyy \
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-COPY docker-entrypoint.sh /
-
 # Copy the pre-built `/app` directory to the runtime container
 # and change the ownership to user app and group app in one step.
 COPY --from=build --chown=app:app /app /app
@@ -121,7 +118,6 @@ python -V && \
 python -Im site && \
 python -Ic 'import tiled'
 
-WORKDIR /deploy
 RUN mkdir /deploy/config
 RUN mkdir -p /storage
 COPY ./example_configs/single_catalog_single_user.yml /deploy/config
