@@ -1,19 +1,21 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Iterable, Mapping, Optional
 
 import awkward
 
-from tiled.structures.root import Structure
-
 
 @dataclass
-class AwkwardStructure(Structure):
+class AwkwardStructure:
     length: int
     form: dict
 
+    @classmethod
+    def from_json(cls, structure: Mapping[str, Any]) -> "AwkwardStructure":
+        return cls(**structure)
+
 
 def project_form(
-    form: awkward.forms.Form, form_keys_touched
+    form: awkward.forms.Form, form_keys_touched: Iterable[str]
 ) -> Optional[awkward.forms.Form]:
     # See https://github.com/bluesky/tiled/issues/450
     if isinstance(form, awkward.forms.RecordForm):

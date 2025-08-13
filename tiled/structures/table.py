@@ -6,8 +6,6 @@ from typing import Any, List, Tuple, Union
 
 import pyarrow
 
-from tiled.structures.root import Structure
-
 B64_ENCODED_PREFIX = "data:application/vnd.apache.arrow.file;base64,"
 
 
@@ -18,7 +16,7 @@ def _uri_from_schema(pyarrow_schema: pyarrow.Schema) -> str:
 
 
 @dataclass
-class TableStructure(Structure):
+class TableStructure:
     # This holds a Arrow schema, base64-encoded so that it can be transported
     # as JSON. For clarity, the encoded data (...) is prefixed like:
     #
@@ -112,3 +110,12 @@ class TableStructure(Structure):
     @property
     def meta(self):
         return self.arrow_schema_decoded.empty_table().to_pandas()
+
+    @classmethod
+    def from_json(cls, structure: Mapping[str, Any]) -> "TableStructure":
+        return cls(
+            arrow_schema=structure["arrow_schema"],
+            npartitions=structure["npartitions"],
+            columns=structure["columns"],
+            resizable=structure["resizable"],
+        )

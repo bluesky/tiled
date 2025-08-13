@@ -3,8 +3,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
-from tiled.structures.root import Structure
-
 
 class SparseLayout(str, enum.Enum):
     # Only COO is currently supported, but this lays a path
@@ -13,7 +11,7 @@ class SparseLayout(str, enum.Enum):
 
 
 @dataclass
-class COOStructure(Structure):
+class COOStructure:
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")

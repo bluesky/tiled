@@ -7,8 +7,6 @@ from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 import numpy
 
-from tiled.structures.root import Structure
-
 # from dtype.descr
 FieldDescr = Union[Tuple[str, str], Tuple[str, str, Tuple[int, ...]]]
 NumpyDescr = List[FieldDescr]
@@ -224,7 +222,7 @@ class StructDtype:
 
 
 @dataclass
-class ArrayStructure(Structure):
+class ArrayStructure:
     data_type: Union[BuiltinDtype, StructDtype]
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)

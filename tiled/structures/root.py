@@ -1,10 +1,9 @@
-from abc import ABC
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol
 
 
-class Structure(ABC):
+class Structure(Protocol):
     @classmethod
     # TODO: When dropping support for Python 3.10 replace with -> Self
     def from_json(cls, structure: Mapping[str, Any]) -> "Structure":
-        return cls(**structure)
+        ...
