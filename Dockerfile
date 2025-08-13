@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/root/.cache \
 COPY . /src
 WORKDIR /src
 RUN --mount=type=cache,target=/root/.cache \
-    set -ex
+    set -ex && \
     uv sync \
 	--extra server \
         # We want as httpie as a developer convenience.
