@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 import dask.dataframe
 import pandas
 
-from tiled.adapters.table import TableAdapter
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
@@ -21,7 +21,7 @@ from .dataframe import DataFrameAdapter
 from .utils import init_adapter_from_catalog
 
 
-class ParquetDatasetAdapter(TableAdapter):
+class ParquetDatasetAdapter(Adapter[TableStructure]):
     def __init__(
         self,
         data_uris: List[str],
@@ -57,7 +57,7 @@ class ParquetDatasetAdapter(TableAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "ParquetDatasetAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @property
     def dataframe_adapter(self) -> DataFrameAdapter:
@@ -69,7 +69,7 @@ class ParquetDatasetAdapter(TableAdapter):
                 partition = dask.dataframe.read_parquet(path)
             partitions.append(partition)
         return DataFrameAdapter(
-            partitions, self._structure, specs=self.specs, metadata=self.metadata()
+            partitions, self._structure, specs=self.specs, metadata=self.metadata
         )
 
     @classmethod
