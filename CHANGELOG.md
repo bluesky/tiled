@@ -36,6 +36,8 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - The database migration in v0.1.0-b27 was incomplete, and missed an update to
   the `revisions` table necessary to make metadata updates work correctly.
   This is resolved by an additional database migration.
+- Correct indentation of authenticator args field in the service config schema
+  and ensure it correctly validates configurations.
 
 ## v0.1.0-b32 (2025-08-04)
 
