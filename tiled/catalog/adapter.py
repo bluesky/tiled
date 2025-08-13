@@ -50,7 +50,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
-    KeyExists,
+    KeyPresent,
     KeysFilter,
     Like,
     NotEq,
@@ -1462,7 +1462,7 @@ CatalogNodeAdapter.register_query(Comparison, comparison)
 CatalogNodeAdapter.register_query(Contains, contains)
 CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
-CatalogNodeAdapter.register_query(KeyExists, has_key)
+CatalogNodeAdapter.register_query(KeyPresent, has_key)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)

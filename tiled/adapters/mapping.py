@@ -28,7 +28,7 @@ from ..queries import (
     Eq,
     FullText,
     In,
-    KeyExists,
+    KeyPresent,
     KeysFilter,
     NotEq,
     NotIn,
@@ -754,7 +754,7 @@ def notin(query: Any, tree: MapAdapter) -> MapAdapter:
 MapAdapter.register_query(NotIn, notin)
 
 
-def keyexists(query: Any, tree: MapAdapter) -> MapAdapter:
+def keypresent(query: Any, tree: MapAdapter) -> MapAdapter:
     """
 
     Parameters
@@ -773,7 +773,7 @@ def keyexists(query: Any, tree: MapAdapter) -> MapAdapter:
     return tree.new_variation(mapping=matches)
 
 
-MapAdapter.register_query(KeyExists, keyexists)
+MapAdapter.register_query(KeyPresent, keypresent)
 
 
 def specs(query: Any, tree: MapAdapter) -> MapAdapter:
