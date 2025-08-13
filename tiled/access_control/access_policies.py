@@ -23,10 +23,10 @@ if log_level:
 class DummyAccessPolicy:
     "Impose no access restrictions."
 
-    async def allowed_scopes(self, node, principal, authn_scopes):
+    async def allowed_scopes(self, node, principal, authn_access_tags, authn_scopes):
         return ALL_SCOPES
 
-    async def filters(self, node, principal, authn_scopes, scopes):
+    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
         return []
 
 
@@ -55,6 +55,7 @@ class TagBasedAccessPolicy:
         self.unremovable_scopes = ["read:metadata", "write:metadata"]
         self.admin_scopes = ["admin:apikeys"]
         self.public_tag = "public".casefold()
+        self.invalid_tag_names = [name.casefold() for name in []]
 
     def _get_id(self, principal):
         for identity in principal.identities:
@@ -71,7 +72,9 @@ class TagBasedAccessPolicy:
             return True
         return False
 
-    async def init_node(self, principal, authn_scopes, access_blob=None):
+    async def init_node(
+        self, principal, authn_access_tags, authn_scopes, access_blob=None
+    ):
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -91,6 +94,11 @@ class TagBasedAccessPolicy:
             access_tags = set(access_blob["tags"])
             include_public_tag = False
             for tag in access_tags:
+                if authn_access_tags is not None:
+                    if tag not in authn_access_tags:
+                        raise ValueError(
+                            f"Cannot apply tag to node: API key is restricted to access tags: {authn_access_tags}."
+                        )
                 if tag.casefold() == self.public_tag:
                     include_public_tag = True
                     if not self._is_admin(authn_scopes):
@@ -105,6 +113,10 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                         )
+                elif tag.casefold() in self.invalid_tag_names:
+                    raise ValueError(
+                        f"Cannot apply tag to node: '{tag}' is not a valid tag name."
+                    )
 
             access_tags_from_policy = {
                 tag for tag in access_tags if tag.casefold() != self.public_tag
@@ -128,6 +140,12 @@ class TagBasedAccessPolicy:
                         f"This access_blob does not confer the minimum scopes: {self.unremovable_scopes}"
                     )
         else:
+            if authn_access_tags is not None:
+                raise ValueError(
+                    f"Cannot init node as user-owned node.\n"
+                    f"Current API key does not permit action on user-owned nodes.\n"
+                    f"Please provide a tag allowed by this API key: {authn_access_tags}"
+                )
             access_blob_from_policy = {"user": identifier}
             access_blob_modified = True
 
@@ -137,7 +155,9 @@ class TagBasedAccessPolicy:
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
-    async def modify_node(self, node, principal, authn_scopes, access_blob):
+    async def modify_node(
+        self, node, principal, authn_access_tags, authn_scopes, access_blob
+    ):
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -164,6 +184,11 @@ class TagBasedAccessPolicy:
         include_public_tag = False
         # check for tags that need to be added
         for tag in access_tags:
+            if authn_access_tags is not None:
+                if tag not in authn_access_tags:
+                    raise ValueError(
+                        f"Cannot apply tag to node: API key is restricted to access tags: {authn_access_tags}."
+                    )
             if tag in node.access_blob.get("tags", []):
                 # node already has this tag - no action.
                 # or: access_blob does not have "tags" key,
@@ -186,6 +211,10 @@ class TagBasedAccessPolicy:
                     raise ValueError(
                         f"Cannot apply tag to node: user='{identifier}' is not an owner of {tag=}"
                     )
+            elif tag.casefold() in self.invalid_tag_names:
+                raise ValueError(
+                    f"Cannot apply tag to node: '{tag}' is not a valid tag name."
+                )
 
         access_tags_from_policy = {
             tag for tag in access_tags if tag.casefold() != self.public_tag
@@ -198,6 +227,12 @@ class TagBasedAccessPolicy:
             for tag in set(node.access_blob["tags"]).difference(
                 access_tags_from_policy
             ):
+                if authn_access_tags is not None:
+                    if tag not in authn_access_tags:
+                        raise ValueError(
+                            f"Cannot remove tag from node: "
+                            f"API key is restricted to access tags: {authn_access_tags}."
+                        )
                 if tag == self.public_tag:
                     if not self._is_admin(authn_scopes):
                         raise ValueError(
@@ -213,6 +248,10 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             f"Cannot remove tag from node: user='{identifier}' is not an owner of {tag=}"
                         )
+                elif tag.casefold() in self.invalid_tag_names:
+                    raise ValueError(
+                        f"Cannot remove tag from node: '{tag}' is not a valid tag name."
+                    )
 
         access_blob_from_policy = {"tags": list(access_tags_from_policy)}
         access_blob_modified = access_tags != access_tags_from_policy
@@ -239,7 +278,7 @@ class TagBasedAccessPolicy:
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
-    async def allowed_scopes(self, node, principal, authn_scopes):
+    async def allowed_scopes(self, node, principal, authn_access_tags, authn_scopes):
         # If this is being called, filter_for_access has let us get this far.
         # However, filters and allowed_scopes should always be implemented to
         # give answers consistent with each other.
@@ -257,10 +296,13 @@ class TagBasedAccessPolicy:
 
             allowed = set()
             if "user" in node.access_blob:
-                if identifier == node.access_blob["user"]:
+                if authn_access_tags is None and identifier == node.access_blob["user"]:
                     allowed = self.scopes
             elif "tags" in node.access_blob:
                 for tag in node.access_blob["tags"]:
+                    if authn_access_tags is not None:
+                        if tag not in authn_access_tags:
+                            continue
                     if self.is_tag_public(tag):
                         allowed.update(self.read_scopes)
                         if tag == self.public_tag:
@@ -275,7 +317,7 @@ class TagBasedAccessPolicy:
 
         return allowed
 
-    async def filters(self, node, principal, authn_scopes, scopes):
+    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
         queries = []
         query_filter = AccessBlobFilter
 
@@ -308,6 +350,10 @@ class TagBasedAccessPolicy:
                 ]
             )
         )
+
+        if authn_access_tags is not None:
+            identifier = None
+            tag_list.intersection_update(authn_access_tags)
 
         queries.append(query_filter(identifier, tag_list))
         return queries
