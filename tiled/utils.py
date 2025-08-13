@@ -488,6 +488,9 @@ def parse(file: TextIO) -> dict[Any, Any]:
     return expand_environment_variables(content)
 
 
+T = TypeVar("T")
+
+
 def expand_environment_variables(config: T) -> T:
     """Expand environment variables in a nested config dictionary
 
