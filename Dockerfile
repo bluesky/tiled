@@ -98,9 +98,8 @@ apt-get update -qy && \
 apt-get install -qyy \
     -o APT::Install-Recommends=false \
     -o APT::Install-Suggests=false \
-    python${PYTHON_VERSION}
-
-apt-get clean
+    python${PYTHON_VERSION} && \
+apt-get clean && \
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Copy the pre-built `/app` directory to the runtime container
