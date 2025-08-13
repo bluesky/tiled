@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 import dask.dataframe
 import pandas
 
-from tiled.adapters.table import TableAdapter
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
@@ -21,7 +21,7 @@ from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
 
-class CSVAdapter(TableAdapter):
+class CSVAdapter(Adapter[TableStructure]):
     """Adapter for tabular data stored as partitioned text (csv) files"""
 
     def __init__(
@@ -66,7 +66,7 @@ class CSVAdapter(TableAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "CSVAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(
