@@ -7,6 +7,4 @@ from tiled.structures.core import StructureFamily
 
 
 class ContainerAdapter(Adapter[ContainerStructure], Mapping[str, A], Generic[A]):
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.container
+    structure_family: StructureFamily = StructureFamily.container

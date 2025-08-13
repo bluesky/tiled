@@ -39,6 +39,8 @@ INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 class ZarrArrayAdapter(Adapter[ArrayStructure]):
     """ """
 
+    structure_family: StructureFamily = StructureFamily.array
+
     def __init__(
         self,
         array: Array,
@@ -49,10 +51,6 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
     ) -> None:
         self._array = array
         super().__init__(structure, metadata=metadata, specs=specs)
-
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.array
 
     @classmethod
     def init_storage(
@@ -284,7 +282,6 @@ class ZarrGroupAdapter(
     def __repr__(self) -> str:
         return node_repr(self, list(self))
 
-    @property
     def metadata(self) -> JSON:
         return dict(self._node.attrs)
 

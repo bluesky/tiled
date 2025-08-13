@@ -9,7 +9,7 @@ from tiled.adapters.core import Adapter
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -27,6 +27,8 @@ class TiffAdapter(Adapter[ArrayStructure]):
 
     >>> TiffAdapter("path/to/file.tiff")
     """
+
+    structure_family: StructureFamily = StructureFamily.array
 
     def __init__(
         self,
@@ -78,7 +80,6 @@ class TiffAdapter(Adapter[ArrayStructure]):
     def from_uris(cls, data_uri: str, **kwargs: Optional[Any]) -> "TiffAdapter":
         return cls(data_uri)
 
-    @property
     def metadata(self) -> JSON:
         # This contains some enums, but Python's built-in JSON serializer
         # handles them fine (converting  to str or int as appropriate).

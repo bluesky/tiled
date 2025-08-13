@@ -13,6 +13,8 @@ from .awkward_directory_container import DirectoryContainer
 
 
 class AwkwardAdapter(Adapter[AwkwardStructure]):
+    structure_family: StructureFamily = StructureFamily.awkward
+
     def __init__(
         self,
         container: DirectoryContainer,
@@ -32,10 +34,6 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
         """
         self.container = container
         super().__init__(structure, metadata=metadata, specs=specs)
-
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.awkward
 
     @classmethod
     def from_array(

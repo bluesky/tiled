@@ -16,9 +16,7 @@ from .array import slice_and_shape_from_block_and_chunks
 
 
 class SparseAdapter(Adapter[SparseStructure]):
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.sparse
+    structure_family: StructureFamily = StructureFamily.sparse
 
 
 class COOAdapter(SparseAdapter):

@@ -24,6 +24,8 @@ from .utils import init_adapter_from_catalog
 class ArrowAdapter(Adapter[TableStructure]):
     """ArrowAdapter Class"""
 
+    structure_family: StructureFamily = StructureFamily.table
+
     def __init__(
         self,
         data_uris: List[str],
@@ -42,10 +44,6 @@ class ArrowAdapter(Adapter[TableStructure]):
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
         return {FileStorage}
-
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.table
 
     @classmethod
     def from_catalog(
@@ -121,7 +119,7 @@ class ArrowAdapter(Adapter[TableStructure]):
         """
         return [
             DataSource(
-                structure_family=self.structure_family(),
+                structure_family=self.structure_family,
                 mimetype=mimetype,
                 structure=self.structure(),
                 parameters={},

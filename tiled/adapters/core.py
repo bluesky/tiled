@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections.abc import Set
 from typing import Any, Generic, List, Optional, TypeVar
 
@@ -11,6 +11,8 @@ S = TypeVar("S", bound=Structure)
 
 
 class Adapter(ABC, Generic[S]):
+    structure_family: StructureFamily
+
     def __init__(
         self,
         structure: S,
@@ -22,7 +24,6 @@ class Adapter(ABC, Generic[S]):
         self._metadata = metadata or {}
         self._specs = specs or []
 
-    @property
     def metadata(self) -> JSON:
         return self._metadata
 
@@ -32,11 +33,6 @@ class Adapter(ABC, Generic[S]):
 
     def structure(self) -> S:
         return self._structure
-
-    @classmethod
-    @abstractmethod
-    def structure_family(cls) -> StructureFamily:
-        ...
 
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:

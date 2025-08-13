@@ -134,10 +134,9 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
 
         pass
 
-    @property
     def metadata(self) -> JSON:
         # TODO How to deal with the many headers?
-        return super().metadata
+        return super().metadata()
 
     def read(
         self, slice: Union[NDSlice, EllipsisType, builtins.slice] = ...

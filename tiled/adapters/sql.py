@@ -74,6 +74,8 @@ FORBIDDEN_CHARACTERS = re.compile(
 
 
 class SQLAdapter(Adapter[TableStructure]):
+    structure_family: StructureFamily = StructureFamily.table
+
     """SQLAdapter Class"""
 
     def __init__(
@@ -114,14 +116,9 @@ class SQLAdapter(Adapter[TableStructure]):
     def supported_storage(cls) -> Set[type[Storage]]:
         return {EmbeddedSQLStorage, SQLStorage}
 
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.array
-
     def close(self) -> None:
         self.conn.close()
 
-    @property
     def metadata(self) -> JSON:
         """The metadata representing the actual data.
 

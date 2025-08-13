@@ -40,6 +40,7 @@ from sqlalchemy.sql.expression import cast
 from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
+from tiled.adapters.core import Adapter
 from tiled.queries import (
     AccessBlobFilter,
     Comparison,
@@ -685,14 +686,14 @@ class CatalogNodeAdapter:
                                 "is not one that the Tiled server knows how to write."
                             ),
                         )
-                    adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
+                    adapter: type[Adapter] = STORAGE_ADAPTERS_BY_MIMETYPE[
+                        data_source.mimetype
+                    ]
                     # Choose writable storage. Use the first writable storage item
                     # with a scheme that is supported by this adapter. # For
                     # back-compat, if an adapter does not declare `supported_storage`
                     # assume it supports file-based storage only.
-                    supported_storage = getattr(
-                        adapter, "supported_storage", {FileStorage}
-                    )
+                    supported_storage = adapter.supported_storage() or {FileStorage}
                     for storage in self.context.writable_storage:
                         if isinstance(storage, tuple(supported_storage)):
                             break

@@ -28,6 +28,8 @@ class ArrayAdapter(Adapter[ArrayStructure]):
 
     """
 
+    structure_family = StructureFamily.array
+
     def __init__(
         self,
         array: NDArray[Any],
@@ -38,10 +40,6 @@ class ArrayAdapter(Adapter[ArrayStructure]):
     ) -> None:
         self._array = array
         super().__init__(structure, metadata=metadata, specs=specs)
-
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.array
 
     @classmethod
     def from_array(

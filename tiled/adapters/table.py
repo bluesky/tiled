@@ -23,6 +23,8 @@ class TableAdapter(Adapter[TableStructure]):
 
     """
 
+    structure_family: StructureFamily = StructureFamily.table
+
     def __init__(
         self,
         partitions: Union[dask.dataframe.DataFrame, pandas.DataFrame],
@@ -42,10 +44,6 @@ class TableAdapter(Adapter[TableStructure]):
         """
         self._partitions = list(partitions)
         super().__init__(structure, metadata=metadata, specs=specs)
-
-    @classmethod
-    def structure_family(cls) -> StructureFamily:
-        return StructureFamily.table
 
     @classmethod
     def from_pandas(
