@@ -14,6 +14,7 @@ import numpy
 from numpy._typing import NDArray
 
 from tiled.adapters.container import ContainerAdapter
+from tiled.structures.container import ContainerStructure
 
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
@@ -357,7 +358,11 @@ class HDF5Adapter(
         self.uris = data_uris
         self.dataset = dataset  # Referenced to the root of the file
         self._kwargs = kwargs  # e.g. swmr, libver, etc.
-        super().__init__(metadata=metadata, specs=specs)
+        super().__init__(
+            structure=ContainerStructure(keys=self.keys()),
+            metadata=metadata,
+            specs=specs,
+        )
 
     @classmethod
     def from_catalog(
@@ -441,13 +446,10 @@ class HDF5Adapter(
     def __repr__(self) -> str:
         return node_repr(self, list(self))
 
-    def structure(self) -> None:
-        return None
-
+    @property
     def metadata(self) -> JSON:
         d = get_hdf5_attrs(self.uris[0], self.dataset)
-        d.update(self._metadata)
-        return d
+        return {**d, **self.metadata}
 
     def __iter__(self) -> Iterator[Any]:
         """Iterate over the keys of the tree"""

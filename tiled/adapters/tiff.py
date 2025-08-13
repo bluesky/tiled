@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 import tifffile
 from numpy._typing import NDArray
 
-from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
@@ -18,7 +18,7 @@ from .sequence import FileSequenceAdapter
 from .utils import init_adapter_from_catalog
 
 
-class TiffAdapter(ArrayAdapter):
+class TiffAdapter(Adapter[ArrayStructure]):
     """
     Read a TIFF file.
 
@@ -72,12 +72,13 @@ class TiffAdapter(ArrayAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "TiffAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(cls, data_uri: str, **kwargs: Optional[Any]) -> "TiffAdapter":
         return cls(data_uri)
 
+    @property
     def metadata(self) -> JSON:
         # This contains some enums, but Python's built-in JSON serializer
         # handles them fine (converting  to str or int as appropriate).
