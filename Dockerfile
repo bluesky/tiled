@@ -84,8 +84,7 @@ SHELL ["sh", "-exc"]
 ENV PATH=/app/bin:$PATH
 
 # Don't run your app as root.
-RUN
-set -ex && \
+RUN set -ex && \
 groupadd -r app && \
 useradd -r -d /app -g app -N app
 
