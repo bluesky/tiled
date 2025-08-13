@@ -301,6 +301,7 @@ class AccessTagsCompiler:
 
         self.max_tag_nesting = max(self._MAX_TAG_NESTING, 0)
         self.public_tag = intern("public".casefold())
+        self.invalid_tag_names = [name.casefold() for name in []]
 
         self.roles = {}
         self.tags = {}
@@ -446,6 +447,11 @@ class AccessTagsCompiler:
             if tag.casefold() == self.public_tag:
                 raise ValueError(
                     f"'Public' tag '{self.public_tag}' cannot be redefined."
+                )
+            if tag.casefold() in self.invalid_tag_names:
+                raise ValueError(
+                    f"Tag 'tag' is an invalid tag name.\n"
+                    f"The invalid tag names are: {self.invalid_tag_names}"
                 )
             adjacent_tags[tag] = set()
             if "auto_tags" in members:
