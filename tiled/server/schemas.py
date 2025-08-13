@@ -308,6 +308,7 @@ class APIKey(pydantic.BaseModel):
     expiration_time: Optional[datetime] = None
     note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
     scopes: List[str]
+    access_tags: Optional[List[str]] = None
     latest_activity: Optional[datetime] = None
 
     @classmethod
@@ -317,6 +318,7 @@ class APIKey(pydantic.BaseModel):
             expiration_time=orm.expiration_time,
             note=orm.note,
             scopes=orm.scopes,
+            access_tags=orm.access_tags,
             latest_activity=orm.latest_activity,
         )
 
@@ -333,6 +335,7 @@ class APIKeyWithSecret(APIKey):
             expiration_time=orm.expiration_time,
             note=orm.note,
             scopes=orm.scopes,
+            access_tags=orm.access_tags,
             latest_activity=orm.latest_activity,
             secret=secret,
         )
@@ -402,6 +405,9 @@ class APIKeyRequestParams(pydantic.BaseModel):
     expires_in: Optional[int] = pydantic.Field(
         ..., json_schema_extra={"example": 600}
     )  # seconds
+    access_tags: Optional[List[str]] = pydantic.Field(
+        ..., json_schema_extra={"example": ["writing_tag", "public"]}
+    )
     scopes: Optional[List[str]] = pydantic.Field(
         ..., json_schema_extra={"example": ["inherit"]}
     )

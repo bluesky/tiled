@@ -383,6 +383,7 @@ class CustomAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
     ) -> Scopes:
         allowed = self.scopes
@@ -393,6 +394,7 @@ class CustomAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
@@ -405,11 +407,12 @@ async def accesspolicy_protocol_functions(
     policy: AccessPolicy,
     node: BaseAdapter,
     principal: Principal,
+    authn_access_tags: Optional[Set[str]],
     authn_scopes: Scopes,
     scopes: Scopes,
 ) -> None:
-    await policy.allowed_scopes(node, principal, authn_scopes)
-    await policy.filters(node, principal, authn_scopes, scopes)
+    await policy.allowed_scopes(node, principal, authn_access_tags, authn_scopes)
+    await policy.filters(node, principal, authn_access_tags, authn_scopes, scopes)
 
 
 @pytest.mark.asyncio  # type: ignore
@@ -426,6 +429,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
+    authn_access_tags = {"qux", "quux"}
     authn_scopes = {"abc", "baz"}
     scopes = {"abc"}
 
@@ -435,6 +439,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
         anyaccesspolicy,
         anyawkwardadapter,
         principal,
+        authn_access_tags,
         authn_scopes,
         scopes,
     )

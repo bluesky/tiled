@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Set
 
 from fastapi import (
     APIRouter,
@@ -224,6 +224,43 @@ async def get_decoded_access_token(
 async def get_session_state(decoded_access_token=Depends(get_decoded_access_token)):
     if decoded_access_token:
         return decoded_access_token.get("state")
+
+
+async def get_access_tags_from_api_key(
+    api_key: str, authenticated: bool, db: Optional[AsyncSession]
+) -> Optional[Set[str]]:
+    if not authenticated:
+        # Tiled is in a "single user" mode with only one API key.
+        # In this mode, there is no meaningful access tag limit.
+        return None
+    # Tiled is in a multi-user configuration with authentication providers.
+    # We store the hashed value of the API key secret.
+    try:
+        secret = bytes.fromhex(api_key)
+    except Exception:
+        # access tag limit cannot be enforced without key information
+        return None
+    api_key_orm = await lookup_valid_api_key(db, secret)
+    if api_key_orm is None:
+        # access tag limit cannot be enforced without key information
+        return None
+    else:
+        access_tags = set(api_key_orm.access_tags)
+        return access_tags
+
+
+async def get_current_access_tags(
+    request: Request,
+    api_key: Optional[str] = Depends(get_api_key),
+    db: Optional[AsyncSession] = Depends(get_database_session),
+) -> Optional[Set[str]]:
+    if api_key is not None:
+        return await get_access_tags_from_api_key(
+            api_key, request.app.state.authenticated, db
+        )
+    else:
+        # Limits on access tags only available via API key auth
+        return None
 
 
 async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
@@ -763,12 +800,22 @@ async def generate_apikey(db: AsyncSession, principal, apikey_params, request):
     principal_scopes = set().union(*[role.scopes for role in principal.roles])
     if not set(scopes).issubset(principal_scopes | {"inherit"}):
         raise HTTPException(
-            400,
+            403,
             (
                 f"Requested scopes {apikey_params.scopes} must be a subset of the "
                 f"principal's scopes {list(principal_scopes)}."
             ),
         )
+    admin_scopes = ["admin:apikeys"]
+    if (access_tags := apikey_params.access_tags) is not None:
+        if all(scope in scopes for scope in admin_scopes):
+            raise HTTPException(
+                403,
+                (
+                    f"Requested scopes {scopes} contain scopes {admin_scopes}, "
+                    f"which cannot be combined with access tag restrictions."
+                ),
+            )
     if apikey_params.expires_in is not None:
         expiration_time = utcnow() + timedelta(seconds=apikey_params.expires_in)
     else:
@@ -797,6 +844,7 @@ async def generate_apikey(db: AsyncSession, principal, apikey_params, request):
         expiration_time=expiration_time,
         note=apikey_params.note,
         scopes=scopes,
+        access_tags=access_tags,
         first_eight=secret.hex()[:8],
         hashed_secret=hashed_secret,
     )
