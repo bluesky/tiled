@@ -52,7 +52,6 @@ RUN --mount=type=cache,target=/root/.cache \
     set -ex && \
     uv sync \
 	--extra server \
-        --locked \
         --no-dev \
         --no-install-project
 
@@ -67,7 +66,6 @@ RUN --mount=type=cache,target=/root/.cache \
 	--extra server \
         # We want as httpie as a developer convenience.
 	--with httpie \
-        --locked \
         --no-dev \
         --no-editable
 
