@@ -51,7 +51,7 @@ RUN --mount=type=cache,target=/root/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     set -ex && \
     uv sync \
-	--extra server \
+        --extra server \
         --no-dev \
         --no-install-project
 
