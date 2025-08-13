@@ -374,9 +374,9 @@ class NotIn:
         return cls(key=key, value=json.loads(value))
 
 
-@register(name="keyexists")
+@register(name="keypresent")
 @dataclass
-class KeyExists:
+class KeyPresent:
     """
     Query to retrieve containers that have a specific key at any level.
 
@@ -391,11 +391,11 @@ class KeyExists:
 
     Search for containers that have the key "color"
 
-    >>> c.search(KeyExists("color"))
+    >>> c.search(KeyPresent("color"))
 
     Search for containers that do not have the key "sample.name"
 
-    >>> c.search(KeyExists("sample.name", exists=False))
+    >>> c.search(KeyPresent("sample.name", exists=False))
     """
 
     key: str
