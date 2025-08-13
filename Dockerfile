@@ -52,7 +52,7 @@ RUN --mount=type=cache,target=/root/.cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     set -ex
     uv sync \
-	--all-extras \
+	--extra server \
         --locked \
         --no-dev \
         --no-install-project
@@ -65,7 +65,7 @@ WORKDIR /src
 RUN --mount=type=cache,target=/root/.cache \
     set -ex
     uv sync \
-	--all-extras \
+	--extra server \
         # We want as httpie as a developer convenience.
 	--with httpie \
         --locked \
