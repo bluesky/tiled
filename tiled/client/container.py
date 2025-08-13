@@ -733,7 +733,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     )
                 ).json()
 
-        if structure_family in {StructureFamily.container, StructureFamily.composite}:
+        if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
         else:
             # Only containers can have multiple data_sources right now.
@@ -775,8 +775,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # When we apply type hints and mypy to the client it should be possible
         # to dispense with this.
         if (
-            structure_family
-            not in {StructureFamily.container, StructureFamily.composite}
+            structure_family != StructureFamily.container
         ) and isinstance(structure, dict):
             structure_type = STRUCTURE_TYPES[structure_family]
             structure = structure_type.from_json(structure)
@@ -792,39 +791,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # When (re)chunking arrays for upload, we use this limit
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
-
-    def create_composite(
-        self,
-        key=None,
-        *,
-        metadata=None,
-        specs=None,
-        access_tags=None,
-    ):
-        """Create a new, empty composite container.
-
-        Parameters
-        ----------
-        key : str, optional
-            Key (name) for this new node. If None, the server will provide a unique key.
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        specs : List[Spec], optional
-            List of names that are used to label that the data and/or metadata
-            conform to some named standard specification.
-        access_tags: List[str], optional
-            Server-specific authZ tags in list form, used to confer access to the node.
-
-        """
-        return self.new(
-            StructureFamily.composite,
-            [],
-            key=key,
-            metadata=metadata,
-            specs=specs,
-            access_tags=access_tags,
-        )
 
     def create_container(
         self,

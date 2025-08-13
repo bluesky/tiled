@@ -294,17 +294,10 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            None,
+            {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         request.state.endpoint = "search"
-        if entry.structure_family not in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
-            raise WrongTypeForRoute(
-                "This is not a Node; it cannot be searched or listed."
-            )
         try:
             (
                 resource,
@@ -941,7 +934,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.container, StructureFamily.composite},
+            {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         return await container_full(
@@ -982,7 +975,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.container, StructureFamily.composite},
+            {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         return await container_full(
@@ -1073,8 +1066,7 @@ def get_router(
             request.state.metrics,
             {
                 StructureFamily.table,
-                StructureFamily.container,
-                StructureFamily.composite,
+                StructureFamily.container
             },
             getattr(request.app.state, "access_policy", None),
         )
@@ -1097,10 +1089,7 @@ def get_router(
                     "request a smaller chunks."
                 ),
             )
-        if entry.structure_family in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if entry.structure_family == StructureFamily.container:
             curried_filter = partial(
                 filter_for_access,
                 access_policy=request.app.state.access_policy,
@@ -1424,7 +1413,7 @@ def get_router(
             body.specs,
             body.access_blob,
         )
-        if structure_family in {StructureFamily.container, StructureFamily.composite}:
+        if structure_family == StructureFamily.container:
             structure = None
         else:
             if len(body.data_sources) != 1:
