@@ -57,7 +57,11 @@ md = {"md_key1": "md_val1", "md_key2": 2}
 
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
-    return in_memory(writable_storage=tmp_path_factory.getbasetemp())
+    tempdir = tmp_path_factory.getbasetemp()
+    return in_memory(writable_storage=[
+            f"file://localhost{str(tempdir / 'data')}",
+            f"duckdb:///{tempdir / 'data.duckdb'}",
+        ])
 
 
 @pytest.fixture(scope="module")
@@ -370,3 +374,89 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
     client["x"].delete_contents(external_only=False)
     assert len(client["x"].parts) == 0
     assert len(client["x"].keys()) == 0
+
+
+def test_write_one_table(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        client.create_container(key="x", specs=["Composite"])
+        client["x"].write_dataframe(df)
+        assert len(client["x"]) == 1
+
+
+def test_write_two_tables(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
+        x.parts["table1"].read()
+        x.parts["table2"].read()
+
+
+def test_write_two_tables_colliding_names(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_dataframe(df2, key="table1")
+
+
+def test_write_two_tables_colliding_keys(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
+        x = client.create_composite(key="x")
+        x.write_dataframe(df1, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            x.write_dataframe(df2, key="table2")
+
+
+def test_write_two_tables_two_arrays(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        arr1 = numpy.ones((5, 5), dtype=numpy.float64)
+        arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
+        x = client.create_composite(key="x")
+
+        # Write by data source.
+        x.write_dataframe(df1, key="table1")
+        x.write_dataframe(df2, key="table2")
+        x.write_array(arr1, key="F")
+        x.write_array(arr2, key="G")
+
+        # Read by data source.
+        x.parts["table1"].read()
+        x.parts["table2"].read()
+        x.parts["F"].read()
+        x.parts["G"].read()
+
+        # Read by column.
+        for column in ["A", "B", "C", "D", "E", "F", "G"]:
+            x[column].read()
+
+
+def test_write_table_column_array_key_collision(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        arr = numpy.array([1, 2, 3], dtype=numpy.float64)
+
+        x = client.create_container(key="x", specs=["Composite"])
+        x.write_dataframe(df, key="table1")
+        # with fail_with_status_code(HTTP_409_CONFLICT):
+        x.write_array(arr, key="A")
+
+        y = client.create_container(key="y", specs=["Composite"])
+        y.write_array(arr, key="A")
+        # with fail_with_status_code(HTTP_409_CONFLICT):
+        y.write_dataframe(df, key="table1")
