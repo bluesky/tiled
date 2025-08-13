@@ -8,11 +8,11 @@ import pandas
 import pyarrow
 import pyarrow.feather as feather
 
-from tiled.adapters.table import TableAdapter
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
@@ -21,7 +21,7 @@ from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
 
-class ArrowAdapter(TableAdapter):
+class ArrowAdapter(Adapter[TableStructure]):
     """ArrowAdapter Class"""
 
     def __init__(
@@ -44,6 +44,10 @@ class ArrowAdapter(TableAdapter):
         return {FileStorage}
 
     @classmethod
+    def structure_family(cls) -> StructureFamily:
+        return StructureFamily.table
+
+    @classmethod
     def from_catalog(
         cls,
         data_source: DataSource[TableStructure],
@@ -51,7 +55,7 @@ class ArrowAdapter(TableAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "ArrowAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def init_storage(
@@ -117,7 +121,7 @@ class ArrowAdapter(TableAdapter):
         """
         return [
             DataSource(
-                structure_family=self.structure_family,
+                structure_family=self.structure_family(),
                 mimetype=mimetype,
                 structure=self.structure(),
                 parameters={},
