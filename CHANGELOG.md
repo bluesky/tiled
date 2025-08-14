@@ -36,6 +36,7 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
   of Closure Table to track ancestors and descendands of the nodes.
 - Shorter string representation of chunks in `ArrayClient`.
 - Refactored internal Zarr version detection
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
 - For compatibility with older clients, do not require metadata updates to include
   an `access_blob` in the body of the request.
 
