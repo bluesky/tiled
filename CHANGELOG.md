@@ -3,7 +3,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0-b33 (Unreleased)
+## v0.1.0-b33 (2025-08-13)
+
+_This release requires a database migration of the catalog database._
+
+```none
+tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
+```
+
+### Added
+
+- Endpoints for (read) data access with zarr v2 and v3 protocols.
+- `data_type` and `coord_data_type` properties for sparse arrays in `COOAdapter`
+  and `COOStructure`.
 
 ### Changed
 
@@ -14,13 +26,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Shorter string representation of chunks in `ArrayClient`.
 - Refactored internal Zarr version detection
 - Remove `SpecialUsers` principals for single-user and anonymous-access cases
+- For compatibility with older clients, do not require metadata updates to include
+  an `access_blob` in the body of the request.
 
 ### Fixed
 
 - Uniform array columns read from Postgres/DuckDB are now aggregated to an
   NDArray (e.g. scanned `waveform` PVs)
 - Support for deleting separate nodes and contents of containers in client API.
-
+- The database migration in v0.1.0-b27 was incomplete, and missed an update to
+  the `revisions` table necessary to make metadata updates work correctly.
+  This is resolved by an additional database migration.
+- Correct indentation of authenticator args field in the service config schema
+  and ensure it correctly validates configurations.
 
 ## v0.1.0-b32 (2025-08-04)
 

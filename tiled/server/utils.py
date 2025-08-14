@@ -1,7 +1,7 @@
 import contextlib
 import time
 from collections.abc import Generator
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from fastapi import Request
 from starlette.types import Scope
@@ -37,6 +37,13 @@ def get_base_url(request: Request) -> str:
     Base URL for the API
     """
     return f"{get_root_url(request)}/api/v1"
+
+
+def get_zarr_url(request, version: Literal["v2", "v3"] = "v2"):
+    """
+    Base URL for the Zarr API
+    """
+    return f"{get_root_url(request)}/zarr/{version}"
 
 
 def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> str:

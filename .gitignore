@@ -69,6 +69,7 @@ config.yml
 prometheus_data
 grafana_data
 data
+alembic.ini
 
 tiled/_version.py
 

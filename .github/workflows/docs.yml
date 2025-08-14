@@ -15,23 +15,14 @@ jobs:
 
     - uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Install uv and set the python version
+      uses: astral-sh/setup-uv@v6
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
 
-    - name: Install
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/install.sh
-
-    - name: Install documentation-building requirements
-      shell: bash -l {0}
-      run: |
-        set -vxeuo pipefail
-        python -m pip install .[dev]
-        python -m pip list
+    - name: Install tiled
+      run: uv sync --all-extras
 
     - name: Build Docs
       shell: bash -l {0}
-      run: make -C docs/ html
+      run: uv run make -C docs/ html

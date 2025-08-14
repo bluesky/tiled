@@ -98,6 +98,9 @@ def zarr_data_dir(tmpdir_factory):
 def test_zarr_group_fields(client, fields, buffer):
     "Export selected fields (Datasets) from a Zarr group via /container/full."
     client = client["zarr_group"]
+    # Normally, zarr would have 'attributes' stored as internal dictionary in the
+    # metadata, but HDF5 does not support nested dictionaries.
+    client.replace_metadata({"attributes": "", "zarr_format": 2 if ZARR_LIB_V2 else 3})
     url_path = client.item["links"]["full"]
     with record_history() as history:
         client.export(buffer, fields=fields, format="application/x-hdf5")
