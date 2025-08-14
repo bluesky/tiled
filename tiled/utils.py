@@ -15,17 +15,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Iterator,
-    Optional,
-    TextIO,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Iterator, Generic, Optional, Tuple, TypeVar, Union
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -484,7 +474,7 @@ def modules_available(*module_names):
     return False
 
 
-def parse(file: TextIO) -> dict[Any, Any]:
+def parse(file: Path) -> dict[Any, Any]:
     """
     Given a config file, parse it.
 
@@ -492,8 +482,9 @@ def parse(file: TextIO) -> dict[Any, Any]:
     """
     import yaml
 
-    content = yaml.safe_load(file.read())
-    return expand_environment_variables(content)
+    with open(file) as src:
+        content = yaml.safe_load(src.read())
+        return expand_environment_variables(content)
 
 
 def expand_environment_variables(config: T) -> T:

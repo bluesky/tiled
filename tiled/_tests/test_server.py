@@ -12,6 +12,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..catalog import in_memory
 from ..client import from_uri
+from ..config import Authentication
 from ..server.app import build_app, build_app_from_config
 from ..server.logging_config import LOGGING_CONFIG
 from .utils import Server
@@ -24,7 +25,7 @@ API_KEY = "secret"
 @pytest.fixture
 def server(tmpdir):
     catalog = in_memory(writable_storage=str(tmpdir))
-    app = build_app(catalog, {"single_user_api_key": API_KEY})
+    app = build_app(catalog, Authentication(single_user_api_key=API_KEY))
     app.include_router(router)
     config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
     server = Server(config)
@@ -36,7 +37,8 @@ def server(tmpdir):
 def public_server(tmpdir):
     catalog = in_memory(writable_storage=str(tmpdir))
     app = build_app(
-        catalog, {"single_user_api_key": API_KEY, "allow_anonymous_access": True}
+        catalog,
+        Authentication(single_user_api_key=API_KEY, allow_anonymous_access=True),
     )
     app.include_router(router)
     config = uvicorn.Config(app, port=0, loop="asyncio", log_config=LOGGING_CONFIG)
