@@ -9,32 +9,213 @@ import os
 import warnings
 from collections import defaultdict
 from datetime import timedelta
-from functools import cache
+from functools import cache, cached_property
 from pathlib import Path
-from typing import Any, Union
+from typing import Annotated, Any, Iterator, Optional, Self, TypedDict, Union
 
-import jsonschema
+# import jsonschema
+from pydantic import BaseModel, Field, ImportString, field_validator, model_validator
+
+from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+from tiled.type_aliases import AppTask, TaskMap
 
 from .adapters.mapping import MapAdapter
 from .media_type_registration import (
+    CompressionRegistry,
+    SerializationRegistry,
     default_compression_registry,
     default_deserialization_registry,
     default_serialization_registry,
 )
-from .query_registration import default_query_registry
+from .query_registration import QueryRegistry, default_query_registry
 from .utils import import_object, parse, prepend_to_sys_path
-from .validation_registration import default_validation_registry
+from .validation_registration import ValidationRegistry, default_validation_registry
+
+TREE_ALIASES = {"catalog": "tiled.catalog:from_uri"}
+
+def sub_paths(segments: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
+    for i in range(len(segments)):
+        yield segments[:i]
 
 
-@cache
-def schema():
-    "Load the schema for service-side configuration."
-    import yaml
+class TreeSpec(BaseModel):
+    tree: ImportString
+    path: str
+    args: Optional[dict[str, Any]] = None
 
-    here = Path(__file__).parent.absolute()
-    schema_path = here / "config_schemas" / "service_configuration.yml"
-    with open(schema_path, "r") as file:
-        return yaml.safe_load(file)
+    @model_validator(mode="after")
+    def check_callable(self) -> Self:
+        if self.args and not callable(self.tree):
+            raise ValueError(f"Tree type '{self.tree.__class__}' is not callable and cannot take args")
+        return self
+
+    @cached_property
+    def task_map(self) -> TaskMap:
+        _, tree = self.tree_entry
+        return { # type: ignore - we have to assume trees only have valid tasks
+                "background": getattr(tree, "background_tasks", {}),
+                "startup": getattr(tree, "startup_tasks", {}),
+                "shutdown": getattr(tree, "shuutdown_tasks", {}),
+                }
+
+    @cached_property
+    def segments(self) -> tuple[str, ...]:
+        return tuple(segment for segment in self.path.split('/') if segment)
+
+    @cached_property
+    def tree_entry(self) -> tuple[tuple[str, ...], Any]:
+        if self.args:
+            return (self.segments, self.tree(**self.args))
+        return (self.segments, self.tree)
+
+
+    @field_validator("tree", mode="before")
+    @classmethod
+    def tree_alias(cls, value: Any) -> Any:
+        return TREE_ALIASES.get(value, value)
+
+
+class AuthenticationProviderSpec(BaseModel):
+    provider: str
+    authenticator: ImportString
+    args: Optional[dict[str, Any]] = None
+
+    def into_auth_entry(self) -> tuple[str, Union[InternalAuthenticator, ExternalAuthenticator]]:
+        auth = self.authenticator(**(self.args or {}))
+        if not isinstance(auth, (InternalAuthenticator, ExternalAuthenticator)):
+            raise ValueError(f"Type {self.authenticator.__class__} is not a known authenticator type")
+        return (self.provider, auth)
+
+
+class TiledAdmin(TypedDict):
+    provider: str
+    id: str
+
+class Authentication(BaseModel):
+    providers: Annotated[list[AuthenticationProviderSpec], Field(default_factory=list)]
+    tiled_admins: Optional[list[TiledAdmin]] = None
+    secret_keys: Optional[list[str]] = None
+    allow_anonymous_access: bool = False
+    single_user_api_key: Annotated[Optional[str], Field(pattern="[a-zA-Z0-9]+")] = None
+    access_token_max_age: timedelta = timedelta(minutes=15)
+    refresh_token_max_age: timedelta = timedelta(days=7)
+    session_max_age: Optional[timedelta] = None
+
+    @field_validator("providers", mode="after")
+    @classmethod
+    def check_unique_names(cls, value: list[AuthenticationProviderSpec]) -> list[AuthenticationProviderSpec]:
+        if value is not None:
+            if len(value) != len(set(s.provider for s in value)):
+                raise ValueError("Authenticator provider names must be unique")
+        return value or []
+
+    @cached_property
+    def authenticators(self) -> dict[str, Union[InternalAuthenticator, ExternalAuthenticator]]:
+        return dict(auth.into_auth_entry() for auth in self.providers)
+
+
+class Database(BaseModel):
+    uri: str
+    init_if_not_exists: bool = False
+    pool_pre_ping: bool = False
+    pool_size: Annotated[int, Field(5, ge=2)]
+    max_overflow: int = 5
+
+
+class UvicornConfig(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8000
+    workers: int = int(os.environ.get("WEB_CONCURRENCY", 1))
+    root_path: str = ""
+
+
+class AccessControl(BaseModel):
+    access_policy: ImportString
+    args: Optional[dict[str, Any]]
+
+    def build(self):
+        return self.access_policy(**(self.args or {}))
+
+class MetricsConfig(BaseModel):
+    prometheus: bool = True
+
+class Spec(BaseModel):
+    spec: str
+    validator: Optional[ImportString]
+
+class Config(BaseModel):
+    trees: list[TreeSpec]
+    media_types: Optional[dict[str, dict[str, ImportString]]] = None
+    file_extensions: Optional[dict[str, str]] = None
+    authentication: Optional[Authentication] = None
+    database: Optional[Database] = None
+    # TODO: Replace Any with AccessPolicy when #1044 is merged
+    access_policy: Annotated[Optional[Any], Field(alias="access_control")] = None
+    response_bytesize_limit: int = 300_000_000
+    allow_origins: Optional[list[str]] = None
+    uvicorn: Annotated[UvicornConfig, Field(default_factory=UvicornConfig)]
+    metrics: Optional[MetricsConfig] = None
+    specs: Optional[list[Spec]] = None
+    reject_undeclared_specs: bool = False
+    expose_raw_assets: bool = True
+
+    @field_validator("access_policy")
+    @classmethod
+    def check_access_policy(cls, value: Any) -> Any:
+        """Convert the access policy spec into the construct instance"""
+        access = AccessControl.model_validate(value)
+        return access.build()
+
+    @field_validator("trees")
+    @classmethod
+    def non_overlapping_trees(cls, trees: list[TreeSpec]) -> list[TreeSpec]:
+        """Ensure that paths to trees do not collide"""
+        paths = set()
+        for path in sorted((t.segments for t in trees), key=len):
+            if any(sub in paths for sub in (*sub_paths(path), path)):
+                raise ValueError("Tree paths cannot be subpaths of each other")
+            paths.add(path)
+        return trees
+
+    @cached_property
+    def merged_trees(self) -> Any: # TODO: update when # 1047 is merged
+        trees = dict(tree.tree_entry for tree in self.trees)
+        if list(trees) == [()]:
+            # Simple case: there is one tree, served at the root path /.
+            root_tree = trees[()]
+        else:
+            # There are one or more tree(s) to be served at
+            # sub-paths. Merged them into one root MapAdapter.
+            # Map path segments to dicts containing Adapters at that path.
+            root_mapping = trees.pop((), {})
+            index: dict[tuple[str, ...], dict] = {(): root_mapping}
+            include_routers = set()
+
+            # for rest of trees, build up parent nodes if required
+            for segments, tree in trees.items():
+                for subpath in sub_paths(segments):
+                    if subpath not in index:
+                        mapping = {}
+                        index[subpath] = mapping
+                        index[subpath[:-1]][subpath[-1]] = MapAdapter(mapping)
+                index[segments[:-1]][segments[-1]] = tree
+                tree_routers = set(getattr(tree, "include_routers", []))
+                include_routers.update(tree_routers)
+
+            root_tree = MapAdapter(root_mapping)
+            root_tree.include_routers.extend(include_routers)
+        return root_tree
+
+
+def read_config(src_file: str | Path) -> Config:
+    src_file = Path(src_file)
+    with prepend_to_sys_path(src_file if src_file.is_dir() else src_file.parent):
+        with open(src_file) as src:
+            return Config.model_validate(parse(src))
+
+def build_app_kwargs(config: Config):
+    trees = dict(spec.into_tree_entry() for spec in (config.trees or []))
+    pass
 
 
 def construct_build_app_kwargs(

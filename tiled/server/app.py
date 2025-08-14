@@ -39,6 +39,7 @@ from starlette.status import (
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+from tiled.type_aliases import AppTask, TaskMap
 
 from ..catalog.adapter import WouldDeleteData
 from ..config import construct_build_app_kwargs, parse_configs
@@ -76,10 +77,6 @@ logger.addHandler(handler)
 
 # This is used to pass the currently-authenticated principal into the logger.
 current_principal = contextvars.ContextVar("current_principal")
-
-
-AppTask = Callable[[], Coroutine[None, None, Any]]
-"""Async function to be run as part of the app's lifecycle"""
 
 
 def custom_openapi(app):
@@ -949,9 +946,3 @@ def print_server_info(
 
 class UnscalableConfig(Exception):
     pass
-
-
-class TaskMap(TypedDict):
-    background: list[AppTask]
-    startup: list[AppTask]
-    shutdown: list[AppTask]
