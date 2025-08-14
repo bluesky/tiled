@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b34 (Unreleased)
+
+### Fixed
+
+- Migration script for closure tables
+
 ## v0.1.0-b33 (2025-08-13)
 
 _This release requires a database migration of the catalog database._
