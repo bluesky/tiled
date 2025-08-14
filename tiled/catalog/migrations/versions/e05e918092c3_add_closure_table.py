@@ -99,13 +99,9 @@ def upgrade():
 
     # 1. Add the 'parent' column and the foreign key to the 'nodes' table. Use batch mode, so it works for SQLite.
     with op.batch_alter_table("nodes", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("parent", sa.Integer(), nullable=True))
+        batch_op.add_column(sa.Column("parent", sa.Integer(), nullable=True, index=True))
         batch_op.create_foreign_key("fk_nodes_parent", "nodes", ["parent"], ["id"])
         batch_op.drop_constraint("key_ancestors_unique_constraint", type_="unique")
-        batch_op.create_unique_constraint(
-            "key_parent_unique_constraint", ["key", "parent"]
-        )
-        batch_op.create_index("idx_nodes_parent", ["parent"])
 
     # 2. Create the 'nodes_closure' table and create the uniqueness constraint
     op.create_table(
@@ -212,10 +208,16 @@ def upgrade():
         postgresql_using="gin",
     )
 
-    # 9. Drop the 'ancestors' column from the 'nodes' table
+    # 9. Create constraint to ensure uniqueness of (key, parent) pairs
+    with op.batch_alter_table("nodes", schema=None) as batch_op:
+        batch_op.create_unique_constraint(
+            "key_parent_unique_constraint", ["key", "parent"]
+        )
+
+    # 10. Drop the 'ancestors' column from the 'nodes' table
     op.drop_column("nodes", "ancestors")
 
-    # 10. Add triggers to maintain the closure table
+    # 11. Add triggers to maintain the closure table
     if connection.engine.dialect.name == "sqlite":
         # Create a trigger to update the closure table when INSERTING a new node
         connection.execute(
