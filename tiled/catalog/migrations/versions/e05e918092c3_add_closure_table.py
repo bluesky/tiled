@@ -151,7 +151,7 @@ def upgrade():
         sa.text(
             f"SELECT MAX({json_len_func}(ancestors)) FROM nodes WHERE ancestors IS NOT NULL;"
         )
-    ).scalar()
+    ).scalar() or 0
 
     # 6. Initialize the parent of each node as 0 (the 'root' node) and set 'depth' in the closure table
     connection.execute(
@@ -186,7 +186,7 @@ def upgrade():
             )
         )
 
-        # Populate the 'nodes_closure' table   (possibly use ON CONFLIST DO NOTHING ?)
+        # Populate the 'nodes_closure' table   (possibly use ON CONFLICT DO NOTHING ?)
         connection.execute(
             sa.text(
                 f"""
