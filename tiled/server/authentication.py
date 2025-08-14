@@ -323,9 +323,10 @@ async def get_current_principal(
     - API key in cookie 'tiled_api_key'
     - OAuth2 JWT access token in header 'Authorization: Bearer ...'
 
-    Fall back to SpecialUsers.public, if anonymous access is allowed
-    If this server is configured with a "single-user API key", then
-    the Principal will be SpecialUsers.admin always.
+    If anonymous access is allowed, Principal will be `None`.
+    If the server is configured with a "single-user API key", then
+    the Principal will also be `None` - but is differentiated for
+    logging with a SingleUserPrincipal sentinel
     """
 
     if api_key is not None:
