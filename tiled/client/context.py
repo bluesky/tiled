@@ -886,7 +886,9 @@ class Admin:
                     )
                 ).json()
 
-    def create_api_key(self, uuid, scopes=None, expires_in=None, note=None):
+    def create_api_key(
+        self, uuid, scopes=None, access_tags=None, expires_in=None, note=None
+    ):
         """
         Generate a new API key for another user or service.
 
@@ -897,6 +899,9 @@ class Admin:
         scopes : Optional[List[str]]
             Restrict the access available to the API key by listing specific scopes.
             By default, this will have the same access as the principal.
+        access_tags : Optional[List[str]]
+            Restrict the access available to the API key by listing specific tags.
+            By default, this will have no limits on access tags.
         expires_in : Optional[int]
             Number of seconds until API key expires. If None,
             it will never expire or it will have the maximum lifetime
@@ -910,7 +915,12 @@ class Admin:
                     self.context.http_client.post(
                         f"{self.base_url}/auth/principal/{uuid}/apikey",
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                        json={
+                            "scopes": scopes,
+                            "access_tags": access_tags,
+                            "expires_in": expires_in,
+                            "note": note,
+                        },
                     )
                 ).json()
 
