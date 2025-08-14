@@ -25,7 +25,7 @@ here = Path(__file__).parent.absolute()
 def test_scalable_config(filename, scalable):
     config_path = here / "test_configs" / filename
     parsed_config = parse_configs(config_path)
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
+    kwargs = construct_build_app_kwargs(parsed_config)
     if scalable:
         build_app(scalable=True, **kwargs)
         build_app(scalable=False, **kwargs)
