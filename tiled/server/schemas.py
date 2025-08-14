@@ -406,7 +406,7 @@ class APIKeyRequestParams(pydantic.BaseModel):
         ..., json_schema_extra={"example": 600}
     )  # seconds
     access_tags: Optional[List[str]] = pydantic.Field(
-        ..., json_schema_extra={"example": ["writing_tag", "public"]}
+        default=None, json_schema_extra={"example": ["writing_tag", "public"]}
     )
     scopes: Optional[List[str]] = pydantic.Field(
         ..., json_schema_extra={"example": ["inherit"]}

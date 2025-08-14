@@ -245,7 +245,8 @@ async def get_access_tags_from_api_key(
         # access tag limit cannot be enforced without key information
         return None
     else:
-        access_tags = set(api_key_orm.access_tags)
+        if (access_tags := api_key_orm.access_tags) is not None:
+            access_tags = set(access_tags)
         return access_tags
 
 
@@ -1154,7 +1155,8 @@ def authentication_router() -> APIRouter:
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         """
-        Generate an API for the currently-authenticated user or service."""
+        Generate an API for the currently-authenticated user or service.
+        """
         # TODO Permit filtering the fields of the response.
         request.state.endpoint = "auth"
         if principal is None:
