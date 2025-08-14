@@ -59,7 +59,7 @@ from ..authn_database.core import (
     lookup_valid_pending_session_by_user_code,
     lookup_valid_session,
 )
-from ..utils import SHARE_TILED_PATH
+from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
 from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
@@ -391,7 +391,10 @@ async def get_current_principal(
         # No form of authentication is present.
         principal = None
     # This is used to pass the currently-authenticated principal into the logger.
-    request.state.principal = principal
+    is_apikey_single_user = api_key is not None and not request.app.state.authenticated
+    request.state.principal = (
+        principal if not is_apikey_single_user else SingleUserPrincipal
+    )
     return principal
 
 
