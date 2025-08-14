@@ -1,9 +1,7 @@
 from logging import Filter, LogRecord
 
-from ..utils import Sentinel
+from ..utils import UNSET, SingleUserPrincipal
 from .app import current_principal
-
-UNSET = Sentinel("UNSET")
 
 
 class PrincipalFilter(Filter):
@@ -17,7 +15,9 @@ class PrincipalFilter(Filter):
             # associated with a 500 Internal Server Error response.
             short_name = "unset"
         elif principal is None:
-            short_name = "public"
+            short_name = "anon"
+        elif principal is SingleUserPrincipal:
+            short_name = "singleuser"
         elif principal.type == "service":
             short_name = f"service:{principal.uuid}"
         else:  # principal.type == "user"
