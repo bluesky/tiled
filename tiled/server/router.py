@@ -1967,7 +1967,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.modify_node(
-                    entry, principal, authn_scopes, access_blob
+                    entry, principal, authn_access_tags, authn_scopes, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -2049,7 +2049,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.modify_node(
-                    entry, principal, authn_scopes, access_blob
+                    entry, principal, authn_access_tags, authn_scopes, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
