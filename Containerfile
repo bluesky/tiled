@@ -65,7 +65,7 @@ RUN set -ex && \
 
 ##########################################################################
 
-FROM docker.io/ubuntu:noble
+FROM docker.io/ubuntu:noble as app_runtime
 ARG PYTHON_VERSION=3.12
 
 # Add the application virtualenv to search path.
