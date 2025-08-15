@@ -71,7 +71,7 @@ continuous deployment processes.
 - Make principal type hints consistent in router
 - Typehinted database access methods
 - Explicit type conversion in SQL adapter when appending to an existing table.
-
+- Typehint Structure types
 
 ## v0.1.0-b30 (2025-07-18)
 

@@ -1,6 +1,7 @@
 import enum
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 from .array import BuiltinDtype, Endianness, Kind, StructDtype
 
@@ -27,7 +28,7 @@ class COOStructure:
     # TODO Include fill_value?
 
     @classmethod
-    def from_json(cls, structure):
+    def from_json(cls, structure: Mapping[str, Any]) -> "COOStructure":
         data_type = structure.get("data_type", None)
         if data_type is not None and "fields" in data_type:
             data_type = StructDtype.from_json(data_type)
