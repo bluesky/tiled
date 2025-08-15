@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import awkward
 import numpy
 import pandas
@@ -7,6 +5,7 @@ import pytest
 import sparse
 import tifffile as tf
 import xarray
+from starlette.status import HTTP_409_CONFLICT
 
 from ..catalog import in_memory
 from ..client import Context, from_context
@@ -16,6 +15,7 @@ from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
+from .utils import fail_with_status_code
 
 rng = numpy.random.default_rng(12345)
 
@@ -58,10 +58,13 @@ md = {"md_key1": "md_val1", "md_key2": 2}
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
     tempdir = tmp_path_factory.getbasetemp()
-    return in_memory(writable_storage=[
+    return in_memory(
+        writable_storage=[
             f"file://localhost{str(tempdir / 'data')}",
             f"duckdb:///{tempdir / 'data.duckdb'}",
-        ])
+        ],
+        readable_storage=[f"file://localhost{str(tempdir)}"],
+    )
 
 
 @pytest.fixture(scope="module")
@@ -121,12 +124,11 @@ def context_for_read(context):
 
 
 @pytest.fixture
-def tiff_sequence(tmpdir):
-    sequence_directory = Path(tmpdir, "sequence")
-    sequence_directory.mkdir()
+def tiff_sequence(tmp_path_factory):
+    tempdir = tmp_path_factory.mktemp("sequence-")
     filepaths = []
     for i in range(img_data.shape[0]):
-        fpath = sequence_directory / f"temp{i:05}.tif"
+        fpath = tempdir / f"temp{i:05}.tif"
         tf.imwrite(fpath, img_data[i, ...])
         filepaths.append(fpath)
 
@@ -134,8 +136,9 @@ def tiff_sequence(tmpdir):
 
 
 @pytest.fixture
-def csv_file(tmpdir):
-    fpath = Path(tmpdir, "test.csv")
+def csv_file(tmp_path_factory):
+    tempdir = tmp_path_factory.mktemp("csv-")
+    fpath = tempdir / "test.csv"
     df3.to_csv(fpath, index=False)
 
     yield fpath
@@ -217,14 +220,18 @@ def test_iterate_columns(context):
     for col, _client in client["x"].items():
         read_from_client = _client.read()
         read_from_column = client["x"][col].read()
-        read_from_full_path = client[f"x/{col}"].read()
         if col == "sps":
             read_from_client = read_from_client.todense()
             read_from_column = read_from_column.todense()
-            read_from_full_path = read_from_full_path.todense()
         assert numpy.array_equal(read_from_client, read_from_column)
-        assert numpy.array_equal(read_from_client, read_from_full_path)
-        assert numpy.array_equal(read_from_full_path, read_from_column)
+
+        if col in ["arr1", "arr2", "awk", "sps"]:
+            # Arrays can be read from the parent client
+            assert client[f"x/{col}"].read() is not None
+        else:
+            # The column is not accessible from the parent client
+            with pytest.raises(KeyError):
+                client[f"x/{col}"].read()
 
 
 def test_metadata(context):
@@ -239,19 +246,29 @@ def test_metadata(context):
 
 def test_parts_not_directly_accessible(context):
     client = from_context(context)
-    client["x"].parts["df1"].read()
-    client["x"].parts["df1"]["A"].read()
-    client["x"]["A"].read()
+
+    # The table is accessible as a part
+    assert client["x"].parts["df1"].read() is not None
+    assert numpy.array_equal(client["x"].parts["df1"]["A"].read(), df1["A"])
+    assert numpy.array_equal(client["x"]["A"].read(), df1["A"])
+
+    # The table is not accessible directly from the composite client
     with pytest.raises(KeyError):
         client["x"]["df1"].read()
+
+    # The table is accessible from a parent client
+    assert client["x/df1"].read() is not None
+    assert client["x/df1/A"].read() is not None
+
+    # The column is not accessible from the parent client
     with pytest.raises(KeyError):
-        client["x/df1"].read()
+        client["x/A"].read()
 
 
 def test_external_assets(context, tiff_data_source, csv_data_source):
     client = from_context(context)
 
-    y = client.create_composite(key="y")
+    y = client.create_container(key="y", specs=["composite"])
     y.new(
         structure_family=StructureFamily.array,
         data_sources=[tiff_data_source],
@@ -380,9 +397,10 @@ def test_write_one_table(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
-        client.create_container(key="x", specs=["Composite"])
-        client["x"].write_dataframe(df)
-        assert len(client["x"]) == 1
+        client.create_container(key="z", specs=["composite"])
+        client["z"].write_dataframe(df)
+        assert len(client["z"].parts) == 1  # One table
+        assert len(client["z"]) == 2  # Two columns
 
 
 def test_write_two_tables(tree):
@@ -390,11 +408,11 @@ def test_write_two_tables(tree):
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        x = client.create_composite(key="x")
-        x.write_dataframe(df1, key="table1")
-        x.write_dataframe(df2, key="table2")
-        x.parts["table1"].read()
-        x.parts["table2"].read()
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_dataframe(df1, key="table1")
+        z.write_dataframe(df2, key="table2")
+        z.parts["table1"].read()
+        z.parts["table2"].read()
 
 
 def test_write_two_tables_colliding_names(tree):
@@ -402,10 +420,10 @@ def test_write_two_tables_colliding_names(tree):
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        x = client.create_composite(key="x")
-        x.write_dataframe(df1, key="table1")
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_dataframe(df1, key="table1")
         with fail_with_status_code(HTTP_409_CONFLICT):
-            x.write_dataframe(df2, key="table1")
+            z.write_dataframe(df2, key="table1")
 
 
 def test_write_two_tables_colliding_keys(tree):
@@ -413,10 +431,10 @@ def test_write_two_tables_colliding_keys(tree):
         client = from_context(context)
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
-        x = client.create_composite(key="x")
-        x.write_dataframe(df1, key="table1")
-        with fail_with_status_code(HTTP_409_CONFLICT):
-            x.write_dataframe(df2, key="table2")
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_dataframe(df1, key="table1")
+        with pytest.raises(ValueError):
+            z.write_dataframe(df2, key="table2")
 
 
 def test_write_two_tables_two_arrays(tree):
@@ -426,23 +444,23 @@ def test_write_two_tables_two_arrays(tree):
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
         arr1 = numpy.ones((5, 5), dtype=numpy.float64)
         arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
-        x = client.create_composite(key="x")
+        z = client.create_container(key="z", specs=["composite"])
 
         # Write by data source.
-        x.write_dataframe(df1, key="table1")
-        x.write_dataframe(df2, key="table2")
-        x.write_array(arr1, key="F")
-        x.write_array(arr2, key="G")
+        z.write_dataframe(df1, key="table1")
+        z.write_dataframe(df2, key="table2")
+        z.write_array(arr1, key="F")
+        z.write_array(arr2, key="G")
 
         # Read by data source.
-        x.parts["table1"].read()
-        x.parts["table2"].read()
-        x.parts["F"].read()
-        x.parts["G"].read()
+        z.parts["table1"].read()
+        z.parts["table2"].read()
+        z.parts["F"].read()
+        z.parts["G"].read()
 
         # Read by column.
         for column in ["A", "B", "C", "D", "E", "F", "G"]:
-            x[column].read()
+            z[column].read()
 
 
 def test_write_table_column_array_key_collision(tree):
@@ -451,12 +469,12 @@ def test_write_table_column_array_key_collision(tree):
         df = pandas.DataFrame({"A": [], "B": []})
         arr = numpy.array([1, 2, 3], dtype=numpy.float64)
 
-        x = client.create_container(key="x", specs=["Composite"])
-        x.write_dataframe(df, key="table1")
-        # with fail_with_status_code(HTTP_409_CONFLICT):
-        x.write_array(arr, key="A")
+        z1 = client.create_container(key="z1", specs=["composite"])
+        z1.write_dataframe(df, key="table1")
+        with pytest.raises(ValueError):
+            z1.write_array(arr, key="A")
 
-        y = client.create_container(key="y", specs=["Composite"])
-        y.write_array(arr, key="A")
-        # with fail_with_status_code(HTTP_409_CONFLICT):
-        y.write_dataframe(df, key="table1")
+        z2 = client.create_container(key="z2", specs=["composite"])
+        z2.write_array(arr, key="A")
+        with pytest.raises(ValueError):
+            z2.write_dataframe(df, key="table1")

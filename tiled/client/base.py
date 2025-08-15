@@ -15,7 +15,7 @@ from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context, normalize_specs
+from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_context
 
 
 class MetadataRevisions:
