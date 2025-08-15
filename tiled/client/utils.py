@@ -419,3 +419,15 @@ def chunks_repr(chunks: tuple[tuple[int, ...], ...]) -> str:
             result += "variable, "
     result = result.rstrip(", ") + ")"
     return result
+
+def normalize_specs(specs: Optional[Union[list[str], list[Spec], str]]) -> list[dict[str, str]] | None:
+    "Represent a list of Spec objects or strings as a list of dicts"
+
+    if specs is None:
+        return None
+    normalized_specs = []
+    for spec in specs:
+        if isinstance(spec, str):
+            spec = Spec(spec)
+        normalized_specs.append(asdict(spec))
+    return normalized_specs

@@ -28,6 +28,7 @@ from .utils import (
     export_util,
     handle_error,
     retry_context,
+    normalize_specs
 )
 
 if TYPE_CHECKING:
@@ -697,18 +698,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         self._cached_len = None
         metadata = metadata or {}
         access_blob = {"tags": access_tags} if access_tags is not None else {}
-        specs = specs or []
-        normalized_specs = []
-        for spec in specs:
-            if isinstance(spec, str):
-                spec = Spec(spec)
-            normalized_specs.append(asdict(spec))
 
         item = {
             "attributes": {
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
-                "specs": normalized_specs,
+                "specs": normalize_specs(specs or []),
                 "data_sources": [asdict(data_source) for data_source in data_sources],
                 "access_blob": access_blob,
             }
