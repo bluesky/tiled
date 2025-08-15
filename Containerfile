@@ -23,7 +23,7 @@ apt-get install -qyy \
     build-essential \
     ca-certificates \
     gcc \
-    python${PYTHON_VERSION}
+    python${PYTHON_VERSION}-dev
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
