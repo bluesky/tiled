@@ -105,9 +105,9 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                         )
-                elif not self.is_tag_defined(tag):
+                elif not await self.is_tag_defined(tag):
                     raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
-                elif not self.is_tag_owner(tag, identifier):
+                elif not await self.is_tag_owner(tag, identifier):
                     # admins can ignore the tag ownership check
                     if not self._is_admin(authn_scopes):
                         raise ValueError(
@@ -132,7 +132,7 @@ class TagBasedAccessPolicy:
                 # check that the access_blob would not result in invalid scopes for user.
                 new_scopes = set()
                 for tag in access_tags_from_policy:
-                    new_scopes.update(self.get_scopes_from_tag(tag, identifier))
+                    new_scopes.update(await self.get_scopes_from_tag(tag, identifier))
                 if not all(scope in new_scopes for scope in self.unremovable_scopes):
                     raise ValueError(
                         f"Cannot init node with tags: operation does not grant necessary scopes.\n"
@@ -203,9 +203,9 @@ class TagBasedAccessPolicy:
                     raise ValueError(
                         "Cannot apply 'public' tag to node: only Tiled admins can apply the 'public' tag."
                     )
-            elif not self.is_tag_defined(tag):
+            elif not await self.is_tag_defined(tag):
                 raise ValueError(f"Cannot apply tag to node: {tag=} is not defined")
-            elif not self.is_tag_owner(tag, identifier):
+            elif not await self.is_tag_owner(tag, identifier):
                 # admins can ignore the tag ownership check
                 if not self._is_admin(authn_scopes):
                     raise ValueError(
@@ -238,11 +238,11 @@ class TagBasedAccessPolicy:
                         raise ValueError(
                             "Cannot remove 'public' tag from node: only Tiled admins can remove the 'public' tag."
                         )
-                elif not self.is_tag_defined(tag):
+                elif not await self.is_tag_defined(tag):
                     raise ValueError(
                         f"Cannot remove tag from node: {tag=} is not defined"
                     )
-                elif not self.is_tag_owner(tag, identifier):
+                elif not await self.is_tag_owner(tag, identifier):
                     # admins can ignore the tag ownership check
                     if not self._is_admin(authn_scopes):
                         raise ValueError(
@@ -263,7 +263,7 @@ class TagBasedAccessPolicy:
             # converting from user-owned node to shared (tagged) node
             new_scopes = set()
             for tag in access_tags_from_policy:
-                new_scopes.update(self.get_scopes_from_tag(tag, identifier))
+                new_scopes.update(await self.get_scopes_from_tag(tag, identifier))
             if not all(scope in new_scopes for scope in self.unremovable_scopes):
                 raise ValueError(
                     f"Cannot modify tags on node: operation removes unremovable scopes.\n"
@@ -303,14 +303,14 @@ class TagBasedAccessPolicy:
                     if authn_access_tags is not None:
                         if tag not in authn_access_tags:
                             continue
-                    if self.is_tag_public(tag):
+                    if await self.is_tag_public(tag):
                         allowed.update(self.read_scopes)
                         if tag == self.public_tag:
                             continue
-                    elif not self.is_tag_defined(tag):
+                    elif not await self.is_tag_defined(tag):
                         continue
                     if identifier is not None:
-                        tag_scopes = self.get_scopes_from_tag(tag, identifier)
+                        tag_scopes = await self.get_scopes_from_tag(tag, identifier)
                     allowed.update(
                         tag_scopes if tag_scopes.issubset(self.scopes) else set()
                     )
@@ -338,14 +338,17 @@ class TagBasedAccessPolicy:
                 identifier = self._get_id(principal)
             tag_list.update(
                 set.intersection(
-                    *[self.get_tags_from_scope(scope, identifier) for scope in scopes]
+                    *[
+                        await self.get_tags_from_scope(scope, identifier)
+                        for scope in scopes
+                    ]
                 )
             )
 
         tag_list.update(
             set.intersection(
                 *[
-                    self.get_public_tags() if scope in self.read_scopes else set()
+                    await self.get_public_tags() if scope in self.read_scopes else set()
                     for scope in scopes
                 ]
             )
