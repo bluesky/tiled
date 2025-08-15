@@ -17,7 +17,7 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import default_query_registry
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
@@ -27,8 +27,8 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
+    normalize_specs,
     retry_context,
-    normalize_specs
 )
 
 if TYPE_CHECKING:
@@ -363,18 +363,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             raise KeyError(err_arg)
                         raise
                     item = content["data"]
-
-                    # Tables that belong to composite nodes cannot be addressed directly
-                    if (
-                        item["attributes"]["structure_family"] == StructureFamily.table
-                    ) and (
-                        "flattened" in (s["name"] for s in item["attributes"]["specs"])
-                    ):
-                        raise KeyError(
-                            f"Attempting to access a table in a composite container; use .parts['{keys[-1]}'] instead."  # noqa
-                        )
-
                     break
+
             result = client_for_item(
                 self.context,
                 self.structure_clients,
@@ -769,9 +759,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Ensure this is a dataclass, not a dict.
         # When we apply type hints and mypy to the client it should be possible
         # to dispense with this.
-        if (
-            structure_family != StructureFamily.container
-        ) and isinstance(structure, dict):
+        if (structure_family != StructureFamily.container) and isinstance(
+            structure, dict
+        ):
             structure_type = STRUCTURE_TYPES[structure_family]
             structure = structure_type.from_json(structure)
 

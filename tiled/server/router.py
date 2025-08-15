@@ -1064,10 +1064,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {
-                StructureFamily.table,
-                StructureFamily.container
-            },
+            {StructureFamily.table, StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         try:

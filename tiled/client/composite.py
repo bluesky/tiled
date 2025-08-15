@@ -94,10 +94,6 @@ class Composite(Container):
         """Composite nodes can not include nested containers by design."""
         raise NotImplementedError("Cannot create a container within a composite node.")
 
-    def create_composite(self, key=None, *, metadata=None, specs=None):
-        """Composite nodes can not include nested composites by design."""
-        raise NotImplementedError("Cannot create a composite within a composite node.")
-
     def delete_contents(
         self,
         keys: Optional[Union[str, Iterable[str]]] = None,
@@ -215,6 +211,39 @@ class Composite(Container):
             data_vars[var_name] = array_dims.get(var_name) or dims, arr
 
         return xarray.Dataset(data_vars=data_vars)
+
+    def new(
+        self,
+        structure_family,
+        data_sources,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
+        if key in self.keys():
+            raise ValueError(f"Key '{key}' already exists in the composite node.")
+
+        return super().new(
+            structure_family,
+            data_sources,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+        )
+
+    def write_dataframe(
+        self, dataframe, *, key=None, metadata=None, specs=None, access_tags=None
+    ):
+        if set(self.keys()).intersection(dataframe.columns):
+            raise ValueError(
+                "DataFrame columns must not overlap with existing keys in the composite node."
+            )
+        return super().write_dataframe(
+            dataframe, key=key, metadata=metadata, specs=specs, access_tags=access_tags
+        )
 
 
 class CompositeParts:
