@@ -2,13 +2,13 @@ import logging
 from pathlib import Path
 
 import httpx
+from pydantic import ValidationError
 import pytest
 import yaml
 from starlette.status import HTTP_400_BAD_REQUEST
 
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context, from_profile, record_history
-from ..config import ConfigError
 from ..profiles import load_profiles, paths
 from ..queries import Key
 from ..server.app import build_app
@@ -86,7 +86,7 @@ def test_direct_config_error(tmpdir):
     try:
         paths.append(profile_dir)
         load_profiles.cache_clear()
-        with pytest.raises(ConfigError):
+        with pytest.raises(ValidationError):
             from_profile("test")
     finally:
         paths.remove(profile_dir)

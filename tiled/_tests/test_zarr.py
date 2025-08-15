@@ -12,6 +12,8 @@ from fsspec.implementations.http import HTTPFileSystem
 from httpx import ASGITransport, AsyncClient
 from starlette.status import HTTP_200_OK, HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
 
+from tiled.config import Authentication
+
 from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
@@ -129,7 +131,7 @@ def traverse_tree(tree, parent="", result=None):
 
 @pytest.fixture(scope="module")
 def app():
-    app = build_app(tree, authentication={"single_user_api_key": "secret"})
+    app = build_app(tree, authentication=Authentication(single_user_api_key="secret"))
     return app
 
 

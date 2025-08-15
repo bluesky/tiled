@@ -414,6 +414,7 @@ async def construct_resource(
     max_depth,
     depth=0,
 ):
+    print(f'in construct_resource: {entry=}')
     path_str = "/".join(path_parts)
     id_ = path_parts[-1] if path_parts else ""
     attributes = {"ancestors": path_parts[:-1]}

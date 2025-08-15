@@ -15,6 +15,8 @@ import sqlalchemy.exc
 import tifffile
 import xarray
 
+from tiled.config import Config
+
 from ..adapters.csv import CSVAdapter
 from ..adapters.dataframe import ArrayAdapter
 from ..adapters.tiff import TiffAdapter
@@ -748,7 +750,7 @@ async def test_access_control(tmpdir, sqlite_or_postgres_uri):
         ],
     }
 
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
@@ -890,7 +892,7 @@ async def test_init_db_logging(sqlite_or_postgres_uri, tmpdir, caplog):
     import logging
 
     with caplog.at_level(logging.INFO):
-        app = build_app_from_config(config)
+        app = build_app_from_config(Config.model_validate(config))
         for record in caplog.records:
             assert record.levelname != "ERROR", f"Error found creating app {record.msg}"
         assert app
