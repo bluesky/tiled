@@ -15,7 +15,7 @@ from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
+from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_context
 
 
 class MetadataRevisions:
@@ -142,7 +142,7 @@ class BaseClient:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family in {StructureFamily.container, StructureFamily.composite}:
+        elif structure_family == StructureFamily.container:
             self._structure = None
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
@@ -213,10 +213,7 @@ class BaseClient:
                     )
                 ).json()
         self._item = content["data"]
-        if self.structure_family not in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if self.structure_family != StructureFamily.container:
             structure_type = STRUCTURE_TYPES[self.structure_family]
             self._structure = structure_type.from_json(
                 self._item["attributes"]["structure"]
@@ -806,15 +803,6 @@ class BaseClient:
 
         self._cached_len = None
 
-        if specs is None:
-            normalized_specs = None
-        else:
-            normalized_specs = []
-            for spec in specs:
-                if isinstance(spec, str):
-                    spec = Spec(spec)
-                normalized_specs.append(asdict(spec))
-
         if access_tags is None:
             access_blob = None
         else:
@@ -822,7 +810,7 @@ class BaseClient:
 
         data = {
             "metadata": metadata,
-            "specs": normalized_specs,
+            "specs": normalize_specs(specs),
             "access_blob": access_blob,
         }
         params = {}
@@ -850,7 +838,7 @@ class BaseClient:
                 self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
-            self._item["attributes"]["specs"] = normalized_specs
+            self._item["attributes"]["specs"] = normalize_specs(specs)
 
         if access_blob is not None:
             if "access_blob" in content:
