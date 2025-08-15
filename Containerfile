@@ -92,7 +92,7 @@ apt-get clean && \
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN mkdir -p /deploy/config
-RUN mkdir -p /storage
+RUN mkdir -p /storage && chown -R app:app /storage
 COPY ./example_configs/single_catalog_single_user.yml /deploy/config
 ENV TILED_CONFIG=/deploy/config
 
