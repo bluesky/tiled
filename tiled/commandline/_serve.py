@@ -329,6 +329,12 @@ def serve_catalog(
             "By default, a random key is generated at startup and printed."
         ),
     ),
+    redis_uri: Optional[str] = typer.Option(
+        None, "--redis-uri", help=("Provide redis URI")
+    ),
+    redis_ttl: Optional[float] = typer.Option(
+        None, "--redis-ttl", help=("Provide redis ttl")
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -460,11 +466,19 @@ or use an existing one:
             err=True,
         )
 
+    server_settings = {}
+    redis_settings = {}
+    if redis_uri:
+        redis_settings = {"uri": redis_uri}
+    if redis_ttl:
+        redis_settings["ttl"] = redis_ttl
+
     tree = from_uri(
         database,
         writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
+        redis_settings=redis_settings,
     )
     web_app = build_app(
         tree,
