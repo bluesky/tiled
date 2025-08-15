@@ -6,7 +6,7 @@ RUN set -ex && npm install && npm run build
 
 ##########################################################################
 
-FROM docker.io/ubuntu:noble AS build
+FROM docker.io/ubuntu:noble AS app_build
 ARG PYTHON_VERSION=3.12
 
 # Ensure apt-get doesn't open a menu on you.
@@ -42,15 +42,10 @@ ENV UV_LINK_MODE=copy \
     TILED_BUILD_SKIP_UI=1
 
 # Synchronize DEPENDENCIES without the application itself.
-# This layer is cached until pyproject.toml changes, which is
-# only temporarily mounted into the build container since we don't need
-# it in the production one.
-# You can create `/app` using `uv venv` in a separate `RUN`
-# step to have it cached, but with uv it's so fast, it's not worth
-# it, so we let `uv sync` create it for us automagically.
-RUN --mount=type=cache,target=/root/.cache \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    set -ex && \
+# This layer is cached until the build changes: changes to the
+# application will run require rerunning this step.
+COPY pyproject.toml hatch_build.py README.md .
+RUN set -ex && \
     uv sync \
         --extra server \
         --no-dev \
@@ -58,26 +53,20 @@ RUN --mount=type=cache,target=/root/.cache \
 
 # Now install the rest from `/src`: The APPLICATION w/o dependencies.
 # `/src` will NOT be copied into the runtime container.
-# LEAVE THIS OUT if your application is NOT a proper Python package.
 COPY . /src
 WORKDIR /src
-RUN --mount=type=cache,target=/root/.cache \
-    set -ex && \
+RUN set -ex && \
     uv sync \
         --extra server \
-        # We want as httpie as a developer convenience.
-        --with httpie \
+        # Add httpie as a developer convenience.
+        # --with httpie \
         --no-dev \
         --no-editable
-
-
-##########################################################################
 
 ##########################################################################
 
 FROM docker.io/ubuntu:noble
 ARG PYTHON_VERSION=3.12
-SHELL ["sh", "-exc"]
 
 # Add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH
@@ -97,13 +86,19 @@ apt-get update -qy && \
 apt-get install -qyy \
     -o APT::Install-Recommends=false \
     -o APT::Install-Suggests=false \
+    curl \
     python${PYTHON_VERSION} && \
 apt-get clean && \
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+RUN mkdir -p /deploy/config
+RUN mkdir -p /storage
+COPY ./example_configs/single_catalog_single_user.yml /deploy/config
+ENV TILED_CONFIG=/deploy/config
+
 # Copy the pre-built `/app` directory to the runtime container
 # and change the ownership to user app and group app in one step.
-COPY --from=build --chown=app:app /app /app
+COPY --from=app_build --chown=app:app /app /app
 COPY --from=web_frontend_build --chown=app:app /src/dist /src/share/tiled/ui
 
 USER app
@@ -114,11 +109,6 @@ RUN set -ex && \
 python -V && \
 python -Im site && \
 python -Ic 'import tiled'
-
-RUN mkdir /deploy/config
-RUN mkdir -p /storage
-COPY ./example_configs/single_catalog_single_user.yml /deploy/config
-ENV TILED_CONFIG=/deploy/config
 
 EXPOSE 8000
 
