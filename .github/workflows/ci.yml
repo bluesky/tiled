@@ -130,7 +130,7 @@ jobs:
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
       with:
         context: .
-        file: Dockerfile
+        file: Containerfile
         platforms: linux/amd64,linux/arm64
 
     - name: Tag and load Docker image on single arch for testing (will use cache)

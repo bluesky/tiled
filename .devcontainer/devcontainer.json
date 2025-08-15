@@ -2,7 +2,7 @@
 	"name": "tiled-devcontainer",
 	"build": {
 		"context": "..",
-		"dockerfile": "../Dockerfile",
+		"dockerfile": "../Containerfile",
 		"target": "developer",
 		"args": {
 			"PYTHON_VERSION": "3.9"
