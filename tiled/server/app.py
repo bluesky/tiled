@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Callable, Coroutine, Optional, TypedDict, Union
+from typing import Optional
 
 import anyio
 import packaging.version
@@ -42,7 +42,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.type_aliases import AppTask, TaskMap
 
 from ..catalog.adapter import WouldDeleteData
-from ..config import construct_build_app_kwargs, parse_configs
+from ..config import Authentication, Config, Database, MetricsConfig, build_app_kwargs, read_config
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -108,7 +108,7 @@ def custom_openapi(app):
 
 def build_app(
     tree,
-    authentication=None,
+    authentication: Optional[Authentication] = None,
     server_settings=None,
     query_registry: Optional[QueryRegistry] = None,
     serialization_registry: Optional[SerializationRegistry] = None,
@@ -127,18 +127,17 @@ def build_app(
     tree : Tree
     authentication: dict, optional
         Dict of authentication configuration.
-    authenticators: list, optional
-        List of authenticator classes (one per support identity provider)
     server_settings: dict, optional
         Dict of other server configuration.
     access_policy:
         AccessPolicy object encoding rules for which users can see which entries.
     """
-    authentication = authentication or {}
-    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
-        spec["provider"]: spec["authenticator"]
-        for spec in authentication.get("providers", [])
-    }
+    authentication = authentication or Authentication()
+    authenticators = authentication.authenticators
+    # authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
+    #     spec["provider"]: spec["authenticator"]
+    #     for spec in authentication.get("providers", [])
+    # }
     server_settings = server_settings or {}
     query_registry = query_registry or default_query_registry
     serialization_registry = serialization_registry or default_serialization_registry
@@ -161,13 +160,10 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
-        if authentication.get("providers"):
+        if authenticators:
             # Even if the deployment allows public, anonymous access, secret
             # keys are needed to generate JWTs for any users that do log in.
-            if (
-                "secret_keys" not in authentication
-                and "TILED_SECRET_KEYS" not in os.environ
-            ):
+            if not authentication.secret_keys and "TILED_SECRET_KEYS" not in os.environ:
                 raise UnscalableConfig(
                     dedent(
                         """
@@ -203,7 +199,7 @@ def build_app(
             # No authentication provider is configured, so no secret keys are
             # needed, but a single-user API key must be set.
             if not (
-                ("single_user_api_key" in authentication)
+                authentication.single_user_api_key
                 or ("TILED_SINGLE_USER_API_KEY" in os.environ)
             ):
                 raise UnscalableConfig(
@@ -391,7 +387,7 @@ def build_app(
 
     app.state.access_policy = access_policy
 
-    if authentication.get("providers", []):
+    if authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
         from .authentication import (
@@ -402,7 +398,7 @@ def build_app(
         )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
-        first_provider = authentication["providers"][0]["provider"]
+        first_provider = next(iter(authenticators))
         oauth2_scheme.model.flows.password.tokenUrl = (
             f"/api/v1/auth/provider/{first_provider}/token"
         )
@@ -412,9 +408,7 @@ def build_app(
         # This adds the universal routes like /session/refresh and /session/revoke.
         # Below we will add routes specific to our authentication providers.
 
-        for spec in authentication["providers"]:
-            provider = spec["provider"]
-            authenticator = spec["authenticator"]
+        for provider, authenticator in authenticators.items():
             if isinstance(authenticator, InternalAuthenticator):
                 add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
@@ -446,8 +440,8 @@ def build_app(
             "refresh_token_max_age",
             "session_max_age",
         ]:
-            if authentication.get(item) is not None:
-                setattr(settings, item, authentication[item])
+            if (value := getattr(authentication, item)) is not None:
+                setattr(settings, item, value)
         for item in [
             "allow_origins",
             "response_bytesize_limit",
@@ -456,24 +450,26 @@ def build_app(
         ]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
-        database = server_settings.get("database", {})
-        if uri := database.get("uri"):
-            settings.database_settings.uri = uri
-        if pool_size := database.get("pool_size"):
-            settings.database_settings.pool_size = pool_size
-        if pool_pre_ping := database.get("pool_pre_ping"):
-            settings.database_settings.pool_pre_ping = pool_pre_ping
-        if max_overflow := database.get("max_overflow"):
-            settings.database_settings.max_overflow = max_overflow
-        if init_if_not_exists := database.get("init_if_not_exists"):
-            settings.database_init_if_not_exists = init_if_not_exists
-        if authentication.get("providers"):
-            # If we support authentication providers, we need a database, so if one is
-            # not set, use a SQLite database in memory. Horizontally scaled deployments
-            # must specify a persistent database.
-            settings.database_settings.uri = (
-                settings.database_settings.uri or "sqlite://"
-            )
+
+        database: Database = server_settings.get("database") # type: ignore
+        if database:
+            if database.uri is not None:
+                settings.database_settings.uri = database.uri
+            if database.pool_size is not None:
+                settings.database_settings.pool_size = database.pool_size
+            if database.pool_pre_ping is not None:
+                settings.database_settings.pool_pre_ping = database.pool_pre_ping
+            if database.max_overflow is not None:
+                settings.database_settings.max_overflow = database.max_overflow
+            if database.init_if_not_exists is not None:
+                settings.database_init_if_not_exists = database.init_if_not_exists
+            if authenticators:
+                # If we support authentication providers, we need a database, so if one is
+                # not set, use a SQLite database in memory. Horizontally scaled deployments
+                # must specify a persistent database.
+                settings.database_settings.uri = (
+                    settings.database_settings.uri or "sqlite://"
+                )
         return settings
 
     async def startup_event():
@@ -620,7 +616,7 @@ def build_app(
                     raise err from None
                 else:
                     logger.info(f"Connected to existing database at {redacted_url}.")
-            for admin in authentication.get("tiled_admins", []):
+            for admin in authentication.tiled_admins or []:
                 logger.info(
                     f"Ensuring that principal with identity {admin} has role 'admin'"
                 )
@@ -803,8 +799,8 @@ def build_app(
         )
         return response
 
-    metrics_config = server_settings.get("metrics", {})
-    if metrics_config.get("prometheus", True):
+    metrics_config: MetricsConfig = server_settings.get("metrics", MetricsConfig())
+    if metrics_config.prometheus:
         # PROMETHEUS_MULTIPROC_DIR puts prometheus_client in multiprocess mode
         # (for e.g. gunicorn) which uses a directory of memory-mapped files.
         # If that environment variable is set, check that the directory exists
@@ -865,9 +861,9 @@ def build_app(
     return app
 
 
-def build_app_from_config(config, source_filepath=None, scalable=False):
-    "Convenience function that calls build_app(...) given config as dict."
-    kwargs = construct_build_app_kwargs(config, source_filepath=source_filepath)
+def build_app_from_config(config: Config, scalable=False):
+    "Convenience function that calls build_app(...) given config as parsed Config instance"
+    kwargs = build_app_kwargs(config)
     return build_app(scalable=scalable, **kwargs)
 
 
@@ -884,13 +880,15 @@ def app_factory():
     config_path = os.getenv("TILED_CONFIG", "config.yml")
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    parsed_config = parse_configs(config_path)
+    parsed_config = read_config(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    web_app = build_app_from_config(parsed_config, config_path)
-    uvicorn_config = parsed_config.get("uvicorn", {})
+    web_app = build_app_from_config(parsed_config)
+    uvicorn_config = parsed_config.uvicorn
     print_server_info(
-        web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
+        web_app,
+        host=uvicorn_config.get("host", "127.0.0.1"),
+        port=uvicorn_config.get("port", 8000),
     )
     return web_app
 

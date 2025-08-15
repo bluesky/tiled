@@ -7,8 +7,9 @@ import pandas as pd
 import pytest
 from starlette.status import HTTP_400_BAD_REQUEST
 
+from tiled.config import Config
+
 from ..client import Context, from_context
-from ..config import merge
 from ..server.app import build_app_from_config
 from ..structures.core import StructureFamily
 from ..validation_registration import ValidationError
@@ -47,7 +48,7 @@ def validate_foo(metadata, structure_family, structure, spec):
 
 @pytest.fixture(scope="module")
 def client(tmpdir_module):
-    config = {
+    config = Config(**{
         "trees": [
             {
                 "tree": "tiled.catalog:in_memory",
@@ -59,11 +60,8 @@ def client(tmpdir_module):
             {"spec": "foo", "validator": f"{__name__}:validate_foo"},
             {"spec": "a"},
         ],
-    }
-    # Check that specs propagate correctly through merging configs.
-    merged_config = merge({"filepath_placeholder": config})
-    assert merged_config["specs"]
-    with Context.from_app(build_app_from_config(merged_config)) as context:
+    })
+    with Context.from_app(build_app_from_config(config)) as context:
         yield from_context(context)
 
 

@@ -9,6 +9,8 @@ import numpy
 import pytest
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
+from tiled.config import AuthenticationProviderSpec, Config
+
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
@@ -25,13 +27,7 @@ tree = MapAdapter({"A1": arr, "A2": arr})
 
 
 @pytest.fixture
-def config(sqlite_or_postgres_uri):
-    """
-    Return config with
-
-    - a unique temporary sqlite database location
-    - a unique nested dict instance that the test can mutate
-    """
+def config_json(sqlite_or_postgres_uri):
     database_uri = sqlite_or_postgres_uri
     subprocess.run(
         [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
@@ -39,28 +35,38 @@ def config(sqlite_or_postgres_uri):
         capture_output=True,
     )
     return {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
+            "authentication": {
+                "secret_keys": ["SECRET"],
+                "providers": [
+                    {
+                        "provider": "toy",
+                        "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                        "args": {
+                            "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
+                            },
+                        }
+                    ],
+                },
+            "database": {
+                "uri": database_uri,
+                },
+            "trees": [
                 {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
+                    "tree": f"{__name__}:tree",
+                    "path": "/",
                     },
-                }
-            ],
-        },
-        "database": {
-            "uri": database_uri,
-        },
-        "trees": [
-            {
-                "tree": f"{__name__}:tree",
-                "path": "/",
-            },
-        ],
-    }
+                ],
+            }
+
+@pytest.fixture
+def config(config_json):
+    """
+    Return config with
+
+    - a unique temporary sqlite database location
+    - a unique nested dict instance that the test can mutate
+    """
+    return Config.model_validate(config_json)
 
 
 def test_password_auth(enter_username_password, config):
@@ -158,7 +164,7 @@ def test_logout(enter_username_password, config, tmpdir):
             client.context.force_auth_refresh()
 
 
-def test_key_rotation(enter_username_password, config):
+def test_key_rotation(enter_username_password, config: Config):
     """
     Rotate in a new secret used to sign keys.
     Confirm that clients experience a smooth transition.
@@ -172,8 +178,8 @@ def test_key_rotation(enter_username_password, config):
         client = from_context(context)
 
     # Rotate in a new key.
-    config["authentication"]["secret_keys"].insert(0, "NEW_SECRET")
-    assert config["authentication"]["secret_keys"] == ["NEW_SECRET", "SECRET"]
+    config.authentication.secret_keys.insert(0, "NEW_SECRET") # type: ignore - we know the keys exist
+    assert config.authentication.secret_keys == ["NEW_SECRET", "SECRET"]
 
     with Context.from_app(build_app_from_config(config)) as context:
         # The refresh token from the old key is still valid. No login prompt here.
@@ -184,8 +190,8 @@ def test_key_rotation(enter_username_password, config):
         client.context.force_auth_refresh()
 
     # Rotate out the old key.
-    del config["authentication"]["secret_keys"][1]
-    assert config["authentication"]["secret_keys"] == ["NEW_SECRET"]
+    del config.authentication.secret_keys[1]
+    assert config.authentication.secret_keys == ["NEW_SECRET"]
 
     with Context.from_app(build_app_from_config(config)) as context:
         # New refresh token works with the new key
@@ -208,10 +214,11 @@ def test_refresh_forced(enter_username_password, config):
         assert tokens1 != tokens2
 
 
-def test_refresh_transparent(enter_username_password, config):
+def test_refresh_transparent(enter_username_password, config_json):
     "When access token expired, refresh happens transparently."
     # Pathological configuration: a refresh is almost immediately required
-    config["authentication"]["access_token_max_age"] = 1
+    config_json["authentication"]["access_token_max_age"] = 1
+    config = Config.model_validate(config_json)
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
             client = from_context(context)
@@ -223,9 +230,10 @@ def test_refresh_transparent(enter_username_password, config):
         assert tokens2 != tokens1
 
 
-def test_expired_session(enter_username_password, config):
+def test_expired_session(enter_username_password, config_json):
     # Pathological configuration: sessions do not last
-    config["authentication"]["session_max_age"] = 1
+    config_json["authentication"]["session_max_age"] = 1
+    config = Config.model_validate(config_json)
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
             client = from_context(context)
@@ -254,27 +262,28 @@ def test_revoke_session(enter_username_password, config):
             client.context.force_auth_refresh()
 
 
-def test_multiple_providers(enter_username_password, config, monkeypatch):
+def test_multiple_providers(enter_username_password, config: Config, monkeypatch):
     """
     Test a configuration with multiple identity providers.
 
     This mechanism is used to support "Login with ORCID or Google or ...."
     """
-    config["authentication"]["providers"].extend(
+    config.authentication.providers.extend(
         [
-            {
+            AuthenticationProviderSpec(
+            **{
                 "provider": "second",
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",
                 "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
-            },
-            {
+            }),
+            AuthenticationProviderSpec(**{
                 "provider": "third",
                 "authenticator": "tiled.authenticators:DictionaryAuthenticator",
                 "args": {
                     # Duplicate 'cara' username.
                     "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
                 },
-            },
+            }),
         ],
     )
     with Context.from_app(build_app_from_config(config)) as context:
@@ -289,35 +298,36 @@ def test_multiple_providers(enter_username_password, config, monkeypatch):
             from_context(context)
 
 
-def test_multiple_providers_name_collision(config):
+def test_multiple_providers_name_collision(config_json):
     """
     Check that we enforce unique provider names.
     """
-    config["authentication"]["providers"] = [
-        {
+    config_json["authentication"]["providers"] = [
+        AuthenticationProviderSpec(**{
             "provider": "some_name",
             "authenticator": "tiled.authenticators:DictionaryAuthenticator",
             "args": {"users_to_passwords": {"cara": "secret3", "doug": "secret4"}},
-        },
-        {
+        }),
+        AuthenticationProviderSpec(**{
             "provider": "some_name",  # duplicate!
             "authenticator": "tiled.authenticators:DictionaryAuthenticator",
             "args": {
                 # Duplicate 'cara' username.
                 "users_to_passwords": {"cara": "secret5", "emilia": "secret6"}
             },
-        },
+        }),
     ]
     with pytest.raises(ValueError):
-        build_app_from_config(config)
+        Config.model_validate(config_json)
 
 
-def test_admin(enter_username_password, config):
+def test_admin(enter_username_password, config_json):
     """
     Test that the 'tiled_admin' config confers the 'admin' Role on a Principal.
     """
     # Make alice an admin. Leave bob as a user.
-    config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
+    config_json["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
+    config = Config.model_validate(config_json)
 
     with Context.from_app(build_app_from_config(config)) as context:
         with enter_username_password("alice", "secret1"):
@@ -400,9 +410,10 @@ def test_api_key_activity(enter_username_password, config):
         context.which_api_key()
 
 
-def test_api_key_scopes(enter_username_password, config):
+def test_api_key_scopes(enter_username_password, config_json):
     # Make alice an admin. Leave bob as a user.
-    config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
+    config_json["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
+    config = Config.model_validate(config_json)
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as admin.
         with enter_username_password("alice", "secret1"):
@@ -513,12 +524,13 @@ def test_session_limit(enter_username_password, config):
 
 
 @pytest.fixture
-def principals_context(enter_username_password, config):
+def principals_context(enter_username_password, config_json):
     """
     Fetch UUID for an admin and an ordinary user; include the client context.
     """
     # Make alice an admin. Leave bob as a user.
-    config["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
+    config_json["authentication"]["tiled_admins"] = [{"provider": "toy", "id": "alice"}]
+    config = Config.model_validate(config_json)
 
     with Context.from_app(build_app_from_config(config)) as context:
         # Log in as Alice and retrieve admin UUID for later use

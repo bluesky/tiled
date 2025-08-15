@@ -5,6 +5,7 @@ import pytest
 from starlette.status import HTTP_403_FORBIDDEN
 
 from tiled.authenticators import DictionaryAuthenticator
+from tiled.config import Config
 from tiled.server.protocols import UserSessionState
 
 from ..access_policies import NO_ACCESS
@@ -76,7 +77,7 @@ def context_a(tmpdir_module):
     }
 
     config.update(server_common_config)
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         yield context
 
@@ -104,7 +105,7 @@ def context_b(tmpdir_module):
     }
 
     config.update(server_common_config)
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         yield context
 
@@ -132,7 +133,7 @@ def context_c(tmpdir_module):
     }
 
     config.update(server_common_config)
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
@@ -169,7 +170,7 @@ def context_d(tmpdir_module):
     }
 
     config.update(server_common_config)
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
@@ -211,7 +212,7 @@ def context_e(tmpdir_module):
     }
 
     config.update(server_common_config)
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
@@ -244,7 +245,7 @@ def context_f(tmpdir_module):
     }
 
     config.update(server_common_config)
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         yield context
 
@@ -278,7 +279,7 @@ def context_g(tmpdir_module):
     }
 
     config.update(server_common_config)
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         admin_client = from_context(context)
         with enter_username_password("admin", "admin"):
@@ -292,17 +293,22 @@ def test_basic_access_control(context_a, context_b, context_g, enter_username_pa
     alice_client_a = from_context(context_a)
     alice_client_b = from_context(context_b)
     alice_client_g = from_context(context_g)
+    print("created clients")
     with enter_username_password("alice", "secret1"):
         alice_client_a.login()
         alice_client_b.login()
         alice_client_g.login()
+    print("logged in clients")
+    print(f"{alice_client_a=}")
     assert "a" in alice_client_a
+    print("----")
     assert "A2" in alice_client_a["a"]
     assert "A1" not in alice_client_a["a"]
     assert "b" not in alice_client_b
     assert "g" in alice_client_g
     assert "A3" in alice_client_g["g"]
     assert "A4" not in alice_client_g["g"]
+    print("client contents")
     alice_client_a["a"]["A2"]
     alice_client_g["g"]["A3"]
     with pytest.raises(KeyError):
@@ -510,7 +516,7 @@ def test_service_principal_access(tmpdir, sqlite_or_postgres_uri):
             },
         },
     }
-    with Context.from_app(build_app_from_config(config)) as context:
+    with Context.from_app(build_app_from_config(Config.model_validate(config))) as context:
         with enter_username_password("admin", "admin"):
             # Prompts for login here because anonymous access is not allowed
             admin_client = from_context(context)
@@ -525,7 +531,7 @@ def test_service_principal_access(tmpdir, sqlite_or_postgres_uri):
     # Add the service principal to the access_lists.
     config["access_control"]["args"]["access_lists"][sp["uuid"]] = ["x"]
     with Context.from_app(
-        build_app_from_config(config), api_key=key_info["secret"]
+        build_app_from_config(Config.model_validate(config)), api_key=key_info["secret"]
     ) as context:
         sp_client = from_context(context)
         assert list(sp_client) == ["x"]
@@ -656,7 +662,7 @@ def custom_attributes_context():
             {"tree": f"{__name__}:tree_enriched_metadata", "path": "/"},
         ],
     }
-    app = build_app_from_config(config)
+    app = build_app_from_config(Config.model_validate(config))
     with Context.from_app(app) as context:
         yield context
 

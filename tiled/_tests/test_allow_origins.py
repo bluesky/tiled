@@ -1,5 +1,7 @@
 from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
+from tiled.config import Config
+
 from ..client import Context
 from ..server.app import build_app_from_config
 
@@ -24,14 +26,14 @@ headers = {
 
 
 def test_cors_enforcement():
-    with Context.from_app(build_app_from_config(strict_config)) as context:
+    with Context.from_app(build_app_from_config(Config.model_validate(strict_config))) as context:
         request = context.http_client.build_request("OPTIONS", "/", headers=headers)
         response = context.http_client.send(request)
         assert response.status_code == HTTP_400_BAD_REQUEST
 
 
 def test_allow_origins():
-    with Context.from_app(build_app_from_config(permissive_config)) as context:
+    with Context.from_app(build_app_from_config(Config.model_validate(permissive_config))) as context:
         request = context.http_client.build_request("OPTIONS", "/", headers=headers)
         response = context.http_client.send(request)
         assert response.status_code == HTTP_200_OK

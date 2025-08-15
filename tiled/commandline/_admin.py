@@ -3,6 +3,8 @@ from typing import Optional
 
 import typer
 
+from tiled.config import read_config
+
 from ._utils import get_context, get_profile  # noqa E402
 
 admin_app = typer.Typer(no_args_is_help=True)
@@ -147,11 +149,9 @@ def check_config(
     "Check configuration file for syntax and validation errors."
     import os
 
-    from ..config import parse_configs
-
     config_path = config_path or os.getenv("TILED_CONFIG", "config.yml")
     try:
-        parse_configs(config_path)
+        read_config(config_path)
     except Exception as err:
         typer.echo(str(err), err=True)
         raise typer.Exit(1)
