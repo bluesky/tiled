@@ -4,6 +4,7 @@ from contextlib import closing
 from pathlib import Path
 from sys import intern
 
+import aiosqlite
 import yaml
 
 from ..utils import InterningLoader
@@ -13,58 +14,64 @@ class AccessTagsParser:
     @classmethod
     def from_uri(cls, uri):
         uri = uri if "?" in uri else f"{uri}?mode=ro"
-        db = sqlite3.connect(uri, uri=True, check_same_thread=False)
-        return cls(db)
+        return cls(uri=uri)
 
-    def __init__(self, db):
-        self.db = db
+    def __init__(self, db=None, uri=None):
+        self._uri = uri
+        self._db = db
 
-    def is_tag_defined(self, name):
-        with closing(self.db.cursor()) as cursor:
-            cursor.execute("SELECT 1 FROM tags WHERE name = ?;", (name,))
-            row = cursor.fetchone()
+    async def connect(self):
+        if self._db is None:
+            self._db = await aiosqlite.connect(
+                self._uri, uri=True, check_same_thread=False
+            )
+
+    async def is_tag_defined(self, name):
+        async with self._db.cursor() as cursor:
+            await cursor.execute("SELECT 1 FROM tags WHERE name = ?;", (name,))
+            row = await cursor.fetchone()
             found_tagname = bool(row)
         return found_tagname
 
-    def get_public_tags(self):
-        with closing(self.db.cursor()) as cursor:
-            cursor.execute("SELECT name FROM public_tags;")
-            public_tags = {name for (name,) in cursor.fetchall()}
+    async def get_public_tags(self):
+        async with self._db.cursor() as cursor:
+            await cursor.execute("SELECT name FROM public_tags;")
+            public_tags = {name for (name,) in await cursor.fetchall()}
         return public_tags
 
-    def get_scopes_from_tag(self, tagname, username):
-        with closing(self.db.cursor()) as cursor:
-            cursor.execute(
+    async def get_scopes_from_tag(self, tagname, username):
+        async with self._db.cursor() as cursor:
+            await cursor.execute(
                 "SELECT scope_name FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?;",
                 (tagname, username),
             )
-            user_tag_scopes = {scope for (scope,) in cursor.fetchall()}
+            user_tag_scopes = {scope for (scope,) in await cursor.fetchall()}
         return user_tag_scopes
 
-    def is_tag_owner(self, tagname, username):
-        with closing(self.db.cursor()) as cursor:
-            cursor.execute(
+    async def is_tag_owner(self, tagname, username):
+        async with self._db.cursor() as cursor:
+            await cursor.execute(
                 "SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?;",
                 (tagname, username),
             )
-            row = cursor.fetchone()
+            row = await cursor.fetchone()
             found_owner = bool(row)
         return found_owner
 
-    def is_tag_public(self, name):
-        with closing(self.db.cursor()) as cursor:
-            cursor.execute("SELECT 1 FROM public_tags WHERE name = ?;", (name,))
-            row = cursor.fetchone()
+    async def is_tag_public(self, name):
+        async with self._db.cursor() as cursor:
+            await cursor.execute("SELECT 1 FROM public_tags WHERE name = ?;", (name,))
+            row = await cursor.fetchone()
             found_public = bool(row)
         return found_public
 
-    def get_tags_from_scope(self, scope, username):
-        with closing(self.db.cursor()) as cursor:
-            cursor.execute(
+    async def get_tags_from_scope(self, scope, username):
+        async with self._db.cursor() as cursor:
+            await cursor.execute(
                 "SELECT tag_name FROM user_tag_scopes WHERE user_name = ? AND scope_name = ?;",
                 (username, scope),
             )
-            user_scope_tags = {tag for (tag,) in cursor.fetchall()}
+            user_scope_tags = {tag for (tag,) in await cursor.fetchall()}
         return user_scope_tags
 
 

@@ -636,6 +636,11 @@ def build_app(
                         id=admin["id"],
                     )
 
+            if app.state.access_policy is not None and hasattr(
+                app.state.access_policy, "access_tags_parser"
+            ):
+                await app.state.access_policy.access_tags_parser.connect()
+
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
                 while True:
