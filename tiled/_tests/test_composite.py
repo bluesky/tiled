@@ -68,7 +68,7 @@ def tree(tmp_path_factory):
 def context(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
-        x = client.create_composite(key="x", metadata=md)
+        x = client.create_container(key="x", metadata=md, specs=["composite"])
         x.write_array(arr1, key="arr1", metadata={"md_key": "md_for_arr1"})
         x.write_array(arr2, key="arr2", metadata={"md_key": "md_for_arr2"})
         x.write_dataframe(
