@@ -9,10 +9,12 @@ from starlette.status import HTTP_409_CONFLICT
 
 from ..catalog import in_memory
 from ..client import Context, from_context
+from ..client.composite import CompositeClient
+from ..client.container import Container
 from ..client.utils import ClientError
 from ..server.app import build_app
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
 from ..utils import ensure_uri
@@ -479,3 +481,83 @@ def test_write_table_column_array_key_collision(tree):
         z2.write_array(arr, key="A")
         with pytest.raises(ValueError):
             z2.write_dataframe(df, key="table1")
+
+
+def test_composite_validator(tree):
+    "Test the spec validator for marking existing containers"
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        y = client.create_container(key="y")  # No specs
+
+        # 1. Assign spec to an empty container
+        y.update_metadata(specs=["composite"])
+        assert Spec("composite") in y.specs
+        assert isinstance(client["y"], CompositeClient)
+        # Revert the assignment
+        y.update_metadata(specs=[])
+        assert Spec("composite") not in y.specs
+        assert isinstance(client["y"], Container)
+
+        # 2. Created a nested container
+        y.create_container(key="z")
+        with pytest.raises(ClientError, match="Nested containers are not allowed"):
+            y.update_metadata(specs=["composite"])
+        y.delete_contents("z")
+
+        # 3. Write some initial array data
+        y.write_array(arr1, key="arr1")
+        y.write_array(arr2, key="arr2")
+        y.write_awkward(awk_arr, key="awk")
+        y.write_sparse(
+            coords=sps_arr.coords,
+            data=sps_arr.data,
+            shape=sps_arr.shape,
+            key="sps",
+        )
+
+        # Composite spec can be assigned to a container with arrays
+        y.update_metadata(specs=["composite"])
+        assert Spec("composite") in y.specs
+        assert isinstance(client["y"], CompositeClient)
+        y.update_metadata(specs=[])
+
+        # 4. Add two valid tables
+        y.write_dataframe(df1, key="df1")
+        y.write_dataframe(df2, key="df2")
+
+        # Composite spec can be assigned to a container with arrays and tables
+        y.update_metadata(specs=["composite"])
+        assert Spec("composite") in y.specs
+        assert isinstance(client["y"], CompositeClient)
+        y.update_metadata(specs=[])
+
+        # 5. Add an array with a conflicting name
+        y.write_array(arr1, key="A")
+        with pytest.raises(ClientError, match="Found conflicting names"):
+            y.update_metadata(specs=["composite"])
+        y.delete_contents("A", external_only=False)
+
+        # 6. Add a table with a conflicting column names
+        y.write_dataframe(df1, key="df1_copy")
+        with pytest.raises(ClientError, match="Found conflicting names"):
+            y.update_metadata(specs=["composite"])
+        y.delete_contents("df1_copy", external_only=False)
+
+        # 7. Composite spec cannot be used for tables or arrays
+        err_message = "Composite spec can be assigned only to containers"
+        for key in ["arr1", "awk", "sps", "df1"]:
+            with pytest.raises(ClientError, match=err_message):
+                y[key].update_metadata(specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_dataframe(df1, specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_array(arr1, specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_awkward(awk_arr, specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_sparse(
+                coords=sps_arr.coords,
+                data=sps_arr.data,
+                shape=sps_arr.shape,
+                specs=["composite"],
+            )

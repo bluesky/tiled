@@ -70,7 +70,7 @@ from ..mimetypes import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
-from ..server.schemas import Asset, DataSource, Management, Revision, Spec
+from ..server.schemas import Asset, DataSource, Management, Revision
 from ..storage import (
     FileStorage,
     SQLStorage,
@@ -78,7 +78,7 @@ from ..storage import (
     parse_storage,
     register_storage,
 )
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -152,7 +152,7 @@ class RootNode:
         self.id = 0
         self.parent = None
         self.metadata_ = metadata or {}
-        self.specs = [Spec.model_validate(spec) for spec in specs or []]
+        self.specs = specs or []
         self.key = ""
         self.data_sources = None
         self.access_blob = top_level_access_blob or {}
@@ -239,7 +239,7 @@ class CatalogNodeAdapter:
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
-        self.specs = [Spec.model_validate(spec) for spec in node.specs]
+        self.specs = [Spec(**spec) for spec in node.specs]
         self.startup_tasks = [self.startup]
         if mount_path:
             self.startup_tasks.append(partial(self.create_mount, mount_path))
@@ -287,8 +287,12 @@ class CatalogNodeAdapter:
     def writable(self):
         return bool(self.context.writable_storage)
 
+    @property
+    def key(self):
+        return self.node.key
+
     def __repr__(self):
-        return f"<{type(self).__name__} {self.node.key}>"
+        return f"<{type(self).__name__} {self.key}>"
 
     async def __aiter__(self):
         statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
@@ -566,7 +570,7 @@ class CatalogNodeAdapter:
             parent=self.node.id,
             metadata_=metadata,
             structure_family=structure_family,
-            specs=[s.model_dump() for s in specs or []],
+            specs=specs or [],
             access_blob=access_blob,
         )
         async with self.context.session() as db:
@@ -681,7 +685,7 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            return key, type(self)(self.context, refreshed_node)
+            return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
         # Find an asset_id if it exists, otherwise create a new one
@@ -896,7 +900,7 @@ class CatalogNodeAdapter:
             # SQLAlchemy reserved word 'metadata'.
             values["metadata_"] = metadata
         if specs is not None:
-            values["specs"] = [s.model_dump() for s in specs]
+            values["specs"] = specs
         if access_blob is not None:
             values["access_blob"] = access_blob
         async with self.context.session() as db:

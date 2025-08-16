@@ -1241,7 +1241,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
             "container": _Wrap(Container),
-            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
+            ),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
             "awkward": _LazyLoad(("..awkward", Container.__module__), "AwkwardClient"),
             "dataframe": _LazyLoad(
@@ -1259,7 +1261,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "dask": OneShotCachedMap(
         {
             "container": _Wrap(Container),
-            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
+            ),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
             # TODO Create DaskAwkwardClient
             # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),

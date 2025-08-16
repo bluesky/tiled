@@ -7,7 +7,7 @@ from .container import LENGTH_CACHE_TTL, Container
 from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
 
 
-class Composite(Container):
+class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
@@ -98,7 +98,7 @@ class Composite(Container):
         self,
         keys: Optional[Union[str, Iterable[str]]] = None,
         external_only: bool = True,
-    ) -> "Composite":
+    ) -> "CompositeClient":
         """Delete the contents of this Composite node.
 
         Only constituent arrays or entire tables (with keys listed in `parts`)

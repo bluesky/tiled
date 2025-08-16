@@ -12,7 +12,7 @@ from typing_extensions import Annotated, TypedDict
 
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import STRUCTURE_TYPES, StructureFamily
+from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import Management
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
@@ -87,9 +87,9 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
-    name: Annotated[str, StringConstraints(max_length=255)]
-    version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
+# class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
+#     name: Annotated[str, StringConstraints(max_length=255)]
+#     version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
 
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
