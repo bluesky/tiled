@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar, Union
+from typing import Callable, List, Optional, Set, TypeVar, Union
 
 import anyio
 import packaging
@@ -39,17 +39,12 @@ from .. import __version__
 from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import Scopes
-from ..utils import (
-    BrokenLink,
-    SpecialUsers,
-    ensure_awaitable,
-    patch_mimetypes,
-    path_from_uri,
-)
+from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import (
     check_scopes,
+    get_current_access_tags,
     get_current_principal,
     get_current_scopes,
     get_session_state,
@@ -279,9 +274,10 @@ def get_router(
         max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:metadata"]),
         **filters,
@@ -290,6 +286,7 @@ def get_router(
             path,
             ["read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -368,9 +365,10 @@ def get_router(
         specs: bool = False,
         metadata: Optional[List[str]] = Query(default=[]),
         counts: bool = False,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:metadata"]),
         **filters,
@@ -379,6 +377,7 @@ def get_router(
             path,
             ["read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -417,9 +416,10 @@ def get_router(
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
         root_path: bool = Query(False),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:metadata"]),
     ):
@@ -428,6 +428,7 @@ def get_router(
             path,
             ["read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -477,9 +478,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -490,6 +492,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -566,9 +569,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -579,6 +583,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -643,9 +648,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -656,6 +662,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -705,9 +712,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -718,6 +726,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -798,9 +807,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -811,6 +821,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -839,9 +850,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -852,6 +864,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -921,7 +934,8 @@ def get_router(
     async def get_container_full(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
@@ -937,6 +951,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -948,6 +963,7 @@ def get_router(
             request=request,
             entry=entry,
             principal=principal,
+            authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
             field=field,
             format=format,
@@ -962,7 +978,8 @@ def get_router(
     async def post_container_full(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Body(None, min_length=1),
         format: Optional[str] = None,
@@ -978,6 +995,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -989,6 +1007,7 @@ def get_router(
             request=request,
             entry=entry,
             principal=principal,
+            authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
             field=field,
             format=format,
@@ -998,7 +1017,8 @@ def get_router(
     async def container_full(
         request: Request,
         entry,
-        principal: Union[Principal, SpecialUsers],
+        principal: Optional[Principal],
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
         field: Optional[List[str]],
         format: Optional[str],
@@ -1019,6 +1039,7 @@ def get_router(
             filter_for_access,
             access_policy=request.app.state.access_policy,
             principal=principal,
+            authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
             scopes=["read:data"],
             metrics=request.state.metrics,
@@ -1050,7 +1071,8 @@ def get_router(
     async def node_full(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         field: Optional[List[str]] = Query(None, min_length=1),
         format: Optional[str] = None,
@@ -1067,6 +1089,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1105,6 +1128,7 @@ def get_router(
                 filter_for_access,
                 access_policy=request.app.state.access_policy,
                 principal=principal,
+                authn_access_tags=authn_access_tags,
                 authn_scopes=authn_scopes,
                 scopes=["read:data"],
                 metrics=request.state.metrics,
@@ -1141,9 +1165,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1161,6 +1186,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1189,9 +1215,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1209,6 +1236,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1278,9 +1306,10 @@ def get_router(
         format: Optional[str] = None,
         filename: Optional[str] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -1291,6 +1320,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1338,7 +1368,8 @@ def get_router(
         path: str,
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1348,6 +1379,7 @@ def get_router(
             path,
             ["write:metadata", "create"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1373,6 +1405,7 @@ def get_router(
             settings=settings,
             entry=entry,
             principal=principal,
+            authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
         )
 
@@ -1382,7 +1415,8 @@ def get_router(
         path: str,
         body: schemas.PostMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1392,6 +1426,7 @@ def get_router(
             path,
             ["write:metadata", "create", "register"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1406,6 +1441,7 @@ def get_router(
             settings=settings,
             entry=entry,
             principal=principal,
+            authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
         )
 
@@ -1415,7 +1451,8 @@ def get_router(
         body: schemas.PostMetadataRequest,
         settings: Settings,
         entry,
-        principal: Union[Principal, SpecialUsers],
+        principal: Optional[Principal],
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
     ):
         metadata, structure_family, specs, access_blob = (
@@ -1439,7 +1476,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.init_node(
-                    principal, authn_scopes, access_blob=access_blob
+                    principal, authn_access_tags, authn_scopes, access_blob=access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1487,9 +1524,10 @@ def get_router(
         path: str,
         body: schemas.PutDataSourceRequest,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:metadata", "register"]),
     ):
@@ -1497,6 +1535,7 @@ def get_router(
             path,
             ["write:metadata", "register"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1520,9 +1559,10 @@ def get_router(
                 "affect any internally-managed data sources"
             ),
         ),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data", "write:metadata"]),
     ):
@@ -1530,6 +1570,7 @@ def get_router(
             path,
             ["write:data", "write:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1550,9 +1591,10 @@ def get_router(
     async def put_array_full(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1560,6 +1602,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1592,9 +1635,10 @@ def get_router(
         request: Request,
         path: str,
         block=Depends(block),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1602,6 +1646,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1640,9 +1685,10 @@ def get_router(
         offset=Depends(offset_param),
         shape=Depends(shape_param),
         extend: bool = False,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1650,6 +1696,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1676,9 +1723,10 @@ def get_router(
     async def put_node_full(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1686,6 +1734,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1712,9 +1761,10 @@ def get_router(
         partition: int,
         path: str,
         request: Request,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1722,6 +1772,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1748,9 +1799,10 @@ def get_router(
         partition: int,
         path: str,
         request: Request,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1758,6 +1810,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1783,9 +1836,10 @@ def get_router(
     async def put_awkward_full(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -1793,6 +1847,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1823,7 +1878,8 @@ def get_router(
         path: str,
         body: schemas.PatchMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         drop_revision: bool = False,
         root_tree=Depends(get_root_tree),
@@ -1834,6 +1890,7 @@ def get_router(
             path,
             ["write:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1906,7 +1963,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.modify_node(
-                    entry, principal, authn_scopes, access_blob
+                    entry, principal, authn_access_tags, authn_scopes, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -1938,7 +1995,8 @@ def get_router(
         path: str,
         body: schemas.PutMetadataRequest,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         drop_revision: bool = False,
         root_tree=Depends(get_root_tree),
@@ -1949,6 +2007,7 @@ def get_router(
             path,
             ["write:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -1986,7 +2045,7 @@ def get_router(
                     access_blob_modified,
                     access_blob,
                 ) = await request.app.state.access_policy.modify_node(
-                    entry, principal, authn_scopes, access_blob
+                    entry, principal, authn_access_tags, authn_scopes, access_blob
                 )
             except ValueError as e:
                 raise HTTPException(
@@ -2020,9 +2079,10 @@ def get_router(
         limit: Optional[int] = Query(
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:metadata"]),
     ):
@@ -2030,6 +2090,7 @@ def get_router(
             path,
             ["read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -2060,9 +2121,10 @@ def get_router(
         request: Request,
         path: str,
         number: int,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:metadata"]),
     ):
@@ -2070,6 +2132,7 @@ def get_router(
             path,
             ["write:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -2098,9 +2161,10 @@ def get_router(
         id: int,
         relative_path: Optional[Path] = None,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -2108,6 +2172,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -2210,9 +2275,10 @@ def get_router(
         path: str,
         id: int,
         settings: Settings = Depends(get_settings),
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
@@ -2220,6 +2286,7 @@ def get_router(
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,

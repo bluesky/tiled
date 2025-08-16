@@ -38,10 +38,13 @@ class JSONList(TypeDecorator):
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
-        # Make sure we don't get passed some iterable like a dict.
-        if not isinstance(value, list):
-            raise ValueError("JSONList must be given a literal `list` type.")
-        if value is not None:
+        if value is None:
+            # Allow None for columns that are nullable
+            return None
+        else:
+            # Make sure we don't get passed some iterable like a dict.
+            if not isinstance(value, list):
+                raise ValueError("JSONList must be given a literal `list` type.")
             value = json.dumps(value)
         return value
 
@@ -186,6 +189,7 @@ class APIKey(Timestamped, Base):
     note = Column(Unicode(1023), nullable=True)
     principal_id = Column(Integer, ForeignKey("principals.id"), nullable=False)
     scopes = Column(JSONList(511), nullable=False)
+    access_tags = Column(JSONList(511), nullable=True)
     # In the future we could make it possible to disable API keys
     # without deleting them from the database, for forensics and
     # record-keeping.

@@ -5,6 +5,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b34 (2025-08-14)
 
+### Changed
+
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+
 ### Fixed
 
 - In the previous release, v0.1.0-b32, a catalog database migration script (for
@@ -38,6 +42,14 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - Refactored internal Zarr version detection
 - For compatibility with older clients, do not require metadata updates to include
   an `access_blob` in the body of the request.
+
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+
+### Changed
+
+- Access control code is now in the `access_control` subdirectory
 
 ### Fixed
 

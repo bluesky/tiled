@@ -7,7 +7,11 @@ import time
 
 import numpy
 import pytest
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_403_FORBIDDEN,
+)
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
@@ -419,7 +423,7 @@ def test_api_key_scopes(enter_username_password, config):
         with enter_username_password("bob", "secret2"):
             context.authenticate()
         # Try to request a key with more scopes that the user has.
-        with fail_with_status_code(HTTP_400_BAD_REQUEST):
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
             context.create_api_key(scopes=["admin:apikeys"])
         # Request a key with reduced scope that can *only* read metadata.
         metadata_key_info = context.create_api_key(scopes=["read:metadata"])
@@ -613,7 +617,7 @@ def test_admin_api_key_any_principal_exceeds_scopes(
             context.authenticate()
 
         principal_uuid = principals_context["uuid"]["bob"]
-        with fail_with_status_code(HTTP_400_BAD_REQUEST) as fail_info:
+        with fail_with_status_code(HTTP_403_FORBIDDEN) as fail_info:
             context.admin.create_api_key(principal_uuid, scopes=["read:principals"])
         fail_message = " must be a subset of the principal's scopes "
         assert fail_message in fail_info.value.response.text
