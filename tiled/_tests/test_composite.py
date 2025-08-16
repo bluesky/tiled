@@ -15,6 +15,7 @@ from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
+from ..utils import ensure_uri
 from .utils import fail_with_status_code
 
 rng = numpy.random.default_rng(12345)
@@ -148,7 +149,7 @@ def csv_file(tmp_path_factory):
 def tiff_data_source(tiff_sequence):
     tiff_assets = [
         Asset(
-            data_uri=f"file://localhost/{fpath}",
+            data_uri=ensure_uri(fpath),
             is_directory=False,
             parameter="data_uris",
             num=i + 1,
@@ -173,7 +174,7 @@ def tiff_data_source(tiff_sequence):
 def csv_data_source(csv_file):
     csv_assets = [
         Asset(
-            data_uri=f"file://localhost/{csv_file}",
+            data_uri=ensure_uri(csv_file),
             is_directory=False,
             parameter="data_uris",
         )
