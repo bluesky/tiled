@@ -47,6 +47,86 @@ server_config = {
     },
 }
 
+access_tag_config = {
+    "roles": {
+        "facility_admin": {
+            "scopes": [
+                "read:data",
+                "read:metadata",
+                "write:data",
+                "write:metadata",
+                "create",
+                "register",
+            ]
+        }
+    },
+    "tags": {
+        "alice_tag": {
+            "users": [
+                {
+                    "name": "alice",
+                    "role": "facility_admin",
+                },
+            ],
+        },
+        "chemists_tag": {
+            "users": [
+                {
+                    "name": "sue",
+                    "scopes": ["write:data", "write:metadata"],
+                },
+            ],
+            "groups": [
+                {
+                    "name": "chemists",
+                    "scopes": ["read:data", "read:metadata"],
+                },
+            ],
+            "auto_tags": [
+                {
+                    "name": "alice_tag",
+                },
+            ],
+        },
+        "physicists_tag": {
+            "groups": [
+                {
+                    "name": "physicists",
+                    "role": "facility_admin",
+                },
+            ],
+        },
+    },
+    "tag_owners": {
+        "alice_tag": {
+            "users": [
+                {
+                    "name": "alice",
+                },
+            ],
+        },
+        "chemists_tag": {
+            "users": [
+                {
+                    "name": "sue",
+                },
+            ],
+            "groups": [
+                {
+                    "name": "chemists",
+                },
+            ],
+        },
+        "physicists_tag": {
+            "groups": [
+                {
+                    "name": "physicists",
+                },
+            ],
+        },
+    },
+}
+
 
 def group_parser(groupname):
     return {
@@ -58,86 +138,6 @@ def group_parser(groupname):
 
 @pytest.fixture(scope="module")
 def compile_access_tags_db():
-    access_tag_config = {
-        "roles": {
-            "facility_admin": {
-                "scopes": [
-                    "read:data",
-                    "read:metadata",
-                    "write:data",
-                    "write:metadata",
-                    "create",
-                    "register",
-                ]
-            }
-        },
-        "tags": {
-            "alice_tag": {
-                "users": [
-                    {
-                        "name": "alice",
-                        "role": "facility_admin",
-                    },
-                ],
-            },
-            "chemists_tag": {
-                "users": [
-                    {
-                        "name": "sue",
-                        "scopes": ["write:data", "write:metadata"],
-                    },
-                ],
-                "groups": [
-                    {
-                        "name": "chemists",
-                        "scopes": ["read:data", "read:metadata"],
-                    },
-                ],
-                "auto_tags": [
-                    {
-                        "name": "alice_tag",
-                    },
-                ],
-            },
-            "physicists_tag": {
-                "groups": [
-                    {
-                        "name": "physicists",
-                        "role": "facility_admin",
-                    },
-                ],
-            },
-        },
-        "tag_owners": {
-            "alice_tag": {
-                "users": [
-                    {
-                        "name": "alice",
-                    },
-                ],
-            },
-            "chemists_tag": {
-                "users": [
-                    {
-                        "name": "sue",
-                    },
-                ],
-                "groups": [
-                    {
-                        "name": "chemists",
-                    },
-                ],
-            },
-            "physicists_tag": {
-                "groups": [
-                    {
-                        "name": "physicists",
-                    },
-                ],
-            },
-        },
-    }
-
     access_tags_compiler = AccessTagsCompiler(
         ALL_SCOPES,
         access_tag_config,
@@ -198,16 +198,22 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
     contexts = []
     clients = {}
 
-    def _create_and_login_context(username, password):
+    def _create_and_login_context(username, password=None, api_key=None):
+        if not any([password, api_key]):
+            raise ValueError("Please provide either 'password' or 'api_key' for auth")
+
         if client := clients.get(username, None):
             return client
         app = build_app_from_config(config)
-        context = Context.from_app(app, uri=f"http://local-tiled-app-{username}/api/v1")
+        context = Context.from_app(
+            app, uri=f"http://local-tiled-app-{username}/api/v1", api_key=api_key
+        )
         contexts.append(context)
         client = from_context(context, remember_me=False)
         clients[username] = client
-        with enter_username_password(username, password):
-            client.context.login(remember_me=False)
+        if api_key is None:
+            with enter_username_password(username, password):
+                client.context.login(remember_me=False)
         return client
 
     admin_client = _create_and_login_context("admin", "admin")
@@ -453,3 +459,81 @@ def test_empty_access_blob_access_control(access_control_test_context_factory):
         assert data not in alice_client[top]
         with pytest.raises(KeyError):
             alice_client[top][data]
+
+
+def test_apikey_auth_access_control(access_control_test_context_factory):
+    """
+    Test access when authenticated by an API key, including:
+    - Allow basic access with an API key that is not tag-restricted
+    - Disallow access to tags that are not added to a tag-restricted API key
+    - Allow access to tags that are added to a tag-restricted API key
+    - User-owned node access/writing is blocked when using a tag-restricted API key
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    alice_apikey_info = alice_client.context.create_api_key()
+    alice_client.logout()
+    alice_client.context.api_key = alice_apikey_info["secret"]
+
+    top = "foo"
+    for data in ["data_A"]:
+        assert data in alice_client[top]
+        alice_client[top][data]
+
+    top = "bar"
+    alice_client[top].write_array(arr, key="data_O")
+
+    alice_apikey_info = alice_client.context.create_api_key(
+        access_tags=["chemists_tag"]
+    )
+    alice_client.context.api_key = alice_apikey_info["secret"]
+
+    top = "bar"
+    for data in ["data_A"]:
+        assert data not in alice_client[top]
+        with pytest.raises(KeyError):
+            alice_client[top][data]
+    for data in ["data_B"]:
+        assert data in alice_client[top]
+        alice_client[top][data]
+    for data in ["data_O"]:
+        assert data not in alice_client[top]
+        with pytest.raises(KeyError):
+            alice_client[top][data]
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        alice_client[top].write_array(arr, key="data_P")
+
+
+def test_service_principal_access_control(
+    access_control_test_context_factory, compile_access_tags_db
+):
+    """
+    Test that access control works for service principals.
+    Creates a service principal and updates the access tag config to
+      add this prinicpal to a tag.
+    """
+    admin_client = access_control_test_context_factory("admin", "admin")
+    sp = admin_client.context.admin.create_service_principal("user")
+    sp_apikey_info = admin_client.context.admin.create_api_key(sp["uuid"])
+    sp_client = access_control_test_context_factory(
+        sp["uuid"], api_key=sp_apikey_info["secret"]
+    )
+
+    access_tag_config["tags"]["physicists_tag"].update(
+        {"users": [{"name": sp["uuid"], "role": "facility_admin"}]}
+    )
+    access_tag_config["tag_owners"]["physicists_tag"].update(
+        {"users": [{"name": sp["uuid"]}]}
+    )
+    access_tags_compiler = compile_access_tags_db
+    access_tags_compiler.load_tag_config()
+    access_tags_compiler.recompile()
+
+    top = "baz"
+    for data in ["data_A"]:
+        assert data not in sp_client[top]
+        with pytest.raises(KeyError):
+            sp_client[top][data]
+    for data in ["data_N"]:
+        sp_client[top].write_array(arr, key=data, access_tags=["physicists_tag"])
+        assert data in sp_client[top]
+        sp_client[top][data]

@@ -311,9 +311,9 @@ class TagBasedAccessPolicy:
                         continue
                     if identifier is not None:
                         tag_scopes = await self.get_scopes_from_tag(tag, identifier)
-                    allowed.update(
-                        tag_scopes if tag_scopes.issubset(self.scopes) else set()
-                    )
+                        allowed.update(
+                            tag_scopes if tag_scopes.issubset(self.scopes) else set()
+                        )
 
         return allowed
 
