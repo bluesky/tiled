@@ -27,11 +27,11 @@ class QueryRegistry:
         self._query_type_to_name = {}
 
     @property
-    def name_to_query_type(self):
+    def name_to_query_type(self) -> DictView[Any, Any]:
         return DictView(self._name_to_query_type_type)
 
     @property
-    def query_type_to_name(self):
+    def query_type_to_name(self) -> DictView[Any, Any]:
         return DictView(self._query_type_to_name)
 
     def register(self, name=None, overwrite=False, must_revalidate=True):

@@ -44,7 +44,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
     @classmethod
-    def _discover_entrypoints(cls, entrypoint_name):
+    def _discover_entrypoints(cls, entrypoint_name) -> OneShotCachedMap[str, Any]:
         return OneShotCachedMap(
             {
                 name: entrypoint.load
