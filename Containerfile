@@ -6,7 +6,8 @@ RUN set -ex && npm install && npm run build
 
 ##########################################################################
 
-FROM docker.io/ubuntu:noble AS app_build
+# This stage doubles as setting up for the build and as the devcontainer
+FROM docker.io/ubuntu:noble AS developer
 ARG PYTHON_VERSION=3.12
 
 # Ensure apt-get doesn't open a menu on you.
@@ -41,6 +42,11 @@ ENV UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/app \
     TILED_BUILD_SKIP_UI=1
 
+# Using a subdirectory as the workdir allows mounting source of
+# dependencies into the devcontainer when they are sibling
+# directories to the local checkout
+WORKDIR /workspaces/tiled
+
 # Synchronize DEPENDENCIES without the application itself.
 # This layer is cached until the build changes: changes to the
 # application will run require rerunning this step.
@@ -51,10 +57,12 @@ RUN set -ex && \
         --no-dev \
         --no-install-project
 
-# Now install the rest from `/src`: The APPLICATION w/o dependencies.
-# `/src` will NOT be copied into the runtime container.
-COPY . /src
-WORKDIR /src
+# Now install the rest from `./src`: The APPLICATION w/o dependencies.
+# `./src` will NOT be copied into the runtime container.
+COPY . src
+
+##########################################################################
+FROM developer as app_build
 RUN set -ex && \
     uv sync \
         --extra server \
