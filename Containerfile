@@ -64,7 +64,7 @@ COPY . src
 
 ##########################################################################
 
-FROM developer as app_build
+FROM developer AS app_build
 RUN set -ex && \
     uv sync \
         --extra server \
