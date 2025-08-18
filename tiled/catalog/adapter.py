@@ -350,8 +350,13 @@ class CatalogNodeAdapter:
 
     async def exact_len(self):
         "Get the exact number of child nodes."
-        statement = select(func.count()).filter(orm.Node.parent == self.node.id)
+        statement = (
+            select(func.count())
+            .select_from(orm.Node)
+            .filter(orm.Node.parent == self.node.id)
+        )
         statement = self.apply_conditions(statement)
+
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
@@ -405,6 +410,7 @@ class CatalogNodeAdapter:
 
         limited = (
             select(literal(1))
+            .select_from(orm.Node)
             .where(orm.Node.parent == self.node.id)
             .limit(threshold + 1)
         )
