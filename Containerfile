@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.9
+ARG PYTHON_VERSION=3.12
 FROM docker.io/node:22-alpine AS web_frontend_build
 WORKDIR /src
 COPY web-frontend .
@@ -7,7 +8,7 @@ RUN set -ex && npm install && npm run build
 ##########################################################################
 
 # This stage doubles as setting up for the build and as the devcontainer
-FROM docker.io/ubuntu:noble AS developer
+FROM docker.io/python:${PYTHON_VERSION} AS developer
 ARG PYTHON_VERSION=3.12
 
 # Ensure apt-get doesn't open a menu on you.
@@ -62,6 +63,7 @@ RUN set -ex && \
 COPY . src
 
 ##########################################################################
+
 FROM developer as app_build
 RUN set -ex && \
     uv sync \
@@ -73,7 +75,7 @@ RUN set -ex && \
 
 ##########################################################################
 
-FROM docker.io/ubuntu:noble as app_runtime
+FROM docker.io/python:${PYTHON_VERSION}-slim AS app_runtime
 ARG PYTHON_VERSION=3.12
 
 # Add the application virtualenv to search path.
