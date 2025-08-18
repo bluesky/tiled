@@ -47,6 +47,7 @@ pandas = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 
 [feature.dev.dependencies]
+aiohttp = "*"
 coverage = "*"
 flake8 = "*"
 ipython = "*"
@@ -65,7 +66,6 @@ sphinx-click = "*"
 sphinx-copybutton = "*"
 sphinx_rtd_theme = "*"
 sphinxcontrib-mermaid = "*"
-aiohttp = ">=3.12.15,<4"
 
 [feature.formats.dependencies]
 h5netcdf = "*"
