@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The project ships with a pixi manifest (`pixi.toml`).
+
 ## v0.1.0-b34 (2025-08-14)
 
 ### Fixed
