@@ -5,7 +5,7 @@
 		"dockerfile": "../Containerfile",
 		"target": "developer",
 		"args": {
-			"PYTHON_VERSION": "3.9"
+			"PYTHON_VERSION": "3.12"
 		}
 	},
 	"containerEnv": {
@@ -14,11 +14,11 @@
 	"features": {
 		"ghcr.io/devcontainers/features/git:1": {}
 	},
-	"postCreateCommand": "pip install $([ -f dev-requirements.txt ] && echo '-c dev-requirements.txt') -e '.[all,dev]' && pre-commit install",
+	"postCreateCommand": "set -ex && uv sync --extra all --extra dev",
 	"customizations": {
 		"vscode": {
 			"settings": {
-				"python.defaultInterpreterPath": "/opt/venv/bin/python"
+				"python.defaultInterpreterPath": "/app/bin/python"
 			},
 			"extensions": [
 				"ms-python.python",
