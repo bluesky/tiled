@@ -67,20 +67,20 @@ MAX_PAGE_SIZE = 300
 APPROX_LEN_THRESHOLD = 5000
 
 
-async def len_or_approx(tree):
+async def len_or_approx(tree, exact=False):
     """
     Prefer approximate length if implemented. (It's cheaper.)
     """
 
     # First, try to get a lower bound on the length
-    if hasattr(tree, "lbound_len"):
+    if hasattr(tree, "lbound_len") and not exact:
         lbound = await tree.lbound_len(threshold=APPROX_LEN_THRESHOLD)
         if lbound <= APPROX_LEN_THRESHOLD:
             # This is the exact length
             return lbound
 
     # If we have a lower bound, then we can try to get an approximate length
-    if hasattr(tree, "approx_len"):
+    if hasattr(tree, "approx_len") and not exact:
         approx = await tree.approx_len()
         if approx is not None:
             return approx
@@ -89,10 +89,13 @@ async def len_or_approx(tree):
     if hasattr(tree, "exact_len"):
         return await tree.exact_len()
 
-    # If the tree does not implement any of these, use the sync length
+    # If the tree does not implement any of these, use the sync length (or hint)
     try:
-        return await anyio.to_thread.run_sync(operator.length_hint, tree)
+        if not exact:
+            return await anyio.to_thread.run_sync(operator.length_hint, tree)
     except TypeError:
+        pass
+    finally:
         return await anyio.to_thread.run_sync(len, tree)
 
 
@@ -225,26 +228,33 @@ async def construct_entries_response(
     media_type,
     max_depth,
 ):
+    "Construct response for the `/search` endpoint"
+
     path_parts = [segment for segment in path.split("/") if segment]
     tree = await apply_search(tree, filters, query_registry)
     tree = apply_sort(tree, sort)
 
-    count = await len_or_approx(tree)
+    count = await len_or_approx(tree, exact=(schemas.EntryFields.count in fields))
     links = pagination_links(base_url, route, path_parts, offset, limit, count)
     data = []
-    if fields != [schemas.EntryFields.none]:
-        # Pull a page of items into memory.
-        if hasattr(tree, "items_range"):
-            items = await tree.items_range(offset, limit)
-        else:
-            items = tree.items()[offset : offset + limit]  # noqa: E203
-    else:
+
+    if fields == [schemas.EntryFields.none]:
         # Pull a page of just the keys, which is cheaper.
         if hasattr(tree, "keys_range"):
             keys = await tree.keys_range(offset, limit)
         else:
             keys = tree.keys()[offset : offset + limit]  # noqa: E203
         items = [(key, None) for key in keys]
+    elif fields == [schemas.EntryFields.count]:
+        # Only count is requested, so we do not need to pull any items.
+        items = []
+    else:
+        # Pull the entire page of full items into memory.
+        if hasattr(tree, "items_range"):
+            items = await tree.items_range(offset, limit)
+        else:
+            items = tree.items()[offset : offset + limit]  # noqa: E203
+
     # This value will not leak out. It just used to seed comparisons.
     metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
@@ -463,7 +473,12 @@ async def construct_resource(
     }:
         attributes["structure_family"] = entry.structure_family
 
-        if schemas.EntryFields.structure in fields:
+        if (
+            schemas.EntryFields.structure in fields
+            or schemas.EntryFields.count in fields
+        ):
+            do_exact_count = schemas.EntryFields.count in fields
+            count = await len_or_approx(entry, exact=do_exact_count)
             if (
                 ((max_depth is None) or (depth < max_depth))
                 and hasattr(entry, "inlined_contents_enabled")
@@ -472,28 +487,26 @@ async def construct_resource(
             ):
                 # This node wants us to inline its contents.
                 # First check that it is not too large.
-                est_count = await len_or_approx(entry)
-                if est_count > INLINED_CONTENTS_LIMIT:
+                if count > INLINED_CONTENTS_LIMIT:
                     # Too large: do not inline its contents.
-                    count = est_count
                     contents = None
                 else:
                     contents = {}
                     # The size may change as we are walking the entry.
-                    # Keep a *true* count separately from est_count.
+                    # Get a new *true* count.
                     count = 0
                     for key in entry.keys():
                         count += 1
                         if count > INLINED_CONTENTS_LIMIT:
-                            # The est_count was inaccurate or else the entry has grown
+                            # The estimated count was inaccurate or else the entry has grown
                             # new children while we are walking it. Too large!
-                            count = await len_or_approx(entry)
+                            count = await len_or_approx(entry, exact=do_exact_count)
                             contents = None
                             break
                         try:
                             adapter = entry[key]
                         except BrokenLink:
-                            # If there are any broken links, just list the keys
+                            # If there are any broken links (e.g. in HDF5), just keep the key
                             contents[key] = None
                             continue
 
@@ -510,13 +523,12 @@ async def construct_resource(
                             depth=1 + depth,
                         )
             else:
-                count = await len_or_approx(entry)
                 contents = None
-            structure = schemas.NodeStructure(
+            attributes["structure"] = schemas.NodeStructure(
                 count=count,
                 contents=contents,
             )
-            attributes["structure"] = structure
+
         if schemas.EntryFields.sorting in fields:
             if hasattr(entry, "sorting"):
                 # HUGE HACK
@@ -562,11 +574,10 @@ async def construct_resource(
                     path_str,
                 )
             )
-            structure = asdict(entry.structure())
             if schemas.EntryFields.structure_family in fields:
                 attributes["structure_family"] = entry.structure_family
             if schemas.EntryFields.structure in fields:
-                attributes["structure"] = structure
+                attributes["structure"] = asdict(entry.structure())
 
         else:
             # We only have entry names, not structure_family, so
