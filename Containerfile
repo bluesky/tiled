@@ -24,8 +24,7 @@ apt-get install -qyy \
     -o APT::Install-Suggests=false \
     build-essential \
     ca-certificates \
-    gcc \
-    python${PYTHON_VERSION}-dev
+    gcc
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
@@ -96,8 +95,7 @@ apt-get update -qy && \
 apt-get install -qyy \
     -o APT::Install-Recommends=false \
     -o APT::Install-Suggests=false \
-    curl \
-    python${PYTHON_VERSION} && \
+    curl && \
 apt-get clean && \
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
