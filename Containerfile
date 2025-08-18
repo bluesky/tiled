@@ -66,6 +66,7 @@ COPY . src
 FROM developer AS app_build
 RUN set -ex && \
     uv sync \
+        --project src \
         --extra server \
         # Add httpie as a developer convenience.
         # --with httpie \
