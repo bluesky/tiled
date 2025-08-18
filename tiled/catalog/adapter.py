@@ -348,9 +348,7 @@ class CatalogNodeAdapter:
         return statement
 
     async def async_len(self):
-        statement = select(func.count(orm.Node.key)).filter(
-            orm.Node.parent == self.node.id
-        )
+        statement = select(func.count()).filter(orm.Node.parent == self.node.id)
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
