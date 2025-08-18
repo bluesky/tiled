@@ -64,14 +64,32 @@ DEPTH_LIMIT = 5
 
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
+APPROX_LEN_THRESHOLD = 5000
 
 
 async def len_or_approx(tree):
     """
     Prefer approximate length if implemented. (It's cheaper.)
     """
-    if hasattr(tree, "async_len"):
-        return await tree.async_len()
+
+    # First, try to get a lower bound on the length
+    if hasattr(tree, "lbound_len"):
+        lbound = await tree.lbound_len(threshold=APPROX_LEN_THRESHOLD)
+        if lbound <= APPROX_LEN_THRESHOLD:
+            # This is the exact length
+            return lbound
+
+    # If we have a lower bound, then we can try to get an approximate length
+    if hasattr(tree, "approx_len"):
+        approx = await tree.approx_len()
+        if approx is not None:
+            return approx
+
+    # If we have neither, fall back to the exact length
+    if hasattr(tree, "exact_len"):
+        return await tree.exact_len()
+
+    # If the tree does not implement any of these, use the sync length
     try:
         return await anyio.to_thread.run_sync(operator.length_hint, tree)
     except TypeError:
