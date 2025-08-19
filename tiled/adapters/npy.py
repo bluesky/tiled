@@ -4,12 +4,12 @@ from typing import Any, List, Optional, Tuple, Union
 import numpy
 from numpy._typing import NDArray
 
-from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -18,7 +18,7 @@ from .sequence import FileSequenceAdapter
 from .utils import init_adapter_from_catalog
 
 
-class NPYAdapter(ArrayAdapter):
+class NPYAdapter(Adapter[ArrayStructure]):
     """
     Read the Numpy on-disk format, NPY (.npy).
 
@@ -27,6 +27,8 @@ class NPYAdapter(ArrayAdapter):
 
     >>> NPYAdapter("path/to/file.npy")
     """
+
+    structure_family = StructureFamily.array
 
     def __init__(
         self,
