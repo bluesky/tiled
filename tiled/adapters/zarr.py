@@ -274,7 +274,7 @@ class ZarrGroupAdapter(
         """
         self._node = node
         super().__init__(
-            structure=ContainerStructure(keys=self.keys()),
+            structure=ContainerStructure(keys=list(self.keys())),
             metadata=metadata,
             specs=specs,
         )
