@@ -1747,7 +1747,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
-    redis_settings=None,
+    cache_settings=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1797,27 +1797,27 @@ def from_uri(
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    
-    if redis_settings:
-        from redis import asyncio as redis
 
-        redis_client = redis.from_url(redis_settings["uri"])
-        redis_ttl = redis_settings.get("ttl", 3600)
-    else:
-        redis_client = None
-        redis_ttl = 0
-    
+    cache_client = None
+    cache_ttl = 0
+    if cache_settings:
+        if cache_settings["uri"].startswith("redis"):
+            from redis import asyncio as redis
+
+            cache_client = redis.from_url(cache_settings["uri"])
+            cache_ttl = cache_settings.get("ttl", 3600)
+
     context = Context(
-        engine, 
-        writable_storage, 
-        readable_storage, 
-        adapters_by_mimetype, 
-        redis_client, 
-        redis_ttl
+        engine,
+        writable_storage,
+        readable_storage,
+        adapters_by_mimetype,
+        cache_client,
+        cache_ttl,
     )
-    
+
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
-    
+
     return adapter
 
 
