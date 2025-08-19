@@ -66,7 +66,7 @@ def buffer():
 
 
 @pytest.fixture(scope="function")
-def buffer_factory(request):
+def buffer_factory():
     buffers = []
 
     def _buffer():
@@ -74,12 +74,10 @@ def buffer_factory(request):
         buffers.append(buf)
         return buf
 
-    def teardown():
-        for buf in buffers:
-            buf.close()
+    yield _buffer
 
-    request.addfinalizer(teardown)
-    return _buffer
+    for buf in buffers:
+        buf.close()
 
 
 @pytest.fixture
