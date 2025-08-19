@@ -79,6 +79,17 @@ async def filter_for_access(
 ):
     if access_policy is not None and hasattr(entry, "search"):
         with record_timing(metrics, "acl"):
+            if hasattr(entry, "lookup_adapter") and entry.node.parent is None:
+                # This conditional only catches for the MapAdapter->CatalogAdapter
+                # transition, to cover MapAdapter's lack of access control.
+                # It can be removed once MapAdapter goes away.
+                if not set(scopes).issubset(
+                    await access_policy.allowed_scopes(
+                        entry, principal, authn_access_tags, authn_scopes
+                    )
+                ):
+                    return (entry := EMPTY_NODE)
+
             queries = await access_policy.filters(
                 entry, principal, authn_access_tags, authn_scopes, set(scopes)
             )
