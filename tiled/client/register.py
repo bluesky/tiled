@@ -254,6 +254,7 @@ async def one_node_per_item(
     unhandled_files = []
     unhandled_directories = []
     for file in files:
+        print(file)
         result = await register_single_item(
             node,
             file,

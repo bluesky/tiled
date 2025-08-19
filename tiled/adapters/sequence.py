@@ -13,7 +13,7 @@ from tiled.adapters.core import Adapter
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import Spec
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON, EllipsisType
 from ..utils import path_from_uri
@@ -69,6 +69,8 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
 
     When subclassing, define the `_load_from_files` method specific for a particular file type.
     """
+
+    structure_family = StructureFamily.array
 
     def __init__(
         self,

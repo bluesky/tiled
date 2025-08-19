@@ -100,7 +100,7 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
         self.entries_stale_after = entries_stale_after
         self.metadata_stale_after = metadata_stale_after
         super().__init__(
-            structure=ContainerStructure(keys=self._mapping.keys()),
+            structure=ContainerStructure(keys=list(self._mapping.keys())),
             metadata=metadata,
             specs=specs,
         )

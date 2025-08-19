@@ -24,6 +24,8 @@ from .utils import init_adapter_from_catalog
 class CSVAdapter(Adapter[TableStructure]):
     """Adapter for tabular data stored as partitioned text (csv) files"""
 
+    structure_family = StructureFamily.table
+
     def __init__(
         self,
         data_uris: Iterable[str],

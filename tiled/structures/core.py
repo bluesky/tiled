@@ -61,5 +61,8 @@ STRUCTURE_TYPES = OneShotCachedMap(
         StructureFamily.sparse: lambda: importlib.import_module(
             "...structures.sparse", StructureFamily.__module__
         ).SparseStructure,
+        StructureFamily.container: lambda: importlib.import_module(
+            "...structures.container", StructureFamily.__module__
+        ).ContainerStructure,
     }
 )
