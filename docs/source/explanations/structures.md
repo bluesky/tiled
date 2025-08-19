@@ -333,7 +333,7 @@ a separate request to fetch information about each child node.
 }
 ```
 
-The representation of Containers, like other Tiled structures, can be customized 
+The representation of Containers, like other Tiled structures, can be customized
 using the mechanism of specs.
 
 #### Special Case 1. Xarray
