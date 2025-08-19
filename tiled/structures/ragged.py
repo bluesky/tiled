@@ -12,22 +12,17 @@ class RaggedStructure(ArrayStructure):
 
     @classmethod
     def from_array(cls, array, shape=None, chunks=None, dims=None) -> "RaggedStructure":
-        from dask.array.core import normalize_chunks
-
-        # TODO: test, or implement conversion from, AwkwardArrays
-        array = ragged.asarray(array)
+        array = (
+            ragged.asarray(array.tolist())
+            if hasattr(array, "tolist")
+            else ragged.array(list(array))
+        )
 
         if shape is None:
             shape = array.shape
         if chunks is None:
             chunks = ("auto",) * len(shape)
 
-        # TODO test chunking: I think this should default to the largest superset of "shapes"
-        normalized_chunks = normalize_chunks(
-            chunks,
-            shape=shape,
-            dtype=array.dtype,
-        )
         if array.dtype.fields is not None:
             data_type = StructDtype.from_numpy_dtype(array.dtype)
         else:
@@ -35,7 +30,7 @@ class RaggedStructure(ArrayStructure):
 
         return cls(
             data_type=data_type,
-            chunks=normalized_chunks,
+            chunks=chunks,
             shape=shape,
             dims=dims,
             resizable=False,
