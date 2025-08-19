@@ -13,10 +13,27 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b36 (2025-08-26)
 
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+- API keys can now be restricted to specific access tags
+- New unit tests covering the new access policy and access control features
+
 ### Changed
 
 - Demoted the `Composite` structure family to `composite` spec.
 - Typehint utils collection implementations
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+- Access control code is now in the `access_control` subdirectory
+- `SimpleAccessPolicy` has been removed
+- AuthN database can now be in-memory SQLite
+- Catalog database can now be shared when using in-memory SQLite
+- `TagBasedAccessPolicy` now supports anonymous access
+- `AccessTagsParser` is now async
+
+### Fixed
+
+- Access control on container export was partially broken, now access works as expected.
 
 
 ## v0.1.0-b35 (2025-08-20)
@@ -29,7 +46,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - The project ships with a pixi manifest (`pixi.toml`).
 
-
 ## v0.1.0-b34 (2025-08-14)
 
 ### Fixed
@@ -40,7 +56,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   database correct but unchanged. This release repairs the migration script; it
   should be re-run on any databases that could not be upgraded with the previous
   release.
-
 
 ## v0.1.0-b33 (2025-08-13)
 
@@ -66,14 +81,6 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - Refactored internal Zarr version detection
 - For compatibility with older clients, do not require metadata updates to include
   an `access_blob` in the body of the request.
-
-### Added
-
-- The access tags compiler and db schema have been upstreamed into Tiled
-
-### Changed
-
-- Access control code is now in the `access_control` subdirectory
 
 ### Fixed
 
