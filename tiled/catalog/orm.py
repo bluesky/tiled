@@ -362,8 +362,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob, is_streaming)
+SELECT 0, '', NULL, 'container', '{}', '[]', '{}', false;
 """
         )
     )
