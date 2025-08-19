@@ -86,7 +86,7 @@ class CompositeClient(Container):
         else:
             raise KeyError(
                 f"Key '{key}' not found. If it refers to a table, access it via "
-                "the base Container client using `.base['{key}']` instead."
+                f"the base Container client using `.base['{key}']` instead."
             )
 
         return super().__getitem__(key, _ignore_inlined_contents)
