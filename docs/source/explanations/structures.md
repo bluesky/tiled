@@ -11,7 +11,6 @@ The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * awkward --- nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
-* composite --- a container-like structure to combine table columns and arrays in a common namespace
 * container --- a of other structures, akin to a dictionary or a directory
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
 * table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
@@ -334,6 +333,11 @@ a separate request to fetch information about each child node.
 }
 ```
 
+The representation of Containers, like other Tiled structures, can be customized
+using the mechanism of specs.
+
+#### Special Case 1. Xarray
+
 In certain cases, it is efficient to in-line all the information about the
 container's contents (their metadata, structure, and more) in a single
 response.
@@ -577,11 +581,11 @@ response.
 }
 ```
 
-### Composite
+#### Special Case 2. Composite
 
-This is a specialized container-like structure designed to link together multiple tables and arrays that store
-related scientific data. It does not support nesting but provides a common namespace across all columns of the
-contained tables along with the arrays (thus, name collisions are forbidden). This allows to further abstract out
+Composite is is a specialized container-like structure designed to link together multiple tables and arrays that
+store related scientific data. It does not support nesting but provides a common namespace across all columns of
+the contained tables and arrays (thus, name collisions are forbidden). This allows to further abstract out
 the disparate internal storage mechanisms (e.g. Parquet for tables and zarr for arrays) and present the user with a
 smooth homogeneous interface for data access. Composite structures do not support pagination and are not
 recommended for "wide" datasets with more than ~1000 items (columns and arrays) in the namespace.

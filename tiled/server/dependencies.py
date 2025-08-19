@@ -54,7 +54,6 @@ async def get_entry(
         authn_scopes,
         ["read:metadata"],
         metrics,
-        # request.state.metrics,
     )
     try:
         for i, segment in enumerate(path_parts):

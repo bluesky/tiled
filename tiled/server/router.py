@@ -294,17 +294,10 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            None,
+            {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         request.state.endpoint = "search"
-        if entry.structure_family not in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
-            raise WrongTypeForRoute(
-                "This is not a Node; it cannot be searched or listed."
-            )
         try:
             (
                 resource,
@@ -941,7 +934,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.container, StructureFamily.composite},
+            {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         return await container_full(
@@ -982,7 +975,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.container, StructureFamily.composite},
+            {StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         return await container_full(
@@ -1071,11 +1064,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {
-                StructureFamily.table,
-                StructureFamily.container,
-                StructureFamily.composite,
-            },
+            {StructureFamily.table, StructureFamily.container},
             getattr(request.app.state, "access_policy", None),
         )
         try:
@@ -1097,10 +1086,7 @@ def get_router(
                     "request a smaller chunks."
                 ),
             )
-        if entry.structure_family in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if entry.structure_family == StructureFamily.container:
             curried_filter = partial(
                 filter_for_access,
                 access_policy=request.app.state.access_policy,
@@ -1424,12 +1410,22 @@ def get_router(
             body.specs,
             body.access_blob,
         )
-        if structure_family in {StructureFamily.container, StructureFamily.composite}:
+        if structure_family == StructureFamily.container:
             structure = None
         else:
             if len(body.data_sources) != 1:
                 raise NotImplementedError
             structure = body.data_sources[0].structure
+
+        key = body.id or entry.context.key_maker()
+        metadata_modified, metadata = await validate_specs(
+            specs=specs,
+            metadata=metadata,
+            entry=None,  # the node doesn't exist yet
+            structure_family=structure_family,
+            structure=structure,
+            settings=settings,
+        )
 
         if request.app.state.access_policy is not None and hasattr(
             request.app.state.access_policy, "init_node"
@@ -1450,27 +1446,19 @@ def get_router(
             access_blob_modified = access_blob != {}
             access_blob = {}
 
-        metadata_modified, metadata = await validate_metadata(
-            metadata=metadata,
-            structure_family=structure_family,
-            structure=structure,
-            specs=specs,
-            settings=settings,
-        )
-
-        key, node = await entry.create_node(
+        node = await entry.create_node(
             metadata=body.metadata,
             structure_family=body.structure_family,
-            key=body.id,
+            key=key,
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
         )
         links = links_for_node(
-            structure_family, structure, get_base_url(request), path + f"/{key}"
+            structure_family, structure, get_base_url(request), path + f"/{node.key}"
         )
         response_data = {
-            "id": key,
+            "id": node.key,
             "links": links,
             "data_sources": [ds.model_dump() for ds in node.data_sources],
         }
@@ -1885,16 +1873,10 @@ def get_router(
                 detail="Update cannot result in non-unique specs",
             )
 
-        structure_family, structure = (
-            entry.structure_family,
-            entry.structure(),
-        )
-
-        metadata_modified, metadata = await validate_metadata(
+        metadata_modified, metadata = await validate_specs(
+            specs=specs,
             metadata=metadata,
-            structure_family=structure_family,
-            structure=structure,
-            specs=[Spec(x) for x in specs],
+            entry=entry,
             settings=settings,
         )
 
@@ -1962,19 +1944,16 @@ def get_router(
                 detail="This node does not support update of metadata.",
             )
 
-        metadata, structure_family, structure, specs, access_blob = (
+        metadata, specs, access_blob = (
             body.metadata if body.metadata is not None else entry.metadata(),
-            entry.structure_family,
-            entry.structure(),
             body.specs if body.specs is not None else entry.specs,
             body.access_blob if body.access_blob is not None else entry.access_blob,
         )
 
-        metadata_modified, metadata = await validate_metadata(
-            metadata=metadata,
-            structure_family=structure_family,
-            structure=structure,
+        metadata_modified, metadata = await validate_specs(
             specs=specs,
+            metadata=metadata,
+            entry=entry,
             settings=settings,
         )
 
@@ -2265,11 +2244,12 @@ def get_router(
             manifest.extend(Path(root, file) for file in files)
         return json_or_msgpack(request, {"manifest": manifest})
 
-    async def validate_metadata(
-        metadata: dict,
-        structure_family: StructureFamily,
-        structure,
+    async def validate_specs(
         specs: List[Spec],
+        metadata: dict,
+        entry: Optional[AnyAdapter] = None,
+        structure_family: Optional[StructureFamily] = None,
+        structure: Optional[dict] = None,
         settings: Settings = Depends(get_settings),
     ):
         metadata_modified = False
@@ -2283,20 +2263,22 @@ def get_router(
         # For now we leave it to the server maintainer to ensure that validators
         # won't step on each other in this way, but this may need revisiting.
         for spec in reversed(specs):
-            if spec.name not in validation_registry:
+            if spec not in validation_registry:
                 if settings.reject_undeclared_specs:
                     raise HTTPException(
                         status_code=HTTP_400_BAD_REQUEST,
                         detail=f"Unrecognized spec: {spec.name}",
                     )
             else:
-                validator = validation_registry(spec.name)
+                validator = validation_registry(spec)
                 try:
-                    result = validator(metadata, structure_family, structure, spec)
+                    result = await ensure_awaitable(
+                        validator, spec, metadata, entry, structure_family, structure
+                    )
                 except ValidationError as e:
                     raise HTTPException(
                         status_code=HTTP_400_BAD_REQUEST,
-                        detail=f"failed validation for spec {spec.name}:\n{e}",
+                        detail=f"failed validation for the {spec.name} spec:\n{e}",
                     )
                 if result is not None:
                     metadata_modified = True
