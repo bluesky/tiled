@@ -1,3 +1,5 @@
+import json
+
 import numpy
 import pytest
 from starlette.status import HTTP_403_FORBIDDEN
@@ -89,6 +91,12 @@ access_tag_config = {
             ],
         },
         "physicists_tag": {
+            "users": [
+                {
+                    "name": "alice",
+                    "role": "facility_admin",
+                },
+            ],
             "groups": [
                 {
                     "name": "physicists",
@@ -461,9 +469,60 @@ def test_empty_access_blob_access_control(access_control_test_context_factory):
             alice_client[top][data]
 
 
+def test_node_export_access_control(
+    access_control_test_context_factory, buffer_factory
+):
+    """
+    Test access control when exporting from Tiled (here: a container).
+    These tests include:
+    - Test that top-level nodes are disincluded appropriately
+      (MapAdapter->CatalogAdapter transition).
+    - Test that basic export works - i.e. nodes for which the user has
+      access are included.
+    - Test that nodes for which the user does not have access are not included.
+    - Test that this behavior also works for user-owned (untagged) nodes.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+
+    top = "baz"
+    alice_client[top].write_array(arr, key="data_D")
+    sue_client[top].write_array(arr, key="data_E")
+
+    alice_export_buffer = buffer_factory()
+    sue_export_buffer = buffer_factory()
+
+    alice_client.export(alice_export_buffer, format="application/json")
+    sue_client.export(sue_export_buffer, format="application/json")
+
+    alice_export_buffer.seek(0)
+    sue_export_buffer.seek(0)
+
+    alice_exported_data = json.loads(alice_export_buffer.read())
+    sue_exported_data = json.loads(sue_export_buffer.read())
+
+    top = "foo"
+    assert top in alice_exported_data["contents"]
+    assert top not in sue_exported_data["contents"]
+    for data in ["data_A", "data_B", "data_C"]:
+        assert data in alice_exported_data["contents"][top]["contents"]
+        alice_exported_data["contents"][top]["contents"][data]
+
+    top = "baz"
+    assert top in alice_exported_data["contents"]
+    assert top in sue_exported_data["contents"]
+    for data in ["data_A", "data_B", "data_D"]:
+        assert data not in sue_exported_data["contents"][top]["contents"]
+        with pytest.raises(KeyError):
+            sue_exported_data["contents"][top]["contents"][data]
+    for data in ["data_C", "data_E"]:
+        assert data in sue_exported_data["contents"][top]["contents"]
+        sue_exported_data["contents"][top]["contents"][data]
+
+
 def test_apikey_auth_access_control(access_control_test_context_factory):
     """
-    Test access when authenticated by an API key, including:
+    Test access control when authenticated by an API key, including:
     - Allow basic access with an API key that is not tag-restricted
     - Disallow access to tags that are not added to a tag-restricted API key
     - Allow access to tags that are added to a tag-restricted API key
@@ -518,8 +577,8 @@ def test_service_principal_access_control(
         sp["uuid"], api_key=sp_apikey_info["secret"]
     )
 
-    access_tag_config["tags"]["physicists_tag"].update(
-        {"users": [{"name": sp["uuid"], "role": "facility_admin"}]}
+    access_tag_config["tags"]["physicists_tag"]["users"].append(
+        {"name": sp["uuid"], "role": "facility_admin"}
     )
     access_tag_config["tag_owners"]["physicists_tag"].update(
         {"users": [{"name": sp["uuid"]}]}
