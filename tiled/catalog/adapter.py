@@ -403,7 +403,7 @@ class CatalogNodeAdapter:
             # SQLite has no statistics tables, so we fall back to exact count.
             return None
 
-    async def lbound_len(self, threshold=5000) -> int:
+    async def lbound_len(self, threshold) -> int:
         """Get a fast lower bound on the number of child nodes.
 
         This only counts up to `threshold`+1 nodes, so is fast even for large

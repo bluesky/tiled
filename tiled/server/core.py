@@ -94,17 +94,20 @@ async def len_or_approx(tree, exact=False, threshold=5000):
     exact = exact or (threshold == -1)
 
     # First, try to get a lower bound on the length
+    lbound = None
     if hasattr(tree, "lbound_len") and not exact:
         lbound = await tree.lbound_len(threshold=threshold)
         if lbound <= threshold:
             # This is the exact length
             return lbound
 
-    # If we have a lower bound, then we can try to get an approximate length
+    # Try approximate count if the lower bound is above the threshold or None
     if hasattr(tree, "approx_len") and not exact:
         approx = await tree.approx_len()
         if approx is not None:
             return approx
+    if lbound is not None:
+        return lbound  # If we have a lower bound, return it
 
     # If we have neither, fall back to the exact length
     if hasattr(tree, "exact_len"):
@@ -250,7 +253,7 @@ async def construct_entries_response(
     max_depth,
     exact_count_limit,
 ):
-    "Construct response for the `/search` endpoint"
+    "Construct a response for the `/search` endpoint"
 
     path_parts = [segment for segment in path.split("/") if segment]
     tree = await apply_search(tree, filters, query_registry)
@@ -503,7 +506,7 @@ async def construct_resource(
             schemas.EntryFields.structure in fields
             or schemas.EntryFields.count in fields
         ):
-            do_exact_count = schemas.EntryFields.count in fields
+            do_exact_count = fields == [schemas.EntryFields.count]
             count = await len_or_approx(
                 entry, exact=do_exact_count, threshold=exact_count_limit
             )
