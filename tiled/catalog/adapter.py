@@ -396,6 +396,8 @@ class CatalogNodeAdapter:
                             )
                         ).scalar_one()
                         return int(total * freq)
+                else:
+                    return None  # Statistics can not be obtained
 
         elif self.context.engine.dialect.name == "sqlite":
             # SQLite has no statistics tables, so we fall back to exact count.

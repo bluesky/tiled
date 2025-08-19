@@ -64,18 +64,39 @@ DEPTH_LIMIT = 5
 
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 300
-APPROX_LEN_THRESHOLD = 5000
 
 
-async def len_or_approx(tree, exact=False):
-    """
+async def len_or_approx(tree, exact=False, threshold=5000):
+    """Calculate the length of a tree, either exactly or approximately
+
     Prefer approximate length if implemented. (It's cheaper.)
+
+    Parameters
+    ----------
+    tree : Tree
+        The tree to calculate the length of.
+    exact : bool, optional
+        If True, always return the exact length. If False, return an
+        approximate length if available.
+    threshold : int
+        If the exact length is less than this threshold, return it;
+        otherwise, return an approximate length of this lower bound.
+        If set to -1, return the exact length.
+        Only used if `exact` is False.
+
+    Returns
+    -------
+    int
+        The length of the tree, either exact or approximate.
     """
+
+    # Override the exact flag if threshold is set to -1
+    exact = exact or (threshold == -1)
 
     # First, try to get a lower bound on the length
     if hasattr(tree, "lbound_len") and not exact:
-        lbound = await tree.lbound_len(threshold=APPROX_LEN_THRESHOLD)
-        if lbound <= APPROX_LEN_THRESHOLD:
+        lbound = await tree.lbound_len(threshold=threshold)
+        if lbound <= threshold:
             # This is the exact length
             return lbound
 
@@ -227,6 +248,7 @@ async def construct_entries_response(
     base_url,
     media_type,
     max_depth,
+    exact_count_limit,
 ):
     "Construct response for the `/search` endpoint"
 
@@ -234,7 +256,9 @@ async def construct_entries_response(
     tree = await apply_search(tree, filters, query_registry)
     tree = apply_sort(tree, sort)
 
-    count = await len_or_approx(tree, exact=(schemas.EntryFields.count in fields))
+    count = await len_or_approx(
+        tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit
+    )
     links = pagination_links(base_url, route, path_parts, offset, limit, count)
     data = []
 
@@ -269,6 +293,7 @@ async def construct_entries_response(
             include_data_sources,
             media_type,
             max_depth=max_depth,
+            exact_count_limit=exact_count_limit,
         )
         data.append(resource)
         # If any entry has entry.metadata_stale_at = None, then there will
@@ -440,6 +465,7 @@ async def construct_resource(
     include_data_sources,
     media_type,
     max_depth,
+    exact_count_limit,
     depth=0,
 ):
     path_str = "/".join(path_parts)
@@ -478,7 +504,9 @@ async def construct_resource(
             or schemas.EntryFields.count in fields
         ):
             do_exact_count = schemas.EntryFields.count in fields
-            count = await len_or_approx(entry, exact=do_exact_count)
+            count = await len_or_approx(
+                entry, exact=do_exact_count, threshold=exact_count_limit
+            )
             if (
                 ((max_depth is None) or (depth < max_depth))
                 and hasattr(entry, "inlined_contents_enabled")
@@ -500,7 +528,9 @@ async def construct_resource(
                         if count > INLINED_CONTENTS_LIMIT:
                             # The estimated count was inaccurate or else the entry has grown
                             # new children while we are walking it. Too large!
-                            count = await len_or_approx(entry, exact=do_exact_count)
+                            count = await len_or_approx(
+                                entry, exact=do_exact_count, threshold=exact_count_limit
+                            )
                             contents = None
                             break
                         try:
@@ -520,6 +550,7 @@ async def construct_resource(
                             include_data_sources,
                             media_type,
                             max_depth,
+                            exact_count_limit,
                             depth=1 + depth,
                         )
             else:
