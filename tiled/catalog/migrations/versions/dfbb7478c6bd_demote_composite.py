@@ -42,7 +42,16 @@ def upgrade():
         """
     )
 
-    # Step 2. Remove 'flattened' spec used for tables in Composite nodes
+    # Step 2. Update the data_sources table (usually unnecessary)
+    op.execute(
+        f"""
+        UPDATE data_sources
+        SET structure_family = 'container'
+        WHERE structure_family = 'composite'
+        """
+    )
+
+    # Step 3. Remove 'flattened' spec used for tables in Composite nodes
     if connection.engine.dialect.name == "postgresql":
         op.execute(
             f"""
@@ -72,18 +81,20 @@ def upgrade():
             """
         )
 
-    # Step 3. Remove 'composite' structure family from the `structurefamily` enum
+    # Step 4. Remove 'composite' structure family from the `structurefamily` enum
     if connection.engine.dialect.name == "postgresql":
-        # 3.1. Rename the existing type
+        # 4.1. Rename the existing type
         op.execute("ALTER TYPE structurefamily RENAME TO structurefamily_old")
 
-        # 3.2. Get all enum values from the existing type
+        # 4.2. Get all enum values from the existing type
         values = connection.execute(
-            "SELECT unnest(enum_range(NULL::structurefamily_old))"
+            sa.text(
+                "SELECT unnest(enum_range(NULL::structurefamily_old))"
+            )
         ).fetchall()
         values = [r[0] for r in values if r[0] != "composite"]
 
-        # 3.3. Create the new type (without 'composite')
+        # 4.3. Create the new type (without 'composite')
         op.execute(
             sa.text(
                 "CREATE TYPE structurefamily AS ENUM ("
@@ -92,7 +103,7 @@ def upgrade():
             )
         )
 
-        # 3.4. Alter columns to use the new type
+        # 4.4. Alter columns to use the new type
         for table_name in ["nodes", "data_sources"]:
             op.execute(
                 f"""
@@ -102,7 +113,7 @@ def upgrade():
                 """
             )
 
-        # 3.5. Drop the old type
+        # 4.5. Drop the old type
         op.execute("DROP TYPE structurefamily_old")
 
 
@@ -187,6 +198,21 @@ def downgrade():
                 FROM nodes AS parent
                 WHERE parent.id = nodes.parent
                     AND parent.structure_family = 'composite'
+            )
+        """
+    )
+
+    # Step 4. Update the data_sources table (usually unnecessary)
+    op.execute(
+        f"""
+        UPDATE data_sources
+        SET structure_family = 'composite'
+        WHERE structure_family = 'container'
+            AND EXISTS (
+                SELECT 1
+                FROM nodes
+                WHERE nodes.id = data_sources.node_id
+                    AND nodes.structure_family = 'composite'
             )
         """
     )
