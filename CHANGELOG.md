@@ -3,7 +3,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0-b33 (Unreleased)
+## Unreleased
+
+### Added
+
+- The project ships with a pixi manifest (`pixi.toml`).
+
+## v0.1.0-b34 (2025-08-14)
+
+### Fixed
+
+- In the previous release, v0.1.0-b32, a catalog database migration script (for
+  closure tables) ran successfully on some databases but on others it could
+  fail. As designed, the failure mode was a clean rollback, leaving the
+  database correct but unchanged. This release repairs the migration script; it
+  should be re-run on any databases that could not be upgraded with the previous
+  release.
+
+## v0.1.0-b33 (2025-08-13)
 
 _This release requires a database migration of the catalog database._
 
@@ -36,6 +53,8 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - The database migration in v0.1.0-b27 was incomplete, and missed an update to
   the `revisions` table necessary to make metadata updates work correctly.
   This is resolved by an additional database migration.
+- Correct indentation of authenticator args field in the service config schema
+  and ensure it correctly validates configurations.
 
 ## v0.1.0-b32 (2025-08-04)
 
