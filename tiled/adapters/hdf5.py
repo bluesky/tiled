@@ -359,7 +359,7 @@ class HDF5Adapter(
         self.dataset = dataset  # Referenced to the root of the file
         self._kwargs = kwargs  # e.g. swmr, libver, etc.
         super().__init__(
-            structure=ContainerStructure(keys=self.keys()),
+            structure=ContainerStructure(keys=list(self._tree.keys())),
             metadata=metadata,
             specs=specs,
         )
@@ -446,10 +446,9 @@ class HDF5Adapter(
     def __repr__(self) -> str:
         return node_repr(self, list(self))
 
-    @property
     def metadata(self) -> JSON:
         d = get_hdf5_attrs(self.uris[0], self.dataset)
-        return {**d, **self.metadata}
+        return {**d, **super().metadata()}
 
     def __iter__(self) -> Iterator[Any]:
         """Iterate over the keys of the tree"""
