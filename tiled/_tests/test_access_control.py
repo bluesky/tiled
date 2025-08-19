@@ -119,13 +119,13 @@ access_tag_config = {
                     "name": "sue",
                 },
             ],
-            "groups": [
-                {
-                    "name": "chemists",
-                },
-            ],
         },
         "physicists_tag": {
+            "users": [
+                {
+                    "name": "alice",
+                },
+            ],
             "groups": [
                 {
                     "name": "physicists",
@@ -469,6 +469,29 @@ def test_empty_access_blob_access_control(access_control_test_context_factory):
             alice_client[top][data]
 
 
+def test_container_access_control(access_control_test_context_factory):
+    """
+    Test that access control for data nested in containers allows/denies access.
+    This mostly checks that if a user does not have access to a container,
+      that user cannot reach inside the container to view data they would
+      otherwise have access for.
+    """
+    alice_client = access_control_test_context_factory("alice", "alice")
+    sue_client = access_control_test_context_factory("sue", "sue")
+
+    top = "baz"
+    for c in ["C1"]:
+        alice_client[top].create_container(key=c, access_tags=["alice_tag"])
+        alice_client[top][c].write_array(
+            arr, key=f"{c}_array", access_tags=["physicists_tag"]
+        )
+        assert f"{c}_array" in alice_client[top][c]
+        alice_client[top][c][f"{c}_array"]
+        assert c not in sue_client[top]
+        with pytest.raises(KeyError):
+            sue_client[top][c][f"{c}_array"]
+
+
 def test_node_export_access_control(
     access_control_test_context_factory, buffer_factory
 ):
@@ -580,9 +603,10 @@ def test_service_principal_access_control(
     access_tag_config["tags"]["physicists_tag"]["users"].append(
         {"name": sp["uuid"], "role": "facility_admin"}
     )
-    access_tag_config["tag_owners"]["physicists_tag"].update(
-        {"users": [{"name": sp["uuid"]}]}
+    access_tag_config["tag_owners"]["physicists_tag"]["users"].append(
+        {"name": sp["uuid"]}
     )
+
     access_tags_compiler = compile_access_tags_db
     access_tags_compiler.load_tag_config()
     access_tags_compiler.recompile()
