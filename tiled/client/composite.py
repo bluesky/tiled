@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
-from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
+from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
 
 
 class CompositeClient(Container):
@@ -53,8 +53,11 @@ class CompositeClient(Container):
         return result
 
     @property
-    def parts(self):
-        return CompositeParts(self)
+    def base(self):
+        "Return the base Container client instead of a CompositeClient"
+        return Container(
+            self.context, item=self.item, structure_clients=self.structure_clients
+        )
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
         yield from self._flat_keys_mapping.keys()
@@ -82,7 +85,8 @@ class CompositeClient(Container):
             key = self._flat_keys_mapping[key]
         else:
             raise KeyError(
-                f"Key '{key}' not found. If it refers to a table, use .parts['{key}'] instead."
+                f"Key '{key}' not found. If it refers to a table, access it via "
+                "the base Container client using `.base['{key}']` instead."
             )
 
         return super().__getitem__(key, _ignore_inlined_contents)
@@ -101,8 +105,7 @@ class CompositeClient(Container):
     ) -> "CompositeClient":
         """Delete the contents of this Composite node.
 
-        Only constituent arrays or entire tables (with keys listed in `parts`)
-        can be deleted.
+        Only arrays or entire tables, not individual columns, can be deleted.
 
         Parameters
         ----------
@@ -113,15 +116,17 @@ class CompositeClient(Container):
             If True, only delete externally-managed data. Defaults to True.
         """
 
+        parts = set(self.base.keys())
         if keys is None:
-            keys = list(self.parts)
+            keys = parts
         keys = [keys] if isinstance(keys, str) else keys
-        extra_keys = set(keys).difference(self.parts)
+        extra_keys = set(keys).difference(parts)
         if extra_keys:
             raise KeyError(
-                f"Keys {keys} not found in composite node parts. "
+                f"Keys {extra_keys} not found in composite node parts. "
                 "If the keys reference column names of a constituent "
-                "table, deleting them is not supported."
+                "table, deleting them is not supported. Use the `.base` "
+                "accessor to the Container client to delete the entire table."
             )
 
         return super().delete_contents(keys, external_only=external_only)
@@ -153,13 +158,13 @@ class CompositeClient(Container):
                 StructureFamily.sparse,
             }:
                 if (variables is None) or (part in variables):
-                    array_client = self.parts[part]
+                    array_client = self.base[part]
                     data_vars[part] = array_client.read()  # [Dask]ArrayClient
                     array_dims[part] = array_client.dims
             elif item["attributes"]["structure_family"] == StructureFamily.awkward:
                 if (variables is None) or (part in variables):
                     try:
-                        data_vars[part] = self.parts[part].read().to_numpy()
+                        data_vars[part] = self.base[part].read().to_numpy()
                     except ValueError as e:
                         raise ValueError(
                             f"Failed to convert awkward array to numpy: {e}"
@@ -168,7 +173,7 @@ class CompositeClient(Container):
                 # For now, greedily load tabular data. We cannot know the shape
                 # of the columns without reading them. Future work may enable
                 # this to be lazy.
-                table_client = self.parts[part]
+                table_client = self.base[part]
                 columns = set(variables or table_client.columns).intersection(
                     table_client.columns
                 )
@@ -244,43 +249,3 @@ class CompositeClient(Container):
         return super().write_dataframe(
             dataframe, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
-
-
-class CompositeParts:
-    def __init__(self, node):
-        self.contents = node.get_contents(include_metadata=True)
-        self.context = node.context
-        self.structure_clients = node.structure_clients
-        self._include_data_sources = node._include_data_sources
-
-    def __repr__(self):
-        return (
-            f"<{type(self).__name__} {{"
-            + ", ".join(f"'{item}'" for item in self.contents)
-            + "}>"
-        )
-
-    def __getitem__(self, key):
-        key, *tail = key.split("/")
-
-        if key not in self.contents:
-            raise KeyError(key)
-
-        client = client_for_item(
-            self.context,
-            self.structure_clients,
-            self.contents[key],
-            include_data_sources=self._include_data_sources,
-        )
-
-        if tail:
-            return client["/".join(tail)]
-        else:
-            return client
-
-    def __iter__(self):
-        for key in self.contents:
-            yield key
-
-    def __len__(self) -> int:
-        return len(self.contents)

@@ -63,10 +63,10 @@ def tree(tmp_path_factory):
     tempdir = tmp_path_factory.getbasetemp()
     return in_memory(
         writable_storage=[
-            f"file://localhost{str(tempdir / 'data')}",
+            ensure_uri(tempdir / "data"),
             f"duckdb:///{tempdir / 'data.duckdb'}",
         ],
-        readable_storage=[f"file://localhost{str(tempdir)}"],
+        readable_storage=[ensure_uri(tempdir)],
     )
 
 
@@ -214,8 +214,8 @@ def test_reading(context, name, expected):
 
 def test_iterate_parts(context):
     client = from_context(context)
-    for part in client["x"].parts:
-        client["x"].parts[part].read()
+    for part in client["x"].base:
+        client["x"].base[part].read()
 
 
 def test_iterate_columns(context):
@@ -242,8 +242,8 @@ def test_metadata(context):
     assert client["x"].metadata == md
 
     # Check metadata for each part
-    for part in client["x"].parts:
-        c = client["x"].parts[part]
+    for part in client["x"].base:
+        c = client["x"].base[part]
         assert c.metadata["md_key"] == f"md_for_{part}"
 
 
@@ -251,8 +251,8 @@ def test_parts_not_directly_accessible(context):
     client = from_context(context)
 
     # The table is accessible as a part
-    assert client["x"].parts["df1"].read() is not None
-    assert numpy.array_equal(client["x"].parts["df1"]["A"].read(), df1["A"])
+    assert client["x"].base["df1"].read() is not None
+    assert numpy.array_equal(client["x"].base["df1"]["A"].read(), df1["A"])
     assert numpy.array_equal(client["x"]["A"].read(), df1["A"])
 
     # The table is not accessible directly from the composite client
@@ -283,10 +283,10 @@ def test_external_assets(context, tiff_data_source, csv_data_source):
         key="table",
     )
 
-    arr = y.parts["image"].read()
+    arr = y.base["image"].read()
     assert numpy.array_equal(arr, img_data)
 
-    df = y.parts["table"].read()
+    df = y.base["table"].read()
     for col in df.columns:
         assert numpy.array_equal(df[col], df3[col])
 
@@ -337,7 +337,7 @@ def test_read_selective_with_dim0(context_for_read, dim0):
 def test_delete_contents(context, tiff_data_source, csv_data_source):
     client = from_context(context)
 
-    parts_before = len(client["x"].parts)
+    parts_before = len(client["x"].base)
     keys_before = len(client["x"].keys())
     assert parts_before == 6
     assert keys_before == 9
@@ -348,8 +348,8 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
 
     # Delete a single part
     client["x"].delete_contents("arr1", external_only=False)
-    assert "arr1" not in client["x"].parts
-    assert len(client["x"].parts) == parts_before - 1
+    assert "arr1" not in client["x"].base
+    assert len(client["x"].base) == parts_before - 1
     assert len(client["x"].keys()) == keys_before - 1
 
     # Attempt to delete a DataFrame column
@@ -358,7 +358,7 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
         client["x"].delete_contents("A", external_only=False)
     client["x"].delete_contents("df1", external_only=False)
     assert "A" not in client["x"].keys()
-    assert len(client["x"].parts) == parts_before - 2
+    assert len(client["x"].base) == parts_before - 2
     assert len(client["x"].keys()) == keys_before - 3
 
     # Add and delete external data
@@ -373,26 +373,26 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
         key="table",
     )
     # 6 original parts, 2 deleted, 2 added
-    assert len(client["x"].parts) == parts_before - 2 + 2
+    assert len(client["x"].base) == parts_before - 2 + 2
     assert len(client["x"].keys()) == keys_before - 3 + 3
     client["x"].delete_contents("image")
-    assert "image" not in client["x"].parts
-    assert len(client["x"].parts) == parts_before - 1
+    assert "image" not in client["x"].base
+    assert len(client["x"].base) == parts_before - 1
     assert len(client["x"].keys()) == keys_before - 1
 
     # Passing an empty list does not delete anything
     client["x"].delete_contents([])
-    assert len(client["x"].parts) == parts_before - 1
+    assert len(client["x"].base) == parts_before - 1
     assert len(client["x"].keys()) == keys_before - 1
 
     # Delete multiple parts
     client["x"].delete_contents(["arr2", "df2"], external_only=False)
-    assert "arr2" not in client["x"].parts
-    assert "df1" not in client["x"].parts
+    assert "arr2" not in client["x"].base
+    assert "df1" not in client["x"].base
 
     # Delete all parts
     client["x"].delete_contents(external_only=False)
-    assert len(client["x"].parts) == 0
+    assert len(client["x"].base) == 0
     assert len(client["x"].keys()) == 0
 
 
@@ -402,7 +402,7 @@ def test_write_one_table(tree):
         df = pandas.DataFrame({"A": [], "B": []})
         client.create_container(key="z", specs=["composite"])
         client["z"].write_dataframe(df)
-        assert len(client["z"].parts) == 1  # One table
+        assert len(client["z"].base) == 1  # One table
         assert len(client["z"]) == 2  # Two columns
 
 
@@ -414,8 +414,8 @@ def test_write_two_tables(tree):
         z = client.create_container(key="z", specs=["composite"])
         z.write_dataframe(df1, key="table1")
         z.write_dataframe(df2, key="table2")
-        z.parts["table1"].read()
-        z.parts["table2"].read()
+        z.base["table1"].read()
+        z.base["table2"].read()
 
 
 def test_write_two_tables_colliding_names(tree):
@@ -456,10 +456,10 @@ def test_write_two_tables_two_arrays(tree):
         z.write_array(arr2, key="G")
 
         # Read by data source.
-        z.parts["table1"].read()
-        z.parts["table2"].read()
-        z.parts["F"].read()
-        z.parts["G"].read()
+        z.base["table1"].read()
+        z.base["table2"].read()
+        z.base["F"].read()
+        z.base["G"].read()
 
         # Read by column.
         for column in ["A", "B", "C", "D", "E", "F", "G"]:
