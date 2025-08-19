@@ -19,17 +19,23 @@ client = from_uri("http://localhost:8000")
 
 ## Slicing Arrays
 
-Navigate to an array dataset in the demo tree.
+Navigate to an array (image) dataset in the demo tree.
 
 ```python
->>> client['medium_image']
-<ArrayClient shape=(1000, 1000) chunks=((1000,), (1000,)) dtype=float64>
+>>> images = client["nested/images"]  # Container of demo images
+>>> print(images)
+<Container {'tiny_image', 'small_image', 'medium_image', ...} ~4 entries>
+```
+
+```python
+>>> images['medium_image']
+<ArrayClient shape=(1000, 1000) chunks=((250, 250, 250, 250), (100, 100, ..., 100)) dtype=float64>
 ```
 
 Slice ``[:]`` to read it. (This syntax may be familiar to h5py users.)
 
 ```python
->>> client['medium_image'][:]
+>>> images['medium_image'][:]
 array([[0.21074798, 0.39790325, 0.49456221, ..., 0.32959921, 0.34827844,
         0.62495697],
        [0.08099721, 0.78389654, 0.3763025 , ..., 0.76614679, 0.74330957,
@@ -45,13 +51,13 @@ array([[0.21074798, 0.39790325, 0.49456221, ..., 0.32959921, 0.34827844,
         0.03710809]])
 ```
 
-Or, equivalently, use ``client['medium_image'].read()``.
+Or, equivalently, use ``images['medium_image'].read()``.
 
 Provide bounds in the slice to download and access just a portion of the
 array.
 
 ```python
->>> client['medium_image'][:3, 10:15]
+>>> images['medium_image'][:3, 10:15]
 array([[0.11429495, 0.64088521, 0.52347248, 0.28147347, 0.60528646],
        [0.82722641, 0.57478402, 0.35443253, 0.34434613, 0.60065387],
        [0.58668817, 0.21471191, 0.05225715, 0.29506593, 0.31148442]])
@@ -62,76 +68,84 @@ array([[0.11429495, 0.64088521, 0.52347248, 0.28147347, 0.60528646],
 Navigate to a tabular dataset in the demo client.
 
 ```python
->>> client['short_table']
+>>> tables = client["tables"]         # Container of demo tables
+>>> print(tables)
+<Container {'short_table', 'long_table', 'wide_table'}>
+```
+
+```python
+>>> tables['short_table']
 <DataFrameClient>
 ```
 
 You can access the columns by listing them.
 
 ```python
-list(client['short_table'])
+list(tables['short_table'])
 ['A', 'B', 'C']
 ```
 
-You may read it in its entirety like so.
+You may read it in its entirety like so. Note that table columns may have different
+data types.
 
 ```python
->>> client['short_table'].read()
-              A         B         C
+>>> tables['short_table'].read()
+       A         B    C          D      E
 index
-0      0.100145  0.833089  0.381111
-1      0.634538  0.061177  0.544403
-2      0.838347  0.974533  0.402029
-3      0.953260  0.353934  0.019276
-4      0.305083  0.048220  0.115531
-...         ...       ...       ...
-95     0.317265  0.361453  0.602733
-96     0.795716  0.341121  0.189589
-97     0.620561  0.792025  0.981588
-98     0.909704  0.265568  0.576582
-99     0.456574  0.918859  0.325529
+0      5  0.053270  JJJ 2025-01-01  False
+1      9  0.872006  SSS 2025-01-02  False
+2      3  0.539313  ttt 2025-01-03  False
+3      3  0.597331  fff 2025-01-04   True
+4      8  0.038820  AAA 2025-01-05  False
+...   ..       ...  ...        ...    ...
+95     3  0.935990  aaa 2025-04-06   True
+96     6  0.747498  yyy 2025-04-07   True
+97     4  0.948744  ccc 2025-04-08  False
+98     0  0.764418  EEE 2025-04-09  False
+99     9  0.555941  III 2025-04-10   True
 
-[100 rows x 3 columns]
+[100 rows x 5 columns]
 ```
 
 You may select a column or a list of columns, and access the column data array directly.
 
 ```python
->>> client['short_table'].read(['A'])
-              A
+>>> tables['short_table'].read(['A'])
+              B
 index
-0     0.100145
-1     0.634538
-2     0.838347
-3     0.953260
-4     0.305083
-        ...
-95    0.317265
-96    0.795716
-97    0.620561
-98    0.909704
-99    0.456574
+0      0.053270
+1      0.872006
+2      0.539313
+3      0.597331
+4      0.038820
+...         ...
+95     0.935990
+96     0.747498
+97     0.948744
+98     0.764418
+99     0.555941
+
 [100 rows x 1 columns]
 
->>> client['short_table'].read(['A', 'B'])
-              A         B
+>>> tables['short_table'].read(['A', 'C', 'D'])
+       A    C          D
 index
-0      0.100145  0.833089
-1      0.634538  0.061177
-2      0.838347  0.974533
-3      0.953260  0.353934
-4      0.305083  0.048220
-...         ...       ...
-95     0.317265  0.361453
-96     0.795716  0.341121
-97     0.620561  0.792025
-98     0.909704  0.265568
-99     0.456574  0.918859
+0      5  JJJ 2025-01-01
+1      9  SSS 2025-01-02
+2      3  ttt 2025-01-03
+3      3  fff 2025-01-04
+4      8  AAA 2025-01-05
+...   ..  ...        ...
+95     3  aaa 2025-04-06
+96     6  yyy 2025-04-07
+97     4  ccc 2025-04-08
+98     0  EEE 2025-04-09
+99     9  III 2025-04-10
 
-[100 rows x 2 columns]
+[100 rows x 3 columns]
 
->>> client['short_table']['A']
-<ArrayClient shape=(100,) chunks=((100,),) dtype=float64>
+>>> tables['short_table']['A']
+<ArrayClient shape=(100,) chunks=((100,)) dtype=uint8>
 ```
 
 ## Dask
@@ -150,26 +164,25 @@ immediately downloaded. Only the information about the structure---shape,
 datatype(s), internal chunking/partitioning---is downloaded up front.
 
 ```python
->>> client["big_image"].read()
-dask.array<remote-dask-array, shape=(10000, 10000), dtype=float64, chunksize=(2500, 2500), chunktype=numpy.ndarray>
+>>> client["nested/images/big_image"].read()
+dask.array<remote-dask-array, shape=(10000, 10000), dtype=float64, chunksize=(4096, 4096), chunktype=numpy.ndarray>
 ```
 
 ```python
->>> client["short_table"].read()
+>>> client["tables/short_table"].read()
 Dask DataFrame Structure:
-                     A        B        C
-npartitions=3
-0              float64  float64  float64
-34                 ...      ...      ...
-68                 ...      ...      ...
-99                 ...      ...      ...
-Dask Name: remote-dask-dataframe, 3 tasks
+                   A        B       C              D     E
+npartitions=1
+               uint8  float64  string  datetime64[s]  bool
+                 ...      ...     ...            ...   ...
+Dask Name: to_string_dtype, 2 expressions
+Expr=ArrowStringConversion(frame=FromMapProjectable(9684b95))
 ```
 
 Data is downloaded in chunks, in parallel, when ``compute()`` is called.
 
 ```python
->>> client["big_image"].read().compute()
+>>> client["nested/images/big_image"].read().compute()
 array([[0.68161254, 0.49255507, 0.00942918, ..., 0.88842556, 0.00536692,
         0.19003055],
        [0.97713062, 0.41684217, 0.62376283, ..., 0.7256857 , 0.61949171,
@@ -190,7 +203,7 @@ downloaded.
 
 ```python
 # This will be fast because it only downloads the relevant chunk(s)
->>> client["big_image"].read()[:10, 3:5].compute()
+>>> client["nested/images/big_image"].read()[:10, 3:5].compute()
 array([[0.26355793, 0.01284164],
        [0.14378819, 0.54898243],
        [0.03100601, 0.88506586],
@@ -208,7 +221,7 @@ all the actual work to the end.
 
 
 ```python
->>> total = client["big_image"].read().sum()
+>>> total = client["nested/images/big_image"].read().sum()
 # No data been downloaded yet.
 
 >>> total

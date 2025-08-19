@@ -1,9 +1,11 @@
 import anyio
 import h5py
+import numpy as np
 import pandas
 import pytest
 import zarr
 
+from ..adapters.zarr import ZARR_LIB_V2
 from ..catalog import in_memory
 from ..client import Context, from_context, record_history
 from ..client.register import register
@@ -81,7 +83,10 @@ def zarr_data_dir(tmpdir_factory):
     try:
         root = zarr.open(str(tmpdir / "zarr_group.zarr"), mode="w")
         for i, name in enumerate("abcde"):
-            root.create_dataset(name, data=range(i, i + 3))
+            if ZARR_LIB_V2:
+                root.create_dataset(name, data=np.arange(i, i + 3))
+            else:
+                root.create_array(name, data=np.arange(i, i + 3))
     finally:
         # Ensure the Zarr group is closed properly
         print("Closed")
@@ -93,13 +98,15 @@ def zarr_data_dir(tmpdir_factory):
 def test_zarr_group_fields(client, fields, buffer):
     "Export selected fields (Datasets) from a Zarr group via /container/full."
     client = client["zarr_group"]
+    # Normally, zarr would have 'attributes' stored as internal dictionary in the
+    # metadata, but HDF5 does not support nested dictionaries.
+    client.replace_metadata({"attributes": "", "zarr_format": 2 if ZARR_LIB_V2 else 3})
     url_path = client.item["links"]["full"]
-    history = record_history()
-    yield history
-    client.export(buffer, fields=fields, format="application/x-hdf5")
+    with record_history() as history:
+        client.export(buffer, fields=fields, format="application/x-hdf5")
 
-    assert_single_request_to_url(history, url_path)
-    assert_requested_fields_fetched(buffer, fields, client)
+        assert_single_request_to_url(history, url_path)
+        assert_requested_fields_fetched(buffer, fields, client)
 
 
 @pytest.fixture(scope="module")

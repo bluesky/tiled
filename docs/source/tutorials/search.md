@@ -21,14 +21,16 @@ client = from_uri("http://localhost:8000")
 Tiled has an extensible collection of queries. The client just has to
 construct the query, and server sorts out how to execute it as
 efficiently as possible given however the metadata and data are stored.
+For performance reasons, the search is only performed on a single level
+of the nested hierarchy.
 
 This example collection of data has several entries with metadata.
 
 ```python
->>> client['short_table'].metadata
+>>> client['tables/short_table'].metadata
 DictView({'animal': 'dog', 'color': 'red'})
 
->>> client['long_table'].metadata
+>>> client['tables/long_table'].metadata
 DictView({'animal': 'dog', 'color': 'green'})
 
 >>> client['structured_data'].metadata
@@ -43,7 +45,7 @@ anywhere in the metadata.
 ```python
 >>> from tiled.queries import FullText
 
->>> client.search(FullText("dog"))
+>>> client['tables'].search(FullText("dog"))
 <Container {'short_table', 'long_table', 'wide_table'}>
 ```
 
@@ -51,7 +53,7 @@ The result has a subset of the contents of the original.
 Searches may be chained to progressively narrow results:
 
 ```python
->>> client.search(FullText("dog")).search(FullText("red"))
+>>> client['tables'].search(FullText("dog")).search(FullText("red"))
 <Container {'short_table', 'wide_table'}>
 ```
 

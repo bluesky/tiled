@@ -44,7 +44,7 @@ nested under `/api/v1/auth/`.
 
 To view and try the *interactive* docs, visit
 
-[http://tiled-demoblueskyproject.io/docs](http://tiled-demoblueskyproject.io/docs)
+[http://tiled-demo.blueskyproject.io/docs](http://tiled-demo.blueskyproject.io/docs)
 
 or, to work fully locally, start the Tiled server with the demo
 Tree from a Terminal

@@ -5,8 +5,6 @@ from typing import List, Optional
 
 import typer
 
-from tiled.server.settings import get_settings
-
 serve_app = typer.Typer(no_args_is_help=True)
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
@@ -142,7 +140,6 @@ def serve_directory(
     from ..catalog import from_uri as catalog_from_uri
     from ..server.app import build_app, print_server_info
 
-    server_settings = {}
     if keep_ext:
         from ..adapters.files import identity
 
@@ -194,6 +191,10 @@ def serve_directory(
     if api_key is None:
         api_key = os.getenv("TILED_SINGLE_USER_API_KEY")
         if api_key is None:
+            # Lazily import server settings here to avoid server dependencies
+            # in client-only environments.
+            from tiled.server.settings import get_settings
+
             api_key = get_settings().single_user_api_key
             generated = True
 
@@ -203,7 +204,6 @@ def serve_directory(
             "allow_anonymous_access": public,
             "single_user_api_key": api_key,
         },
-        server_settings,
     )
     import functools
 
@@ -460,7 +460,6 @@ or use an existing one:
             err=True,
         )
 
-    server_settings = {}
     tree = from_uri(
         database,
         writable_storage=write,
@@ -473,7 +472,6 @@ or use an existing one:
             "allow_anonymous_access": public,
             "single_user_api_key": api_key,
         },
-        server_settings,
         scalable=scalable,
     )
     print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)
@@ -537,14 +535,12 @@ def serve_pyobject(
     from ..utils import import_object
 
     tree = import_object(object_path)
-    server_settings = {}
     web_app = build_app(
         tree,
         {
             "allow_anonymous_access": public,
             "single_user_api_key": api_key,
         },
-        server_settings,
         scalable=scalable,
     )
     print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)

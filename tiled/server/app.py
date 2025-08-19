@@ -10,7 +10,8 @@ import warnings
 from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
-from typing import Optional, Union
+from textwrap import dedent
+from typing import Any, Callable, Coroutine, Optional, TypedDict, Union
 
 import anyio
 import packaging.version
@@ -23,6 +24,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -38,7 +40,8 @@ from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
-from ..config import construct_build_app_kwargs
+from ..catalog.adapter import WouldDeleteData
+from ..config import construct_build_app_kwargs, parse_configs
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -49,10 +52,10 @@ from ..media_type_registration import (
 from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
-from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -73,6 +76,10 @@ logger.addHandler(handler)
 
 # This is used to pass the currently-authenticated principal into the logger.
 current_principal = contextvars.ContextVar("current_principal")
+
+
+AppTask = Callable[[], Coroutine[None, None, Any]]
+"""Async function to be run as part of the app's lifecycle"""
 
 
 def custom_openapi(app):
@@ -111,7 +118,7 @@ def build_app(
     deserialization_registry: Optional[SerializationRegistry] = None,
     compression_registry: Optional[CompressionRegistry] = None,
     validation_registry: Optional[ValidationRegistry] = None,
-    tasks=None,
+    tasks: Optional[dict[str, list[AppTask]]] = None,
     scalable=False,
     access_policy=None,
 ):
@@ -143,10 +150,12 @@ def build_app(
     )
     compression_registry = compression_registry or default_compression_registry
     validation_registry = validation_registry or default_validation_registry
-    tasks = tasks or {}
-    tasks.setdefault("startup", [])
-    tasks.setdefault("background", [])
-    tasks.setdefault("shutdown", [])
+
+    tasks: TaskMap = {
+        "startup": (tasks or {}).get("startup", []),
+        "background": (tasks or {}).get("background", []),
+        "shutdown": (tasks or {}).get("shutdown", []),
+    }
     # The tasks are collected at config-parsing time off of the sub-trees.
     # Collect the tasks off the root tree here, so that it works when
     # a single tree is passed to build_app(...) directly, as happens in the tests.
@@ -163,30 +172,35 @@ def build_app(
                 and "TILED_SECRET_KEYS" not in os.environ
             ):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, secret keys must be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured with an
+                        Authenticator, secret keys must be provided via configuration like
 
-authentication:
-  secret_keys:
-    - SECRET
-  ...
+                        authentication:
+                          secret_keys:
+                            - SECRET
+                          ...
 
-or via the environment variable TILED_SECRET_KEYS.""",
+                        or via the environment variable TILED_SECRET_KEYS.\
+                        """,
+                    )
                 )
             # Multi-user authentication requires a database. We cannot fall
             # back to the default of an in-memory SQLite database in a
             # horizontally scaled deployment.
             if not server_settings.get("database", {}).get("uri"):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured with an
-Authenticator, a persistent database must be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured with an
+                        Authenticator, a persistent database must be provided via configuration like
 
-database:
-  uri: sqlite:////path/to/database.sqlite
+                        database:
+                          uri: sqlite:////path/to/database.sqlite
 
-"""
+                        """
+                    )
                 )
         else:
             # No authentication provider is configured, so no secret keys are
@@ -196,18 +210,22 @@ database:
                 or ("TILED_SINGLE_USER_API_KEY" in os.environ)
             ):
                 raise UnscalableConfig(
-                    """
-In a scaled (multi-process) deployment, when Tiled is configured for
-single-user access (i.e. without an Authenticator) a single-user API key must
-be provided via configuration like
+                    dedent(
+                        """
+                        In a scaled (multi-process) deployment, when Tiled is configured for
+                        single-user access (i.e. without an Authenticator) a single-user API key must
+                        be provided via configuration like
 
-authentication:
-  single_user_api_key: SECRET
-  ...
+                        authentication:
+                          single_user_api_key: SECRET
+                          ...
 
-or via the environment variable TILED_SINGLE_USER_API_KEY.""",
+                        or via the environment variable TILED_SINGLE_USER_API_KEY.\
+                        """,
+                    )
                 )
-        # If we reach here, the no configuration problems were found.
+
+    # If we reach here, the no configuration problems were found.
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -315,6 +333,15 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
             },
         )
 
+    @app.exception_handler(WouldDeleteData)
+    async def would_delete_data_exception_handler(
+        request: Request, exc: WouldDeleteData
+    ):
+        return JSONResponse(
+            status_code=HTTP_409_CONFLICT,
+            content={"detail": exc.args[0]},
+        )
+
     # This list will be mutated when settings are processed at app startup.
     app.state.allow_origins = []
     app.add_middleware(
@@ -354,6 +381,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         authenticators,
     )
     app.include_router(router, prefix="/api/v1")
+
+    app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
+    app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
@@ -404,9 +434,9 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
     else:
         app.state.authenticated = False
 
-    @cache
-    def override_get_root_tree():
-        return tree
+    # Expose the root_tree here to make it accessible from endpoints via
+    # request.app.state and in tests via client.context.app.state
+    app.state.root_tree = tree
 
     @cache
     def override_get_settings():
@@ -456,55 +486,57 @@ or via the environment variable TILED_SINGLE_USER_API_KEY.""",
         # Validate the single-user API key.
         settings: Settings = app.dependency_overrides[get_settings]()
         single_user_api_key = settings.single_user_api_key
-        API_KEY_MSG = """
-Here are two ways to generate a good API key:
+        API_KEY_MSG = dedent(
+            """
+            Here are two ways to generate a good API key:
 
-# With openssl:
-openssl rand -hex 32
+            # With openssl:
+            openssl rand -hex 32
 
-# With Python:
-python -c "import secrets; print(secrets.token_hex(32))"
+            # With Python:
+            python -c "import secrets; print(secrets.token_hex(32))"
 
-"""
+            """
+        )
         if single_user_api_key is not None:
             if not single_user_api_key:
                 raise ValueError(
-                    """
-The single-user API key is set to an empty value. Perhaps the environment
-variable TILED_SINGLE_USER_API_KEY is set to an empty string.
-"""
-                    + API_KEY_MSG
+                    dedent(
+                        """
+                        The single-user API key is set to an empty value. Perhaps the environment
+                        variable TILED_SINGLE_USER_API_KEY is set to an empty string.
+                        """
+                        + API_KEY_MSG
+                    )
                 )
             if not single_user_api_key.isalnum():
                 raise ValueError(
-                    """
-The API key must only contain alphanumeric characters. We enforce this because
-pasting other characters into a URL, as in ?api_key=..., can result in
-confusing behavior due to ambiguous encodings.
-"""
+                    dedent(
+                        """
+                        The API key must only contain alphanumeric characters. We enforce this because
+                        pasting other characters into a URL, as in ?api_key=..., can result in
+                        confusing behavior due to ambiguous encodings.
+                        """
+                    )
                     + API_KEY_MSG
                 )
 
         # Run startup tasks collected from trees (adapters).
-        for task in tasks.get("startup", []):
+        for task in tasks["startup"]:
             await task()
 
         # Stash these to cancel this on shutdown.
         app.state.tasks = []
         # Trees and Authenticators can run tasks in the background.
-        background_tasks = []
-        background_tasks.extend(tasks.get("background_tasks", []))
+        background_tasks: list[AppTask] = []
+        background_tasks.extend(tasks["background"])
         for authenticator in authenticators:
             background_tasks.extend(getattr(authenticator, "background_tasks", []))
-        for task in background_tasks or []:
+        for task in background_tasks:
             asyncio_task = asyncio.create_task(task())
             app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
-        # Expose the root_tree here to make it easier to access it from tests,
-        # in usages like:
-        # client.context.app.state.root_tree
-        app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_settings.uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
@@ -559,29 +591,33 @@ confusing behavior due to ambiguous encodings.
                         )
                     else:
                         print(
-                            f"""
+                            dedent(
+                                f"""
 
-No database found at {redacted_url}
+                                No database found at {redacted_url}
 
-To create one, run:
+                                To create one, run:
 
-    tiled admin init-database {redacted_url}
-""",
+                                    tiled admin init-database {redacted_url}
+                                """
+                            ),
                             file=sys.stderr,
                         )
                         raise
                 except DatabaseUpgradeNeeded as err:
                     print(
-                        f"""
+                        dedent(
+                            f"""
 
-The database used by Tiled to store authentication-related information
-was created using an older version of Tiled. It needs to be upgraded to
-work with this version of Tiled.
+                            The database used by Tiled to store authentication-related information
+                            was created using an older version of Tiled. It needs to be upgraded to
+                            work with this version of Tiled.
 
-Back up the database, and then run:
+                            Back up the database, and then run:
 
-    tiled admin upgrade-database {redacted_url}
-""",
+                                tiled admin upgrade-database {redacted_url}
+                            """
+                        ),
                         file=sys.stderr,
                     )
                     raise err from None
@@ -628,16 +664,16 @@ Back up the database, and then run:
 
     async def shutdown_event():
         # Run shutdown tasks collected from trees (adapters).
-        for task in tasks.get("shutdown", []):
+        for task in tasks["shutdown"]:
             await task()
 
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
             from ..authn_database.connection_pool import close_database_connection_pool
 
-            for task in app.state.tasks:
-                task.cancel()
             await close_database_connection_pool(settings.database_settings)
+        for task in app.state.tasks:
+            task.cancel()
 
     app.add_middleware(
         CompressionMiddleware,
@@ -646,7 +682,9 @@ Back up the database, and then run:
     )
 
     @app.middleware("http")
-    async def double_submit_cookie_csrf_protection(request: Request, call_next):
+    async def double_submit_cookie_csrf_protection(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
         if (request.method not in SAFE_METHODS) and set(request.cookies).intersection(
@@ -685,7 +723,9 @@ Back up the database, and then run:
         return response
 
     @app.middleware("http")
-    async def client_compatibility_check(request: Request, call_next):
+    async def client_compatibility_check(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         user_agent = request.headers.get("user-agent", "")
         if user_agent.startswith("python-tiled/"):
             agent, _, raw_version = user_agent.partition("/")
@@ -717,7 +757,7 @@ Back up the database, and then run:
         return response
 
     @app.middleware("http")
-    async def set_cookies(request: Request, call_next):
+    async def set_cookies(request: Request, call_next: RequestResponseEndpoint):
         "This enables dependencies to inject cookies that they want to be set."
         # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
@@ -729,11 +769,10 @@ Back up the database, and then run:
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
-    async def capture_metrics(request: Request, call_next):
+    async def capture_metrics(request: Request, call_next: RequestResponseEndpoint):
         """
         Place metrics in Server-Timing header, in accordance with HTTP spec.
         """
@@ -791,7 +830,9 @@ Back up the database, and then run:
         app.include_router(metrics.router, prefix="/api/v1")
 
         @app.middleware("http")
-        async def capture_metrics_prometheus(request: Request, call_next):
+        async def capture_metrics_prometheus(
+            request: Request, call_next: RequestResponseEndpoint
+        ):
             try:
                 response = await call_next(request)
             except Exception:
@@ -810,7 +851,9 @@ Back up the database, and then run:
             return response
 
     @app.middleware("http")
-    async def current_principal_logging_filter(request: Request, call_next):
+    async def current_principal_logging_filter(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         request.state.principal = SpecialUsers.public
         response = await call_next(request)
         current_principal.set(request.state.principal)
@@ -844,13 +887,10 @@ def app_factory():
     config_path = os.getenv("TILED_CONFIG", "config.yml")
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    from ..config import construct_build_app_kwargs, parse_configs
-
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
-    web_app = build_app(**kwargs)
+    web_app = build_app_from_config(parsed_config, config_path)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_server_info(
         web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
@@ -909,3 +949,9 @@ def print_server_info(
 
 class UnscalableConfig(Exception):
     pass
+
+
+class TaskMap(TypedDict):
+    background: list[AppTask]
+    startup: list[AppTask]
+    shutdown: list[AppTask]
