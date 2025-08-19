@@ -44,7 +44,7 @@ def upgrade():
 
     # Step 2. Update the data_sources table (usually unnecessary)
     op.execute(
-        f"""
+        """
         UPDATE data_sources
         SET structure_family = 'container'
         WHERE structure_family = 'composite'
@@ -88,9 +88,7 @@ def upgrade():
 
         # 4.2. Get all enum values from the existing type
         values = connection.execute(
-            sa.text(
-                "SELECT unnest(enum_range(NULL::structurefamily_old))"
-            )
+            sa.text("SELECT unnest(enum_range(NULL::structurefamily_old))")
         ).fetchall()
         values = [r[0] for r in values if r[0] != "composite"]
 
@@ -204,7 +202,7 @@ def downgrade():
 
     # Step 4. Update the data_sources table (usually unnecessary)
     op.execute(
-        f"""
+        """
         UPDATE data_sources
         SET structure_family = 'composite'
         WHERE structure_family = 'container'
