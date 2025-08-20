@@ -166,34 +166,38 @@ def test_subscribe_after_first_update_from_beginning_websockets(
 
     # Connect WebSocket requesting from beginning
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_stream_from_beginning?envelope_format=msgpack&seq_num=0",
+        "/api/v1/stream/single/test_stream_from_beginning?envelope_format=msgpack&start=0",
         headers={"Authorization": "secret"},
     ) as websocket:
-        print("WAITING for historical message")
-        # First, should receive the historical update
+        # First, should receive the initial array creation
         historical_msg_bytes = websocket.receive_bytes()
-        print("RECEVIED historical message")
         historical_msg = msgpack.unpackb(historical_msg_bytes)
         assert "timestamp" in historical_msg
         assert "payload" in historical_msg
         assert historical_msg["shape"] == [10]
 
-        # Verify historical payload
+        # Verify historical payload (initial array creation - sequence 0)
         historical_payload = np.frombuffer(historical_msg["payload"], dtype=np.int64)
-        expected_historical = np.arange(10) + 1
+        expected_historical = np.arange(10)  # Initial array
         np.testing.assert_array_equal(historical_payload, expected_historical)
+
+        # Next, should receive the first update (sequence 1)
+        first_update_bytes = websocket.receive_bytes()
+        first_update_msg = msgpack.unpackb(first_update_bytes)
+        first_update_payload = np.frombuffer(
+            first_update_msg["payload"], dtype=np.int64
+        )
+        expected_first_update = np.arange(10) + 1
+        np.testing.assert_array_equal(first_update_payload, expected_first_update)
 
         # Write more updates
         for i in range(2, 4):
             new_arr = np.arange(10) + i
-            print(f"{new_arr=}")
             streaming_node.write(new_arr)
 
         # Receive the new updates
-        print("RECEIVING")
         for i in range(2, 4):
             msg_bytes = websocket.receive_bytes()
-            print(f"{msg_bytes=}")
             msg = msgpack.unpackb(msg_bytes)
             assert "timestamp" in msg
             assert "payload" in msg
