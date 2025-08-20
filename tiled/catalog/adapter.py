@@ -1545,6 +1545,8 @@ def from_uri(
         # significant performance boost. For SQLite databases that exist
         # only in process memory, pooling is not applicable.
         poolclass = AsyncAdaptedQueuePool
+    elif parsed_url.get_dialect().name in {"postgresql", "postgresql+asyncpg"}:
+        poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
     else:
         poolclass = None  # defer to sqlalchemy default
 
@@ -1555,13 +1557,17 @@ def from_uri(
         else mount_node
     )
 
+    pool_kwargs = (
+        {"pool_size": 10, "max_overflow": 10}
+        if isinstance(poolclass, AsyncAdaptedQueuePool)
+        else {}
+    )
     engine = create_async_engine(
         uri,
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
-        pool_size=10,
-        max_overflow=10,
+        **pool_kwargs,
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
