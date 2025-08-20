@@ -454,6 +454,7 @@ def build_app(
         for item in [
             "allow_origins",
             "response_bytesize_limit",
+            "exact_count_limit",
             "reject_undeclared_specs",
             "expose_raw_assets",
         ]:

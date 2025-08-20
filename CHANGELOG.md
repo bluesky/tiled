@@ -3,11 +3,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+
+## v0.1.0-b35 (Unreleased)
+
+### Changed
+
+- Optimized the calculation of an approximate length of containers.
 
 ### Added
 
 - The project ships with a pixi manifest (`pixi.toml`).
+
 
 ## v0.1.0-b34 (2025-08-14)
 
@@ -19,6 +25,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   database correct but unchanged. This release repairs the migration script; it
   should be re-run on any databases that could not be upgraded with the previous
   release.
+
 
 ## v0.1.0-b33 (2025-08-13)
 
@@ -55,6 +62,7 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
   This is resolved by an additional database migration.
 - Correct indentation of authenticator args field in the service config schema
   and ensure it correctly validates configurations.
+
 
 ## v0.1.0-b32 (2025-08-04)
 
