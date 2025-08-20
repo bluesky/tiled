@@ -109,6 +109,14 @@ class Node(Timestamped, Base):
             "access_blob",
             postgresql_using="gin",
         ),
+        # PostgreSQL-specific covering index for fast key lookups.
+        Index(
+            "ix_nodes_parent_time_id_key",
+            "parent",
+            "time_created",
+            "id",
+            postgresql_include=["key"],
+        ),
     )
 
 
