@@ -350,7 +350,7 @@ properties:
   catalog_pool_size:
     type: integer
     description: |
-      Size of the connection pool for catalog databases. Default is 10.
+      Size of the connection pool for catalog databases. Default is 5.
   catalog_max_overflow:
     type: integer
     description: |
@@ -363,7 +363,7 @@ properties:
   storage_max_overflow:
     type: integer
     description: |
-      Maximum overflow size of the connection pool for storage databases. Default is 5.
+      Maximum overflow size of the connection pool for storage databases. Default is 10.
   allow_origins:
     type: array
     items:
