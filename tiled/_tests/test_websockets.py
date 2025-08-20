@@ -5,20 +5,20 @@ from ..catalog import from_uri
 from ..client import Context, from_context
 from ..server.app import build_app
 
-config = {
-    # "authentication": {"single_user_api_key": "secret"},
-    "trees": [
-        {
-            "path": "/",
-            "tree": "tiled.catalog:from_uri",
-            "args": {
-                "uri": "sqlite:///:memory:",
-                "init_if_not_exists": True,
-            },
-        }
-    ],
-    "cache_settings": {"uri": "redis://localhost:6379", "ttl": 60},
-}
+# config = {
+#     # "authentication": {"single_user_api_key": "secret"},
+#     "trees": [
+#         {
+#             "path": "/",
+#             "tree": "tiled.catalog:from_uri",
+#             "args": {
+#                 "uri": "sqlite:///:memory:",
+#                 "init_if_not_exists": True,
+#             },
+#         }
+#     ],
+#     "cache_settings": {"uri": "redis://localhost:6379", "ttl": 60},
+# }
 
 
 def test_subscribe_immediately_after_creation_websockets(tmpdir):
