@@ -682,8 +682,8 @@ def get_router(
         principal: Union[Principal, SpecialUsers] = Depends(
             get_current_principal_websocket
         ),
-        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
     ):
+        root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
             lambda: collections.defaultdict(lambda: 0)
         )
