@@ -129,6 +129,16 @@ async def client(request, tmpdir_module):
         assert False
 
 
+def prep_test(client, mapping):
+    for k, v in mapping.items():
+        client.write_array(
+            v.read(),
+            key=k,
+            metadata=dict(v.metadata()),
+            specs=v.specs,
+        )
+
+
 def test_key(client):
     "Binary operators with Key create query objects."
     assert (Key("a") == 1) == Eq("a", 1)
@@ -330,11 +340,20 @@ def test_structure_families(client):
 def test_key_present(client):
     if client.metadata["backend"] == "map":
         pytest.skip("No 'KeyPresent' support on MapAdapter")
+    # Add some data with nested keys
+    newMap = {
+        "nested_key_test": ArrayAdapter.from_array(
+            numpy.ones(10), metadata={"nested": {"nested-key": "nested-value"}}
+        )
+    }
+    prep_test(client, newMap)
     # These containers have a "color" key.
     assert list(client.search(KeyPresent("color"))) == [
         "full_text_test_case",
         "full_text_test_case_urple",
     ]
+    # These containers have a "nested" key.
+    assert list(client.search(KeyPresent("nested.nested-key"))) == ["nested_key_test"]
     # These are all the containers that do not have a "number" key.
     assert list(client.search(KeyPresent("number", False))) == [
         "does_contain_z",
@@ -343,6 +362,7 @@ def test_key_present(client):
         "full_text_test_case_urple",
         "specs_foo_bar",
         "specs_foo_bar_baz",
+        "nested_key_test",
     ]
 
 
