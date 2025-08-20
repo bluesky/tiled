@@ -1,11 +1,14 @@
 import numpy as np
+import pytest
 
 from ..catalog import from_uri
 from ..client import Context, from_context
 from ..server.app import build_app
 
 
-def test_subscribe_immediately_after_creation_websockets(tmpdir):
+@pytest.fixture
+def tiled_websocket_context(tmpdir):
+    """Fixture that provides a Tiled context with websocket support."""
     tree = from_uri(
         "sqlite:///:memory:",
         writable_storage=[
@@ -26,47 +29,51 @@ def test_subscribe_immediately_after_creation_websockets(tmpdir):
     )
 
     with Context.from_app(app) as context:
-        client = from_context(context)
+        yield context
 
-        # Create streaming array node using Tiled client
-        arr = np.arange(10)
-        streaming_node = client.write_array(
-            arr, key="test_stream_immediate", is_streaming=True
-        )
 
-        test_client = context.http_client
+def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
 
-        # Connect WebSocket using TestClient with msgpack format and authorization
-        with test_client.websocket_connect(
-            "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
-            headers={"Authorization": "secret"},
-        ) as websocket:
-            # Write updates using Tiled client
-            for i in range(1, 4):
-                new_arr = np.arange(10) + i
-                streaming_node.write(new_arr)
+    # Create streaming array node using Tiled client
+    arr = np.arange(10)
+    streaming_node = client.write_array(
+        arr, key="test_stream_immediate", is_streaming=True
+    )
 
-            # Receive all updates
-            received = []
-            for _ in range(3):
-                msg_bytes = websocket.receive_bytes()
-                # Tiled uses msgpack format
-                import msgpack
+    # Connect WebSocket using TestClient with msgpack format and authorization
+    with test_client.websocket_connect(
+        "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
+        headers={"Authorization": "secret"},
+    ) as websocket:
+        # Write updates using Tiled client
+        for i in range(1, 4):
+            new_arr = np.arange(10) + i
+            streaming_node.write(new_arr)
 
-                msg = msgpack.unpackb(msg_bytes)
-                received.append(msg)
+        # Receive all updates
+        received = []
+        for _ in range(3):
+            msg_bytes = websocket.receive_bytes()
+            # Tiled uses msgpack format
+            import msgpack
 
-            # Verify all updates received in order
-            assert len(received) == 3
+            msg = msgpack.unpackb(msg_bytes)
+            received.append(msg)
 
-            # Check that we received messages with the expected data
-            for i, msg in enumerate(received):
-                assert "timestamp" in msg
-                assert "payload" in msg
-                assert msg["shape"] == [10]
+        # Verify all updates received in order
+        assert len(received) == 3
 
-                # Verify payload contains the expected array data
-                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-                print("PAYLOAD", payload_array)
-                expected_array = np.arange(10) + (i + 1)
-                np.testing.assert_array_equal(payload_array, expected_array)
+        # Check that we received messages with the expected data
+        for i, msg in enumerate(received):
+            assert "timestamp" in msg
+            assert "payload" in msg
+            assert msg["shape"] == [10]
+
+            # Verify payload contains the expected array data
+            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+            print("PAYLOAD", payload_array)
+            expected_array = np.arange(10) + (i + 1)
+            np.testing.assert_array_equal(payload_array, expected_array)
