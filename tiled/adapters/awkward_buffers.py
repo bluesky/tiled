@@ -3,6 +3,7 @@ A directory containing awkward buffers, one file per form key.
 """
 
 import copy
+from collections.abc import Set
 from pathlib import Path
 from typing import Any, List, Optional
 from urllib.parse import quote_plus
@@ -72,7 +73,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         )
 
     @classmethod
-    def supported_storage(cls):
+    def supported_storage(cls) -> Set[type[Storage]]:
         return {FileStorage}
 
     @classmethod
@@ -83,4 +84,4 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "AwkwardBuffersAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
