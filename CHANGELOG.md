@@ -13,6 +13,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - The project ships with a pixi manifest (`pixi.toml`).
+- Covering index on the `nodes` table (only relevant for PostgreSQL catalogs).
 
 
 ## v0.1.0-b34 (2025-08-14)
