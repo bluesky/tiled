@@ -59,7 +59,7 @@ class JPEGAdapter(ArrayAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "JPEGAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(
@@ -89,7 +89,9 @@ class JPEGAdapter(ArrayAdapter):
         return arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[builtins.slice] = None
+        self,
+        block: Tuple[int, ...],
+        slice: Union[NDSlice, None] = None,
     ) -> NDArray[Any]:
         if sum(block) != 0:
             raise IndexError(block)
