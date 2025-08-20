@@ -1,3 +1,4 @@
+import msgpack
 import numpy as np
 import pytest
 
@@ -57,9 +58,6 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
         received = []
         for _ in range(3):
             msg_bytes = websocket.receive_bytes()
-            # Tiled uses msgpack format
-            import msgpack
-
             msg = msgpack.unpackb(msg_bytes)
             received.append(msg)
 
@@ -74,7 +72,6 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
 
             # Verify payload contains the expected array data
             payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-            print("PAYLOAD", payload_array)
             expected_array = np.arange(10) + (i + 1)
             np.testing.assert_array_equal(payload_array, expected_array)
 
@@ -125,8 +122,6 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
         received = []
         for _ in range(2):
             msg_bytes = websocket.receive_bytes()
-            import msgpack
-
             msg = msgpack.unpackb(msg_bytes)
             received.append(msg)
 
@@ -174,10 +169,10 @@ def test_subscribe_after_first_update_from_beginning_websockets(
         "/api/v1/stream/single/test_stream_from_beginning?envelope_format=msgpack&seq_num=0",
         headers={"Authorization": "secret"},
     ) as websocket:
+        print("WAITING for historical message")
         # First, should receive the historical update
         historical_msg_bytes = websocket.receive_bytes()
-        import msgpack
-
+        print("RECEVIED historical message")
         historical_msg = msgpack.unpackb(historical_msg_bytes)
         assert "timestamp" in historical_msg
         assert "payload" in historical_msg
@@ -191,11 +186,14 @@ def test_subscribe_after_first_update_from_beginning_websockets(
         # Write more updates
         for i in range(2, 4):
             new_arr = np.arange(10) + i
+            print(f"{new_arr=}")
             streaming_node.write(new_arr)
 
         # Receive the new updates
+        print("RECEIVING")
         for i in range(2, 4):
             msg_bytes = websocket.receive_bytes()
+            print(f"{msg_bytes=}")
             msg = msgpack.unpackb(msg_bytes)
             assert "timestamp" in msg
             assert "payload" in msg
