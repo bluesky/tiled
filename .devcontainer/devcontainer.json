@@ -14,7 +14,7 @@
 	"features": {
 		"ghcr.io/devcontainers/features/git:1": {}
 	},
-	"postCreateCommand": "set -ex && uv sync --extra all --extra dev",
+	"postCreateCommand": "set -ex && uv sync --extra all --extra dev --project src && uv tool install pre-commit --with pre-commit-uv && SHELL=bash uv tool update-shell && pre-commit install",
 	"customizations": {
 		"vscode": {
 			"settings": {
