@@ -1545,7 +1545,7 @@ def from_uri(
         # significant performance boost. For SQLite databases that exist
         # only in process memory, pooling is not applicable.
         poolclass = AsyncAdaptedQueuePool
-    elif parsed_url.get_dialect().name in {"postgresql", "postgresql+asyncpg"}:
+    elif parsed_url.get_dialect().name.startswith("postgresql"):
         poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
     else:
         poolclass = None  # defer to sqlalchemy default
