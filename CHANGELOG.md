@@ -3,20 +3,91 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b34 (2025-08-14)
+
+### Fixed
+
+- In the previous release, v0.1.0-b32, a catalog database migration script (for
+  closure tables) ran successfully on some databases but on others it could
+  fail. As designed, the failure mode was a clean rollback, leaving the
+  database correct but unchanged. This release repairs the migration script; it
+  should be re-run on any databases that could not be upgraded with the previous
+  release.
+
+## v0.1.0-b33 (2025-08-13)
+
+_This release requires a database migration of the catalog database._
+
+```none
+tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
+```
+
+### Added
+
+- Endpoints for (read) data access with zarr v2 and v3 protocols.
+- `data_type` and `coord_data_type` properties for sparse arrays in `COOAdapter`
+  and `COOStructure`.
+
+### Changed
+
+- Refactored internal server function ``get_root_tree()`` to not use FastAPI
+  dependencies injection
+- The logic of hierarchical organization of the Nodes table in Catalog: use the concept
+  of Closure Table to track ancestors and descendands of the nodes.
+- Shorter string representation of chunks in `ArrayClient`.
+- Refactored internal Zarr version detection
+- For compatibility with older clients, do not require metadata updates to include
+  an `access_blob` in the body of the request.
+
+### Fixed
+
+- Uniform array columns read from Postgres/DuckDB are now aggregated to an
+  NDArray (e.g. scanned `waveform` PVs)
+- Support for deleting separate nodes and contents of containers in client API.
+- The database migration in v0.1.0-b27 was incomplete, and missed an update to
+  the `revisions` table necessary to make metadata updates work correctly.
+  This is resolved by an additional database migration.
+- Correct indentation of authenticator args field in the service config schema
+  and ensure it correctly validates configurations.
+
+## v0.1.0-b32 (2025-08-04)
+
+This release is identical to the previous one; it was made to fix our
+continuous deployment processes.
+
+
+## v0.1.0-b31 (2025-08-01)
+
+### Added
+
+- Pooling of ADBC connections to storage databases.
+- An index on the `node_id` column of the `data_sources` table.
+
+### Fixed
+
+- Make devcontainer work out of box to run e.g. tiled serve demo
+- Tests were missing assertions to verify expected outcomes
+- Combining multiple hdf5 files containing scalar values by HDF5Adapter.
+- Make principal type hints consistent in router
+- Typehinted database access methods
+- Explicit type conversion in SQL adapter when appending to an existing table.
+
+
 ## v0.1.0-b30 (2025-07-18)
 
-## Changed
+### Changed
 
 - Refactored internal server function ``get_entry()`` to not use the FastAPI
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
 
-## Fixed
+### Fixed
 
 - Restored authentication check for API key
 - Updated usage for change in Zarr 3.x API.
 - Improved error message if config location is non-file
+
 
 ## v0.1.0-b29 (2025-06-06)
 

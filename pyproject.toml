@@ -81,19 +81,20 @@ all = [
     "jmespath",
     "lz4",
     "ndindex",
-    "numcodecs <0.16.0",
+    "numcodecs",
     "numpy",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "openpyxl",
     "packaging",
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "sqlalchemy[asyncio] >=2",
     "stamina",
     "starlette >=0.38.0",
@@ -118,11 +119,12 @@ client = [
     "entrypoints",
     "lz4",
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numpy",
     "pandas",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "stamina",
     "watchfiles",
     "xarray",
@@ -139,22 +141,24 @@ compression = [
 dataframe = [
     "dask[dataframe]",
     "pandas",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
 ]
 # These are required for developing the package (running the tests, building
 # the documentation) but not necessarily required for _using_ it.
 dev = [
+    "aiohttp",
     "coverage",
     "flake8",
     "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
+    "locust",
     "matplotlib",
     "mistune",
     "myst-parser",
     "numpydoc",
     "pre-commit",
-    "pytest <8",  # TMP pin while plugins catch up
+    "pytest",
     "pytest-asyncio",
     "pytest-mock",
     "pytest-rerunfailures",
@@ -194,7 +198,7 @@ minimal-server = [
     "fastapi >=0.115.8",
     "jinja2",
     "jmespath",
-    "numcodecs <0.16.0",
+    "numcodecs",
     "packaging",
     "prometheus_client",
     "python-dateutil",
@@ -232,18 +236,19 @@ server = [
     "jmespath",
     "lz4",
     "ndindex",
-    "numcodecs <0.16.0",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
+    "numcodecs",
     "numpy",
     "openpyxl",
     "packaging",
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-    "sparse",
+    "sparse >=0.15.5",
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "tifffile",
@@ -255,8 +260,9 @@ server = [
 # These are needed by the client and server to transmit/receive sparse arrays.
 sparse = [
     "ndindex",
-    "pyarrow",
-    "sparse",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
+    "sparse >=0.15.5",
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [
@@ -319,32 +325,3 @@ exclude_lines = ["if __name__ == '__main__':"]
 
 [tool.coverage.paths]
 source = ["."]
-
-[tool.pixi.workspace]
-channels = ["conda-forge"]
-platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
-
-[tool.pixi.pypi-dependencies]
-tiled = { path = ".", editable = true }
-
-[tool.pixi.feature.sparse.dependencies]
-# sparse setuptools-based build is not working, so override with conda
-# packages.
-ndindex = "*"
-pyarrow = "*"
-sparse = "*"
-
-[tool.pixi.environments]
-default = { solve-group = "default" }
-all = { features = ["all"], solve-group = "default" }
-array = { features = ["array"], solve-group = "default" }
-client = { features = ["client"], solve-group = "default" }
-compression = { features = ["compression"], solve-group = "default" }
-dataframe = { features = ["dataframe"], solve-group = "default" }
-dev = { features = ["dev"], solve-group = "default" }
-formats = { features = ["formats"], solve-group = "default" }
-minimal-client = { features = ["minimal-client"], solve-group = "default" }
-minimal-server = { features = ["minimal-server"], solve-group = "default" }
-server = { features = ["server"], solve-group = "default" }
-sparse = { features = ["sparse"], solve-group = "default" }
-xarray = { features = ["xarray"], solve-group = "default" }

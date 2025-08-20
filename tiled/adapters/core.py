@@ -31,6 +31,10 @@ class Adapter(ABC, Generic[S]):
     def specs(self) -> List[Spec]:
         return self._specs
 
+    @specs.setter
+    def specs(self, value: List[Spec]) -> None:
+        self._specs = value
+
     def structure(self) -> S:
         return self._structure
 

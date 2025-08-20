@@ -140,7 +140,6 @@ def serve_directory(
     from ..catalog import from_uri as catalog_from_uri
     from ..server.app import build_app, print_server_info
 
-    server_settings = {}
     if keep_ext:
         from ..adapters.files import identity
 
@@ -205,7 +204,6 @@ def serve_directory(
             "allow_anonymous_access": public,
             "single_user_api_key": api_key,
         },
-        server_settings,
     )
     import functools
 
@@ -462,7 +460,6 @@ or use an existing one:
             err=True,
         )
 
-    server_settings = {}
     tree = from_uri(
         database,
         writable_storage=write,
@@ -475,7 +472,6 @@ or use an existing one:
             "allow_anonymous_access": public,
             "single_user_api_key": api_key,
         },
-        server_settings,
         scalable=scalable,
     )
     print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)
@@ -539,14 +535,12 @@ def serve_pyobject(
     from ..utils import import_object
 
     tree = import_object(object_path)
-    server_settings = {}
     web_app = build_app(
         tree,
         {
             "allow_anonymous_access": public,
             "single_user_api_key": api_key,
         },
-        server_settings,
         scalable=scalable,
     )
     print_server_info(web_app, host=host, port=port, include_api_key=api_key is None)

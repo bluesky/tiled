@@ -64,25 +64,22 @@ any HTTP client.
 >>> client = from_uri("http://localhost:8000")
 
 >>> client
-<Container {'short_table', 'long_table', 'structured_data', ...} ~10 entries>
+<Container {'scalars', 'nested', 'tables', 'structured_data', ...} ~8 entries>
 
 >>> list(client)
-'big_image',
- 'small_image',
- 'tiny_image',
- 'tiny_cube',
- 'tiny_hypercube',
+['scalars',
+ 'nested',
+ 'tables',
+ 'structured_data',
+ 'flat_array',
  'low_entropy',
  'high_entropy',
- 'short_table',
- 'long_table',
- 'labeled_data',
- 'structured_data']
+ 'dynamic']
 
->>> client['medium_image']
+>>> client['nested/images/medium_image']
 <ArrayClient>
 
->>> client['medium_image'][:]
+>>> client['nested/images/medium_image'][:]
 array([[0.49675483, 0.37832119, 0.59431287, ..., 0.16990737, 0.5396537 ,
         0.61913812],
        [0.97062498, 0.93776709, 0.81797714, ..., 0.96508877, 0.25208564,
@@ -97,10 +94,10 @@ array([[0.49675483, 0.37832119, 0.59431287, ..., 0.16990737, 0.5396537 ,
        [0.16567224, 0.1347261 , 0.48809697, ..., 0.55021249, 0.42324589,
         0.31440635]])
 
->>> client['long_table']
+>>> client['tables/long_table']
 <DataFrameClient ['A', 'B', 'C']>
 
->>> client['long_table'].read()
+>>> client['tables/long_table'].read()
               A         B         C
 index
 0      0.246920  0.493840  0.740759
@@ -117,7 +114,7 @@ index
 
 [100000 rows x 3 columns]
 
->>> client['long_table'].read(['A', 'B'])
+>>> client['tables/long_table'].read(['A', 'B'])
               A         B
 index
 0      0.246920  0.493840
@@ -139,19 +136,19 @@ data in whole or in efficiently-chunked parts in the format of your choice:
 
 ```
 # Download tabular data as CSV
-http://localhost:8000/api/v1/table/full/long_table?format=csv
+http://localhost:8000/api/v1/table/full/tables/long_table?format=csv
 
 # or XLSX (Excel)
-http://localhost:8000/api/v1/table/full/long_table?format=xslx
+http://localhost:8000/api/v1/table/full/tables/long_table?format=xslx
 
 # and subselect columns.
-http://localhost:8000/api/v1/table/full/long_table?format=xslx&field=A&field=B
+http://localhost:8000/api/v1/table/full/tables/long_table?format=xslx&field=A&field=B
 
 # View or download (2D) array data as PNG
-http://localhost:8000/api/v1/array/full/medium_image?format=png
+http://localhost:8000/api/v1/array/full/nested/images/medium_image?format=png
 
 # and slice regions of interest.
-http://localhost:8000/api/v1/array/full/medium_image?format=png&slice=:50,100:200
+http://localhost:8000/api/v1/array/full/nested/images/medium_image?format=png&slice=:50,100:200
 ```
 
 Web-based data access usually involves downloading complete files, in the

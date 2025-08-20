@@ -129,6 +129,10 @@ class BuiltinDtype:
         size = self.itemsize if self.kind != Kind.unicode else self.itemsize // 4
         return f"{endianness}{self.kind.value}{size}{self.dt_units or ''}"
 
+    def to_numpy_descr(self):
+        "An alias for to_numpy_str() to match the StructDtype interface."
+        return self.to_numpy_str()
+
     @classmethod
     def from_json(cls, structure: Mapping[str, Any]) -> "BuiltinDtype":
         return cls(

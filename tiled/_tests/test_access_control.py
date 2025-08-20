@@ -468,7 +468,7 @@ def test_public_access(
         public_client_g["g", "A3"]
 
 
-def test_service_principal_access(tmpdir):
+def test_service_principal_access(tmpdir, sqlite_or_postgres_uri):
     "Test that a service principal can work with SimpleAccessPolicy."
     config = {
         "authentication": {
@@ -494,7 +494,7 @@ def test_service_principal_access(tmpdir):
             {
                 "tree": "catalog",
                 "args": {
-                    "uri": f"sqlite:///{tmpdir}/catalog.db",
+                    "uri": sqlite_or_postgres_uri,
                     "writable_storage": f"file://localhost{tmpdir}/data",
                     "init_if_not_exists": True,
                 },
@@ -528,7 +528,7 @@ def test_service_principal_access(tmpdir):
         build_app_from_config(config), api_key=key_info["secret"]
     ) as context:
         sp_client = from_context(context)
-        list(sp_client) == ["x"]
+        assert list(sp_client) == ["x"]
 
 
 class CustomAttributesAuthenticator(DictionaryAuthenticator):

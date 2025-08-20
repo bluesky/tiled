@@ -1,5 +1,8 @@
+import re
+from io import StringIO
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from ..client import Context, from_context
@@ -8,8 +11,38 @@ from ..examples.xdi import data
 from ..server.app import build_app_from_config
 
 
+def load_data(text: str) -> tuple[list[str], pd.DataFrame]:
+    # This regular expression matches and removes a block of comment lines
+    #
+    # Pattern breakdown:
+    #   - #\s*\/+\r?\n
+    #       Matches a line starting with '#', optional whitespace, one or more '/',
+    #       then a newline(unix or windows).
+    #       Example #  //////// newline
+    #   - (?:#\s+.*\r?\n)*
+    #       Matches zero or more lines starting with '#', at least one space, then any text,
+    #       then a newline(unix or windows).
+    #       Example #    Comment here newline
+    #   - #\s*-+\r?\n
+    #       Matches a line starting with '#', optional whitespace, one or more '-',
+    #       then a newline(unix or windows).
+    #       Example #      -----------newline
+    # Example matched block:
+    #   # ////////
+    #   # Comment Here
+    #   # More Comments
+    #   # -------
+    text = re.sub(r"#\s*\/+\r?\n(?:#\s+.*\r?\n)*#\s*-+\r?\n", "", text)
+    lines = text.strip().splitlines()
+    metadata_lines = [line.replace(" ", "") for line in lines if line.startswith("#")]
+    data_lines = [line.strip() for line in lines if not line.startswith("#")]
+    return metadata_lines, pd.read_csv(
+        StringIO("\n".join(data_lines)), sep=r"\s+", header=None
+    )
+
+
 @pytest.mark.asyncio
-async def test_xdi_round_trip(tmpdir):
+async def test_xdi_round_trip(tmp_path: Path):
     """
     Steps:
 
@@ -20,8 +53,8 @@ async def test_xdi_round_trip(tmpdir):
     Compare result of (3) to result of (1).
     """
     # Write example data file.
-    Path(tmpdir / "files").mkdir()
-    with open(tmpdir / "files" / "example.xdi", "w") as file:
+    Path(tmp_path / "files").mkdir()
+    with open(tmp_path / "files" / "example.xdi", "w") as file:
         file.write(data)
     config = {
         "trees": [
@@ -29,8 +62,8 @@ async def test_xdi_round_trip(tmpdir):
                 "tree": "catalog",
                 "path": "/",
                 "args": {
-                    "uri": tmpdir / "catalog.db",
-                    "readable_storage": [tmpdir / "files"],
+                    "uri": tmp_path / "catalog.db",
+                    "readable_storage": [tmp_path / "files"],
                     "init_if_not_exists": True,
                     "adapters_by_mimetype": {
                         "application/x-xdi": "tiled.examples.xdi:XDIAdapter"
@@ -45,13 +78,16 @@ async def test_xdi_round_trip(tmpdir):
         client = from_context(context)
         await register(
             client,
-            tmpdir / "files",
+            tmp_path / "files",
             adapters_by_mimetype={"application/x-xdi": "tiled.examples.xdi:XDIAdapter"},
             mimetypes_by_file_ext={".xdi": "application/x-xdi"},
         )
-        client["example"].export(str(tmpdir / "exported.xdi"))
-        actual = Path(tmpdir / "exported.xdi").read_text()
-        actual
-        # XDI uses a two-space spacing that pandas.to_csv does not support.
-        # Need thought to get this exactly right.
-        # assert actual == data
+
+        client["example"].export(str(tmp_path / "exported.xdi"))
+        actual = Path(tmp_path / "exported.xdi").read_text()
+        metadata_actual, df_actual = load_data(actual)
+        metadata_expected, df_expected = load_data(data)
+        assert df_actual.equals(df_expected)
+        assert len(metadata_actual) == len(metadata_expected) and set(
+            metadata_actual
+        ) == set(metadata_expected)

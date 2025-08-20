@@ -132,7 +132,7 @@ properties:
     properties:
       providers:
         type: array
-        item:
+        items:
           type: object
           additionalProperties: false
           required:
@@ -161,19 +161,19 @@ properties:
                 ```yaml
                 authenticator: tiled.examples.DummyAuthenticator
                 ```
+            args:
+              type: object
+              description: |
+                Named arguments to pass to Authenticator. If there are none,
+                `args` may be omitted or empty.
+
+                Example:
+
+                ```yaml
+                authenticator: tiled.examples.PAMAuthenticator
                 args:
-                  type: [object, "null"]
-                  description: |
-                    Named arguments to pass to Authenticator. If there are none,
-                    `args` may be omitted or empty.
-
-                    Example:
-
-                    ```yaml
-                    authenticator: tiled.examples.PAMAuthenticator
-                    args:
-                      service: "custom_service"
-                    ```
+                  service: "custom_service"
+                ```
       tiled_admins:
         type: array
         items:

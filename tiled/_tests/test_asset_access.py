@@ -35,9 +35,9 @@ def test_include_data_sources_method_on_self(client):
     "Calling include_data_sources() fetches data sources on self."
     x = client.write_array([1, 2, 3], key="x")
     # Fetch data_sources on x object directly.
-    x.data_sources() is not None
+    assert x.data_sources() is not None
     # Fetch data_sources on x object, looked up in client.
-    client["x"].data_sources() is not None
+    assert client["x"].data_sources() is not None
     assert client["x"].include_data_sources().data_sources() is not None
 
 

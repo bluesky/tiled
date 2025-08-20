@@ -212,7 +212,7 @@ def test_full_text_delete(client):
     client.write_array(numpy.ones(10), metadata={"item": "toaster"}, key="test_delete")
     # Assert that the data was written
     assert list(client.search(FullText("toaster"))) == ["test_delete"]
-    client.delete("test_delete")
+    client.delete_contents("test_delete", external_only=False)
     assert list(client.search(FullText("purple"))) == ["full_text_test_case"]
     assert list(client.search(FullText("toaster"))) == []
 
@@ -246,11 +246,11 @@ def test_regex(client):
 
 def test_not_and_and_or(client):
     with pytest.raises(TypeError):
-        not (Key("color") == "red")
+        not (Key("color") == "red")  # type: ignore
     with pytest.raises(TypeError):
-        (Key("color") == "red") and (Key("sample") == "Ni")
+        (Key("color") == "red") and (Key("sample") == "Ni")  # type: ignore
     with pytest.raises(TypeError):
-        (Key("color") == "red") or (Key("sample") == "Ni")
+        (Key("color") == "red") or (Key("sample") == "Ni")  # type: ignore
 
 
 @pytest.mark.parametrize(

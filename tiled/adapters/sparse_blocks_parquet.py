@@ -1,5 +1,6 @@
 import copy
 import itertools
+from collections.abc import Set
 from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
@@ -15,7 +16,7 @@ from tiled.adapters.core import Adapter
 from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
-from ..storage import Storage
+from ..storage import FileStorage, Storage
 from ..structures.core import Spec
 from ..structures.data_source import Asset, DataSource
 from ..structures.sparse import COOStructure, SparseStructure
@@ -57,6 +58,10 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         for block, uri in zip(itertools.product(*num_blocks), data_uris):
             self.blocks[block] = uri
         super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
 
     @classmethod
     def from_catalog(
