@@ -533,7 +533,9 @@ class PatchMetadataRequest(HyphenizedBaseModel):
     # These fields are optional because None means "no changes; do not update".
     # Dict for merge-patch:
     # Define an alias to override parent class alias generator
-    access_blob: Optional[Union[List[JSONPatchAny], Dict]] = Field(alias="access_blob")
+    access_blob: Optional[Union[List[JSONPatchAny], Dict]] = Field(
+        alias="access_blob", default=None
+    )
 
     @pydantic.field_validator("specs")
     def specs_uniqueness_validator(cls, v):
