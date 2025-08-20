@@ -1560,6 +1560,8 @@ def from_uri(
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
+        pool_size=10,
+        max_overflow=10,
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
