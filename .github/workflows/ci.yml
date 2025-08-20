@@ -56,6 +56,10 @@ jobs:
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_postgres.sh
 
+    - name: Start Redis service in container.
+      shell: bash -l {0}
+      run: source continuous_integration/scripts/start_redis.sh
+
 
     - name: Ensure example data is migrated to current catalog database schema.
       # The example data is expected to be kept up to date to the latest Tiled
