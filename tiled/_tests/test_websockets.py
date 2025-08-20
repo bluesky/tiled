@@ -77,3 +77,131 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
             print("PAYLOAD", payload_array)
             expected_array = np.arange(10) + (i + 1)
             np.testing.assert_array_equal(payload_array, expected_array)
+
+
+def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
+    """Test websocket connection to non-existent node returns 404."""
+    context = tiled_websocket_context
+    test_client = context.http_client
+
+    non_existent_node_id = "definitely_non_existent_websocket_node_99999999"
+
+    # Try to connect to websocket for non-existent node
+    # This should result in an HTTP 404 response during the handshake
+    response = test_client.get(
+        f"/api/v1/stream/single/{non_existent_node_id}",
+        headers={"Authorization": "secret"},
+    )
+    assert response.status_code == 404
+
+
+def test_subscribe_after_first_update_websockets(tiled_websocket_context):
+    """Client that subscribes after first update sees only subsequent updates."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node using Tiled client
+    arr = np.arange(10)
+    streaming_node = client.write_array(
+        arr, key="test_stream_after_update", is_streaming=True
+    )
+
+    # Write first update before subscribing
+    first_update = np.arange(10) + 1
+    streaming_node.write(first_update)
+
+    # Connect WebSocket after first update
+    with test_client.websocket_connect(
+        "/api/v1/stream/single/test_stream_after_update?envelope_format=msgpack",
+        headers={"Authorization": "secret"},
+    ) as websocket:
+        # Write more updates
+        for i in range(2, 4):
+            new_arr = np.arange(10) + i
+            streaming_node.write(new_arr)
+
+        # Should only receive the 2 new updates
+        received = []
+        for _ in range(2):
+            msg_bytes = websocket.receive_bytes()
+            import msgpack
+
+            msg = msgpack.unpackb(msg_bytes)
+            received.append(msg)
+
+        # Verify only new updates received
+        assert len(received) == 2
+
+        # Check that we received messages with the expected data
+        for i, msg in enumerate(received):
+            assert "timestamp" in msg
+            assert "payload" in msg
+            assert msg["shape"] == [10]
+
+            # Verify payload contains the expected array data
+            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+            expected_array = np.arange(10) + (
+                i + 2
+            )  # i+2 because we start from update 2
+            np.testing.assert_array_equal(payload_array, expected_array)
+
+
+def test_subscribe_after_first_update_from_beginning_websockets(
+    tiled_websocket_context,
+):
+    """Client that subscribes after first update but requests from seq_num=0 sees all updates.
+
+    Note: seq_num starts at 1 for the first data point. seq_num=0 means "start as far back
+    as you have" (similar to Bluesky social)
+    """
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node using Tiled client
+    arr = np.arange(10)
+    streaming_node = client.write_array(
+        arr, key="test_stream_from_beginning", is_streaming=True
+    )
+
+    # Write first update before subscribing
+    first_update = np.arange(10) + 1
+    streaming_node.write(first_update)
+
+    # Connect WebSocket requesting from beginning
+    with test_client.websocket_connect(
+        "/api/v1/stream/single/test_stream_from_beginning?envelope_format=msgpack&seq_num=0",
+        headers={"Authorization": "secret"},
+    ) as websocket:
+        # First, should receive the historical update
+        historical_msg_bytes = websocket.receive_bytes()
+        import msgpack
+
+        historical_msg = msgpack.unpackb(historical_msg_bytes)
+        assert "timestamp" in historical_msg
+        assert "payload" in historical_msg
+        assert historical_msg["shape"] == [10]
+
+        # Verify historical payload
+        historical_payload = np.frombuffer(historical_msg["payload"], dtype=np.int64)
+        expected_historical = np.arange(10) + 1
+        np.testing.assert_array_equal(historical_payload, expected_historical)
+
+        # Write more updates
+        for i in range(2, 4):
+            new_arr = np.arange(10) + i
+            streaming_node.write(new_arr)
+
+        # Receive the new updates
+        for i in range(2, 4):
+            msg_bytes = websocket.receive_bytes()
+            msg = msgpack.unpackb(msg_bytes)
+            assert "timestamp" in msg
+            assert "payload" in msg
+            assert msg["shape"] == [10]
+
+            # Verify payload contains the expected array data
+            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+            expected_array = np.arange(10) + i
+            np.testing.assert_array_equal(payload_array, expected_array)
