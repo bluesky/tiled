@@ -69,7 +69,7 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
                 partition = dask.dataframe.read_parquet(path)
             partitions.append(partition)
         return DataFrameAdapter(
-            partitions, self._structure, specs=self.specs, metadata=self.metadata
+            partitions, self._structure, specs=self.specs, metadata=self.metadata()
         )
 
     @classmethod
