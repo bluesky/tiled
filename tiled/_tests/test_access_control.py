@@ -36,6 +36,7 @@ server_config = {
                     "users_to_passwords": {
                         "alice": "alice",
                         "bob": "bob",
+                        "chris": "chris",
                         "sue": "sue",
                         "zoe": "zoe",
                         "admin": "admin",
@@ -68,6 +69,36 @@ access_tag_config = {
                 {
                     "name": "alice",
                     "role": "facility_admin",
+                },
+                {
+                    "name": "chris",
+                    "scopes": ["read:data", "read:metadata"],
+                },
+            ],
+        },
+        "chris_tag": {
+            "users": [
+                {
+                    "name": "alice",
+                    "role": "facility_admin",
+                },
+                {
+                    "name": "chris",
+                    "role": "facility_admin",
+                },
+            ],
+        },
+        "biologists_tag": {
+            "users": [
+                {
+                    "name": "alice",
+                    "role": "facility_admin",
+                },
+            ],
+            "groups": [
+                {
+                    "name": "biologists",
+                    "scopes": ["read:data", "read:metadata"],
                 },
             ],
         },
@@ -111,12 +142,32 @@ access_tag_config = {
                 {
                     "name": "alice",
                 },
+                {
+                    "name": "chris",
+                },
+            ],
+        },
+        "biologists_tag": {
+            "users": [
+                {
+                    "name": "alice",
+                },
+            ],
+            "groups": [
+                {
+                    "name": "biologists",
+                },
             ],
         },
         "chemists_tag": {
             "users": [
                 {
                     "name": "sue",
+                },
+            ],
+            "groups": [
+                {
+                    "name": "chemists",
                 },
             ],
         },
@@ -439,6 +490,127 @@ def test_admin_access_control(access_control_test_context_factory):
         # apply a tag which is not defined
         with fail_with_status_code(HTTP_403_FORBIDDEN):
             admin_client[top][data].replace_metadata(access_tags=["undefined_tag"])
+
+
+def test_update_node_access_control(access_control_test_context_factory):
+    """
+    Test that access control on metadata changes is working.
+
+    This tests the following:
+      - Update metadata while having write access
+      - Prevent updating metadata without having write access
+      - Successfully add an access tag and remove an access tag
+      - Prevent adding or removing an access tag without having write access
+      - Prevent adding or removing access tags which the user does not own
+      - Add and remove access tags which do not confer the necessary scopes
+      - Attempt to add an undefined access tag (not allowed)
+      - Attempt to add the "public" tag (admin only)
+      - Attempt to remove the "public" tag (admin only)
+      - Attempt to remove an undefined access tag (not allowed)
+    """
+    admin_client = access_control_test_context_factory("admin", "admin")
+    alice_client = access_control_test_context_factory("alice", "alice")
+    chris_client = access_control_test_context_factory("chris", "chris")
+    sue_client = access_control_test_context_factory("sue", "sue")
+
+    top = "qux"
+    for data in ["data_F"]:
+        admin_client[top].write_array(arr, key=data, access_tags=["alice_tag"])
+        # successfully update metadata, user has write access
+        alice_client[top][data].replace_metadata(metadata={"materials": ["Cu", "Ag"]})
+        assert "Ag" in alice_client[top][data].metadata["materials"]
+        # fail to update metadata, user does not have write access
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            chris_client[top][data].replace_metadata(
+                metadata={"materials": ["Ag", "Au"]}
+            )
+        assert "Au" not in chris_client[top][data].metadata["materials"]
+
+        # succeeds to add a new access tag and remove the old access tag
+        alice_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+        access_tags = alice_client[top][data].access_blob["tags"]
+        assert "alice_tag" not in access_tags
+        assert "biologists_tag" in access_tags
+
+        # fails to add a new access tag, user does not have write access
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            chris_client[top][data].replace_metadata(
+                access_tags=["biologists_tag", "chris_tag"]
+            )
+        admin_client[top][data].replace_metadata(
+            access_tags=["alice_tag", "biologists_tag"]
+        )
+        # fails to remove an access tag, user does not have write access
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            chris_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+        admin_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+
+        # fails to add a new access tag, user does not own the tag
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            alice_client[top][data].replace_metadata(
+                access_tags=["biologists_tag", "chris_tag"]
+            )
+        admin_client[top][data].replace_metadata(
+            access_tags=["biologists_tag", "chris_tag"]
+        )
+        # fails to remove an access tag, user does not own the tag
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            chris_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+        admin_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+
+        # fail to add an undefined tag
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            alice_client[top][data].replace_metadata(
+                access_tags=["undefined_tag", "biologists_tag"]
+            )
+        # fail to add the "public" tag
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            alice_client[top][data].replace_metadata(
+                access_tags=["public", "biologists_tag"]
+            )
+        admin_client[top][data].replace_metadata(
+            access_tags=["public", "biologists_tag"]
+        )
+        # fail to remove the "public" tag
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            alice_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+        admin_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+
+        # surgically add an undefined tag to the node, then fail when trying to remove it
+        import sqlite3
+
+        db = sqlite3.connect(f"file:catalog_{top}?mode=memory&cache=shared", uri=True)
+        cursor = db.cursor()
+        cursor.execute(
+            "UPDATE nodes SET access_blob = ? WHERE key = ?",
+            ('{"tags": ["undefined_tag", "biologists_tag"]}', data),
+        )
+        db.commit()
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            alice_client[top][data].replace_metadata(access_tags=["biologists_tag"])
+
+    top = "baz"
+    for data in ["data_G"]:
+        sue_client[top].write_array(arr, key=data)
+        # fail to apply a new access tag as it does not give the user the
+        # minimum required scopes
+        # this case only affects user-owned nodes:
+        # - if we did not have read access, we would not even see the node
+        # - if we did not have write access, we would be blocked by scopes
+        # - if an existing tag already gave us read and write, adding a tag would succeed
+        # - if an existing tag already gave us read and write, and we tried to remove it
+        #   while adding the new tag, it's really the removal operation that prevents this,
+        #   and this operation is tested below
+        # this leaves only user-owned nodes (full access for the user, but no existing tags)
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            sue_client[top][data].replace_metadata(access_tags=["chemists_tag"])
+        sue_client[top][data].replace_metadata(
+            access_tags=["physicists_tag", "chemists_tag"]
+        )
+        # fail to apply the new access tag as removing the old access tag results
+        # in insufficent scopes for the user
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            sue_client[top][data].replace_metadata(access_tags=["chemists_tag"])
 
 
 def test_empty_access_blob_access_control(access_control_test_context_factory):
