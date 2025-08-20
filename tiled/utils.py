@@ -16,7 +16,17 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable, Generic, Iterator, Optional, TextIO, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterator,
+    Optional,
+    TextIO,
+    Tuple,
+    TypeVar,
+    Union,
+)
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -31,6 +41,8 @@ patch_mimetypes = namedtuple(
     MERGE_PATCH="application/merge-patch+json",
 )
 
+
+T = TypeVar("T")
 K = TypeVar("K")
 V = TypeVar("V")
 
@@ -486,9 +498,6 @@ def parse(file: TextIO) -> dict[Any, Any]:
 
     content = yaml.safe_load(file.read())
     return expand_environment_variables(content)
-
-
-T = TypeVar("T")
 
 
 def expand_environment_variables(config: T) -> T:

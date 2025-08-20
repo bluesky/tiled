@@ -2,7 +2,7 @@ import time
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
@@ -11,13 +11,16 @@ import orjson
 from httpx import URL
 
 from tiled.client.context import Context
-from tiled.type_aliases import JSON
 
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
 from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
+
+# TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
+# After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
+JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
 
 
 class MetadataRevisions:
