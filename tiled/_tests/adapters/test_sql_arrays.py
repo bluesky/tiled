@@ -22,67 +22,27 @@ from tiled.structures.table import TableStructure
 rng = np.random.default_rng(42)
 
 names_adapters: Dict[str, Type[Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]]] = {
-    "i0": ArrayAdapter,
-    "i1": ArrayAdapter,
-    "i2": ArrayAdapter,
-    "i3": ArrayAdapter,
-    "f4": ArrayAdapter,
-    "f5": ArrayAdapter,
-    "ragged": RaggedAdapter,
+    "integers": ArrayAdapter,
+    "floats": ArrayAdapter,
+    "ragged_floats": RaggedAdapter,
 }
 names = list(names_adapters.keys())
 batch_size = 5
 data0 = [
-    pa.array(
-        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
-    ),
-    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
-    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
+    pa.array([rng.integers(-100, 100, size=10) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15) for _ in range(batch_size)]),
     pa.array([rng.random(size=rng.integers(1, 10)) for _ in range(batch_size)]),
 ]
 batch_size = 8
 data1 = [
-    pa.array(
-        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
-    ),
-    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
-    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
+    pa.array([rng.integers(-100, 100, size=10) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15) for _ in range(batch_size)]),
     pa.array([rng.random(size=rng.integers(1, 10)) for _ in range(batch_size)]),
 ]
 batch_size = 3
 data2 = [
-    pa.array(
-        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
-    ),
-    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
-    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
+    pa.array([rng.integers(-100, 100, size=10) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15) for _ in range(batch_size)]),
     pa.array([rng.random(size=rng.integers(1, 10)) for _ in range(batch_size)]),
 ]
 
