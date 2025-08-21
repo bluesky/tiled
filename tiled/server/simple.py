@@ -97,6 +97,7 @@ class SimpleTiledServer:
     ):
         # Delay import to avoid circular import.
         from ..catalog import from_uri as catalog_from_uri
+        from ..config import Authentication
         from .app import build_app
         from .logging_config import LOGGING_CONFIG
 
@@ -132,7 +133,7 @@ class SimpleTiledServer:
             readable_storage=readable_storage,
         )
         self.app = build_app(
-            self.catalog, authentication={"single_user_api_key": api_key}
+            self.catalog, authentication=Authentication(single_user_api_key=api_key)
         )
         self._cm = ThreadedServer(
             uvicorn.Config(self.app, port=port, loop="asyncio", log_config=log_config)
