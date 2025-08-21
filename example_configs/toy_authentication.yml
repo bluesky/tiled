@@ -7,27 +7,29 @@ authentication:
         alice: ${ALICE_PASSWORD}
         bob: ${BOB_PASSWORD}
         cara: ${CARA_PASSWORD}
+        admin: "admin"
       confirmation_message: "You have logged in as {id}."
   tiled_admins:
     - provider: toy
-      id: alice
+      id: admin
 access_control:
-  access_policy: tiled.access_policies:SimpleAccessPolicy
+  access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
   args:
-    provider: toy  # matches provider above
-    access_lists:
-      alice:
-      - A
-      - B
-      bob:
-      - A
-      - C
-      cara: tiled.access_policies:SimpleAccessPolicy.ALL
+    provider: "toy"
     scopes:
     - "read:metadata"
     - "read:data"
-    public:
-    - D
+    - "write:metadata"
+    - "write:data"
+    - "create"
+    tags_db:
+      uri: "file:example_configs/access_tags/compiled_tags.sqlite"
+    access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
 trees:
   - path: /
-    tree: tiled.examples.toy_authentication:tree
+    tree: catalog
+    args:
+      uri: "sqlite+aiosqlite:///./example_configs/catalog/catalog.db"
+      writable_storage: "./example_configs/catalog/data"
+      init_if_not_exists: true
+      top_level_access_blob: {"tags": ["public"]}
