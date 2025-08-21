@@ -15,6 +15,44 @@ Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
 
 
+class WebSocketWrapper:
+    """Wrapper that provides a consistent interface for both TestClient and regular websockets."""
+
+    def __init__(self, http_client, uri: httpx.URL):
+        self._http_client = http_client
+        self._uri = uri
+        self._is_test_client = isinstance(http_client, TestClient)
+        self._websocket = None
+
+    def connect(self, api_key: str):
+        """Connect to the websocket."""
+        if self._is_test_client:
+            query_string = self._uri.query.decode() if self._uri.query else ""
+            path = self._uri.path + ("?" + query_string if query_string else "")
+            self._websocket = self._http_client.websocket_connect(
+                path, headers={"Authorization": api_key}
+            )
+            self._websocket.__enter__()
+        else:
+            self._websocket = connect(
+                str(self._uri), additional_headers={"Authorization": api_key}
+            )
+
+    def recv(self, timeout=None):
+        """Receive data from websocket with consistent interface."""
+        if self._is_test_client:
+            return self._websocket.receive_bytes()
+        else:
+            return self._websocket.recv(timeout=timeout)
+
+    def close(self):
+        """Close websocket connection."""
+        if self._is_test_client:
+            self._websocket.__exit__(None, None, None)
+        else:
+            self._websocket.close()
+
+
 class Subscription:
     """
     Subscribe to streaming updates from a node.
