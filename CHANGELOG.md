@@ -30,6 +30,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Catalog database can now be shared when using in-memory SQLite
 - `TagBasedAccessPolicy` now supports anonymous access
 - `AccessTagsParser` is now async
+- `toy_authentication` example config now uses `TagBasedAccessPolicy`
+- Added helpers for setting up the access tag and catalog databases for `toy_authentication`
 
 ### Fixed
 
