@@ -2,7 +2,7 @@ import time
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
@@ -20,7 +20,7 @@ from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
 
 # TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
 # After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
-JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
+JSON_ITEM = Union[str, int, float, bool, Dict[str, "JSON_ITEM"], List["JSON_ITEM"]]
 
 
 class MetadataRevisions:
@@ -234,7 +234,7 @@ class BaseClient:
         return self._item
 
     @property
-    def metadata(self) -> DictView[Any, JSON]:
+    def metadata(self) -> DictView[str, JSON_ITEM]:
         "Metadata about this data source."
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
@@ -272,7 +272,7 @@ class BaseClient:
         return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
 
     @property
-    def access_blob(self) -> DictView[Any, JSON]:
+    def access_blob(self) -> DictView[str, JSON_ITEM]:
         "Authorization information about this node, in blob form"
         access_blob = self._item["attributes"]["access_blob"]
         if access_blob is None:
