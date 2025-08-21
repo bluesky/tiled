@@ -3,6 +3,7 @@ import threading
 import weakref
 from typing import Callable, List
 
+import anyio
 import httpx
 import msgpack
 from starlette.testclient import TestClient
@@ -111,7 +112,7 @@ class Subscription:
                 else:
                     # Regular websocket uses recv() with timeout
                     data_bytes = self._websocket.recv(timeout=TIMEOUT)
-            except TimeoutError:
+            except (TimeoutError, anyio.EndOfStream):
                 continue
             data = msgpack.unpackb(data_bytes)
             for ref in self._callbacks:
@@ -158,11 +159,11 @@ class Subscription:
         "Close the websocket connection."
         self._close_event.set()
 
-        if isinstance(self._context.http_client, TestClient):
-            # TestClient websocket blocks forever, so don't wait for thread
-            # Just clean up the websocket directly
-            self._websocket.__exit__(None, None, None)
-        else:
-            # Regular websocket has timeout, so we can wait for graceful shutdown
-            self._thread.join()
-            self._websocket.close()
+        # if isinstance(self._context.http_client, TestClient):
+        #     # TestClient websocket blocks forever, so don't wait for thread
+        #     # Just clean up the websocket directly
+        #     self._websocket.__exit__(None, None, None)
+        # Regular websocket has timeout, so we can wait for graceful shutdown
+        self._websocket.close()
+        self._websocket.__exit__(None, None, None)
+        self._thread.join()
