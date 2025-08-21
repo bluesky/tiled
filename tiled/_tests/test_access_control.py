@@ -1,4 +1,6 @@
 import json
+import sqlite3
+from copy import deepcopy
 
 import numpy
 import pytest
@@ -52,6 +54,12 @@ server_config = {
 
 access_tag_config = {
     "roles": {
+        "facility_user": {
+            "scopes": [
+                "read:data",
+                "read:metadata",
+            ]
+        },
         "facility_admin": {
             "scopes": [
                 "read:data",
@@ -61,7 +69,7 @@ access_tag_config = {
                 "create",
                 "register",
             ]
-        }
+        },
     },
     "tags": {
         "alice_tag": {
@@ -112,7 +120,7 @@ access_tag_config = {
             "groups": [
                 {
                     "name": "chemists",
-                    "scopes": ["read:data", "read:metadata"],
+                    "role": "facility_user",
                 },
             ],
             "auto_tags": [
@@ -210,6 +218,19 @@ def compile_access_tags_db():
     access_tags_compiler.connection.close()
 
 
+@pytest.fixture
+def compile_access_tags_db_with_reset(compile_access_tags_db):
+    access_tags_compiler = compile_access_tags_db
+    access_tag_config_copy = deepcopy(access_tag_config)
+    access_tags_compiler.tag_config = access_tag_config_copy
+    yield access_tags_compiler
+    access_tags_compiler.tag_config = access_tag_config
+    access_tags_compiler.group_parser = group_parser
+    access_tags_compiler.clear_raw_tags()
+    access_tags_compiler.load_tag_config()
+    access_tags_compiler.recompile()
+
+
 @pytest.fixture(scope="module")
 def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
     config = {
@@ -285,6 +306,254 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
 
     for context in contexts:
         context.close()
+
+
+def test_access_tag_compiler(compile_access_tags_db_with_reset):
+    """
+    Test that compilation of access tags is working. This tests:
+    - Adding and removing a tag
+    - Adding and removing a role
+    - Adding and removing a user from a tag
+    - Adding and removing a group from a tag
+    - Adding and removing from the `auto_tags` for a tag
+    - Adding and removing a tag from the `tag_owners` section
+    - Adding and removing users and groups from the owners of a tag
+    - Adding and removing a member from a group
+    - Changing a user's role/scopes on a tag
+    - Changing a group's role/scopes on a tag
+    - Making a tag public/not-public
+    - Disallow redefining the `public` tag
+    """
+    access_tags_compiler = compile_access_tags_db_with_reset
+    compiler_tag_config = access_tags_compiler.tag_config
+
+    def new_group_parser(groupname):
+        return {
+            "chemists": ["bob", "mary", "kate"],
+            "biologists": ["chris", "fred"],
+            "physicists": ["sue", "tony"],
+        }[groupname]
+
+    access_tags_compiler.group_parser = new_group_parser
+
+    compiler_tag_config["tags"].update(
+        {"new_tag": {"users": [{"name": "tony", "scopes": ["read:metadata"]}]}}
+    )
+    compiler_tag_config["roles"].update({"new_role": {"scopes": ["read:metadata"]}})
+    compiler_tag_config["tags"]["biologists_tag"]["users"].append(
+        {"name": "tony", "role": "facility_user"}
+    )
+    compiler_tag_config["tags"]["physicists_tag"]["groups"].append(
+        {"name": "biologists", "role": "facility_user"}
+    )
+    compiler_tag_config["tags"]["chemists_tag"]["auto_tags"].append({"name": "new_tag"})
+    compiler_tag_config["tag_owners"].update({"new_tag": [{"name": "tony"}]})
+    compiler_tag_config["tag_owners"]["biologists_tag"]["users"].append(
+        {"name": "tony"}
+    )
+    compiler_tag_config["tag_owners"]["chemists_tag"]["groups"].append(
+        {"name": "biologists"}
+    )
+    compiler_tag_config["tags"]["alice_tag"]["users"][0]["role"] = "facility_user"
+    compiler_tag_config["tags"]["biologists_tag"]["groups"][0].pop("scopes")
+    compiler_tag_config["tags"]["biologists_tag"]["groups"][0].update(
+        {"role": "facility_admin"}
+    )
+    compiler_tag_config["tags"]["alice_tag"].update({"auto_tags": [{"name": "public"}]})
+
+    access_tags_compiler.load_tag_config()
+    access_tags_compiler.recompile()
+
+    db = sqlite3.connect("file:compiled_tags_mem?mode=memory&cache=shared", uri=True)
+    cursor = db.cursor()
+    # check that new tag was added and compiled with user+scopes
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM tags WHERE name = ?);",
+        ("new_tag",),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("new_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that new role was added - note roles do not get saved in the db
+    assert "new_role" in access_tags_compiler.roles
+
+    # check that newly added user and group were given scopes on tag
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("biologists_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("physicists_tag", "chris"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that auto_tag added ACL to parent tag
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("chemists_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check tag was added to tag_owners section
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ?);",
+        ("new_tag",),
+    )
+    assert bool(cursor.fetchone())
+
+    # check adding new user and group to owners of tags
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
+        ("biologists_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
+        ("chemists_tag", "chris"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that the role/scopes changes for a user and group on a tag were effective
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes "
+        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
+        ("alice_tag", "alice", "write:metadata"),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes "
+        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
+        ("biologists_tag", "chris", "write:metadata"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check tha tag was marked as public after inheriting public tag
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM public_tags WHERE name = ?);",
+        ("alice_tag",),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes "
+        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
+        ("alice_tag", "tony", "read:metadata"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that user added to group was compiled into tag ACL
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("chemists_tag", "kate"),
+    )
+    assert bool(cursor.fetchone())
+
+    # attempt redefining the public tag (and fail)
+    compiler_tag_config["tags"].update(
+        {"public": {"users": [{"name": "tony", "scopes": ["read:metadata"]}]}}
+    )
+    access_tags_compiler.load_tag_config()
+    with pytest.raises(ValueError):
+        access_tags_compiler.recompile()
+
+    # remove all changes/additions by reverting to the original config
+    access_tags_compiler.tag_config = access_tag_config
+    access_tags_compiler.group_parser = group_parser
+    access_tags_compiler.clear_raw_tags()
+    access_tags_compiler.load_tag_config()
+    access_tags_compiler.recompile()
+
+    # check that new tag was removed and no longer compiled
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM tags WHERE name = ?);",
+        ("new_tag",),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("new_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that new role was removed - note roles do not get saved in the db
+    assert "new_role" not in access_tags_compiler.roles
+
+    # check that removed user and group were not given scopes on tag
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("biologists_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("physicists_tag", "chris"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that auto_tag ACL removed from parent tag
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("chemists_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check tag was removed from tag_owners section
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ?);",
+        ("new_tag",),
+    )
+    assert bool(cursor.fetchone())
+
+    # check removing user and group from owners of tags
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
+        ("biologists_tag", "tony"),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
+        ("chemists_tag", "chris"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that the role/scopes changes for a user and group on a tag were undone
+    cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes "
+        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
+        ("alice_tag", "alice", "write:metadata"),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes "
+        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
+        ("biologists_tag", "chris", "write:metadata"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check tha tag was unmarked as public after removing the public auto_tag
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM public_tags WHERE name = ?);",
+        ("alice_tag",),
+    )
+    assert bool(cursor.fetchone())
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes "
+        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
+        ("alice_tag", "tony", "read:metadata"),
+    )
+    assert bool(cursor.fetchone())
+
+    # check that user removed from group was compiled out of tag ACL
+    cursor.execute(
+        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
+        ("chemists_tag", "kate"),
+    )
+    assert bool(cursor.fetchone())
 
 
 def test_basic_access_control(access_control_test_context_factory):
@@ -577,8 +846,6 @@ def test_update_node_access_control(access_control_test_context_factory):
         admin_client[top][data].replace_metadata(access_tags=["biologists_tag"])
 
         # surgically add an undefined tag to the node, then fail when trying to remove it
-        import sqlite3
-
         db = sqlite3.connect(f"file:catalog_{top}?mode=memory&cache=shared", uri=True)
         cursor = db.cursor()
         cursor.execute(
@@ -619,8 +886,6 @@ def test_empty_access_blob_access_control(access_control_test_context_factory):
     This case occurs when migrating an older catalog without also
       populating the access_blob column.
     """
-    import sqlite3
-
     admin_client = access_control_test_context_factory("admin", "admin")
     alice_client = access_control_test_context_factory("alice", "alice")
 
