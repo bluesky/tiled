@@ -15,7 +15,7 @@ Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
 
 
-class WebSocketWrapper:
+class WebsocketWrapper:
     """Wrapper that provides a consistent interface for both TestClient and regular websockets."""
 
     def __init__(self, http_client, uri: httpx.URL):
@@ -87,6 +87,7 @@ class Subscription:
         self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._callbacks = set()
         self._close_event = threading.Event()
+        self._websocket = WebsocketWrapper(context.http_client, self._uri)
 
     @property
     def context(self) -> Context:
@@ -143,13 +144,7 @@ class Subscription:
         TIMEOUT = 0.1  # seconds
         while not self._close_event.is_set():
             try:
-                # Use different methods based on websocket type
-                if isinstance(self._context.http_client, TestClient):
-                    # TestClient websocket uses receive_bytes()
-                    data_bytes = self._websocket.receive_bytes()
-                else:
-                    # Regular websocket uses recv() with timeout
-                    data_bytes = self._websocket.recv(timeout=TIMEOUT)
+                data_bytes = self._websocket.recv(timeout=TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
             data = msgpack.unpackb(data_bytes)
@@ -174,17 +169,8 @@ class Subscription:
             # Use single-user API key.
             api_key = self.context.api_key
 
-        # Use different websocket connection methods based on client type
-        if isinstance(self._context.http_client, TestClient):
-            self._websocket = self._context.http_client.websocket_connect(
-                str(self._uri), headers={"Authorization": api_key}
-            )
-            self._websocket.__enter__()
-        else:
-            # For httpx.Client, use websockets.connect with full URI
-            self._websocket = connect(
-                str(self._uri), additional_headers={"Authorization": api_key}
-            )
+        # Connect using the websocket wrapper
+        self._websocket.connect(api_key)
 
         if needs_api_key:
             # The connection is made, so we no longer need the API key.
@@ -196,12 +182,5 @@ class Subscription:
     def stop(self) -> None:
         "Close the websocket connection."
         self._close_event.set()
-
-        # if isinstance(self._context.http_client, TestClient):
-        #     # TestClient websocket blocks forever, so don't wait for thread
-        #     # Just clean up the websocket directly
-        #     self._websocket.__exit__(None, None, None)
-        # Regular websocket has timeout, so we can wait for graceful shutdown
         self._websocket.close()
-        self._websocket.__exit__(None, None, None)
         self._thread.join()
