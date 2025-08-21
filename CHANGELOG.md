@@ -3,6 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b36 (Unreleased)
+
+### Changed
+
+- Typehint utils collection implementations
 
 ## v0.1.0-b35 (2025-08-20)
 
@@ -85,7 +90,6 @@ continuous deployment processes.
 - Make principal type hints consistent in router
 - Typehinted database access methods
 - Explicit type conversion in SQL adapter when appending to an existing table.
-
 
 ## v0.1.0-b30 (2025-07-18)
 

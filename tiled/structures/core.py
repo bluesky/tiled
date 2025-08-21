@@ -47,7 +47,8 @@ class Spec:
     model_dump = dict  # For easy interoperability with pydantic 2.x models
 
 
-STRUCTURE_TYPES = OneShotCachedMap(
+# TODO: make type[Structure] after #1036
+STRUCTURE_TYPES = OneShotCachedMap[StructureFamily, type](
     {
         StructureFamily.array: lambda: importlib.import_module(
             "...structures.array", StructureFamily.__module__
