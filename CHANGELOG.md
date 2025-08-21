@@ -3,6 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.1.0-b36 (Unreleased)
+
+### Changed
+
+- Typehint utils collection implementations
 
 ## v0.1.0-b35 (2025-08-20)
 
@@ -13,7 +18,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - The project ships with a pixi manifest (`pixi.toml`).
-- Typehint utils collection implementations
 
 
 ## v0.1.0-b34 (2025-08-14)
