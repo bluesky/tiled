@@ -8,6 +8,10 @@ from ..catalog import from_uri
 from ..client import Context, from_context
 from ..server.app import build_app
 
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="Requires Redis service"
+)
+
 
 @pytest.fixture
 def tiled_websocket_context(tmpdir):
@@ -35,7 +39,6 @@ def tiled_websocket_context(tmpdir):
         yield context
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires Redis service")
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
@@ -79,7 +82,6 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
             np.testing.assert_array_equal(payload_array, expected_array)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires Redis service")
 def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
     """Test websocket connection to non-existent node returns 404."""
     context = tiled_websocket_context
@@ -96,7 +98,6 @@ def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
     assert response.status_code == 404
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires Redis service")
 def test_subscribe_after_first_update_websockets(tiled_websocket_context):
     """Client that subscribes after first update sees only subsequent updates."""
     context = tiled_websocket_context
@@ -147,7 +148,6 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
             np.testing.assert_array_equal(payload_array, expected_array)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Requires Redis service")
 def test_subscribe_after_first_update_from_beginning_websockets(
     tiled_websocket_context,
 ):
