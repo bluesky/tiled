@@ -6,7 +6,7 @@ from functools import partial
 
 from .queries import AccessBlobFilter, In, KeysFilter
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
-from .utils import Sentinel, SpecialUsers, import_object
+from .utils import Sentinel, import_object
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -79,7 +79,7 @@ class SimpleAccessPolicy:
 
     async def allowed_scopes(self, node, principal, authn_scopes):
         # If this is being called, filter_access has let us get this far.
-        if principal is SpecialUsers.public:
+        if principal is None:
             allowed = PUBLIC_SCOPES
         elif principal.type == "service":
             allowed = self.scopes
@@ -95,7 +95,7 @@ class SimpleAccessPolicy:
     async def filters(self, node, principal, authn_scopes, scopes):
         queries = []
         query_filter = KeysFilter if not self.key else partial(In, self.key)
-        if principal is SpecialUsers.public:
+        if principal is None:
             queries.append(query_filter(self.public))
         else:
             # Services have no identities; just use the uuid.
@@ -108,7 +108,7 @@ class SimpleAccessPolicy:
             if not scopes.issubset(self.scopes):
                 return NO_ACCESS
             access_list = self.access_lists.get(id, [])
-            if not ((principal is SpecialUsers.admin) or (access_list == self.ALL)):
+            if not (access_list == self.ALL):
                 try:
                     allowed = set(access_list or [])
                 except TypeError:
