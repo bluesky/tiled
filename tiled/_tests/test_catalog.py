@@ -33,7 +33,7 @@ from ..server.schemas import Asset, DataSource, Management
 from ..storage import SQLStorage, get_storage, parse_storage
 from ..structures.core import StructureFamily
 from ..utils import Conflicts, ensure_specified_sql_driver, ensure_uri
-from .utils import enter_username_password, sql_table_exists
+from .utils import sql_table_exists
 
 
 @pytest_asyncio.fixture

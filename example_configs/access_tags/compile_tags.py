@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from tiled.access_control.access_tags import AccessTagsCompiler
 from tiled.access_control.scopes import ALL_SCOPES
 
