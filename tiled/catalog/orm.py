@@ -291,15 +291,25 @@ EXECUTE FUNCTION raise_if_null_parameter_exists();"""
 
 @event.listens_for(Node.__table__, "after_create")
 def create_index_metadata_tsvector_search(target, connection, **kw):
-    # This creates a ts_vector based metadata search index for fulltext.
-    # Postgres only feature
+    # Postgres only features
     if connection.engine.dialect.name == "postgresql":
+        # This creates a ts_vector based metadata search index for fulltext
         connection.execute(
             text(
                 """
                 CREATE INDEX metadata_tsvector_search
                 ON nodes
                 USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
+                """
+            )
+        )
+        # Covering B-tree index on (parent, time_created, id) INCLUDE (key)
+        connection.execute(
+            text(
+                """
+                CREATE INDEX ix_nodes_parent_time_id_key
+                ON nodes (parent, time_created, id)
+                INCLUDE (key)
                 """
             )
         )
