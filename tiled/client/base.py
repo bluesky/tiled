@@ -2,7 +2,7 @@ import time
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
@@ -11,6 +11,7 @@ import orjson
 from httpx import URL
 
 from tiled.client.context import Context
+from tiled.structures.root import Structure
 
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -131,8 +132,8 @@ class BaseClient:
         *,
         item,
         structure_clients,
-        structure=None,
-        include_data_sources=False,
+        structure: Optional[Structure] = None,
+        include_data_sources: bool = False,
     ):
         self._context = context
         self._item = item
