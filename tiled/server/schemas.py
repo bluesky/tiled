@@ -1,19 +1,10 @@
 from __future__ import annotations
 
 import enum
+import json
 import uuid
 from datetime import datetime
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    Generic,
-    List,
-    Mapping,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 from pydantic import (
     BaseModel,
@@ -191,12 +182,17 @@ class DataSource(BaseModel, Generic[StructureT]):
     @field_validator("structure", mode="before")
     @classmethod
     def _coerce_structure_family(
-        cls, value: Mapping[str, Any], info: ValidationInfo
+        cls, value: Any, info: ValidationInfo
     ) -> Optional[StructureT]:
         "Convert the structure on each data_source from a dict to the appropriate pydantic model."
-        family: Optional[StructureFamily] = info.data.get("structure_family")
-        if family in STRUCTURE_TYPES:
-            return STRUCTURE_TYPES[family].from_json(value)
+        if isinstance(value, str):
+            value = json.loads(value)
+        if isinstance(value, Structure):
+            return value
+        if isinstance(value, dict[str, Any]):
+            family: Optional[StructureFamily] = info.data.get("structure_family")
+            if family in STRUCTURE_TYPES:
+                return STRUCTURE_TYPES[family].from_json(value)
         return None
 
 
