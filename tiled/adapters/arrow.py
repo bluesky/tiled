@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Set
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
@@ -6,7 +7,8 @@ from urllib.parse import quote_plus
 import pandas
 import pyarrow
 import pyarrow.feather as feather
-import pyarrow.fs
+
+from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
@@ -19,37 +21,29 @@ from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
 
-class ArrowAdapter:
+class ArrowAdapter(Adapter[TableStructure]):
     """ArrowAdapter Class"""
 
-    structure_family = StructureFamily.table
-    supported_storage = {FileStorage}
+    structure_family: StructureFamily = StructureFamily.table
 
     def __init__(
         self,
         data_uris: List[str],
         structure: Optional[TableStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        **kwargs: Optional[Any],
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        data_uris : list of uris where data sits.
-        structure :
-        metadata :
-        specs :
-        """
         # TODO Store data_uris instead and generalize to non-file schemes.
         self._partition_paths = [path_from_uri(uri) for uri in data_uris]
-        self._metadata = metadata or {}
         if structure is None:
             table = feather.read_table(self._partition_paths)
             structure = TableStructure.from_arrow_table(table)
-        self._structure = structure
-        self.specs = list(specs or [])
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
 
     @classmethod
     def from_catalog(
@@ -59,10 +53,7 @@ class ArrowAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "ArrowAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
-
-    def metadata(self) -> JSON:
-        return self._metadata
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def init_storage(
@@ -100,9 +91,6 @@ class ArrowAdapter:
         ]
         data_source.assets.extend(assets)
         return data_source
-
-    def structure(self) -> TableStructure:
-        return self._structure
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         if key not in self.structure().columns:
@@ -153,6 +141,7 @@ class ArrowAdapter:
         cls,
         data_uri: str,
         structure: Optional[TableStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "ArrowAdapter":

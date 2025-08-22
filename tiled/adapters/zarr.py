@@ -1,14 +1,17 @@
 import builtins
 import copy
 import os
-from collections.abc import Mapping
 from importlib.metadata import version
-from typing import Any, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
 from urllib.parse import quote_plus
 
-import zarr.core
+import zarr
 from numpy._typing import NDArray
 from packaging.version import Version
+
+from tiled.adapters.container import ContainerAdapter
+from tiled.adapters.core import Adapter
+from tiled.structures.container import ContainerStructure
 
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
@@ -33,10 +36,21 @@ else:
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
-class ZarrArrayAdapter(ArrayAdapter):
+class ZarrArrayAdapter(Adapter[ArrayStructure]):
     "Adapter for Zarr arrays"
 
-    supported_storage = {FileStorage}
+    structure_family: StructureFamily = StructureFamily.array
+
+    def __init__(
+        self,
+        array: zarr.Array,
+        structure: ArrayStructure,
+        *,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+    ) -> None:
+        self._array = array
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def init_storage(
@@ -71,6 +85,10 @@ class ZarrArrayAdapter(ArrayAdapter):
         )
         return data_source
 
+    @property
+    def dims(self) -> Optional[Tuple[str, ...]]:
+        return self._structure.dims
+
     def _stencil(self) -> Tuple[slice, ...]:
         """Trim overflow because Zarr always has equal-sized chunks."""
         return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
@@ -82,7 +100,18 @@ class ZarrArrayAdapter(ArrayAdapter):
         self,
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
-        return self._array[self._stencil()][slice or ...]
+        """
+
+        Parameters
+        ----------
+        slice :
+
+        Returns
+        -------
+
+        """
+        arr = cast(NDArray, self._array[self._stencil()])
+        return arr[slice]
 
     def read_block(
         self,
@@ -174,31 +203,28 @@ class ZarrArrayAdapter(ArrayAdapter):
         new_chunks_tuple = tuple(new_chunks)
         return new_shape_tuple, new_chunks_tuple
 
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
+
 
 class ZarrGroupAdapter(
-    Mapping[str, Union["ArrayAdapter", "ZarrGroupAdapter"]],
+    ContainerAdapter[Union["ArrayAdapter", "ZarrGroupAdapter"]],
     IndexersMixin,
 ):
     "Adapter for Zarr groups (containers)"
-
-    structure_family = StructureFamily.container
 
     def __init__(
         self,
         zarr_group: zarr.Group,
         *,
-        structure: Optional[ArrayStructure] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
-        if structure is not None:
-            raise ValueError(
-                f"Structure is expected to be None for containers, not {structure}"
-            )
         self._zarr_group = zarr_group
         self.specs = specs or []
         self._provided_metadata = metadata or {}
-        super().__init__()
+        super().__init__(structure=ContainerStructure(keys=list(self.keys())))
 
     def __repr__(self) -> str:
         return node_repr(self, list(self))
@@ -210,9 +236,6 @@ class ZarrGroupAdapter(
             else cast(dict[str, Any], self._zarr_group.metadata.to_dict())
         )
 
-    def structure(self) -> None:
-        return None
-
     def __iter__(self) -> Iterator[Any]:
         yield from self._zarr_group
 
@@ -221,7 +244,7 @@ class ZarrGroupAdapter(
         if isinstance(value, zarr.Group):
             return ZarrGroupAdapter(value)
         else:
-            return ZarrArrayAdapter.from_array(value)
+            return ArrayAdapter.from_array(value)
 
     def __len__(self) -> int:
         return len(self._zarr_group)
@@ -274,14 +297,13 @@ class ZarrAdapter:
         node: Node,
         /,
         **kwargs: Optional[Any],
-    ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
+    ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
         zarr_obj = zarr.open(
             path_from_uri(data_source.assets[0].data_uri)
         )  # Group or Array
         if node.structure_family == StructureFamily.container:
             return ZarrGroupAdapter(
                 zarr_obj,
-                structure=data_source.structure,
                 metadata=node.metadata_,
                 specs=node.specs,
                 **kwargs,

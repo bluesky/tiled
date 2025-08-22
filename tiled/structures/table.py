@@ -1,15 +1,24 @@
 import base64
 import io
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import List, Tuple, Union
+from typing import Any, List, Tuple, Union
 
 import pyarrow
+
+from tiled.structures.root import Structure
 
 B64_ENCODED_PREFIX = "data:application/vnd.apache.arrow.file;base64,"
 
 
+def _uri_from_schema(pyarrow_schema: pyarrow.Schema) -> str:
+    schema_bytes = pyarrow_schema.serialize()
+    schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
+    return B64_ENCODED_PREFIX + schema_b64
+
+
 @dataclass
-class TableStructure:
+class TableStructure(Structure):
     # This holds a Arrow schema, base64-encoded so that it can be transported
     # as JSON. For clarity, the encoded data (...) is prefixed like:
     #
@@ -33,68 +42,63 @@ class TableStructure:
     @classmethod
     def from_dask_dataframe(cls, ddf) -> "TableStructure":
         import dask.dataframe.utils
-        import pyarrow
 
         # Make a pandas Table with 0 rows.
         # We can use this to define an Arrow schema without loading any row data.
         meta = dask.dataframe.utils.make_meta(ddf)
-        schema_bytes = pyarrow.Table.from_pandas(meta).schema.serialize()
-        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
-        data_uri = B64_ENCODED_PREFIX + schema_b64
+        schema = pyarrow.Table.from_pandas(meta).schema
         return cls(
-            arrow_schema=data_uri,
+            arrow_schema=_uri_from_schema(schema),
             npartitions=ddf.npartitions,
             columns=list(ddf.columns),
         )
 
     @classmethod
-    def from_pandas(cls, df):
-        import pyarrow
-
-        schema_bytes = pyarrow.Table.from_pandas(df).schema.serialize()
-        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
-        data_uri = B64_ENCODED_PREFIX + schema_b64
-        return cls(arrow_schema=data_uri, npartitions=1, columns=list(df.columns))
-
-    @classmethod
-    def from_dict(cls, d):
-        import pyarrow
-
-        schema_bytes = pyarrow.Table.from_pydict(d).schema.serialize()
-        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
-        data_uri = B64_ENCODED_PREFIX + schema_b64
-        return cls(arrow_schema=data_uri, npartitions=1, columns=list(d.keys()))
-
-    def from_arrays(cls, arr, names):
-        import pyarrow
-
-        schema_bytes = pyarrow.Table.from_arrays(arr, names).schema.serialize()
-        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
-        data_uri = B64_ENCODED_PREFIX + schema_b64
-        return cls(arrow_schema=data_uri, npartitions=1, columns=list(names))
-
-    @classmethod
-    def from_schema(cls, schema: pyarrow.Schema, npartitions: int = 1):
-        schema_bytes = schema.serialize()
-        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
-        data_uri = B64_ENCODED_PREFIX + schema_b64
-        return cls(arrow_schema=data_uri, npartitions=npartitions, columns=schema.names)
-
-    @classmethod
-    def from_arrow_table(cls, table, npartitions=1) -> "TableStructure":
-        schema_bytes = table.schema.serialize()
-        schema_b64 = base64.b64encode(schema_bytes).decode("utf-8")
-        data_uri = B64_ENCODED_PREFIX + schema_b64
+    def from_pandas(cls, df) -> "TableStructure":
+        schema = pyarrow.Table.from_pandas(df).schema
         return cls(
-            arrow_schema=data_uri,
+            arrow_schema=_uri_from_schema(schema),
+            npartitions=1,
+            columns=list(df.columns),
+        )
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "TableStructure":
+        schema = pyarrow.Table.from_pydict(d).schema
+        return cls(
+            arrow_schema=_uri_from_schema(schema), npartitions=1, columns=list(d.keys())
+        )
+
+    @classmethod
+    def from_arrays(cls, arr, names: List[str]) -> "TableStructure":
+        schema = pyarrow.Table.from_arrays(arr, names).schema
+        return cls(
+            arrow_schema=_uri_from_schema(schema), npartitions=1, columns=list(names)
+        )
+
+    @classmethod
+    def from_schema(
+        cls, schema: pyarrow.Schema, npartitions: int = 1
+    ) -> "TableStructure":
+        return cls(
+            arrow_schema=_uri_from_schema(schema),
+            npartitions=npartitions,
+            columns=schema.names,
+        )
+
+    @classmethod
+    def from_arrow_table(
+        cls, table: pyarrow.Table, npartitions: int = 1
+    ) -> "TableStructure":
+        schema = table.schema
+        return cls(
+            arrow_schema=_uri_from_schema(schema),
             npartitions=npartitions,
             columns=list(table.column_names),
         )
 
     @property
-    def arrow_schema_decoded(self):
-        import pyarrow
-
+    def arrow_schema_decoded(self) -> pyarrow.Schema:
         if not self.arrow_schema.startswith(B64_ENCODED_PREFIX):
             raise ValueError(
                 f"Expected base64-encoded data prefixed with {B64_ENCODED_PREFIX}."
@@ -108,12 +112,3 @@ class TableStructure:
     @property
     def meta(self):
         return self.arrow_schema_decoded.empty_table().to_pandas()
-
-    @classmethod
-    def from_json(cls, content):
-        return cls(
-            arrow_schema=content["arrow_schema"],
-            npartitions=content["npartitions"],
-            columns=content["columns"],
-            resizable=content["resizable"],
-        )
