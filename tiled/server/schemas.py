@@ -3,18 +3,30 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Mapping,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     StringConstraints,
+    ValidationInfo,
     field_validator,
-    model_validator,
 )
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
+
+from tiled.structures.root import Structure
 
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
@@ -30,7 +42,7 @@ if TYPE_CHECKING:
 DataT = TypeVar("DataT")
 LinksT = TypeVar("LinksT")
 MetaT = TypeVar("MetaT")
-StructureT = TypeVar("StructureT")
+StructureT = TypeVar("StructureT", bound=Structure)
 
 
 MAX_ALLOWED_SPECS = 20
@@ -176,6 +188,17 @@ class DataSource(BaseModel, Generic[StructureT]):
             assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
         )
+
+    @field_validator("structure", mode="before")
+    @classmethod
+    def _coerce_structure_family(
+        cls, value: Mapping[str, Any], info: ValidationInfo
+    ) -> Optional[StructureT]:
+        "Convert the structure on each data_source from a dict to the appropriate pydantic model."
+        family: Optional[StructureFamily] = info.data.get("structure_family")
+        if family in STRUCTURE_TYPES:
+            return STRUCTURE_TYPES[family].from_json(value)
+        return None
 
 
 class NodeAttributes(BaseModel):
@@ -431,21 +454,6 @@ class PostMetadataRequest(BaseModel):
             if value in v[i:]:
                 raise ValueError
         return v
-
-    @model_validator(mode="after")
-    def narrow_structure_type(self):
-        "Convert the structure on each data_source from a dict to the appropriate pydantic model."
-        for data_source in self.data_sources:
-            if self.structure_family not in {
-                StructureFamily.container,
-                StructureFamily.composite,
-            }:
-                structure_cls = STRUCTURE_TYPES[self.structure_family]
-                if data_source.structure is not None:
-                    data_source.structure = structure_cls.from_json(
-                        data_source.structure
-                    )
-        return self
 
 
 class PutDataSourceRequest(BaseModel):
