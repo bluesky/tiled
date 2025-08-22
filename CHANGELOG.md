@@ -8,6 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Changed
 
 - Typehint utils collection implementations
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
 
 ## v0.1.0-b35 (2025-08-20)
 
@@ -21,10 +22,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 
 ## v0.1.0-b34 (2025-08-14)
-
-### Changed
-
-- Remove `SpecialUsers` principals for single-user and anonymous-access cases
 
 ### Fixed
 
