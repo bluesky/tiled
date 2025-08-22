@@ -237,13 +237,13 @@ def test_close_stream_success(tiled_websocket_context):
     )
     assert response.status_code == 200
 
-    # Now close the stream again - should return 404
+    # Now close the stream again
     response = test_client.delete(
         "/api/v1/stream/close/test_close_stream",
         headers={"Authorization": "Apikey secret"},
     )
-    print(f"Second close - Response status: {response.status_code}")
-    print(f"Second close - Response content: {response.content}")
+
+    # TODO: I think the test is correct and the server should be updated.
     assert response.status_code == 404
 
 
