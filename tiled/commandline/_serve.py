@@ -332,7 +332,7 @@ def serve_catalog(
     cache_uri: Optional[str] = typer.Option(
         None, "--cache-uri", help=("Provide cache URI")
     ),
-    cache_ttl: Optional[float] = typer.Option(
+    cache_ttl: Optional[int] = typer.Option(
         None, "--cache-ttl", help=("Provide cache ttl")
     ),
     host: str = typer.Option(

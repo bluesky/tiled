@@ -32,6 +32,36 @@ def _(parser):
     )
 
 
+@events.init.add_listener
+def on_locust_init(environment, **kwargs):
+    if environment.host is None:
+        raise ValueError(
+            "Host must be specified with --host argument, or through the web-ui."
+        )
+
+    # Create the streaming node once for all users
+    create_streaming_node(
+        environment.host,
+        environment.parsed_options.api_key,
+        environment.parsed_options.node_name,
+    )
+
+
+def create_streaming_node(host, api_key, node_name):
+    """Create a streaming array node using Tiled client"""
+    from tiled.client import from_uri
+
+    # Connect to Tiled server using client
+    client = from_uri(host, api_key=api_key)
+
+    # Create initial streaming array
+    arr = np.full(5, 0.0, dtype=np.float64)  # Initial array with zeros
+    client.write_array(arr, key=node_name, is_streaming=True)
+
+    logger.info(f"Created streaming node: {node_name}")
+    client.logout()
+
+
 class WriterUser(HttpUser):
     """User that writes streaming data to a Tiled node"""
 
@@ -46,33 +76,6 @@ class WriterUser(HttpUser):
 
         # Set authentication header
         self.client.headers.update({"Authorization": f"Apikey {self.api_key}"})
-
-        # Create streaming array node
-        self._create_streaming_node()
-
-    def _create_streaming_node(self):
-        """Create a streaming array node"""
-        # Create metadata for streaming array
-        metadata = {
-            "metadata": {},
-            "structure_family": "array",
-            "data_sources": [
-                {
-                    "structure": {"shape": [5], "dtype": "<f8"},  # float64
-                    "mimetype": "application/octet-stream",
-                }
-            ],
-            "is_streaming": True,
-        }
-
-        response = self.client.post(f"/api/v1/metadata/{self.node_name}", json=metadata)
-
-        if response.status_code == 200:
-            logger.info(f"Created streaming node: {self.node_name}")
-        else:
-            logger.error(
-                f"Failed to create streaming node: {response.status_code} - {response.text}"
-            )
 
     @task(10)  # Run 10x as often as cleanup
     def write_data(self):
@@ -100,20 +103,14 @@ class WriterUser(HttpUser):
 
     @task(1)
     def cleanup(self):
-        """Periodically cleanup and recreate the node"""
+        """Periodically cleanup the stream"""
         if self.message_count > 50:
             # Close the stream
             response = self.client.delete(f"/api/v1/stream/close/{self.node_name}")
             if response.status_code == 200:
                 logger.info(f"Closed stream for node {self.node_name}")
 
-            # Delete the node
-            response = self.client.delete(f"/api/v1/metadata/{self.node_name}")
-            if response.status_code == 200:
-                logger.info(f"Deleted node {self.node_name}")
-
-            # Recreate for next cycle
-            self._create_streaming_node()
+            # Reset message count (node persists for other users)
             self.message_count = 0
 
 
