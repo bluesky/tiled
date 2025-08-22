@@ -29,6 +29,8 @@ def tiled_websocket_context(tmpdir):
         cache_settings={
             "uri": "redis://localhost:6379",
             "ttl": 60,
+            "socket_timeout": 10.0,
+            "socket_connect_timeout": 10.0,
         },
     )
 
