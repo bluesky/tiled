@@ -1,0 +1,10 @@
+[workspace]
+authors = ["gbischof <bisc8233@gmail.com>"]
+channels = ["conda-forge"]
+name = "tiled"
+platforms = ["osx-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
