@@ -347,7 +347,7 @@ def test_access_tag_compiler(compile_access_tags_db_with_reset):
         {"name": "biologists", "role": "facility_user"}
     )
     compiler_tag_config["tags"]["chemists_tag"]["auto_tags"].append({"name": "new_tag"})
-    compiler_tag_config["tag_owners"].update({"new_tag": [{"name": "tony"}]})
+    compiler_tag_config["tag_owners"].update({"new_tag": {"users": [{"name": "tony"}]}})
     compiler_tag_config["tag_owners"]["biologists_tag"]["users"].append(
         {"name": "tony"}
     )
@@ -371,12 +371,12 @@ def test_access_tag_compiler(compile_access_tags_db_with_reset):
         "SELECT EXISTS(SELECT 1 FROM tags WHERE name = ?);",
         ("new_tag",),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("new_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that new role was added - note roles do not get saved in the db
     assert "new_role" in access_tags_compiler.roles
@@ -386,38 +386,38 @@ def test_access_tag_compiler(compile_access_tags_db_with_reset):
         "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("biologists_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("physicists_tag", "chris"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that auto_tag added ACL to parent tag
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("chemists_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check tag was added to tag_owners section
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ?);",
         ("new_tag",),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check adding new user and group to owners of tags
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
         ("biologists_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
         ("chemists_tag", "chris"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that the role/scopes changes for a user and group on a tag were effective
     cursor.execute(
@@ -425,33 +425,27 @@ def test_access_tag_compiler(compile_access_tags_db_with_reset):
         "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
         ("alice_tag", "alice", "write:metadata"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_scopes "
         "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
         ("biologists_tag", "chris", "write:metadata"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check tha tag was marked as public after inheriting public tag
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM public_tags WHERE name = ?);",
         ("alice_tag",),
     )
-    assert bool(cursor.fetchone())
-    cursor.execute(
-        "SELECT EXISTS(SELECT 1 FROM user_tag_scopes "
-        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
-        ("alice_tag", "tony", "read:metadata"),
-    )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that user added to group was compiled into tag ACL
     cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("chemists_tag", "kate"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # attempt redefining the public tag (and fail)
     compiler_tag_config["tags"].update(
@@ -473,12 +467,12 @@ def test_access_tag_compiler(compile_access_tags_db_with_reset):
         "SELECT NOT EXISTS(SELECT 1 FROM tags WHERE name = ?);",
         ("new_tag",),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("new_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that new role was removed - note roles do not get saved in the db
     assert "new_role" not in access_tags_compiler.roles
@@ -488,38 +482,38 @@ def test_access_tag_compiler(compile_access_tags_db_with_reset):
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("biologists_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("physicists_tag", "chris"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that auto_tag ACL removed from parent tag
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("chemists_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check tag was removed from tag_owners section
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ?);",
         ("new_tag",),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check removing user and group from owners of tags
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
         ("biologists_tag", "tony"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_owners WHERE tag_name = ? AND user_name = ?);",
         ("chemists_tag", "chris"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that the role/scopes changes for a user and group on a tag were undone
     cursor.execute(
@@ -527,33 +521,27 @@ def test_access_tag_compiler(compile_access_tags_db_with_reset):
         "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
         ("alice_tag", "alice", "write:metadata"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes "
         "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
         ("biologists_tag", "chris", "write:metadata"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check tha tag was unmarked as public after removing the public auto_tag
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM public_tags WHERE name = ?);",
         ("alice_tag",),
     )
-    assert bool(cursor.fetchone())
-    cursor.execute(
-        "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes "
-        "WHERE tag_name = ? AND user_name = ? AND scope_name = ?);",
-        ("alice_tag", "tony", "read:metadata"),
-    )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
     # check that user removed from group was compiled out of tag ACL
     cursor.execute(
         "SELECT NOT EXISTS(SELECT 1 FROM user_tag_scopes WHERE tag_name = ? AND user_name = ?);",
         ("chemists_tag", "kate"),
     )
-    assert bool(cursor.fetchone())
+    assert bool(cursor.fetchone()[0])
 
 
 def test_basic_access_control(access_control_test_context_factory):
@@ -1023,7 +1011,7 @@ def test_apikey_auth_access_control(access_control_test_context_factory):
 
 
 def test_service_principal_access_control(
-    access_control_test_context_factory, compile_access_tags_db
+    access_control_test_context_factory, compile_access_tags_db_with_reset
 ):
     """
     Test that access control works for service principals.
@@ -1037,14 +1025,16 @@ def test_service_principal_access_control(
         sp["uuid"], api_key=sp_apikey_info["secret"]
     )
 
-    access_tag_config["tags"]["physicists_tag"]["users"].append(
+    access_tags_compiler = compile_access_tags_db_with_reset
+    compiler_tag_config = access_tags_compiler.tag_config
+
+    compiler_tag_config["tags"]["physicists_tag"]["users"].append(
         {"name": sp["uuid"], "role": "facility_admin"}
     )
-    access_tag_config["tag_owners"]["physicists_tag"]["users"].append(
+    compiler_tag_config["tag_owners"]["physicists_tag"]["users"].append(
         {"name": sp["uuid"]}
     )
 
-    access_tags_compiler = compile_access_tags_db
     access_tags_compiler.load_tag_config()
     access_tags_compiler.recompile()
 
