@@ -175,8 +175,7 @@ class DataSource(BaseModel, Generic[StructureT]):
     @classmethod
     def from_orm(cls, orm: tiled.catalog.orm.DataSource) -> DataSource:
         if hasattr(orm.structure, "structure"):
-            structure_cls = STRUCTURE_TYPES[orm.structure_family]
-            structure = structure_cls.from_json(orm.structure.structure)
+            structure = orm.structure.structure
         else:
             structure = None
         return cls(
