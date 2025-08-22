@@ -76,6 +76,7 @@ class Node(Timestamped, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
+    is_streaming = Column(Boolean, default=False, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -361,8 +362,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob, is_streaming)
+SELECT 0, '', NULL, 'container', '{}', '[]', '{}', false;
 """
         )
     )

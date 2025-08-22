@@ -276,6 +276,8 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 
 @pytest.mark.asyncio
 async def test_write_array_internal_direct(a, tmpdir):
+    from ..media_type_registration import default_deserialization_registry
+
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter.from_array(arr)
     structure = ad.structure()
@@ -292,7 +294,13 @@ async def test_write_array_internal_direct(a, tmpdir):
         ],
     )
     x = await a.lookup_adapter(["x"])
-    await x.write(arr)
+
+    # TODO Review this.
+    media_type = "application/octet-stream"
+    body = arr.tobytes()
+    deserializer = default_deserialization_registry.dispatch("array", media_type)
+    await x.write(media_type, deserializer, x, body)
+
     val = await x.read()
     assert numpy.array_equal(val, arr)
 

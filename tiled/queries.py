@@ -552,6 +552,37 @@ class StructureFamilyQuery:
         return cls(value=value)
 
 
+@register(name="streaming")
+@dataclass(init=False)
+class Streaming:
+    """
+    Query if node is streaming
+
+    Parameters
+    ----------
+    value : boolean
+
+    Examples
+    --------
+
+    Search for streaming datasets
+
+    >>> c.search(Streaming(True))
+    """
+
+    def __init__(self, value):
+        self.value = bool(value)
+
+    value: bool
+
+    def encode(self):
+        return {"value": self.value}
+
+    @classmethod
+    def decode(cls, *, value):
+        return cls(value=value)
+
+
 class Key:
     """
     Compare a key in the metadata to a value using standard Python operators.
