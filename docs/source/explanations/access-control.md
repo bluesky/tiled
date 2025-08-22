@@ -75,4 +75,3 @@ python example_configs/catalog/create_catalog.py
 # launch the example server, which loads these databases
 ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/toy_authentication.yml
 ```
-
