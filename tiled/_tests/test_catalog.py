@@ -14,6 +14,8 @@ import pytest_asyncio
 import sqlalchemy.exc
 import tifffile
 import xarray
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from ..adapters.csv import CSVAdapter
 from ..adapters.dataframe import ArrayAdapter
@@ -30,7 +32,7 @@ from ..server.app import build_app, build_app_from_config
 from ..server.schemas import Asset, DataSource, Management
 from ..storage import SQLStorage, get_storage, parse_storage
 from ..structures.core import StructureFamily
-from ..utils import Conflicts, ensure_uri
+from ..utils import Conflicts, ensure_specified_sql_driver, ensure_uri
 from .utils import enter_username_password, sql_table_exists
 
 
@@ -894,3 +896,72 @@ async def test_init_db_logging(sqlite_or_postgres_uri, tmpdir, caplog):
         for record in caplog.records:
             assert record.levelname != "ERROR", f"Error found creating app {record.msg}"
         assert app
+
+
+@pytest.mark.parametrize(
+    "exact_count_limit, expected_lower_bound", [(None, 10), (5, 6), (-1, 10)]
+)
+@pytest.mark.asyncio
+async def test_container_length(
+    sqlite_or_postgres_uri, exact_count_limit, expected_lower_bound
+):
+    config = {
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+    }
+    if exact_count_limit is not None:
+        config["exact_count_limit"] = exact_count_limit
+
+    app = build_app_from_config(config)
+
+    # Turn off autovacuum in Postgres (just in case)
+    # Create a separate engine to avoid interfeing with the running loop
+    if sqlite_or_postgres_uri.startswith("postgresql"):
+        engine = create_async_engine(
+            ensure_specified_sql_driver(sqlite_or_postgres_uri)
+        )
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE nodes
+                    SET (autovacuum_enabled = false,
+                        autovacuum_analyze_threshold = 0);
+                """
+                )
+            )
+
+    with Context.from_app(app) as context:
+        client = from_context(context)
+
+        # Create a container with some nested nodes
+        a = client.create_container("a")
+        for i in range(10):
+            b = a.create_container(key=f"node_{i}")
+            b.create_container(key=f"subnode_{i}")
+
+        # Before analyzing the table, the length should be thresholded
+        len_from_metadata = client["a"].item["attributes"]["structure"]["count"]
+        assert len_from_metadata == expected_lower_bound
+
+        # Analyze the table to get update pg_statistics
+        if sqlite_or_postgres_uri.startswith("postgresql"):
+            async with engine.connect() as conn:
+                conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                await conn.execute(text("VACUUM ANALYZE nodes;"))
+            await engine.dispose()
+
+        # After analyzing, the length should be updated (at least be approximate)
+        len_from_metadata = client["a"].item["attributes"]["structure"]["count"]
+        assert len_from_metadata <= 10
+
+        # len() returns the exact count
+        assert len(client["a"]) == 10

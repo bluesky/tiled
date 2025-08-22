@@ -284,6 +284,7 @@ def get_router(
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
+        settings: Settings = Depends(get_settings),
         _=Security(check_scopes, scopes=["read:metadata"]),
         **filters,
     ):
@@ -327,6 +328,7 @@ def get_router(
                 get_base_url(request),
                 resolve_media_type(request),
                 max_depth=max_depth,
+                exact_count_limit=settings.exact_count_limit,
             )
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
@@ -422,6 +424,7 @@ def get_router(
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
+        settings: Settings = Depends(get_settings),
         _=Security(check_scopes, scopes=["read:metadata"]),
     ):
         """Fetch the metadata and structure information for one entry"""
@@ -450,6 +453,7 @@ def get_router(
                 include_data_sources,
                 resolve_media_type(request),
                 max_depth=max_depth,
+                exact_count_limit=settings.exact_count_limit,
             )
         except BrokenLink as err:
             raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])

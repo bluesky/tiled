@@ -44,7 +44,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
     @classmethod
-    def _discover_entrypoints(cls, entrypoint_name):
+    def _discover_entrypoints(cls, entrypoint_name) -> OneShotCachedMap[str, Any]:
         return OneShotCachedMap(
             {
                 name: entrypoint.load
@@ -171,9 +171,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, there is an
         # implication that the contents are not expected to be dynamic. Used the
         # count provided in the structure.
-        structure = self.item["attributes"]["structure"]
-        if structure["contents"]:
-            return structure["count"]
+        if contents := self.item["attributes"]["structure"]["contents"]:
+            return len(contents)
+
         now = time.monotonic()
         if self._cached_len is not None:
             length, deadline = self._cached_len
@@ -189,7 +189,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         headers={"Accept": MSGPACK_MIME_TYPE},
                         params={
                             **parse_qs(urlparse(link).query),
-                            "fields": "",
+                            "fields": "count",
                             **self._queries_as_params,
                             **self._sorting_params,
                         },
