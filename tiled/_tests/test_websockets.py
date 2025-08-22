@@ -215,3 +215,47 @@ def test_subscribe_after_first_update_from_beginning_websockets(
             payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
             expected_array = np.arange(10) + i
             np.testing.assert_array_equal(payload_array, expected_array)
+
+
+def test_close_stream_success(tiled_websocket_context):
+    """Test successful close of an existing stream."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create a streaming array node
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_close_stream", is_streaming=True)
+
+    # Upload some data
+    streaming_node.write(np.arange(10) + 1)
+
+    # Now close the stream
+    response = test_client.delete(
+        "/api/v1/stream/close/test_close_stream",
+        headers={"Authorization": "Apikey secret"},
+    )
+    assert response.status_code == 200
+
+    # Now close the stream again - should return 404
+    response = test_client.delete(
+        "/api/v1/stream/close/test_close_stream",
+        headers={"Authorization": "Apikey secret"},
+    )
+    print(f"Second close - Response status: {response.status_code}")
+    print(f"Second close - Response content: {response.content}")
+    assert response.status_code == 404
+
+
+def test_close_stream_not_found(tiled_websocket_context):
+    """Test close endpoint returns 404 for non-existent node."""
+    context = tiled_websocket_context
+    test_client = context.http_client
+
+    non_existent_node_id = "definitely_non_existent_node_99999999"
+
+    response = test_client.delete(
+        f"/api/v1/stream/close/{non_existent_node_id}",
+        headers={"Authorization": "Apikey secret"},
+    )
+    assert response.status_code == 404
