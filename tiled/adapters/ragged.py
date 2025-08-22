@@ -1,10 +1,12 @@
-from typing import Any, List, Optional, Set
+from collections.abc import Iterable
+from typing import Any, ClassVar, List, Optional, Set, Union
 
+import awkward
+import numpy as np
 import ragged
 from numpy.typing import NDArray
 
-from tiled.ndslice import NDSlice
-from tiled.storage import Storage
+from tiled.storage import FileStorage, Storage
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.ragged import RaggedStructure
 from tiled.type_aliases import JSON
@@ -12,7 +14,7 @@ from tiled.type_aliases import JSON
 
 class RaggedAdapter:
     structure_family = StructureFamily.ragged
-    supported_storage: Set[type[Storage]] = set()
+    supported_storage: ClassVar[Set[type[Storage]]] = {FileStorage}
 
     def __init__(
         self,
@@ -38,7 +40,9 @@ class RaggedAdapter:
     @classmethod
     def from_array(
         cls,
-        array: NDArray[Any],
+        array: Union[
+            ragged.array, awkward.Array, NDArray[Any], Iterable[Iterable[Any]]
+        ],
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "RaggedAdapter":
@@ -54,6 +58,12 @@ class RaggedAdapter:
         -------
 
         """
+        array = (
+            ragged.array(list(array))
+            if isinstance(array, np.ndarray)
+            else ragged.asarray(array)
+        )
+
         structure = RaggedStructure.from_array(array)
         return cls(
             array,
@@ -68,5 +78,5 @@ class RaggedAdapter:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"
 
-    def read(self, slice: NDSlice = NDSlice(...)) -> ragged.array:
-        return self._array[tuple(slice)] if slice else self._array
+    def structure(self) -> RaggedStructure:
+        return self._structure

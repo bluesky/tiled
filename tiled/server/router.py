@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar, Union
+from typing import Callable, List, Optional, TypeVar, Union, cast
 
 import anyio
 import packaging
@@ -34,6 +34,7 @@ from tiled.query_registration import QueryRegistry
 from tiled.schemas import About
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
+from tiled.structures.ragged import RaggedStructure
 
 from .. import __version__
 from ..ndslice import NDSlice
@@ -494,7 +495,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.sparse},
+            {StructureFamily.array, StructureFamily.ragged, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         shape = entry.structure().shape
@@ -583,7 +584,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.sparse},
+            {StructureFamily.array, StructureFamily.ragged, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         structure_family = entry.structure_family
@@ -628,6 +629,129 @@ def get_router(
                 )
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
+
+    @router.get(
+        "/ragged/full/{path:path}", response_model=schemas.Response, name="ragged full"
+    )
+    async def ragged_full(
+        request: Request,
+        path: str,
+        slice=Depends(NDSlice.from_query),
+        expected_shape=Depends(expected_shape),
+        format: Optional[str] = None,
+        filename: Optional[str] = None,
+        settings: Settings = Depends(get_settings),
+        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
+    ):
+        entry = await get_entry(
+            path,
+            ["read:data"],
+            principal,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        structure_family = entry.structure_family
+
+        import awkward
+        import ragged
+
+        with record_timing(request.state.metrics, "read"):
+            container = await ensure_awaitable(
+                entry.read  # this is AwkwardAdapter.read()
+            )
+        structure = cast("RaggedStructure", entry.structure())
+        components = (structure.form, structure.length, container)
+        awk_array = awkward.from_buffers(*components)
+        sliced_ragged_array = ragged.array(awk_array[slice], copy=True)[slice]
+        if sliced_ragged_array._impl.nbytes > settings.response_bytesize_limit:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Response would exceed {settings.response_bytesize_limit}. "
+                    "Use slicing ('?slice=...') to request smaller chunks."
+                ),
+            )
+        try:
+            with record_timing(request.state.metrics, "pack"):
+                return await construct_data_response(
+                    structure_family,
+                    serialization_registry,
+                    sliced_ragged_array,
+                    entry.metadata(),
+                    request,
+                    format,
+                    specs=getattr(entry, "specs", []),
+                    expires=getattr(entry, "content_stale_at", None),
+                    filename=filename,
+                )
+        except UnsupportedMediaTypes as err:
+            raise HTTPException(
+                status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0]
+            ) from err
+
+    @router.get(
+        "/ragged/block/{path:path}",
+        response_model=schemas.Response,
+        name="ragged block",
+    )
+    async def ragged_block(
+        request: Request,
+        path: str,
+        block=Depends(block),
+        slice=Depends(NDSlice.from_query),
+        expected_shape=Depends(expected_shape),
+        format: Optional[str] = None,
+        filename: Optional[str] = None,
+        settings: Settings = Depends(get_settings),
+        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["read:data"]),
+    ):
+        return await array_block(
+            request,
+            path,
+            block,
+            slice,
+            expected_shape,
+            format,
+            filename,
+            settings,
+            principal,
+            root_tree,
+            session_state,
+            authn_scopes,
+            _,
+        )
+
+    @router.put("/ragged/full/{path:path}")
+    async def put_ragged_full(
+        request: Request,
+        path: str,
+        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        return await put_array_full(
+            request,
+            path,
+            principal,
+            root_tree,
+            session_state,
+            authn_scopes,
+            _,
+        )
 
     @router.get(
         "/table/partition/{path:path}",
@@ -1564,7 +1688,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.sparse},
+            {StructureFamily.array, StructureFamily.ragged, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         body = await request.body()
@@ -1582,6 +1706,12 @@ def get_router(
         elif entry.structure_family == "sparse":
             deserializer = deserialization_registry.dispatch("sparse", media_type)
             data = await ensure_awaitable(deserializer, body)
+        elif entry.structure_family == "ragged":
+            structure = cast("RaggedStructure", entry.structure())
+            deserializer = deserialization_registry.dispatch("ragged", media_type)
+            data = await ensure_awaitable(
+                deserializer, body, structure.form, structure.length
+            )
         else:
             raise NotImplementedError(entry.structure_family)
         await ensure_awaitable(entry.write, data)

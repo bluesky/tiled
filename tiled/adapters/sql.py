@@ -248,12 +248,12 @@ class SQLAdapter:
         """
 
         # Must compute to determine shape.
-        array = self.read([key])[key].to_numpy()
-        if array.dtype != "object":
+        array = self.read([key])[key].infer_objects().to_numpy()
+        if array.dtype.name != "object":
             return ArrayAdapter.from_array(array)
 
         if (
-            array.dtype == "object"
+            array.dtype.name == "object"
             and len(array)
             and isinstance(array[0], numpy.ndarray)
         ):

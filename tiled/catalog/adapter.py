@@ -106,6 +106,7 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
     StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
+    StructureFamily.ragged: AWKWARD_BUFFERS_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
 STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
@@ -1133,6 +1134,10 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
 
 
+class CatalogRaggedAdapter(CatalogArrayAdapter):
+    pass
+
+
 class CatalogSparseAdapter(CatalogArrayAdapter):
     pass
 
@@ -1653,6 +1658,7 @@ STRUCTURES = {
     StructureFamily.awkward: CatalogAwkwardAdapter,
     StructureFamily.composite: CatalogCompositeAdapter,
     StructureFamily.container: CatalogContainerAdapter,
+    StructureFamily.ragged: CatalogRaggedAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }

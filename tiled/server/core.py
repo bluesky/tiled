@@ -261,6 +261,7 @@ async def construct_entries_response(
 DEFAULT_MEDIA_TYPES = {
     StructureFamily.array: {"*/*": "application/octet-stream", "image/*": "image/png"},
     StructureFamily.awkward: {"*/*": "application/zip"},
+    StructureFamily.ragged: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
     StructureFamily.composite: {"*/*": "application/x-hdf5"},
