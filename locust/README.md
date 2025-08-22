@@ -13,18 +13,28 @@ pixi install -e dev
 
 ## Starting Test Server
 
-Before running locust tests, start a Tiled server with WebSocket support:
+Before running locust tests, start a Tiled server:
 
 ```bash
-# Start Redis (required for streaming/caching)
-redis-server
-
-# Start Tiled server with WebSocket and streaming support
-pixi run -e dev tiled serve catalog \
+# Basic server (works for most tests)
+uv run tiled serve catalog \
   --host 0.0.0.0 \
   --port 8000 \
   --api-key secret \
-  --write "file://localhost/tmp/tiled_locust_data" \
+  --temp \
+  --init
+```
+
+For streaming tests with Redis cache (optional):
+```bash
+# Start Redis first
+redis-server
+
+# Start Tiled server with Redis cache
+uv run tiled serve catalog \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --api-key secret \
   --cache-uri "redis://localhost:6379" \
   --cache-ttl 60 \
   --temp \
@@ -33,8 +43,8 @@ pixi run -e dev tiled serve catalog \
 
 This creates a temporary catalog with:
 - API key authentication (key: "secret")
-- Redis cache for streaming support
-- Writable storage for test data
+- Temporary writable storage (automatically cleaned up)
+- Optional Redis cache for enhanced streaming performance
 - Server running on http://localhost:8000
 
 ## Reading Performance Tests (`reader.py`)
