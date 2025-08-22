@@ -243,7 +243,15 @@ class Context:
             if self.cache_settings["uri"].startswith("redis"):
                 from redis import asyncio as redis
 
-                cache_client = redis.from_url(self.cache_settings["uri"])
+                socket_timeout = self.cache_settings.get("socket_timeout", 10.0)
+                socket_connect_timeout = self.cache_settings.get(
+                    "socket_connect_timeout", 10.0
+                )
+                cache_client = redis.from_url(
+                    self.cache_settings["uri"],
+                    socket_timeout=socket_timeout,
+                    socket_connect_timeout=socket_connect_timeout,
+                )
                 cache_ttl = self.cache_settings.get("ttl", 3600)
         self.cache_client = cache_client
         self.cache_ttl = cache_ttl
