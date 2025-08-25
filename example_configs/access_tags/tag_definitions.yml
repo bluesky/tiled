@@ -1,0 +1,36 @@
+roles:
+  facility_user:
+    scopes: ["read:data", "read:metadata"]
+  facility_admin:
+    scopes: ["read:data", "read:metadata", "write:data", "write:metadata", "create", "register"]
+tags:
+  data_A:
+    groups:
+      - name: group_A
+        role: facility_user
+    auto_tags:
+      - name: data_admin
+  data_B:
+    users:
+      - name: alice
+        scopes: ["read:data", "read:metadata"]
+    auto_tags:
+      - name: data_admin
+  data_C:
+    users:
+      - name: bob
+        role: facility_user
+    auto_tags:
+      - name: data_admin
+  data_D:
+    auto_tags:
+      - name: data_admin
+      - name: public
+  data_admin:
+    users:
+      - name: cara
+        role: facility_admin
+tag_owners:
+  data_admin:
+    users:
+      - name: cara

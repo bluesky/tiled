@@ -49,6 +49,14 @@ in the example below with that address.
 ALICE_PASSWORD=secret1 tiled serve config example_configs/toy_authentication.yml
 ```
 
+Note that you will need to run these helper tools to prep the backing databases that Tiled needs,
+before you can use the example config shown above:
+```
+# prep the access tags and catalog databases
+python example_configs/access_tags/compile_tags.py
+python example_configs/catalog/create_catalog.py
+```
+
 Using the Tiled commandline interface, log in as `alice` using the password `secret1`.
 
 ```

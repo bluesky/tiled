@@ -2,7 +2,6 @@ import base64
 import builtins
 import collections.abc
 import contextlib
-import enum
 import functools
 import importlib
 import importlib.util
@@ -30,6 +29,7 @@ from typing import (
 from urllib.parse import urlparse, urlunparse
 
 import anyio
+import yaml
 
 # helper for avoiding re-typing patch mimetypes
 # namedtuple for the lack of StrEnum in py<3.11
@@ -322,11 +322,6 @@ class CachingMap(collections.abc.Mapping[K, V], Generic[K, V]):
         )
 
 
-class SpecialUsers(str, enum.Enum):
-    public = "public"
-    admin = "admin"
-
-
 def _line(nodes, last):
     "Generate a single line for the tree utility"
     tee = "├"
@@ -449,6 +444,7 @@ class Sentinel:
 
 UNCHANGED = Sentinel("UNCHANGED")
 UNSET = Sentinel("UNSET")
+SingleUserPrincipal = Sentinel("SingleUserPrincipal")
 
 
 def import_object(colon_separated_string, accept_live_object=True):
@@ -598,11 +594,13 @@ class UnsupportedQueryType(TypeError):
 
 class Conflicts(Exception):
     "Prompts the server to send 409 Conflicts with message"
+
     pass
 
 
 class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
+
     pass
 
 
@@ -888,3 +886,15 @@ def parse_mimetype(mimetype: str) -> tuple[str, dict]:
             )
         params[key] = value
     return base, params
+
+
+class InterningLoader(yaml.loader.BaseLoader):
+    pass
+
+
+def interning_constructor(loader, node):
+    value = loader.construct_scalar(node)
+    return sys.intern(value)
+
+
+InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)

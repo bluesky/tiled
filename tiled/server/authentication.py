@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Set
 
 from fastapi import (
     APIRouter,
@@ -37,7 +37,7 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
-from tiled.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -59,7 +59,7 @@ from ..authn_database.core import (
     lookup_valid_pending_session_by_user_code,
     lookup_valid_session,
 )
-from ..utils import SHARE_TILED_PATH, SpecialUsers
+from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
 from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
@@ -226,6 +226,44 @@ async def get_session_state(decoded_access_token=Depends(get_decoded_access_toke
         return decoded_access_token.get("state")
 
 
+async def get_access_tags_from_api_key(
+    api_key: str, authenticated: bool, db: Optional[AsyncSession]
+) -> Optional[Set[str]]:
+    if not authenticated:
+        # Tiled is in a "single user" mode with only one API key.
+        # In this mode, there is no meaningful access tag limit.
+        return None
+    # Tiled is in a multi-user configuration with authentication providers.
+    # We store the hashed value of the API key secret.
+    try:
+        secret = bytes.fromhex(api_key)
+    except Exception:
+        # access tag limit cannot be enforced without key information
+        return None
+    api_key_orm = await lookup_valid_api_key(db, secret)
+    if api_key_orm is None:
+        # access tag limit cannot be enforced without key information
+        return None
+    else:
+        if (access_tags := api_key_orm.access_tags) is not None:
+            access_tags = set(access_tags)
+        return access_tags
+
+
+async def get_current_access_tags(
+    request: Request,
+    api_key: Optional[str] = Depends(get_api_key),
+    db: Optional[AsyncSession] = Depends(get_database_session),
+) -> Optional[Set[str]]:
+    if api_key is not None:
+        return await get_access_tags_from_api_key(
+            api_key, request.app.state.authenticated, db
+        )
+    else:
+        # Limits on access tags only available via API key auth
+        return None
+
+
 async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
     if ("api_key" in request.query_params) and (
         request.cookies.get(API_KEY_COOKIE_NAME) != api_key
@@ -315,7 +353,7 @@ async def get_current_principal(
     db: Optional[AsyncSession] = Depends(get_database_session),
     # TODO: https://github.com/bluesky/tiled/issues/923
     # Remove non-Principal return types
-) -> Union[schemas.Principal, SpecialUsers]:
+) -> Optional[schemas.Principal]:
     """
     Get current Principal from:
     - API key in 'api_key' query parameter
@@ -323,9 +361,10 @@ async def get_current_principal(
     - API key in cookie 'tiled_api_key'
     - OAuth2 JWT access token in header 'Authorization: Bearer ...'
 
-    Fall back to SpecialUsers.public, if anonymous access is allowed
-    If this server is configured with a "single-user API key", then
-    the Principal will be SpecialUsers.admin always.
+    If anonymous access is allowed, Principal will be `None`.
+    If the server is configured with a "single-user API key", then
+    the Principal will also be `None` - but is differentiated for
+    logging with a SingleUserPrincipal sentinel
     """
 
     if api_key is not None:
@@ -371,9 +410,8 @@ async def get_current_principal(
                 )
         else:
             # Tiled is in a "single user" mode with only one API key.
-            if secrets.compare_digest(api_key, settings.single_user_api_key):
-                principal = SpecialUsers.admin
-            else:
+            principal = None
+            if not secrets.compare_digest(api_key, settings.single_user_api_key):
                 raise HTTPException(
                     status_code=HTTP_401_UNAUTHORIZED,
                     detail="Invalid API key",
@@ -390,9 +428,12 @@ async def get_current_principal(
         )
     else:
         # No form of authentication is present.
-        principal = SpecialUsers.public
+        principal = None
     # This is used to pass the currently-authenticated principal into the logger.
-    request.state.principal = principal
+    is_apikey_single_user = api_key is not None and not request.app.state.authenticated
+    request.state.principal = (
+        principal if not is_apikey_single_user else SingleUserPrincipal
+    )
     return principal
 
 
@@ -760,12 +801,22 @@ async def generate_apikey(db: AsyncSession, principal, apikey_params, request):
     principal_scopes = set().union(*[role.scopes for role in principal.roles])
     if not set(scopes).issubset(principal_scopes | {"inherit"}):
         raise HTTPException(
-            400,
+            403,
             (
                 f"Requested scopes {apikey_params.scopes} must be a subset of the "
                 f"principal's scopes {list(principal_scopes)}."
             ),
         )
+    admin_scopes = ["admin:apikeys"]
+    if (access_tags := apikey_params.access_tags) is not None:
+        if all(scope in scopes for scope in admin_scopes):
+            raise HTTPException(
+                403,
+                (
+                    f"Requested scopes {scopes} contain scopes {admin_scopes}, "
+                    f"which cannot be combined with access tag restrictions."
+                ),
+            )
     if apikey_params.expires_in is not None:
         expiration_time = utcnow() + timedelta(seconds=apikey_params.expires_in)
     else:
@@ -794,6 +845,7 @@ async def generate_apikey(db: AsyncSession, principal, apikey_params, request):
         expiration_time=expiration_time,
         note=apikey_params.note,
         scopes=scopes,
+        access_tags=access_tags,
         first_eight=secret.hex()[:8],
         hashed_secret=hashed_secret,
     )
@@ -819,9 +871,7 @@ def authentication_router() -> APIRouter:
         limit: Optional[int] = Query(
             DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
         ),
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["read:principals"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -859,9 +909,7 @@ def authentication_router() -> APIRouter:
     )
     async def create_service_principal(
         request: Request,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["write:principals"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
         role: str = Query(...),
@@ -960,9 +1008,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         uuid: uuid_module.UUID,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["admin:apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1013,9 +1059,7 @@ def authentication_router() -> APIRouter:
     async def revoke_session_by_id(
         session_id: str,  # from path parameter
         request: Request,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         "Mark a Session as revoked so it cannot be refreshed again."
@@ -1106,14 +1150,13 @@ def authentication_router() -> APIRouter:
     async def new_apikey(
         request: Request,
         apikey_params: schemas.APIKeyRequestParams,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         """
-        Generate an API for the currently-authenticated user or service."""
+        Generate an API for the currently-authenticated user or service.
+        """
         # TODO Permit filtering the fields of the response.
         request.state.endpoint = "auth"
         if principal is None:
@@ -1166,9 +1209,7 @@ def authentication_router() -> APIRouter:
     async def revoke_apikey(
         request: Request,
         first_eight: str,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         _=Security(check_scopes, scopes=["apikeys"]),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
@@ -1198,14 +1239,12 @@ def authentication_router() -> APIRouter:
     )
     async def whoami(
         request: Request,
-        principal: Union[schemas.Principal, SpecialUsers] = Depends(
-            get_current_principal
-        ),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         # TODO Permit filtering the fields of the response.
         request.state.endpoint = "auth"
-        if principal is SpecialUsers.public:
+        if principal is None:
             return json_or_msgpack(request, None)
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.

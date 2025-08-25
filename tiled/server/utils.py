@@ -6,7 +6,7 @@ from typing import Any, Literal, Mapping
 from fastapi import Request
 from starlette.types import Scope
 
-from ..access_policies import NO_ACCESS
+from ..access_control.access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
 
 EMPTY_NODE = MapAdapter({})
@@ -75,12 +75,23 @@ def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> 
 
 
 async def filter_for_access(
-    entry, access_policy, principal, authn_scopes, scopes, metrics
+    entry, access_policy, principal, authn_access_tags, authn_scopes, scopes, metrics
 ):
     if access_policy is not None and hasattr(entry, "search"):
         with record_timing(metrics, "acl"):
+            if hasattr(entry, "lookup_adapter") and entry.node.parent is None:
+                # This conditional only catches for the MapAdapter->CatalogAdapter
+                # transition, to cover MapAdapter's lack of access control.
+                # It can be removed once MapAdapter goes away.
+                if not set(scopes).issubset(
+                    await access_policy.allowed_scopes(
+                        entry, principal, authn_access_tags, authn_scopes
+                    )
+                ):
+                    return (entry := EMPTY_NODE)
+
             queries = await access_policy.filters(
-                entry, principal, authn_scopes, set(scopes)
+                entry, principal, authn_access_tags, authn_scopes, set(scopes)
             )
             if queries is NO_ACCESS:
                 entry = EMPTY_NODE
