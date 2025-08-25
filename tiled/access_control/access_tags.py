@@ -7,12 +7,28 @@ from sys import intern
 import aiosqlite
 import yaml
 
-from ..utils import InterningLoader
+from ..utils import InterningLoader, ensure_specified_sql_driver
 
 
 class AccessTagsParser:
     @classmethod
     def from_uri(cls, uri):
+        if uri.startswith("file:"):
+            uri = uri.split(":", 1)[1]
+        uri = ensure_specified_sql_driver(uri)
+        if not uri.startswith("sqlite+aiosqlite:"):
+            raise ValueError(
+                f"AccessTagsParser must be given a SQLite database URI, "
+                f"i.e. 'sqlite:///...', 'sqlite+aiosqlite:///...'\n"
+                f"Given URI results in: {uri=}"
+            )
+        uri_path = uri.split(":", 1)[1]
+        if not uri_path.startswith("///"):
+            raise ValueError(
+                "Invalid URI provided, URI must contain 3 forward slashes, "
+                "e.g. 'sqlite:///...'."
+            )
+        uri = f"file:{uri_path[3:]}"
         uri = uri if "?" in uri else f"{uri}?mode=ro"
         return cls(uri=uri)
 
