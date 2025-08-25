@@ -30,12 +30,13 @@ class WebsocketWrapper:
             query_string = self._uri.query.decode() if self._uri.query else ""
             path = self._uri.path + ("?" + query_string if query_string else "")
             self._websocket = self._http_client.websocket_connect(
-                path, headers={"Authorization": api_key}
+                path, headers={"Authorization": f"Apikey {api_key}"}
             )
             self._websocket.__enter__()
         else:
             self._websocket = connect(
-                str(self._uri), additional_headers={"Authorization": api_key}
+                str(self._uri),
+                additional_headers={"Authorization": f"Apikey {api_key}"},
             )
 
     def recv(self, timeout=None):
