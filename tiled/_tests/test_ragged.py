@@ -42,9 +42,10 @@ def test_slicing(client):
     # Write data into catalog.
     array = ragged.array(
         [
-            list(RNG.random(10).tolist()),
-            list(RNG.random(3).tolist()),
-            list(RNG.random(8).tolist()),
+            [RNG.random(10).tolist()],
+            [RNG.random(8).tolist(), []],
+            [RNG.random(5).tolist(), RNG.random(2).tolist()],
+            [[], RNG.random(7).tolist()],
         ]
     )
     returned = client.write_ragged(array, key="test")
@@ -53,7 +54,7 @@ def test_slicing(client):
         # Read the data back out from the RaggedClient, progressively sliced.
         result = rac.read()
         # ragged does not have an array_equal(a, b) equivalent. Use awkward.
-        assert ak.array_equal(result._impl, array._impl)
+        assert ak.array_equal(result._impl, array._impl)  # noqa: SLF001
 
         # When sliced, the server sends less data.
         with record_history() as h:
@@ -72,9 +73,10 @@ def test_slicing(client):
 def test_export_json(client, buffer):
     array = ragged.array(
         [
-            RNG.random(10).tolist(),
-            RNG.random(3).tolist(),
-            RNG.random(8).tolist(),
+            [RNG.random(10).tolist()],
+            [RNG.random(8).tolist(), []],
+            [RNG.random(5).tolist(), RNG.random(2).tolist()],
+            [[], RNG.random(7).tolist()],
         ]
     )
     rac = client.write_ragged(array, key="test")
@@ -90,9 +92,10 @@ def test_export_arrow(tmpdir, client):
     # named like 'node0-offsets' and 'node2-data'.
     array = ragged.array(
         [
-            RNG.random(10).tolist(),
-            RNG.random(3).tolist(),
-            RNG.random(8).tolist(),
+            [RNG.random(10).tolist()],
+            [RNG.random(8).tolist(), []],
+            [RNG.random(5).tolist(), RNG.random(2).tolist()],
+            [[], RNG.random(7).tolist()],
         ]
     )
     rac = client.write_ragged(array, key="test")
@@ -109,9 +112,10 @@ def test_export_parquet(tmpdir, client):
     # named like 'node0-offsets' and 'node2-data'.
     array = ragged.array(
         [
-            RNG.random(10).tolist(),
-            RNG.random(3).tolist(),
-            RNG.random(8).tolist(),
+            [RNG.random(10).tolist()],
+            [RNG.random(8).tolist(), []],
+            [RNG.random(5).tolist(), RNG.random(2).tolist()],
+            [[], RNG.random(7).tolist()],
         ]
     )
     rac = client.write_ragged(array, key="test")
