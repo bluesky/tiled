@@ -60,8 +60,11 @@ mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo",
 mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
     numpy.ones(10), specs=["foo", "bar", "baz"]
 )
+nested_metadata = {
+    "nested": {"nested-key-1": "nested-value-1", "nested-key-2": "nested-value-2"}
+}
 mapping["nested_key_test"] = ArrayAdapter.from_array(
-    numpy.ones(10), metadata={"nested": {"nested-key": "nested-value"}}
+    numpy.ones(10), metadata=nested_metadata
 )
 
 
@@ -338,8 +341,21 @@ def test_key_present(client):
         "full_text_test_case",
         "full_text_test_case_urple",
     ]
-    # These containers have a "nested" key.
-    assert list(client.search(KeyPresent("nested.nested-key"))) == ["nested_key_test"]
+    # outer key present
+    assert list(client.search(KeyPresent("nested"))) == ["nested_key_test"]
+    # one of the inner keys present
+    assert list(client.search(KeyPresent("nested.nested-key-1"))) == ["nested_key_test"]
+    assert list(client.search(KeyPresent("nested.nested-key-2"))) == ["nested_key_test"]
+    # both inner keys
+    assert list(
+        client.search(KeyPresent("nested.nested-key-1")).search(
+            KeyPresent("nested.nested-key-2")
+        )
+    ) == ["nested_key_test"]
+    # inner key not present
+    assert list(client.search(KeyPresent("nested.nested-key-3"))) == []
+    # outer key not present
+    assert list(client.search(KeyPresent("nonsense.nested-key-1"))) == []
     # These are all the containers that do not have a "number" key.
     assert list(client.search(KeyPresent("number", False))) == [
         "does_contain_z",
