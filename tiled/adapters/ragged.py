@@ -6,6 +6,7 @@ import numpy as np
 import ragged
 from numpy.typing import NDArray
 
+from tiled.ndslice import NDSlice
 from tiled.storage import FileStorage, Storage
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.ragged import RaggedStructure
@@ -71,6 +72,23 @@ class RaggedAdapter:
             metadata=metadata,
             specs=specs,
         )
+
+    def read(
+        self,
+        slice: NDSlice = NDSlice(...),
+    ) -> ragged.array:
+        """
+
+        Parameters
+        ----------
+        slice :
+
+        Returns
+        -------
+
+        """
+        # _array[...] requires an actual tuple, not just a subclass of tuple
+        return self._array[tuple(slice)] if slice else self._array
 
     def metadata(self) -> JSON:
         return self._metadata
