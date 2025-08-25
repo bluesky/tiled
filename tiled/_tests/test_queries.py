@@ -60,6 +60,9 @@ mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo",
 mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
     numpy.ones(10), specs=["foo", "bar", "baz"]
 )
+mapping["nested_key_test"] = ArrayAdapter.from_array(
+    numpy.ones(10), metadata={"nested": {"nested-key": "nested-value"}}
+)
 
 
 @pytest.fixture(scope="module")
@@ -127,16 +130,6 @@ async def client(request, tmpdir_module):
                 yield client
     else:
         assert False
-
-
-def prep_test(client, mapping):
-    for k, v in mapping.items():
-        client.write_array(
-            v.read(),
-            key=k,
-            metadata=dict(v.metadata()),
-            specs=v.specs,
-        )
 
 
 def test_key(client):
@@ -340,13 +333,6 @@ def test_structure_families(client):
 def test_key_present(client):
     if client.metadata["backend"] == "map":
         pytest.skip("No 'KeyPresent' support on MapAdapter")
-    # Add some data with nested keys
-    newMap = {
-        "nested_key_test": ArrayAdapter.from_array(
-            numpy.ones(10), metadata={"nested": {"nested-key": "nested-value"}}
-        )
-    }
-    prep_test(client, newMap)
     # These containers have a "color" key.
     assert list(client.search(KeyPresent("color"))) == [
         "full_text_test_case",
