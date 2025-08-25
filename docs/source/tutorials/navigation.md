@@ -209,7 +209,7 @@ Tiled to issue just a single HTTP request to fetch the description of the thing
 we actually want (`y`) and avoid spending time fetching `x` in the process.
 
 In some situations, Tiled will proactively bundle the description of `y` into
-the description of `y`, in an attempt to save back-and-forth. In those cases,
-you will find `c['x']['y']` to be just as fast as `c['x', 'y']` or `c['x/y']`.
-This is not possible in all situations, because containers can be quite large
-and of course Tiled cannot predict what items the user may need.
+the description of its parent `x`, in an attempt to reduce back-and-forth. In
+those cases, you will find `c['x']['y']` to be just as fast as `c['x', 'y']` or
+`c['x/y']`.  This is not possible in all situations, because containers can be
+quite large and of course Tiled cannot predict which items the user may need.
