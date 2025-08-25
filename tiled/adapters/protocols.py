@@ -4,8 +4,11 @@ from typing import Any, Dict, List, Literal, Optional, Protocol, Set, Tuple, Uni
 
 import dask.dataframe
 import pandas
+import ragged
 import sparse
 from numpy.typing import NDArray
+
+from tiled.structures.ragged import RaggedStructure
 
 from ..ndslice import NDSlice
 from ..server.schemas import Principal
@@ -83,6 +86,22 @@ class AwkwardAdapter(BaseAdapter, Protocol):
         pass
 
 
+class RaggedAdapter(BaseAdapter, Protocol):
+    structure_family: Literal[StructureFamily.ragged]
+
+    @abstractmethod
+    def structure(self) -> RaggedStructure:
+        pass
+
+    @abstractmethod
+    def read(self, slice: NDSlice) -> ragged.array:
+        pass
+
+    @abstractmethod
+    def read_block(self, block: Tuple[int, ...]) -> ragged.array:
+        pass
+
+
 class SparseAdapter(BaseAdapter, Protocol):
     structure_family: Literal[StructureFamily.sparse] = StructureFamily.sparse
 
@@ -128,7 +147,12 @@ class TableAdapter(BaseAdapter, Protocol):
 
 
 AnyAdapter = Union[
-    ArrayAdapter, AwkwardAdapter, ContainerAdapter, SparseAdapter, TableAdapter
+    ArrayAdapter,
+    AwkwardAdapter,
+    ContainerAdapter,
+    RaggedAdapter,
+    SparseAdapter,
+    TableAdapter,
 ]
 
 

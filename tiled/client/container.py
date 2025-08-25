@@ -1011,6 +1011,69 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(container)
         return client
 
+    def write_ragged(
+        self,
+        array,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        access_tags=None,
+    ):
+        import awkward
+        import ragged
+
+        from tiled.structures.ragged import BuiltinDtype, RaggedStructure
+
+        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
+            # This does not implement enough of the array-like interface.
+            # Coerce to numpy-like ragged array.
+            array = ragged.asarray(array)
+
+        # TODO
+        from dask.array.core import normalize_chunks
+
+        if hasattr(array, "chunks"):
+            chunks = normalize_chunks(
+                array.chunks,
+                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
+                dtype=array.dtype,
+                shape=None,
+            )
+        else:
+            chunks = normalize_chunks(
+                tuple("auto" for _ in array.shape),
+                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
+                dtype=array.dtype,
+                shape=tuple(d if d is not None else array.size for d in array.shape),
+            )
+
+        form, length, container = awkward.to_buffers(array._impl)  # noqa: SLF001
+
+        structure = RaggedStructure(
+            shape=array.shape,
+            chunks=chunks,
+            dims=dims,
+            data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
+            form=form.to_dict(),
+            length=length,
+        )
+        client = self.new(
+            StructureFamily.ragged,
+            [
+                DataSource(
+                    structure=structure, structure_family=StructureFamily.ragged
+                ),
+            ],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+        )
+        client.write(array)
+        return client
+
     def write_sparse(
         self,
         coords,
@@ -1296,6 +1359,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "dataframe": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
+            "ragged": _LazyLoad(("..ragged", Container.__module__), "RaggedClient"),
             "sparse": _LazyLoad(("..sparse", Container.__module__), "SparseClient"),
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"

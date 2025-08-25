@@ -37,6 +37,14 @@ def links_for_container(structure_family, structure, base_url, path_str):
     return links
 
 
+def links_for_ragged(structure_family, structure, base_url, path_str):
+    links = {}
+    block_template = ",".join(f"{{{index}}}" for index in range(len(structure.shape)))
+    links["full"] = f"{base_url}/ragged/full/{path_str}"
+    links["block"] = f"{base_url}/ragged/block/{path_str}?block={block_template}"
+    return links
+
+
 def links_for_table(structure_family, structure, base_url, path_str):
     links = {}
     links["partition"] = f"{base_url}/table/partition/{path_str}?partition={{index}}"
@@ -49,6 +57,7 @@ LINKS_BY_STRUCTURE_FAMILY = {
     StructureFamily.awkward: links_for_awkward,
     StructureFamily.container: links_for_container,
     StructureFamily.composite: links_for_container,
-    StructureFamily.sparse: links_for_array,  # spare and array are the same
+    StructureFamily.ragged: links_for_ragged,
+    StructureFamily.sparse: links_for_array,  # sparse and array are the same
     StructureFamily.table: links_for_table,
 }
