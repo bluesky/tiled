@@ -401,8 +401,14 @@ async def get_current_principal_websocket(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="An API key must be passed in the Authorization header",
         )
+    scheme, api_key = get_authorization_scheme_param(authorization)
+    if scheme.lower() != "apikey":
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Authorization header must be formatted like 'Apikey SECRET'",
+        )
     principal = await get_current_principal_from_api_key(
-        authorization, websocket.app.state.authenticated, db, settings
+        api_key, websocket.app.state.authenticated, db, settings
     )
     if principal is None:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")

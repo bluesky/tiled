@@ -1103,10 +1103,16 @@ class CatalogNodeAdapter:
         node_ttl = await self.context.cache_client.ttl(f"sequence:{self.node.id}")
         if node_ttl > 0:
             # Already closed, nothing to do
-            return
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"Stream for node {self.node.id} is already closed.",
+            )
         if node_ttl == -2:
             # Key not found, must have already expired or never existed
-            return
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"Node {self.node.id} not found.",
+            )
 
         metadata = {
             "timestamp": datetime.now().isoformat(),

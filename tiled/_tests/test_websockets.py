@@ -55,7 +55,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
     # Connect WebSocket using TestClient with msgpack format and authorization
     with test_client.websocket_connect(
         "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
-        headers={"Authorization": "secret"},
+        headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Write updates using Tiled client
         for i in range(1, 4):
@@ -95,7 +95,7 @@ def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
     # This should result in an HTTP 404 response during the handshake
     response = test_client.get(
         f"/api/v1/stream/single/{non_existent_node_id}",
-        headers={"Authorization": "secret"},
+        headers={"Authorization": "Apikey secret"},
     )
     assert response.status_code == 404
 
@@ -119,7 +119,7 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
     # Connect WebSocket after first update
     with test_client.websocket_connect(
         "/api/v1/stream/single/test_stream_after_update?envelope_format=msgpack",
-        headers={"Authorization": "secret"},
+        headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Write more updates
         for i in range(2, 4):
@@ -175,7 +175,7 @@ def test_subscribe_after_first_update_from_beginning_websockets(
     # Connect WebSocket requesting from beginning
     with test_client.websocket_connect(
         "/api/v1/stream/single/test_stream_from_beginning?envelope_format=msgpack&start=0",
-        headers={"Authorization": "secret"},
+        headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # First, should receive the initial array creation
         historical_msg_bytes = websocket.receive_bytes()

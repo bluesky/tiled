@@ -139,9 +139,9 @@ class StreamingUser(HttpUser):
             # Parse host to get websocket URL
             parsed = urlparse(self.host)
             ws_scheme = "wss" if parsed.scheme == "https" else "ws"
-            ws_host = f"{ws_scheme}://{parsed.netloc}"
+            host = f"{ws_scheme}://{parsed.netloc}"
 
-            ws_url = f"{ws_host}/api/v1/stream/single/{self.node_name}?envelope_format={self.envelope_format}"
+            ws_url = f"{host}/api/v1/stream/single/{self.node_name}?envelope_format={self.envelope_format}&start=0"
 
             # Create websocket connection
             self.ws = websocket.WebSocketApp(
