@@ -8,7 +8,7 @@ def test_one_shot_cached_map():
 
     counter = 0
 
-    def f():
+    def f() -> int:
         nonlocal counter
         counter += 1
         return 5
@@ -36,7 +36,7 @@ def test_caching_map():
 
     counter = 0
 
-    def f():
+    def f() -> int:
         nonlocal counter
         counter += 1
         return 5
