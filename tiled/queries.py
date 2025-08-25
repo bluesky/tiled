@@ -374,6 +374,41 @@ class NotIn:
         return cls(key=key, value=json.loads(value))
 
 
+@register(name="keypresent")
+@dataclass
+class KeyPresent:
+    """
+    Query to retrieve containers that have a specific key at any level.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    exists : bool
+        Set to True by default, but can be set to False to find the inverse
+    Examples
+    --------
+
+    Search for containers that have the key "color"
+
+    >>> c.search(KeyPresent("color"))
+
+    Search for containers that do not have the key "sample.name"
+
+    >>> c.search(KeyPresent("sample.name", exists=False))
+    """
+
+    key: str
+    exists: bool = True
+
+    def encode(self):
+        return {"key": self.key, "exists": self.exists}
+
+    @classmethod
+    def decode(cls, *, key, exists):
+        return cls(key=key, exists=exists)
+
+
 @register(name="like")
 @dataclass
 class Like(NoBool):
