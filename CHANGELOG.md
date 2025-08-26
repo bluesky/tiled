@@ -6,13 +6,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b37 (Unreleased)
 
-### Changed
-
-- Remove `SpecialUsers` principals for single-user and anonymous-access cases
-
-
-## v0.1.0-b36 (2025-08-26)
-
 ### Added
 
 - The access tags compiler and db schema have been upstreamed into Tiled
@@ -21,8 +14,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
-- Demoted the `Composite` structure family to `composite` spec.
-- Typehint utils collection implementations
 - Remove `SpecialUsers` principals for single-user and anonymous-access cases
 - Access control code is now in the `access_control` subdirectory
 - `SimpleAccessPolicy` has been removed
@@ -36,6 +27,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Access control on container export was partially broken, now access works as expected.
+
+
+## v0.1.0-b36 (2025-08-26)
+
+### Changed
+
+- Demoted the `Composite` structure family to `composite` spec.
+- Typehint utils collection implementations
 
 
 ## v0.1.0-b35 (2025-08-20)
