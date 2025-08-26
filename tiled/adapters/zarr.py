@@ -1,7 +1,6 @@
 import builtins
 import copy
 import os
-import sys
 from collections.abc import Mapping
 from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
@@ -29,17 +28,10 @@ if ZARR_LIB_V2:
     from zarr.storage import init_array as create_array
 else:
     from zarr import create_array
-    from zarr.storage import LocalStore
-
-INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
-
-if sys.version_info < (3, 11):
-    from zarr.storage import DirectoryStore as LocalStore
-    from zarr.storage import init_array as create_array
-else:
     from zarr.storage import LocalStore, ObjectStore
     from obstore.store import S3Store, AzureStore, GCSStore
-    from zarr import create_array
+
+INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 
 class ZarrArrayAdapter(ArrayAdapter):
