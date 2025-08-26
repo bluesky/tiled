@@ -887,7 +887,7 @@ class Admin:
                 ).json()
 
     def create_api_key(
-        self, uuid, scopes=None, access_tags=None, expires_in=None, note=None
+        self, uuid, scopes=None, expires_in=None, note=None, access_tags=None
     ):
         """
         Generate a new API key for another user or service.

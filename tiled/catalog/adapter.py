@@ -271,7 +271,7 @@ class CatalogNodeAdapter:
     async def startup(self):
         if (self.context.engine.dialect.name == "sqlite") and (
             self.context.engine.url.database == ":memory:"
-            or self.context.engine.url.query.get("mode", None) == "memory"
+            or self.context.engine.url.query.get("mode") == "memory"
         ):
             # Special-case for in-memory SQLite: Because it is transient we can
             # skip over anything related to migrations.
