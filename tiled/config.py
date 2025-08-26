@@ -22,6 +22,7 @@ from .media_type_registration import (
     default_serialization_registry,
 )
 from .query_registration import default_query_registry
+from .structures.core import Spec
 from .utils import import_object, parse, prepend_to_sys_path
 from .validation_registration import default_validation_registry
 
@@ -176,7 +177,7 @@ See documentation section "Serve a Directory of Files"."""
             else:
                 # no-op
                 validator = _no_op_validator
-            default_validation_registry.register(item["spec"], validator)
+            default_validation_registry.register(Spec(item["spec"]), validator)
 
     # TODO Make compression_registry extensible via configuration.
     return {

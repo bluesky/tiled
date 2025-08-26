@@ -2,8 +2,10 @@ import builtins
 import os
 import uuid
 from collections.abc import Hashable
+from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
+from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 from weakref import WeakValueDictionary
 
@@ -11,6 +13,7 @@ import httpx
 import msgpack
 import stamina.instrumentation
 
+from ..structures.core import Spec
 from ..utils import path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
@@ -419,3 +422,18 @@ def chunks_repr(chunks: tuple[tuple[int, ...], ...]) -> str:
             result += "variable, "
     result = result.rstrip(", ") + ")"
     return result
+
+
+def normalize_specs(
+    specs: Optional[Union[list[str], list[Spec], str]]
+) -> Optional[list[dict[str, str]]]:
+    "Represent a list of Spec objects or strings as a list of dicts"
+
+    if specs is None:
+        return None
+    normalized_specs = []
+    for spec in specs:
+        if isinstance(spec, str):
+            spec = Spec(spec)
+        normalized_specs.append(asdict(spec))
+    return normalized_specs

@@ -274,13 +274,6 @@ class SAMLAuthenticator(ExternalAuthenticator):
         async def saml_login(request: Request) -> RedirectResponse:
             req = await prepare_saml_from_fastapi_request(request)
             auth = OneLogin_Saml2_Auth(req, self.saml_settings)
-            # saml_settings = auth.get_settings()
-            # metadata = saml_settings.get_sp_metadata()
-            # errors = saml_settings.validate_metadata(metadata)
-            # if len(errors) == 0:
-            #   print(metadata)
-            # else:
-            #   print("Error found on Metadata: %s" % (', '.join(errors)))
             callback_url = auth.login()
             return RedirectResponse(url=callback_url)
 
