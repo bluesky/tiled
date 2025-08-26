@@ -3,10 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+
 ## v0.1.0-b36 (Unreleased)
 
 ### Changed
 
+- Demoted the `Composite` structure family to `composite` spec.
 - Typehint utils collection implementations
 
 ## v0.1.0-b35 (2025-08-20)

@@ -29,7 +29,7 @@ def lower_case_dict(d):
     return out, modified
 
 
-def validate_foo(metadata, structure_family, structure, spec):
+def validate_foo(spec, metadata, entry, structure_family, structure):
     if structure_family != StructureFamily.table:
         raise ValidationError(f"structure family for spec {spec} must be 'table'")
 
@@ -62,7 +62,7 @@ def client(tmpdir_module):
     }
     # Check that specs propagate correctly through merging configs.
     merged_config = merge({"filepath_placeholder": config})
-    assert merged_config["specs"]
+    assert merged_config["specs"] is not None
     with Context.from_app(build_app_from_config(merged_config)) as context:
         yield from_context(context)
 

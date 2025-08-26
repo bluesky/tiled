@@ -66,7 +66,6 @@ def get_zarr_router_v2() -> APIRouter:
             metrics=request.state.metrics,
             structure_families={
                 StructureFamily.table,
-                StructureFamily.composite,
                 StructureFamily.container,
                 StructureFamily.array,
                 StructureFamily.sparse,
@@ -100,7 +99,6 @@ def get_zarr_router_v2() -> APIRouter:
             metrics=request.state.metrics,
             structure_families={
                 StructureFamily.table,
-                StructureFamily.composite,
                 StructureFamily.container,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
@@ -179,16 +177,12 @@ def get_zarr_router_v2() -> APIRouter:
                 StructureFamily.array,
                 StructureFamily.sparse,
                 StructureFamily.table,
-                StructureFamily.composite,
                 StructureFamily.container,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
 
-        if entry.structure_family in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if entry.structure_family == StructureFamily.container:
             # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
             if hasattr(entry, "keys_range"):
                 keys = await entry.keys_range(offset=0, limit=None)
@@ -294,7 +288,6 @@ def get_zarr_router_v3() -> APIRouter:
                 StructureFamily.array,
                 StructureFamily.table,
                 StructureFamily.sparse,
-                StructureFamily.composite,
                 StructureFamily.container,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
@@ -459,21 +452,17 @@ def get_zarr_router_v3() -> APIRouter:
             session_state,
             metrics=request.state.metrics,
             structure_families={
-                StructureFamily.composite,
-                StructureFamily.container,
-                StructureFamily.table,
                 StructureFamily.array,
+                StructureFamily.container,
                 StructureFamily.sparse,
+                StructureFamily.table,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
         # Remove query params and the trailing slash from the url
         url = str(request.url).split("?")[0].rstrip("/")
 
-        if entry.structure_family in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if entry.structure_family == StructureFamily.container:
             # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
             if hasattr(entry, "keys_range"):
                 keys = await entry.keys_range(offset=0, limit=None)
