@@ -520,7 +520,7 @@ class Context:
                     )
                 ).json()
 
-    def create_api_key(self, scopes=None, access_tags=None, expires_in=None, note=None):
+    def create_api_key(self, scopes=None, expires_in=None, note=None, access_tags=None):
         """
         Generate a new API key.
 
@@ -532,9 +532,6 @@ class Context:
         scopes : Optional[List[str]]
             Restrict the access available to the API key by listing specific scopes.
             By default, this will have the same access as the user.
-        access_tags : Optional[List[str]]
-            Restrict the access available to the API key by listing specific tags.
-            By default, this will have no limits on access tags.
         expires_in : Optional[Union[int, str]]
             Number of seconds until API key expires, given as integer seconds
             or a string like: '3y' (years), '3d' (days), '5m' (minutes), '1h'
@@ -542,6 +539,9 @@ class Context:
             have the maximum lifetime allowed by the server.
         note : Optional[str]
             Description (for humans).
+        access_tags : Optional[List[str]]
+            Restrict the access available to the API key by listing specific tags.
+            By default, this will have no limits on access tags.
         """
         if isinstance(expires_in, str):
             expires_in = parse_time_string(expires_in)
@@ -899,15 +899,15 @@ class Admin:
         scopes : Optional[List[str]]
             Restrict the access available to the API key by listing specific scopes.
             By default, this will have the same access as the principal.
-        access_tags : Optional[List[str]]
-            Restrict the access available to the API key by listing specific tags.
-            By default, this will have no limits on access tags.
         expires_in : Optional[int]
             Number of seconds until API key expires. If None,
             it will never expire or it will have the maximum lifetime
             allowed by the server.
         note : Optional[str]
             Description (for humans).
+        access_tags : Optional[List[str]]
+            Restrict the access available to the API key by listing specific tags.
+            By default, this will have no limits on access tags.
         """
         for attempt in retry_context():
             with attempt:
