@@ -1884,14 +1884,9 @@ def get_router(
             settings=settings,
         )
 
-        if request.app.state.access_policy is not None and hasattr(
-            request.app.state.access_policy, "modify_node"
-        ):
+        if policy := request.app.state.access_policy:
             try:
-                (
-                    access_blob_modified,
-                    access_blob,
-                ) = await request.app.state.access_policy.modify_node(
+                (access_blob_modified, access_blob) = await policy.modify_node(
                     entry, principal, authn_scopes, access_blob
                 )
             except ValueError as e:
@@ -1961,14 +1956,9 @@ def get_router(
             settings=settings,
         )
 
-        if request.app.state.access_policy is not None and hasattr(
-            request.app.state.access_policy, "modify_node"
-        ):
+        if policy := request.app.state.access_policy:
             try:
-                (
-                    access_blob_modified,
-                    access_blob,
-                ) = await request.app.state.access_policy.modify_node(
+                (access_blob_modified, access_blob) = await policy.modify_node(
                     entry, principal, authn_scopes, access_blob
                 )
             except ValueError as e:
