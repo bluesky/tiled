@@ -12,7 +12,7 @@ from typing_extensions import Annotated, TypedDict
 
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import STRUCTURE_TYPES, StructureFamily
+from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import Management
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
@@ -87,9 +87,9 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
-    name: Annotated[str, StringConstraints(max_length=255)]
-    version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
+# class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
+#     name: Annotated[str, StringConstraints(max_length=255)]
+#     version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
 
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
@@ -236,7 +236,6 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
-    StructureFamily.composite: ContainerLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
@@ -432,10 +431,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     def narrow_structure_type(self):
         "Convert the structure on each data_source from a dict to the appropriate pydantic model."
         for data_source in self.data_sources:
-            if self.structure_family not in {
-                StructureFamily.container,
-                StructureFamily.composite,
-            }:
+            if self.structure_family != StructureFamily.container:
                 structure_cls = STRUCTURE_TYPES[self.structure_family]
                 if data_source.structure is not None:
                     data_source.structure = structure_cls.from_json(

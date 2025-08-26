@@ -319,7 +319,6 @@ DEFAULT_MEDIA_TYPES = {
     StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
-    StructureFamily.composite: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
@@ -486,20 +485,13 @@ async def construct_resource(
     if schemas.EntryFields.access_blob in fields and hasattr(entry, "access_blob"):
         attributes["access_blob"] = entry.access_blob
     if schemas.EntryFields.specs in fields:
-        specs = []
+        attributes["specs"] = []
         for spec in getattr(entry, "specs", []):
             # back-compat for when a spec was just a string
             if isinstance(spec, str):
                 spec = Spec(spec)
-            # Convert from dataclass to pydantic.
-            # The dataclass implementation of Spec supports dict() method
-            # for ease of going between dataclass and pydantic.
-            specs.append(schemas.Spec(**spec.model_dump()))
-        attributes["specs"] = specs
-    if (entry is not None) and entry.structure_family in {
-        StructureFamily.container,
-        StructureFamily.composite,
-    }:
+            attributes["specs"].append(spec)
+    if (entry is not None) and entry.structure_family == StructureFamily.container:
         attributes["structure_family"] = entry.structure_family
 
         if (
