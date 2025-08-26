@@ -4,13 +4,20 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## v0.1.0-b37 (Unreleased)
+
+### Changed
+
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+
+
 ## v0.1.0-b36 (2025-08-26)
 
 ### Changed
 
 - Demoted the `Composite` structure family to `composite` spec.
 - Typehint utils collection implementations
-- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+
 
 ## v0.1.0-b35 (2025-08-20)
 
