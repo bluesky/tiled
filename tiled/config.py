@@ -155,6 +155,7 @@ See documentation section "Serve a Directory of Files"."""
         server_settings["response_bytesize_limit"] = config.get(
             "response_bytesize_limit"
         )
+        server_settings["exact_count_limit"] = config.get("exact_count_limit")
         server_settings["database"] = config.get("database", {})
         server_settings["reject_undeclared_specs"] = config.get(
             "reject_undeclared_specs"

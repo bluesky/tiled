@@ -25,6 +25,7 @@ from sqlalchemy import (
     exists,
     false,
     func,
+    literal,
     not_,
     or_,
     select,
@@ -50,6 +51,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
+    KeyPresent,
     KeysFilter,
     Like,
     NotEq,
@@ -108,7 +110,9 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
+
+# TODO: make type[Adapter] after #1047
+STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
@@ -351,11 +355,77 @@ class CatalogNodeAdapter:
             statement = statement.filter(condition)
         return statement
 
-    async def async_len(self):
-        statement = select(func.count(orm.Node.key)).filter(
-            orm.Node.parent == self.node.id
+    async def exact_len(self):
+        "Get the exact number of child nodes."
+        statement = (
+            select(func.count())
+            .select_from(orm.Node)
+            .filter(orm.Node.parent == self.node.id)
         )
         statement = self.apply_conditions(statement)
+
+        async with self.context.session() as db:
+            return (await db.execute(statement)).scalar_one()
+
+    async def approx_len(self) -> Optional[int]:
+        """Get an approximate number of child nodes using table statistics.
+
+        This only works for PostgreSQL databases and does not take into account
+        any filtering conditions. To be able to use these queries, the `nodes`
+        must be vacuumed and analyzed regularly (at least once).
+
+        If the database is not PostgreSQL, or if the statistics can not be
+        obtained, return None.
+        """
+
+        if self.context.engine.dialect.name == "postgresql":
+            async with self.context.session() as db:
+                parent_and_freqs = await db.execute(
+                    text(
+                        """
+                SELECT unnest(most_common_vals::text::int[])::int AS parent,
+                       unnest(most_common_freqs) AS freq
+                FROM pg_stats
+                WHERE schemaname = 'public' AND tablename = 'nodes' AND attname = 'parent';
+                                """
+                    )
+                )
+                for parent, freq in parent_and_freqs:
+                    if parent == self.node.id:
+                        total = (
+                            await db.execute(
+                                text(
+                                    """
+                            SELECT reltuples::bigint FROM pg_class
+                            WHERE  oid = 'public.nodes'::regclass;
+                                            """
+                                )
+                            )
+                        ).scalar_one()
+                        return int(total * freq)
+                else:
+                    return None  # Statistics can not be obtained
+
+        elif self.context.engine.dialect.name == "sqlite":
+            # SQLite has no statistics tables, so we fall back to exact count.
+            return None
+
+    async def lbound_len(self, threshold) -> int:
+        """Get a fast lower bound on the number of child nodes.
+
+        This only counts up to `threshold`+1 nodes, so is fast even for large
+        containers. If result is <= `threshold`, it is exact.
+        """
+
+        limited = (
+            select(literal(1))
+            .select_from(orm.Node)
+            .where(orm.Node.parent == self.node.id)
+            .limit(threshold + 1)
+        )
+        limited = self.apply_conditions(limited).cte("limited")
+        statement = select(func.count()).select_from(limited)
+
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
@@ -1362,6 +1432,20 @@ def in_or_not_in(query, tree, method):
     return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
 
 
+def key_present(query, tree):
+    # Functionally in SQLAlchemy 'is not None' does not work as expected
+    if tree.context.engine.url.get_dialect().name == "sqlite":
+        condition = orm.Node.metadata_.op("->")("$." + query.key) != None  # noqa: E711
+    else:
+        keys = query.key.split(".")
+        condition = (
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
+            != None  # noqa: E711
+        )
+    condition = condition if getattr(query, "exists", True) else not_(condition)
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def keys_filter(query, tree):
     condition = orm.Node.key.in_(query.keys)
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -1378,6 +1462,7 @@ CatalogNodeAdapter.register_query(Comparison, comparison)
 CatalogNodeAdapter.register_query(Contains, contains)
 CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
+CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)

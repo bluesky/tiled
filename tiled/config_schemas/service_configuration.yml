@@ -342,6 +342,12 @@ properties:
     description: |
       Maximum byte size of a response, given in bytes. The default is low (300 MB) keeping
       in mind that data is read into server memory and should generally be fetched in chunks.
+  exact_count_limit:
+    type: integer
+    description: |
+      The largest number of items in a container, for which the `/metadata` and `/search`
+      endpoints will return their exact count; this becomes the lower bound on the estimate if
+      an approximate number can not be obtained otherwise. The default is 100.
   allow_origins:
     type: array
     items:

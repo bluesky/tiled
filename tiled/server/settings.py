@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # that data should generally be chunked. When we implement async responses,
     # we can raise this global limit.
     response_bytesize_limit: int = 300_000_000  # 300 MB
+    # The largest number of items in a container for which the metadata endpoint
+    # will return the exact count; this becomes the lower bound on the stimate if
+    # an approximate number can not be obtained otherwise.
+    exact_count_limit: int = 100
     reject_undeclared_specs: bool = False
     # "env_prefix does not apply to fields with alias"
     # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#environment-variable-names

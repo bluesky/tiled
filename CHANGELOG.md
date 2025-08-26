@@ -4,11 +4,18 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
-## v0.1.0-b35 (Unreleased)
+## v0.1.0-b36 (Unreleased)
 
 ### Changed
 
 - Demoted the `Composite` structure family to `composite` spec.
+- Typehint utils collection implementations
+
+## v0.1.0-b35 (2025-08-20)
+
+### Changed
+
+- Optimized the calculation of an approximate length of containers.
 
 ### Added
 
@@ -25,6 +32,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   database correct but unchanged. This release repairs the migration script; it
   should be re-run on any databases that could not be upgraded with the previous
   release.
+
 
 ## v0.1.0-b33 (2025-08-13)
 
@@ -62,6 +70,7 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - Correct indentation of authenticator args field in the service config schema
   and ensure it correctly validates configurations.
 
+
 ## v0.1.0-b32 (2025-08-04)
 
 This release is identical to the previous one; it was made to fix our
@@ -83,7 +92,6 @@ continuous deployment processes.
 - Make principal type hints consistent in router
 - Typehinted database access methods
 - Explicit type conversion in SQL adapter when appending to an existing table.
-
 
 ## v0.1.0-b30 (2025-07-18)
 
