@@ -11,7 +11,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERRO
 
 from ..structures.core import StructureFamily
 from ..type_aliases import Scopes
-from ..utils import SpecialUsers, ensure_awaitable
+from ..utils import ensure_awaitable
 from .authentication import get_current_principal, get_current_scopes, get_session_state
 from .dependencies import get_entry, get_root_tree
 from .schemas import Principal
@@ -50,7 +50,7 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_attrs(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -84,7 +84,7 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_group_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -110,7 +110,7 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_array_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -152,7 +152,7 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_array(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -269,7 +269,7 @@ def get_zarr_router_v3() -> APIRouter:
     async def get_zarr_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -359,7 +359,7 @@ def get_zarr_router_v3() -> APIRouter:
         request: Request,
         path: str,
         block: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -438,7 +438,7 @@ def get_zarr_router_v3() -> APIRouter:
     async def get_zarr_group(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
