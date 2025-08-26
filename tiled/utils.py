@@ -2,7 +2,6 @@ import base64
 import builtins
 import collections.abc
 import contextlib
-import enum
 import functools
 import importlib
 import importlib.util
@@ -322,11 +321,6 @@ class CachingMap(collections.abc.Mapping[K, V], Generic[K, V]):
         )
 
 
-class SpecialUsers(str, enum.Enum):
-    public = "public"
-    admin = "admin"
-
-
 def _line(nodes, last):
     "Generate a single line for the tree utility"
     tee = "├"
@@ -449,6 +443,7 @@ class Sentinel:
 
 UNCHANGED = Sentinel("UNCHANGED")
 UNSET = Sentinel("UNSET")
+SingleUserPrincipal = Sentinel("SingleUserPrincipal")
 
 
 def import_object(colon_separated_string, accept_live_object=True):
