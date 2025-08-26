@@ -12,4 +12,6 @@ trees:
             access_key_id: "minioadmin"
             secret_access_key: "minioadmin"
             bucket: "buck"
+            virtual_hosted_style_request: False
+            client_options: {"allow_http": True}
       init_if_not_exists: true

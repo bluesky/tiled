@@ -85,18 +85,18 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
             directory = path_from_uri(data_uri)
             directory.mkdir(parents=True, exist_ok=True)
             store = LocalStore(str(directory))
+            data_source.assets.append(
+                Asset(
+                    data_uri=data_uri,
+                    is_directory=True,
+                    parameter="data_uri",
+                )
+            )
         create_array(
             store,
             shape=shape,
             chunks=zarr_chunks,
             dtype=data_source.structure.data_type.to_numpy_dtype(),
-        )
-        data_source.assets.append(
-            Asset(
-                data_uri=data_uri,
-                is_directory=True,
-                parameter="data_uri",
-            )
         )
         return data_source
 
