@@ -654,7 +654,7 @@ def get_router(
     async def close_stream(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_scopes: Scopes = Depends(get_current_scopes),
@@ -679,7 +679,7 @@ def get_router(
         path: str,
         envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
         start: Optional[int] = None,
-        principal: Union[Principal, SpecialUsers] = Depends(
+        principal: Optional[schemas.Principal] = Depends(
             get_current_principal_websocket
         ),
     ):
