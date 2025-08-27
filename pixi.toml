@@ -35,6 +35,7 @@ entrypoints = "*"
 rich = "*"
 stamina = "*"
 watchfiles = "*"
+websockets = "*"
 
 [feature.compression.dependencies]
 # python-blosc2 = "*"  # not available on Python < 3.11

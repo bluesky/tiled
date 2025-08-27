@@ -102,7 +102,6 @@ all = [
     "tifffile",
     "uvicorn[standard]",
     "watchfiles",
-    "websockets",
     "xarray",
     "zarr",
     "zstandard",
@@ -128,6 +127,7 @@ client = [
     "rich",
     "sparse >=0.15.5",
     "stamina",
+    "websockets",
     "watchfiles",
     "xarray",
     "zstandard",
@@ -185,6 +185,7 @@ minimal-client = [
     "rich",
     "stamina",
     "watchfiles",
+    "websockets",
 ]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
@@ -209,7 +210,6 @@ minimal-server = [
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "uvicorn[standard]",
-    "websockets",
     "zarr",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
