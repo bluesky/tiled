@@ -15,9 +15,12 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def tiled_websocket_context(tmpdir):
     """Fixture that provides a Tiled context with websocket support."""
+    import random
+
+    db_num = random.randint(1, 15)  # Use random Redis database
     tree = from_uri(
         "sqlite:///:memory:",
         writable_storage=[
@@ -27,7 +30,7 @@ def tiled_websocket_context(tmpdir):
         readable_storage=None,
         init_if_not_exists=True,
         cache_settings={
-            "uri": "redis://localhost:6379",
+            "uri": f"redis://localhost:6379/{db_num}",
             "ttl": 60,
             "socket_timeout": 10.0,
             "socket_connect_timeout": 10.0,
@@ -182,9 +185,14 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     context = tiled_websocket_context
     client = from_context(context)
 
+    # Use unique key to avoid interference from other tests
+    import uuid
+
+    unique_key = f"test_stream_from_beginning_{uuid.uuid4().hex[:8]}"
+
     # Create streaming array node using Tiled client
     arr = np.arange(10)
-    streaming_node = client.write_array(arr, key="test_stream_from_beginning")
+    streaming_node = client.write_array(arr, key=unique_key)
 
     # Write first update before subscribing
     first_update = np.arange(10) + 1
@@ -201,9 +209,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             received_event.set()
 
     # Create subscription for the streaming node with start=0
-    subscription = Subscription(
-        context=context, segments=["test_stream_from_beginning"], start=0
-    )
+    subscription = Subscription(context=context, segments=[unique_key], start=0)
     subscription.add_callback(callback)
 
     # Start the subscription
