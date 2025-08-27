@@ -382,8 +382,7 @@ async def get_current_principal_from_api_key(api_key, authenticated, db, setting
     else:
         # Tiled is in a "single user" mode with only one API key.
         if secrets.compare_digest(api_key, settings.single_user_api_key):
-            principal = None
-            return principal
+            return SingleUserPrincipal
         else:
             return None
 
