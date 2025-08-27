@@ -698,7 +698,6 @@ def get_router(
             {
                 StructureFamily.array,
                 StructureFamily.container,
-                StructureFamily.composite,
                 StructureFamily.sparse,
             },
             getattr(websocket.app.state, "access_policy", None),
