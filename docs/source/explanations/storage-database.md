@@ -9,6 +9,12 @@ Tiled employs three SQL databases.
 
 This section addresses (2).
 
+## Development Status
+
+The "storage" database is the least mature of the three databases. We
+anticipate that our thinking is likely to evolve in response to use,
+performance testing, and feedback from collaborators.
+
 ## Why a storage database at all?
 
 Tiled can store tabular data in Parquet, CSV, or Arrow IPC file formats. These
