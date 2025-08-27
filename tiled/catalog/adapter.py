@@ -818,7 +818,7 @@ class CatalogNodeAdapter:
                 )
                 pipeline.publish(f"notify:{self.node.id}", sequence)
                 await pipeline.execute()
-            return key, type(self)(self.context, refreshed_node)
+            return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
         # Find an asset_id if it exists, otherwise create a new one
