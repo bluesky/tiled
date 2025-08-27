@@ -557,7 +557,7 @@ def build_app(
             # registry, keyed on database_settings, where can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
-            if not engine.url.database:
+            if not engine.url.database or engine.url.query.get("mode") == "memory":
                 # Special-case for in-memory SQLite: Because it is transient we can
                 # skip over anything related to migrations.
                 await initialize_database(engine)
@@ -632,6 +632,11 @@ def build_app(
                         identity_provider=admin["provider"],
                         id=admin["id"],
                     )
+
+            if app.state.access_policy is not None and hasattr(
+                app.state.access_policy, "access_tags_parser"
+            ):
+                await app.state.access_policy.access_tags_parser.connect()
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds

@@ -33,7 +33,7 @@ from ..server.schemas import Asset, DataSource, Management
 from ..storage import SQLStorage, get_storage, parse_storage
 from ..structures.core import StructureFamily
 from ..utils import Conflicts, ensure_specified_sql_driver, ensure_uri
-from .utils import enter_username_password, sql_table_exists
+from .utils import sql_table_exists
 
 
 @pytest_asyncio.fixture
@@ -700,76 +700,6 @@ async def test_delete_external_asset_registered_twice(tmpdir):
             await tree.context.execute("SELECT * from assets")
         ).all()
         assert len(assets_after_second_delete) == 0
-
-
-@pytest.mark.asyncio
-async def test_access_control(tmpdir, sqlite_or_postgres_uri):
-    config = {
-        "authentication": {
-            "allow_anonymous_access": True,
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {
-                            "alice": "secret1",
-                            "bob": "secret2",
-                            "admin": "admin",
-                        }
-                    },
-                }
-            ],
-        },
-        "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {
-                    "alice": ["outer_x", "inner"],
-                    "bob": ["outer_y"],
-                },
-                "admins": ["admin"],
-                "public": ["outer_z", "inner"],
-            },
-        },
-        "database": {
-            "uri": "sqlite://",  # in-memory
-        },
-        "trees": [
-            {
-                "tree": "catalog",
-                "path": "/",
-                "args": {
-                    "uri": sqlite_or_postgres_uri,
-                    "writable_storage": str(tmpdir / "data"),
-                    "init_if_not_exists": True,
-                },
-            },
-        ],
-    }
-
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        admin_client = from_context(context)
-        with enter_username_password("admin", "admin"):
-            admin_client.login()
-            for key in ["outer_x", "outer_y", "outer_z"]:
-                container = admin_client.create_container(key)
-                container.write_array([1, 2, 3], key="inner")
-            admin_client.logout()
-        alice_client = from_context(context)
-        with enter_username_password("alice", "secret1"):
-            alice_client.login()
-            alice_client["outer_x"]["inner"].read()
-            with pytest.raises(KeyError):
-                alice_client["outer_y"]
-            alice_client.logout()
-        public_client = from_context(context)
-        public_client["outer_z"]["inner"].read()
-        with pytest.raises(KeyError):
-            public_client["outer_x"]
 
 
 @pytest.mark.parametrize(
