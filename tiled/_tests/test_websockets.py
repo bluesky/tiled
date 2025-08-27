@@ -258,3 +258,44 @@ def test_close_stream_not_found(tiled_websocket_context):
         headers={"Authorization": "Apikey secret"},
     )
     assert response.status_code == 404
+
+
+def test_websocket_connection_wrong_api_key(tiled_websocket_context):
+    """Test websocket connection with wrong API key fails with 401."""
+    from starlette.testclient import WebSocketDenialResponse
+
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node using correct key
+    arr = np.arange(10)
+    client.write_array(arr, key="test_auth_websocket")
+
+    # Try to connect to websocket with wrong API key
+    with pytest.raises(WebSocketDenialResponse) as exc_info:
+        with test_client.websocket_connect(
+            "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
+            headers={"Authorization": "Apikey wrong_key"},
+        ):
+            pass
+
+    assert exc_info.value.status_code == 401
+
+
+def test_close_stream_wrong_api_key(tiled_websocket_context):
+    """Test close endpoint returns 403 with wrong API key."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node using correct key
+    arr = np.arange(10)
+    client.write_array(arr, key="test_auth_close")
+
+    # Try to close stream with wrong API key
+    response = test_client.delete(
+        "/api/v1/stream/close/test_auth_close",
+        headers={"Authorization": "Apikey wrong_key"},
+    )
+    assert response.status_code == 401
