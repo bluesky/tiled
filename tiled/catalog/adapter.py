@@ -51,6 +51,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
+    KeyPresent,
     KeysFilter,
     Like,
     NotEq,
@@ -71,7 +72,7 @@ from ..mimetypes import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
-from ..server.schemas import Asset, DataSource, Management, Revision, Spec
+from ..server.schemas import Asset, DataSource, Management, Revision
 from ..storage import (
     FileStorage,
     SQLStorage,
@@ -79,7 +80,7 @@ from ..storage import (
     parse_storage,
     register_storage,
 )
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -156,7 +157,7 @@ class RootNode:
         self.id = 0
         self.parent = None
         self.metadata_ = metadata or {}
-        self.specs = [Spec.model_validate(spec) for spec in specs or []]
+        self.specs = specs or []
         self.key = ""
         self.data_sources = None
         self.access_blob = top_level_access_blob or {}
@@ -243,7 +244,7 @@ class CatalogNodeAdapter:
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
-        self.specs = [Spec.model_validate(spec) for spec in node.specs]
+        self.specs = [Spec(**spec) for spec in node.specs]
         self.startup_tasks = [self.startup]
         if mount_path:
             self.startup_tasks.append(partial(self.create_mount, mount_path))
@@ -271,6 +272,7 @@ class CatalogNodeAdapter:
     async def startup(self):
         if (self.context.engine.dialect.name == "sqlite") and (
             self.context.engine.url.database == ":memory:"
+            or self.context.engine.url.query.get("mode") == "memory"
         ):
             # Special-case for in-memory SQLite: Because it is transient we can
             # skip over anything related to migrations.
@@ -291,8 +293,12 @@ class CatalogNodeAdapter:
     def writable(self):
         return bool(self.context.writable_storage)
 
+    @property
+    def key(self):
+        return self.node.key
+
     def __repr__(self):
-        return f"<{type(self).__name__} {self.node.key}>"
+        return f"<{type(self).__name__} {self.key}>"
 
     async def __aiter__(self):
         statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
@@ -466,13 +472,6 @@ class CatalogNodeAdapter:
                         if adapter is None:
                             raise NoEntry(segments)
                     return adapter
-                elif (
-                    isinstance(catalog_adapter, CatalogCompositeAdapter)
-                    and len(segments[i:]) == 1
-                ):
-                    # Trying to access a table column or an array in a composite node
-                    _segm = await catalog_adapter.resolve_flat_key(segments[i])
-                    return await catalog_adapter.lookup_adapter(_segm.split("/"))
             raise NoEntry(segments)
 
         return STRUCTURES[node.structure_family](self.context, node)
@@ -643,7 +642,7 @@ class CatalogNodeAdapter:
             parent=self.node.id,
             metadata_=metadata,
             structure_family=structure_family,
-            specs=[s.model_dump() for s in specs or []],
+            specs=specs or [],
             access_blob=access_blob,
         )
         async with self.context.session() as db:
@@ -662,10 +661,7 @@ class CatalogNodeAdapter:
             await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
-                    if structure_family in {
-                        StructureFamily.container,
-                        StructureFamily.composite,
-                    }:
+                    if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
                     if data_source.mimetype is None:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
@@ -761,7 +757,7 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            return key, type(self)(self.context, refreshed_node)
+            return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
         # Find an asset_id if it exists, otherwise create a new one
@@ -976,7 +972,7 @@ class CatalogNodeAdapter:
             # SQLAlchemy reserved word 'metadata'.
             values["metadata_"] = metadata
         if specs is not None:
-            values["specs"] = [s.model_dump() for s in specs]
+            values["specs"] = specs
         if access_blob is not None:
             values["access_blob"] = access_blob
         async with self.context.session() as db:
@@ -1071,69 +1067,6 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 return self.search(KeysFilter(fields))
             return self
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
-
-
-class CatalogCompositeAdapter(CatalogContainerAdapter):
-    async def resolve_flat_key(self, key):
-        for _key, item in await self.items_range(offset=0, limit=None):
-            if key == _key:
-                return _key
-            if item.structure_family == StructureFamily.table:
-                if key in item.structure().columns:
-                    return f"{_key}/{key}"
-        raise KeyError(key)
-
-    async def create_node(
-        self,
-        structure_family,
-        metadata,
-        key=None,
-        specs=None,
-        data_sources=None,
-        access_blob=None,
-    ):
-        key = key or self.context.key_maker()
-
-        # List all new keys that would be added to the flattened namespace
-        assert len(data_sources) == 1
-        if data_sources[0].structure_family == StructureFamily.table:
-            new_keys = data_sources[0].structure.columns
-        elif data_sources[0].structure_family in {
-            StructureFamily.array,
-            StructureFamily.awkward,
-            StructureFamily.sparse,
-        }:
-            new_keys = [key]
-        else:
-            raise ValueError(
-                f"Unsupported structure family: {data_sources[0].structure_family}"
-            )
-
-        # Get all keys and columns names already in the Composite node
-        flat_keys = []
-        for _key, item in await self.items_range(offset=0, limit=None):
-            flat_keys.append(_key)
-            if item.structure_family == StructureFamily.table:
-                flat_keys.extend(item.structure().columns)
-
-        # Check for column name collisions
-        key_conflicts = set(new_keys) & set(flat_keys)
-        if key_conflicts:
-            raise Collision(f"Column name collision: {key_conflicts}")
-
-        # Ensure that child tables are marked with the 'flattened' spec
-        if structure_family == StructureFamily.table:
-            if not specs or "flattened" not in (s.name for s in specs):
-                specs = [Spec(name="flattened")] + (specs or [])
-
-        return await super().create_node(
-            structure_family,
-            metadata,
-            key=key,
-            specs=specs,
-            data_sources=data_sources,
-            access_blob=access_blob,
-        )
 
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
@@ -1425,21 +1358,23 @@ def access_blob_filter(query, tree):
         attr_id = access_blob["user"]
         attr_tags = access_blob["tags"]
         access_tags_json = func.json_each(attr_tags).table_valued("value")
-        contains_tags = (
+        condition = (
             select(1)
             .select_from(access_tags_json)
             .where(access_tags_json.c.value.in_(query.tags))
             .exists()
         )
-        user_match = func.json_extract(func.json_quote(attr_id), "$") == query.user_id
-        condition = or_(contains_tags, user_match)
+        if query.user_id is not None:
+            user_match = (
+                func.json_extract(func.json_quote(attr_id), "$") == query.user_id
+            )
+            condition = or_(condition, user_match)
     elif dialect_name == "postgresql":
         access_blob_jsonb = type_coerce(access_blob, JSONB)
-        contains_tags = access_blob_jsonb["tags"].has_any(
-            sql_cast(query.tags, ARRAY(TEXT))
-        )
-        user_match = access_blob_jsonb["user"].astext == query.user_id
-        condition = or_(contains_tags, user_match)
+        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
+        if query.user_id is not None:
+            user_match = access_blob_jsonb["user"].astext == query.user_id
+            condition = or_(condition, user_match)
     else:
         raise UnsupportedQueryType("access_blob_filter")
 
@@ -1505,6 +1440,20 @@ def in_or_not_in(query, tree, method):
     return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
 
 
+def key_present(query, tree):
+    # Functionally in SQLAlchemy 'is not None' does not work as expected
+    if tree.context.engine.url.get_dialect().name == "sqlite":
+        condition = orm.Node.metadata_.op("->")("$." + query.key) != None  # noqa: E711
+    else:
+        keys = query.key.split(".")
+        condition = (
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
+            != None  # noqa: E711
+        )
+    condition = condition if getattr(query, "exists", True) else not_(condition)
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
+
 def keys_filter(query, tree):
     condition = orm.Node.key.in_(query.keys)
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -1521,6 +1470,7 @@ CatalogNodeAdapter.register_query(Comparison, comparison)
 CatalogNodeAdapter.register_query(Contains, contains)
 CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
+CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
@@ -1531,14 +1481,19 @@ CatalogNodeAdapter.register_query(Like, like)
 
 def in_memory(
     *,
+    named_memory=None,
     metadata=None,
     specs=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    top_level_access_blob=None,
 ):
-    uri = "sqlite:///:memory:"
+    if not named_memory:
+        uri = "sqlite:///:memory:"
+    else:
+        uri = f"sqlite:///file:{named_memory}?mode=memory&cache=shared&uri=true"
     return from_uri(
         uri=uri,
         metadata=metadata,
@@ -1548,6 +1503,7 @@ def in_memory(
         init_if_not_exists=True,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
+        top_level_access_blob=top_level_access_blob,
     )
 
 
@@ -1585,8 +1541,10 @@ def from_uri(
         logger.info(f"Subprocess stderr: {stderr}")
 
     parsed_url = make_url(uri)
-    if (parsed_url.get_dialect().name == "sqlite") and (
-        parsed_url.database != ":memory:"
+    if (
+        (parsed_url.get_dialect().name == "sqlite")
+        and (parsed_url.database != ":memory:")
+        and (parsed_url.query.get("mode", None) != "memory")
     ):
         # For file-backed SQLite databases, connection pooling offers a
         # significant performance boost. For SQLite databases that exist
@@ -1725,7 +1683,6 @@ def node_from_segments(segments, root_id=0):
 STRUCTURES = {
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
-    StructureFamily.composite: CatalogCompositeAdapter,
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.ragged: CatalogRaggedAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,

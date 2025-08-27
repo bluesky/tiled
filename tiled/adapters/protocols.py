@@ -162,6 +162,7 @@ class AccessPolicy(Protocol):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
     ) -> Scopes:
         pass
@@ -171,6 +172,7 @@ class AccessPolicy(Protocol):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:

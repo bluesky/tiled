@@ -49,7 +49,7 @@ from ..media_type_registration import (
     default_deserialization_registry,
     default_serialization_registry,
 )
-from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
 from .router import get_router
@@ -360,10 +360,6 @@ def build_app(
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
-        # The current_principal_logging_filter middleware will not have
-        # had a chance to finish running, so set the principal here.
-        principal = getattr(request.state, "principal", None)
-        current_principal.set(principal)
         return await http_exception_handler(
             request,
             HTTPException(
@@ -561,7 +557,7 @@ def build_app(
             # registry, keyed on database_settings, where can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
-            if not engine.url.database:
+            if not engine.url.database or engine.url.query.get("mode") == "memory":
                 # Special-case for in-memory SQLite: Because it is transient we can
                 # skip over anything related to migrations.
                 await initialize_database(engine)
@@ -636,6 +632,11 @@ def build_app(
                         identity_provider=admin["provider"],
                         id=admin["id"],
                     )
+
+            if app.state.access_policy is not None and hasattr(
+                app.state.access_policy, "access_tags_parser"
+            ):
+                await app.state.access_policy.access_tags_parser.connect()
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
@@ -855,7 +856,8 @@ def build_app(
     async def current_principal_logging_filter(
         request: Request, call_next: RequestResponseEndpoint
     ):
-        request.state.principal = SpecialUsers.public
+        # Set a default, which may be overridden below by authentication code.
+        request.state.principal = None
         response = await call_next(request)
         current_principal.set(request.state.principal)
         return response

@@ -14,7 +14,7 @@ from tiled.structures.ragged import RaggedStructure
 
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import STRUCTURE_TYPES, StructureFamily
+from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import Management
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
@@ -89,9 +89,9 @@ class SortingItem(pydantic.BaseModel):
     direction: SortingDirection
 
 
-class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
-    name: Annotated[str, StringConstraints(max_length=255)]
-    version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
+# class Spec(pydantic.BaseModel, extra="forbid", frozen=True):
+#     name: Annotated[str, StringConstraints(max_length=255)]
+#     version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
 
 
 # Wait for fix https://github.com/pydantic/pydantic/issues/3957
@@ -245,7 +245,6 @@ class SparseLinks(pydantic.BaseModel):
 resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
-    StructureFamily.composite: ContainerLinks,
     StructureFamily.container: ContainerLinks,
     StructureFamily.ragged: RaggedLinks,
     StructureFamily.sparse: SparseLinks,
@@ -319,6 +318,7 @@ class APIKey(pydantic.BaseModel):
     expiration_time: Optional[datetime] = None
     note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
     scopes: List[str]
+    access_tags: Optional[List[str]] = None
     latest_activity: Optional[datetime] = None
 
     @classmethod
@@ -328,6 +328,7 @@ class APIKey(pydantic.BaseModel):
             expiration_time=orm.expiration_time,
             note=orm.note,
             scopes=orm.scopes,
+            access_tags=orm.access_tags,
             latest_activity=orm.latest_activity,
         )
 
@@ -344,6 +345,7 @@ class APIKeyWithSecret(APIKey):
             expiration_time=orm.expiration_time,
             note=orm.note,
             scopes=orm.scopes,
+            access_tags=orm.access_tags,
             latest_activity=orm.latest_activity,
             secret=secret,
         )
@@ -413,6 +415,9 @@ class APIKeyRequestParams(pydantic.BaseModel):
     expires_in: Optional[int] = pydantic.Field(
         ..., json_schema_extra={"example": 600}
     )  # seconds
+    access_tags: Optional[List[str]] = pydantic.Field(
+        default=None, json_schema_extra={"example": ["writing_tag", "public"]}
+    )
     scopes: Optional[List[str]] = pydantic.Field(
         ..., json_schema_extra={"example": ["inherit"]}
     )
@@ -442,10 +447,7 @@ class PostMetadataRequest(pydantic.BaseModel):
     def narrow_structure_type(self):
         "Convert the structure on each data_source from a dict to the appropriate pydantic model."
         for data_source in self.data_sources:
-            if self.structure_family not in {
-                StructureFamily.container,
-                StructureFamily.composite,
-            }:
+            if self.structure_family != StructureFamily.container:
                 structure_cls = STRUCTURE_TYPES[self.structure_family]
                 if data_source.structure is not None:
                     data_source.structure = structure_cls.from_json(

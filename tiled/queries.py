@@ -8,7 +8,7 @@ The are encoded into and decoded from URL query parameters.
 import enum
 import json
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, List, Optional
 
 from .query_registration import register
 from .structures.core import StructureFamily as StructureFamilyEnum
@@ -88,8 +88,6 @@ class KeyLookup(NoBool):
 class KeysFilter(NoBool):
     """
     Filter entries that do not match one of these keys.
-
-    This is used by the SimpleAccessPolicy.
 
     Parameters
     ----------
@@ -374,6 +372,41 @@ class NotIn:
         return cls(key=key, value=json.loads(value))
 
 
+@register(name="keypresent")
+@dataclass
+class KeyPresent:
+    """
+    Query to retrieve containers that have a specific key at any level.
+
+    Parameters
+    ----------
+    key : str
+        e.g. "color", "sample.name"
+    exists : bool
+        Set to True by default, but can be set to False to find the inverse
+    Examples
+    --------
+
+    Search for containers that have the key "color"
+
+    >>> c.search(KeyPresent("color"))
+
+    Search for containers that do not have the key "sample.name"
+
+    >>> c.search(KeyPresent("sample.name", exists=False))
+    """
+
+    key: str
+    exists: bool = True
+
+    def encode(self):
+        return {"key": self.key, "exists": self.exists}
+
+    @classmethod
+    def decode(cls, *, key, exists):
+        return cls(key=key, exists=exists)
+
+
 @register(name="like")
 @dataclass
 class Like(NoBool):
@@ -504,7 +537,7 @@ class AccessBlobFilter:
     >>> c.search(AccessBlobFilter("bill", ["tag_for_bill", "useful_data"]))
     """
 
-    user_id: str
+    user_id: Optional[str]
     tags: List[str]
 
     def encode(self):
