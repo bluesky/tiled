@@ -6,9 +6,27 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.0-b37 (Unreleased)
 
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+- API keys can now be restricted to specific access tags
+- New unit tests covering the new access policy and access control features
+
 ### Changed
 
 - Remove `SpecialUsers` principals for single-user and anonymous-access cases
+- Access control code is now in the `access_control` subdirectory
+- `SimpleAccessPolicy` has been removed
+- AuthN database can now be in-memory SQLite
+- Catalog database can now be shared when using in-memory SQLite
+- `TagBasedAccessPolicy` now supports anonymous access
+- `AccessTagsParser` is now async
+- `toy_authentication` example config now uses `TagBasedAccessPolicy`
+- Added helpers for setting up the access tag and catalog databases for `toy_authentication`
+
+### Fixed
+
+- Access control on container export was partially broken, now access works as expected.
 
 
 ## v0.1.0-b36 (2025-08-26)
@@ -29,7 +47,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - The project ships with a pixi manifest (`pixi.toml`).
 
-
 ## v0.1.0-b34 (2025-08-14)
 
 ### Fixed
@@ -40,7 +57,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   database correct but unchanged. This release repairs the migration script; it
   should be re-run on any databases that could not be upgraded with the previous
   release.
-
 
 ## v0.1.0-b33 (2025-08-13)
 

@@ -308,13 +308,12 @@ properties:
           Example:
 
           ```yaml
-          access_control:
-            access_policy: "tiled.access_policies:SimpleAccessPolicy"
-            args:
-              access_lists:
-                alice: ["A", "B"]
-                bob: ["C"]
-                cara: "tiled.access_policies:ALL_ACCESS"
+          access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
+          args:
+            provider: "pam"
+            tags_db:
+              uri: "file:compiled_tags.sqlite"
+            access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
           ```
       args:
         type: object

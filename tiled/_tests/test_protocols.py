@@ -10,7 +10,8 @@ import sparse
 from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
-from ..access_policies import ALL_ACCESS
+from ..access_control.access_policies import ALL_ACCESS
+from ..access_control.scopes import ALL_SCOPES
 from ..adapters.awkward_directory_container import DirectoryContainer
 from ..adapters.protocols import (
     AccessPolicy,
@@ -21,7 +22,6 @@ from ..adapters.protocols import (
     TableAdapter,
 )
 from ..ndslice import NDSlice
-from ..scopes import ALL_SCOPES
 from ..server.schemas import Principal, PrincipalType
 from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype
@@ -384,6 +384,7 @@ class CustomAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
     ) -> Scopes:
         allowed = self.scopes
@@ -394,6 +395,7 @@ class CustomAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
+        authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
@@ -406,11 +408,12 @@ async def accesspolicy_protocol_functions(
     policy: AccessPolicy,
     node: BaseAdapter,
     principal: Principal,
+    authn_access_tags: Optional[Set[str]],
     authn_scopes: Scopes,
     scopes: Scopes,
 ) -> None:
-    await policy.allowed_scopes(node, principal, authn_scopes)
-    await policy.filters(node, principal, authn_scopes, scopes)
+    await policy.allowed_scopes(node, principal, authn_access_tags, authn_scopes)
+    await policy.filters(node, principal, authn_access_tags, authn_scopes, scopes)
 
 
 @pytest.mark.asyncio  # type: ignore
@@ -427,6 +430,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     principal = Principal(
         uuid=uuid.UUID(int=0x12345678124123412345678123456781), type=PrincipalType.user
     )
+    authn_access_tags = {"qux", "quux"}
     authn_scopes = {"abc", "baz"}
     scopes = {"abc"}
 
@@ -436,6 +440,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
         anyaccesspolicy,
         anyawkwardadapter,
         principal,
+        authn_access_tags,
         authn_scopes,
         scopes,
     )
