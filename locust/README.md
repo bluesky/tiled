@@ -55,17 +55,17 @@ Tests various HTTP endpoints for reading data, metadata, and search operations.
 ### Examples
 Run with default localhost server (uses default API key 'secret'):
 ```bash
-uv run locust -f reader.py --host http://localhost:8000
+uv run locust -f reader.py --headless -u 100 -r 10 -t 60s --host http://localhost:8000
 ```
 
 Run with custom API key:
 ```bash
-uv run locust -f reader.py --host http://localhost:8000 --api-key your-api-key
+uv run locust -f reader.py --headless -u 100 -r 10 -t 60s --host http://localhost:8000 --api-key your-api-key
 ```
 
 Run with custom container name (defaults to locust_testing):
 ```bash
-uv run locust -f reader.py --host http://localhost:8000 --container-name my_test_container
+uv run locust -f reader.py --headless -u 100 -r 10 -t 60s --host http://localhost:8000 --container-name my_test_container
 ```
 
 ## Streaming Performance Tests (`streaming.py`)
@@ -77,33 +77,31 @@ Tests streaming data writes and WebSocket delivery with end-to-end latency measu
 ### Examples
 Run with required node name:
 ```bash
-uv run locust -f streaming.py --host http://localhost:8000 --node-name my_test_stream
+uv run locust -f streaming.py --headless -u 10 -r 2 -t 120s --host http://localhost:8000 --node-name my_test_stream
 ```
 
 Run with custom API key:
 ```bash
-uv run locust -f streaming.py --host http://localhost:8000 --api-key your-api-key --node-name my_test_stream
+uv run locust -f streaming.py --headless -u 10 -r 2 -t 120s --host http://localhost:8000 --api-key your-api-key --node-name my_test_stream
 ```
 
 Control user types with environment variables:
 ```bash
 # 2 writers for every 1 streaming reader
-WRITER_WEIGHT=2 STREAMING_WEIGHT=1 uv run locust -f streaming.py --host http://localhost:8000 --node-name my_test_stream
+WRITER_WEIGHT=2 STREAMING_WEIGHT=1 uv run locust -f streaming.py --headless -u 10 -r 2 -t 120s --host http://localhost:8000 --node-name my_test_stream
 ```
 
 ### Streaming Test Components
 - **WriterUser**: Writes timestamped array data to streaming nodes
 - **StreamingUser**: Connects via WebSocket to measure write-to-delivery latency
 
-## Headless Mode
-Run without the web interface:
-```bash
-# Reading tests
-uv run locust -f reader.py --headless -u 100 -r 10 -t 60s --host http://localhost:8000
-
-# Streaming tests (node-name is required)
-uv run locust -f streaming.py --headless -u 10 -r 2 -t 120s --host http://localhost:8000 --node-name my_test_stream
-```
+## Parameters
 - `-u N`: N concurrent users
 - `-r N`: Spawn N users per second
 - `-t Ns`: Run for N seconds
+- `--headless`: Run without web interface (required for automation)
+
+## Notes
+- All examples use `--headless` mode for reliable automation
+- For streaming tests, `--node-name` is required to avoid conflicts
+- Use environment variables `WRITER_WEIGHT` and `STREAMING_WEIGHT` to control user distribution
