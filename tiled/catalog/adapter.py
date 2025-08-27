@@ -1490,11 +1490,16 @@ def in_memory(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
+    storage_pool_size=None,
+    storage_max_overflow=None,
+    **kwargs,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
     else:
         uri = f"sqlite:///file:{named_memory}?mode=memory&cache=shared&uri=true"
+    # NOTE: catalog_pool_size and catalog_max_overflow are ignored when using an
+    # in-memory catalog.
     return from_uri(
         uri=uri,
         metadata=metadata,
@@ -1505,6 +1510,8 @@ def in_memory(
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
+        storage_pool_size=storage_pool_size,
+        storage_max_overflow=storage_max_overflow,
     )
 
 

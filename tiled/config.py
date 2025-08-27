@@ -22,8 +22,8 @@ from .media_type_registration import (
     default_serialization_registry,
 )
 from .query_registration import default_query_registry
-from .structures.core import Spec
 from .server.settings import Settings
+from .structures.core import Spec
 from .utils import import_object, parse, prepend_to_sys_path
 from .validation_registration import default_validation_registry
 
