@@ -691,9 +691,10 @@ def get_router(
             path,
             ["read:data", "read:metadata"],
             principal,
+            None,  # authn_access_tags,
             set(["read:data"]),  # authn_scopes,
             root_tree,
-            None,  # session_state,
+            {},  # session_state,
             websocket.state.metrics,
             {
                 StructureFamily.array,

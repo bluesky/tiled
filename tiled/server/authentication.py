@@ -382,7 +382,7 @@ async def get_current_principal_from_api_key(api_key, authenticated, db, setting
     else:
         # Tiled is in a "single user" mode with only one API key.
         if secrets.compare_digest(api_key, settings.single_user_api_key):
-            return SingleUserPrincipal
+            return None
         else:
             return None
 
@@ -409,7 +409,7 @@ async def get_current_principal_websocket(
     principal = await get_current_principal_from_api_key(
         api_key, websocket.app.state.authenticated, db, settings
     )
-    if principal is None:
+    if principal is None and websocket.app.state.authenticated:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     return principal
 
@@ -444,7 +444,7 @@ async def get_current_principal(
             db,
             settings,
         )
-        if principal is None:
+        if principal is None and request.app.state.authenticated:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail="Invalid API key",
