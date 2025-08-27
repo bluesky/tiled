@@ -1099,16 +1099,17 @@ class CatalogNodeAdapter:
             )
             await db.commit()
 
-        # Check if stream is already closed. If it is raise an exception
+        # Check the node status.
+        # ttl returns -2 if the key does not exist.
+        # ttl returns -1 if the key exists but has no associated expire.
+        # ttl greater than 0 means that it is marked to expire.
         node_ttl = await self.context.cache_client.ttl(f"sequence:{self.node.id}")
         if node_ttl > 0:
-            # Already closed, nothing to do
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND,
                 detail=f"Stream for node {self.node.id} is already closed.",
             )
         if node_ttl == -2:
-            # Key not found, must have already expired or never existed
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND,
                 detail=f"Node {self.node.id} not found.",

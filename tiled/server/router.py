@@ -657,6 +657,7 @@ def get_router(
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
@@ -664,6 +665,7 @@ def get_router(
             path,
             ["write:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,

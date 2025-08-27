@@ -230,6 +230,11 @@ def test_close_stream_success(tiled_websocket_context):
     # Upload some data
     streaming_node.write(np.arange(10) + 1)
 
+    # Add a small delay to ensure the stream is fully established
+    import time
+
+    time.sleep(0.5)
+
     # Now close the stream
     response = test_client.delete(
         "/api/v1/stream/close/test_close_stream",
