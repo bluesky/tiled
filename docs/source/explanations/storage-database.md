@@ -54,7 +54,7 @@ To start, Tiled supports these three backends:
 - DuckDB (default for single-process dev)
 - SQLite
 
-Of these, only DuckDB is OLAP, and notably is can only be connected to a single
+Of these, only DuckDB is OLAP, and notably it can only be connected to a single
 process at a time, so it is not compatible with production, horizontally-scaled
 Tiled deployments.
 
