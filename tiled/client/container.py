@@ -673,7 +673,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
         access_tags=None,
-        is_streaming=False,
     ):
         """
         Create a new item within this Node.
@@ -697,7 +696,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "specs": normalize_specs(specs or []),
                 "data_sources": [asdict(data_source) for data_source in data_sources],
                 "access_blob": access_blob,
-                "is_streaming": is_streaming,
             }
         }
         body = dict(item["attributes"])
@@ -821,7 +819,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         dims=None,
         specs=None,
         access_tags=None,
-        is_streaming=False,
     ):
         """
         EXPERIMENTAL: Write an array.
@@ -887,7 +884,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             metadata=metadata,
             specs=specs,
             access_tags=access_tags,
-            is_streaming=is_streaming,
         )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:

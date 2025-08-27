@@ -56,7 +56,7 @@ def create_streaming_node(host, api_key, node_name):
 
     # Create initial streaming array
     arr = np.full(5, 0.0, dtype=np.float64)  # Initial array with zeros
-    client.write_array(arr, key=node_name, is_streaming=True)
+    client.write_array(arr, key=node_name)
 
     logger.info(f"Created streaming node: {node_name}")
     client.logout()

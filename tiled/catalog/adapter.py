@@ -659,7 +659,6 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
-        is_streaming=False,
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
@@ -672,7 +671,6 @@ class CatalogNodeAdapter:
             structure_family=structure_family,
             specs=specs or [],
             access_blob=access_blob,
-            is_streaming=is_streaming,
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -1091,14 +1089,6 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def close_stream(self):
-        async with self.context.session() as db:
-            await db.execute(
-                update(orm.Node)
-                .where(orm.Node.id == self.node.id)
-                .values(is_streaming=False)
-            )
-            await db.commit()
-
         # Check the node status.
         # ttl returns -2 if the key does not exist.
         # ttl returns -1 if the key exists but has no associated expire.
@@ -1714,8 +1704,18 @@ def structure_family(query, tree):
 
 
 def streaming(query, tree):
-    condition = orm.Node.is_streaming == query.value
-    return tree.new_variation(conditions=tree.conditions + [condition])
+    # TODO: Implement Redis-based streaming query
+    # This should check Redis for active sequence:{node.id} keys
+    # For now, return all nodes if query.value is True, none if False
+    if query.value:
+        # For Streaming(True), return all nodes for now
+        # Should check Redis for nodes with active sequence keys
+        return tree
+    else:
+        # For Streaming(False), return no nodes for now
+        # Should check Redis for nodes WITHOUT active sequence keys
+        condition = orm.Node.id == -1  # Never matches any real node
+        return tree.new_variation(conditions=tree.conditions + [condition])
 
 
 CatalogNodeAdapter.register_query(Eq, partial(binary_op, operation=operator.eq))

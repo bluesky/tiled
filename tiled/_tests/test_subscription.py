@@ -49,9 +49,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
 
     # Create streaming array node using Tiled client
     arr = np.arange(10)
-    streaming_node = client.write_array(
-        arr, key="test_stream_immediate", is_streaming=True
-    )
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
 
     # Set up subscription using the Subscription class
     received = []
@@ -125,9 +123,7 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
 
     # Create streaming array node using Tiled client
     arr = np.arange(10)
-    streaming_node = client.write_array(
-        arr, key="test_stream_after_update", is_streaming=True
-    )
+    streaming_node = client.write_array(arr, key="test_stream_after_update")
 
     # Write first update before subscribing
     first_update = np.arange(10) + 1
@@ -188,9 +184,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
 
     # Create streaming array node using Tiled client
     arr = np.arange(10)
-    streaming_node = client.write_array(
-        arr, key="test_stream_from_beginning", is_streaming=True
-    )
+    streaming_node = client.write_array(arr, key="test_stream_from_beginning")
 
     # Write first update before subscribing
     first_update = np.arange(10) + 1

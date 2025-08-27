@@ -1530,12 +1530,11 @@ def get_router(
         authn_access_tags: Optional[Set[str]],
         authn_scopes: Scopes,
     ):
-        metadata, structure_family, specs, access_blob, is_streaming = (
+        metadata, structure_family, specs, access_blob = (
             body.metadata,
             body.structure_family,
             body.specs,
             body.access_blob,
-            body.is_streaming,
         )
         if structure_family == StructureFamily.container:
             structure = None
@@ -1580,7 +1579,6 @@ def get_router(
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
-            is_streaming=is_streaming,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
