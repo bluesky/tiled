@@ -7,8 +7,9 @@ Load testing for Tiled using Locust. Two test files are available:
 ## Quick Start
 
 ```bash
-# Install dependencies (dev environment includes locust)
-pixi install -e dev
+# Install dependencies (locust should already be available in the environment)
+# If not installed, add it to your requirements or install with:
+# uv add locust
 ```
 
 ## Starting Test Server
@@ -54,38 +55,40 @@ Tests various HTTP endpoints for reading data, metadata, and search operations.
 ### Examples
 Run with default localhost server (uses default API key 'secret'):
 ```bash
-pixi run -e dev locust -f reader.py --host http://localhost:8000
+uv run locust -f reader.py --host http://localhost:8000
 ```
 
 Run with custom API key:
 ```bash
-pixi run -e dev locust -f reader.py --host http://localhost:8000 --api-key your-api-key
+uv run locust -f reader.py --host http://localhost:8000 --api-key your-api-key
 ```
 
 Run with custom container name (defaults to locust_testing):
 ```bash
-pixi run -e dev locust -f reader.py --host http://localhost:8000 --container-name my_test_container
+uv run locust -f reader.py --host http://localhost:8000 --container-name my_test_container
 ```
 
 ## Streaming Performance Tests (`streaming.py`)
 
 Tests streaming data writes and WebSocket delivery with end-to-end latency measurement.
 
+**Note:** The `--node-name` parameter is required for streaming tests to avoid conflicts when multiple test runs create nodes with the same name.
+
 ### Examples
-Run with default settings:
+Run with required node name:
 ```bash
-pixi run -e dev locust -f streaming.py --host http://localhost:8000
+uv run locust -f streaming.py --host http://localhost:8000 --node-name my_test_stream
 ```
 
-Run with custom API key and node name:
+Run with custom API key:
 ```bash
-pixi run -e dev locust -f streaming.py --host http://localhost:8000 --api-key your-api-key --node-name my_test_stream
+uv run locust -f streaming.py --host http://localhost:8000 --api-key your-api-key --node-name my_test_stream
 ```
 
 Control user types with environment variables:
 ```bash
 # 2 writers for every 1 streaming reader
-WRITER_WEIGHT=2 STREAMING_WEIGHT=1 pixi run -e dev locust -f streaming.py --host http://localhost:8000
+WRITER_WEIGHT=2 STREAMING_WEIGHT=1 uv run locust -f streaming.py --host http://localhost:8000 --node-name my_test_stream
 ```
 
 ### Streaming Test Components
@@ -96,10 +99,10 @@ WRITER_WEIGHT=2 STREAMING_WEIGHT=1 pixi run -e dev locust -f streaming.py --host
 Run without the web interface:
 ```bash
 # Reading tests
-pixi run -e dev locust -f reader.py --headless -u 100 -r 10 -t 60s --host http://localhost:8000
+uv run locust -f reader.py --headless -u 100 -r 10 -t 60s --host http://localhost:8000
 
-# Streaming tests
-pixi run -e dev locust -f streaming.py --headless -u 10 -r 2 -t 120s --host http://localhost:8000
+# Streaming tests (node-name is required)
+uv run locust -f streaming.py --headless -u 10 -r 2 -t 120s --host http://localhost:8000 --node-name my_test_stream
 ```
 - `-u N`: N concurrent users
 - `-r N`: Spawn N users per second

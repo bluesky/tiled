@@ -27,8 +27,8 @@ def _(parser):
     parser.add_argument(
         "--node-name",
         type=str,
-        default="locust_streaming_test",
-        help="Node name for streaming test (default: locust_streaming_test)",
+        required=True,
+        help="Node name for streaming test (required)",
     )
 
 
@@ -146,7 +146,9 @@ class StreamingUser(HttpUser):
             # Create websocket connection
             self.ws = websocket.WebSocketApp(
                 ws_url,
-                header=[f"Authorization: {self.api_key}"],  # Raw API key for websockets
+                header=[
+                    f"Authorization: Apikey {self.api_key}"
+                ],  # Proper Apikey format for websockets
                 on_open=self._on_open,
                 on_message=self._on_message,
                 on_error=self._on_error,
