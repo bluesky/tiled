@@ -209,9 +209,8 @@ minimal-server = [
     "sqlalchemy[asyncio] >=2",
     "starlette >=0.38.0",
     "uvicorn[standard]",
-    "zarr <3; python_version <= '3.10'",
-    "zarr >=3; python_version >= '3.11'",
     "websockets",
+    "zarr",
 ]
 # This is the "kichen sink" fully-featured server dependency set.
 server = [
