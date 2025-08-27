@@ -16,6 +16,7 @@ from typing import Any, Union
 import jsonschema
 
 from .adapters.mapping import MapAdapter
+from .catalog import from_uri
 from .media_type_registration import (
     default_compression_registry,
     default_deserialization_registry,
@@ -105,10 +106,6 @@ def construct_build_app_kwargs(
         )
         server_settings["expose_raw_assets"] = config.get("expose_raw_assets")
         server_settings["metrics"] = config.get("metrics", {})
-        server_settings["catalog_pool_size"] = config.get("catalog_pool_size")
-        server_settings["storage_pool_size"] = config.get("storage_pool_size")
-        server_settings["catalog_max_overflow"] = config.get("catalog_max_overflow")
-        server_settings["storage_max_overflow"] = config.get("storage_max_overflow")
 
         # Process trees
         tree_aliases = {
@@ -137,18 +134,19 @@ See documentation section "Serve a Directory of Files"."""
                 args.update(item.get("args", {}))
 
                 # Add other server-related settings falling back to Settings defaults
-                # TODO: To be removed after refactoring
-                default_settings = Settings().model_dump()
-                from_server_settings = {
-                    k: server_settings.get(k, default_settings[k])
-                    for k in {
-                        "catalog_pool_size",
-                        "storage_pool_size",
-                        "catalog_max_overflow",
-                        "storage_max_overflow",
+                # TODO: To be refactroed; these parameters should be in `server_settings`
+                if obj is from_uri:
+                    default_settings = Settings().model_dump()
+                    from_server_settings = {
+                        k: config.get(k, default_settings[k])
+                        for k in {
+                            "catalog_pool_size",
+                            "storage_pool_size",
+                            "catalog_max_overflow",
+                            "storage_max_overflow",
+                        }
                     }
-                }
-                args.update(from_server_settings)
+                    args.update(from_server_settings)
                 tree = obj(**args)
             else:
                 # Interpret obj as a tree *instance*.
