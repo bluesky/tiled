@@ -37,17 +37,39 @@ def client(context):
 
 RNG = np.random.default_rng(42)
 
-
-def test_slicing(client):
-    # Write data into catalog.
-    array = ragged.array(
+arrays = {
+    "regular_1d": ragged.array(RNG.random(10)),
+    "regular_nd": ragged.array(RNG.random((2, 3, 4))),
+    "ragged_simple": ragged.array(
+        [
+            RNG.random(3).tolist(),
+            RNG.random(5).tolist(),
+            RNG.random(8).tolist(),
+        ]
+    ),
+    "ragged_complex": ragged.array(
         [
             [RNG.random(10).tolist()],
             [RNG.random(8).tolist(), []],
             [RNG.random(5).tolist(), RNG.random(2).tolist()],
             [[], RNG.random(7).tolist()],
         ]
-    )
+    ),
+    "ragged_complex_nd": ragged.array(
+        [
+            [RNG.random((4, 3)).tolist()],
+            [RNG.random((2, 8)).tolist(), []],
+            [RNG.random((5, 2)).tolist(), RNG.random((3, 3)).tolist()],
+            [[], RNG.random((7, 1)).tolist()],
+        ]
+    ),
+}
+
+
+@pytest.mark.parametrize("name", arrays.keys())
+def test_slicing(client, name):
+    # Write data into catalog.
+    array = arrays[name]
     returned = client.write_ragged(array, key="test")
     # Test with client returned, and with client from lookup.
     for rac in [returned, client["test"]]:
@@ -70,15 +92,9 @@ def test_slicing(client):
         assert sliced_response_size < full_response_size
 
 
-def test_export_json(client, buffer):
-    array = ragged.array(
-        [
-            [RNG.random(10).tolist()],
-            [RNG.random(8).tolist(), []],
-            [RNG.random(5).tolist(), RNG.random(2).tolist()],
-            [[], RNG.random(7).tolist()],
-        ]
-    )
+@pytest.mark.parametrize("name", arrays.keys())
+def test_export_json(client, buffer, name):
+    array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
     file = buffer
@@ -87,17 +103,11 @@ def test_export_json(client, buffer):
     assert actual == ak.to_json(array._impl)  # noqa: SLF001
 
 
-def test_export_arrow(tmpdir, client):
+@pytest.mark.parametrize("name", arrays.keys())
+def test_export_arrow(tmpdir, client, name):
     # Write data into catalog. It will be stored as directory of buffers
     # named like 'node0-offsets' and 'node2-data'.
-    array = ragged.array(
-        [
-            [RNG.random(10).tolist()],
-            [RNG.random(8).tolist(), []],
-            [RNG.random(5).tolist(), RNG.random(2).tolist()],
-            [[], RNG.random(7).tolist()],
-        ]
-    )
+    array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
     filepath = tmpdir / "actual.arrow"
@@ -107,17 +117,11 @@ def test_export_arrow(tmpdir, client):
     assert actual == expected
 
 
-def test_export_parquet(tmpdir, client):
+@pytest.mark.parametrize("name", arrays.keys())
+def test_export_parquet(tmpdir, client, name):
     # Write data into catalog. It will be stored as directory of buffers
     # named like 'node0-offsets' and 'node2-data'.
-    array = ragged.array(
-        [
-            [RNG.random(10).tolist()],
-            [RNG.random(8).tolist(), []],
-            [RNG.random(5).tolist(), RNG.random(2).tolist()],
-            [[], RNG.random(7).tolist()],
-        ]
-    )
+    array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
     filepath = tmpdir / "actual.parquet"
