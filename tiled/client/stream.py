@@ -15,43 +15,54 @@ Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
 
 
-class WebsocketWrapper:
-    """Wrapper that provides a consistent interface for both TestClient and regular websockets."""
+class TestClientWebsocketWrapper:
+    """Wrapper for TestClient websockets."""
 
     def __init__(self, http_client, uri: httpx.URL):
         self._http_client = http_client
         self._uri = uri
-        self._is_test_client = isinstance(http_client, TestClient)
         self._websocket = None
 
     def connect(self, api_key: str):
         """Connect to the websocket."""
-        if self._is_test_client:
-            query_string = self._uri.query.decode() if self._uri.query else ""
-            path = self._uri.path + ("?" + query_string if query_string else "")
-            self._websocket = self._http_client.websocket_connect(
-                path, headers={"Authorization": f"Apikey {api_key}"}
-            )
-            self._websocket.__enter__()
-        else:
-            self._websocket = connect(
-                str(self._uri),
-                additional_headers={"Authorization": f"Apikey {api_key}"},
-            )
+        query_string = self._uri.query.decode() if self._uri.query else ""
+        path = self._uri.path + ("?" + query_string if query_string else "")
+        self._websocket = self._http_client.websocket_connect(
+            path, headers={"Authorization": f"Apikey {api_key}"}
+        )
+        self._websocket.__enter__()
 
     def recv(self, timeout=None):
         """Receive data from websocket with consistent interface."""
-        if self._is_test_client:
-            return self._websocket.receive_bytes()
-        else:
-            return self._websocket.recv(timeout=timeout)
+        return self._websocket.receive_bytes()
 
     def close(self):
         """Close websocket connection."""
-        if self._is_test_client:
-            self._websocket.__exit__(None, None, None)
-        else:
-            self._websocket.close()
+        self._websocket.__exit__(None, None, None)
+
+
+class RegularWebsocketWrapper:
+    """Wrapper for regular websockets."""
+
+    def __init__(self, http_client, uri: httpx.URL):
+        self._http_client = http_client
+        self._uri = uri
+        self._websocket = None
+
+    def connect(self, api_key: str):
+        """Connect to the websocket."""
+        self._websocket = connect(
+            str(self._uri),
+            additional_headers={"Authorization": f"Apikey {api_key}"},
+        )
+
+    def recv(self, timeout=None):
+        """Receive data from websocket with consistent interface."""
+        return self._websocket.recv(timeout=timeout)
+
+    def close(self):
+        """Close websocket connection."""
+        self._websocket.close()
 
 
 class Subscription:
@@ -88,7 +99,10 @@ class Subscription:
         self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._callbacks = set()
         self._close_event = threading.Event()
-        self._websocket = WebsocketWrapper(context.http_client, self._uri)
+        if isinstance(context.http_client, TestClient):
+            self._websocket = TestClientWebsocketWrapper(context.http_client, self._uri)
+        else:
+            self._websocket = RegularWebsocketWrapper(context.http_client, self._uri)
 
     @property
     def context(self) -> Context:
