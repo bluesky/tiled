@@ -229,7 +229,7 @@ class Context:
     async def startup(self):
         if (self.engine.dialect.name == "sqlite") and (
             self.engine.url.database == ":memory:"
-            or self.context.engine.url.query.get("mode") == "memory"
+            or self.engine.url.query.get("mode") == "memory"
         ):
             # Special-case for in-memory SQLite: Because it is transient we can
             # skip over anything related to migrations.
