@@ -1,6 +1,7 @@
 import builtins
 import copy
 import os
+import re
 from collections.abc import Mapping
 from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Tuple, Union, cast
@@ -14,7 +15,7 @@ from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..ndslice import NDSlice
-from ..storage import FileStorage, ObjectStorage, Storage
+from ..storage import FileStorage, ObjectStorage, Storage, get_storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -30,6 +31,7 @@ else:
     from zarr import create_array
     from zarr.storage import LocalStore, ObjectStore
     from obstore.store import S3Store, AzureStore, GCSStore
+
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -52,6 +54,12 @@ class ZarrArrayAdapter(ArrayAdapter):
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         if isinstance(storage, ObjectStorage):
+            data_uri = (
+                storage.uri
+                + "/"
+                + storage.config["bucket"]
+                + "".join(f"/{quote_plus(segment)}" for segment in path_parts)
+            )
             mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
             urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
             object_store_class = mapping[storage.provider]
@@ -61,20 +69,20 @@ class ZarrArrayAdapter(ArrayAdapter):
             )
             store = ObjectStore(store=object_store)
         if isinstance(storage, FileStorage):
-            # file-based
             data_uri = storage.uri + "".join(
                 f"/{quote_plus(segment)}" for segment in path_parts
             )
+            # file-based
             directory = path_from_uri(data_uri)
             directory.mkdir(parents=True, exist_ok=True)
             store = LocalStore(str(directory))
-            data_source.assets.append(
-                Asset(
-                    data_uri=data_uri,
-                    is_directory=True,
-                    parameter="data_uri",
-                )
+        data_source.assets.append(
+            Asset(
+                data_uri=data_uri,
+                is_directory=True,
+                parameter="data_uri",
             )
+        )
         create_array(
             store,
             shape=shape,
@@ -287,9 +295,29 @@ class ZarrAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> Union[ZarrGroupAdapter, ArrayAdapter]:
-        zarr_obj = zarr.open(
-            path_from_uri(data_source.assets[0].data_uri)
-        )  # Group or Array
+        storage_uri = data_source.assets[0].data_uri
+        # Split on the first single '/' that is not part of '://'
+        match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
+        storage_prefix = match.group(1) if match else storage_uri
+        storage_postfix = match.group(2) if match and match.group(2) else ""
+        storage = get_storage(storage_prefix)
+        if isinstance(storage, FileStorage):
+            zarr_obj = zarr.open(path_from_uri(storage_uri))
+        # Group or Array
+        else:
+            mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
+            urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
+            object_store_class = mapping[storage.provider]
+            object_store = object_store_class(
+                **{urlProp[storage.provider]: storage.uri},
+                **storage.config,
+            )
+            store = ObjectStore(store=object_store)
+            zarr_obj = zarr.open(
+                store=store,
+                path=storage_postfix.lstrip("/").replace(storage.config["bucket"] + "/", ""),
+            )
+
         if node.structure_family == StructureFamily.container:
             return ZarrGroupAdapter(
                 zarr_obj,
