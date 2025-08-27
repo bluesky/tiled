@@ -1703,19 +1703,31 @@ def structure_family(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-def streaming(query, tree):
-    # TODO: Implement Redis-based streaming query
-    # This should check Redis for active sequence:{node.id} keys
-    # For now, return all nodes if query.value is True, none if False
-    if query.value:
-        # For Streaming(True), return all nodes for now
-        # Should check Redis for nodes with active sequence keys
-        return tree
-    else:
-        # For Streaming(False), return no nodes for now
-        # Should check Redis for nodes WITHOUT active sequence keys
-        condition = orm.Node.id == -1  # Never matches any real node
+async def streaming(query, tree):
+    cache_client = tree.context.cache_client
+    if cache_client is None:
+        condition = orm.Node.id == -1
         return tree.new_variation(conditions=tree.conditions + [condition])
+
+    sequence_keys = await cache_client.keys("sequence:*")
+    active_node_ids = [
+        int(key.split(":", 1)[1])
+        for key in sequence_keys
+        if await cache_client.ttl(key) == -1
+    ]
+
+    if query.value:
+        condition = (
+            orm.Node.id.in_(active_node_ids) if active_node_ids else orm.Node.id == -1
+        )
+    else:
+        condition = orm.Node.id.not_in(active_node_ids) if active_node_ids else None
+
+    return (
+        tree.new_variation(conditions=tree.conditions + [condition])
+        if condition is not None
+        else tree
+    )
 
 
 CatalogNodeAdapter.register_query(Eq, partial(binary_op, operation=operator.eq))
