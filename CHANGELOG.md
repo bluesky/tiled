@@ -4,13 +4,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
-## v0.1.0-b37 (Unreleased)
+## v0.1.0-b37 (2025-08-28)
 
 ### Added
 
 - The access tags compiler and db schema have been upstreamed into Tiled
 - API keys can now be restricted to specific access tags
 - New unit tests covering the new access policy and access control features
+- Experimental support for streaming array data over a websocket endpoint.
+  Documentation to follow.
 
 ### Changed
 
