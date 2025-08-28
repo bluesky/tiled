@@ -1733,6 +1733,7 @@ def in_memory(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
+    cache_settings=None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -1750,6 +1751,7 @@ def in_memory(
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
+        cache_settings=cache_settings,
     )
 
 
