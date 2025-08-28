@@ -76,7 +76,7 @@ properties:
   streaming_cache:
     description: |
       Streaming cache database
-    type: [object]
+    type: object
     additionalProperties: false
     properties:
       uri:

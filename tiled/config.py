@@ -16,7 +16,7 @@ from typing import Any, Union
 import jsonschema
 
 from .adapters.mapping import MapAdapter
-from .catalog import from_uri
+from .catalog import from_uri, in_memory
 from .media_type_registration import (
     default_compression_registry,
     default_deserialization_registry,
@@ -147,10 +147,8 @@ See documentation section "Serve a Directory of Files"."""
                         }
                     }
                     args.update(from_server_settings)
-                    # Add cache settings if this is a catalog tree
-                    cache_settings = config.get("streaming_cache", {})
-                    if cache_settings:
-                        args["cache_settings"] = cache_settings
+                if (obj is from_uri) or (obj is in_memory):
+                    args.update({"cache_settings": config.get("streaming_cache")})
                 tree = obj(**args)
             else:
                 # Interpret obj as a tree *instance*.
@@ -241,6 +239,7 @@ def merge(configs: dict[Path, dict[str, Any]]) -> dict[str, Any]:
     media_types = defaultdict(dict)
     specs = []
     reject_undeclared_specs_source = None
+    streaming_cache_source = None
     file_extensions = {}
     paths = {}  # map each item's path to config file that specified it
 
@@ -318,6 +317,15 @@ def merge(configs: dict[Path, dict[str, Any]]) -> dict[str, Any]:
                 )
             reject_undeclared_specs_source = filepath
             merged["reject_undeclared_specs"] = config["reject_undeclared_specs"]
+        if "streaming_cache" in config:
+            if "streaming_cache" in merged:
+                raise ConfigError(
+                    "'streaming_cache' can only be specified in one file. "
+                    f"It was found in both {streaming_cache_source} and "
+                    f"{filepath}"
+                )
+            streaming_cache_source = filepath
+            merged["streaming_cache"] = config["streaming_cache"]
         for item in config.get("trees", []):
             if item["path"] in paths:
                 msg = "A given path may be only be specified once."
