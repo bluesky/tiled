@@ -296,7 +296,6 @@ async def test_write_array_internal_direct(a, tmpdir):
     )
     x = await a.lookup_adapter(["x"])
 
-    # TODO Review this.
     media_type = "application/octet-stream"
     body = arr.tobytes()
     deserializer = default_deserialization_registry.dispatch("array", media_type)
