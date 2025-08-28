@@ -4,17 +4,19 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence, Set
+from typing import Annotated, Any, Optional, Sequence, Set
 
 from fastapi import (
     APIRouter,
     Depends,
     Form,
+    Header,
     HTTPException,
     Query,
     Request,
     Response,
     Security,
+    WebSocket,
 )
 from fastapi.security import (
     OAuth2PasswordBearer,
@@ -264,7 +266,45 @@ async def get_current_access_tags(
         return None
 
 
+def get_api_key_websocket(
+    authorization: Annotated[Optional[str], Header()] = None,
+):
+    if authorization is None:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="An API key must be passed in the Authorization header",
+        )
+    scheme, api_key = get_authorization_scheme_param(authorization)
+    if scheme.lower() != "apikey":
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Authorization header must be formatted like 'Apikey SECRET'",
+        )
+    return api_key
+
+
+async def get_current_access_tags_websocket(
+    websocket: WebSocket,
+    api_key: Optional[str] = Depends(get_api_key_websocket),
+    db: Optional[AsyncSession] = Depends(get_database_session),
+) -> Optional[Set[str]]:
+    if api_key is not None:
+        return await get_access_tags_from_api_key(
+            api_key, websocket.app.state.authenticated, db
+        )
+    else:
+        # Limits on access tags only available via API key auth
+        return None
+
+
 async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
+    """
+    Move API key from query parameter to cookie.
+
+    When a URL with an API key in the query parameter is opened in a browser,
+    the API key is set as a cookie so that subsequent requests from the browser
+    are authenticated. (This approach was inspired by Jupyter notebook.)
+    """
     if ("api_key" in request.query_params) and (
         request.cookies.get(API_KEY_COOKIE_NAME) != api_key
     ):
@@ -327,6 +367,20 @@ async def get_current_scopes(
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
 
+async def get_current_scopes_websocket(
+    websocket: WebSocket,
+    api_key: Optional[str] = Depends(get_api_key_websocket),
+    settings: Settings = Depends(get_settings),
+    db: Optional[AsyncSession] = Depends(get_database_session),
+) -> set[str]:
+    if api_key is not None:
+        return await get_scopes_from_api_key(
+            api_key, settings, websocket.app.state.authenticated, db
+        )
+    else:
+        return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
+
+
 async def check_scopes(
     request: Request,
     security_scopes: SecurityScopes,
@@ -344,6 +398,67 @@ async def check_scopes(
         )
 
 
+async def get_current_principal_from_api_key(
+    api_key: str, authenticated: bool, db: AsyncSession, settings: Settings
+):
+    if authenticated:
+        # Tiled is in a multi-user configuration with authentication providers.
+        # We store the hashed value of the API key secret.
+        # By comparing hashes we protect against timing attacks.
+        # By storing only the hash of the (high-entropy) secret
+        # we reduce the value of that an attacker can extracted from a
+        # stolen database backup.
+        try:
+            secret = bytes.fromhex(api_key)
+        except Exception:
+            # Not valid hex, therefore not a valid API key
+            return None
+
+        api_key_orm = await lookup_valid_api_key(db, secret)
+        if api_key_orm is not None:
+            principal = api_key_orm.principal
+            principal_scopes = set().union(*[role.scopes for role in principal.roles])
+            # This intersection addresses the case where the Principal has
+            # lost a scope that they had when this key was created.
+            scopes = set(api_key_orm.scopes).intersection(
+                principal_scopes | {"inherit"}
+            )
+            if "inherit" in scopes:
+                # The scope "inherit" is a metascope that confers all the
+                # scopes for the Principal associated with this API,
+                # resolved at access time.
+                scopes.update(principal_scopes)
+            api_key_orm.latest_activity = utcnow()
+            await db.commit()
+            return principal
+        else:
+            return None
+    else:
+        # Tiled is in a "single user" mode with only one API key.
+        if secrets.compare_digest(api_key, settings.single_user_api_key):
+            # Valid single-user API key - return None to indicate valid single user
+            return None
+        else:
+            # Invalid single-user API key - raise exception directly
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
+
+
+async def get_current_principal_websocket(
+    websocket: WebSocket,
+    api_key: str = Depends(get_api_key_websocket),
+    settings: Settings = Depends(get_settings),
+    db: Optional[AsyncSession] = Depends(get_database_session),
+):
+    principal = await get_current_principal_from_api_key(
+        api_key, websocket.app.state.authenticated, db, settings
+    )
+    if principal is None and websocket.app.state.authenticated:
+        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    return principal
+
+
 async def get_current_principal(
     request: Request,
     security_scopes: SecurityScopes,
@@ -351,8 +466,7 @@ async def get_current_principal(
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
-    # TODO: https://github.com/bluesky/tiled/issues/923
-    # Remove non-Principal return types
+    _=Depends(move_api_key),
 ) -> Optional[schemas.Principal]:
     """
     Get current Principal from:
@@ -368,55 +482,18 @@ async def get_current_principal(
     """
 
     if api_key is not None:
-        if request.app.state.authenticated:
-            # Tiled is in a multi-user configuration with authentication providers.
-            # We store the hashed value of the API key secret.
-            # By comparing hashes we protect against timing attacks.
-            # By storing only the hash of the (high-entropy) secret
-            # we reduce the value of that an attacker can extracted from a
-            # stolen database backup.
-            try:
-                secret = bytes.fromhex(api_key)
-            except Exception:
-                # Not valid hex, therefore not a valid API key
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                    headers=headers_for_401(request, security_scopes),
-                )
-            api_key_orm = await lookup_valid_api_key(db, secret)
-            if api_key_orm is not None:
-                principal = api_key_orm.principal
-                principal_scopes = set().union(
-                    *[role.scopes for role in principal.roles]
-                )
-                # This intersection addresses the case where the Principal has
-                # lost a scope that they had when this key was created.
-                scopes = set(api_key_orm.scopes).intersection(
-                    principal_scopes | {"inherit"}
-                )
-                if "inherit" in scopes:
-                    # The scope "inherit" is a metascope that confers all the
-                    # scopes for the Principal associated with this API,
-                    # resolved at access time.
-                    scopes.update(principal_scopes)
-                api_key_orm.latest_activity = utcnow()
-                await db.commit()
-            else:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                    headers=headers_for_401(request, security_scopes),
-                )
-        else:
-            # Tiled is in a "single user" mode with only one API key.
-            principal = None
-            if not secrets.compare_digest(api_key, settings.single_user_api_key):
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Invalid API key",
-                    headers=headers_for_401(request, security_scopes),
-                )
+        principal = await get_current_principal_from_api_key(
+            api_key,
+            request.app.state.authenticated,
+            db,
+            settings,
+        )
+        if principal is None and request.app.state.authenticated:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key",
+                headers=headers_for_401(request, security_scopes),
+            )
     elif decoded_access_token is not None:
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
@@ -594,9 +671,9 @@ def add_external_routes(
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        user_session_state: UserSessionState | None = await authenticator.authenticate(
-            request
-        )
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(request)
         if not user_session_state:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
@@ -689,9 +766,9 @@ def add_external_routes(
                 },
                 status_code=HTTP_401_UNAUTHORIZED,
             )
-        user_session_state: UserSessionState | None = await authenticator.authenticate(
-            request
-        )
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(request)
         if not user_session_state:
             return templates.TemplateResponse(
                 request,
@@ -773,7 +850,9 @@ def add_internal_routes(
         db: Optional[AsyncSession] = Depends(get_database_session),
     ):
         request.state.endpoint = "auth"
-        user_session_state: UserSessionState | None = await authenticator.authenticate(
+        user_session_state: Optional[
+            UserSessionState
+        ] = await authenticator.authenticate(
             username=form_data.username, password=form_data.password
         )
         if not user_session_state or not user_session_state.user_name:

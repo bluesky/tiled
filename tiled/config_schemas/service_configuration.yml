@@ -73,6 +73,22 @@ properties:
               args:
                 uri: "catalog.db"
             ```
+  streaming_cache:
+    description: |
+      Streaming cache database
+    type: object
+    additionalProperties: false
+    properties:
+      uri:
+        type: string
+      ttl:
+        type: number
+      socket_timeout:
+        type: number
+      socket_connect_timeout:
+        type: number
+    required:
+      - uri
   media_types:
     type: object
     additionalProperties: true

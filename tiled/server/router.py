@@ -1,3 +1,4 @@
+import collections
 import dataclasses
 import inspect
 import os
@@ -11,10 +12,21 @@ from typing import Callable, List, Optional, Set, TypeVar, Union
 
 import anyio
 import packaging
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
+import pydantic_settings
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Security,
+    WebSocket,
+)
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
+from starlette.requests import URL
 from starlette.status import (
     HTTP_200_OK,
     HTTP_206_PARTIAL_CONTENT,
@@ -45,8 +57,11 @@ from . import schemas
 from .authentication import (
     check_scopes,
     get_current_access_tags,
+    get_current_access_tags_websocket,
     get_current_principal,
+    get_current_principal_websocket,
     get_current_scopes,
+    get_current_scopes_websocket,
     get_session_state,
 )
 from .core import (
@@ -61,6 +76,7 @@ from .core import (
     construct_entries_response,
     construct_resource,
     construct_revisions_response,
+    get_websocket_envelope_formatter,
     json_or_msgpack,
     resolve_media_type,
 )
@@ -75,7 +91,12 @@ from .dependencies import (
 from .file_response_with_range import FileResponseWithRange
 from .links import links_for_node
 from .settings import Settings, get_settings
-from .utils import filter_for_access, get_base_url, record_timing
+from .utils import (
+    filter_for_access,
+    get_base_url,
+    get_base_url_websocket,
+    record_timing,
+)
 
 T = TypeVar("T")
 
@@ -630,6 +651,76 @@ def get_router(
                 )
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
+
+    @router.delete("/stream/close/{path:path}")
+    async def close_stream(
+        request: Request,
+        path: str,
+        principal: Optional[schemas.Principal] = Depends(get_current_principal),
+        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.array, StructureFamily.sparse},
+            getattr(request.app.state, "access_policy", None),
+        )
+        await entry.close_stream()
+
+    @router.websocket("/stream/single/{path:path}")
+    async def websocket_endpoint(
+        websocket: WebSocket,
+        path: str,
+        envelope_format: schemas.EnvelopeFormat = schemas.EnvelopeFormat.json,
+        start: Optional[int] = None,
+        principal: Optional[schemas.Principal] = Depends(
+            get_current_principal_websocket
+        ),
+        authn_access_tags: Optional[Set[str]] = Depends(
+            get_current_access_tags_websocket
+        ),
+        authn_scopes: Scopes = Depends(get_current_scopes_websocket),
+    ):
+        root_tree = websocket.app.state.root_tree
+        websocket.state.metrics = collections.defaultdict(
+            lambda: collections.defaultdict(lambda: 0)
+        )
+        entry = await get_entry(
+            path,
+            ["read:data", "read:metadata"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            {},  # session_state,
+            websocket.state.metrics,
+            {
+                StructureFamily.array,
+                StructureFamily.container,
+                StructureFamily.sparse,
+            },
+            getattr(websocket.app.state, "access_policy", None),
+        )
+        formatter = get_websocket_envelope_formatter(
+            envelope_format, entry, deserialization_registry
+        )
+        base_websocket_url = URL(get_base_url_websocket(websocket))
+        scheme = "https" if base_websocket_url.scheme == "wss" else "http"
+        path_parts = [segment for segment in path.split("/") if segment]
+        path_str = "/".join(path_parts)
+        uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
+        handler = entry.make_ws_handler(websocket, formatter, uri)
+        await handler(start)
 
     @router.get(
         "/table/partition/{path:path}",
@@ -1535,7 +1626,7 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )
-        await entry.put_data_source(data_source=body.data_source)
+        await entry.put_data_source(data_source=body.data_source, patch=body.patch)
 
     @router.delete("/metadata/{path:path}")
     async def delete(
@@ -1610,16 +1701,12 @@ def get_router(
             )
         media_type = request.headers["content-type"]
         if entry.structure_family == "array":
-            dtype = entry.structure().data_type.to_numpy_dtype()
-            shape = entry.structure().shape
             deserializer = deserialization_registry.dispatch("array", media_type)
-            data = await ensure_awaitable(deserializer, body, dtype, shape)
         elif entry.structure_family == "sparse":
             deserializer = deserialization_registry.dispatch("sparse", media_type)
-            data = await ensure_awaitable(deserializer, body)
         else:
             raise NotImplementedError(entry.structure_family)
-        await ensure_awaitable(entry.write, data)
+        await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
         return json_or_msgpack(request, None)
 
     @router.put("/array/block/{path:path}")
@@ -1651,23 +1738,15 @@ def get_router(
                 status_code=HTTP_405_METHOD_NOT_ALLOWED,
                 detail="This node cannot accept array data.",
             )
-        from tiled.adapters.array import slice_and_shape_from_block_and_chunks
 
         body = await request.body()
         media_type = request.headers["content-type"]
-        if entry.structure_family == "array":
-            dtype = entry.structure().data_type.to_numpy_dtype()
-            _, shape = slice_and_shape_from_block_and_chunks(
-                block, entry.structure().chunks
-            )
-            deserializer = deserialization_registry.dispatch("array", media_type)
-            data = await ensure_awaitable(deserializer, body, dtype, shape)
-        elif entry.structure_family == "sparse":
-            deserializer = deserialization_registry.dispatch("sparse", media_type)
-            data = await ensure_awaitable(deserializer, body)
-        else:
-            raise NotImplementedError(entry.structure_family)
-        await ensure_awaitable(entry.write_block, data, block)
+        deserializer = deserialization_registry.dispatch(
+            entry.structure_family, media_type
+        )
+        await ensure_awaitable(
+            entry.write_block, block, media_type, deserializer, entry, body
+        )
         return json_or_msgpack(request, None)
 
     @router.patch("/array/full/{path:path}")
@@ -1702,12 +1781,12 @@ def get_router(
                 detail="This node cannot accept array data.",
             )
 
-        dtype = entry.structure().data_type.to_numpy_dtype()
         body = await request.body()
         media_type = request.headers["content-type"]
         deserializer = deserialization_registry.dispatch("array", media_type)
-        data = await ensure_awaitable(deserializer, body, dtype, shape)
-        structure = await ensure_awaitable(entry.patch, data, offset, extend)
+        structure = await ensure_awaitable(
+            entry.patch, shape, offset, extend, media_type, deserializer, entry, body
+        )
         return json_or_msgpack(request, structure)
 
     @router.put("/table/full/{path:path}")
