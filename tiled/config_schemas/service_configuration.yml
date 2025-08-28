@@ -347,6 +347,23 @@ properties:
       The largest number of items in a container, for which the `/metadata` and `/search`
       endpoints will return their exact count; this becomes the lower bound on the estimate if
       an approximate number can not be obtained otherwise. The default is 100.
+  catalog_pool_size:
+    type: integer
+    description: |
+      Size of the connection pool for catalog databases. Default is 5.
+  catalog_max_overflow:
+    type: integer
+    description: |
+      If supported, the maximum overflow size of the connection pool for catalog databases,
+      i.e. the number of connections that can be created beyond the pool size. Default is 10.
+  storage_pool_size:
+    type: integer
+    description: |
+      Size of the (ABDC) connection pool for storage databases. Default is 5.
+  storage_max_overflow:
+    type: integer
+    description: |
+      Maximum overflow size of the connection pool for storage databases. Default is 10.
   allow_origins:
     type: array
     items:
