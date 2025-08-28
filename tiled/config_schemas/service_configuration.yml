@@ -73,15 +73,19 @@ properties:
               args:
                 uri: "catalog.db"
             ```
-  redis:
+  cache:
     description: |
-      Redis database
+      Cache database
     type: [object]
     additionalProperties: false
     properties:
       uri:
         type: string
       ttl:
+        type: number
+      socket_timeout:
+        type: number
+      socket_connect_timeout:
         type: number
     required:
       - uri

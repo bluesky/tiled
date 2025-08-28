@@ -36,7 +36,7 @@ uv run tiled serve catalog \
   --host 0.0.0.0 \
   --port 8000 \
   --api-key secret \
-  --cache-uri "redis://localhost:6379" \
+  --cache "redis://localhost:6379" \
   --cache-ttl 60 \
   --temp \
   --init

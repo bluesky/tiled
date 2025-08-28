@@ -61,7 +61,6 @@ from tiled.queries import (
     NotIn,
     Operator,
     SpecsQuery,
-    Streaming,
     StructureFamilyQuery,
 )
 
@@ -1703,33 +1702,6 @@ def structure_family(query, tree):
     return tree.new_variation(conditions=tree.conditions + [condition])
 
 
-async def streaming(query, tree):
-    cache_client = tree.context.cache_client
-    if cache_client is None:
-        condition = orm.Node.id == -1
-        return tree.new_variation(conditions=tree.conditions + [condition])
-
-    sequence_keys = await cache_client.keys("sequence:*")
-    active_node_ids = [
-        int(key.split(":", 1)[1])
-        for key in sequence_keys
-        if await cache_client.ttl(key) == -1
-    ]
-
-    if query.value:
-        condition = (
-            orm.Node.id.in_(active_node_ids) if active_node_ids else orm.Node.id == -1
-        )
-    else:
-        condition = orm.Node.id.not_in(active_node_ids) if active_node_ids else None
-
-    return (
-        tree.new_variation(conditions=tree.conditions + [condition])
-        if condition is not None
-        else tree
-    )
-
-
 CatalogNodeAdapter.register_query(Eq, partial(binary_op, operation=operator.eq))
 CatalogNodeAdapter.register_query(NotEq, partial(binary_op, operation=operator.ne))
 CatalogNodeAdapter.register_query(Comparison, comparison)
@@ -1739,7 +1711,6 @@ CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
 CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
-CatalogNodeAdapter.register_query(Streaming, streaming)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
 CatalogNodeAdapter.register_query(FullText, full_text)

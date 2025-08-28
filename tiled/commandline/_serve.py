@@ -330,7 +330,7 @@ def serve_catalog(
         ),
     ),
     cache_uri: Optional[str] = typer.Option(
-        None, "--cache-uri", help=("Provide cache URI")
+        None, "--cache", help=("Provide cache URI")
     ),
     cache_ttl: Optional[int] = typer.Option(
         None, "--cache-ttl", help=("Provide cache ttl")
