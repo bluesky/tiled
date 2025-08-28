@@ -433,8 +433,6 @@ async def get_current_principal(
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
     _=Depends(move_api_key),
-    # TODO: https://github.com/bluesky/tiled/issues/923
-    # Remove non-Principal return types
 ) -> Optional[schemas.Principal]:
     """
     Get current Principal from:
