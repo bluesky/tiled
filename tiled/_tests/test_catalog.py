@@ -16,6 +16,7 @@ import tifffile
 import xarray
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 
 from ..adapters.csv import CSVAdapter
 from ..adapters.dataframe import ArrayAdapter
@@ -30,7 +31,7 @@ from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
 from ..server.schemas import Asset, DataSource, Management
-from ..storage import SQLStorage, get_storage, parse_storage
+from ..storage import SQLStorage, get_storage, parse_storage, sanitize_uri
 from ..structures.core import StructureFamily
 from ..utils import Conflicts, ensure_specified_sql_driver, ensure_uri
 from .utils import sql_table_exists
@@ -895,3 +896,53 @@ async def test_container_length(
 
         # len() returns the exact count
         assert len(client["a"]) == 10
+
+
+@pytest.mark.parametrize(
+    "desired, expected",
+    [((None, None, None, None), (5, 5, 10, 10)), ((7, 11, 13, 17), (7, 11, 13, 17))],
+)
+def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expected):
+    config = {
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": sql_storage_uri,
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+        "catalog_pool_size": desired[0],
+        "storage_pool_size": desired[1],
+        "catalog_max_overflow": desired[2],
+        "storage_max_overflow": desired[3],
+    }
+
+    app = build_app_from_config(config)
+
+    # Check the catalog pool
+    catalog_pool = app.state.root_tree.context.engine.pool
+    assert isinstance(catalog_pool, AsyncAdaptedQueuePool)
+    assert catalog_pool.size() == expected[0]
+    assert catalog_pool._max_overflow == expected[2]
+
+    # Check the storage pool
+    storage = get_storage(ensure_uri(sanitize_uri(sql_storage_uri)[0]))
+    storage: SQLStorage = cast(SQLStorage, storage)
+
+    if sql_storage_uri.startswith("duckdb"):
+        # DuckDB does not support pooling
+        assert isinstance(storage._connection_pool, StaticPool)
+        assert storage.pool_size == 1
+        assert storage.max_overflow == 0
+    else:
+        assert isinstance(storage._connection_pool, QueuePool)
+        assert storage.pool_size == expected[1]
+        assert storage.max_overflow == expected[3]
+        assert storage._connection_pool.size() == expected[1]
+        assert storage._connection_pool._max_overflow == expected[3]
+
+    storage.dispose()
