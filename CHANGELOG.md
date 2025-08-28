@@ -4,7 +4,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
-## v0.1.0-b39 (Unreleased)
+## v0.1.0-b39 (2025-08-28)
 
 ### Fixed
 
