@@ -123,7 +123,11 @@ class ZarrArrayAdapter(ArrayAdapter):
     ) -> None:
         if slice:
             raise NotImplementedError
-        self._array[self._stencil()] = data
+        try:
+            self._array[self._stencil()] = data
+        except Exception as e:
+            breakpoint()
+            raise e
 
     async def write_block(
         self,
@@ -133,6 +137,7 @@ class ZarrArrayAdapter(ArrayAdapter):
         block_slice, shape = slice_and_shape_from_block_and_chunks(
             block, self.structure().chunks
         )
+        breakpoint()
         self._array[block_slice] = data
 
     async def patch(
@@ -305,6 +310,9 @@ class ZarrAdapter:
             zarr_obj = zarr.open(path_from_uri(storage_uri))
         # Group or Array
         else:
+            strg = storage_postfix.lstrip("/").replace(
+                storage.config["bucket"] + "/", ""
+            )
             mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
             urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
             object_store_class = mapping[storage.provider]
@@ -312,10 +320,12 @@ class ZarrAdapter:
                 **{urlProp[storage.provider]: storage.uri},
                 **storage.config,
             )
+            if not isinstance(strg, str):
+                breakpoint()
             store = ObjectStore(store=object_store)
             zarr_obj = zarr.open(
                 store=store,
-                path=storage_postfix.lstrip("/").replace(storage.config["bucket"] + "/", ""),
+                path=strg,
             )
 
         if node.structure_family == StructureFamily.container:
