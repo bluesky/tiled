@@ -464,7 +464,7 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PutDataSourceRequest(pydantic.BaseModel):
     data_source: DataSource
-    patch: Optional[Patch]
+    patch: Optional[Patch] = None
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
