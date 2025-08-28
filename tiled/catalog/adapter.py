@@ -801,9 +801,9 @@ class CatalogNodeAdapter:
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
                     "structure_family": structure_family,
-                    "specs": [spec.dict() for spec in (specs or [])],
+                    "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
-                    "data_sources": [d.dict() for d in data_sources],
+                    "data_sources": [d.model_dump() for d in data_sources],
                 }
 
                 # Cache data in Redis with a TTL, and publish
