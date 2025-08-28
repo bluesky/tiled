@@ -4,6 +4,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## v0.1.0-b39 (Unreleased)
+
+### Fixed
+
+- Default paraneter (`None`) for the `patch` parameter in `PUT /data_source` endpoint.
+
+
 ## v0.1.0-b38 (2025-08-28)
 
 ### Fixed
