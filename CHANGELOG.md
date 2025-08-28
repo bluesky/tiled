@@ -4,6 +4,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## v0.1.0-b38 (2025-08-28)
+
+### Fixed
+
+- Critical bug in new `tiled.access_control` code, missing `__init__.py`.
+
+
 ## v0.1.0-b37 (2025-08-28)
 
 ### Added
