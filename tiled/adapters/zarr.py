@@ -330,6 +330,9 @@ class ZarrAdapter:
             zarr_obj = zarr.open(path_from_uri(storage_uri))
         # Group or Array
         elif isinstance(storage, ObjectStorage):
+            strg = storage_postfix.lstrip("/").replace(
+                storage.config["bucket"] + "/", ""
+            )
             mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
             urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
             object_store_class = mapping[storage.provider]
@@ -340,9 +343,7 @@ class ZarrAdapter:
             store = ObjectStore(store=object_store)
             zarr_obj = zarr.open(
                 store=store,
-                path=storage_postfix.lstrip("/").replace(
-                    storage.config["bucket"] + "/", ""
-                ),
+                path=strg,
             )
         else:
             raise TypeError(f"Unsupported Storage type {storage}")
