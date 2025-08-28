@@ -428,8 +428,6 @@ async def get_current_principal_from_api_key(api_key, authenticated, db, setting
 
 async def get_current_principal_websocket(
     websocket: WebSocket,
-    # security_scopes: SecurityScopes,
-    # api_key: str = Depends(get_api_key),
     authorization: Annotated[Optional[str], Header()] = None,
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
