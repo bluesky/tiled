@@ -73,9 +73,9 @@ properties:
               args:
                 uri: "catalog.db"
             ```
-  cache:
+  streaming_cache:
     description: |
-      Cache database
+      Streaming cache database
     type: [object]
     additionalProperties: false
     properties:

@@ -148,7 +148,7 @@ See documentation section "Serve a Directory of Files"."""
                     }
                     args.update(from_server_settings)
                     # Add cache settings if this is a catalog tree
-                    cache_settings = config.get("cache", {})
+                    cache_settings = config.get("streaming_cache", {})
                     if cache_settings:
                         args["cache_settings"] = cache_settings
                 tree = obj(**args)
