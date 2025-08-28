@@ -266,6 +266,20 @@ async def get_current_access_tags(
         return None
 
 
+async def get_current_access_tags_websocket(
+    websocket: WebSocket,
+    api_key: Optional[str] = Depends(get_api_key),
+    db: Optional[AsyncSession] = Depends(get_database_session),
+) -> Optional[Set[str]]:
+    if api_key is not None:
+        return await get_access_tags_from_api_key(
+            api_key, websocket.app.state.authenticated, db
+        )
+    else:
+        # Limits on access tags only available via API key auth
+        return None
+
+
 async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
     """
     Move API key from query parameter to cookie.
@@ -332,6 +346,20 @@ async def get_current_scopes(
         )
     elif decoded_access_token is not None:
         return decoded_access_token["scp"]
+    else:
+        return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
+
+
+async def get_current_scopes_websocket(
+    websocket: WebSocket,
+    api_key: Optional[str] = Depends(get_api_key),
+    settings: Settings = Depends(get_settings),
+    db: Optional[AsyncSession] = Depends(get_database_session),
+) -> set[str]:
+    if api_key is not None:
+        return await get_scopes_from_api_key(
+            api_key, settings, websocket.app.state.authenticated, db
+        )
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 

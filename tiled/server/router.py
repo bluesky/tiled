@@ -57,9 +57,11 @@ from . import schemas
 from .authentication import (
     check_scopes,
     get_current_access_tags,
+    get_current_access_tags_websocket,
     get_current_principal,
     get_current_principal_websocket,
     get_current_scopes,
+    get_current_scopes_websocket,
     get_session_state,
 )
 from .core import (
@@ -684,6 +686,10 @@ def get_router(
         principal: Optional[schemas.Principal] = Depends(
             get_current_principal_websocket
         ),
+        authn_access_tags: Optional[Set[str]] = Depends(
+            get_current_access_tags_websocket
+        ),
+        authn_scopes: Scopes = Depends(get_current_scopes_websocket),
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
@@ -693,8 +699,8 @@ def get_router(
             path,
             ["read:data", "read:metadata"],
             principal,
-            None,  # authn_access_tags,
-            set(["read:data"]),  # authn_scopes,
+            authn_access_tags,
+            authn_scopes,
             root_tree,
             {},  # session_state,
             websocket.state.metrics,
