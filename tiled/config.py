@@ -16,12 +16,14 @@ from typing import Any, Union
 import jsonschema
 
 from .adapters.mapping import MapAdapter
+from .catalog import from_uri
 from .media_type_registration import (
     default_compression_registry,
     default_deserialization_registry,
     default_serialization_registry,
 )
 from .query_registration import default_query_registry
+from .server.settings import Settings
 from .structures.core import Spec
 from .utils import import_object, parse, prepend_to_sys_path
 from .validation_registration import default_validation_registry
@@ -59,6 +61,7 @@ def construct_build_app_kwargs(
             directory = os.path.dirname(source_filepath)
         sys_path_additions.append(directory)
     with prepend_to_sys_path(*sys_path_additions):
+        # Process auth settings
         auth_spec = config.get("authentication", {}) or {}
         for age in ["refresh_token_max_age", "session_max_age", "access_token_max_age"]:
             if age in auth_spec:
@@ -87,6 +90,24 @@ def construct_build_app_kwargs(
         else:
             access_policy = None
         # TODO Enable entrypoint to extend aliases?
+
+        # Process server settings
+        server_settings = {}
+        if root_path := config.get("root_path", ""):
+            server_settings["root_path"] = root_path
+        server_settings["allow_origins"] = config.get("allow_origins")
+        server_settings["response_bytesize_limit"] = config.get(
+            "response_bytesize_limit"
+        )
+        server_settings["exact_count_limit"] = config.get("exact_count_limit")
+        server_settings["database"] = config.get("database", {})
+        server_settings["reject_undeclared_specs"] = config.get(
+            "reject_undeclared_specs"
+        )
+        server_settings["expose_raw_assets"] = config.get("expose_raw_assets")
+        server_settings["metrics"] = config.get("metrics", {})
+
+        # Process trees
         tree_aliases = {
             "catalog": "tiled.catalog:from_uri",
         }
@@ -111,6 +132,21 @@ See documentation section "Serve a Directory of Files"."""
                 # Interpret obj as a tree *factory*.
                 args = {}
                 args.update(item.get("args", {}))
+
+                # Add other server-related settings falling back to Settings defaults
+                # TODO: To be refactroed; these parameters should be in `server_settings`
+                if obj is from_uri:
+                    default_settings = Settings().model_dump()
+                    from_server_settings = {
+                        k: config.get(k, default_settings[k])
+                        for k in {
+                            "catalog_pool_size",
+                            "storage_pool_size",
+                            "catalog_max_overflow",
+                            "storage_max_overflow",
+                        }
+                    }
+                    args.update(from_server_settings)
                 tree = obj(**args)
             else:
                 # Interpret obj as a tree *instance*.
@@ -148,20 +184,8 @@ See documentation section "Serve a Directory of Files"."""
                         include_routers.append(router)
             root_tree = MapAdapter(root_mapping)
             root_tree.include_routers.extend(include_routers)
-        server_settings = {}
-        if root_path := config.get("root_path", ""):
-            server_settings["root_path"] = root_path
-        server_settings["allow_origins"] = config.get("allow_origins")
-        server_settings["response_bytesize_limit"] = config.get(
-            "response_bytesize_limit"
-        )
-        server_settings["exact_count_limit"] = config.get("exact_count_limit")
-        server_settings["database"] = config.get("database", {})
-        server_settings["reject_undeclared_specs"] = config.get(
-            "reject_undeclared_specs"
-        )
-        server_settings["expose_raw_assets"] = config.get("expose_raw_assets")
-        server_settings["metrics"] = config.get("metrics", {})
+
+        # Process other configuration items
         for structure_family, values in config.get("media_types", {}).items():
             for media_type, import_path in values.items():
                 serializer = import_object(import_path, accept_live_object=True)

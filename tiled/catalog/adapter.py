@@ -174,6 +174,8 @@ class Context:
         adapters_by_mimetype=None,
         cache_settings=None,
         key_maker=lambda: str(uuid.uuid4()),
+        storage_pool_size=None,
+        storage_max_overflow=None,
     ):
         self.engine = engine
 
@@ -190,7 +192,11 @@ class Context:
             raise ValueError("readable_storage should be a list of URIs or paths")
 
         for item in writable_storage or []:
-            self.writable_storage.append(parse_storage(item))
+            self.writable_storage.append(
+                parse_storage(
+                    item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
+                )
+            )
         for item in readable_storage or []:
             self.readable_storage.add(parse_storage(item))
         # Writable storage should also be readable.
@@ -1732,6 +1738,8 @@ def in_memory(
         uri = "sqlite:///:memory:"
     else:
         uri = f"sqlite:///file:{named_memory}?mode=memory&cache=shared&uri=true"
+    # NOTE: catalog_pool_size and catalog_max_overflow are ignored when using an
+    # in-memory catalog.
     return from_uri(
         uri=uri,
         metadata=metadata,
@@ -1758,6 +1766,10 @@ def from_uri(
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
     cache_settings=None,
+    catalog_pool_size=None,
+    storage_pool_size=None,
+    catalog_max_overflow=None,
+    storage_max_overflow=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1789,6 +1801,8 @@ def from_uri(
         # significant performance boost. For SQLite databases that exist
         # only in process memory, pooling is not applicable.
         poolclass = AsyncAdaptedQueuePool
+    elif parsed_url.get_dialect().name.startswith("postgresql"):
+        poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
     else:
         poolclass = None  # defer to sqlalchemy default
 
@@ -1799,23 +1813,33 @@ def from_uri(
         else mount_node
     )
 
+    # Optionally set pool size and max overflow for the catalog engine;
+    # if not specified, use the default values from sqlalchemy.
+    pool_kwargs = (
+        {"pool_size": catalog_pool_size, "max_overflow": catalog_max_overflow}
+        if poolclass == AsyncAdaptedQueuePool
+        else {}
+    )
+    pool_kwargs = {k: v for k, v in pool_kwargs.items() if v is not None}
+    # Create the async engine with the specified parameters
     engine = create_async_engine(
         uri,
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
+        **pool_kwargs,
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-
     context = Context(
         engine,
         writable_storage,
         readable_storage,
         adapters_by_mimetype,
         cache_settings,
+        storage_pool_size=storage_pool_size,
+        storage_max_overflow=storage_max_overflow,
     )
-
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
 
     return adapter

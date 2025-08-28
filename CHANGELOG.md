@@ -46,6 +46,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - The project ships with a pixi manifest (`pixi.toml`).
+- Connection pool settings for catalog and storage databases.
 
 ## v0.1.0-b34 (2025-08-14)
 
