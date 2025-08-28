@@ -3,7 +3,7 @@ import time
 from collections.abc import Generator
 from typing import Any, Literal, Mapping
 
-from fastapi import Request
+from fastapi import Request, WebSocket
 from starlette.types import Scope
 
 from ..access_control.access_policies import NO_ACCESS
@@ -30,6 +30,14 @@ def get_root_url(request: Request) -> str:
     URL at which the app is being server, including API and UI
     """
     return f"{get_root_url_low_level(request.headers, request.scope)}"
+
+
+def get_root_url_websocket(websocket: WebSocket) -> str:
+    return f"{get_root_url_low_level(websocket.headers, websocket.scope)}"
+
+
+def get_base_url_websocket(websocket: WebSocket) -> str:
+    return f"{get_root_url_websocket(websocket)}/api/v1"
 
 
 def get_base_url(request: Request) -> str:

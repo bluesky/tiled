@@ -329,6 +329,12 @@ def serve_catalog(
             "By default, a random key is generated at startup and printed."
         ),
     ),
+    cache_uri: Optional[str] = typer.Option(
+        None, "--cache", help=("Provide cache URI")
+    ),
+    cache_ttl: Optional[int] = typer.Option(
+        None, "--cache-ttl", help=("Provide cache ttl")
+    ),
     host: str = typer.Option(
         "127.0.0.1",
         help=(
@@ -460,11 +466,18 @@ or use an existing one:
             err=True,
         )
 
+    cache_settings = {}
+    if cache_uri:
+        cache_settings["uri"] = cache_uri
+    if cache_ttl:
+        cache_settings["ttl"] = cache_ttl
+
     tree = from_uri(
         database,
         writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
+        cache_settings=cache_settings,
     )
     web_app = build_app(
         tree,

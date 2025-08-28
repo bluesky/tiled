@@ -35,6 +35,7 @@ entrypoints = "*"
 rich = "*"
 stamina = "*"
 watchfiles = "*"
+websockets = "*"
 
 [feature.compression.dependencies]
 # python-blosc2 = "*"  # not available on Python < 3.11
@@ -98,6 +99,7 @@ prometheus_client = "*"
 python-dateutil = "*"
 python-jose = "*"
 python-multipart = "*"
+redis-py = "*"
 sqlalchemy = ">=2"
 starlette = ">=0.38.0"
 uvicorn = "*"

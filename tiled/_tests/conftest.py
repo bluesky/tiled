@@ -293,3 +293,17 @@ def url_limit(request: pytest.FixtureRequest):
     yield
     # Then restore the original value.
     BaseClient.URL_CHARACTER_LIMIT = PREVIOUS_LIMIT
+
+
+@pytest.fixture
+def redis_uri():
+    if uri := os.getenv("TILED_TEST_REDIS"):
+        import redis
+
+        client = redis.from_url(uri, socket_timeout=10, socket_connect_timeout=30)
+        # Delete all keys from the current database before and after test.
+        client.flushdb()
+        yield uri
+        client.flushdb()
+    else:
+        raise pytest.skip("No TILED_TEST_REDIS configured")

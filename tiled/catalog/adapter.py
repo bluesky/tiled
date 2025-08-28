@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import copy
 import dataclasses
@@ -11,13 +12,15 @@ import shutil
 import sys
 import uuid
 from contextlib import closing
+from datetime import datetime
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
-from fastapi import HTTPException
+import orjson
+from fastapi import HTTPException, WebSocketDisconnect
 from sqlalchemy import (
     and_,
     delete,
@@ -169,6 +172,7 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        cache_settings=None,
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=None,
         storage_max_overflow=None,
@@ -214,6 +218,7 @@ class Context:
             adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
+        self.cache_settings = cache_settings
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -225,6 +230,36 @@ class Context:
             result = await db.execute(text(statement), explain=explain)
             await db.commit()
             return result
+
+    async def startup(self):
+        if (self.engine.dialect.name == "sqlite") and (
+            self.engine.url.database == ":memory:"
+            or self.engine.url.query.get("mode") == "memory"
+        ):
+            # Special-case for in-memory SQLite: Because it is transient we can
+            # skip over anything related to migrations.
+            await initialize_database(self.engine)
+        else:
+            await check_catalog_database(self.engine)
+
+        cache_client = None
+        cache_ttl = 0
+        if self.cache_settings:
+            if self.cache_settings["uri"].startswith("redis"):
+                from redis import asyncio as redis
+
+                socket_timeout = self.cache_settings.get("socket_timeout", 10.0)
+                socket_connect_timeout = self.cache_settings.get(
+                    "socket_connect_timeout", 10.0
+                )
+                cache_client = redis.from_url(
+                    self.cache_settings["uri"],
+                    socket_timeout=socket_timeout,
+                    socket_connect_timeout=socket_connect_timeout,
+                )
+                cache_ttl = self.cache_settings.get("ttl", 3600)
+        self.cache_client = cache_client
+        self.cache_ttl = cache_ttl
 
 
 class CatalogNodeAdapter:
@@ -275,15 +310,7 @@ class CatalogNodeAdapter:
         return self.node.metadata_
 
     async def startup(self):
-        if (self.context.engine.dialect.name == "sqlite") and (
-            self.context.engine.url.database == ":memory:"
-            or self.context.engine.url.query.get("mode") == "memory"
-        ):
-            # Special-case for in-memory SQLite: Because it is transient we can
-            # skip over anything related to migrations.
-            await initialize_database(self.context.engine)
-        else:
-            await check_catalog_database(self.context.engine)
+        await self.context.startup()
 
     async def create_mount(self, mount_path: list[str]):
         statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
@@ -697,6 +724,38 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
+            if self.context.cache_client:
+                # Allocate a counter for the new node.
+                await self.context.cache_client.setnx(f"sequence:{node.id}", 0)
+                # Notify subscribers of the *parent* node about the new child.
+                sequence = await self.context.cache_client.incr(
+                    f"sequence:{self.node.id}"
+                )
+                metadata = {
+                    "sequence": sequence,
+                    "timestamp": datetime.now().isoformat(),
+                    "key": key,
+                    "structure_family": structure_family,
+                    "specs": [spec.model_dump() for spec in (specs or [])],
+                    "metadata": metadata,
+                    "data_sources": [d.model_dump() for d in data_sources],
+                }
+
+                # Cache data in Redis with a TTL, and publish
+                # a notification about it.
+                pipeline = self.context.cache_client.pipeline()
+                pipeline.hset(
+                    f"data:{self.node.id}:{sequence}",
+                    mapping={
+                        "sequence": sequence,
+                        "metadata": safe_json_dump(metadata),
+                    },
+                )
+                pipeline.expire(
+                    f"data:{self.node.id}:{sequence}", self.context.cache_ttl
+                )
+                pipeline.publish(f"notify:{self.node.id}", sequence)
+                await pipeline.execute()
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
@@ -715,7 +774,7 @@ class CatalogNodeAdapter:
 
         return asset_id
 
-    async def put_data_source(self, data_source):
+    async def put_data_source(self, data_source, patch):
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
         structure = _prepare_structure(
@@ -765,6 +824,28 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
+        if self.context.cache_client:
+            sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+            metadata = {
+                "sequence": sequence,
+                "timestamp": datetime.now().isoformat(),
+                "data_source": data_source.dict(),
+                "patch": patch.dict() if patch else None,
+            }
+
+            # Cache data in Redis with a TTL, and publish
+            # a notification about it.
+            pipeline = self.context.cache_client.pipeline()
+            pipeline.hset(
+                f"data:{self.node.id}:{sequence}",
+                mapping={
+                    "sequence": sequence,
+                    "metadata": orjson.dumps(metadata),
+                },
+            )
+            pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+            pipeline.publish(f"notify:{self.node.id}", sequence)
+            await pipeline.execute()
 
     async def revisions(self, offset, limit):
         async with self.context.session() as db:
@@ -947,6 +1028,117 @@ class CatalogNodeAdapter:
             )
             await db.commit()
 
+    async def close_stream(self):
+        # Check the node status.
+        # ttl returns -2 if the key does not exist.
+        # ttl returns -1 if the key exists but has no associated expire.
+        # ttl greater than 0 means that it is marked to expire.
+        node_ttl = await self.context.cache_client.ttl(f"sequence:{self.node.id}")
+        if node_ttl > 0:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"Stream for node {self.node.id} is already closed.",
+            )
+        if node_ttl == -2:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"Node {self.node.id} not found.",
+            )
+
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "end_of_stream": True,
+        }
+        # Increment the counter for this node.
+        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+
+        # Cache data in Redis with a TTL, and publish
+        # a notification about it.
+        pipeline = self.context.cache_client.pipeline()
+        pipeline.hset(
+            f"data:{self.node.id}:{sequence}",
+            mapping={
+                "sequence": sequence,
+                "metadata": orjson.dumps(metadata),
+            },
+        )
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
+        await pipeline.execute()
+
+    def make_ws_handler(self, websocket, formatter, uri):
+        async def handler(sequence: Optional[int] = None):
+            await websocket.accept()
+            end_stream = asyncio.Event()
+            cache_client = self.context.cache_client
+
+            async def stream_data(sequence):
+                key = f"data:{self.node.id}:{sequence}"
+                payload_bytes, metadata_bytes = await cache_client.hmget(
+                    key, "payload", "metadata"
+                )
+                if metadata_bytes is None:
+                    # This means that redis ttl has expired for this sequence
+                    return
+                metadata = orjson.loads(metadata_bytes)
+                if metadata.get("end_of_stream"):
+                    # This means that the stream is closed by the producer
+                    end_stream.set()
+                    return
+                metadata["uri"] = uri
+                if metadata.get("patch"):
+                    s = ",".join(
+                        f"{offset}:{offset+shape}"
+                        for offset, shape in zip(
+                            metadata["patch"]["offset"], metadata["patch"]["shape"]
+                        )
+                    )
+                    metadata["uri"] = f"{uri}?slice={s}"
+                await formatter(websocket, metadata, payload_bytes)
+
+            # Setup buffer
+            stream_buffer = asyncio.Queue()
+
+            async def buffer_live_events():
+                pubsub = cache_client.pubsub()
+                await pubsub.subscribe(f"notify:{self.node.id}")
+                try:
+                    async for message in pubsub.listen():
+                        if message.get("type") == "message":
+                            try:
+                                live_seq = int(message["data"])
+                                await stream_buffer.put(live_seq)
+                            except Exception as e:
+                                print(f"Error parsing live message: {e}")
+                except Exception as e:
+                    print(f"Live subscription error: {e}")
+                finally:
+                    await pubsub.unsubscribe(f"notify:{self.node.id}")
+                    await pubsub.aclose()
+
+            live_task = asyncio.create_task(buffer_live_events())
+
+            if sequence is not None:
+                current_seq = await cache_client.get(f"sequence:{self.node.id}")
+                current_seq = int(current_seq) if current_seq is not None else 0
+                print("Replaying old data...")
+                for s in range(sequence, current_seq + 1):
+                    await stream_data(s)
+            # New data
+            try:
+                while not end_stream.is_set():
+                    live_seq = await stream_buffer.get()
+                    await stream_data(live_seq)
+                else:
+                    await websocket.close(code=1000, reason="Producer ended stream")
+            except WebSocketDisconnect:
+                print(f"Client disconnected from node {self.node.id}")
+            finally:
+                live_task.cancel()
+
+        return handler
+
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
     async def keys_range(self, offset, limit):
@@ -1023,19 +1215,70 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).read_block, *args, **kwargs
         )
 
-    async def write(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+    async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
+        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "content-type": media_type,
+            "shape": shape,
+            "offset": offset,
+            "block": block,
+        }
 
-    async def write_block(self, *args, **kwargs):
+        pipeline = self.context.cache_client.pipeline()
+        pipeline.hset(
+            f"data:{self.node.id}:{sequence}",
+            mapping={
+                "sequence": sequence,
+                "metadata": orjson.dumps(metadata),
+                "payload": body,  # raw user input
+            },
+        )
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
+        await pipeline.execute()
+
+    async def write(self, media_type, deserializer, entry, body):
+        shape = entry.structure().shape
+        if self.context.cache_client:
+            await self._stream(media_type, entry, body, shape)
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
+        return await ensure_awaitable((await self.get_adapter()).write, data)
+
+    async def write_block(self, block, media_type, deserializer, entry, body):
+        from tiled.adapters.array import slice_and_shape_from_block_and_chunks
+
+        _, shape = slice_and_shape_from_block_and_chunks(
+            block, entry.structure().chunks
+        )
+        if self.context.cache_client:
+            await self._stream(media_type, entry, body, shape, block=block)
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable(
-            (await self.get_adapter()).write_block, *args, **kwargs
+            (await self.get_adapter()).write_block, data, block
         )
 
-    async def patch(self, *args, **kwargs):
+    async def patch(self, shape, offset, extend, media_type, deserializer, entry, body):
+        if self.context.cache_client:
+            await self._stream(media_type, entry, body, shape, offset=offset)
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
         # assumes a single DataSource (currently only supporting zarr)
         async with self.context.session() as db:
             new_shape_and_chunks = await ensure_awaitable(
-                (await self.get_adapter()).patch, *args, **kwargs
+                (await self.get_adapter()).patch, data, offset, extend
             )
             node = await db.get(orm.Node, self.node.id)
             if len(node.data_sources) != 1:
@@ -1425,6 +1668,7 @@ def in_memory(
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
+    cache_settings=None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -1442,6 +1686,7 @@ def in_memory(
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
+        cache_settings=cache_settings,
     )
 
 
@@ -1457,6 +1702,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    cache_settings=None,
     catalog_pool_size=None,
     storage_pool_size=None,
     catalog_max_overflow=None,
@@ -1527,10 +1773,12 @@ def from_uri(
         writable_storage,
         readable_storage,
         adapters_by_mimetype,
+        cache_settings,
         storage_pool_size=storage_pool_size,
         storage_max_overflow=storage_max_overflow,
     )
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
+
     return adapter
 
 

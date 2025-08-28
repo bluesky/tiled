@@ -44,9 +44,11 @@ jobs:
     - name: Install tiled
       run: uv sync --all-extras
 
-    - name: Start LDAP service in container.
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/start_LDAP.sh
+    # TODO Find a new image to use.
+    # https://github.com/bluesky/tiled/issues/1109
+    # - name: Start LDAP service in container.
+    #   shell: bash -l {0}
+    #   run: source continuous_integration/scripts/start_LDAP.sh
 
     - name: Download SQLite example data.
       shell: bash -l {0}
@@ -55,6 +57,10 @@ jobs:
     - name: Start PostgreSQL service in container.
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_postgres.sh
+
+    - name: Start Redis service in container.
+      shell: bash -l {0}
+      run: source continuous_integration/scripts/start_redis.sh
 
 
     - name: Ensure example data is migrated to current catalog database schema.
@@ -75,10 +81,13 @@ jobs:
         uv run coverage report -m
         uv run coverage xml -o cov.xml
       env:
-        # Provide test suite with a PostgreSQL database to use.
+        # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
-        # Opt in to LDAPAuthenticator tests.
-        TILED_TEST_LDAP: 1
+        TILED_TEST_REIDS_URI: redis://localhost:6379
+        # TODO Reinstate after finding a new image to use
+        # https://github.com/bluesky/tiled/issues/1109
+        # # Opt in to LDAPAuthenticator tests.
+        # TILED_TEST_LDAP: 1
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
