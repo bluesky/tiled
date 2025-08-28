@@ -266,9 +266,26 @@ async def get_current_access_tags(
         return None
 
 
+def get_api_key_websocket(
+    authorization: Annotated[Optional[str], Header()] = None,
+):
+    if authorization is None:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="An API key must be passed in the Authorization header",
+        )
+    scheme, api_key = get_authorization_scheme_param(authorization)
+    if scheme.lower() != "apikey":
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Authorization header must be formatted like 'Apikey SECRET'",
+        )
+    return api_key
+
+
 async def get_current_access_tags_websocket(
     websocket: WebSocket,
-    api_key: Optional[str] = Depends(get_api_key),
+    api_key: Optional[str] = Depends(get_api_key_websocket),
     db: Optional[AsyncSession] = Depends(get_database_session),
 ) -> Optional[Set[str]]:
     if api_key is not None:
@@ -352,7 +369,7 @@ async def get_current_scopes(
 
 async def get_current_scopes_websocket(
     websocket: WebSocket,
-    api_key: Optional[str] = Depends(get_api_key),
+    api_key: Optional[str] = Depends(get_api_key_websocket),
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
 ) -> set[str]:
@@ -381,7 +398,9 @@ async def check_scopes(
         )
 
 
-async def get_current_principal_from_api_key(api_key, authenticated, db, settings):
+async def get_current_principal_from_api_key(
+    api_key: str, authenticated: bool, db: AsyncSession, settings: Settings
+):
     if authenticated:
         # Tiled is in a multi-user configuration with authentication providers.
         # We store the hashed value of the API key secret.
@@ -428,21 +447,10 @@ async def get_current_principal_from_api_key(api_key, authenticated, db, setting
 
 async def get_current_principal_websocket(
     websocket: WebSocket,
-    authorization: Annotated[Optional[str], Header()] = None,
+    api_key: str = Depends(get_api_key_websocket),
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
 ):
-    if authorization is None:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="An API key must be passed in the Authorization header",
-        )
-    scheme, api_key = get_authorization_scheme_param(authorization)
-    if scheme.lower() != "apikey":
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail="Authorization header must be formatted like 'Apikey SECRET'",
-        )
     principal = await get_current_principal_from_api_key(
         api_key, websocket.app.state.authenticated, db, settings
     )
