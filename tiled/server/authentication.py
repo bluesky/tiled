@@ -267,6 +267,13 @@ async def get_current_access_tags(
 
 
 async def move_api_key(request: Request, api_key: Optional[str] = Depends(get_api_key)):
+    """
+    Move API key from query parameter to cookie.
+
+    When a URL with an API key in the query parameter is opened in a browser,
+    the API key is set as a cookie so that subsequent requests from the browser
+    are authenticated. (This approach was inspired by Jupyter notebook.)
+    """
     if ("api_key" in request.query_params) and (
         request.cookies.get(API_KEY_COOKIE_NAME) != api_key
     ):
@@ -425,6 +432,7 @@ async def get_current_principal(
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
     db: Optional[AsyncSession] = Depends(get_database_session),
+    _=Depends(move_api_key),
     # TODO: https://github.com/bluesky/tiled/issues/923
     # Remove non-Principal return types
 ) -> Optional[schemas.Principal]:

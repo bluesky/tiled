@@ -37,8 +37,6 @@ from starlette.status import (
 )
 
 from tiled.query_registration import QueryRegistry, default_query_registry
-
-# from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
 from ..catalog.adapter import WouldDeleteData
@@ -235,7 +233,7 @@ def build_app(
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan)  # , dependencies=[Depends(move_api_key)])
+    app = FastAPI(lifespan=lifespan)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
