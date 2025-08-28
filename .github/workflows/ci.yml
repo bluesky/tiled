@@ -79,8 +79,9 @@ jobs:
         uv run coverage report -m
         uv run coverage xml -o cov.xml
       env:
-        # Provide test suite with a PostgreSQL database to use.
+        # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
+        TILED_TEST_REIDS_URI: redis://localhost:6379
         # Opt in to LDAPAuthenticator tests.
         TILED_TEST_LDAP: 1
 

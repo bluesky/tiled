@@ -16,11 +16,9 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture(scope="function")
-def tiled_websocket_context(tmpdir):
+def tiled_websocket_context(tmpdir, redis_uri):
     """Fixture that provides a Tiled context with websocket support."""
-    import random
 
-    db_num = random.randint(1, 15)  # Use random Redis database
     tree = from_uri(
         "sqlite:///:memory:",
         writable_storage=[
@@ -30,7 +28,7 @@ def tiled_websocket_context(tmpdir):
         readable_storage=None,
         init_if_not_exists=True,
         cache_settings={
-            "uri": f"redis://localhost:6379/{db_num}",
+            "uri": redis_uri,
             "ttl": 60,
             "socket_timeout": 10.0,
             "socket_connect_timeout": 10.0,
