@@ -51,11 +51,13 @@ jobs:
         if: github.ref_type == 'tag'
         with:
           context: .
-          file: Dockerfile
+          file: Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Install Helm
         uses: Azure/setup-helm@v4

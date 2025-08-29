@@ -14,6 +14,9 @@ import pytest_asyncio
 import sqlalchemy.exc
 import tifffile
 import xarray
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
 
 from ..adapters.csv import CSVAdapter
 from ..adapters.dataframe import ArrayAdapter
@@ -28,10 +31,10 @@ from ..client.xarray import write_xarray_dataset
 from ..queries import Eq, Key
 from ..server.app import build_app, build_app_from_config
 from ..server.schemas import Asset, DataSource, Management
-from ..storage import SQLStorage, get_storage, parse_storage
+from ..storage import SQLStorage, get_storage, parse_storage, sanitize_uri
 from ..structures.core import StructureFamily
-from ..utils import Conflicts, ensure_uri
-from .utils import enter_username_password, sql_table_exists
+from ..utils import Conflicts, ensure_specified_sql_driver, ensure_uri
+from .utils import sql_table_exists
 
 
 @pytest_asyncio.fixture
@@ -274,6 +277,8 @@ async def test_write_dataframe_external_direct(a, tmpdir):
 
 @pytest.mark.asyncio
 async def test_write_array_internal_direct(a, tmpdir):
+    from ..media_type_registration import default_deserialization_registry
+
     arr = numpy.ones((5, 3))
     ad = ArrayAdapter.from_array(arr)
     structure = ad.structure()
@@ -290,7 +295,12 @@ async def test_write_array_internal_direct(a, tmpdir):
         ],
     )
     x = await a.lookup_adapter(["x"])
-    await x.write(arr)
+
+    media_type = "application/octet-stream"
+    body = arr.tobytes()
+    deserializer = default_deserialization_registry.dispatch("array", media_type)
+    await x.write(media_type, deserializer, x, body)
+
     val = await x.read()
     assert numpy.array_equal(val, arr)
 
@@ -700,76 +710,6 @@ async def test_delete_external_asset_registered_twice(tmpdir):
         assert len(assets_after_second_delete) == 0
 
 
-@pytest.mark.asyncio
-async def test_access_control(tmpdir, sqlite_or_postgres_uri):
-    config = {
-        "authentication": {
-            "allow_anonymous_access": True,
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {
-                            "alice": "secret1",
-                            "bob": "secret2",
-                            "admin": "admin",
-                        }
-                    },
-                }
-            ],
-        },
-        "access_control": {
-            "access_policy": "tiled.access_policies:SimpleAccessPolicy",
-            "args": {
-                "provider": "toy",
-                "access_lists": {
-                    "alice": ["outer_x", "inner"],
-                    "bob": ["outer_y"],
-                },
-                "admins": ["admin"],
-                "public": ["outer_z", "inner"],
-            },
-        },
-        "database": {
-            "uri": "sqlite://",  # in-memory
-        },
-        "trees": [
-            {
-                "tree": "catalog",
-                "path": "/",
-                "args": {
-                    "uri": sqlite_or_postgres_uri,
-                    "writable_storage": str(tmpdir / "data"),
-                    "init_if_not_exists": True,
-                },
-            },
-        ],
-    }
-
-    app = build_app_from_config(config)
-    with Context.from_app(app) as context:
-        admin_client = from_context(context)
-        with enter_username_password("admin", "admin"):
-            admin_client.login()
-            for key in ["outer_x", "outer_y", "outer_z"]:
-                container = admin_client.create_container(key)
-                container.write_array([1, 2, 3], key="inner")
-            admin_client.logout()
-        alice_client = from_context(context)
-        with enter_username_password("alice", "secret1"):
-            alice_client.login()
-            alice_client["outer_x"]["inner"].read()
-            with pytest.raises(KeyError):
-                alice_client["outer_y"]
-            alice_client.logout()
-        public_client = from_context(context)
-        public_client["outer_z"]["inner"].read()
-        with pytest.raises(KeyError):
-            public_client["outer_x"]
-
-
 @pytest.mark.parametrize(
     "assets",
     [
@@ -894,3 +834,122 @@ async def test_init_db_logging(sqlite_or_postgres_uri, tmpdir, caplog):
         for record in caplog.records:
             assert record.levelname != "ERROR", f"Error found creating app {record.msg}"
         assert app
+
+
+@pytest.mark.parametrize(
+    "exact_count_limit, expected_lower_bound", [(None, 10), (5, 6), (-1, 10)]
+)
+@pytest.mark.asyncio
+async def test_container_length(
+    sqlite_or_postgres_uri, exact_count_limit, expected_lower_bound
+):
+    config = {
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+    }
+    if exact_count_limit is not None:
+        config["exact_count_limit"] = exact_count_limit
+
+    app = build_app_from_config(config)
+
+    # Turn off autovacuum in Postgres (just in case)
+    # Create a separate engine to avoid interfeing with the running loop
+    if sqlite_or_postgres_uri.startswith("postgresql"):
+        engine = create_async_engine(
+            ensure_specified_sql_driver(sqlite_or_postgres_uri)
+        )
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE nodes
+                    SET (autovacuum_enabled = false,
+                        autovacuum_analyze_threshold = 0);
+                """
+                )
+            )
+
+    with Context.from_app(app) as context:
+        client = from_context(context)
+
+        # Create a container with some nested nodes
+        a = client.create_container("a")
+        for i in range(10):
+            b = a.create_container(key=f"node_{i}")
+            b.create_container(key=f"subnode_{i}")
+
+        # Before analyzing the table, the length should be thresholded
+        len_from_metadata = client["a"].item["attributes"]["structure"]["count"]
+        assert len_from_metadata == expected_lower_bound
+
+        # Analyze the table to get update pg_statistics
+        if sqlite_or_postgres_uri.startswith("postgresql"):
+            async with engine.connect() as conn:
+                conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                await conn.execute(text("VACUUM ANALYZE nodes;"))
+            await engine.dispose()
+
+        # After analyzing, the length should be updated (at least be approximate)
+        len_from_metadata = client["a"].item["attributes"]["structure"]["count"]
+        assert len_from_metadata <= 10
+
+        # len() returns the exact count
+        assert len(client["a"]) == 10
+
+
+@pytest.mark.parametrize(
+    "desired, expected",
+    [((None, None, None, None), (5, 5, 10, 10)), ((7, 11, 13, 17), (7, 11, 13, 17))],
+)
+def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expected):
+    config = {
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": sql_storage_uri,
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+        "catalog_pool_size": desired[0],
+        "storage_pool_size": desired[1],
+        "catalog_max_overflow": desired[2],
+        "storage_max_overflow": desired[3],
+    }
+
+    app = build_app_from_config(config)
+
+    # Check the catalog pool
+    catalog_pool = app.state.root_tree.context.engine.pool
+    assert isinstance(catalog_pool, AsyncAdaptedQueuePool)
+    assert catalog_pool.size() == expected[0]
+    assert catalog_pool._max_overflow == expected[2]
+
+    # Check the storage pool
+    storage = get_storage(ensure_uri(sanitize_uri(sql_storage_uri)[0]))
+    storage: SQLStorage = cast(SQLStorage, storage)
+
+    if sql_storage_uri.startswith("duckdb"):
+        # DuckDB does not support pooling
+        assert isinstance(storage._connection_pool, StaticPool)
+        assert storage.pool_size == 1
+        assert storage.max_overflow == 0
+    else:
+        assert isinstance(storage._connection_pool, QueuePool)
+        assert storage.pool_size == expected[1]
+        assert storage.max_overflow == expected[3]
+        assert storage._connection_pool.size() == expected[1]
+        assert storage._connection_pool._max_overflow == expected[3]
+
+    storage.dispose()

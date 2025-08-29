@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import List
+from typing import List, Literal
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -226,10 +226,12 @@ class Context:
             # starlette is available.
             from starlette.testclient import TestClient
 
+            base_uri = f"{uri.scheme}://{uri.netloc}"
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
                 app=app,
                 raise_server_exceptions=raise_server_exceptions,
+                base_url=base_uri,
             )
             client.timeout = timeout
             client.headers = headers
@@ -444,12 +446,13 @@ class Context:
         timeout=None,
         api_key=UNSET,
         raise_server_exceptions=True,
+        uri=None,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
         """
         context = cls(
-            uri="http://local-tiled-app/api/v1",
+            uri="http://local-tiled-app/api/v1" if not uri else uri,
             headers=headers,
             api_key=None,
             cache=cache,
@@ -473,7 +476,7 @@ class Context:
         return context
 
     @property
-    def tokens(self):
+    def tokens(self) -> DictView[Literal["access_token", "refresh_token"], str]:
         "A view of the current access and refresh tokens."
         return DictView(self.http_client.auth.tokens)
 
@@ -517,7 +520,7 @@ class Context:
                     )
                 ).json()
 
-    def create_api_key(self, scopes=None, expires_in=None, note=None):
+    def create_api_key(self, scopes=None, expires_in=None, note=None, access_tags=None):
         """
         Generate a new API key.
 
@@ -536,6 +539,9 @@ class Context:
             have the maximum lifetime allowed by the server.
         note : Optional[str]
             Description (for humans).
+        access_tags : Optional[List[str]]
+            Restrict the access available to the API key by listing specific tags.
+            By default, this will have no limits on access tags.
         """
         if isinstance(expires_in, str):
             expires_in = parse_time_string(expires_in)
@@ -545,7 +551,12 @@ class Context:
                     self.http_client.post(
                         self.server_info.authentication.links.apikey,
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                        json={
+                            "scopes": scopes,
+                            "access_tags": access_tags,
+                            "expires_in": expires_in,
+                            "note": note,
+                        },
                     )
                 ).json()
 
@@ -875,7 +886,9 @@ class Admin:
                     )
                 ).json()
 
-    def create_api_key(self, uuid, scopes=None, expires_in=None, note=None):
+    def create_api_key(
+        self, uuid, scopes=None, expires_in=None, note=None, access_tags=None
+    ):
         """
         Generate a new API key for another user or service.
 
@@ -892,6 +905,9 @@ class Admin:
             allowed by the server.
         note : Optional[str]
             Description (for humans).
+        access_tags : Optional[List[str]]
+            Restrict the access available to the API key by listing specific tags.
+            By default, this will have no limits on access tags.
         """
         for attempt in retry_context():
             with attempt:
@@ -899,7 +915,12 @@ class Admin:
                     self.context.http_client.post(
                         f"{self.base_url}/auth/principal/{uuid}/apikey",
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                        json={
+                            "scopes": scopes,
+                            "access_tags": access_tags,
+                            "expires_in": expires_in,
+                            "note": note,
+                        },
                     )
                 ).json()
 

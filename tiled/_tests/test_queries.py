@@ -20,6 +20,7 @@ from ..queries import (
     FullText,
     In,
     Key,
+    KeyPresent,
     KeysFilter,
     Like,
     NotEq,
@@ -58,6 +59,12 @@ mapping["full_text_test_case_urple"] = ArrayAdapter.from_array(
 mapping["specs_foo_bar"] = ArrayAdapter.from_array(numpy.ones(10), specs=["foo", "bar"])
 mapping["specs_foo_bar_baz"] = ArrayAdapter.from_array(
     numpy.ones(10), specs=["foo", "bar", "baz"]
+)
+nested_metadata = {
+    "nested": {"nested-key-1": "nested-value-1", "nested-key-2": "nested-value-2"}
+}
+mapping["nested_key_test"] = ArrayAdapter.from_array(
+    numpy.ones(10), metadata=nested_metadata
 )
 
 
@@ -324,6 +331,41 @@ def test_structure_families(client):
         StructureFamilyQuery("foo")
 
     assert set(client.search(StructureFamilyQuery("array"))) == set(mapping)
+
+
+def test_key_present(client):
+    if client.metadata["backend"] == "map":
+        pytest.skip("No 'KeyPresent' support on MapAdapter")
+    # These containers have a "color" key.
+    assert list(client.search(KeyPresent("color"))) == [
+        "full_text_test_case",
+        "full_text_test_case_urple",
+    ]
+    # outer key present
+    assert list(client.search(KeyPresent("nested"))) == ["nested_key_test"]
+    # one of the inner keys present
+    assert list(client.search(KeyPresent("nested.nested-key-1"))) == ["nested_key_test"]
+    assert list(client.search(KeyPresent("nested.nested-key-2"))) == ["nested_key_test"]
+    # both inner keys
+    assert list(
+        client.search(KeyPresent("nested.nested-key-1")).search(
+            KeyPresent("nested.nested-key-2")
+        )
+    ) == ["nested_key_test"]
+    # inner key not present
+    assert list(client.search(KeyPresent("nested.nested-key-3"))) == []
+    # outer key not present
+    assert list(client.search(KeyPresent("nonsense.nested-key-1"))) == []
+    # These are all the containers that do not have a "number" key.
+    assert list(client.search(KeyPresent("number", False))) == [
+        "does_contain_z",
+        "does_not_contain_z",
+        "full_text_test_case",
+        "full_text_test_case_urple",
+        "specs_foo_bar",
+        "specs_foo_bar_baz",
+        "nested_key_test",
+    ]
 
 
 def test_keys_filter(client):

@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Tuple, Union
+from typing import Optional, Set, Tuple, Union
 
 import numcodecs
 import orjson
@@ -11,8 +11,13 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERRO
 
 from ..structures.core import StructureFamily
 from ..type_aliases import Scopes
-from ..utils import SpecialUsers, ensure_awaitable
-from .authentication import get_current_principal, get_current_scopes, get_session_state
+from ..utils import ensure_awaitable
+from .authentication import (
+    get_current_access_tags,
+    get_current_principal,
+    get_current_scopes,
+    get_session_state,
+)
 from .dependencies import get_entry, get_root_tree
 from .schemas import Principal
 from .utils import record_timing
@@ -50,7 +55,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_attrs(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -60,13 +66,13 @@ def get_zarr_router_v2() -> APIRouter:
             path,
             ["read:data", "read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
             metrics=request.state.metrics,
             structure_families={
                 StructureFamily.table,
-                StructureFamily.composite,
                 StructureFamily.container,
                 StructureFamily.array,
                 StructureFamily.sparse,
@@ -85,7 +91,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_group_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -94,13 +101,13 @@ def get_zarr_router_v2() -> APIRouter:
             path,
             ["read:data", "read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
             metrics=request.state.metrics,
             structure_families={
                 StructureFamily.table,
-                StructureFamily.composite,
                 StructureFamily.container,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
@@ -112,7 +119,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_array_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -121,6 +129,7 @@ def get_zarr_router_v2() -> APIRouter:
             path,
             ["read:data", "read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -154,7 +163,8 @@ def get_zarr_router_v2() -> APIRouter:
     async def get_zarr_array(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -171,6 +181,7 @@ def get_zarr_router_v2() -> APIRouter:
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -179,16 +190,12 @@ def get_zarr_router_v2() -> APIRouter:
                 StructureFamily.array,
                 StructureFamily.sparse,
                 StructureFamily.table,
-                StructureFamily.composite,
                 StructureFamily.container,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
 
-        if entry.structure_family in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if entry.structure_family == StructureFamily.container:
             # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
             if hasattr(entry, "keys_range"):
                 keys = await entry.keys_range(offset=0, limit=None)
@@ -275,7 +282,8 @@ def get_zarr_router_v3() -> APIRouter:
     async def get_zarr_metadata(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -286,6 +294,7 @@ def get_zarr_router_v3() -> APIRouter:
             path,
             ["read:data", "read:metadata"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -294,7 +303,6 @@ def get_zarr_router_v3() -> APIRouter:
                 StructureFamily.array,
                 StructureFamily.table,
                 StructureFamily.sparse,
-                StructureFamily.composite,
                 StructureFamily.container,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
@@ -366,7 +374,8 @@ def get_zarr_router_v3() -> APIRouter:
         request: Request,
         path: str,
         block: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -375,6 +384,7 @@ def get_zarr_router_v3() -> APIRouter:
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
@@ -445,7 +455,8 @@ def get_zarr_router_v3() -> APIRouter:
     async def get_zarr_group(
         request: Request,
         path: str,
-        principal: Union[Principal, SpecialUsers] = Depends(get_current_principal),
+        principal: Union[Principal] = Depends(get_current_principal),
+        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -454,26 +465,23 @@ def get_zarr_router_v3() -> APIRouter:
             path,
             ["read:data"],
             principal,
+            authn_access_tags,
             authn_scopes,
             root_tree,
             session_state,
             metrics=request.state.metrics,
             structure_families={
-                StructureFamily.composite,
-                StructureFamily.container,
-                StructureFamily.table,
                 StructureFamily.array,
+                StructureFamily.container,
                 StructureFamily.sparse,
+                StructureFamily.table,
             },
             access_policy=getattr(request.app.state, "access_policy", None),
         )
         # Remove query params and the trailing slash from the url
         url = str(request.url).split("?")[0].rstrip("/")
 
-        if entry.structure_family in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if entry.structure_family == StructureFamily.container:
             # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
             if hasattr(entry, "keys_range"):
                 keys = await entry.keys_range(offset=0, limit=None)
@@ -494,6 +502,7 @@ def get_zarr_router_v3() -> APIRouter:
                 request,
                 path,
                 principal=principal,
+                authn_access_tags=authn_access_tags,
                 authn_scopes=authn_scopes,
                 root_tree=root_tree,
                 session_state=session_state,

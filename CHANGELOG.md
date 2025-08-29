@@ -3,6 +3,67 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+
+## v0.1.0-b39 (2025-08-28)
+
+### Fixed
+
+- Default paraneter (`None`) for the `patch` parameter in `PUT /data_source` endpoint.
+
+
+## v0.1.0-b38 (2025-08-28)
+
+### Fixed
+
+- Critical bug in new `tiled.access_control` code, missing `__init__.py`.
+
+
+## v0.1.0-b37 (2025-08-28)
+
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+- API keys can now be restricted to specific access tags
+- New unit tests covering the new access policy and access control features
+- Experimental support for streaming array data over a websocket endpoint.
+  Documentation to follow.
+
+### Changed
+
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+- Access control code is now in the `access_control` subdirectory
+- `SimpleAccessPolicy` has been removed
+- AuthN database can now be in-memory SQLite
+- Catalog database can now be shared when using in-memory SQLite
+- `TagBasedAccessPolicy` now supports anonymous access
+- `AccessTagsParser` is now async
+- `toy_authentication` example config now uses `TagBasedAccessPolicy`
+- Added helpers for setting up the access tag and catalog databases for `toy_authentication`
+
+### Fixed
+
+- Access control on container export was partially broken, now access works as expected.
+
+
+## v0.1.0-b36 (2025-08-26)
+
+### Changed
+
+- Demoted the `Composite` structure family to `composite` spec.
+- Typehint utils collection implementations
+
+
+## v0.1.0-b35 (2025-08-20)
+
+### Changed
+
+- Optimized the calculation of an approximate length of containers.
+
+### Added
+
+- The project ships with a pixi manifest (`pixi.toml`).
+- Connection pool settings for catalog and storage databases.
+
 ## v0.1.0-b34 (2025-08-14)
 
 ### Fixed
@@ -50,6 +111,7 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - Correct indentation of authenticator args field in the service config schema
   and ensure it correctly validates configurations.
 
+
 ## v0.1.0-b32 (2025-08-04)
 
 This release is identical to the previous one; it was made to fix our
@@ -71,7 +133,6 @@ continuous deployment processes.
 - Make principal type hints consistent in router
 - Typehinted database access methods
 - Explicit type conversion in SQL adapter when appending to an existing table.
-
 
 ## v0.1.0-b30 (2025-07-18)
 

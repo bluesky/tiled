@@ -9,13 +9,15 @@ import importlib
 from dataclasses import asdict, dataclass
 from typing import Dict, Optional
 
+from pydantic import StringConstraints
+from typing_extensions import Annotated
+
 from ..utils import OneShotCachedMap
 
 
 class StructureFamily(str, enum.Enum):
     array = "array"
     awkward = "awkward"
-    composite = "composite"
     container = "container"
     sparse = "sparse"
     table = "table"
@@ -23,8 +25,8 @@ class StructureFamily(str, enum.Enum):
 
 @dataclass(frozen=True)
 class Spec:
-    name: str
-    version: Optional[str] = None
+    name: Annotated[str, StringConstraints(max_length=255)]
+    version: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
 
     def __init__(self, name, version=None) -> None:
         # Enable the name to be passed as a position argument.
@@ -47,7 +49,8 @@ class Spec:
     model_dump = dict  # For easy interoperability with pydantic 2.x models
 
 
-STRUCTURE_TYPES = OneShotCachedMap(
+# TODO: make type[Structure] after #1036
+STRUCTURE_TYPES = OneShotCachedMap[StructureFamily, type](
     {
         StructureFamily.array: lambda: importlib.import_module(
             "...structures.array", StructureFamily.__module__
