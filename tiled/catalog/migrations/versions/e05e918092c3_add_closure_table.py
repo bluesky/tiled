@@ -207,6 +207,7 @@ def upgrade():
             WHERE {json_len_func}(child.ancestors) >= {depth + 1}
             AND {condition_statement}
             AND parent.parent = child.parent
+            AND child.id != parent.id;
         """
             )
         )
