@@ -82,6 +82,7 @@ The `parent` column is introduced to represent the parent-child relationships be
 The `ancestors` column is removed, as it is no longer needed with the closure table structure.
 
 """
+
 import logging
 
 import sqlalchemy as sa
@@ -218,13 +219,17 @@ def upgrade():
 
     # 7½. Insert self-referential records into nodes_closure for each node, including the "root" node
     #     (Any conflicts here are clearly a mistake, so we just clobber them)
+    conflict_strategy = (
+        "ON CONFLICT (ancestor, descendant) DO UPDATE SET depth = EXCLUDED.depth"
+        if connection.engine.dialect.name == "postgresql"
+        else ""
+    )
     connection.execute(
         sa.text(
-            """
+            f"""
         INSERT INTO nodes_closure(ancestor, descendant, depth)
         SELECT id, id, 0 FROM nodes
-        ON CONFLICT (ancestor, descendant) DO UPDATE
-        SET depth = EXCLUDED.depth;
+        {conflict_strategy};
         """
         )
     )
