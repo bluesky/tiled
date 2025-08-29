@@ -148,6 +148,17 @@ def upgrade():
     )
     logger.info("Inserted root node with id=0.")
 
+    # 4. Insert self-referential records into nodes_closure for each node, including the "root" node
+    connection.execute(
+        sa.text(
+            """
+        INSERT INTO nodes_closure(ancestor, descendant, depth)
+        SELECT id, id, 0 FROM nodes;
+        """
+        )
+    )
+    logger.info("Inserted self-referential records into 'nodes_closure' for each node.")
+
     # 5. Populate the 'parent' column of the 'nodes' table based on the 'ancestors' column
     json_len_func = (
         "jsonb_array_length"
@@ -216,24 +227,6 @@ def upgrade():
             f"Updated 'parent' column and 'nodes_closure' for depth {depth + 1}."
         )
     logger.info("Completed updating 'parent' column recursively.")
-
-    # 7½. Insert self-referential records into nodes_closure for each node, including the "root" node
-    #     (Any conflicts here are clearly a mistake, so we just clobber them)
-    conflict_strategy = (
-        "ON CONFLICT (ancestor, descendant) DO UPDATE SET depth = EXCLUDED.depth"
-        if connection.engine.dialect.name == "postgresql"
-        else ""
-    )
-    connection.execute(
-        sa.text(
-            f"""
-        INSERT INTO nodes_closure(ancestor, descendant, depth)
-        SELECT id, id, 0 FROM nodes
-        {conflict_strategy};
-        """
-        )
-    )
-    logger.info("Inserted self-referential records into 'nodes_closure' for each node.")
 
     # 8. Update index in the 'nodes' table: drop old, add new
     op.drop_index("top_level_metadata", table_name="nodes")
