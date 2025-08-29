@@ -1,10 +1,17 @@
 import enum
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 import numpy
+
+from tiled.structures.root import Structure
+
+# from dtype.descr
+FieldDescr = Union[Tuple[str, str], Tuple[str, str, Tuple[int, ...]]]
+NumpyDescr = List[FieldDescr]
 
 
 class Endianness(str, enum.Enum):
@@ -57,7 +64,7 @@ class Kind(str, enum.Enum):
         object = "O"  # Object (i.e. the memory contains a pointer to PyObject)
 
     @classmethod
-    def _missing_(cls, key):
+    def _missing_(cls, key: str):
         if key == "O":
             raise ObjectArrayTypeDisabled(
                 "Numpy 'object'-type arrays are not enabled by default "
@@ -78,17 +85,19 @@ class BuiltinDtype:
     itemsize: int
     dt_units: Optional[str] = None
 
-    __endianness_map = {
+    _endianness_map: ClassVar[Mapping[str, str]] = {
         ">": "big",
         "<": "little",
         "=": sys.byteorder,
         "|": "not_applicable",
     }
 
-    __endianness_reverse_map = {"big": ">", "little": "<", "not_applicable": "|"}
+    _endianness_reverse_map: ClassVar[Mapping[str, str]] = {
+        v: k for k, v in _endianness_map.items() if k != "="
+    }
 
     @classmethod
-    def from_numpy_dtype(cls, dtype) -> "BuiltinDtype":
+    def from_numpy_dtype(cls, dtype: numpy.dtype) -> "BuiltinDtype":
         # Extract datetime units from the dtype string representation,
         # e.g. `'<M8[ns]'` has `dt_units = '[ns]'`. Count determines the number of base units in a step.
         dt_units = None
@@ -97,7 +106,7 @@ class BuiltinDtype:
             dt_units = f"[{count if count > 1 else ''}{unit}]"
 
         return cls(
-            endianness=cls.__endianness_map[dtype.byteorder],
+            endianness=cls._endianness_map[dtype.byteorder],
             kind=Kind(dtype.kind),
             itemsize=dtype.itemsize,
             dt_units=dt_units,
@@ -106,8 +115,8 @@ class BuiltinDtype:
     def to_numpy_dtype(self) -> numpy.dtype:
         return numpy.dtype(self.to_numpy_str())
 
-    def to_numpy_str(self):
-        endianness = self.__endianness_reverse_map[self.endianness]
+    def to_numpy_str(self) -> str:
+        endianness = self._endianness_reverse_map[self.endianness]
         # dtype.itemsize always reports bytes.  The format string from the
         # numeric types the string format is: {type_code}{byte_count} so we can
         # directly use the item size.
@@ -125,7 +134,7 @@ class BuiltinDtype:
         return self.to_numpy_str()
 
     @classmethod
-    def from_json(cls, structure):
+    def from_json(cls, structure: Mapping[str, Any]) -> "BuiltinDtype":
         return cls(
             kind=Kind(structure["kind"]),
             itemsize=structure["itemsize"],
@@ -141,7 +150,7 @@ class Field:
     shape: Optional[Tuple[int, ...]]
 
     @classmethod
-    def from_numpy_descr(cls, field):
+    def from_numpy_descr(cls, field: FieldDescr) -> "Field":
         name, *rest = field
         if name == "":
             raise ValueError(
@@ -159,7 +168,7 @@ class Field:
             FType = StructDtype.from_numpy_dtype(numpy.dtype(f_type))
         return cls(name=name, dtype=FType, shape=shape)
 
-    def to_numpy_descr(self):
+    def to_numpy_descr(self) -> FieldDescr:
         if isinstance(self.dtype, BuiltinDtype):
             base = [self.name, self.dtype.to_numpy_str()]
         else:
@@ -170,7 +179,7 @@ class Field:
             return tuple(base + [self.shape])
 
     @classmethod
-    def from_json(cls, structure):
+    def from_json(cls, structure: Mapping[str, Any]) -> "Field":
         name = structure["name"]
         if "fields" in structure["dtype"]:
             ftype = StructDtype.from_json(structure["dtype"])
@@ -185,7 +194,7 @@ class StructDtype:
     fields: List[Field]
 
     @classmethod
-    def from_numpy_dtype(cls, dtype):
+    def from_numpy_dtype(cls, dtype: numpy.dtype) -> "StructDtype":
         # subdtypes push extra dimensions into arrays, we should handle these
         # a layer up and report an array with bigger dimensions.
         if dtype.subdtype is not None:
@@ -198,20 +207,20 @@ class StructDtype:
             fields=[Field.from_numpy_descr(f) for f in dtype.descr],
         )
 
-    def to_numpy_dtype(self):
+    def to_numpy_dtype(self) -> numpy.dtype:
         return numpy.dtype(self.to_numpy_descr())
 
-    def to_numpy_descr(self):
+    def to_numpy_descr(self) -> NumpyDescr:
         return [f.to_numpy_descr() for f in self.fields]
 
-    def max_depth(self):
+    def max_depth(self) -> int:
         return max(
             1 if isinstance(f.dtype, BuiltinDtype) else 1 + f.dtype.max_depth()
             for f in self.fields
         )
 
     @classmethod
-    def from_json(cls, structure):
+    def from_json(cls, structure: Mapping[str, Any]) -> "StructDtype":
         return cls(
             itemsize=structure["itemsize"],
             fields=[Field.from_json(f) for f in structure["fields"]],
@@ -219,7 +228,7 @@ class StructDtype:
 
 
 @dataclass
-class ArrayStructure:
+class ArrayStructure(Structure):
     data_type: Union[BuiltinDtype, StructDtype]
     chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
@@ -227,7 +236,7 @@ class ArrayStructure:
     resizable: Union[bool, Tuple[bool, ...]] = False
 
     @classmethod
-    def from_json(cls, structure):
+    def from_json(cls, structure: Mapping[str, Any]) -> "ArrayStructure":
         if "fields" in structure["data_type"]:
             data_type = StructDtype.from_json(structure["data_type"])
         else:
@@ -273,7 +282,7 @@ class ArrayStructure:
             data_type = StructDtype.from_numpy_dtype(array.dtype)
         else:
             data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
-        return ArrayStructure(
+        return cls(
             data_type=data_type,
             shape=shape,
             chunks=normalized_chunks,

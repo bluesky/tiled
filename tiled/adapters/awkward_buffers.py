@@ -3,6 +3,7 @@ A directory containing awkward buffers, one file per form key.
 """
 
 import copy
+from collections.abc import Set
 from pathlib import Path
 from typing import Any, List, Optional
 from urllib.parse import quote_plus
@@ -12,7 +13,7 @@ import awkward.forms
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
 from ..structures.awkward import AwkwardStructure
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import Spec
 from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -22,9 +23,6 @@ from .utils import init_adapter_from_catalog
 
 
 class AwkwardBuffersAdapter(AwkwardAdapter):
-    structure_family = StructureFamily.awkward
-    supported_storage = {FileStorage}
-
     @classmethod
     def init_storage(
         cls,
@@ -58,6 +56,7 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         self,
         data_uri: str,
         structure: AwkwardStructure,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ):
@@ -74,6 +73,10 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         )
 
     @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
+
+    @classmethod
     def from_catalog(
         cls,
         data_source: DataSource[AwkwardStructure],
@@ -81,4 +84,4 @@ class AwkwardBuffersAdapter(AwkwardAdapter):
         /,
         **kwargs: Optional[Any],
     ) -> "AwkwardBuffersAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
