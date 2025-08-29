@@ -3,6 +3,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Handling for certain catalog edge cases when building the nodes_closure table.
 
 ## v0.1.0-b39 (2025-08-28)
 
