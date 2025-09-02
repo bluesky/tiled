@@ -22,6 +22,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import OAuth2AuthorizationCodeBearer
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
@@ -35,6 +36,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
@@ -383,18 +385,28 @@ def build_app(
     if authentication.get("providers", []):
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
+        from .authentication import oauth2_scheme  # noqa: F811
         from .authentication import (
             add_external_routes,
             add_internal_routes,
             authentication_router,
-            oauth2_scheme,
         )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
         first_provider = authentication["providers"][0]["provider"]
-        oauth2_scheme.model.flows.password.tokenUrl = (
-            f"/api/v1/auth/provider/{first_provider}/token"
-        )
+        if isinstance(
+            authentication["providers"][0]["authenticator"], ProxiedOIDCAuthenticator
+        ):
+            proxied_authenticator = authentication["providers"][0]["authenticator"]
+            oauth2_scheme = OAuth2AuthorizationCodeBearer(  # noqa: F811
+                authorizationUrl=str(proxied_authenticator.authorization_endpoint),
+                tokenUrl=proxied_authenticator.token_endpoint,
+                refreshUrl=proxied_authenticator.token_endpoint,
+            )
+        else:
+            oauth2_scheme.model.flows.password.tokenUrl = (
+                f"/api/v1/auth/provider/{first_provider}/token"
+            )
         # Authenticators provide Router(s) for their particular flow.
         # Collect them in the authentication_router.
         authentication_router = authentication_router()
@@ -435,7 +447,6 @@ def build_app(
             "refresh_token_max_age",
             "session_max_age",
         ]:
-            # Need to add OIDC providers information somewhere here 
             if authentication.get(item) is not None:
                 setattr(settings, item, authentication[item])
         for item in [
@@ -464,6 +475,13 @@ def build_app(
             settings.database_settings.uri = (
                 settings.database_settings.uri or "sqlite://"
             )
+        if isinstance(
+            authentication.get("providers", [])[0]["authenticator"],
+            ProxiedOIDCAuthenticator,
+        ):
+            settings.authenticator = authentication.get("providers", [])[0][
+                "authenticator"
+            ]
         return settings
 
     async def startup_event():

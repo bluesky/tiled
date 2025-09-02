@@ -9,6 +9,7 @@ from typing import Any, Mapping, Optional, cast
 
 import httpx
 from fastapi import APIRouter, Request
+from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
 from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
@@ -217,6 +218,50 @@ properties:
             )
             return None
         return UserSessionState(verified_body["sub"], {})
+
+
+class ProxiedOIDCAuthenticator(OIDCAuthenticator):
+    configuration_schema = """
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  audience:
+    type: string
+  client_id:
+    type: string
+  well_known_uri:
+    type: string
+  confirmation_message:
+    type: string
+"""
+
+    def __init__(
+        self,
+        audience: str,
+        client_id: str,
+        well_known_uri: str,
+        confirmation_message: str = "",
+    ):
+        super().__init__(
+            audience=audience,
+            client_id=client_id,
+            client_secret="",
+            well_known_uri=well_known_uri,
+            confirmation_message=confirmation_message,
+        )
+        self._oidc_bearer = OAuth2AuthorizationCodeBearer(
+            authorizationUrl=str(self.authorization_endpoint),
+            tokenUrl=self.token_endpoint,
+        )
+
+    @functools.cached_property
+    def keys(self):
+        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+
+    @property
+    def oauth2_schema(self) -> OAuth2:
+        return self._oidc_bearer
 
 
 async def exchange_code(
