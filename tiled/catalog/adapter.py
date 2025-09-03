@@ -1283,6 +1283,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
         metadata = {
+            "sequence": sequence,
             "timestamp": datetime.now().isoformat(),
             "content-type": media_type,
             "shape": shape,
