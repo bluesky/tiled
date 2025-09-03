@@ -136,6 +136,20 @@ class Subscription:
                 ...
 
         >>> sub.add_callback(f)
+
+        Start receiving updates, beginning with the next one.
+
+        >>> sub.start()
+
+        Or start receiving updates beginning as far back as the server has
+        available.
+
+        >>> sub.start(0)
+
+        Or start receiving updates beginning with a specific sequence number.
+
+        >>> sub.start(3)
+
         """
 
         def cleanup(ref: weakref.ref) -> None:
