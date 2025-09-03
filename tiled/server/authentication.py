@@ -4,8 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Union
-from typing import Annotated, Any, Optional, Sequence, Set
+from typing import Annotated, Any, List, Optional, Sequence, Set
 
 from fastapi import (
     APIRouter,
@@ -40,9 +39,8 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
-from tiled.authenticators import ProxiedOIDCAuthenticator
-from tiled.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from tiled.authenticators import ProxiedOIDCAuthenticator
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -516,7 +514,9 @@ async def get_current_principal(
                 detail="Invalid API key",
                 headers=headers_for_401(request, security_scopes),
             )
-    elif decoded_access_token is not None and not isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+    elif decoded_access_token is not None and not isinstance(
+        settings.authenticator, ProxiedOIDCAuthenticator
+    ):
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
             type=decoded_access_token["sub_typ"],
@@ -525,12 +525,14 @@ async def get_current_principal(
                 for identity in decoded_access_token["ids"]
             ],
         )
-    elif decoded_access_token is not None and isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+    elif decoded_access_token is not None and isinstance(
+        settings.authenticator, ProxiedOIDCAuthenticator
+    ):
         # TODO: Fix the below code
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
             type=decoded_access_token["type"],
-            identities=[]
+            identities=[],
         )
     else:
         # No form of authentication is present.
