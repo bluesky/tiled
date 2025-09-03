@@ -767,3 +767,39 @@ def test_create_table_with_custom_name(
             x = client.create_appendable_table(table.schema, table_name=table_name)
             x.append_partition(0, table)
             assert x.read()["column_name"].to_list() == [1, 2, 3]
+
+
+def test_deprecated_argument_order_raises_warning(tree: CatalogContainerAdapter):
+    table = pyarrow.Table.from_arrays([[1, 2, 3]], ["column_name"])
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context, include_data_sources=True)
+
+        # Writable table
+        df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        structure = TableStructure.from_pandas(df)
+
+        for mimetype in [
+            PARQUET_MIMETYPE,
+            "text/csv",
+            APACHE_ARROW_FILE_MIME_TYPE,
+        ]:
+            x = client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=structure,
+                        mimetype=mimetype,
+                    ),
+                ],
+            )
+            with pytest.warns(DeprecationWarning, match=r"The order of arguments"):
+                x.write_partition(df, 0)  # this argument order is deprecated
+            x.refresh()
+            assert x.read() is not None
+
+        # Appendable table
+        x = client.create_appendable_table(table.schema)
+        with pytest.warns(DeprecationWarning, match=r"The order of arguments"):
+            x.append_partition(table, 0)  # this argument order is deprecated
+        assert x.read() is not None
