@@ -92,23 +92,23 @@ and purposefully named.)
 
 table_{schema_hash}
 dataset_id | partition_id | x | y | temp
---| --| --| --| --
-42 | 1 | . | . | .
-42 | 1 | . | . | .
-43 | 1 | . | . | .
-43 | 1 | . | . | .
-44 | 1 | . | . | .
-44 | 1 | . | . | .
+-- | -- | -- | -- | --
+42 | 1  | .  | .  | .
+42 | 1  | .  | .  | .
+43 | 1  | .  | .  | .
+43 | 1  | .  | .  | .
+44 | 1  | .  | .  | .
+44 | 1  | .  | .  | .
 
 
 table_{schema_hash}
 dataset_id | partition_id | y | temp | z
--- |-- | -- | --
-45 | 1 | . | . | .
-45 | 1 | . | . | .
-45 | 1 | . | . | .
-45 | 2 | . | . | .
-45 | 2 | . | . | .
+-- | -- | -- | -- | --
+45 | 1  | .  | .  | .
+45 | 1  | .  | .  | .
+45 | 1  | .  | .  | .
+45 | 2  | .  | .  | .
+45 | 2  | .  | .  | .
 
 This means, the number of tables scales with the number of unique schemas---
 roughly speaking, the number of distinct types of experiments.
