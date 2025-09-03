@@ -94,7 +94,7 @@ This means, the number of tables scales with the number of unique schemas---
 roughly speaking, the number of distinct types of experiments.
 
 Currently, Tiled merely fetches data, filtered by `dataset_id` and optionally
-by `partition_id` (currently, we use single partition for all datasets by
+by `partition_id` (currently, we use a single partition for all datasets by
 default). We foresee exposing the capability to query relations across columns
 (`SELECT ... WHERE ...`) or do _limited_ server-side
 reductions (`SELECT MAX(...) WHERE ...`). Filtering data based on value has
