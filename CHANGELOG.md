@@ -13,6 +13,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Handling for certain catalog edge cases when building the nodes_closure table.
+- Enforce validity checks when adding appendable tables to "composite"-spec'ed containers.
 
 ## v0.1.0-b39 (2025-08-28)
 
