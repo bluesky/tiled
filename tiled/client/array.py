@@ -1,5 +1,5 @@
 import itertools
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Union
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -349,18 +349,9 @@ class _DaskArrayClient(BaseClient):
             params=params,
         )
 
-    def subscribe(self, start: Optional[int] = None) -> "Subscription":
+    def subscribe(self) -> "Subscription":
         """
         Create a Subscription on writes to this node.
-
-        Parameters
-        ----------
-        start : int, optional
-            By default, the stream begins from the most recent update. Use this
-            parameter to replay from some earlier update. Use 1 to start from
-            the first item, 0 to start from as far back as available (which may
-            be later than the first item), or any positive integer to start
-            from a specific point in the sequence.
 
         Returns
         -------
@@ -369,7 +360,7 @@ class _DaskArrayClient(BaseClient):
         # Keep this import here to defer the websockets import until/unless needed.
         from .stream import Subscription
 
-        return Subscription(self.context, self.path_parts, start)
+        return Subscription(self.context, self.path_parts)
 
 
 # Subclass with a public class that adds the dask-specific methods.

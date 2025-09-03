@@ -22,12 +22,14 @@ class _TestClientWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: str):
+    def connect(self, api_key: str, start: int = None):
         """Connect to the websocket."""
-        query_string = self._uri.query.decode() if self._uri.query else ""
-        path = self._uri.path + ("?" + query_string if query_string else "")
+        params = self._uri.params
+        if start is not None:
+            params = params.set("start", start)
         self._websocket = self._http_client.websocket_connect(
-            path, headers={"Authorization": f"Apikey {api_key}"}
+            str(self._uri.copy_with(params=params)),
+            headers={"Authorization": f"Apikey {api_key}"},
         )
         self._websocket.__enter__()
 
@@ -48,10 +50,13 @@ class _RegularWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: str):
+    def connect(self, api_key: str, start: int = None):
         """Connect to the websocket."""
+        params = self._uri.params
+        if start is not None:
+            params = params.set("start", start)
         self._websocket = connect(
-            str(self._uri),
+            str(self._uri.copy_with(params=params)),
             additional_headers={"Authorization": f"Apikey {api_key}"},
         )
 
@@ -74,20 +79,13 @@ class Subscription:
         Provides connection to Tiled server
     segments : list[str]
         Path to node of interest, given as a list of path segments
-    start : int, optional
-        By default, the stream begins from the most recent update. Use this parameter
-        to replay from some earlier update. Use 1 to start from the first item, 0
-        to start from as far back as available (which may be later than the first item),
-        or any positive integer to start from a specific point in the sequence.
     """
 
-    def __init__(self, context: Context, segments: List[str] = None, start: int = None):
+    def __init__(self, context: Context, segments: List[str] = None):
         segments = segments or ["/"]
         self._context = context
         self._segments = segments
         params = {"envelope_format": "msgpack"}
-        if start is not None:
-            params["start"] = start
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
         self._node_path = "/".join(f"/{segment}" for segment in segments)
         uri_path = "/api/v1/stream/single" + self._node_path
@@ -173,8 +171,19 @@ class Subscription:
                 if callback is not None:
                     callback(self, data)
 
-    def start(self) -> None:
-        "Connect to the websocket and launch a thread to receive and process updates."
+    def start(self, start: int = None) -> None:
+        """
+        Connect to the websocket and launch a thread to receive and process updates.
+
+        Parameters
+        ----------
+        start : int, optional
+            By default, the stream begins from the most recent update. Use this
+            parameter to replay from some earlier update. Use 1 to start from
+            the first item, 0 to start from as far back as available (which may
+            be later than the first item), or any positive integer to start
+            from a specific point in the sequence.
+        """
         if self._close_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
         API_KEY_LIFETIME = 30  # seconds
@@ -190,7 +199,7 @@ class Subscription:
             api_key = self.context.api_key
 
         # Connect using the websocket wrapper
-        self._websocket.connect(api_key)
+        self._websocket.connect(api_key, start)
 
         if needs_api_key:
             # The connection is made, so we no longer need the API key.
