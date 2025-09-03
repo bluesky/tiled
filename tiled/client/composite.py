@@ -264,8 +264,6 @@ class CompositeClient(Container):
         access_tags=None,
         table_name: Optional[str] = None,
     ):
-        import pyarrow
-
         if set(self.keys()).intersection(schema.names):
             raise ValueError(
                 "Table columns must not overlap with existing keys in the composite node."
