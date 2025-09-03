@@ -323,14 +323,14 @@ class ZarrAdapter:
             if not isinstance(strg, str):
                 breakpoint()
             store = ObjectStore(store=object_store)
-            zarr_obj = zarr.open(
-                store=store,
-                path=strg,
-            )
 
+        breakpoint()
         if node.structure_family == StructureFamily.container:
             return ZarrGroupAdapter(
-                zarr_obj,
+                zarr.open_group(
+                    store=store,
+                    path=strg,
+                ),
                 structure=data_source.structure,
                 metadata=node.metadata_,
                 specs=node.specs,
@@ -338,7 +338,10 @@ class ZarrAdapter:
             )
         else:
             return ZarrArrayAdapter(
-                zarr_obj,
+                zarr.open_array(
+                    store=store,
+                    path=strg,
+                ),
                 structure=cast(ArrayStructure, data_source.structure),
                 metadata=node.metadata_,
                 specs=node.specs,
