@@ -1,10 +1,13 @@
 import time
-from typing import Iterable, Optional, Union
+from typing import TYPE_CHECKING, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
 from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 class CompositeClient(Container):
@@ -248,4 +251,32 @@ class CompositeClient(Container):
             )
         return super().write_table(
             data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
+        )
+
+    def create_appendable_table(
+        self,
+        schema: "pyarrow.Schema",
+        npartitions: int = 1,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+        table_name: Optional[str] = None,
+    ):
+        import pyarrow
+
+        if set(self.keys()).intersection(schema.names):
+            raise ValueError(
+                "Table columns must not overlap with existing keys in the composite node."
+            )
+
+        return super().create_appendable_table(
+            schema,
+            npartitions,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+            table_name=table_name,
         )
