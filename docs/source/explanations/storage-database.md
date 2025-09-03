@@ -102,7 +102,7 @@ been a frequent request from users.
 
 ## Why "partition"?
 
-A partition is a "chunk" of a single dataset. Many datasets may only
+A partition is a "chunk" of a single dataset. Typically, many datasets may only
 have a single partition.
 
 For file-based storage, data is commonly partitioned into files, like
