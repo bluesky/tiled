@@ -1,7 +1,7 @@
 import inspect
 import threading
 import weakref
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import anyio
 import httpx
@@ -23,7 +23,7 @@ class _TestClientWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: str, start: int = None):
+    def connect(self, api_key: str, start: Optional[int] = None):
         """Connect to the websocket."""
         params = self._uri.params
         if start is not None:
@@ -51,7 +51,7 @@ class _RegularWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: str, start: int = None):
+    def connect(self, api_key: str, start: Optional[int] = None):
         """Connect to the websocket."""
         params = self._uri.params
         if start is not None:
@@ -189,7 +189,7 @@ class Subscription:
                 if callback is not None:
                     callback(self, data)
 
-    def start(self, start: int = None) -> None:
+    def start(self, start: Optional[int] = None) -> None:
         """
         Connect to the websocket and launch a thread to receive and process updates.
 
