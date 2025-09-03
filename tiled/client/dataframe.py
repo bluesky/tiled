@@ -229,7 +229,7 @@ class _DaskDataFrameClient(BaseClient):
                     )
                 )
 
-    def write_partition(self, dataframe, partition):
+    def write_partition(self, partition, dataframe):
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -242,7 +242,7 @@ class _DaskDataFrameClient(BaseClient):
                     )
                 )
 
-    def append_partition(self, dataframe, partition):
+    def append_partition(self, partition, dataframe):
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
         for attempt in retry_context():

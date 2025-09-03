@@ -1251,7 +1251,7 @@ class _Wrap:
 
 
 def _write_partition(x, partition_info, client):
-    client.write_partition(x, partition_info["number"])
+    client.write_partition(partition_info["number"], x)
     return x
 
 

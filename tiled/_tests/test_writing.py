@@ -670,7 +670,7 @@ def test_write_with_specified_mimetype(tree):
                     ),
                 ],
             )
-            x.write_partition(df, 0)
+            x.write_partition(0, df)
             x.read()
             x.refresh()
             assert x.data_sources()[0].mimetype == mimetype
@@ -724,8 +724,8 @@ def test_append_partition(
         table_to_append = pyarrow.Table.from_pydict(file_to_append)
 
         x = client.create_appendable_table(orig_table.schema, key="x")
-        x.append_partition(orig_table, 0)
-        x.append_partition(table_to_append, 0)
+        x.append_partition(0, orig_table)
+        x.append_partition(0, table_to_append)
         assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
 
 
@@ -765,5 +765,5 @@ def test_create_table_with_custom_name(
                 client.create_appendable_table(table.schema, table_name=table_name)
         else:
             x = client.create_appendable_table(table.schema, table_name=table_name)
-            x.append_partition(table, 0)
+            x.append_partition(0, table)
             assert x.read()["column_name"].to_list() == [1, 2, 3]
