@@ -37,7 +37,7 @@ But we also anticipate use cases for streaming _processed_ data, which may have
 multiple concurrent writers as well. Directly backing this with files would be
 intractable: we need a database.
 
-## Which database?
+## Which database management system (DBMS) should I use?
 
 The "catalog" and authentication database are straightforward traditional OLTP
 (OnLine Transaction Processing) databases. Most queries are looking for a
