@@ -49,7 +49,7 @@ on a large fraction of the rows in a table. The data tends to be numerical,
 and expressing correct numerical precision (e.g. uint8 versus "integer")
 may be important for fidelity, speed, and storage efficiency.
 
-The space of "OLAP" database is a large and growing space, currently receiving
+The choice of "OLAP" database is a large and growing space, currently receiving
 a lot of attention. Well-known projects include [DuckDB](https://duckdb.org/)
 and [ClickHouse](https://clickhouse.com/); there are many, many others in the
 category.
