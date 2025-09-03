@@ -148,7 +148,7 @@ def create_refresh_token(session_id, secret_key, expires_delta):
 def decode_token(
     token: str,
     secret_keys: List[str],
-    proxied_authenticator: ProxiedOIDCAuthenticator | None = None,
+    proxied_authenticator: Optional[ProxiedOIDCAuthenticator] = None,
 ):
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,

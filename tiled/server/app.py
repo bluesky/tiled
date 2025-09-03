@@ -473,20 +473,17 @@ def build_app(
             settings.database_settings.max_overflow = max_overflow
         if init_if_not_exists := database.get("init_if_not_exists"):
             settings.database_init_if_not_exists = init_if_not_exists
-        if authentication.get("providers"):
+        if providers := authentication.get("providers"):
             # If we support authentication providers, we need a database, so if one is
             # not set, use a SQLite database in memory. Horizontally scaled deployments
             # must specify a persistent database.
             settings.database_settings.uri = (
                 settings.database_settings.uri or "sqlite://"
             )
-        if isinstance(
-            authentication.get("providers", [])[0]["authenticator"],
-            ProxiedOIDCAuthenticator,
-        ):
-            settings.authenticator = authentication.get("providers", [])[0][
-                "authenticator"
-            ]
+            if len(providers) == 1 and isinstance(
+                providers[0].get("authenticator"), ProxiedOIDCAuthenticator
+            ):
+                settings.authenticator = providers[0]["authenticator"]
         return settings
 
     async def startup_event():
