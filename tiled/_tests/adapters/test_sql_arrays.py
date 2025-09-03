@@ -109,7 +109,7 @@ def test_write_read_one_batch_one_part(
     # test appending and reading a table as a whole
     test_table = pa.Table.from_arrays(data0, names)
 
-    adapter.append_partition(batch0, 0)
+    adapter.append_partition(0, batch0)
     result_read = adapter.read()
     assert test_table == pa.Table.from_pandas(result_read)
 
@@ -129,7 +129,7 @@ def test_write_read_list_batch_one_part(
 
     test_table = pa.Table.from_batches([batch0, batch1, batch2])
     # test appending a list of batches to a table and read as a whole
-    adapter.append_partition([batch0, batch1, batch2], 0)
+    adapter.append_partition(0, [batch0, batch1, batch2])
     result_read = adapter.read()
 
     assert test_table == pa.Table.from_pandas(result_read)
@@ -143,8 +143,8 @@ def test_write_read_list_batch_one_part(
     test_table = pa.Table.from_batches(
         [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
     )
-    adapter.append_partition([batch2, batch0, batch1], 0)
-    adapter.append_partition([batch1, batch2, batch0], 0)
+    adapter.append_partition(0, [batch2, batch0, batch1])
+    adapter.append_partition(0, [batch1, batch2, batch0])
     result_read = adapter.read()
 
     assert test_table == pa.Table.from_pandas(result_read)
@@ -167,7 +167,7 @@ def test_append_single_partition(
 
     # test writing an entire pyarrow table to a single partition
     table = pa.Table.from_batches([batch0, batch1, batch2])
-    adapter.append_partition(table, 0)
+    adapter.append_partition(0, table)
 
     result_read = adapter.read()
     assert table == pa.Table.from_pandas(result_read)
@@ -186,9 +186,9 @@ def test_write_read_one_batch_many_part(
     adapter: SQLAdapter = request.getfixturevalue(adapter_name)
 
     # test writing to many partitions and reading it whole
-    adapter.append_partition(batch0, 0)
-    adapter.append_partition(batch1, 1)
-    adapter.append_partition(batch2, 2)
+    adapter.append_partition(0, batch0)
+    adapter.append_partition(1, batch1)
+    adapter.append_partition(2, batch2)
 
     result_read = adapter.read()
 
@@ -213,9 +213,9 @@ def test_write_read_one_batch_many_part(
     )
 
     # test appending a few times and reading done correctly
-    adapter.append_partition(batch0, 1)
-    adapter.append_partition(batch1, 2)
-    adapter.append_partition(batch2, 0)
+    adapter.append_partition(1, batch0)
+    adapter.append_partition(2, batch1)
+    adapter.append_partition(0, batch2)
 
     result_read = adapter.read()
 

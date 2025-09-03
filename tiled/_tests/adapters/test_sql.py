@@ -204,7 +204,7 @@ def test_write_read_one_batch_one_part(
     # test appending and reading a table as a whole
     test_table = pa.Table.from_arrays(data0, names)
 
-    adapter.append_partition(batch0, 0)
+    adapter.append_partition(0, batch0)
     result_read = adapter.read()
     # the pandas dataframe gives the last column of the data as 0 and 1 since SQL does not save boolean
     # so we explicitely convert the last column to boolean for testing purposes
@@ -235,7 +235,7 @@ def test_write_read_list_batch_one_part(
     assert isinstance(adapter, SQLAdapter)
     test_table = pa.Table.from_batches([batch0, batch1, batch2])
     # test appending a list of batches to a table and read as a whole
-    adapter.append_partition([batch0, batch1, batch2], 0)
+    adapter.append_partition(0, [batch0, batch1, batch2])
     result_read = adapter.read()
 
     result_read["f3"] = result_read["f3"].astype("boolean")
@@ -251,8 +251,8 @@ def test_write_read_list_batch_one_part(
     test_table = pa.Table.from_batches(
         [batch0, batch1, batch2, batch2, batch0, batch1, batch1, batch2, batch0]
     )
-    adapter.append_partition([batch2, batch0, batch1], 0)
-    adapter.append_partition([batch1, batch2, batch0], 0)
+    adapter.append_partition(0, [batch2, batch0, batch1])
+    adapter.append_partition(0, [batch1, batch2, batch0])
     result_read = adapter.read()
 
     result_read["f3"] = result_read["f3"].astype("boolean")
@@ -290,7 +290,7 @@ def test_append_single_partition(adapter: str, request: pytest.FixtureRequest) -
     assert isinstance(adapter, SQLAdapter)
     # test writing an entire pyarrow table to a single partition
     table = pa.Table.from_batches([batch0, batch1, batch2])
-    adapter.append_partition(table, 0)
+    adapter.append_partition(0, table)
 
     result_read = adapter.read()
     result_read["f3"] = result_read["f3"].astype("boolean")
@@ -316,9 +316,9 @@ def test_write_read_one_batch_many_part(
     adapter = request.getfixturevalue(adapter)
     assert isinstance(adapter, SQLAdapter)
     # test writing to many partitions and reading it whole
-    adapter.append_partition(batch0, 0)
-    adapter.append_partition(batch1, 1)
-    adapter.append_partition(batch2, 2)
+    adapter.append_partition(0, batch0)
+    adapter.append_partition(1, batch1)
+    adapter.append_partition(2, batch2)
 
     result_read = adapter.read()
     result_read["f3"] = result_read["f3"].astype("boolean")
@@ -347,9 +347,9 @@ def test_write_read_one_batch_many_part(
     )
 
     # test appending a few times and reading done correctly
-    adapter.append_partition(batch0, 1)
-    adapter.append_partition(batch1, 2)
-    adapter.append_partition(batch2, 0)
+    adapter.append_partition(1, batch0)
+    adapter.append_partition(2, batch1)
+    adapter.append_partition(0, batch2)
 
     result_read = adapter.read()
     result_read["f3"] = result_read["f3"].astype("boolean")
@@ -691,7 +691,7 @@ def test_reject_colliding_uppercase_column_names(
         table_name=data_source.parameters["table_name"],
         dataset_id=data_source.parameters["dataset_id"],
     )
-    adapter.append_partition(table, 0)
+    adapter.append_partition(0, table)
     assert adapter.table_name == "table_name"
     assert set(adapter.read().columns) == {"lower_case", "UPPER_CASE"}
 
@@ -764,11 +764,11 @@ def test_append_nullable(
         table_name=data_source.parameters["table_name"],
         dataset_id=data_source.parameters["dataset_id"],
     )
-    adapter_part.append_partition(table_0, 0)
+    adapter_part.append_partition(0, table_0)
 
     # Write the second part of the data to the table and read it back
     table_1 = pa.Table.from_arrays([appended], ["part_column"])
-    adapter_part.append_partition(table_1, 0)
+    adapter_part.append_partition(0, table_1)
     result_part = adapter_part.read()["part_column"].to_numpy()
 
     # Write the full table at once and read it back
@@ -788,7 +788,7 @@ def test_append_nullable(
         table_name=data_source.parameters["table_name"],
         dataset_id=data_source.parameters["dataset_id"],
     )
-    adapter_full.append_partition(table_full, 0)
+    adapter_full.append_partition(0, table_full)
     result_full = adapter_full.read()["full_column"].to_numpy()
 
     # Check if the data matches in both cases

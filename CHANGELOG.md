@@ -9,6 +9,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Client method for writing tabular data into external files, `write_dataframe`,
   is deprecated and renamed `write_table`.
+- The order of arguments in the `write_partition` and `append_partition` methods.
 
 ### Fixed
 
