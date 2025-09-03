@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
+    from .stream import Subscription
+
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # This maps the structure_family sent by the server to a client-side object that
@@ -1193,6 +1195,28 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return self.write_table(
             data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
+
+    def subscribe(self, start: Optional[int] = None) -> "Subscription":
+        """
+        Create a Subscription on writes to this node.
+
+        Parameters
+        ----------
+        start : int, optional
+            By default, the stream begins from the most recent update. Use this
+            parameter to replay from some earlier update. Use 1 to start from
+            the first item, 0 to start from as far back as available (which may
+            be later than the first item), or any positive integer to start
+            from a specific point in the sequence.
+
+        Returns
+        -------
+        subscription : Subscription
+        """
+        # Keep this import here to defer the websockets import until/unless needed.
+        from .stream import Subscription
+
+        return Subscription(self.context, self.path_parts, start)
 
 
 def _queries_to_params(*queries):
