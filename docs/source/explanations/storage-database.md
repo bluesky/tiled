@@ -7,7 +7,7 @@ Tiled employs three SQL databases.
 2. A "storage" database for storing tabular data;
 3. An authentication database, supporting Tiled's authentication system.
 
-This section addresses (2).
+**This document addresses (2): The "storage" database.**
 
 ## Development Status
 
