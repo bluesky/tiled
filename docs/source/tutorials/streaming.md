@@ -1,6 +1,6 @@
 # Streaming
 
-```warning
+```{warning}
 
 Streaming is an experimental feature in Tiled, subject to backward-compatible
 changes without notice.
