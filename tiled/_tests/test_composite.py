@@ -623,9 +623,11 @@ def test_composite_validator(tree):
         assert isinstance(client["y"], CompositeClient)
         y.update_metadata(specs=[])
 
-        # 4. Add two valid tables
+        # 4. Add two valid tables and two valid appendable tables
         y.write_table(df1, key="df1")
         y.write_table(df2, key="df2")
+        y.create_appendable_table(schema=tab1.schema, key="tab1")
+        y.create_appendable_table(schema=tab2.schema, key="tab2")
 
         # Composite spec can be assigned to a container with arrays and tables
         y.update_metadata(specs=["composite"])
@@ -639,7 +641,7 @@ def test_composite_validator(tree):
             y.update_metadata(specs=["composite"])
         y.delete_contents("A", external_only=False)
 
-        # 6. Add a table with a conflicting column names
+        # 6. Add tables with conflicting column names
         y.write_table(df1, key="df1_copy")
         with pytest.raises(ClientError, match="Found conflicting names"):
             y.update_metadata(specs=["composite"])
