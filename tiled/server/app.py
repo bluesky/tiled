@@ -17,13 +17,14 @@ import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -37,10 +38,10 @@ from starlette.status import (
 
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.query_registration import QueryRegistry, default_query_registry
-from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 
-from ..config import construct_build_app_kwargs
+from ..catalog.adapter import WouldDeleteData
+from ..config import construct_build_app_kwargs, parse_configs
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -48,13 +49,13 @@ from ..media_type_registration import (
     default_deserialization_registry,
     default_serialization_registry,
 )
-from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
-from .dependencies import get_root_tree
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -233,7 +234,7 @@ def build_app(
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, dependencies=[Depends(move_api_key)])
+    app = FastAPI(lifespan=lifespan)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -332,6 +333,15 @@ def build_app(
             },
         )
 
+    @app.exception_handler(WouldDeleteData)
+    async def would_delete_data_exception_handler(
+        request: Request, exc: WouldDeleteData
+    ):
+        return JSONResponse(
+            status_code=HTTP_409_CONFLICT,
+            content={"detail": exc.args[0]},
+        )
+
     # This list will be mutated when settings are processed at app startup.
     app.state.allow_origins = []
     app.add_middleware(
@@ -350,10 +360,6 @@ def build_app(
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
-        # The current_principal_logging_filter middleware will not have
-        # had a chance to finish running, so set the principal here.
-        principal = getattr(request.state, "principal", None)
-        current_principal.set(principal)
         return await http_exception_handler(
             request,
             HTTPException(
@@ -371,6 +377,9 @@ def build_app(
         authenticators,
     )
     app.include_router(router, prefix="/api/v1")
+
+    app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
+    app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
@@ -427,9 +436,9 @@ def build_app(
     else:
         app.state.authenticated = False
 
-    @cache
-    def override_get_root_tree():
-        return tree
+    # Expose the root_tree here to make it accessible from endpoints via
+    # request.app.state and in tests via client.context.app.state
+    app.state.root_tree = tree
 
     @cache
     def override_get_settings():
@@ -447,6 +456,7 @@ def build_app(
         for item in [
             "allow_origins",
             "response_bytesize_limit",
+            "exact_count_limit",
             "reject_undeclared_specs",
             "expose_raw_assets",
         ]:
@@ -537,10 +547,6 @@ def build_app(
             app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
-        # Expose the root_tree here to make it easier to access it from tests,
-        # in usages like:
-        # client.context.app.state.root_tree
-        app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_settings.uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
@@ -564,7 +570,7 @@ def build_app(
             # registry, keyed on database_settings, where can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
-            if not engine.url.database:
+            if not engine.url.database or engine.url.query.get("mode") == "memory":
                 # Special-case for in-memory SQLite: Because it is transient we can
                 # skip over anything related to migrations.
                 await initialize_database(engine)
@@ -640,6 +646,11 @@ def build_app(
                         id=admin["id"],
                     )
 
+            if app.state.access_policy is not None and hasattr(
+                app.state.access_policy, "access_tags_parser"
+            ):
+                await app.state.access_policy.access_tags_parser.connect()
+
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
                 while True:
@@ -686,7 +697,9 @@ def build_app(
     )
 
     @app.middleware("http")
-    async def double_submit_cookie_csrf_protection(request: Request, call_next):
+    async def double_submit_cookie_csrf_protection(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
         if (request.method not in SAFE_METHODS) and set(request.cookies).intersection(
@@ -725,7 +738,9 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def client_compatibility_check(request: Request, call_next):
+    async def client_compatibility_check(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         user_agent = request.headers.get("user-agent", "")
         if user_agent.startswith("python-tiled/"):
             agent, _, raw_version = user_agent.partition("/")
@@ -757,7 +772,7 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def set_cookies(request: Request, call_next):
+    async def set_cookies(request: Request, call_next: RequestResponseEndpoint):
         "This enables dependencies to inject cookies that they want to be set."
         # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
@@ -769,11 +784,10 @@ def build_app(
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
-    async def capture_metrics(request: Request, call_next):
+    async def capture_metrics(request: Request, call_next: RequestResponseEndpoint):
         """
         Place metrics in Server-Timing header, in accordance with HTTP spec.
         """
@@ -831,7 +845,9 @@ def build_app(
         app.include_router(metrics.router, prefix="/api/v1")
 
         @app.middleware("http")
-        async def capture_metrics_prometheus(request: Request, call_next):
+        async def capture_metrics_prometheus(
+            request: Request, call_next: RequestResponseEndpoint
+        ):
             try:
                 response = await call_next(request)
             except Exception:
@@ -850,8 +866,11 @@ def build_app(
             return response
 
     @app.middleware("http")
-    async def current_principal_logging_filter(request: Request, call_next):
-        request.state.principal = SpecialUsers.public
+    async def current_principal_logging_filter(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
+        # Set a default, which may be overridden below by authentication code.
+        request.state.principal = None
         response = await call_next(request)
         current_principal.set(request.state.principal)
         return response
@@ -884,13 +903,10 @@ def app_factory():
     config_path = os.getenv("TILED_CONFIG", "config.yml")
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    from ..config import construct_build_app_kwargs, parse_configs
-
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
-    web_app = build_app(**kwargs)
+    web_app = build_app_from_config(parsed_config, config_path)
     uvicorn_config = parsed_config.get("uvicorn", {})
     print_server_info(
         web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")

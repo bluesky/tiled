@@ -2,16 +2,23 @@
 	"name": "tiled-devcontainer",
 	"build": {
 		"context": "..",
-		"dockerfile": "../Dockerfile"
+		"dockerfile": "../Containerfile",
+		"target": "developer",
+		"args": {
+			"PYTHON_VERSION": "3.9"
+		}
+	},
+	"containerEnv": {
+		"TILED_BUILD_SKIP_UI": "1"
 	},
 	"features": {
 		"ghcr.io/devcontainers/features/git:1": {}
 	},
-
+	"postCreateCommand": "set -ex && uv sync --extra all --extra dev --project src && uv tool install pre-commit --with pre-commit-uv && SHELL=bash uv tool update-shell && pre-commit install",
 	"customizations": {
 		"vscode": {
 			"settings": {
-				"python.defaultInterpreterPath": "/opt/venv/bin/python"
+				"python.defaultInterpreterPath": "/app/bin/python"
 			},
 			"extensions": [
 				"ms-python.python",

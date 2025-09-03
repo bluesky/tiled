@@ -38,12 +38,21 @@ class Settings(BaseSettings):
     # that data should generally be chunked. When we implement async responses,
     # we can raise this global limit.
     response_bytesize_limit: int = 300_000_000  # 300 MB
+    # The largest number of items in a container for which the metadata endpoint
+    # will return the exact count; this becomes the lower bound on the stimate if
+    # an approximate number can not be obtained otherwise.
+    exact_count_limit: int = 100
     reject_undeclared_specs: bool = False
     # "env_prefix does not apply to fields with alias"
     # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#environment-variable-names
     database_settings: DatabaseSettings = Field(
         DatabaseSettings(), validation_alias="TILED_DATABASE"
     )
+    # Connection pool configurations for catalog and storage DBs
+    catalog_pool_size: int = 5
+    storage_pool_size: int = 5
+    catalog_max_overflow: int = 10
+    storage_max_overflow: int = 10
     database_init_if_not_exists: bool = False
     expose_raw_assets: bool = True
 

@@ -6,7 +6,7 @@ import itertools
 import time
 import warnings
 from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import entrypoints
@@ -17,7 +17,7 @@ from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import default_query_registry
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
 from .base import STRUCTURE_TYPES, BaseClient
@@ -27,6 +27,7 @@ from .utils import (
     client_for_item,
     export_util,
     handle_error,
+    normalize_specs,
     retry_context,
 )
 
@@ -44,7 +45,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     STRUCTURE_CLIENTS_FROM_ENTRYPOINTS = None
 
     @classmethod
-    def _discover_entrypoints(cls, entrypoint_name):
+    def _discover_entrypoints(cls, entrypoint_name) -> OneShotCachedMap[str, Any]:
         return OneShotCachedMap(
             {
                 name: entrypoint.load
@@ -171,9 +172,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # If the contents of this node was provided in-line, there is an
         # implication that the contents are not expected to be dynamic. Used the
         # count provided in the structure.
-        structure = self.item["attributes"]["structure"]
-        if structure["contents"]:
-            return structure["count"]
+        if contents := self.item["attributes"]["structure"]["contents"]:
+            return len(contents)
+
         now = time.monotonic()
         if self._cached_len is not None:
             length, deadline = self._cached_len
@@ -189,7 +190,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                         headers={"Accept": MSGPACK_MIME_TYPE},
                         params={
                             **parse_qs(urlparse(link).query),
-                            "fields": "",
+                            "fields": "count",
                             **self._queries_as_params,
                             **self._sorting_params,
                         },
@@ -362,18 +363,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                             raise KeyError(err_arg)
                         raise
                     item = content["data"]
-
-                    # Tables that belong to composite nodes cannot be addressed directly
-                    if (
-                        item["attributes"]["structure_family"] == StructureFamily.table
-                    ) and (
-                        "flattened" in (s["name"] for s in item["attributes"]["specs"])
-                    ):
-                        raise KeyError(
-                            f"Attempting to access a table in a composite container; use .parts['{keys[-1]}'] instead."  # noqa
-                        )
-
                     break
+
             result = client_for_item(
                 self.context,
                 self.structure_clients,
@@ -382,11 +373,44 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             )
         return result
 
-    def delete(self, key):
+    def delete_contents(
+        self,
+        keys: Optional[Union[str, Iterable[str]]] = None,
+        recursive: bool = False,
+        external_only: bool = True,
+    ) -> "Container":
+        """Delete the contents of this Container.
+
+        Parameters
+        ----------
+        keys : str or list of str
+            The key(s) to delete. If a list, all keys in the list will be deleted.
+            If None (default), delete all contents.
+        recursive : bool, optional
+            If True, descend into sub-containers and delete their contents too.
+            Defaults to False.
+        external_only : bool, optional
+            If True, only delete externally-managed data. Defaults to True.
+        """
+
         self._cached_len = None
-        for attempt in retry_context():
-            with attempt:
-                handle_error(self.context.http_client.delete(f"{self.uri}/{key}"))
+        if keys is None:
+            keys = self.keys()
+        keys = [keys] if isinstance(keys, str) else keys
+        for key in set(keys):
+            for attempt in retry_context():
+                with attempt:
+                    handle_error(
+                        self.context.http_client.delete(
+                            f"{self.uri}/{key}",
+                            params={
+                                "recursive": recursive,
+                                "external_only": external_only,
+                            },
+                        )
+                    )
+
+        return self
 
     # The following two methods are used by keys(), values(), items().
 
@@ -664,18 +688,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         self._cached_len = None
         metadata = metadata or {}
         access_blob = {"tags": access_tags} if access_tags is not None else {}
-        specs = specs or []
-        normalized_specs = []
-        for spec in specs:
-            if isinstance(spec, str):
-                spec = Spec(spec)
-            normalized_specs.append(asdict(spec))
 
         item = {
             "attributes": {
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
-                "specs": normalized_specs,
+                "specs": normalize_specs(specs or []),
                 "data_sources": [asdict(data_source) for data_source in data_sources],
                 "access_blob": access_blob,
             }
@@ -700,7 +718,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                     )
                 ).json()
 
-        if structure_family in {StructureFamily.container, StructureFamily.composite}:
+        if structure_family == StructureFamily.container:
             structure = {"contents": None, "count": None}
         else:
             # Only containers can have multiple data_sources right now.
@@ -741,10 +759,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Ensure this is a dataclass, not a dict.
         # When we apply type hints and mypy to the client it should be possible
         # to dispense with this.
-        if (
-            structure_family
-            not in {StructureFamily.container, StructureFamily.composite}
-        ) and isinstance(structure, dict):
+        if (structure_family != StructureFamily.container) and isinstance(
+            structure, dict
+        ):
             structure_type = STRUCTURE_TYPES[structure_family]
             structure = structure_type.from_json(structure)
 
@@ -759,39 +776,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # When (re)chunking arrays for upload, we use this limit
     # to attempt to avoid bumping into size limits.
     _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
-
-    def create_composite(
-        self,
-        key=None,
-        *,
-        metadata=None,
-        specs=None,
-        access_tags=None,
-    ):
-        """Create a new, empty composite container.
-
-        Parameters
-        ----------
-        key : str, optional
-            Key (name) for this new node. If None, the server will provide a unique key.
-        metadata : dict, optional
-            User metadata. May be nested. Must contain only basic types
-            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
-        specs : List[Spec], optional
-            List of names that are used to label that the data and/or metadata
-            conform to some named standard specification.
-        access_tags: List[str], optional
-            Server-specific authZ tags in list form, used to confer access to the node.
-
-        """
-        return self.new(
-            StructureFamily.composite,
-            [],
-            key=key,
-            metadata=metadata,
-            specs=specs,
-            access_tags=access_tags,
-        )
 
     def create_container(
         self,
@@ -1033,6 +1017,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         >>> x.write_block(coords=array([[2, 4]]), data=array([3.1, 2.8]), block=(0,))
         >>> x.write_block(coords=array([[0, 1]]), data=array([6.7, 1.2]), block=(1,))
         """
+        from ..structures.array import BuiltinDtype
         from ..structures.sparse import COOStructure
 
         structure = COOStructure(
@@ -1040,6 +1025,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             # This method only supports single-chunk COO arrays.
             chunks=tuple((dim,) for dim in shape),
             dims=dims,
+            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
         )
         client = self.new(
             StructureFamily.sparse,
@@ -1254,7 +1241,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "numpy": OneShotCachedMap(
         {
             "container": _Wrap(Container),
-            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
+            ),
             "array": _LazyLoad(("..array", Container.__module__), "ArrayClient"),
             "awkward": _LazyLoad(("..awkward", Container.__module__), "AwkwardClient"),
             "dataframe": _LazyLoad(
@@ -1272,7 +1261,9 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
     "dask": OneShotCachedMap(
         {
             "container": _Wrap(Container),
-            "composite": _LazyLoad(("..composite", Container.__module__), "Composite"),
+            "composite": _LazyLoad(
+                ("..composite", Container.__module__), "CompositeClient"
+            ),
             "array": _LazyLoad(("..array", Container.__module__), "DaskArrayClient"),
             # TODO Create DaskAwkwardClient
             # "awkward": _LazyLoad(("..awkward", Container.__module__), "DaskAwkwardClient"),

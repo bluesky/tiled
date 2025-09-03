@@ -2,6 +2,7 @@ import time
 from copy import copy, deepcopy
 from dataclasses import asdict
 from pathlib import Path
+from typing import Dict, List, Union
 from urllib.parse import parse_qs, urlparse
 
 import json_merge_patch
@@ -15,7 +16,11 @@ from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..utils import UNCHANGED, DictView, ListView, patch_mimetypes, safe_json_dump
 from .metadata_update import apply_update_patch
-from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
+from .utils import MSGPACK_MIME_TYPE, handle_error, normalize_specs, retry_context
+
+# TODO: Duplicated from  tiled.type_aliases to prevent importing numpy
+# After #1407 replace AnyAdapter with the BaseClass and remove this redefinition
+JSON_ITEM = Union[str, int, float, bool, Dict[str, "JSON_ITEM"], List["JSON_ITEM"]]
 
 
 class MetadataRevisions:
@@ -142,7 +147,7 @@ class BaseClient:
             # Allow the caller to optionally hand us a structure that is already
             # parsed from a dict into a structure dataclass.
             self._structure = structure
-        elif structure_family in {StructureFamily.container, StructureFamily.composite}:
+        elif structure_family == StructureFamily.container:
             self._structure = None
         else:
             structure_type = STRUCTURE_TYPES[attributes["structure_family"]]
@@ -213,10 +218,7 @@ class BaseClient:
                     )
                 ).json()
         self._item = content["data"]
-        if self.structure_family not in {
-            StructureFamily.container,
-            StructureFamily.composite,
-        }:
+        if self.structure_family != StructureFamily.container:
             structure_type = STRUCTURE_TYPES[self.structure_family]
             self._structure = structure_type.from_json(
                 self._item["attributes"]["structure"]
@@ -229,7 +231,7 @@ class BaseClient:
         return self._item
 
     @property
-    def metadata(self):
+    def metadata(self) -> DictView[str, JSON_ITEM]:
         "Metadata about this data source."
         # Ensure this is immutable (at the top level) to help the user avoid
         # getting the wrong impression that editing this would update anything
@@ -246,6 +248,7 @@ class BaseClient:
             context=self.context,
             structure_clients=self.structure_clients,
             node_path_parts=self._item["attributes"]["ancestors"],
+            include_data_sources=self._include_data_sources,
         )
 
     def metadata_copy(self):
@@ -261,12 +264,12 @@ class BaseClient:
         ]  # returning as list of mutable items
 
     @property
-    def specs(self):
+    def specs(self) -> ListView[Spec]:
         "List of specifications describing the structure of the metadata and/or data."
         return ListView([Spec(**spec) for spec in self._item["attributes"]["specs"]])
 
     @property
-    def access_blob(self):
+    def access_blob(self) -> DictView[str, JSON_ITEM]:
         "Authorization information about this node, in blob form"
         access_blob = self._item["attributes"]["access_blob"]
         if access_blob is None:
@@ -805,15 +808,6 @@ class BaseClient:
 
         self._cached_len = None
 
-        if specs is None:
-            normalized_specs = None
-        else:
-            normalized_specs = []
-            for spec in specs:
-                if isinstance(spec, str):
-                    spec = Spec(spec)
-                normalized_specs.append(asdict(spec))
-
         if access_tags is None:
             access_blob = None
         else:
@@ -821,7 +815,7 @@ class BaseClient:
 
         data = {
             "metadata": metadata,
-            "specs": normalized_specs,
+            "specs": normalize_specs(specs),
             "access_blob": access_blob,
         }
         params = {}
@@ -849,7 +843,7 @@ class BaseClient:
                 self._item["attributes"]["metadata"] = metadata
 
         if specs is not None:
-            self._item["attributes"]["specs"] = normalized_specs
+            self._item["attributes"]["specs"] = normalize_specs(specs)
 
         if access_blob is not None:
             if "access_blob" in content:
@@ -865,8 +859,31 @@ class BaseClient:
 
         return self._metadata_revisions
 
-    def delete_tree(self):
-        endpoint = self.uri.replace("/metadata/", "/nodes/", 1)
+    def delete(self, recursive: bool = False, external_only: bool = True) -> None:
+        """Delete the node and its contents, if any.
+
+        Parameters
+        ----------
+        recursive : bool, optional
+            If True, descend into sub-nodes and delete their contents too.
+            Defaults to False.
+        external_only : bool, optional
+            If True, only delete externally-managed data. Defaults to True.
+        """
+
+        self._cached_len = None
+        for attempt in retry_context():
+            with attempt:
+                handle_error(
+                    self.context.http_client.delete(
+                        f"{self.uri}",
+                        params={"recursive": recursive, "external_only": external_only},
+                    )
+                )
+
+    def close_stream(self):
+        "Declare the end of a stream of writes to this node."
+        endpoint = self.uri.replace("/metadata/", "/stream/close/", 1)
         for attempt in retry_context():
             with attempt:
                 handle_error(self.context.http_client.delete(endpoint))

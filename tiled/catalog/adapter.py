@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import copy
 import dataclasses
@@ -10,18 +11,24 @@ import re
 import shutil
 import sys
 import uuid
+from contextlib import closing
+from datetime import datetime
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
-from fastapi import HTTPException
+import orjson
+from fastapi import HTTPException, WebSocketDisconnect
 from sqlalchemy import (
+    and_,
     delete,
     event,
+    exists,
     false,
     func,
+    literal,
     not_,
     or_,
     select,
@@ -33,10 +40,10 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.pool import AsyncAdaptedQueuePool
-from sqlalchemy.sql.expression import cast
+from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
@@ -47,6 +54,7 @@ from tiled.queries import (
     Eq,
     FullText,
     In,
+    KeyPresent,
     KeysFilter,
     Like,
     NotEq,
@@ -67,9 +75,15 @@ from ..mimetypes import (
 )
 from ..query_registration import QueryTranslationRegistry
 from ..server.core import NoEntry
-from ..server.schemas import Asset, DataSource, Management, Revision, Spec
-from ..storage import FileStorage, parse_storage, register_storage
-from ..structures.core import StructureFamily
+from ..server.schemas import Asset, DataSource, Management, Revision
+from ..storage import (
+    FileStorage,
+    SQLStorage,
+    get_storage,
+    parse_storage,
+    register_storage,
+)
+from ..structures.core import Spec, StructureFamily
 from ..utils import (
     UNCHANGED,
     Conflicts,
@@ -99,7 +113,9 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
-STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
+
+# TODO: make type[Adapter] after #1047
+STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
     {
         ZARR_MIMETYPE: lambda: importlib.import_module(
             "...adapters.zarr", __name__
@@ -140,10 +156,11 @@ class RootNode:
     structure_family = StructureFamily.container
 
     def __init__(self, metadata, specs, top_level_access_blob):
+        self.id = 0
+        self.parent = None
         self.metadata_ = metadata or {}
-        self.specs = [Spec.model_validate(spec) for spec in specs or []]
-        self.ancestors = []
-        self.key = None
+        self.specs = specs or []
+        self.key = ""
         self.data_sources = None
         self.access_blob = top_level_access_blob or {}
 
@@ -151,11 +168,14 @@ class RootNode:
 class Context:
     def __init__(
         self,
-        engine,
+        engine: AsyncEngine,
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
+        cache_settings=None,
         key_maker=lambda: str(uuid.uuid4()),
+        storage_pool_size=None,
+        storage_max_overflow=None,
     ):
         self.engine = engine
 
@@ -172,7 +192,11 @@ class Context:
             raise ValueError("readable_storage should be a list of URIs or paths")
 
         for item in writable_storage or []:
-            self.writable_storage.append(parse_storage(item))
+            self.writable_storage.append(
+                parse_storage(
+                    item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
+                )
+            )
         for item in readable_storage or []:
             self.readable_storage.add(parse_storage(item))
         # Writable storage should also be readable.
@@ -194,98 +218,11 @@ class Context:
             adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
+        self.cache_settings = cache_settings
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
-
-    # This is heading in a reasonable direction but does not actually work yet.
-    # Pausing development for now.
-    #
-    #     async def list_metadata_indexes(self):
-    #         dialect_name = self.engine.url.get_dialect().name
-    #         async with self.context.session() as db:
-    #             if dialect_name == "sqlite":
-    #                 statement = """
-    # SELECT name, sql
-    # FROM SQLite_master
-    # WHERE type = 'index'
-    # AND tbl_name = 'nodes'
-    # AND name LIKE 'tiled_md_%'
-    # ORDER BY tbl_name;
-    #
-    # """
-    #             elif dialect_name == "postgresql":
-    #                 statement = """
-    # SELECT
-    # indexname, indexdef
-    # FROM
-    # pg_indexes
-    # WHERE tablename = 'nodes'
-    # AND indexname LIKE 'tiled_md_%'
-    # ORDER BY
-    # indexname;
-    #
-    # """
-    #             else:
-    #                 raise NotImplementedError(
-    #                     f"Cannot list indexes for dialect {dialect_name}"
-    #                 )
-    #             indexes = (
-    #                 await db.execute(
-    #                     text(statement),
-    #                     explain=False,
-    #                 )
-    #             ).all()
-    #         return indexes
-    #
-    #     async def create_metadata_index(self, index_name, key):
-    #         """
-    #
-    #         References
-    #         ----------
-    #         https://scalegrid.io/blog/using-jsonb-in-postgresql-how-to-effectively-store-index-json-data-in-postgresql/
-    #         https://pganalyze.com/blog/gin-index
-    #         """
-    #         dialect_name = self.engine.url.get_dialect().name
-    #         if INDEX_PATTERN.match(index_name) is None:
-    #             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
-    #         if dialect_name == "sqlite":
-    #             expression = orm.Node.metadata_[key].as_string()
-    #         elif dialect_name == "postgresql":
-    #             expression = orm.Node.metadata_[key].label("md")
-    #         else:
-    #             raise NotImplementedError
-    #         index = Index(
-    #             f"tiled_md_{index_name}",
-    #             "ancestors",
-    #             expression,
-    #             # postgresql_ops={"md": "jsonb_ops"},
-    #             postgresql_using="gin",
-    #         )
-    #
-    #         def create_index(connection):
-    #             index.create(connection)
-    #
-    #         async with self.engine.connect() as connection:
-    #             await connection.run_sync(create_index)
-    #             await connection.commit()
-    #
-    #     async def drop_metadata_index(self, index_name):
-    #         if INDEX_PATTERN.match(index_name) is None:
-    #             raise ValueError(f"Index name must match pattern {INDEX_PATTERN}")
-    #         if not index_name.startswith("tiled_md_"):
-    #             index_name = f"tiled_md_{index_name}"
-    #         async with self.context.session() as db:
-    #             await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
-    #             await db.commit()
-    #
-    #     async def drop_all_metadata_indexes(self):
-    #         indexes = await self.list_metadata_indexes()
-    #         async with self.context.session() as db:
-    #             for index_name, sql in indexes:
-    #                 await db.execute(text(f"DROP INDEX {index_name};"), explain=False)
-    #             await db.commit()
 
     async def execute(self, statement, explain=None):
         "Debugging convenience utility, not exposed to server"
@@ -293,6 +230,36 @@ class Context:
             result = await db.execute(text(statement), explain=explain)
             await db.commit()
             return result
+
+    async def startup(self):
+        if (self.engine.dialect.name == "sqlite") and (
+            self.engine.url.database == ":memory:"
+            or self.engine.url.query.get("mode") == "memory"
+        ):
+            # Special-case for in-memory SQLite: Because it is transient we can
+            # skip over anything related to migrations.
+            await initialize_database(self.engine)
+        else:
+            await check_catalog_database(self.engine)
+
+        cache_client = None
+        cache_ttl = 0
+        if self.cache_settings:
+            if self.cache_settings["uri"].startswith("redis"):
+                from redis import asyncio as redis
+
+                socket_timeout = self.cache_settings.get("socket_timeout", 10.0)
+                socket_connect_timeout = self.cache_settings.get(
+                    "socket_connect_timeout", 10.0
+                )
+                cache_client = redis.from_url(
+                    self.cache_settings["uri"],
+                    socket_timeout=socket_timeout,
+                    socket_connect_timeout=socket_connect_timeout,
+                )
+                cache_ttl = self.cache_settings.get("ttl", 3600)
+        self.cache_client = cache_client
+        self.cache_ttl = cache_ttl
 
 
 class CatalogNodeAdapter:
@@ -308,34 +275,32 @@ class CatalogNodeAdapter:
         conditions=None,
         queries=None,
         sorting=None,
-        mount_node: Optional[Union[str, List[str]]] = None,
+        mount_path: Optional[list[str]] = None,
     ):
         self.context = context
-        self.engine = self.context.engine
-        if isinstance(mount_node, str):
-            mount_node = [segment for segment in mount_node.split("/") if segment]
-        if mount_node:
-            if not isinstance(node, RootNode):
-                # sanity-check -- this should not be reachable
-                raise RuntimeError("mount_node should only be passed with the RootNode")
-            node.ancestors.extend(mount_node[:-1])
-            node.key = mount_node[-1]
         self.node = node
-        if node.key is None:
-            # Special case for RootNode
-            self.segments = []
-        else:
-            self.segments = node.ancestors + [node.key]
         self.sorting = sorting or [("", 1)]
         self.order_by_clauses = order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
-        self.specs = [Spec.model_validate(spec) for spec in node.specs]
-        self.ancestors = node.ancestors
-        self.key = node.key
+        self.specs = [Spec(**spec) for spec in node.specs]
         self.startup_tasks = [self.startup]
+        if mount_path:
+            self.startup_tasks.append(partial(self.create_mount, mount_path))
         self.shutdown_tasks = [self.shutdown]
+
+    async def path_segments(self):
+        statement = (
+            select(orm.Node.key)
+            .where(orm.Node.id != 0)
+            .join(orm.NodesClosure, orm.NodesClosure.ancestor == orm.Node.id)
+            .where(orm.NodesClosure.descendant == self.node.id)
+            .order_by(orm.NodesClosure.depth.desc())
+        )
+
+        async with self.context.session() as db:
+            return (await db.execute(statement)).scalars().all()
 
     @property
     def access_blob(self):
@@ -345,14 +310,13 @@ class CatalogNodeAdapter:
         return self.node.metadata_
 
     async def startup(self):
-        if (self.context.engine.dialect.name == "sqlite") and (
-            self.context.engine.url.database == ":memory:"
-        ):
-            # Special-case for in-memory SQLite: Because it is transient we can
-            # skip over anything related to migrations.
-            await initialize_database(self.context.engine)
-        else:
-            await check_catalog_database(self.context.engine)
+        await self.context.startup()
+
+    async def create_mount(self, mount_path: list[str]):
+        statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
+        async with self.context.engine.connect() as conn:
+            self.node.id = (await conn.execute(statement)).scalar()
+        self.node.key = mount_path[-1]
 
     async def shutdown(self):
         await self.context.engine.dispose()
@@ -361,11 +325,15 @@ class CatalogNodeAdapter:
     def writable(self):
         return bool(self.context.writable_storage)
 
+    @property
+    def key(self):
+        return self.node.key
+
     def __repr__(self):
-        return f"<{type(self).__name__} /{'/'.join(self.segments)}>"
+        return f"<{type(self).__name__} {self.key}>"
 
     async def __aiter__(self):
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
         for condition in self.conditions:
             statement = statement.filter(condition)
         async with self.context.session() as db:
@@ -374,7 +342,7 @@ class CatalogNodeAdapter:
                 .scalars()
                 .all()
             )
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar().all()
 
@@ -421,20 +389,84 @@ class CatalogNodeAdapter:
             statement = statement.filter(condition)
         return statement
 
-    async def async_len(self):
-        statement = select(func.count(orm.Node.key)).filter(
-            orm.Node.ancestors == self.segments
+    async def exact_len(self):
+        "Get the exact number of child nodes."
+        statement = (
+            select(func.count())
+            .select_from(orm.Node)
+            .filter(orm.Node.parent == self.node.id)
         )
         statement = self.apply_conditions(statement)
+
         async with self.context.session() as db:
             return (await db.execute(statement)).scalar_one()
 
-    async def lookup_adapter(
-        self, segments
-    ):  # TODO: Accept filter for predicate-pushdown.
+    async def approx_len(self) -> Optional[int]:
+        """Get an approximate number of child nodes using table statistics.
+
+        This only works for PostgreSQL databases and does not take into account
+        any filtering conditions. To be able to use these queries, the `nodes`
+        must be vacuumed and analyzed regularly (at least once).
+
+        If the database is not PostgreSQL, or if the statistics can not be
+        obtained, return None.
+        """
+
+        if self.context.engine.dialect.name == "postgresql":
+            async with self.context.session() as db:
+                parent_and_freqs = await db.execute(
+                    text(
+                        """
+                SELECT unnest(most_common_vals::text::int[])::int AS parent,
+                       unnest(most_common_freqs) AS freq
+                FROM pg_stats
+                WHERE schemaname = 'public' AND tablename = 'nodes' AND attname = 'parent';
+                                """
+                    )
+                )
+                for parent, freq in parent_and_freqs:
+                    if parent == self.node.id:
+                        total = (
+                            await db.execute(
+                                text(
+                                    """
+                            SELECT reltuples::bigint FROM pg_class
+                            WHERE  oid = 'public.nodes'::regclass;
+                                            """
+                                )
+                            )
+                        ).scalar_one()
+                        return int(total * freq)
+                else:
+                    return None  # Statistics can not be obtained
+
+        elif self.context.engine.dialect.name == "sqlite":
+            # SQLite has no statistics tables, so we fall back to exact count.
+            return None
+
+    async def lbound_len(self, threshold) -> int:
+        """Get a fast lower bound on the number of child nodes.
+
+        This only counts up to `threshold`+1 nodes, so is fast even for large
+        containers. If result is <= `threshold`, it is exact.
+        """
+
+        limited = (
+            select(literal(1))
+            .select_from(orm.Node)
+            .where(orm.Node.parent == self.node.id)
+            .limit(threshold + 1)
+        )
+        limited = self.apply_conditions(limited).cte("limited")
+        statement = select(func.count()).select_from(limited)
+
+        async with self.context.session() as db:
+            return (await db.execute(statement)).scalar_one()
+
+    async def lookup_adapter(self, segments: list[str]):
+        # TODO: Accept filter for predicate-pushdown.
         if not segments:
             return self
-        *ancestors, key = segments
         if self.conditions and len(segments) > 1:
             # There are some conditions (i.e. WHERE clauses) applied to
             # this node, either via user search queries or via access
@@ -446,15 +478,15 @@ class CatalogNodeAdapter:
             # Search queries and access controls apply only at the top level.
             assert not first_level.conditions
             return await first_level.lookup_adapter(segments[1:])
-        statement = select(orm.Node)
-        statement = self.apply_conditions(statement)
-        statement = statement.filter(
-            orm.Node.ancestors == self.segments + ancestors
-        ).options(
+
+        statement = node_from_segments(segments, root_id=self.node.id)
+        statement = self.apply_conditions(statement)  # Conditions on the child node
+        statement = statement.options(
             selectinload(orm.Node.data_sources).selectinload(orm.DataSource.structure)
         )
+
         async with self.context.session() as db:
-            node = (await db.execute(statement.filter(orm.Node.key == key))).scalar()
+            node = (await db.execute(statement)).scalar()
         if node is None:
             # Maybe the node does not exist, or maybe we have jumped _inside_ a file
             # whose internal contents are not indexed.
@@ -472,13 +504,6 @@ class CatalogNodeAdapter:
                         if adapter is None:
                             raise NoEntry(segments)
                     return adapter
-                elif (
-                    isinstance(catalog_adapter, CatalogCompositeAdapter)
-                    and len(segments[i:]) == 1
-                ):
-                    # Trying to access a table column or an array in a composite node
-                    _segm = await catalog_adapter.resolve_flat_key(segments[i])
-                    return await catalog_adapter.lookup_adapter(_segm.split("/"))
             raise NoEntry(segments)
 
         return STRUCTURES[node.structure_family](self.context, node)
@@ -486,7 +511,7 @@ class CatalogNodeAdapter:
     async def get_adapter(self):
         (data_source,) = self.data_sources
         try:
-            adapter_class = self.context.adapters_by_mimetype[data_source.mimetype]
+            adapter_cls = self.context.adapters_by_mimetype[data_source.mimetype]
         except KeyError:
             raise RuntimeError(
                 f"Server configuration has no adapter for mimetype {data_source.mimetype!r}"
@@ -515,7 +540,7 @@ class CatalogNodeAdapter:
                     )
         adapter = await anyio.to_thread.run_sync(
             partial(
-                adapter_class.from_catalog,
+                adapter_cls.from_catalog,
                 data_source,
                 self.node,
                 **data_source.parameters,
@@ -646,10 +671,10 @@ class CatalogNodeAdapter:
 
         node = orm.Node(
             key=key,
-            ancestors=self.segments,
+            parent=self.node.id,
             metadata_=metadata,
             structure_family=structure_family,
-            specs=[s.model_dump() for s in specs or []],
+            specs=specs or [],
             access_blob=access_blob,
         )
         async with self.context.session() as db:
@@ -663,15 +688,12 @@ class CatalogNodeAdapter:
                 UNIQUE_CONSTRAINT_FAILED = "gkpj"
                 if exc.code == UNIQUE_CONSTRAINT_FAILED:
                     await db.rollback()
-                    raise Collision(f"/{'/'.join(self.segments + [key])}")
+                    raise Collision(f"/{'/'.join(await self.path_segments() + [key])}")
                 raise
             await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
-                    if structure_family in {
-                        StructureFamily.container,
-                        StructureFamily.composite,
-                    }:
+                    if structure_family == StructureFamily.container:
                         raise NotImplementedError(structure_family)
                     if data_source.mimetype is None:
                         data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
@@ -685,29 +707,29 @@ class CatalogNodeAdapter:
                                 "is not one that the Tiled server knows how to write."
                             ),
                         )
-                    adapter = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
+                    adapter_cls = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
                     # Choose writable storage. Use the first writable storage item
                     # with a scheme that is supported by this adapter. # For
                     # back-compat, if an adapter does not declare `supported_storage`
                     # assume it supports file-based storage only.
                     supported_storage = getattr(
-                        adapter, "supported_storage", {FileStorage}
+                        adapter_cls, "supported_storage", {FileStorage}
                     )
                     for storage in self.context.writable_storage:
                         if isinstance(storage, tuple(supported_storage)):
                             break
                     else:
                         raise RuntimeError(
-                            f"The adapter {adapter} supports storage types "
+                            f"The adapter {adapter_cls} supports storage types "
                             f"{[cls.__name__ for cls in supported_storage]} "
                             "but the only available storage types "
                             f"are {self.context.writable_storage}."
                         )
                     data_source = await ensure_awaitable(
-                        adapter.init_storage,
+                        adapter_cls.init_storage,
                         storage,
                         data_source,
-                        self.segments + [key],
+                        await self.path_segments() + [key],
                     )
                 else:
                     if data_source.mimetype not in self.context.adapters_by_mimetype:
@@ -767,9 +789,41 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            return key, type(self)(self.context, refreshed_node)
+            if self.context.cache_client:
+                # Allocate a counter for the new node.
+                await self.context.cache_client.setnx(f"sequence:{node.id}", 0)
+                # Notify subscribers of the *parent* node about the new child.
+                sequence = await self.context.cache_client.incr(
+                    f"sequence:{self.node.id}"
+                )
+                metadata = {
+                    "sequence": sequence,
+                    "timestamp": datetime.now().isoformat(),
+                    "key": key,
+                    "structure_family": structure_family,
+                    "specs": [spec.model_dump() for spec in (specs or [])],
+                    "metadata": metadata,
+                    "data_sources": [d.model_dump() for d in data_sources],
+                }
 
-    async def _put_asset(self, db, asset):
+                # Cache data in Redis with a TTL, and publish
+                # a notification about it.
+                pipeline = self.context.cache_client.pipeline()
+                pipeline.hset(
+                    f"data:{self.node.id}:{sequence}",
+                    mapping={
+                        "sequence": sequence,
+                        "metadata": safe_json_dump(metadata),
+                    },
+                )
+                pipeline.expire(
+                    f"data:{self.node.id}:{sequence}", self.context.cache_ttl
+                )
+                pipeline.publish(f"notify:{self.node.id}", sequence)
+                await pipeline.execute()
+            return type(self)(self.context, refreshed_node)
+
+    async def _put_asset(self, db: AsyncSession, asset):
         # Find an asset_id if it exists, otherwise create a new one
         statement = select(orm.Asset.id).where(orm.Asset.data_uri == asset.data_uri)
         result = await db.execute(statement)
@@ -785,7 +839,7 @@ class CatalogNodeAdapter:
 
         return asset_id
 
-    async def put_data_source(self, data_source):
+    async def put_data_source(self, data_source, patch):
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
         structure = _prepare_structure(
@@ -835,9 +889,28 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
+        if self.context.cache_client:
+            sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+            metadata = {
+                "sequence": sequence,
+                "timestamp": datetime.now().isoformat(),
+                "data_source": data_source.dict(),
+                "patch": patch.dict() if patch else None,
+            }
 
-    # async def patch_node(datasources=None):
-    #     ...
+            # Cache data in Redis with a TTL, and publish
+            # a notification about it.
+            pipeline = self.context.cache_client.pipeline()
+            pipeline.hset(
+                f"data:{self.node.id}:{sequence}",
+                mapping={
+                    "sequence": sequence,
+                    "metadata": orjson.dumps(metadata),
+                },
+            )
+            pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+            pipeline.publish(f"notify:{self.node.id}", sequence)
+            await pipeline.execute()
 
     async def revisions(self, offset, limit):
         async with self.context.session() as db:
@@ -851,103 +924,111 @@ class CatalogNodeAdapter:
             ).all()
             return [Revision.from_orm(o[0]) for o in revision_orms]
 
-    async def delete(self):
-        """
-        Delete a single Node.
+    async def delete(self, recursive=False, external_only=True):
+        """Delete the Node.
 
         Any DataSources belonging to this Node and any Assets associated (only) with
         those DataSources will also be deleted.
+
+        If `recursive` is True, delete all Nodes beneath this Node in the tree.
         """
         async with self.context.session() as db:
-            is_child = orm.Node.ancestors == self.ancestors + [self.key]
-            num_children = (
-                await db.execute(select(func.count(orm.Node.key)).where(is_child))
-            ).scalar()
-            if num_children:
-                raise Conflicts(
-                    "Cannot delete container that is not empty. Delete contents first."
-                )
-            for data_source in self.data_sources:
-                if data_source.management != Management.external:
-                    # TODO Handle case where the same Asset is associated
-                    # with multiple DataSources. This is not possible yet
-                    # but it is expected to become possible in the future.
-                    for asset in data_source.assets:
-                        delete_asset(asset.data_uri, asset.is_directory)
-                        await db.execute(
-                            delete(orm.Asset).where(orm.Asset.id == asset.id)
+            if not recursive:
+                has_children_stmt = select(
+                    exists().where(
+                        and_(
+                            orm.NodesClosure.ancestor == self.node.id,
+                            orm.NodesClosure.descendant != self.node.id,
                         )
-            result = await db.execute(
-                delete(orm.Node).where(orm.Node.id == self.node.id)
-            )
-            if result.rowcount == 0:
-                # TODO Abstract this from FastAPI?
-                raise HTTPException(
-                    status_code=HTTP_404_NOT_FOUND,
-                    detail=f"No node {self.node.id}",
-                )
-            assert (
-                result.rowcount == 1
-            ), f"Deletion would affect {result.rowcount} rows; rolling back"
-            await db.commit()
-
-    async def delete_tree(self, external_only=True):
-        """
-        Delete a Node and of the Nodes beneath it in the tree.
-
-        That is, delete all Nodes that have this Node as an ancestor, any number
-        of "generators" up.
-
-        Any DataSources belonging to those Nodes and any Assets associated (only) with
-        those DataSources will also be deleted.
-        """
-        conditions = []
-        segments = self.ancestors + [self.key]
-        for generation in range(len(segments)):
-            conditions.append(orm.Node.ancestors[generation] == segments[0])
-        async with self.context.session() as db:
-            if external_only:
-                count_int_asset_statement = select(
-                    func.count(orm.Asset.data_uri)
-                ).filter(
-                    orm.Asset.data_sources.any(
-                        orm.DataSource.management != Management.external
                     )
                 )
-                for condition in conditions:
-                    count_int_asset_statement.filter(condition)
-                count_int_assets = (
-                    await db.execute(count_int_asset_statement)
-                ).scalar()
-                if count_int_assets > 0:
+                if (await db.execute(has_children_stmt)).scalar():
+                    raise Conflicts(
+                        "Cannot delete a node that is not empty. "
+                        "Delete its contents first or pass `recursive=True`."
+                    )
+
+            affected_nodes_stmnt = (
+                select(orm.NodesClosure.descendant)
+                .where(orm.NodesClosure.ancestor == self.node.id)
+                .distinct()
+                .scalar_subquery()
+            )
+            if external_only:
+                int_asset_exists_stmt = select(
+                    exists()
+                    .where(orm.Asset.id == orm.DataSourceAssetAssociation.asset_id)
+                    .where(
+                        orm.DataSourceAssetAssociation.data_source_id
+                        == orm.DataSource.id
+                    )
+                    .where(orm.DataSource.node_id.in_(affected_nodes_stmnt))
+                    .where(orm.DataSource.management != Management.external)
+                )
+
+                if (await db.execute(int_asset_exists_stmt)).scalar():
                     raise WouldDeleteData(
                         "Some items in this tree are internally managed. "
-                        "Delete the records will also delete the underlying data files. "
+                        "Deleting the records will also delete the underlying data files. "
                         "If you want to delete them, pass external_only=False."
                     )
-            else:
-                sel_int_asset_statement = select(
-                    orm.Asset.data_uri, orm.Asset.is_directory
-                ).filter(
-                    orm.Asset.data_sources.any(
-                        orm.DataSource.management != Management.external
-                    )
+
+            sel_asset_stmnt = (
+                select(
+                    orm.Asset.id,
+                    orm.Asset.data_uri,
+                    orm.Asset.is_directory,
+                    orm.DataSource.management,
+                    orm.DataSource.parameters,
                 )
-                for condition in conditions:
-                    sel_int_asset_statement.filter(condition)
-                int_assets = (await db.execute(sel_int_asset_statement)).all()
-                for data_uri, is_directory in int_assets:
-                    delete_asset(data_uri, is_directory)
-            # TODO Deal with Assets belonging to multiple DataSources.
-            del_asset_statement = delete(orm.Asset)
-            for condition in conditions:
-                del_asset_statement.filter(condition)
-            await db.execute(del_asset_statement)
-            del_node_statement = delete(orm.Node)
-            for condition in conditions:
-                del_node_statement.filter(condition)
-            result = await db.execute(del_node_statement)
+                .select_from(orm.Asset)
+                .join(
+                    orm.Asset.data_sources
+                )  # Join on secondary (mapping) relationship
+                .join(orm.DataSource.node)
+                .filter(orm.Node.id.in_(affected_nodes_stmnt))
+                .distinct()
+            )
+
+            assets_to_delete = []
+            for asset_id, data_uri, is_directory, management, parameters in (
+                await db.execute(sel_asset_stmnt)
+            ).all():
+                # Check if this asset is referenced by other UNAFFECTED nodes
+                is_referenced = select(
+                    exists()
+                    .where(
+                        orm.Asset.id == asset_id,
+                        orm.Asset.data_sources.any(
+                            orm.DataSource.node_id.notin_(affected_nodes_stmnt)
+                        ),
+                    )
+                    .distinct()
+                )
+                if not (await db.execute(is_referenced)).scalar():
+                    # This asset is referenced only by AFFECTED nodes, so we can delete it
+                    await db.execute(delete(orm.Asset).where(orm.Asset.id == asset_id))
+                    if management != Management.external:
+                        assets_to_delete.append((data_uri, is_directory, parameters))
+                elif (management == Management.writable) and (
+                    urlparse(data_uri).scheme in {"duckdb", "sqlite", "postgresql"}
+                ):
+                    # The tabular storage asset may be referenced by several data_sources
+                    # and nodes, so we cannot delete it completely. However, we can delete
+                    # the relevant rows and tables.
+                    assets_to_delete.append((data_uri, is_directory, parameters))
+
+            result = await db.execute(
+                delete(orm.Node)
+                .where(orm.Node.id.in_(affected_nodes_stmnt))
+                .where(orm.Node.parent.isnot(None))
+            )
             await db.commit()
+
+            # Finally, delete the physical assets that are not externally managed
+            for data_uri, is_directory, parameters in assets_to_delete:
+                delete_asset(data_uri, is_directory, parameters=parameters)
+
         return result.rowcount
 
     async def delete_revision(self, number):
@@ -977,7 +1058,7 @@ class CatalogNodeAdapter:
             # SQLAlchemy reserved word 'metadata'.
             values["metadata_"] = metadata
         if specs is not None:
-            values["specs"] = [s.model_dump() for s in specs]
+            values["specs"] = specs
         if access_blob is not None:
             values["access_blob"] = access_blob
         async with self.context.session() as db:
@@ -1012,6 +1093,117 @@ class CatalogNodeAdapter:
             )
             await db.commit()
 
+    async def close_stream(self):
+        # Check the node status.
+        # ttl returns -2 if the key does not exist.
+        # ttl returns -1 if the key exists but has no associated expire.
+        # ttl greater than 0 means that it is marked to expire.
+        node_ttl = await self.context.cache_client.ttl(f"sequence:{self.node.id}")
+        if node_ttl > 0:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"Stream for node {self.node.id} is already closed.",
+            )
+        if node_ttl == -2:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=f"Node {self.node.id} not found.",
+            )
+
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "end_of_stream": True,
+        }
+        # Increment the counter for this node.
+        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+
+        # Cache data in Redis with a TTL, and publish
+        # a notification about it.
+        pipeline = self.context.cache_client.pipeline()
+        pipeline.hset(
+            f"data:{self.node.id}:{sequence}",
+            mapping={
+                "sequence": sequence,
+                "metadata": orjson.dumps(metadata),
+            },
+        )
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
+        await pipeline.execute()
+
+    def make_ws_handler(self, websocket, formatter, uri):
+        async def handler(sequence: Optional[int] = None):
+            await websocket.accept()
+            end_stream = asyncio.Event()
+            cache_client = self.context.cache_client
+
+            async def stream_data(sequence):
+                key = f"data:{self.node.id}:{sequence}"
+                payload_bytes, metadata_bytes = await cache_client.hmget(
+                    key, "payload", "metadata"
+                )
+                if metadata_bytes is None:
+                    # This means that redis ttl has expired for this sequence
+                    return
+                metadata = orjson.loads(metadata_bytes)
+                if metadata.get("end_of_stream"):
+                    # This means that the stream is closed by the producer
+                    end_stream.set()
+                    return
+                metadata["uri"] = uri
+                if metadata.get("patch"):
+                    s = ",".join(
+                        f"{offset}:{offset+shape}"
+                        for offset, shape in zip(
+                            metadata["patch"]["offset"], metadata["patch"]["shape"]
+                        )
+                    )
+                    metadata["uri"] = f"{uri}?slice={s}"
+                await formatter(websocket, metadata, payload_bytes)
+
+            # Setup buffer
+            stream_buffer = asyncio.Queue()
+
+            async def buffer_live_events():
+                pubsub = cache_client.pubsub()
+                await pubsub.subscribe(f"notify:{self.node.id}")
+                try:
+                    async for message in pubsub.listen():
+                        if message.get("type") == "message":
+                            try:
+                                live_seq = int(message["data"])
+                                await stream_buffer.put(live_seq)
+                            except Exception as e:
+                                print(f"Error parsing live message: {e}")
+                except Exception as e:
+                    print(f"Live subscription error: {e}")
+                finally:
+                    await pubsub.unsubscribe(f"notify:{self.node.id}")
+                    await pubsub.aclose()
+
+            live_task = asyncio.create_task(buffer_live_events())
+
+            if sequence is not None:
+                current_seq = await cache_client.get(f"sequence:{self.node.id}")
+                current_seq = int(current_seq) if current_seq is not None else 0
+                print("Replaying old data...")
+                for s in range(sequence, current_seq + 1):
+                    await stream_data(s)
+            # New data
+            try:
+                while not end_stream.is_set():
+                    live_seq = await stream_buffer.get()
+                    await stream_data(live_seq)
+                else:
+                    await websocket.close(code=1000, reason="Producer ended stream")
+            except WebSocketDisconnect:
+                print(f"Client disconnected from node {self.node.id}")
+            finally:
+                live_task.cancel()
+
+        return handler
+
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
     async def keys_range(self, offset, limit):
@@ -1021,7 +1213,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 offset,
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
-        statement = select(orm.Node.key).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             return (
@@ -1043,7 +1235,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
                 offset,
                 (offset + limit) if limit is not None else None,  # noqa: E203
             )
-        statement = select(orm.Node).filter(orm.Node.ancestors == self.segments)
+        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
         statement = self.apply_conditions(statement)
         async with self.context.session() as db:
             nodes = (
@@ -1074,69 +1266,6 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
 
-class CatalogCompositeAdapter(CatalogContainerAdapter):
-    async def resolve_flat_key(self, key):
-        for _key, item in await self.items_range(offset=0, limit=None):
-            if key == _key:
-                return _key
-            if item.structure_family == StructureFamily.table:
-                if key in item.structure().columns:
-                    return f"{_key}/{key}"
-        raise KeyError(key)
-
-    async def create_node(
-        self,
-        structure_family,
-        metadata,
-        key=None,
-        specs=None,
-        data_sources=None,
-        access_blob=None,
-    ):
-        key = key or self.context.key_maker()
-
-        # List all new keys that would be added to the flattened namespace
-        assert len(data_sources) == 1
-        if data_sources[0].structure_family == StructureFamily.table:
-            new_keys = data_sources[0].structure.columns
-        elif data_sources[0].structure_family in {
-            StructureFamily.array,
-            StructureFamily.awkward,
-            StructureFamily.sparse,
-        }:
-            new_keys = [key]
-        else:
-            raise ValueError(
-                f"Unsupported structure family: {data_sources[0].structure_family}"
-            )
-
-        # Get all keys and columns names already in the Composite node
-        flat_keys = []
-        for _key, item in await self.items_range(offset=0, limit=None):
-            flat_keys.append(_key)
-            if item.structure_family == StructureFamily.table:
-                flat_keys.extend(item.structure().columns)
-
-        # Check for column name collisions
-        key_conflicts = set(new_keys) & set(flat_keys)
-        if key_conflicts:
-            raise Collision(f"Column name collision: {key_conflicts}")
-
-        # Ensure that child tables are marked with the 'flattened' spec
-        if structure_family == StructureFamily.table:
-            if not specs or "flattened" not in (s.name for s in specs):
-                specs = [Spec(name="flattened")] + (specs or [])
-
-        return await super().create_node(
-            structure_family,
-            metadata,
-            key=key,
-            specs=specs,
-            data_sources=data_sources,
-            access_blob=access_blob,
-        )
-
-
 class CatalogArrayAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
         if not self.data_sources:
@@ -1151,19 +1280,70 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).read_block, *args, **kwargs
         )
 
-    async def write(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+    async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
+        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "content-type": media_type,
+            "shape": shape,
+            "offset": offset,
+            "block": block,
+        }
 
-    async def write_block(self, *args, **kwargs):
+        pipeline = self.context.cache_client.pipeline()
+        pipeline.hset(
+            f"data:{self.node.id}:{sequence}",
+            mapping={
+                "sequence": sequence,
+                "metadata": orjson.dumps(metadata),
+                "payload": body,  # raw user input
+            },
+        )
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+        pipeline.publish(f"notify:{self.node.id}", sequence)
+        await pipeline.execute()
+
+    async def write(self, media_type, deserializer, entry, body):
+        shape = entry.structure().shape
+        if self.context.cache_client:
+            await self._stream(media_type, entry, body, shape)
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
+        return await ensure_awaitable((await self.get_adapter()).write, data)
+
+    async def write_block(self, block, media_type, deserializer, entry, body):
+        from tiled.adapters.array import slice_and_shape_from_block_and_chunks
+
+        _, shape = slice_and_shape_from_block_and_chunks(
+            block, entry.structure().chunks
+        )
+        if self.context.cache_client:
+            await self._stream(media_type, entry, body, shape, block=block)
+        if entry.structure_family == "array":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
+        elif entry.structure_family == "sparse":
+            data = await ensure_awaitable(deserializer, body)
+        else:
+            raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable(
-            (await self.get_adapter()).write_block, *args, **kwargs
+            (await self.get_adapter()).write_block, data, block
         )
 
-    async def patch(self, *args, **kwargs):
+    async def patch(self, shape, offset, extend, media_type, deserializer, entry, body):
+        if self.context.cache_client:
+            await self._stream(media_type, entry, body, shape, offset=offset)
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
         # assumes a single DataSource (currently only supporting zarr)
         async with self.context.session() as db:
             new_shape_and_chunks = await ensure_awaitable(
-                (await self.get_adapter()).patch, *args, **kwargs
+                (await self.get_adapter()).patch, data, offset, extend
             )
             node = await db.get(orm.Node, self.node.id)
             if len(node.data_sources) != 1:
@@ -1234,7 +1414,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
-def delete_asset(data_uri, is_directory):
+def delete_asset(data_uri, is_directory, parameters=None):
     url = urlparse(data_uri)
     if url.scheme == "file":
         path = path_from_uri(data_uri)
@@ -1242,8 +1422,27 @@ def delete_asset(data_uri, is_directory):
             shutil.rmtree(path)
         else:
             Path(path).unlink()
+    elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
+        storage = cast(SQLStorage, get_storage(data_uri))
+        with closing(storage.connect()) as conn:
+            table_name = parameters.get("table_name") if parameters else None
+            dataset_id = parameters.get("dataset_id") if parameters else None
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f'DELETE FROM "{table_name}" WHERE _dataset_id = {dataset_id:d};',
+                )
+            conn.commit()
+
+            # If the table is empty, we can drop it
+            with conn.cursor() as cursor:
+                cursor.execute(f'SELECT COUNT(*) FROM "{table_name}";')
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
+            conn.commit()
     else:
-        raise NotImplementedError(url.scheme)
+        raise NotImplementedError(
+            f"Cannot delete asset at {data_uri!r} because the scheme {url.scheme!r} is not supported."
+        )
 
 
 _STANDARD_SORT_KEYS = {
@@ -1313,7 +1512,7 @@ def _prepare_structure(structure_family, structure):
 
 
 def binary_op(query, tree, operation):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     keys = query.key.split(".")
     attr = orm.Node.metadata_[keys]
     if dialect_name == "sqlite":
@@ -1355,12 +1554,14 @@ def contains(query, tree):
 
 
 def full_text(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     if dialect_name == "sqlite":
         condition = orm.metadata_fts5.c.metadata.match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
-            cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
+            sql_cast("simple", REGCONFIG),
+            orm.Node.metadata_,
+            sql_cast(["string"], JSONB),
         )
         condition = tsvector.op("@@")(func.to_tsquery("simple", query.text))
     else:
@@ -1369,7 +1570,7 @@ def full_text(query, tree):
 
 
 def specs(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     conditions = []
     attr = orm.Node.specs
     if dialect_name == "sqlite":
@@ -1390,7 +1591,7 @@ def specs(query, tree):
 
 
 def access_blob_filter(query, tree):
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     access_blob = orm.Node.access_blob
     if not (query.user_id or query.tags):
         # Results cannot possibly match an empty value or list,
@@ -1401,19 +1602,23 @@ def access_blob_filter(query, tree):
         attr_id = access_blob["user"]
         attr_tags = access_blob["tags"]
         access_tags_json = func.json_each(attr_tags).table_valued("value")
-        contains_tags = (
+        condition = (
             select(1)
             .select_from(access_tags_json)
             .where(access_tags_json.c.value.in_(query.tags))
             .exists()
         )
-        user_match = func.json_extract(func.json_quote(attr_id), "$") == query.user_id
-        condition = or_(contains_tags, user_match)
+        if query.user_id is not None:
+            user_match = (
+                func.json_extract(func.json_quote(attr_id), "$") == query.user_id
+            )
+            condition = or_(condition, user_match)
     elif dialect_name == "postgresql":
         access_blob_jsonb = type_coerce(access_blob, JSONB)
-        contains_tags = access_blob_jsonb["tags"].has_any(cast(query.tags, ARRAY(TEXT)))
-        user_match = access_blob_jsonb["user"].astext == query.user_id
-        condition = or_(contains_tags, user_match)
+        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
+        if query.user_id is not None:
+            user_match = access_blob_jsonb["user"].astext == query.user_id
+            condition = or_(condition, user_match)
     else:
         raise UnsupportedQueryType("access_blob_filter")
 
@@ -1475,8 +1680,22 @@ def in_or_not_in(query, tree, method):
     METHODS = {"in_", "not_in"}
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}")
-    dialect_name = tree.engine.url.get_dialect().name
+    dialect_name = tree.context.engine.url.get_dialect().name
     return _IN_OR_NOT_IN_DIALECT_DISPATCH[dialect_name](query, tree, method)
+
+
+def key_present(query, tree):
+    # Functionally in SQLAlchemy 'is not None' does not work as expected
+    if tree.context.engine.url.get_dialect().name == "sqlite":
+        condition = orm.Node.metadata_.op("->")("$." + query.key) != None  # noqa: E711
+    else:
+        keys = query.key.split(".")
+        condition = (
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
+            != None  # noqa: E711
+        )
+    condition = condition if getattr(query, "exists", True) else not_(condition)
+    return tree.new_variation(conditions=tree.conditions + [condition])
 
 
 def keys_filter(query, tree):
@@ -1495,6 +1714,7 @@ CatalogNodeAdapter.register_query(Comparison, comparison)
 CatalogNodeAdapter.register_query(Contains, contains)
 CatalogNodeAdapter.register_query(In, partial(in_or_not_in, method="in_"))
 CatalogNodeAdapter.register_query(NotIn, partial(in_or_not_in, method="not_in"))
+CatalogNodeAdapter.register_query(KeyPresent, key_present)
 CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
@@ -1505,14 +1725,22 @@ CatalogNodeAdapter.register_query(Like, like)
 
 def in_memory(
     *,
+    named_memory=None,
     metadata=None,
     specs=None,
     writable_storage=None,
     readable_storage=None,
     echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
+    top_level_access_blob=None,
+    cache_settings=None,
 ):
-    uri = "sqlite:///:memory:"
+    if not named_memory:
+        uri = "sqlite:///:memory:"
+    else:
+        uri = f"sqlite:///file:{named_memory}?mode=memory&cache=shared&uri=true"
+    # NOTE: catalog_pool_size and catalog_max_overflow are ignored when using an
+    # in-memory catalog.
     return from_uri(
         uri=uri,
         metadata=metadata,
@@ -1522,6 +1750,8 @@ def in_memory(
         init_if_not_exists=True,
         echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
+        top_level_access_blob=top_level_access_blob,
+        cache_settings=cache_settings,
     )
 
 
@@ -1537,6 +1767,11 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    cache_settings=None,
+    catalog_pool_size=None,
+    storage_pool_size=None,
+    catalog_max_overflow=None,
+    storage_max_overflow=None,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1559,28 +1794,56 @@ def from_uri(
         logger.info(f"Subprocess stderr: {stderr}")
 
     parsed_url = make_url(uri)
-    if (parsed_url.get_dialect().name == "sqlite") and (
-        parsed_url.database != ":memory:"
+    if (
+        (parsed_url.get_dialect().name == "sqlite")
+        and (parsed_url.database != ":memory:")
+        and (parsed_url.query.get("mode", None) != "memory")
     ):
         # For file-backed SQLite databases, connection pooling offers a
         # significant performance boost. For SQLite databases that exist
         # only in process memory, pooling is not applicable.
         poolclass = AsyncAdaptedQueuePool
+    elif parsed_url.get_dialect().name.startswith("postgresql"):
+        poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
     else:
         poolclass = None  # defer to sqlalchemy default
+
+    node = RootNode(metadata, specs, top_level_access_blob)
+    mount_path = (
+        [segment for segment in mount_node.split("/") if segment]
+        if isinstance(mount_node, str)
+        else mount_node
+    )
+
+    # Optionally set pool size and max overflow for the catalog engine;
+    # if not specified, use the default values from sqlalchemy.
+    pool_kwargs = (
+        {"pool_size": catalog_pool_size, "max_overflow": catalog_max_overflow}
+        if poolclass == AsyncAdaptedQueuePool
+        else {}
+    )
+    pool_kwargs = {k: v for k, v in pool_kwargs.items() if v is not None}
+    # Create the async engine with the specified parameters
     engine = create_async_engine(
         uri,
         echo=echo,
         json_serializer=json_serializer,
         poolclass=poolclass,
+        **pool_kwargs,
     )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-    adapter = CatalogContainerAdapter(
-        Context(engine, writable_storage, readable_storage, adapters_by_mimetype),
-        RootNode(metadata, specs, top_level_access_blob),
-        mount_node=mount_node,
+    context = Context(
+        engine,
+        writable_storage,
+        readable_storage,
+        adapters_by_mimetype,
+        cache_settings,
+        storage_pool_size=storage_pool_size,
+        storage_max_overflow=storage_max_overflow,
     )
+    adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
+
     return adapter
 
 
@@ -1659,10 +1922,41 @@ def specs_array_to_json(specs):
     return [{"name": spec} for spec in specs]
 
 
+def node_from_segments(segments, root_id=0):
+    """Create an SQLAlchemy select statement to find a node based on its path
+
+    Queries the database recursively to find the node with the given ancestors
+    and key.
+
+    Parameters
+    ----------
+        segments : list of str
+            The path segments leading to the node, e.g. ['A', 'x', 'i'].
+        root_id : int
+            The ID of the root node, typically 0 for the root of the catalog.
+
+    Returns
+    -------
+        sqlalchemy.sql.selectable.Select
+    """
+
+    # Create an alias for each ancestor node in the path and build the join chain
+    orm_NodeAliases = [aliased(orm.Node) for _ in range(len(segments))] + [orm.Node]
+    statement = select(orm_NodeAliases[-1])  # Select the child node
+    statement = statement.select_from(orm_NodeAliases[0])  # Start from the ancestor
+    statement = statement.where(orm_NodeAliases[0].id == root_id)
+    for i, segment in enumerate(segments):
+        parent, child = orm_NodeAliases[i], orm_NodeAliases[i + 1]
+        statement = statement.join(child, child.parent == parent.id).where(
+            child.key == segment
+        )
+
+    return statement
+
+
 STRUCTURES = {
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
-    StructureFamily.composite: CatalogCompositeAdapter,
     StructureFamily.container: CatalogContainerAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,

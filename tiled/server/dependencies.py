@@ -1,13 +1,12 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Set
 
 import pydantic_settings
-from fastapi import HTTPException, Query
+from fastapi import HTTPException, Query, Request
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from tiled.adapters.protocols import AnyAdapter
 from tiled.server.schemas import Principal
 from tiled.structures.core import StructureFamily
-from tiled.utils import SpecialUsers
 
 from ..type_aliases import Scopes
 from ..utils import BrokenLink
@@ -15,17 +14,15 @@ from .core import NoEntry
 from .utils import filter_for_access, record_timing
 
 
-def get_root_tree():
-    raise NotImplementedError(
-        "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.build_app()."
-    )
+def get_root_tree(request: Request):
+    return request.app.state.root_tree
 
 
 async def get_entry(
     path: str,
     security_scopes: List[str],
-    principal: Union[Principal, SpecialUsers],
+    principal: Optional[Principal],
+    authn_access_tags: Optional[Set[str]],
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
@@ -54,10 +51,10 @@ async def get_entry(
         entry,
         access_policy,
         principal,
+        authn_access_tags,
         authn_scopes,
         ["read:metadata"],
         metrics,
-        # request.state.metrics,
     )
     try:
         for i, segment in enumerate(path_parts):
@@ -80,6 +77,7 @@ async def get_entry(
                 entry,
                 access_policy,
                 principal,
+                authn_access_tags,
                 authn_scopes,
                 ["read:metadata"],
                 metrics,
@@ -91,6 +89,7 @@ async def get_entry(
                 allowed_scopes = await access_policy.allowed_scopes(
                     entry,
                     principal,
+                    authn_access_tags,
                     authn_scopes,
                 )
                 if not set(security_scopes).issubset(allowed_scopes):

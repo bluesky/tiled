@@ -73,6 +73,22 @@ properties:
               args:
                 uri: "catalog.db"
             ```
+  streaming_cache:
+    description: |
+      Streaming cache database
+    type: object
+    additionalProperties: false
+    properties:
+      uri:
+        type: string
+      ttl:
+        type: number
+      socket_timeout:
+        type: number
+      socket_connect_timeout:
+        type: number
+    required:
+      - uri
   media_types:
     type: object
     additionalProperties: true
@@ -132,7 +148,7 @@ properties:
     properties:
       providers:
         type: array
-        item:
+        items:
           type: object
           additionalProperties: false
           required:
@@ -161,19 +177,19 @@ properties:
                 ```yaml
                 authenticator: tiled.examples.DummyAuthenticator
                 ```
+            args:
+              type: object
+              description: |
+                Named arguments to pass to Authenticator. If there are none,
+                `args` may be omitted or empty.
+
+                Example:
+
+                ```yaml
+                authenticator: tiled.examples.PAMAuthenticator
                 args:
-                  type: [object, "null"]
-                  description: |
-                    Named arguments to pass to Authenticator. If there are none,
-                    `args` may be omitted or empty.
-
-                    Example:
-
-                    ```yaml
-                    authenticator: tiled.examples.PAMAuthenticator
-                    args:
-                      service: "custom_service"
-                    ```
+                  service: "custom_service"
+                ```
       tiled_admins:
         type: array
         items:
@@ -308,13 +324,12 @@ properties:
           Example:
 
           ```yaml
-          access_control:
-            access_policy: "tiled.access_policies:SimpleAccessPolicy"
-            args:
-              access_lists:
-                alice: ["A", "B"]
-                bob: ["C"]
-                cara: "tiled.access_policies:ALL_ACCESS"
+          access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
+          args:
+            provider: "pam"
+            tags_db:
+              uri: "file:compiled_tags.sqlite"
+            access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
           ```
       args:
         type: object
@@ -342,6 +357,29 @@ properties:
     description: |
       Maximum byte size of a response, given in bytes. The default is low (300 MB) keeping
       in mind that data is read into server memory and should generally be fetched in chunks.
+  exact_count_limit:
+    type: integer
+    description: |
+      The largest number of items in a container, for which the `/metadata` and `/search`
+      endpoints will return their exact count; this becomes the lower bound on the estimate if
+      an approximate number can not be obtained otherwise. The default is 100.
+  catalog_pool_size:
+    type: integer
+    description: |
+      Size of the connection pool for catalog databases. Default is 5.
+  catalog_max_overflow:
+    type: integer
+    description: |
+      If supported, the maximum overflow size of the connection pool for catalog databases,
+      i.e. the number of connections that can be created beyond the pool size. Default is 10.
+  storage_pool_size:
+    type: integer
+    description: |
+      Size of the (ABDC) connection pool for storage databases. Default is 5.
+  storage_max_overflow:
+    type: integer
+    description: |
+      Maximum overflow size of the connection pool for storage databases. Default is 10.
   allow_origins:
     type: array
     items:
@@ -449,12 +487,20 @@ properties:
       The validation function should have signature
 
       ```python
-      f(metadata, structure_family, structure, spec)
+      f(spec: tiled.structures.core.Spec,
+        metadata: dict[str, Any],
+        entry: Optional[tiled.adapters.protocols.AnyAdapter],
+        structure_family: Optional[tiled.structures.core.StructureFamily],
+        structure: dict[str, Any]) -> Optional[dict[str, Any]]
       ```
       and return `None` or a possibly modified metadata object to indicate
       success or raise a `tiled.validation_registration.ValidationError`
       exception to indicate failure. If a metadata object is returned it
       will be sent back to client in the response to the POST.
+      `structure_family` and `structure` are optional and default to `None`;
+      when specified, they assume to describe the structure of the new node.
+      Likewise, `entry` is optional and defaults to `None`; when specified,
+      it relates to the node, whose spec and metadata are being modified.
   reject_undeclared_specs:
     type: boolean
     description: |
