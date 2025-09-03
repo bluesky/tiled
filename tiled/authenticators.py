@@ -141,7 +141,7 @@ properties:
         well_known_uri: str,
         confirmation_message: str = "",
     ):
-        self._audience = audience
+        self.audience = audience
         self._client_id = client_id
         self._client_secret = Secret(client_secret)
         self._well_known_url = well_known_uri
@@ -208,7 +208,7 @@ properties:
                 token=id_token,
                 key=keys,
                 algorithms=self.id_token_signing_alg_values_supported,
-                audience=self._audience,
+                audience=self.audience,
                 access_token=access_token,
             )
         except JWTError:

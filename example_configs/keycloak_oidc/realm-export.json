@@ -899,9 +899,10 @@
           "config": {
             "id.token.claim": "false",
             "lightweight.claim": "false",
-            "access.token.claim": "true",
             "introspection.token.claim": "true",
-            "included.custom.audience": "tiled_aud"
+            "access.token.claim": "true",
+            "included.custom.audience": "tiled_aud",
+            "userinfo.token.claim": "false"
           }
         },
         {
@@ -920,6 +921,7 @@
       "defaultClientScopes": [
         "web-origins",
         "acr",
+        "read:metadata",
         "roles",
         "profile",
         "basic",
@@ -1581,6 +1583,18 @@
       ]
     },
     {
+      "id": "283a37d2-8682-4458-a266-73aacef4f167",
+      "name": "read:metadata",
+      "description": "",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "gui.order": "",
+        "consent.screen.text": ""
+      }
+    },
+    {
       "id": "3daa4f68-97a7-456b-92cd-7becc153e990",
       "name": "basic",
       "description": "OpenID Connect scope for add all basic claims to the token",
@@ -1666,14 +1680,14 @@
         "subComponents": {},
         "config": {
           "allowed-protocol-mapper-types": [
-            "saml-user-attribute-mapper",
-            "saml-user-property-mapper",
-            "oidc-sha256-pairwise-sub-mapper",
-            "oidc-usermodel-attribute-mapper",
-            "saml-role-list-mapper",
-            "oidc-full-name-mapper",
             "oidc-address-mapper",
-            "oidc-usermodel-property-mapper"
+            "saml-user-attribute-mapper",
+            "saml-role-list-mapper",
+            "oidc-sha256-pairwise-sub-mapper",
+            "oidc-full-name-mapper",
+            "oidc-usermodel-property-mapper",
+            "saml-user-property-mapper",
+            "oidc-usermodel-attribute-mapper"
           ]
         }
       },
@@ -1685,14 +1699,14 @@
         "subComponents": {},
         "config": {
           "allowed-protocol-mapper-types": [
+            "oidc-full-name-mapper",
+            "saml-user-property-mapper",
+            "oidc-usermodel-attribute-mapper",
             "saml-role-list-mapper",
             "oidc-usermodel-property-mapper",
             "oidc-address-mapper",
-            "oidc-usermodel-attribute-mapper",
-            "oidc-sha256-pairwise-sub-mapper",
-            "saml-user-property-mapper",
             "saml-user-attribute-mapper",
-            "oidc-full-name-mapper"
+            "oidc-sha256-pairwise-sub-mapper"
           ]
         }
       },

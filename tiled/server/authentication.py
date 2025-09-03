@@ -160,9 +160,8 @@ def decode_token(
             token,
             key=proxied_authenticator.keys,
             algorithms=proxied_authenticator.id_token_signing_alg_values_supported,
-            audience=proxied_authenticator._audience,
+            audience=proxied_authenticator.audience,
             issuer=proxied_authenticator.issuer,
-            access_token=token,
         )
     else:
         # The first key in settings.secret_keys is used for *encoding*.
@@ -304,9 +303,7 @@ async def get_current_scopes(
         )
     elif decoded_access_token is not None:
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            return decoded_access_token.get(
-                "scope", set(["read:metadata"])
-            )  # TODO: Fix this
+            return set(decoded_access_token["scope"].split(" "))
         else:
             return decoded_access_token["scp"]
     else:

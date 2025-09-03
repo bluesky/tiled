@@ -22,7 +22,6 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.security import OAuth2AuthorizationCodeBearer
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
@@ -398,11 +397,7 @@ def build_app(
             authentication["providers"][0]["authenticator"], ProxiedOIDCAuthenticator
         ):
             proxied_authenticator = authentication["providers"][0]["authenticator"]
-            oauth2_scheme = OAuth2AuthorizationCodeBearer(  # noqa: F811
-                authorizationUrl=str(proxied_authenticator.authorization_endpoint),
-                tokenUrl=proxied_authenticator.token_endpoint,
-                refreshUrl=proxied_authenticator.token_endpoint,
-            )
+            oauth2_scheme = proxied_authenticator.oauth2_schema  # noqa: F811
         else:
             oauth2_scheme.model.flows.password.tokenUrl = (
                 f"/api/v1/auth/provider/{first_provider}/token"
