@@ -15,7 +15,7 @@ Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
 
 
-class TestClientWebsocketWrapper:
+class _TestClientWebsocketWrapper:
     """Wrapper for TestClient websockets."""
 
     def __init__(self, http_client, uri: httpx.URL):
@@ -41,7 +41,7 @@ class TestClientWebsocketWrapper:
         self._websocket.__exit__(None, None, None)
 
 
-class RegularWebsocketWrapper:
+class _RegularWebsocketWrapper:
     """Wrapper for regular websockets."""
 
     def __init__(self, http_client, uri: httpx.URL):
@@ -100,9 +100,11 @@ class Subscription:
         self._callbacks = set()
         self._close_event = threading.Event()
         if isinstance(context.http_client, TestClient):
-            self._websocket = TestClientWebsocketWrapper(context.http_client, self._uri)
+            self._websocket = _TestClientWebsocketWrapper(
+                context.http_client, self._uri
+            )
         else:
-            self._websocket = RegularWebsocketWrapper(context.http_client, self._uri)
+            self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
 
     @property
     def context(self) -> Context:
