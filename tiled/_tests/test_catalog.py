@@ -242,7 +242,7 @@ async def test_write_array_external(a, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_write_dataframe_external_direct(a, tmpdir):
+async def test_write_table_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = str(tmpdir / "file.csv")
     data_uri = ensure_uri(filepath)
@@ -316,9 +316,9 @@ def test_write_array_internal_via_client(client):
     assert numpy.array_equal(actual, expected)
 
 
-def test_write_dataframe_internal_via_client(client):
+def test_write_table_internal_via_client(client):
     expected = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
-    x = client.write_dataframe(expected)
+    x = client.write_table(expected)
     actual = x.read()
     pandas.testing.assert_frame_equal(actual, expected)
 

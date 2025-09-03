@@ -70,7 +70,7 @@ def client(tmpdir_module):
 def test_validators(client):
     # valid example
     df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
-    client.write_dataframe(df, metadata={"foo": 1}, specs=["foo"])
+    client.write_table(df, metadata={"foo": 1}, specs=["foo"])
 
     with fail_with_status_code(HTTP_400_BAD_REQUEST):
         # not expected structure family
@@ -80,23 +80,23 @@ def test_validators(client):
     with fail_with_status_code(HTTP_400_BAD_REQUEST):
         # column names are not expected
         df = pd.DataFrame({"x": np.zeros(10), "y": np.zeros(10)})
-        client.write_dataframe(df, metadata={}, specs=["foo"])
+        client.write_table(df, metadata={}, specs=["foo"])
 
     with fail_with_status_code(HTTP_400_BAD_REQUEST):
         # missing expected metadata
         df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
-        client.write_dataframe(df, metadata={}, specs=["foo"])
+        client.write_table(df, metadata={}, specs=["foo"])
 
     metadata = {"id": 1, "foo": "bar"}
     df = pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)})
-    result = client.write_dataframe(df, metadata=metadata, specs=["foo"])
+    result = client.write_table(df, metadata=metadata, specs=["foo"])
     assert result.metadata == metadata
     result_df = result.read()
     pd.testing.assert_frame_equal(result_df, df)
 
     metadata_upper = {"ID": 2, "FOO": "bar"}
     metadata_lower, _ = lower_case_dict(metadata_upper)
-    result = client.write_dataframe(df, metadata=metadata_upper, specs=["foo"])
+    result = client.write_table(df, metadata=metadata_upper, specs=["foo"])
     assert result.metadata == metadata_lower
     result_df = result.read()
     pd.testing.assert_frame_equal(result_df, df)

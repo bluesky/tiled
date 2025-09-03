@@ -682,9 +682,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         See Also
         --------
         write_array
-        write_dataframe
+        write_table
         write_coo_array
         """
+
         self._cached_len = None
         metadata = metadata or {}
         access_blob = {"tags": access_tags} if access_tags is not None else {}
@@ -1072,13 +1073,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         access_tags: List[str], optional
             Server-specific authZ tags in list form, used to confer access to the node.
         table_name : str, optional
-            Optionally provide a name for the table this should be stored in.
+            Optionally provide a name for the SQL table this should be stored in.
             By default a name unique to the schema will be chosen.
 
         See Also
         --------
-        write_dataframe
+        write_table
         """
+
         parameters = {}
         if table_name is not None:
             parameters["table_name"] = table_name
@@ -1105,20 +1107,24 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         return client
 
-    def write_dataframe(
+    def write_table(
         self,
-        dataframe: Union["pandas.DataFrame", dict[str, Any]],
+        data: Union["pandas.DataFrame", dict[str, Any]],
         *,
         key=None,
         metadata=None,
         specs=None,
         access_tags=None,
     ):
-        """Write a DataFrame.
+        """Write tabular data.
+
+        The created asset will be stored as an external file (e.g. Parquet), which means
+        the table can not be appended to in the future. To create a table that can be grown,
+        use the `create_appendable_table` method instead.
 
         Parameters
         ----------
-        dataframe : pandas.DataFrame or dict
+        data : pandas.DataFrame or dict
         key : str, optional
             Key (name) for this new node. If None, the server will provide a unique key.
         metadata : dict, optional
@@ -1134,17 +1140,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         --------
         create_appendable_table
         """
+
         import dask.dataframe
 
         from ..structures.table import TableStructure
 
-        if isinstance(dataframe, dask.dataframe.DataFrame):
-            structure = TableStructure.from_dask_dataframe(dataframe)
-        elif isinstance(dataframe, dict):
+        if isinstance(data, dask.dataframe.DataFrame):
+            structure = TableStructure.from_dask_dataframe(data)
+        elif isinstance(data, dict):
             # table as dict, e.g. {"a": [1,2,3], "b": [4,5,6]}
-            structure = TableStructure.from_dict(dataframe)
+            structure = TableStructure.from_dict(data)
         else:
-            structure = TableStructure.from_pandas(dataframe)
+            structure = TableStructure.from_pandas(data)
 
         client = self.new(
             StructureFamily.table,
@@ -1160,21 +1167,32 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             access_tags=access_tags,
         )
 
-        if hasattr(dataframe, "partitions"):
-            if isinstance(dataframe, dask.dataframe.DataFrame):
-                ddf = dataframe
+        if hasattr(data, "partitions"):
+            if isinstance(data, dask.dataframe.DataFrame):
+                ddf = data
             else:
-                raise NotImplementedError(
-                    f"Unsure how to handle type {type(dataframe)}"
-                )
+                raise NotImplementedError(f"Unsure how to handle type {type(data)}")
 
             ddf.map_partitions(
-                functools.partial(_write_partition, client=client), meta=dataframe._meta
+                functools.partial(_write_partition, client=client), meta=data._meta
             ).compute()
         else:
-            client.write(dataframe)
+            client.write(data)
 
         return client
+
+    def write_dataframe(
+        self, data, *, key=None, metadata=None, specs=None, access_tags=None
+    ):
+        warnings.warn(
+            "The 'write_dataframe' method is deprecated and will be removed in a future release. "
+            "Please use 'write_table' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.write_table(
+            data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
+        )
 
 
 def _queries_to_params(*queries):

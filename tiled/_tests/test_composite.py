@@ -77,7 +77,7 @@ def context(tree):
         x = client.create_container(key="x", metadata=md, specs=["composite"])
         x.write_array(arr1, key="arr1", metadata={"md_key": "md_for_arr1"})
         x.write_array(arr2, key="arr2", metadata={"md_key": "md_for_arr2"})
-        x.write_dataframe(
+        x.write_table(
             df1,
             key="df1",
             metadata={
@@ -86,7 +86,7 @@ def context(tree):
                 "B": {"md_key": "md_for_B"},
             },
         )
-        x.write_dataframe(
+        x.write_table(
             df2,
             key="df2",
             metadata={
@@ -116,7 +116,7 @@ def context_for_read(context):
     client["x"].delete_contents("awk", external_only=False)
     # Add an image array and a table with 5 rows
     client["x"].write_array(img_data, key="img")
-    client["x"].write_dataframe(df3, key="df3")
+    client["x"].write_table(df3, key="df3")
 
     yield context
 
@@ -401,7 +401,18 @@ def test_write_one_table(tree):
         client = from_context(context)
         df = pandas.DataFrame({"A": [], "B": []})
         client.create_container(key="z", specs=["composite"])
-        client["z"].write_dataframe(df)
+        client["z"].write_table(df)
+        assert len(client["z"].base) == 1  # One table
+        assert len(client["z"]) == 2  # Two columns
+
+
+def test_write_dataframe_and_warn(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        client.create_container(key="z", specs=["composite"])
+        with pytest.warns(DeprecationWarning):
+            client["z"].write_dataframe(df)
         assert len(client["z"].base) == 1  # One table
         assert len(client["z"]) == 2  # Two columns
 
@@ -412,8 +423,8 @@ def test_write_two_tables(tree):
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
         z = client.create_container(key="z", specs=["composite"])
-        z.write_dataframe(df1, key="table1")
-        z.write_dataframe(df2, key="table2")
+        z.write_table(df1, key="table1")
+        z.write_table(df2, key="table2")
         z.base["table1"].read()
         z.base["table2"].read()
 
@@ -424,9 +435,9 @@ def test_write_two_tables_colliding_names(tree):
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
         z = client.create_container(key="z", specs=["composite"])
-        z.write_dataframe(df1, key="table1")
+        z.write_table(df1, key="table1")
         with fail_with_status_code(HTTP_409_CONFLICT):
-            z.write_dataframe(df2, key="table1")
+            z.write_table(df2, key="table1")
 
 
 def test_write_two_tables_colliding_keys(tree):
@@ -435,9 +446,9 @@ def test_write_two_tables_colliding_keys(tree):
         df1 = pandas.DataFrame({"A": [], "B": []})
         df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
         z = client.create_container(key="z", specs=["composite"])
-        z.write_dataframe(df1, key="table1")
+        z.write_table(df1, key="table1")
         with pytest.raises(ValueError):
-            z.write_dataframe(df2, key="table2")
+            z.write_table(df2, key="table2")
 
 
 def test_write_two_tables_two_arrays(tree):
@@ -450,8 +461,8 @@ def test_write_two_tables_two_arrays(tree):
         z = client.create_container(key="z", specs=["composite"])
 
         # Write by data source.
-        z.write_dataframe(df1, key="table1")
-        z.write_dataframe(df2, key="table2")
+        z.write_table(df1, key="table1")
+        z.write_table(df2, key="table2")
         z.write_array(arr1, key="F")
         z.write_array(arr2, key="G")
 
@@ -473,14 +484,14 @@ def test_write_table_column_array_key_collision(tree):
         arr = numpy.array([1, 2, 3], dtype=numpy.float64)
 
         z1 = client.create_container(key="z1", specs=["composite"])
-        z1.write_dataframe(df, key="table1")
+        z1.write_table(df, key="table1")
         with pytest.raises(ValueError):
             z1.write_array(arr, key="A")
 
         z2 = client.create_container(key="z2", specs=["composite"])
         z2.write_array(arr, key="A")
         with pytest.raises(ValueError):
-            z2.write_dataframe(df, key="table1")
+            z2.write_table(df, key="table1")
 
 
 def test_composite_validator(tree):
@@ -522,8 +533,8 @@ def test_composite_validator(tree):
         y.update_metadata(specs=[])
 
         # 4. Add two valid tables
-        y.write_dataframe(df1, key="df1")
-        y.write_dataframe(df2, key="df2")
+        y.write_table(df1, key="df1")
+        y.write_table(df2, key="df2")
 
         # Composite spec can be assigned to a container with arrays and tables
         y.update_metadata(specs=["composite"])
@@ -538,7 +549,7 @@ def test_composite_validator(tree):
         y.delete_contents("A", external_only=False)
 
         # 6. Add a table with a conflicting column names
-        y.write_dataframe(df1, key="df1_copy")
+        y.write_table(df1, key="df1_copy")
         with pytest.raises(ClientError, match="Found conflicting names"):
             y.update_metadata(specs=["composite"])
         y.delete_contents("df1_copy", external_only=False)
@@ -549,7 +560,7 @@ def test_composite_validator(tree):
             with pytest.raises(ClientError, match=err_message):
                 y[key].update_metadata(specs=["composite"])
         with pytest.raises(ClientError, match=err_message):
-            y.write_dataframe(df1, specs=["composite"])
+            y.write_table(df1, specs=["composite"])
         with pytest.raises(ClientError, match=err_message):
             y.write_array(arr1, specs=["composite"])
         with pytest.raises(ClientError, match=err_message):
