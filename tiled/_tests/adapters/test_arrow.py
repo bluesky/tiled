@@ -61,7 +61,7 @@ def test_attributes(adapter: ArrowAdapter) -> None:
 
 def test_write_read(adapter: ArrowAdapter) -> None:
     # test writing to a partition and reading it
-    adapter.write_partition(batch0, 0)
+    adapter.write_partition(0, batch0)
     assert pa.Table.from_arrays(data0, names) == pa.Table.from_pandas(
         adapter.read_partition(0)
     )
