@@ -6,7 +6,6 @@ from typing import Callable, List
 import anyio
 import httpx
 import msgpack
-from starlette.testclient import TestClient
 from websockets.sync.client import connect
 
 from tiled.client.context import Context
@@ -99,7 +98,7 @@ class Subscription:
         self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._callbacks = set()
         self._close_event = threading.Event()
-        if isinstance(context.http_client, TestClient):
+        if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
                 context.http_client, self._uri
             )
