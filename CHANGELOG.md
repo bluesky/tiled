@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Client method for writing tabular data into external files, `write_dataframe`,
+  is deprecated and renamed `write_table`.
+
 ### Fixed
 
 - Handling for certain catalog edge cases when building the nodes_closure table.
