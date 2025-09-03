@@ -89,9 +89,10 @@ class Subscription:
         if start is not None:
             params["start"] = start
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
-        path = "stream/single" + "/".join(f"/{segment}" for segment in segments)
+        self._node_path = "/".join(f"/{segment}" for segment in segments)
+        uri_path = "/api/v1/stream/single" + self._node_path
         self._uri = httpx.URL(
-            str(context.api_uri.copy_with(scheme=scheme)) + path,
+            str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
             params=params,
         )
         name = f"tiled-subscription-{self._uri}"
@@ -104,6 +105,9 @@ class Subscription:
             )
         else:
             self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self._node_path} >"
 
     @property
     def context(self) -> Context:
