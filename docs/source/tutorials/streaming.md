@@ -85,7 +85,7 @@ where `sub` is our Subscription and `data` is a dict with information
 about what is new. In this case, it contains a detailed description of the
 new array named `x` that was created by the other client.
 
-If we are interested we can subscribe to updates about `x` and its data.
+If we are interested, we can subscribe to updates about `x` and its data.
 
 ```py
 x_sub = c['x'].subscribe()
