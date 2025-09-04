@@ -123,7 +123,7 @@ and, from there, any new updates as well.
 Notice that content of the updates includes a `sequence` counter, starting from
 the number 1 (with 0 reserved to unambiguously define the "start of the stream"). Subscribers can use this if, for example, they need to recover
 from an interruption. They can subscribe from a specific counter index `sub.start(N)`.
-As already above, `x.start(0)` means, "Start from the oldest record retained."
+As already mentioned above, `x.start(0)` means, "Start from the oldest record retained."
 
 Of course, clients can always fetch _all_ the data via the non-streaming
 interface.
