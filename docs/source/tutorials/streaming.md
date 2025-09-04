@@ -130,7 +130,7 @@ interface.
 
 The writer can let subscribers know that no more data is expected (for now).
 This does not prevent them from writing more later; it just signal that
-nothing more is expected. Live data data processing jobs may use this as
+nothing more is expected. Live data processing jobs may use this as
 a prompt to clean up and free up resources.
 
 ```py
