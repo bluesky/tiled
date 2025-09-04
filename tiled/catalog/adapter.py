@@ -1070,10 +1070,11 @@ class CatalogNodeAdapter:
             },
         )
         pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl)
-        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_data_ttl)
+        # Expire the sequence more aggressively.  It needs to outlive the last
+        # piece of data for this sequence, but then it can be culled. Any
+        # future writes will restart the sequence from 1.
+        pipeline.expire(f"sequence:{self.node.id}", 1 + self.context.cache_data_ttl)
         pipeline.publish(f"notify:{self.node.id}", sequence)
-        # Extend the lifetime of the sequence counter.
-        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
         await pipeline.execute()
 
     def make_ws_handler(self, websocket, formatter, uri):
