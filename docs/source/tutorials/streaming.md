@@ -31,8 +31,10 @@ For simple testing, this is a suitable command:
 tiled serve catalog --temp --api-key secret --cache redis://localhost:6379
 ```
 
-> [!CAUTION]
-> Never specify a guessable API key like `secret` in production; let Tiled generate a random one. This is just a convenience for testing.
+```{warning}
+Never specify a guessable API key like `secret` in production; let Tiled
+generate a random one. This is just a convenience for testing.
+```
 
 ````{note}
 
