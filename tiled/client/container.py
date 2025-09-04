@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
+    from .stream import Subscription
+
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # This maps the structure_family sent by the server to a client-side object that
@@ -1193,6 +1195,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         return self.write_table(
             data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
+
+    def subscribe(self) -> "Subscription":
+        """
+        Create a Subscription on writes to this node.
+
+        Returns
+        -------
+        subscription : Subscription
+        """
+        # Keep this import here to defer the websockets import until/unless needed.
+        from .stream import Subscription
+
+        return Subscription(self.context, self.path_parts)
 
 
 def _queries_to_params(*queries):
