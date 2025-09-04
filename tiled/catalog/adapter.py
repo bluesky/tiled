@@ -725,8 +725,6 @@ class CatalogNodeAdapter:
                 )
             ).scalar()
             if self.context.cache_client:
-                # Allocate a counter for the new node.
-                await self.context.cache_client.setnx(f"sequence:{node.id}", 0)
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.cache_client.incr(
                     f"sequence:{self.node.id}"
