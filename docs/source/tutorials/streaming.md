@@ -102,8 +102,8 @@ x.patch(numpy.array([4, 5, 6]), offset=3, extend=True)
 
 We can ensure that subscriber sees the full (recent) picture by specifying that
 its subscription should start from as far back as the server has available.
-(By default, the server retains an hour of history in Redis for fast streaming access, but it may shed history
-earlier if it grows short on available RAM.)
+(By default, the server retains an hour of history in Redis for fast streaming
+access, but it may shed history earlier if it grows short on available RAM.)
 
 This feature is not designed to provide a comprehensive history, only to allow
 clients to catch up if they start late---such as a live data processing job
