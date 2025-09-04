@@ -132,7 +132,7 @@ interface.
 
 ## Disconnecting or Closing
 
-As subscriber can disconnect from a stream at any point, like so:
+A subscriber can disconnect from a stream at any point, like so:
 
 ```py
 sub.stop()
