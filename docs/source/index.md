@@ -54,6 +54,7 @@ explanations/catalog
 explanations/faq
 explanations/roadmap
 explanations/lineage
+explanations/storage-database
 ```
 
 ```{toctree}
