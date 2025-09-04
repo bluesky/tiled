@@ -123,29 +123,36 @@ It will receive updates that have already happened:
 and, from there, any new updates as well.
 
 Notice that content of the updates includes a `sequence` counter, starting from
-the number 1 (with 0 reserved to unambiguously define the "start of the stream"). Subscribers can use this if, for example, they need to recover
+the number 1. Subscribers can use this if, for example, they need to recover
 from an interruption. They can subscribe from a specific counter index `sub.start(N)`.
 As already mentioned above, `x.start(0)` means, "Start from the oldest record retained."
 
 Of course, clients can always fetch _all_ the data via the non-streaming
 interface.
 
-The writer can let subscribers know that no more data is expected (for now).
-This does not prevent them from writing more later; it just signal that
-nothing more is expected. Live data processing jobs may use this as
-a prompt to clean up and free up resources.
+Subscribers can disconnect from a stream at any point, like so:
+
+```py
+sub.stop()
+```
+
+Producers (writers) can indicate that no more data is expected (for now).
 
 ```py
 x.close_stream()
 ```
 
-This will stop the threads that are listening for updates and set `sub.closed`
-to `True`. Alternatively, a subscriber can unsubscribe even if the stream
-is still going:
+This will cause the server to disconnect any active subscribers, once
+they are caught up to the last item in the stream. (On a protocol level,
+this sends the WebSocket code `1000 ConnectionClosedOK`. Clients can tell
+that they were disconnected due to stream completion, not an error.) In the
+Python client, this will stop the threads that are listening for updates and
+it will set `sub.closed` to `True`.
 
-```py
-sub.close()
-```
+Writers can still resume writing later---or even immediately. Closing a stream
+is just a signal that consumers should not _expect_ any more data soon, and
+they will need to re-subscribe. Live data processing jobs may use this as a
+prompt to clean up and free up resources.
 
 ## Limitations
 
