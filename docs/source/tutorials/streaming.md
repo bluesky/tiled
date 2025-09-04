@@ -127,7 +127,7 @@ the number 1. Subscribers can use this if, for example, they need to recover
 from an interruption. They can subscribe from a specific counter index `sub.start(N)`.
 As already mentioned above, `x.start(0)` means, "Start from the oldest record retained."
 
-Of course, clients can always fetch _all_ the data via the non-streaming
+Of course, clients can always fetch _all_ of the data via the non-streaming
 interface.
 
 ## Disconnecting or Closing
