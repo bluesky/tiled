@@ -70,7 +70,7 @@ from tiled.client import from_uri
 import numpy
 
 c = from_uri('http://localhost:8000', api_key='secret')
-x = client.write_array(numpy.array([1, 2, 3]), key='x')
+x = c.write_array(numpy.array([1, 2, 3]), key='x')
 ```
 
 Back in the process with the subscription, you will see that something has been
