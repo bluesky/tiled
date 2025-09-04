@@ -149,10 +149,18 @@ that they were disconnected due to stream completion, not an error.) In the
 Python client, this will stop the threads that are listening for updates and
 it will set `sub.closed` to `True`.
 
-Writers can still resume writing later---or even immediately. Closing a stream
+Writing can still resume writing later---or even immediately. Closing a stream
 is just a signal that consumers should not _expect_ any more data soon, and
-they will need to re-subscribe. Live data processing jobs may use this as a
-prompt to clean up and free up resources.
+they will need to re-subscribe if they want to watch for any. Live data
+processing jobs may use this as a prompt to clean up and free up resources.
+
+While the sequence number is guaranteed to increment by 1 during an active
+stream, clients should expect that it _can_ reset back to 1 if a stream is
+idle. This happens quickly (1 hour, by default) if a stream is explicitly
+closed or slowly (30 days, by default) if a stream is left un-closed but
+dormant. These intervals are configurable via the settings `data_ttl` and
+`seq_ttl` respectively under `streaming_cach` configuration.  (In the `tiled
+serve` CLI they are `--cache-data-ttl` and `--cache-seq-ttl`.)
 
 ## Limitations
 
