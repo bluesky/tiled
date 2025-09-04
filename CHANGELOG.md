@@ -5,11 +5,20 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+
+### Added
+
+- Convenience method `subscribe` on client `Container` and `ArrayClient`
+  returns an experimental `Subscription`. See the new Streaming tutorial
+  for usage.
+
 ### Changed
 
 - Client method for writing tabular data into external files, `write_dataframe`,
   is deprecated and renamed `write_table`.
 - The order of arguments in the `write_partition` and `append_partition` methods.
+- The experiment `Subscription` object now takes where to start as an argument
+  to `Subscription.start` instead of at initialization time.
 
 ### Fixed
 

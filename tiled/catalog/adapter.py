@@ -248,7 +248,7 @@ class Context:
             if self.cache_settings["uri"].startswith("redis"):
                 from redis import asyncio as redis
 
-                socket_timeout = self.cache_settings.get("socket_timeout", 10.0)
+                socket_timeout = self.cache_settings.get("socket_timeout", None)
                 socket_connect_timeout = self.cache_settings.get(
                     "socket_connect_timeout", 10.0
                 )
@@ -1175,9 +1175,9 @@ class CatalogNodeAdapter:
                                 live_seq = int(message["data"])
                                 await stream_buffer.put(live_seq)
                             except Exception as e:
-                                print(f"Error parsing live message: {e}")
+                                logger.exception(f"Error parsing live message: {e}")
                 except Exception as e:
-                    print(f"Live subscription error: {e}")
+                    logger.exception(f"Live subscription error: {e}")
                 finally:
                     await pubsub.unsubscribe(f"notify:{self.node.id}")
                     await pubsub.aclose()
@@ -1187,7 +1187,7 @@ class CatalogNodeAdapter:
             if sequence is not None:
                 current_seq = await cache_client.get(f"sequence:{self.node.id}")
                 current_seq = int(current_seq) if current_seq is not None else 0
-                print("Replaying old data...")
+                logger.debug("Replaying old data...")
                 for s in range(sequence, current_seq + 1):
                     await stream_data(s)
             # New data
@@ -1198,7 +1198,7 @@ class CatalogNodeAdapter:
                 else:
                     await websocket.close(code=1000, reason="Producer ended stream")
             except WebSocketDisconnect:
-                print(f"Client disconnected from node {self.node.id}")
+                logger.info(f"Client disconnected from node {self.node.id}")
             finally:
                 live_task.cancel()
 
@@ -1283,6 +1283,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
         metadata = {
+            "sequence": sequence,
             "timestamp": datetime.now().isoformat(),
             "content-type": media_type,
             "shape": shape,
