@@ -6,6 +6,7 @@ from typing import Callable, List
 import anyio
 import httpx
 import msgpack
+import websockets.exceptions
 from websockets.sync.client import connect
 
 from tiled.client.context import Context
@@ -179,6 +180,9 @@ class Subscription:
                 data_bytes = self._websocket.recv(timeout=TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
+            except websockets.exceptions.ConnectionClosedOK:
+                self._close_event.set()
+                return
             data = msgpack.unpackb(data_bytes)
             for ref in self._callbacks:
                 callback = ref()
@@ -222,8 +226,17 @@ class Subscription:
             self.context.revoke_api_key(key_info["first_eight"])
         self._thread.start()
 
+    @property
+    def closed(self):
+        """
+        Indicate whether stream has been closed.
+        """
+        return self._close_event.is_set()
+
     def stop(self) -> None:
         "Close the websocket connection."
+        if self._close_event.is_set():
+            return  # nothing to do
         self._close_event.set()
         self._websocket.close()
         self._thread.join()

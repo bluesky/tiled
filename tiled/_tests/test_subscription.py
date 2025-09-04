@@ -247,3 +247,4 @@ def test_subscribe_after_first_update_from_beginning_subscription(
 
     # Clean up the subscription
     subscription.stop()
+    assert subscription.closed
