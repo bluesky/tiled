@@ -71,8 +71,8 @@ In a separate process (if you like) create a new array.
 from tiled.client import from_uri
 import numpy
 
-c = from_uri('http://localhost:8000', api_key='secret')
-x = c.write_array(numpy.array([1, 2, 3]), key='x')
+client = from_uri('http://localhost:8000', api_key='secret')
+x = client.write_array(numpy.array([1, 2, 3]), key='x')
 ```
 
 Back in the process with the subscription, you will see that something has been
@@ -94,7 +94,7 @@ x_sub = c['x'].subscribe()
 ```
 
 Suppose that, while we are getting that set up, the other process extends the
-array with more data.
+array with more data in `x`:
 
 ```py
 x.patch(numpy.array([4, 5, 6]), offset=3, extend=True)
@@ -127,7 +127,7 @@ the number 1. Subscribers can use this if, for example, they need to recover
 from an interruption. They can subscribe from a specific counter index `sub.start(N)`.
 As already mentioned above, `x.start(0)` means, "Start from the oldest record retained."
 
-Of course, clients can always fetch _all_ the data via the non-streaming
+Of course, clients can always fetch _all_ of the data via the non-streaming
 interface.
 
 ## Disconnecting or Closing

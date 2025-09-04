@@ -332,8 +332,15 @@ def serve_catalog(
     cache_uri: Optional[str] = typer.Option(
         None, "--cache", help=("Provide cache URI")
     ),
-    cache_ttl: Optional[int] = typer.Option(
-        None, "--cache-ttl", help=("Provide cache ttl")
+    cache_data_ttl: Optional[int] = typer.Option(
+        None,
+        "--cache-data-ttl",
+        help=("Max retention time for streaming data (seconds)"),
+    ),
+    cache_seq_ttl: Optional[int] = typer.Option(
+        None,
+        "--cache-seq-ttl",
+        help=("Max retention time for streaming sequence counter (seconds)"),
     ),
     host: str = typer.Option(
         "127.0.0.1",
@@ -469,8 +476,10 @@ or use an existing one:
     cache_settings = {}
     if cache_uri:
         cache_settings["uri"] = cache_uri
-    if cache_ttl:
-        cache_settings["ttl"] = cache_ttl
+    if cache_data_ttl:
+        cache_settings["data_ttl"] = cache_data_ttl
+    if cache_seq_ttl:
+        cache_settings["seq_ttl"] = cache_seq_ttl
 
     tree = from_uri(
         database,
