@@ -130,7 +130,9 @@ As already mentioned above, `x.start(0)` means, "Start from the oldest record re
 Of course, clients can always fetch _all_ the data via the non-streaming
 interface.
 
-Subscribers can disconnect from a stream at any point, like so:
+## Disconnecting or Closing
+
+As subscriber can disconnect from a stream at any point, like so:
 
 ```py
 sub.stop()
@@ -150,13 +152,15 @@ Python client, this will stop the threads that are listening for updates and
 it will set `sub.closed` to `True`.
 
 Writing can still resume writing later---or even immediately. Closing a stream
-is just a signal that consumers should not _expect_ any more data soon, and
-they will need to re-subscribe if they want to watch for any. Live data
+signals that consumers should not _expect_ any more data soon, and forces them
+to affirmatively re-subscribe if they want to watch for any. Live data
 processing jobs may use this as a prompt to clean up and free up resources.
 
+## Sequence Number Guarantees
+
 While the sequence number is guaranteed to increment by 1 during an active
-stream, clients should expect that it _can_ reset back to 1 if a stream is
-idle. This happens quickly (1 hour, by default) if a stream is explicitly
+stream, clients should expect that it _may_ reset back to 1 after a stream has
+been idle. This happens quickly (1 hour, by default) if a stream is explicitly
 closed or slowly (30 days, by default) if a stream is left un-closed but
 dormant. These intervals are configurable via the settings `data_ttl` and
 `seq_ttl` respectively under `streaming_cach` configuration.  (In the `tiled
