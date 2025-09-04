@@ -36,7 +36,7 @@ tiled serve catalog --temp --api-key secret --cache redis://localhost:6379
 
 ````{note}
 
-If using a config file, add this section.
+If using a config file, add this section:
 
     ```yaml
     streaming_cache:
