@@ -243,7 +243,8 @@ class Context:
             await check_catalog_database(self.engine)
 
         cache_client = None
-        cache_ttl = 0
+        cache_data_ttl = 0
+        cache_seq_ttl = 0
         if self.cache_settings:
             if self.cache_settings["uri"].startswith("redis"):
                 from redis import asyncio as redis
@@ -257,9 +258,11 @@ class Context:
                     socket_timeout=socket_timeout,
                     socket_connect_timeout=socket_connect_timeout,
                 )
-                cache_ttl = self.cache_settings.get("ttl", 3600)
+                cache_data_ttl = self.cache_settings.get("data_ttl", 3600)  # 1 hr
+                cache_seq_ttl = self.cache_settings.get("seq_ttl", 2592000)  # 30 days
         self.cache_client = cache_client
-        self.cache_ttl = cache_ttl
+        self.cache_data_ttl = cache_data_ttl
+        self.cache_seq_ttl = cache_seq_ttl
 
 
 class CatalogNodeAdapter:
@@ -750,9 +753,11 @@ class CatalogNodeAdapter:
                     },
                 )
                 pipeline.expire(
-                    f"data:{self.node.id}:{sequence}", self.context.cache_ttl
+                    f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
                 )
                 pipeline.publish(f"notify:{self.node.id}", sequence)
+                # Extend the lifetime of the sequence counter.
+                pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
                 await pipeline.execute()
             return type(self)(self.context, refreshed_node)
 
@@ -841,8 +846,12 @@ class CatalogNodeAdapter:
                     "metadata": orjson.dumps(metadata),
                 },
             )
-            pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+            pipeline.expire(
+                f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
+            )
             pipeline.publish(f"notify:{self.node.id}", sequence)
+            # Extend the lifetime of the sequence counter.
+            pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
             await pipeline.execute()
 
     async def revisions(self, offset, limit):
@@ -1060,9 +1069,11 @@ class CatalogNodeAdapter:
                 "metadata": orjson.dumps(metadata),
             },
         )
-        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
-        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_ttl)
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl)
+        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_data_ttl)
         pipeline.publish(f"notify:{self.node.id}", sequence)
+        # Extend the lifetime of the sequence counter.
+        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
         await pipeline.execute()
 
     def make_ws_handler(self, websocket, formatter, uri):
@@ -1233,8 +1244,10 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
                 "payload": body,  # raw user input
             },
         )
-        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_ttl)
+        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl)
         pipeline.publish(f"notify:{self.node.id}", sequence)
+        # Extend the lifetime of the sequence counter.
+        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
         await pipeline.execute()
 
     async def write(self, media_type, deserializer, entry, body):
