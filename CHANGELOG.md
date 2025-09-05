@@ -120,6 +120,7 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 - Refactored internal Zarr version detection
 - For compatibility with older clients, do not require metadata updates to include
   an `access_blob` in the body of the request.
+- Convert authenticators into pydantic models
 
 ### Fixed
 

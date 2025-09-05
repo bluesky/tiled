@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Callable, Coroutine, Optional, TypedDict, Union
+from typing import Any, Callable, Coroutine, Optional, Union
 
 import anyio
 import packaging.version
@@ -35,6 +35,7 @@ from starlette.status import (
     HTTP_409_CONFLICT,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
+from typing_extensions import TypedDict
 
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
