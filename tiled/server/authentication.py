@@ -39,7 +39,7 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
-from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, UNAUDITED_AUTHN_SCOPES, USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
 
 # To hide third-party warning
@@ -379,7 +379,11 @@ async def get_current_scopes(
             api_key, settings, request.app.state.authenticated, db
         )
     elif decoded_access_token is not None:
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+        if (
+            isinstance(settings.authenticator, ProxiedOIDCAuthenticator)
+            and settings.authenticator.use_external_authorization
+        ):
+            return UNAUDITED_AUTHN_SCOPES
             return set(decoded_access_token["scope"].split(" "))
         else:
             return decoded_access_token["scp"]
@@ -405,7 +409,13 @@ async def check_scopes(
     request: Request,
     security_scopes: SecurityScopes,
     scopes: set[str] = Depends(get_current_scopes),
+    settings: Settings = Depends(get_settings),
 ) -> None:
+    if (
+        isinstance(settings.authenticator, ProxiedOIDCAuthenticator)
+        and settings.authenticator.use_external_authorization and scopes == UNAUDITED_AUTHN_SCOPES
+    ):
+        return
     if not set(security_scopes.scopes).issubset(scopes):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
@@ -482,6 +492,7 @@ async def get_current_principal_websocket(
 async def get_current_principal(
     request: Request,
     security_scopes: SecurityScopes,
+    access_token: str = Depends(oauth2_scheme),
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
@@ -528,11 +539,13 @@ async def get_current_principal(
     elif decoded_access_token is not None and isinstance(
         settings.authenticator, ProxiedOIDCAuthenticator
     ):
-        # TODO: Fix the below code
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-            type=decoded_access_token["type"],
+            # TODO: Check whether this can come from keycloak
+            type=schemas.PrincipalType.jwt_token,
             identities=[],
+            # TODO: there might be something better to do here
+            access_token=access_token,
         )
     else:
         # No form of authentication is present.

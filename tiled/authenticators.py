@@ -234,6 +234,8 @@ properties:
     type: string
   confirmation_message:
     type: string
+  use_external_authorization
+    type: bool
 """
 
     def __init__(
@@ -241,6 +243,7 @@ properties:
         audience: str,
         client_id: str,
         well_known_uri: str,
+        use_external_authorization:bool =False,
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -250,6 +253,7 @@ properties:
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
         )
+        self.use_external_authorization = use_external_authorization
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
