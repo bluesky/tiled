@@ -108,7 +108,7 @@ ENV TILED_CONFIG=/deploy/config
 # Copy the pre-built `/app` directory to the runtime container
 # and change the ownership to user app and group app in one step.
 COPY --from=app_build --chown=app:app /app /app
-COPY --from=web_frontend_build --chown=app:app /src/dist /src/share/tiled/ui
+COPY --from=web_frontend_build --chown=app:app /src/dist /app/share/tiled/ui
 
 USER app
 WORKDIR /app
