@@ -5,7 +5,8 @@
 Streaming is an experimental feature in Tiled, subject to backward-compatible
 changes without notice.
 
-Additionally, it is only currently supported on arrays and tables.
+Additionally, it is only currently supported on arrays and containers.
+Support for tables and other structures is planned but not yet implemented.
 
 ```
 
