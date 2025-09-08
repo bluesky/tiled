@@ -1,9 +1,14 @@
 import logging
 import os
+from typing import List, Optional
+
+from pydantic import HttpUrl
+
+from tiled.server.schemas import Principal
 
 from ..queries import AccessBlobFilter
 from ..utils import Sentinel, import_object
-from .scopes import ALL_SCOPES, PUBLIC_SCOPES
+from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -360,3 +365,32 @@ class TagBasedAccessPolicy:
 
         queries.append(query_filter(identifier, tag_list))
         return queries
+
+
+class ExternalPolicyDecisionPoint:
+    def __init__(
+        self,
+        authorization_provider: HttpUrl,
+        scopes: Optional[List[str]] = None,
+    ):
+        self.authorization_provider = authorization_provider
+        self.scopes = scopes
+
+    # 1. Given a Principal (user or service) and a Node, return a list of the scopes
+    # (actions) the Principal is allowed to perform on that Node.
+    async def allowed_scopes(
+        self, node, principal: Principal, authn_access_tags, authn_scopes
+    ):
+        # Make call to authz and get if the principal is authorized to access or not
+        # Send request principal.access_token, node(str)
+        if principal is None or principal.access_token is None:
+            return NO_SCOPES
+        return ALL_SCOPES
+
+    # 2. Given a Principal (user or service), a Node, and a list of scopes (actions),
+    # return a list of Query objects that, when applied to the Node, filters its
+    # children such that the Principal can do all of those actions on the remaining
+    # children (if any).
+    # Currently not required
+    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
+        return []
