@@ -17,7 +17,7 @@ import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -51,6 +51,7 @@ from ..media_type_registration import (
 from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .compression import CompressionMiddleware
+from .dependencies import move_api_key
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
@@ -245,7 +246,10 @@ def build_app(
         # If the distribution includes static assets, serve UI routes.
 
         @app.get("/ui/{path:path}")
-        async def ui(path):
+        async def ui(
+            path,
+            _=Depends(move_api_key),
+        ):
             response = await lookup_file(path)
             return response
 
@@ -283,6 +287,7 @@ def build_app(
         @app.get("/", response_class=HTMLResponse)
         async def index(
             request: Request,
+            _=Depends(move_api_key),
         ):
             return templates.TemplateResponse(
                 request,
