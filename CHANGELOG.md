@@ -3,6 +3,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+
+## Unreleased
+
+### Fixed
+
+- In the Tiled container image, the React UI was misplaced and thus
+  did not function.
+
+
 ## v0.1.0
 
 

@@ -127,6 +127,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # get full history for `git describe` to produce version
 
     - name: Install Container Canary
       run: |
@@ -136,6 +138,15 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3
 
+    - name: Get git version
+      id: version
+      run: |
+        TILED_VERSION=$(git describe --tags --always --dirty)
+        # Remove 'v' prefix and convert to PEP 440
+        TILED_VERSION=${TILED_VERSION#v}
+        TILED_VERSION=$(echo $TILED_VERSION | sed 's/-\([0-9]\+\)-g\([0-9a-f]\+\)/.dev\1+\2/')
+        echo "TILED_VERSION=$TILED_VERSION" >> $GITHUB_OUTPUT
+
     - name: Build Docker image on multiple arch
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
       with:
@@ -144,6 +155,8 @@ jobs:
         platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        build-args: |
+          TILED_VERSION=${{ steps.version.outputs.TILED_VERSION }}
 
     - name: Tag and load Docker image on single arch for testing (will use cache)
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
