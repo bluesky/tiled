@@ -50,8 +50,8 @@ from ..media_type_registration import (
 )
 from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
+from .authentication import move_api_key
 from .compression import CompressionMiddleware
-from .dependencies import move_api_key
 from .router import get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
