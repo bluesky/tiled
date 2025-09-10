@@ -16,6 +16,7 @@ from ..adapters.array import ArrayAdapter
 from ..adapters.dataframe import DataFrameAdapter
 from ..adapters.mapping import MapAdapter
 from ..adapters.zarr import ZARR_LIB_V2
+from ..config import Authentication
 from ..server.app import build_app
 from .utils import Server
 
@@ -129,7 +130,7 @@ def traverse_tree(tree, parent="", result=None):
 
 @pytest.fixture(scope="module")
 def app():
-    app = build_app(tree, authentication={"single_user_api_key": "secret"})
+    app = build_app(tree, authentication=Authentication(single_user_api_key="secret"))
     return app
 
 
