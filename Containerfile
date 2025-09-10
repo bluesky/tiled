@@ -113,6 +113,10 @@ ENV TILED_CONFIG=/deploy/config
 # and change the ownership to user app and group app in one step.
 COPY --from=app_build --chown=app:app /app /app
 COPY --from=web_frontend_build --chown=app:app /src/dist /app/share/tiled/ui
+COPY share/tiled/static /app/share/tiled/static
+COPY share/tiled/templates /app/share/tiled/templates
+# See tiled.utils.SHARE_TILED_PATH
+RUN touch /app/share/tiled/.identifying_file_72628d5f953b4229b58c9f1f8f6a9a09
 
 USER app
 WORKDIR /app
