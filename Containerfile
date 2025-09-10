@@ -53,6 +53,7 @@ WORKDIR /workspaces/tiled
 # This layer is cached until the build changes: changes to the
 # application will run require rerunning this step.
 COPY pyproject.toml hatch_build.py README.md src
+RUN set -ex && uv lock --project src
 RUN set -ex && \
     uv sync \
         --project src \
