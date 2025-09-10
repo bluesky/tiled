@@ -52,6 +52,7 @@ WORKDIR /workspaces/tiled
 # Synchronize DEPENDENCIES without the application itself.
 # This layer is cached until the build changes: changes to the
 # application will run require rerunning this step.
+RUN mkdir src
 COPY pyproject.toml hatch_build.py README.md src
 RUN set -ex && \
     uv sync \
