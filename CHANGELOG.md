@@ -4,15 +4,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
-## Unreleased
+## v0.1.1 (2025-09-10)
 
 ### Fixed
 
 - In the Tiled container image, the React UI was misplaced and thus
   did not function.
+- The Tiled container image was missing some client-side dependencies needed to
+  run the `tiled serve directory ...` command.
+
+### Changed
+
+- Internally, pydantic is used to parse configuration.
 
 
-## v0.1.0
+## v0.1.0 (2025-09-04)
 
 
 ### Added
