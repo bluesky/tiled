@@ -27,4 +27,4 @@ authentication:
           x509cert: ""
 trees:
   - path: /
-    tree: tiled.examples.toy_authentication:tree
+    tree: tiled.examples.nexus:tree
