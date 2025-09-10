@@ -8,7 +8,7 @@ import copy
 from datetime import timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, Any, Iterator, Optional, TypedDict, Union
+from typing import Annotated, Any, Iterator, Optional, Union
 
 from pydantic import BaseModel, Field, ImportString, field_validator, model_validator
 
@@ -24,12 +24,8 @@ from .media_type_registration import (
     default_serialization_registry,
 )
 from .query_registration import default_query_registry
-from .server.settings import Settings, get_settings
+from .server.settings import get_settings
 from .structures.core import Spec
-from .utils import import_object, parse, prepend_to_sys_path
-from .validation_registration import default_validation_registry
-from .utils import import_object, parse, prepend_to_sys_path
-from .validation_registration import default_validation_registry
 from .utils import parse, prepend_to_sys_path
 from .validation_registration import ValidationRegistry, default_validation_registry
 
@@ -219,12 +215,22 @@ class Config(BaseModel):
             if tree.tree_type is from_uri:
                 defaults = get_settings()
                 # Assumes none of the values can be 0
-                tree.args["catalog_pool_size"] = self.catalog_pool_size or defaults.catalog_pool_size
-                tree.args["storage_pool_size"] = self.storage_pool_size or defaults.storage_pool_size
-                tree.args["catalog_max_overflow"] = self.catalog_max_overflow or defaults.catalog_max_overflow
-                tree.args["storage_max_overflow"] = self.storage_max_overflow or defaults.storage_max_overflow
+                tree.args["catalog_pool_size"] = (
+                    self.catalog_pool_size or defaults.catalog_pool_size
+                )
+                tree.args["storage_pool_size"] = (
+                    self.storage_pool_size or defaults.storage_pool_size
+                )
+                tree.args["catalog_max_overflow"] = (
+                    self.catalog_max_overflow or defaults.catalog_max_overflow
+                )
+                tree.args["storage_max_overflow"] = (
+                    self.storage_max_overflow or defaults.storage_max_overflow
+                )
             if tree.tree_type in (from_uri, in_memory):
-                tree.args["cache_settings"] = self.streaming_cache.model_dump() if self.streaming_cache else None
+                tree.args["cache_settings"] = (
+                    self.streaming_cache.model_dump() if self.streaming_cache else None
+                )
         return self
 
     @property

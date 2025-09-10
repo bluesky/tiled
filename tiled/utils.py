@@ -15,7 +15,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Callable, Iterator, Generic, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Generic, Iterator, Optional, Tuple, TypeVar, Union
 from urllib.parse import urlparse, urlunparse
 
 import anyio
