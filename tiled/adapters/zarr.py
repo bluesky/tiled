@@ -64,7 +64,7 @@ class ZarrArrayAdapter(ArrayAdapter):
             urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
             object_store_class = mapping[storage.provider]
             object_store = object_store_class(
-                **{urlProp[storage.provider]: storage.uri},
+                **{urlProp[storage.provider]: storage.uri, "prefix": "".join(f"/{quote_plus(segment)}" for segment in path_parts)},
                 **storage.config,
             )
             store = ObjectStore(store=object_store)
