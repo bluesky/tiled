@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tupl
 from urllib.parse import quote_plus
 
 import dask.dataframe
+import inspect
 import pandas
 
 from ..catalog.orm import Node
@@ -17,6 +18,10 @@ from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
+# Allowed keyword arguments for pandas.read_csv
+ALLOWED_KWARGS = [name for name, p in inspect.signature(pandas.read_csv).parameters.items()
+             if p.kind in (inspect.Parameter.KEYWORD_ONLY,
+                           inspect.Parameter.POSITIONAL_OR_KEYWORD)]
 
 class CSVAdapter:
     """Adapter for tabular data stored as partitioned text (csv) files"""
@@ -42,10 +47,11 @@ class CSVAdapter:
         specs :
         kwargs : dict
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
+            The allowed parameters are listed in `ALLOWED_KWARGS`, which is used to filter user input.
         """
         self._file_paths = [path_from_uri(uri) for uri in data_uris]
         self._metadata = metadata or {}
-        self._read_csv_kwargs = kwargs
+        self._read_csv_kwargs = {k: v for k, v in kwargs.items() if k in ALLOWED_KWARGS}
         if structure is None:
             table = dask.dataframe.read_csv(
                 self._file_paths[0], **self._read_csv_kwargs
@@ -317,6 +323,7 @@ class CSVArrayAdapter(ArrayAdapter):
         nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
         _kwargs = {"dtype": dtype_numpy, "header": None}
         _kwargs.update(kwargs)
+        _kwargs = {k: v for k, v in _kwargs.items() if k in ALLOWED_KWARGS}
         ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
         chunks_0: tuple[int, ...] = structure.chunks[
             0
@@ -361,6 +368,7 @@ class CSVArrayAdapter(ArrayAdapter):
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
+        kwargs = {k:v for k, v in kwargs.items() if k in ALLOWED_KWARGS}
         array = dask.dataframe.read_csv(
             file_paths, header=None, **kwargs
         ).to_dask_array()
