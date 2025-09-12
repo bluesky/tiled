@@ -1,21 +1,25 @@
-from pathlib import Path
-
 import awkward
 import numpy
 import pandas
+import pyarrow
 import pytest
 import sparse
 import tifffile as tf
 import xarray
+from starlette.status import HTTP_409_CONFLICT
 
 from ..catalog import in_memory
 from ..client import Context, from_context
+from ..client.composite import CompositeClient
+from ..client.container import Container
 from ..client.utils import ClientError
 from ..server.app import build_app
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import StructureFamily
+from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
+from ..utils import ensure_uri
+from .utils import fail_with_status_code
 
 rng = numpy.random.default_rng(12345)
 
@@ -35,6 +39,8 @@ df3 = pandas.DataFrame(
 )
 arr1 = rng.random(size=(3, 5), dtype="float64")
 arr2 = rng.integers(0, 255, size=(5, 7, 3), dtype="uint8")
+tab1 = pyarrow.Table.from_pydict({"H": [1, 2, 3], "I": [4, 5, 6]})
+tab2 = pyarrow.Table.from_pydict({"J": [1, 2], "K": [3, 4], "L": [5, 6]})
 img_data = rng.integers(0, 255, size=(5, 13, 17, 3), dtype="uint8")
 
 # An awkward array
@@ -57,17 +63,24 @@ md = {"md_key1": "md_val1", "md_key2": 2}
 
 @pytest.fixture(scope="module")
 def tree(tmp_path_factory):
-    return in_memory(writable_storage=tmp_path_factory.getbasetemp())
+    tempdir = tmp_path_factory.getbasetemp()
+    return in_memory(
+        writable_storage=[
+            ensure_uri(tempdir / "data"),
+            f"duckdb:///{tempdir / 'data.duckdb'}",
+        ],
+        readable_storage=[ensure_uri(tempdir)],
+    )
 
 
 @pytest.fixture(scope="module")
 def context(tree):
     with Context.from_app(build_app(tree)) as context:
         client = from_context(context)
-        x = client.create_composite(key="x", metadata=md)
+        x = client.create_container(key="x", metadata=md, specs=["composite"])
         x.write_array(arr1, key="arr1", metadata={"md_key": "md_for_arr1"})
         x.write_array(arr2, key="arr2", metadata={"md_key": "md_for_arr2"})
-        x.write_dataframe(
+        x.write_table(
             df1,
             key="df1",
             metadata={
@@ -76,7 +89,7 @@ def context(tree):
                 "B": {"md_key": "md_for_B"},
             },
         )
-        x.write_dataframe(
+        x.write_table(
             df2,
             key="df2",
             metadata={
@@ -106,7 +119,7 @@ def context_for_read(context):
     client["x"].delete_contents("awk", external_only=False)
     # Add an image array and a table with 5 rows
     client["x"].write_array(img_data, key="img")
-    client["x"].write_dataframe(df3, key="df3")
+    client["x"].write_table(df3, key="df3")
 
     yield context
 
@@ -117,12 +130,11 @@ def context_for_read(context):
 
 
 @pytest.fixture
-def tiff_sequence(tmpdir):
-    sequence_directory = Path(tmpdir, "sequence")
-    sequence_directory.mkdir()
+def tiff_sequence(tmp_path_factory):
+    tempdir = tmp_path_factory.mktemp("sequence-")
     filepaths = []
     for i in range(img_data.shape[0]):
-        fpath = sequence_directory / f"temp{i:05}.tif"
+        fpath = tempdir / f"temp{i:05}.tif"
         tf.imwrite(fpath, img_data[i, ...])
         filepaths.append(fpath)
 
@@ -130,8 +142,9 @@ def tiff_sequence(tmpdir):
 
 
 @pytest.fixture
-def csv_file(tmpdir):
-    fpath = Path(tmpdir, "test.csv")
+def csv_file(tmp_path_factory):
+    tempdir = tmp_path_factory.mktemp("csv-")
+    fpath = tempdir / "test.csv"
     df3.to_csv(fpath, index=False)
 
     yield fpath
@@ -141,7 +154,7 @@ def csv_file(tmpdir):
 def tiff_data_source(tiff_sequence):
     tiff_assets = [
         Asset(
-            data_uri=f"file://localhost/{fpath}",
+            data_uri=ensure_uri(fpath),
             is_directory=False,
             parameter="data_uris",
             num=i + 1,
@@ -166,7 +179,7 @@ def tiff_data_source(tiff_sequence):
 def csv_data_source(csv_file):
     csv_assets = [
         Asset(
-            data_uri=f"file://localhost/{csv_file}",
+            data_uri=ensure_uri(csv_file),
             is_directory=False,
             parameter="data_uris",
         )
@@ -204,8 +217,8 @@ def test_reading(context, name, expected):
 
 def test_iterate_parts(context):
     client = from_context(context)
-    for part in client["x"].parts:
-        client["x"].parts[part].read()
+    for part in client["x"].base:
+        client["x"].base[part].read()
 
 
 def test_iterate_columns(context):
@@ -213,14 +226,18 @@ def test_iterate_columns(context):
     for col, _client in client["x"].items():
         read_from_client = _client.read()
         read_from_column = client["x"][col].read()
-        read_from_full_path = client[f"x/{col}"].read()
         if col == "sps":
             read_from_client = read_from_client.todense()
             read_from_column = read_from_column.todense()
-            read_from_full_path = read_from_full_path.todense()
         assert numpy.array_equal(read_from_client, read_from_column)
-        assert numpy.array_equal(read_from_client, read_from_full_path)
-        assert numpy.array_equal(read_from_full_path, read_from_column)
+
+        if col in ["arr1", "arr2", "awk", "sps"]:
+            # Arrays can be read from the parent client
+            assert client[f"x/{col}"].read() is not None
+        else:
+            # The column is not accessible from the parent client
+            with pytest.raises(KeyError):
+                client[f"x/{col}"].read()
 
 
 def test_metadata(context):
@@ -228,26 +245,36 @@ def test_metadata(context):
     assert client["x"].metadata == md
 
     # Check metadata for each part
-    for part in client["x"].parts:
-        c = client["x"].parts[part]
+    for part in client["x"].base:
+        c = client["x"].base[part]
         assert c.metadata["md_key"] == f"md_for_{part}"
 
 
 def test_parts_not_directly_accessible(context):
     client = from_context(context)
-    client["x"].parts["df1"].read()
-    client["x"].parts["df1"]["A"].read()
-    client["x"]["A"].read()
+
+    # The table is accessible as a part
+    assert client["x"].base["df1"].read() is not None
+    assert numpy.array_equal(client["x"].base["df1"]["A"].read(), df1["A"])
+    assert numpy.array_equal(client["x"]["A"].read(), df1["A"])
+
+    # The table is not accessible directly from the composite client
     with pytest.raises(KeyError):
         client["x"]["df1"].read()
+
+    # The table is accessible from a parent client
+    assert client["x/df1"].read() is not None
+    assert client["x/df1/A"].read() is not None
+
+    # The column is not accessible from the parent client
     with pytest.raises(KeyError):
-        client["x/df1"].read()
+        client["x/A"].read()
 
 
 def test_external_assets(context, tiff_data_source, csv_data_source):
     client = from_context(context)
 
-    y = client.create_composite(key="y")
+    y = client.create_container(key="y", specs=["composite"])
     y.new(
         structure_family=StructureFamily.array,
         data_sources=[tiff_data_source],
@@ -259,10 +286,10 @@ def test_external_assets(context, tiff_data_source, csv_data_source):
         key="table",
     )
 
-    arr = y.parts["image"].read()
+    arr = y.base["image"].read()
     assert numpy.array_equal(arr, img_data)
 
-    df = y.parts["table"].read()
+    df = y.base["table"].read()
     for col in df.columns:
         assert numpy.array_equal(df[col], df3[col])
 
@@ -313,7 +340,7 @@ def test_read_selective_with_dim0(context_for_read, dim0):
 def test_delete_contents(context, tiff_data_source, csv_data_source):
     client = from_context(context)
 
-    parts_before = len(client["x"].parts)
+    parts_before = len(client["x"].base)
     keys_before = len(client["x"].keys())
     assert parts_before == 6
     assert keys_before == 9
@@ -324,8 +351,8 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
 
     # Delete a single part
     client["x"].delete_contents("arr1", external_only=False)
-    assert "arr1" not in client["x"].parts
-    assert len(client["x"].parts) == parts_before - 1
+    assert "arr1" not in client["x"].base
+    assert len(client["x"].base) == parts_before - 1
     assert len(client["x"].keys()) == keys_before - 1
 
     # Attempt to delete a DataFrame column
@@ -334,7 +361,7 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
         client["x"].delete_contents("A", external_only=False)
     client["x"].delete_contents("df1", external_only=False)
     assert "A" not in client["x"].keys()
-    assert len(client["x"].parts) == parts_before - 2
+    assert len(client["x"].base) == parts_before - 2
     assert len(client["x"].keys()) == keys_before - 3
 
     # Add and delete external data
@@ -349,24 +376,296 @@ def test_delete_contents(context, tiff_data_source, csv_data_source):
         key="table",
     )
     # 6 original parts, 2 deleted, 2 added
-    assert len(client["x"].parts) == parts_before - 2 + 2
+    assert len(client["x"].base) == parts_before - 2 + 2
     assert len(client["x"].keys()) == keys_before - 3 + 3
     client["x"].delete_contents("image")
-    assert "image" not in client["x"].parts
-    assert len(client["x"].parts) == parts_before - 1
+    assert "image" not in client["x"].base
+    assert len(client["x"].base) == parts_before - 1
     assert len(client["x"].keys()) == keys_before - 1
 
     # Passing an empty list does not delete anything
     client["x"].delete_contents([])
-    assert len(client["x"].parts) == parts_before - 1
+    assert len(client["x"].base) == parts_before - 1
     assert len(client["x"].keys()) == keys_before - 1
 
     # Delete multiple parts
     client["x"].delete_contents(["arr2", "df2"], external_only=False)
-    assert "arr2" not in client["x"].parts
-    assert "df1" not in client["x"].parts
+    assert "arr2" not in client["x"].base
+    assert "df1" not in client["x"].base
 
     # Delete all parts
     client["x"].delete_contents(external_only=False)
-    assert len(client["x"].parts) == 0
+    assert len(client["x"].base) == 0
     assert len(client["x"].keys()) == 0
+
+
+def test_write_one_table(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        client.create_container(key="z", specs=["composite"])
+        client["z"].write_table(df)
+        assert len(client["z"].base) == 1  # One table
+        assert len(client["z"]) == 2  # Two columns
+
+
+def test_write_dataframe_and_warn(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        client.create_container(key="z", specs=["composite"])
+        with pytest.warns(DeprecationWarning):
+            client["z"].write_dataframe(df)
+        assert len(client["z"].base) == 1  # One table
+        assert len(client["z"]) == 2  # Two columns
+
+
+def test_write_one_appendable_table(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.create_container(key="z", specs=["composite"])
+        tab = pyarrow.Table.from_pydict({"A": [1, 2, 3], "B": [4, 5, 6]})
+        client["z"].create_appendable_table(schema=tab.schema)
+        assert len(client["z"].base) == 1  # One table
+        assert len(client["z"]) == 2  # Two columns
+
+
+def test_write_two_tables(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_table(df1, key="table1")
+        z.write_table(df2, key="table2")
+        assert z.base["table1"].read() is not None
+        assert z.base["table2"].read() is not None
+
+
+def test_write_two_appendable_tables(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        tab1 = pyarrow.Table.from_pydict({"A": [1, 2, 3], "B": [4, 5, 6]})
+        tab2 = pyarrow.Table.from_pydict({"C": [1, 2], "D": [3, 4], "E": [5, 6]})
+        z = client.create_container(key="z", specs=["composite"])
+        tab1_client = z.create_appendable_table(schema=tab1.schema, key="table1")
+        tab2_client = z.create_appendable_table(schema=tab2.schema, key="table2")
+        tab1_client.append_partition(tab1, 0)
+        tab2_client.append_partition(tab2, 0)
+        assert z.base["table1"].read() is not None
+        assert z.base["table2"].read() is not None
+
+
+def test_write_two_tables_colliding_names(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_table(df1, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            z.write_table(df2, key="table1")
+
+
+def test_write_two_appendable_tables_colliding_names(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        tab1 = pyarrow.Table.from_pydict({"A": [1, 2, 3], "B": [4, 5, 6]})
+        tab2 = pyarrow.Table.from_pydict({"C": [1, 2], "D": [3, 4], "E": [5, 6]})
+        z = client.create_container(key="z", specs=["composite"])
+        z.create_appendable_table(schema=tab1.schema, key="table1")
+        with fail_with_status_code(HTTP_409_CONFLICT):
+            z.create_appendable_table(schema=tab2.schema, key="table1")
+
+
+def test_write_two_tables_colliding_keys(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_table(df1, key="table1")
+        with pytest.raises(ValueError):
+            z.write_table(df2, key="table2")
+
+
+def test_write_two_appendable_tables_colliding_keys(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        tab1 = pyarrow.Table.from_pydict({"A": [1, 2, 3], "B": [4, 5, 6]})
+        tab2 = pyarrow.Table.from_pydict({"A": [1, 2], "C": [3, 4], "D": [5, 6]})
+        z = client.create_container(key="z", specs=["composite"])
+        z.create_appendable_table(schema=tab1.schema, key="table1")
+        with pytest.raises(ValueError):
+            z.create_appendable_table(schema=tab2.schema, key="table2")
+
+
+def test_write_two_tables_two_appendable_two_arrays(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df1 = pandas.DataFrame({"A": [], "B": []})
+        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
+        arr1 = numpy.ones((5, 5), dtype=numpy.float64)
+        arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
+        tab1 = pyarrow.Table.from_pydict({"F": [1, 2, 3], "G": [4, 5, 6]})
+        tab2 = pyarrow.Table.from_pydict({"H": [1, 2], "I": [3, 4], "J": [5, 6]})
+        z = client.create_container(key="z", specs=["composite"])
+
+        # Write by data source.
+        z.write_table(df1, key="df1")
+        z.write_table(df2, key="df2")
+        z.write_array(arr1, key="arr1")
+        z.write_array(arr2, key="arr2")
+        tab1_client = z.create_appendable_table(schema=tab1.schema, key="tab1")
+        tab2_client = z.create_appendable_table(schema=tab2.schema, key="tab2")
+        tab1_client.append_partition(tab1, 0)
+        tab2_client.append_partition(tab2, 0)
+
+        # Read by data source.
+        assert z.base["df1"].read() is not None
+        assert z.base["df2"].read() is not None
+        assert z.base["arr1"].read() is not None
+        assert z.base["arr2"].read() is not None
+        assert z.base["tab1"].read() is not None
+        assert z.base["tab2"].read() is not None
+
+        # Read by column.
+        for column in {
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I",
+            "J",
+            "arr1",
+            "arr2",
+        }:
+            assert z[column].read() is not None
+
+
+def test_write_table_column_array_key_collision(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        df = pandas.DataFrame({"A": [], "B": []})
+        arr = numpy.array([1, 2, 3], dtype=numpy.float64)
+        tab = pyarrow.Table.from_pydict({"A": [1, 2, 3], "B": [4, 5, 6]})
+
+        z1 = client.create_container(key="z1", specs=["composite"])
+        z1.write_table(df, key="df1")
+        with pytest.raises(ValueError):
+            z1.write_array(arr, key="A")
+
+        z2 = client.create_container(key="z2", specs=["composite"])
+        z2.write_array(arr, key="A")
+        with pytest.raises(ValueError):
+            z2.write_table(df, key="df1")
+
+        z3 = client.create_container(key="z3", specs=["composite"])
+        z3.write_array(arr, key="A")
+        with pytest.raises(ValueError):
+            z3.create_appendable_table(schema=tab.schema, key="table1")
+
+        z4 = client.create_container(key="z4", specs=["composite"])
+        z4.write_table(df, key="df1")
+        with pytest.raises(ValueError):
+            z4.create_appendable_table(schema=tab.schema, key="table1")
+
+        z5 = client.create_container(key="z5", specs=["composite"])
+        z5.create_appendable_table(schema=tab.schema, key="table1")
+        with pytest.raises(ValueError):
+            z5.write_array(arr, key="A")
+
+        z6 = client.create_container(key="z6", specs=["composite"])
+        z6.create_appendable_table(schema=tab.schema, key="table1")
+        with pytest.raises(ValueError):
+            z6.write_table(df, key="df1")
+
+
+def test_composite_validator(tree):
+    "Test the spec validator for marking existing containers"
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        y = client.create_container(key="y")  # No specs
+
+        # 1. Assign spec to an empty container
+        y.update_metadata(specs=["composite"])
+        assert Spec("composite") in y.specs
+        assert isinstance(client["y"], CompositeClient)
+        # Revert the assignment
+        y.update_metadata(specs=[])
+        assert Spec("composite") not in y.specs
+        assert isinstance(client["y"], Container)
+
+        # 2. Created a nested container
+        y.create_container(key="z")
+        with pytest.raises(ClientError, match="Nested containers are not allowed"):
+            y.update_metadata(specs=["composite"])
+        y.delete_contents("z")
+
+        # 3. Write some initial array data
+        y.write_array(arr1, key="arr1")
+        y.write_array(arr2, key="arr2")
+        y.write_awkward(awk_arr, key="awk")
+        y.write_sparse(
+            coords=sps_arr.coords,
+            data=sps_arr.data,
+            shape=sps_arr.shape,
+            key="sps",
+        )
+
+        # Composite spec can be assigned to a container with arrays
+        y.update_metadata(specs=["composite"])
+        assert Spec("composite") in y.specs
+        assert isinstance(client["y"], CompositeClient)
+        y.update_metadata(specs=[])
+
+        # 4. Add two valid tables and two valid appendable tables
+        y.write_table(df1, key="df1")
+        y.write_table(df2, key="df2")
+        y.create_appendable_table(schema=tab1.schema, key="tab1")
+        y.create_appendable_table(schema=tab2.schema, key="tab2")
+
+        # Composite spec can be assigned to a container with arrays and tables
+        y.update_metadata(specs=["composite"])
+        assert Spec("composite") in y.specs
+        assert isinstance(client["y"], CompositeClient)
+        y.update_metadata(specs=[])
+
+        # 5. Add an array with a conflicting name
+        y.write_array(arr1, key="A")
+        with pytest.raises(ClientError, match="Found conflicting names"):
+            y.update_metadata(specs=["composite"])
+        y.delete_contents("A", external_only=False)
+
+        # 6. Add tables with conflicting column names
+        y.write_table(df1, key="df1_copy")
+        with pytest.raises(ClientError, match="Found conflicting names"):
+            y.update_metadata(specs=["composite"])
+        y.delete_contents("df1_copy", external_only=False)
+        y.create_appendable_table(schema=tab1.schema, key="tab1_copy")
+        with pytest.raises(ClientError, match="Found conflicting names"):
+            y.update_metadata(specs=["composite"])
+        y.delete_contents("tab1_copy", external_only=False)
+
+        # 7. Composite spec cannot be used for tables or arrays
+        err_message = "Composite spec can be assigned only to containers"
+        for key in ["arr1", "awk", "sps", "df1"]:
+            with pytest.raises(ClientError, match=err_message):
+                y[key].update_metadata(specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_table(df1, specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_array(arr1, specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_awkward(awk_arr, specs=["composite"])
+        with pytest.raises(ClientError, match=err_message):
+            y.write_sparse(
+                coords=sps_arr.coords,
+                data=sps_arr.data,
+                shape=sps_arr.shape,
+                specs=["composite"],
+            )

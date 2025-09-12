@@ -4,7 +4,92 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
-## v0.1.0-b35 (Unreleased)
+## v0.1.1 (2025-09-10)
+
+### Fixed
+
+- In the Tiled container image, the React UI was misplaced and thus
+  did not function.
+- The Tiled container image was missing some client-side dependencies needed to
+  run the `tiled serve directory ...` command.
+
+### Changed
+
+- Internally, pydantic is used to parse configuration.
+
+
+## v0.1.0 (2025-09-04)
+
+
+### Added
+
+- Convenience method `subscribe` on client `Container` and `ArrayClient`
+  returns an experimental `Subscription`. See the new Streaming tutorial
+  for usage.
+
+### Changed
+
+- Client method for writing tabular data into external files, `write_dataframe`,
+  is deprecated and renamed `write_table`.
+- The order of arguments in the `write_partition` and `append_partition` methods.
+- The experiment `Subscription` object now takes where to start as an argument
+  to `Subscription.start` instead of at initialization time.
+
+### Fixed
+
+- Handling for certain catalog edge cases when building the nodes_closure table.
+- Enforce validity checks when adding appendable tables to "composite"-spec'ed containers.
+
+## v0.1.0-b39 (2025-08-28)
+
+### Fixed
+
+- Default paraneter (`None`) for the `patch` parameter in `PUT /data_source` endpoint.
+
+
+## v0.1.0-b38 (2025-08-28)
+
+### Fixed
+
+- Critical bug in new `tiled.access_control` code, missing `__init__.py`.
+
+
+## v0.1.0-b37 (2025-08-28)
+
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+- API keys can now be restricted to specific access tags
+- New unit tests covering the new access policy and access control features
+- Experimental support for streaming array data over a websocket endpoint.
+  Documentation to follow.
+
+### Changed
+
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+- Access control code is now in the `access_control` subdirectory
+- `SimpleAccessPolicy` has been removed
+- AuthN database can now be in-memory SQLite
+- Catalog database can now be shared when using in-memory SQLite
+- `TagBasedAccessPolicy` now supports anonymous access
+- `AccessTagsParser` is now async
+- `toy_authentication` example config now uses `TagBasedAccessPolicy`
+- Added helpers for setting up the access tag and catalog databases for `toy_authentication`
+
+### Fixed
+
+- Access control on container export was partially broken, now access works as expected.
+
+
+## v0.1.0-b36 (2025-08-26)
+
+### Changed
+
+- Demoted the `Composite` structure family to `composite` spec.
+- Typehint utils collection implementations
+
+
+## v0.1.0-b35 (2025-08-20)
 
 ### Changed
 
@@ -13,8 +98,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - The project ships with a pixi manifest (`pixi.toml`).
+<<<<<<< HEAD
 - Covering index on the `nodes` table (only relevant for PostgreSQL catalogs).
 
+=======
+- Connection pool settings for catalog and storage databases.
+>>>>>>> main
 
 ## v0.1.0-b34 (2025-08-14)
 
@@ -26,7 +115,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   database correct but unchanged. This release repairs the migration script; it
   should be re-run on any databases that could not be upgraded with the previous
   release.
-
 
 ## v0.1.0-b33 (2025-08-13)
 
@@ -86,7 +174,6 @@ continuous deployment processes.
 - Make principal type hints consistent in router
 - Typehinted database access methods
 - Explicit type conversion in SQL adapter when appending to an existing table.
-
 
 ## v0.1.0-b30 (2025-07-18)
 

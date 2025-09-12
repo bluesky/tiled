@@ -1,7 +1,7 @@
 """create-covering-index
 
 Revision ID: 9b4bbdcdaf80
-Revises: a963a6c32a0c
+Revises: dfbb7478c6bd
 Create Date: 2025-08-20 08:54:39.273733
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "9b4bbdcdaf80"
-down_revision = "a963a6c32a0c"
+down_revision = "dfbb7478c6bd"
 branch_labels = None
 depends_on = None
 

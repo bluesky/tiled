@@ -81,7 +81,7 @@ that work on Python dictionaries work on Containers. We can
 <ArrayClient shape=(50, 50) chunks=((50,), (50,)) dtype=float64>
 ```
 
-* or even
+* or, equivalently
 
 ```python
 >>> client['nested/images/tiny_image']
@@ -183,3 +183,33 @@ DictView({'animal': 'dog', 'color': 'red'})
 ```
 
 See a later tutorial for how to search Containers with queries.
+
+## Performance Characteristics of Slicing Containers
+
+Consider what Python does when executing this code:
+
+```py
+c['x']['y']
+```
+
+First, it needs to construct the intermediate result `c['x']`, and then
+run `['y']` on that. This requires two HTTP requests, with associated
+latency for communication between the client and the server.
+
+Now consider these alternative spellings:
+
+```py
+c['x', 'y']
+c['x/y']
+```
+
+These are not standard dictionary usage; they are Tiled specific short-hands.
+They can run faster because they give Python information up front, enabling
+Tiled to issue just a single HTTP request to fetch the description of the thing
+we actually want (`y`) and avoid spending time fetching `x` in the process.
+
+In some situations, Tiled will proactively bundle the description of `y` into
+the description of its parent `x`, in an attempt to reduce back-and-forth. In
+those cases, you will find `c['x']['y']` to be just as fast as `c['x', 'y']` or
+`c['x/y']`.  This is not possible in all situations, because containers can be
+quite large and of course Tiled cannot predict which items the user may need.

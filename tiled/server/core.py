@@ -10,13 +10,13 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
-from typing import Any
+from typing import Any, Optional
 
 import anyio
 import dateutil.tz
 import jmespath
 import msgpack
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Response, WebSocket
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_REQUEST
 
@@ -319,7 +319,6 @@ DEFAULT_MEDIA_TYPES = {
     StructureFamily.awkward: {"*/*": "application/zip"},
     StructureFamily.table: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
     StructureFamily.container: {"*/*": "application/x-hdf5"},
-    StructureFamily.composite: {"*/*": "application/x-hdf5"},
     StructureFamily.sparse: {"*/*": APACHE_ARROW_FILE_MIME_TYPE},
 }
 
@@ -486,20 +485,13 @@ async def construct_resource(
     if schemas.EntryFields.access_blob in fields and hasattr(entry, "access_blob"):
         attributes["access_blob"] = entry.access_blob
     if schemas.EntryFields.specs in fields:
-        specs = []
+        attributes["specs"] = []
         for spec in getattr(entry, "specs", []):
             # back-compat for when a spec was just a string
             if isinstance(spec, str):
                 spec = Spec(spec)
-            # Convert from dataclass to pydantic.
-            # The dataclass implementation of Spec supports dict() method
-            # for ease of going between dataclass and pydantic.
-            specs.append(schemas.Spec(**spec.model_dump()))
-        attributes["specs"] = specs
-    if (entry is not None) and entry.structure_family in {
-        StructureFamily.container,
-        StructureFamily.composite,
-    }:
+            attributes["specs"].append(spec)
+    if (entry is not None) and entry.structure_family == StructureFamily.container:
         attributes["structure_family"] = entry.structure_family
 
         if (
@@ -750,6 +742,57 @@ def json_or_msgpack(
     return NumpySafeJSONResponse(
         content, headers=headers, metrics=request.state.metrics, status_code=status_code
     )
+
+
+def get_websocket_envelope_formatter(
+    envelope_format: schemas.EnvelopeFormat, entry, deserialization_registry
+):
+    if envelope_format == "msgpack":
+
+        async def stream_msgpack(
+            websocket: WebSocket,
+            metadata: dict,
+            payload_bytes: Optional[bytes],
+        ):
+            if payload_bytes is not None:
+                metadata["payload"] = payload_bytes
+            data = msgpack.packb(metadata)
+            await websocket.send_bytes(data)
+
+        return stream_msgpack
+
+    elif envelope_format == "json":
+
+        async def stream_json(
+            websocket: WebSocket,
+            metadata: dict,
+            payload_bytes: Optional[bytes],
+        ):
+            if payload_bytes is not None:
+                media_type = metadata.get("content-type", "application/octet-stream")
+                if media_type == "application/json":
+                    # nothing to do, the payload is already JSON
+                    payload_decoded = payload_bytes
+                else:
+                    # Transcode to payload to JSON.
+                    metadata["content-type"] = "application/json"
+                    structure_family = (
+                        StructureFamily.array
+                    )  # TODO: generalize beyond array
+                    structure = entry.structure()
+                    deserializer = deserialization_registry.dispatch(
+                        structure_family, media_type
+                    )
+                    payload_decoded = deserializer(
+                        payload_bytes,
+                        structure.data_type.to_numpy_dtype(),
+                        metadata.get("shape"),
+                    )
+                metadata["payload"] = payload_decoded
+            data = safe_json_dump(metadata)
+            await websocket.send_text(data)
+
+        return stream_json
 
 
 class UnsupportedMediaTypes(Exception):

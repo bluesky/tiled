@@ -25,17 +25,16 @@ async def walk(node, filter_for_access, pre=None):
     """
     pre = pre[:] if pre else []
     if node.structure_family != StructureFamily.array:
-        if hasattr(node, "items_range"):
-            for key, value in await (await filter_for_access(node)).items_range(
-                0, None
-            ):
+        filtered = await filter_for_access(node)
+        if hasattr(filtered, "items_range"):
+            for key, value in await filtered.items_range(0, None):
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
         elif node.structure_family == StructureFamily.table:
             for key in node.structure().columns:
-                yield (pre + [key], await filter_for_access(node))
+                yield (pre + [key], filtered)
         else:
-            for key, value in (await filter_for_access(node)).items():
+            for key, value in filtered.items():
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
     else:
@@ -88,9 +87,6 @@ if modules_available("h5py"):
     default_serialization_registry.register(
         StructureFamily.container, "application/x-hdf5", serialize_hdf5
     )
-    default_serialization_registry.register(
-        StructureFamily.composite, "application/x-hdf5", serialize_hdf5
-    )
 
 if modules_available("orjson"):
 
@@ -116,7 +112,4 @@ if modules_available("orjson"):
 
     default_serialization_registry.register(
         StructureFamily.container, "application/json", serialize_json
-    )
-    default_serialization_registry.register(
-        StructureFamily.composite, "application/json", serialize_json
     )

@@ -51,7 +51,7 @@ class SerializationRegistry:
         for ext, media_type in self.DEFAULT_ALIASES.items():
             self.register_alias(ext, media_type)
 
-    def media_types(self, structure_family):
+    def media_types(self, structure_family) -> DictView[str, str]:
         """
         List the supported media types for a given structure family.
         """
