@@ -109,6 +109,7 @@ class h5open(h5py.File):  # type: ignore
     def __init__(
         self, filename: Union[str, Path], dataset: Optional[str] = None, **kwargs: Any
     ) -> None:
+        kwargs = filter_kwargs(ALLOWED_KWARGS, **{**DEFAULT_KWARGS, **kwargs})
         super().__init__(filename, mode="r", **kwargs)
         self.dataset = dataset
 
@@ -162,7 +163,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
 
         # Define helper functions for reading and getting specs of HDF5 arrays with dask.delayed
         def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
-            f = h5py.File(fpath, "r", **kwargs)
+            f = h5py.File(
+                fpath,
+                "r",
+                **filter_kwargs(ALLOWED_KWARGS, **{**DEFAULT_KWARGS, **kwargs}),
+            )
             return f[dataset] if dataset else f
 
         def _get_hdf5_specs(
@@ -229,7 +234,6 @@ class HDF5ArrayAdapter(ArrayAdapter):
         squeeze: Optional[bool] = False,
         **kwargs: Optional[Any],
     ) -> "HDF5ArrayAdapter":
-        kwargs = filter_kwargs(ALLOWED_KWARGS, **{**DEFAULT_KWARGS, **kwargs})
         structure = data_source.structure
         assets = data_source.assets
         data_uris = [
@@ -277,10 +281,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         *data_uris: str,
         dataset: Optional[str] = None,
         slice: Optional[Union[str, NDSlice]] = None,
-        squeeze: bool = False,
+        squeeze: Optional[bool] = False,
         **kwargs: Optional[Any],
     ) -> "HDF5ArrayAdapter":
-        kwargs = filter_kwargs(ALLOWED_KWARGS, **{**DEFAULT_KWARGS, **kwargs})
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = cls.lazy_load_hdf5_array(*file_paths, dataset=dataset, **kwargs)
@@ -356,7 +359,7 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         self.dataset = dataset  # Referenced to the root of the file
         self.specs = specs or []
         self._metadata = metadata or {}
-        self._kwargs = filter_kwargs(ALLOWED_KWARGS, **{**DEFAULT_KWARGS, **kwargs})
+        self._kwargs = kwargs or {}
 
     @classmethod
     def from_catalog(
@@ -370,8 +373,6 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         # Convert the dataset representation (for backward compatibility)
         dataset = dataset or kwargs.get("path") or []
-
-        kwargs = filter_kwargs(ALLOWED_KWARGS, **{**DEFAULT_KWARGS, **kwargs})
         if not isinstance(dataset, str):
             dataset = "/".join(dataset)
 
@@ -419,7 +420,6 @@ class HDF5Adapter(Mapping[str, Union["HDF5Adapter", HDF5ArrayAdapter]], Indexers
         **kwargs: Optional[Any],
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
-        kwargs = filter_kwargs(ALLOWED_KWARGS, **{**DEFAULT_KWARGS, **kwargs})
 
         with h5open(fpath, dataset, **kwargs) as file:
             tree = parse_hdf5_tree(file)
