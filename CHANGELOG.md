@@ -7,7 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- Pass additional kwargs to csv adapter with an extra validity check.
+- Pass additional kwargs to CSV and HDF5 adapters with an extra validity check.
 
 
 ## v0.1.1 (2025-09-10)

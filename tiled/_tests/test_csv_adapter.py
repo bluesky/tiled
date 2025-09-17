@@ -4,7 +4,7 @@ import numpy
 import pandas
 import pytest
 
-from ..adapters.csv import CSVArrayAdapter
+from ..adapters.csv import CSVAdapter, CSVArrayAdapter
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..server.app import build_app
@@ -139,3 +139,16 @@ def test_csv_arrays_from_uris(csv_array1_file, csv_array2_file):
     array_adapter = CSVArrayAdapter.from_uris(f"file://localhost/{csv_array2_file}")
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr2).all()
+
+
+def test_invalid_kwargs_ignored(csv_array1_file):
+    # Passing any invalid kwargs should not raise an error
+    csv_adapter = CSVAdapter.from_uris(
+        f"file://localhost/{csv_array1_file}", invalid_kwarg=123
+    )
+    assert csv_adapter.read() is not None
+
+    array_adapter = CSVArrayAdapter.from_uris(
+        f"file://localhost/{csv_array1_file}", invalid_kwarg=123
+    )
+    assert array_adapter.read() is not None
