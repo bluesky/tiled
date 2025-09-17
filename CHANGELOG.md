@@ -4,6 +4,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## v0.1.2 (2025-09-17)
+
+This release temporarily pins backs the version of the depedency DuckDB to
+avoid breakage (seemingly unintended) to documented behavior.
+
+
 ## v0.1.1 (2025-09-10)
 
 ### Fixed
