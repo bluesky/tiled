@@ -103,11 +103,7 @@ def init_adapter_from_catalog(
     return adapter_cls(structure=data_source.structure, **kwargs)
 
 
-def filter_kwargs(
-    valid_keys: set[str],
-    /,
-    **kwargs: Any,
-) -> dict[str, Any]:
+def filter_kwargs(valid_keys: set[str], /, **kwargs: Any) -> dict[str, Any]:
     """Remove any kwargs that are not accepted by the adapter_cls constructor."""
 
     return {k: v for k, v in kwargs.items() if k in valid_keys}
