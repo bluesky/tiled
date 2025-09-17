@@ -1,10 +1,10 @@
 import copy
+import inspect
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
 import dask.dataframe
-import inspect
 import pandas
 
 from ..catalog.orm import Node
@@ -18,10 +18,14 @@ from ..utils import ensure_uri, path_from_uri
 from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
-# Allowed keyword arguments for pandas.read_csv
-ALLOWED_KWARGS = [name for name, p in inspect.signature(pandas.read_csv).parameters.items()
-             if p.kind in (inspect.Parameter.KEYWORD_ONLY,
-                           inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+# Keyword arguments allowed in pandas.read_csv
+ALLOWED_KWARGS = [
+    name
+    for name, p in inspect.signature(pandas.read_csv).parameters.items()
+    if p.kind
+    in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+]
+
 
 class CSVAdapter:
     """Adapter for tabular data stored as partitioned text (csv) files"""
@@ -368,7 +372,7 @@ class CSVArrayAdapter(ArrayAdapter):
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
-        kwargs = {k:v for k, v in kwargs.items() if k in ALLOWED_KWARGS}
+        kwargs = {k: v for k, v in kwargs.items() if k in ALLOWED_KWARGS}
         array = dask.dataframe.read_csv(
             file_paths, header=None, **kwargs
         ).to_dask_array()
