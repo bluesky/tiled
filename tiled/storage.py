@@ -102,7 +102,11 @@ class SQLStorage(Storage):
             return sqlalchemy.pool.StaticPool(creator)
         else:
             return sqlalchemy.pool.QueuePool(
-                creator, pool_size=self.pool_size, max_overflow=self.max_overflow
+                creator,
+                pool_size=self.pool_size,
+                max_overflow=self.max_overflow,
+                recycle=1800,  # Recycle connections after 30 minutes
+                pre_ping=False,  # Default -- don't test connections before using them
             )
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
