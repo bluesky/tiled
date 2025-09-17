@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Pass additional kwargs to csv adapter with an extra validity check.
+
 
 ## v0.1.1 (2025-09-10)
 
