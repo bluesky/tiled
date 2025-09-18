@@ -71,7 +71,7 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb",
+    "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.115.8",
     "h5netcdf",
@@ -230,7 +230,7 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb",
+    "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.115.8",
     "h5netcdf",

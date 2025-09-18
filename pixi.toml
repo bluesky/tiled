@@ -89,7 +89,7 @@ asyncpg = "*"
 cachetools = "*"
 canonicaljson = "*"
 dask = "*"
-duckdb = "*"
+duckdb = "<1.4.0"  # https://github.com/bluesky/tiled/issues/1144
 fastapi = ">=0.115.8"
 jinja2 = "*"
 jmespath = "*"
