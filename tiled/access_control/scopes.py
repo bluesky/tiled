@@ -19,9 +19,7 @@ SCOPES = {
         "description": "Edit list of all users and services and their attributes."
     },
 }
-AUTHN_SCOPES = {
-    "UNAUDITED_AUTHN_SCOPES" : { "description": "Authn scopes not validated as using authz."},
-    }
+
 
 ALL_SCOPES: set[str] = frozenset(SCOPES)
 PUBLIC_SCOPES: set[str] = frozenset(("read:metadata", "read:data"))
@@ -37,6 +35,3 @@ USER_SCOPES: set[str] = frozenset(
     )
 )
 NO_SCOPES: set[str] = frozenset()
-
-
-UNAUDITED_AUTHN_SCOPES: set[str] = frozenset(AUTHN_SCOPES)

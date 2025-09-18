@@ -39,7 +39,7 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
-from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, UNAUDITED_AUTHN_SCOPES, USER_SCOPES
+from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
 
 # To hide third-party warning
@@ -379,11 +379,7 @@ async def get_current_scopes(
             api_key, settings, request.app.state.authenticated, db
         )
     elif decoded_access_token is not None:
-        if (
-            isinstance(settings.authenticator, ProxiedOIDCAuthenticator)
-            and settings.authenticator.use_external_authorization
-        ):
-            return UNAUDITED_AUTHN_SCOPES
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
             return set(decoded_access_token["scope"].split(" "))
         else:
             return decoded_access_token["scp"]
@@ -411,12 +407,18 @@ async def check_scopes(
     scopes: set[str] = Depends(get_current_scopes),
     settings: Settings = Depends(get_settings),
 ) -> None:
-    if (
-        isinstance(settings.authenticator, ProxiedOIDCAuthenticator)
-        and settings.authenticator.use_external_authorization and scopes == UNAUDITED_AUTHN_SCOPES
-    ):
-        return
-    if not set(security_scopes.scopes).issubset(scopes):
+    if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+        if not set(settings.authenticator.scopes).issubset(scopes):
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Not enough permissions. "
+                    f"Requires scopes {settings.authenticator.scopes}. "
+                    f"Request had scopes {list(scopes)}"
+                ),
+                headers=headers_for_401(request, security_scopes),
+            )
+    elif not set(security_scopes.scopes).issubset(scopes):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=(

@@ -1,14 +1,16 @@
 import logging
 import os
-from typing import List, Optional
+from collections.abc import Iterable
+from typing import List
 
-from pydantic import HttpUrl
+import requests
+from pydantic import BaseModel, HttpUrl, ValidationError
 
 from tiled.server.schemas import Principal
 
 from ..queries import AccessBlobFilter
 from ..utils import Sentinel, import_object
-from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES
+from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -19,7 +21,7 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("TILED ACCESS POLICY: %(message)s"))
 logger.addHandler(handler)
-
+LEAF_NODE = "leaf_node"
 log_level = os.getenv("TILED_ACCESS_POLICY_LOG_LEVEL")
 if log_level:
     logger.setLevel(log_level.upper())
@@ -367,30 +369,52 @@ class TagBasedAccessPolicy:
         return queries
 
 
+class Data(BaseModel):
+    token: str
+    audience: str
+    actions: list[str]
+    node: List[str]
+
+
+class Input(BaseModel):
+    input: Data
+
+
+class Decision(BaseModel):
+    result: bool
+
+
 class ExternalPolicyDecisionPoint:
-    def __init__(
-        self,
-        authorization_provider: HttpUrl,
-        scopes: Optional[List[str]] = None,
-    ):
+    def __init__(self, authorization_provider: HttpUrl, audience: str):
         self.authorization_provider = authorization_provider
-        self.scopes = scopes
+        self.audience = audience
 
-    # 1. Given a Principal (user or service) and a Node, return a list of the scopes
-    # (actions) the Principal is allowed to perform on that Node.
-    async def allowed_scopes(
-        self, node, principal: Principal, authn_access_tags, authn_scopes
-    ):
-        # Make call to authz and get if the principal is authorized to access or not
-        # Send request principal.access_token, node(str)
-        if principal is None or principal.access_token is None:
-            return NO_SCOPES
-        return ALL_SCOPES
+    async def authorized(self, node, principal: Principal, actions: List[str]) -> bool:
+        if principal.access_token is None:
+            raise RuntimeError(
+                "External policy access control requires a bearer token. "
+                "Please ensure that the principal has a access token."
+            )
+        if isinstance(node, Iterable):
+            paths = [path for path in node]
+        else:
+            paths = [LEAF_NODE]
 
-    # 2. Given a Principal (user or service), a Node, and a list of scopes (actions),
-    # return a list of Query objects that, when applied to the Node, filters its
-    # children such that the Principal can do all of those actions on the remaining
-    # children (if any).
-    # Currently not required
-    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
-        return []
+        input = Input(
+            input=Data(
+                token=principal.access_token,
+                audience=self.audience,
+                actions=actions,
+                node=paths,
+                # TODO: Give the complete path
+            )
+        )
+        response = requests.post(
+            str(self.authorization_provider), data=input.model_dump_json()
+        )
+        response.raise_for_status()
+        try:
+            decision = Decision.model_validate_json(response.text)
+        except ValidationError:
+            return False
+        return decision.result
