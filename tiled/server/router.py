@@ -1862,7 +1862,7 @@ def get_router(
             StructureFamily.table, media_type
         )
         data = await ensure_awaitable(deserializer, body)
-        await ensure_awaitable(entry.write_partition, data, partition)
+        await ensure_awaitable(entry.write_partition, partition, data)
         return json_or_msgpack(request, None)
 
     @router.patch("/table/partition/{path:path}")
@@ -1900,7 +1900,7 @@ def get_router(
             StructureFamily.table, media_type
         )
         data = await ensure_awaitable(deserializer, body)
-        await ensure_awaitable(entry.append_partition, data, partition)
+        await ensure_awaitable(entry.append_partition, partition, data)
         return json_or_msgpack(request, None)
 
     @router.put("/awkward/full/{path:path}")

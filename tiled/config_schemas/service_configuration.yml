@@ -81,12 +81,25 @@ properties:
     properties:
       uri:
         type: string
-      ttl:
+        description: Connection string, e.g. `redis://:password@host:port`
+      data_ttl:
         type: number
+        description: Max retention time for streaming data (seconds)
+      seq_ttl:
+        type: number
+        description: Max retention time for streaming sequence counter (seconds)
       socket_timeout:
         type: number
+        description: |
+          Configure Redis client. The default is None, to facilitate
+          long-lived streaming clients that may sustain across lengthy
+          dormant periods.
+
       socket_connect_timeout:
         type: number
+        description: |
+          Configure Redis client. The default is 10 (seconds).
+
     required:
       - uri
   media_types:

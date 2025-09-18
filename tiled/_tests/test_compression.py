@@ -5,6 +5,7 @@ from starlette.testclient import TestClient
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
+from ..config import Authentication
 from ..server.app import build_app
 
 
@@ -18,7 +19,7 @@ def app():
             )
         },
     )
-    return build_app(tree, authentication={"single_user_api_key": "secret"})
+    return build_app(tree, authentication=Authentication(single_user_api_key="secret"))
     # In this module we use a raw TestClient instead of tiled.client to omit
     # tiled.client's default headers and other configuration.
 

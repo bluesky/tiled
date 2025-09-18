@@ -242,22 +242,13 @@ def from_profile(name, structure_clients=None, **kwargs):
     if "direct" in merged:
         # The profile specifies the server in-line.
         # Create an app and use it directly via ASGI.
-        import jsonschema
 
-        from ..config import ConfigError, schema
         from ..server.app import build_app_from_config
 
         config = merged.pop("direct", None)
-        try:
-            jsonschema.validate(instance=config, schema=schema())
-        except jsonschema.ValidationError as err:
-            msg = err.args[0]
-            raise ConfigError(
-                f"ValidationError while parsing configuration file {filepath}: {msg}"
-            ) from err
-        context = Context.from_app(
-            build_app_from_config(config, source_filepath=filepath),
-        )
+        with prepend_to_sys_path(filepath.parent):
+            app = build_app_from_config(config)
+        context = Context.from_app(app)
         return from_context(context, **merged)
     else:
         return from_uri(**merged)

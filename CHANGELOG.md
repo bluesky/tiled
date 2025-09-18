@@ -4,6 +4,48 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## v0.1.2 (2025-09-17)
+
+This release temporarily pins backs the version of the depedency DuckDB to
+avoid breakage (seemingly unintended) to documented behavior.
+
+
+## v0.1.1 (2025-09-10)
+
+### Fixed
+
+- In the Tiled container image, the React UI was misplaced and thus
+  did not function.
+- The Tiled container image was missing some client-side dependencies needed to
+  run the `tiled serve directory ...` command.
+
+### Changed
+
+- Internally, pydantic is used to parse configuration.
+
+
+## v0.1.0 (2025-09-04)
+
+
+### Added
+
+- Convenience method `subscribe` on client `Container` and `ArrayClient`
+  returns an experimental `Subscription`. See the new Streaming tutorial
+  for usage.
+
+### Changed
+
+- Client method for writing tabular data into external files, `write_dataframe`,
+  is deprecated and renamed `write_table`.
+- The order of arguments in the `write_partition` and `append_partition` methods.
+- The experiment `Subscription` object now takes where to start as an argument
+  to `Subscription.start` instead of at initialization time.
+
+### Fixed
+
+- Handling for certain catalog edge cases when building the nodes_closure table.
+- Enforce validity checks when adding appendable tables to "composite"-spec'ed containers.
+
 ## v0.1.0-b39 (2025-08-28)
 
 ### Fixed

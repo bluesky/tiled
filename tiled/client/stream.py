@@ -1,12 +1,12 @@
 import inspect
 import threading
 import weakref
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import anyio
 import httpx
 import msgpack
-from starlette.testclient import TestClient
+import websockets.exceptions
 from websockets.sync.client import connect
 
 from tiled.client.context import Context
@@ -15,7 +15,7 @@ Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
 
 
-class TestClientWebsocketWrapper:
+class _TestClientWebsocketWrapper:
     """Wrapper for TestClient websockets."""
 
     def __init__(self, http_client, uri: httpx.URL):
@@ -23,12 +23,14 @@ class TestClientWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: str):
+    def connect(self, api_key: str, start: Optional[int] = None):
         """Connect to the websocket."""
-        query_string = self._uri.query.decode() if self._uri.query else ""
-        path = self._uri.path + ("?" + query_string if query_string else "")
+        params = self._uri.params
+        if start is not None:
+            params = params.set("start", start)
         self._websocket = self._http_client.websocket_connect(
-            path, headers={"Authorization": f"Apikey {api_key}"}
+            str(self._uri.copy_with(params=params)),
+            headers={"Authorization": f"Apikey {api_key}"},
         )
         self._websocket.__enter__()
 
@@ -41,7 +43,7 @@ class TestClientWebsocketWrapper:
         self._websocket.__exit__(None, None, None)
 
 
-class RegularWebsocketWrapper:
+class _RegularWebsocketWrapper:
     """Wrapper for regular websockets."""
 
     def __init__(self, http_client, uri: httpx.URL):
@@ -49,10 +51,13 @@ class RegularWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: str):
+    def connect(self, api_key: str, start: Optional[int] = None):
         """Connect to the websocket."""
+        params = self._uri.params
+        if start is not None:
+            params = params.set("start", start)
         self._websocket = connect(
-            str(self._uri),
+            str(self._uri.copy_with(params=params)),
             additional_headers={"Authorization": f"Apikey {api_key}"},
         )
 
@@ -75,34 +80,33 @@ class Subscription:
         Provides connection to Tiled server
     segments : list[str]
         Path to node of interest, given as a list of path segments
-    start : int, optional
-        By default, the stream begins from the most recent update. Use this parameter
-        to replay from some earlier update. Use 1 to start from the first item, 0
-        to start from as far back as available (which may be later than the first item),
-        or any positive integer to start from a specific point in the sequence.
     """
 
-    def __init__(self, context: Context, segments: List[str] = None, start: int = None):
+    def __init__(self, context: Context, segments: List[str] = None):
         segments = segments or ["/"]
         self._context = context
         self._segments = segments
         params = {"envelope_format": "msgpack"}
-        if start is not None:
-            params["start"] = start
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
-        path = "stream/single" + "/".join(f"/{segment}" for segment in segments)
+        self._node_path = "/".join(f"/{segment}" for segment in segments)
+        uri_path = "/api/v1/stream/single" + self._node_path
         self._uri = httpx.URL(
-            str(context.api_uri.copy_with(scheme=scheme)) + path,
+            str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
             params=params,
         )
         name = f"tiled-subscription-{self._uri}"
         self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._callbacks = set()
         self._close_event = threading.Event()
-        if isinstance(context.http_client, TestClient):
-            self._websocket = TestClientWebsocketWrapper(context.http_client, self._uri)
+        if getattr(self.context.http_client, "app", None):
+            self._websocket = _TestClientWebsocketWrapper(
+                context.http_client, self._uri
+            )
         else:
-            self._websocket = RegularWebsocketWrapper(context.http_client, self._uri)
+            self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self._node_path} >"
 
     @property
     def context(self) -> Context:
@@ -133,6 +137,20 @@ class Subscription:
                 ...
 
         >>> sub.add_callback(f)
+
+        Start receiving updates, beginning with the next one.
+
+        >>> sub.start()
+
+        Or start receiving updates beginning as far back as the server has
+        available.
+
+        >>> sub.start(0)
+
+        Or start receiving updates beginning with a specific sequence number.
+
+        >>> sub.start(3)
+
         """
 
         def cleanup(ref: weakref.ref) -> None:
@@ -162,14 +180,28 @@ class Subscription:
                 data_bytes = self._websocket.recv(timeout=TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
+            except websockets.exceptions.ConnectionClosedOK:
+                self._close_event.set()
+                return
             data = msgpack.unpackb(data_bytes)
             for ref in self._callbacks:
                 callback = ref()
                 if callback is not None:
                     callback(self, data)
 
-    def start(self) -> None:
-        "Connect to the websocket and launch a thread to receive and process updates."
+    def start(self, start: Optional[int] = None) -> None:
+        """
+        Connect to the websocket and launch a thread to receive and process updates.
+
+        Parameters
+        ----------
+        start : int, optional
+            By default, the stream begins from the most recent update. Use this
+            parameter to replay from some earlier update. Use 1 to start from
+            the first item, 0 to start from as far back as available (which may
+            be later than the first item), or any positive integer to start
+            from a specific point in the sequence.
+        """
         if self._close_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
         API_KEY_LIFETIME = 30  # seconds
@@ -185,7 +217,7 @@ class Subscription:
             api_key = self.context.api_key
 
         # Connect using the websocket wrapper
-        self._websocket.connect(api_key)
+        self._websocket.connect(api_key, start)
 
         if needs_api_key:
             # The connection is made, so we no longer need the API key.
@@ -194,8 +226,17 @@ class Subscription:
             self.context.revoke_api_key(key_info["first_eight"])
         self._thread.start()
 
+    @property
+    def closed(self):
+        """
+        Indicate whether stream has been closed.
+        """
+        return self._close_event.is_set()
+
     def stop(self) -> None:
         "Close the websocket connection."
+        if self._close_event.is_set():
+            return  # nothing to do
         self._close_event.set()
         self._websocket.close()
         self._thread.join()

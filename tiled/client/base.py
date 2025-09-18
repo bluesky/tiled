@@ -285,6 +285,11 @@ class BaseClient:
         return self.item["links"]["self"]
 
     @property
+    def path_parts(self):
+        "Location of node in tree, given as list of path segments."
+        return self._item["attributes"]["ancestors"] + [self._item["id"]]
+
+    @property
     def structure_family(self):
         "Quick access to this entry"
         return StructureFamily[self.item["attributes"]["structure_family"]]

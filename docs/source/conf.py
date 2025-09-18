@@ -284,10 +284,20 @@ generate_schema_documentation(
 )
 
 from tiled.adapters.mapping import MapAdapter
-from tiled.authenticators import DummyAuthenticator
+from tiled.config import Authentication, AuthenticationProviderSpec
 from tiled.server.app import build_app
 
-app = build_app(MapAdapter({}), authentication={"authenticator": DummyAuthenticator()})
+app = build_app(
+    MapAdapter({}),
+    authentication=Authentication(
+        providers=[
+            AuthenticationProviderSpec(
+                provider="dummy",
+                authenticator="tiled.authenticators:DummyAuthenticator",
+            )
+        ]
+    ),
+)
 api = app.openapi()
 
 with open("reference/api.yml", "w") as file:

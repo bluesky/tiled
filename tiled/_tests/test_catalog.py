@@ -242,7 +242,7 @@ async def test_write_array_external(a, tmpdir):
 
 
 @pytest.mark.asyncio
-async def test_write_dataframe_external_direct(a, tmpdir):
+async def test_write_table_external_direct(a, tmpdir):
     df = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
     filepath = str(tmpdir / "file.csv")
     data_uri = ensure_uri(filepath)
@@ -316,9 +316,9 @@ def test_write_array_internal_via_client(client):
     assert numpy.array_equal(actual, expected)
 
 
-def test_write_dataframe_internal_via_client(client):
+def test_write_table_internal_via_client(client):
     expected = pandas.DataFrame(numpy.ones((5, 3)), columns=list("abc"))
-    x = client.write_dataframe(expected)
+    x = client.write_table(expected)
     actual = x.read()
     pandas.testing.assert_frame_equal(actual, expected)
 
@@ -545,10 +545,10 @@ async def test_delete_sql_assets(sql_storage_uri):
         a = client.create_container("a")
         b1 = a.create_container("b1")
         t1 = b1.create_appendable_table(schema=table_1.schema, key="table_1")
-        t1.append_partition(table_1, 0)
-        t1.append_partition(table_1, 0)
+        t1.append_partition(0, table_1)
+        t1.append_partition(0, table_1)
         t2 = b1.create_appendable_table(schema=table_2.schema, key="table_2")
-        t2.append_partition(table_2, 0)
+        t2.append_partition(0, table_2)
         assert t1.read() is not None
         assert t2.read() is not None
 
@@ -575,7 +575,7 @@ async def test_delete_sql_assets(sql_storage_uri):
         # Add another table to b2 -- a copy of table_1 with the same schema
         b2 = a.create_container("b2")
         t1c = b2.create_appendable_table(schema=table_1.schema, key="table_1_copy")
-        t1c.append_partition(table_1, 0)
+        t1c.append_partition(0, table_1)
         assert t1c.read() is not None
 
         # Check the catalog state before deletion

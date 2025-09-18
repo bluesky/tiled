@@ -197,11 +197,12 @@ class ArrowAdapter:
         )
 
     def reader_handle_partiton(self, partition: int) -> pyarrow.RecordBatchFileReader:
-        """
-        Function to initialize and return the reader handle.
+        """Initialize and return the reader handle.
+
         Parameters
         ----------
         partition : the integer number corresponding to a specific partition.
+
         Returns
         -------
         The reader handle for specific partition.
@@ -212,8 +213,8 @@ class ArrowAdapter:
             return pyarrow.ipc.open_file(self._partition_paths[partition])
 
     def reader_handle_all(self) -> Iterator[pyarrow.RecordBatchFileReader]:
-        """
-        Function to initialize and return the reader handle.
+        """Initialize and return the reader handle.
+
         Returns
         -------
         The reader handle.
@@ -227,17 +228,17 @@ class ArrowAdapter:
 
     def write_partition(
         self,
-        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
         partition: int,
+        data: Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame],
     ) -> None:
-        """
-        "Function to write the data into specific partition as arrow format."
+        """Write the data into a specific partition as arrow format
+
         Parameters
         ----------
-        data : data to write into arrow file. Can be a list of record batch, or pandas dataframe.
-        partition: integer index of partition to be read.
-        Returns
-        -------
+        partition : int
+            index of partition to be written.
+        data : Union[List[pyarrow.record_batch], pyarrow.record_batch, pandas.DataFrame]
+            data to write into arrow file.
         """
         if isinstance(data, pandas.DataFrame):
             table = pyarrow.Table.from_pandas(data)
