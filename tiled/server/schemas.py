@@ -294,6 +294,7 @@ class DeviceCode(pydantic.BaseModel):
 class PrincipalType(str, enum.Enum):
     user = "user"
     service = "service"
+    jwt_token = "jwt_token"
 
 
 class Identity(pydantic.BaseModel):
@@ -396,6 +397,7 @@ class Principal(pydantic.BaseModel):
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
     latest_activity: Optional[datetime] = None
+    access_token: Optional[str] = None
 
     @classmethod
     def from_orm(
