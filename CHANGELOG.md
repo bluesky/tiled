@@ -3,6 +3,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Pass additional kwargs to CSV and HDF5 adapters with an extra validity check.
+
 
 ## v0.1.2 (2025-09-17)
 

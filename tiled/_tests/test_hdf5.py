@@ -451,3 +451,11 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
 
     with pytest.raises(KeyError):
         list(client["ds_from_extr"].keys())
+
+
+def test_invalid_kwargs_ignored(example_file):
+    # Passing any invalid kwargs should not raise an error
+    tree = HDF5Adapter.from_uris(example_file, dataset="a/b", invalid_kwarg=123)
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+    assert client["c"]["d"].read() is not None
