@@ -1,4 +1,5 @@
 import functools
+import warnings
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -229,7 +230,16 @@ class _DaskDataFrameClient(BaseClient):
                     )
                 )
 
-    def write_partition(self, dataframe, partition):
+    def write_partition(self, partition, dataframe):
+        # The order of arguments has changed; check that the user input is correct
+        if not isinstance(partition, int):
+            warnings.warn(
+                "The order of arguments has changed: please use write_partition(partition, dataframe).",  # noqa: E501
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            partition, dataframe = dataframe, partition
+
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -242,7 +252,16 @@ class _DaskDataFrameClient(BaseClient):
                     )
                 )
 
-    def append_partition(self, dataframe, partition):
+    def append_partition(self, partition, dataframe):
+        # The order of arguments has changed; check that the user input is correct
+        if not isinstance(partition, int):
+            warnings.warn(
+                "The order of arguments has changed: please use append_partition(partition, dataframe).",  # noqa: E501
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            partition, dataframe = dataframe, partition
+
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
         for attempt in retry_context():

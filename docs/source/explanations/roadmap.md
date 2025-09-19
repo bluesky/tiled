@@ -1,19 +1,9 @@
 # Roadmap
 
-## Path to v0.1.0 Release
-
-We aim to release v0.1.0 in August 2025.
-
-- Support for reading from and writing to blob storage
-- Adoption of "closure table" pattern for expressing
-  tree structure of nodes with better performance and
-  referential integrity
-- Experimental support for streaming live data over
-  websockets
-- A read-only view of array data compatible with Zarr v2,
-  suct that Zarr readers can view Tiled as a Zarr store.
-
 ## Path to v1.0.0 Release
+
+We aim to release v1.0.0 in December 2025. There may or may
+not be a v0.2.0 release along the way.
 
 - Optimize performance and scalability. Build out nascent
   [asv](https://asv.readthedocs.io/en/latest/) benchmarks, and
@@ -25,3 +15,4 @@ We aim to release v0.1.0 in August 2025.
 - Rationalize and simplify CLI and configuration management.
 - Support deployment with an API gateway.
 - Continue to develop streaming capabilities.
+- Support for reading from and writing to blob storage

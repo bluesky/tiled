@@ -3,7 +3,17 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import pydantic.generics
 from pydantic import ConfigDict, Field, StringConstraints
@@ -143,6 +153,12 @@ class Revision(pydantic.BaseModel):
             access_blob=orm.access_blob,
             time_updated=orm.time_updated,
         )
+
+
+class Patch(pydantic.BaseModel):
+    offset: Tuple[int, ...]
+    shape: Tuple[int, ...]
+    extend: bool
 
 
 class DataSource(pydantic.BaseModel, Generic[StructureT]):
@@ -458,6 +474,7 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PutDataSourceRequest(pydantic.BaseModel):
     data_source: DataSource
+    patch: Optional[Patch] = None
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -580,5 +597,11 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
 SearchResponse = Response[
     List[Resource[NodeAttributes, Dict, Dict]], PaginationLinks, Dict
 ]
+
+
+class EnvelopeFormat(str, enum.Enum):
+    json = "json"
+    msgpack = "msgpack"
+
 
 NodeStructure.model_rebuild()
