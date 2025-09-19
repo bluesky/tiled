@@ -1,7 +1,13 @@
 import inspect
+import sys
 import threading
 import weakref
 from typing import Callable, List, Optional
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 import anyio
 import httpx
@@ -116,13 +122,21 @@ class Subscription:
     def segments(self) -> List[str]:
         return self._segments
 
-    def add_callback(self, callback: Callback) -> None:
+    def add_callback(self, callback: Callback) -> Self:
         """
         Register a callback to be run when the Subscription receives an update.
 
         The callback registry only holds a weak reference to the callback. If
         no hard references are held elsewhere in the program, the callback will
         be silently removed.
+
+        Parameters
+        ----------
+        callback : Callback
+
+        Returns
+        -------
+        Subscription
 
         Examples
         --------
@@ -151,6 +165,10 @@ class Subscription:
 
         >>> sub.start(3)
 
+        The method calls can be chained like:
+
+        >>> sub.add_callback(f).add_callback(g).start()
+
         """
 
         def cleanup(ref: weakref.ref) -> None:
@@ -165,12 +183,22 @@ class Subscription:
         else:
             ref = weakref.ref(callback, cleanup)
         self._callbacks.add(ref)
+        return self
 
-    def remove_callback(self, callback: Callback) -> None:
+    def remove_callback(self, callback: Callback) -> Self:
         """
         Unregister a callback.
+
+        Parameters
+        ----------
+        callback : Callback
+
+        Returns
+        -------
+        Subscription
         """
         self._callbacks.remove(callback)
+        return self
 
     def _receive(self) -> None:
         "This method is executed on self._thread."
