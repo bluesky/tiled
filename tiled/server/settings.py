@@ -8,13 +8,13 @@ from pydantic.dataclasses import dataclass
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# hashable cache key for use in tiled.authn_database.connection_pool
+# hashable cache key for use in tiled.server.connection_pool
 @dataclass(unsafe_hash=True)
 class DatabaseSettings:
     uri: Optional[str] = None
-    pool_size: int = 5
-    pool_pre_ping: bool = True
-    max_overflow: int = 5
+    pool_size: Optional[int] = 5
+    pool_pre_ping: Optional[bool] = True
+    max_overflow: Optional[int] = 5
 
 
 class Settings(BaseSettings):

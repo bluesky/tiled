@@ -60,7 +60,6 @@ from tiled.queries import (
     StructureFamilyQuery,
 )
 
-from ..authn_database.connection_pool import get_database_engine
 from ..mimetypes import (
     APACHE_ARROW_FILE_MIME_TYPE,
     AWKWARD_BUFFERS_MIMETYPE,
@@ -71,6 +70,7 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..server.connection_pool import close_database_connection_pool, get_database_engine
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision
 from ..server.settings import DatabaseSettings
@@ -218,7 +218,7 @@ class Context:
     def session(self):
         "Convenience method for constructing an AsyncSession context"
         if self.engine is None:
-            raise RuntimeError("Context has not been started")
+            raise RuntimeError("Context has not been started properly")
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
     async def execute(self, statement, explain=None):
@@ -229,7 +229,7 @@ class Context:
             return result
 
     async def startup(self):
-        self.engine = get_database_engine(self.database_settings)
+        self.engine = await get_database_engine(self.database_settings)
 
         if (self.engine.dialect.name == "sqlite") and (
             self.engine.url.database == ":memory:"
@@ -262,6 +262,9 @@ class Context:
         self.cache_client = cache_client
         self.cache_data_ttl = cache_data_ttl
         self.cache_seq_ttl = cache_seq_ttl
+
+    async def shutdown(self):
+        await close_database_connection_pool(self.database_settings)
 
 
 class CatalogNodeAdapter:
@@ -321,7 +324,7 @@ class CatalogNodeAdapter:
         self.node.key = mount_path[-1]
 
     async def shutdown(self):
-        await self.context.engine.dispose()
+        await self.context.shutdown()
 
     @property
     def writable(self):
@@ -1801,41 +1804,6 @@ def from_uri(
         stderr = process.stderr.decode()
         logger.info(f"Subprocess stdout: {stdout}")
         logger.info(f"Subprocess stderr: {stderr}")
-
-    # parsed_url = make_url(uri)
-    # if (
-    #     (parsed_url.get_dialect().name == "sqlite")
-    #     and (parsed_url.database != ":memory:")
-    #     and (parsed_url.query.get("mode", None) != "memory")
-    # ):
-    #     # For file-backed SQLite databases, connection pooling offers a
-    #     # significant performance boost. For SQLite databases that exist
-    #     # only in process memory, pooling is not applicable.
-    #     poolclass = AsyncAdaptedQueuePool
-    # elif parsed_url.get_dialect().name.startswith("postgresql"):
-    #     poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
-    # else:
-    #     poolclass = None  # defer to sqlalchemy default
-
-    # # Optionally set pool size and max overflow for the catalog engine;
-    # # if not specified, use the default values from sqlalchemy.
-    # pool_kwargs = (
-    #     {"pool_size": catalog_pool_size, "max_overflow": catalog_max_overflow}
-    #     if poolclass == AsyncAdaptedQueuePool
-    #     else {}
-    # )
-
-    # pool_kwargs = {k: v for k, v in pool_kwargs.items() if v is not None}
-    # # Create the async engine with the specified parameters
-    # engine = create_async_engine(
-    #     uri,
-    #     echo=echo,
-    #     json_serializer=json_serializer,
-    #     poolclass=poolclass,
-    #     **pool_kwargs,
-    # )
-    # if engine.dialect.name == "sqlite":
-    #     event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
 
     database_settings = DatabaseSettings(
         uri=uri,
