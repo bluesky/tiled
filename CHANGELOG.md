@@ -6,6 +6,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Configured recycle and added explicit pre-ping option for storage databases.
+
 ### Changed
 
 - Implemented a process-global connection pool for catalog databases, similarly
