@@ -80,7 +80,12 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
             urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
             object_store_class = mapping[storage.provider]
             object_store = object_store_class(
-                **{urlProp[storage.provider]: storage.uri, "prefix": "".join(f"/{quote_plus(segment)}" for segment in path_parts)},
+                **{
+                    urlProp[storage.provider]: storage.uri,
+                    "prefix": "".join(
+                        f"/{quote_plus(segment)}" for segment in path_parts
+                    ),
+                },
                 **storage.config,
             )
             store = ObjectStore(store=object_store)
@@ -320,16 +325,18 @@ class ZarrAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
+        container_type = node.structure_family == StructureFamily.container
         storage_uri = data_source.assets[0].data_uri
-        # Split on the first single '/' that is not part of '://'
-        match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
-        storage_prefix = match.group(1) if match else storage_uri
-        storage_postfix = match.group(2) if match and match.group(2) else ""
-        storage = get_storage(storage_prefix)
+        location, path = decode_bucket_uri(storage_uri)
+        storage = get_storage(location)
         if isinstance(storage, FileStorage):
             zarr_obj = zarr.open(path_from_uri(storage_uri))
-        # Group or Array
         elif isinstance(storage, ObjectStorage):
+            # Split on the first single '/' that is not part of '://'
+            match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
+            storage_prefix = match.group(1) if match else storage_uri
+            storage_postfix = match.group(2) if match and match.group(2) else ""
+            storage = cast(ObjectStorage, get_storage(storage_prefix))
             strg = storage_postfix.lstrip("/").replace(
                 storage.config["bucket"] + "/", ""
             )
@@ -341,14 +348,22 @@ class ZarrAdapter:
                 **storage.config,
             )
             store = ObjectStore(store=object_store)
-            zarr_obj = zarr.open(
-                store=store,
-                path=strg,
+            strg = path.lstrip("/").replace(storage.config["bucket"] + "/", "")
+            zarr_obj = (
+                zarr.open_group(
+                    store=store,
+                    path=strg,
+                )
+                if container_type
+                else zarr.open_array(
+                    store=store,
+                    path=strg,
+                )
             )
         else:
             raise TypeError(f"Unsupported Storage type {storage}")
 
-        if node.structure_family == StructureFamily.container:
+        if container_type:
             return ZarrGroupAdapter(
                 zarr_obj,
                 metadata=node.metadata_,
@@ -374,3 +389,11 @@ class ZarrAdapter:
         else:
             structure = ArrayStructure.from_array(zarr_obj)
             return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
+
+
+def decode_bucket_uri(storage_uri: str) -> Tuple[str, str]:
+    # Split on the first single '/' that is not part of '://'
+    match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
+    storage_prefix = match.group(1) if match else storage_uri
+    storage_postfix = match.group(2) if match and match.group(2) else ""
+    return storage_prefix, storage_postfix
