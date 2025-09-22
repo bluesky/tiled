@@ -4,6 +4,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## Unreleased
+
+### Changed
+
+- Implemented a process-global connection pool for catalog databases, similarly
+  to the connections to authN database.
+
+
 ## v0.1.2 (2025-09-17)
 
 This release temporarily pins backs the version of the depedency DuckDB to
