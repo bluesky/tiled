@@ -207,11 +207,11 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             received_event.set()
 
     # Create subscription for the streaming node with start=0
-    subscription = Subscription(context=context, segments=[unique_key], start=0)
+    subscription = Subscription(context=context, segments=[unique_key])
     subscription.add_callback(callback)
 
     # Start the subscription
-    subscription.start()
+    subscription.start(start=0)
 
     # Write more updates
     for i in range(2, 4):
@@ -247,3 +247,4 @@ def test_subscribe_after_first_update_from_beginning_subscription(
 
     # Clean up the subscription
     subscription.stop()
+    assert subscription.closed
