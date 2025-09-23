@@ -196,11 +196,11 @@ def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
     ],
 )
 def test_write_read_one_batch_one_part(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
+    adapter: str, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-
+    assert isinstance(adapter, SQLAdapter)
     # test appending and reading a table as a whole
     test_table = pa.Table.from_arrays(data0, names)
 
@@ -228,11 +228,11 @@ def test_write_read_one_batch_one_part(
     ],
 )
 def test_write_read_list_batch_one_part(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
+    adapter: str, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-
+    assert isinstance(adapter, SQLAdapter)
     test_table = pa.Table.from_batches([batch0, batch1, batch2])
     # test appending a list of batches to a table and read as a whole
     adapter.append_partition(0, [batch0, batch1, batch2])
@@ -284,12 +284,10 @@ def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
         ("adapter_psql_many_partitions"),
     ],
 )
-def test_append_single_partition(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
-) -> None:
+def test_append_single_partition(adapter: str, request: pytest.FixtureRequest) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-
+    assert isinstance(adapter, SQLAdapter)
     # test writing an entire pyarrow table to a single partition
     table = pa.Table.from_batches([batch0, batch1, batch2])
     adapter.append_partition(0, table)
@@ -312,11 +310,11 @@ def test_append_single_partition(
     ],
 )
 def test_write_read_one_batch_many_part(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
+    adapter: str, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-
+    assert isinstance(adapter, SQLAdapter)
     # test writing to many partitions and reading it whole
     adapter.append_partition(0, batch0)
     adapter.append_partition(1, batch1)

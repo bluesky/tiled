@@ -28,12 +28,12 @@ async def postgresql_uri() -> AsyncGenerator[str, None]:
         # yield uri_with_database_name.rsplit("/", 1)[0]
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 def sqlite_uri(tmp_path: Path) -> Generator[str, None, None]:
     yield f"sqlite:///{tmp_path}/test.db"
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 def duckdb_uri(tmp_path: Path) -> Generator[str, None, None]:
     yield f"duckdb:///{tmp_path}/test.db"
 
