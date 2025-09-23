@@ -8,6 +8,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
+from .metrics import monitor_engine
 from ..server.settings import DatabaseSettings, Settings, get_settings
 from ..utils import ensure_specified_sql_driver, safe_json_dump
 
@@ -43,6 +44,7 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
         )
 
         # Cache the engine so we don't create more than one pool per database_settings.
+        monitor_engine(engine, database_settings.uri)
         _connection_pools[database_settings] = engine
 
     # For SQLite, ensure that foreign key constraints are enforced.

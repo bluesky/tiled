@@ -8,9 +8,13 @@ import os
 from functools import cache
 
 from fastapi import APIRouter, Request, Response, Security
-from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Histogram, Gauge, generate_latest
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tiled.server.authentication import check_scopes
+from typing import Union
 
 router = APIRouter()
 
@@ -68,6 +72,16 @@ COMPRESSION_RATIO = Histogram(
     "compression ratio for all HTTP requests",
     ["method", "code", "endpoint", "encoding"],
     buckets=[1, 2.5, 5, 10, 15, 30, 60, 120, float("inf")],
+)
+DB_POOL_SIZE = Gauge(
+    "tiled_db_pool_size",
+    "current size of the database connection pool",
+    ["uri"],
+)
+DB_CONNECTIONS = Gauge(
+    "tiled_db_active_connections",
+    "number of active database connections checked out from the pool",
+    ["uri"],
 )
 
 # Initialize labels in advance so that the metrics exist (and can be used in
@@ -133,6 +147,23 @@ def capture_request_metrics(request, response):
             COMPRESSION_RATIO.labels(
                 method=method, code=code, endpoint=endpoint, encoding=encoding
             ).observe(metrics["compress"]["ratio"])
+
+
+def monitor_engine(engine: Union[Engine, AsyncEngine], name: str):
+    @event.listens_for(engine, "checkout")
+    def on_checkout(dbapi_connection, connection_record, connection_proxy):
+        DB_CONNECTIONS.labels(name).inc()
+
+    @event.listens_for(engine, "checkin")
+    def on_checkin(dbapi_connection, connection_record):
+        DB_CONNECTIONS.labels(name).dec()
+
+    # Gauge for pool size can be updated on every checkout/checkin
+    def update_pool_size():
+        DB_POOL_SIZE.labels(name).set(engine.pool.size())
+
+    event.listen(engine, "checkout", lambda *a, **kw: update_pool_size())
+    event.listen(engine, "checkin", lambda *a, **kw: update_pool_size())
 
 
 @cache
