@@ -60,12 +60,10 @@ class ZarrArrayAdapter(ArrayAdapter):
                 + storage.config["bucket"]
                 + "".join(f"/{quote_plus(segment)}" for segment in path_parts)
             )
-            mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
-            urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
-            object_store_class = mapping[storage.provider]
-            object_store = object_store_class(
+            style = storage_style(storage.provider)
+            object_store = style["class"](
                 **{
-                    urlProp[storage.provider]: storage.uri,
+                    style["property"]: storage.uri,
                     "prefix": "".join(
                         f"/{quote_plus(segment)}" for segment in path_parts
                     ),
@@ -309,29 +307,25 @@ class ZarrAdapter:
         storage_uri = data_source.assets[0].data_uri
         location, path = decode_bucket_uri(storage_uri)
         storage = get_storage(location)
+        path = path.replace(storage.config["bucket"] + "/", "")
         if isinstance(storage, FileStorage):
             zarr_obj = zarr.open(path_from_uri(storage_uri))
         else:
-            mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
-            urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
-            object_store_class = mapping[storage.provider]
-            object_store = object_store_class(
-                **{urlProp[storage.provider]: storage.uri},
+            style = storage_style(storage.provider)
+            object_store = style["class"](
+                **{style["property"]: storage.uri},
                 **storage.config,
             )
             store = ObjectStore(store=object_store)
-            strg = path.lstrip("/").replace(
-                storage.config["bucket"] + "/", ""
-            )
             zarr_obj = (
                 zarr.open_group(
                     store=store,
-                    path=strg,
+                    path=path,
                 )
                 if container_type
                 else zarr.open_array(
                     store=store,
-                    path=strg,
+                    path=path,
                 )
             )
 
@@ -365,8 +359,39 @@ class ZarrAdapter:
 
 
 def decode_bucket_uri(storage_uri: str) -> Tuple[str, str]:
+    """
+    Decode a blob storage URI into parts needed by obstore.
+    Returns a tuple of (location, path).
+    Will return the original tiled storage URI and an empty path if filesystem
+    Examples:
+        s3://my-bucket/path/to/array -> (s3://my-bucket, /path/to/array)
+    Parameters
+    ----------
+    storage_uri: str
+        The tiled storage URI to decode.
+    """
     # Split on the first single '/' that is not part of '://'
     match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
-    storage_prefix = match.group(1) if match else storage_uri
-    storage_postfix = match.group(2) if match and match.group(2) else ""
-    return storage_prefix, storage_postfix
+    return match.group(1) if match else storage_uri, (
+        match.group(2) if match and match.group(2) else ""
+    ).lstrip("/")
+
+
+def storage_style(provider: str) -> dict[S3Store | AzureStore | GCSStore, str]:
+    """
+    Adapt obstore cloud provider methods
+    Parameters
+    ----------
+    provider : str
+        The cloud provider, one of 's3', 'azure', 'google'
+    Returns
+    -------
+    dict{class: obstore class, property: str}
+        The obstore class and endpoint property name
+    """
+    mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
+    urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
+    return {
+        "class": mapping[provider],
+        "property": urlProp[provider],
+    }
