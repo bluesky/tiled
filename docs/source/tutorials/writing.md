@@ -72,7 +72,7 @@ Write tabular data in a pandas DataFrame.
 ```python
 >>> import pandas
 >>> df = pandas.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
->>> client.write_dataframe(df, metadata={"color": "green", "barcode": 12})
+>>> client.write_table(df, metadata={"color": "green", "barcode": 12})
 <DataFrameClient ['x', 'y']>
 ```
 

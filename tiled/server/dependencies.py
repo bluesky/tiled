@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Set
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
@@ -22,6 +22,7 @@ async def get_entry(
     path: str,
     security_scopes: List[str],
     principal: Optional[Principal],
+    authn_access_tags: Optional[Set[str]],
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
@@ -50,6 +51,7 @@ async def get_entry(
         entry,
         access_policy,
         principal,
+        authn_access_tags,
         authn_scopes,
         ["read:metadata"],
         metrics,
@@ -75,6 +77,7 @@ async def get_entry(
                 entry,
                 access_policy,
                 principal,
+                authn_access_tags,
                 authn_scopes,
                 ["read:metadata"],
                 metrics,
@@ -86,6 +89,7 @@ async def get_entry(
                 allowed_scopes = await access_policy.allowed_scopes(
                     entry,
                     principal,
+                    authn_access_tags,
                     authn_scopes,
                 )
                 if not set(security_scopes).issubset(allowed_scopes):

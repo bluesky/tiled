@@ -82,6 +82,7 @@ The `parent` column is introduced to represent the parent-child relationships be
 The `ancestors` column is removed, as it is no longer needed with the closure table structure.
 
 """
+
 import logging
 
 import sqlalchemy as sa
@@ -206,6 +207,7 @@ def upgrade():
             WHERE {json_len_func}(child.ancestors) >= {depth + 1}
             AND {condition_statement}
             AND parent.parent = child.parent
+            AND child.id != parent.id;
         """
             )
         )

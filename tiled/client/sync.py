@@ -80,7 +80,7 @@ def _copy_sparse(source, dest, on_conflict):
 def _copy_table(source, dest, on_conflict):
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
-        dest.write_partition(df, partition)
+        dest.write_partition(partition, df)
 
 
 def _copy_container(source, dest, on_conflict):

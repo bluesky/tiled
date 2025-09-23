@@ -92,25 +92,24 @@ def gather_profiles(paths, strict=True):
                 ):
                     continue
                 try:
-                    with open(filepath) as file:
-                        content = parse(file)
-                        if content is None:
-                            raise ProfileError(f"File {filepath!s} is empty.")
-                        if not isinstance(content, collections.abc.Mapping):
-                            raise ProfileError(
-                                f"File {filepath!s} does not have the expected structure."
+                    content = parse(filepath)
+                    if content is None:
+                        raise ProfileError(f"File {filepath!s} is empty.")
+                    if not isinstance(content, collections.abc.Mapping):
+                        raise ProfileError(
+                            f"File {filepath!s} does not have the expected structure."
+                        )
+                    for profile_name, profile_content in content.items():
+                        try:
+                            jsonschema.validate(
+                                instance=profile_content, schema=schema()
                             )
-                        for profile_name, profile_content in content.items():
-                            try:
-                                jsonschema.validate(
-                                    instance=profile_content, schema=schema()
-                                )
-                            except jsonschema.ValidationError as validation_err:
-                                original_msg = validation_err.args[0]
-                                raise ProfileError(
-                                    f"ValidationError while parsing profile {profile_name} "
-                                    f"in file {filepath!s}: {original_msg}"
-                                ) from validation_err
+                        except jsonschema.ValidationError as validation_err:
+                            original_msg = validation_err.args[0]
+                            raise ProfileError(
+                                f"ValidationError while parsing profile {profile_name} "
+                                f"in file {filepath!s}: {original_msg}"
+                            ) from validation_err
                 except Exception as err:
                     if strict:
                         raise

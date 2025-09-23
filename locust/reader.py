@@ -55,7 +55,7 @@ def create_test_dataset(host, api_key, container_name):
     table = pyarrow.Table.from_pydict({"a": rng.random(100), "b": rng.random(100)})
 
     table_client = client.create_appendable_table(table.schema)
-    table_client.append_partition(table, 0)
+    table_client.append_partition(0, table)
 
     # Verify we can read it back
     result = table_client.read()

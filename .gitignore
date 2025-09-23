@@ -82,3 +82,6 @@ pixi.lock
 # uv environments
 uv.lock
 .venv
+# pixi environments
+.pixi/*
+!.pixi/config.toml

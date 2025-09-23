@@ -21,7 +21,7 @@ def test_default():
         # Write and read tabular data to the SQL storage
         table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
         y = client.create_appendable_table(table.schema, key="y")
-        y.append_partition(table, 0)
+        y.append_partition(0, table)
         y.read()
 
         repr(server)
@@ -61,7 +61,7 @@ def test_persistent_data(tmp_path):
         client1.write_array([1, 2, 3], key="x")
         table = pyarrow.Table.from_pydict({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
         y = client1.create_appendable_table(table.schema, key="y")
-        y.append_partition(table, 0)
+        y.append_partition(0, table)
         assert "x" in client1
         assert "y" in client1
     with SimpleTiledServer(directory=tmp_path) as server2:

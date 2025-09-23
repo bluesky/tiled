@@ -28,6 +28,14 @@ is included with the tiled source code, and start a server like so.
    :caption: example_configs/toy_authentication.py
 ```
 
+Note that you will need to run these helper tools to prep the backing databases that Tiled needs:
+```
+# prep the access tags and catalog databases
+python example_configs/access_tags/compile_tags.py
+python example_configs/catalog/create_catalog.py
+```
+
+then, you can launch the server:
 ```
 ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/toy_authentication.yml
 ```

@@ -3,7 +3,17 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import pydantic.generics
 from pydantic import ConfigDict, Field, StringConstraints
@@ -141,6 +151,12 @@ class Revision(pydantic.BaseModel):
             access_blob=orm.access_blob,
             time_updated=orm.time_updated,
         )
+
+
+class Patch(pydantic.BaseModel):
+    offset: Tuple[int, ...]
+    shape: Tuple[int, ...]
+    extend: bool
 
 
 class DataSource(pydantic.BaseModel, Generic[StructureT]):
@@ -308,6 +324,7 @@ class APIKey(pydantic.BaseModel):
     expiration_time: Optional[datetime] = None
     note: Optional[Annotated[str, StringConstraints(max_length=255)]] = None
     scopes: List[str]
+    access_tags: Optional[List[str]] = None
     latest_activity: Optional[datetime] = None
 
     @classmethod
@@ -317,6 +334,7 @@ class APIKey(pydantic.BaseModel):
             expiration_time=orm.expiration_time,
             note=orm.note,
             scopes=orm.scopes,
+            access_tags=orm.access_tags,
             latest_activity=orm.latest_activity,
         )
 
@@ -333,6 +351,7 @@ class APIKeyWithSecret(APIKey):
             expiration_time=orm.expiration_time,
             note=orm.note,
             scopes=orm.scopes,
+            access_tags=orm.access_tags,
             latest_activity=orm.latest_activity,
             secret=secret,
         )
@@ -402,6 +421,9 @@ class APIKeyRequestParams(pydantic.BaseModel):
     expires_in: Optional[int] = pydantic.Field(
         ..., json_schema_extra={"example": 600}
     )  # seconds
+    access_tags: Optional[List[str]] = pydantic.Field(
+        default=None, json_schema_extra={"example": ["writing_tag", "public"]}
+    )
     scopes: Optional[List[str]] = pydantic.Field(
         ..., json_schema_extra={"example": ["inherit"]}
     )
@@ -442,6 +464,7 @@ class PostMetadataRequest(pydantic.BaseModel):
 
 class PutDataSourceRequest(pydantic.BaseModel):
     data_source: DataSource
+    patch: Optional[Patch] = None
 
 
 class PostMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
@@ -564,5 +587,11 @@ class PatchMetadataResponse(pydantic.BaseModel, Generic[ResourceLinksT]):
 SearchResponse = Response[
     List[Resource[NodeAttributes, Dict, Dict]], PaginationLinks, Dict
 ]
+
+
+class EnvelopeFormat(str, enum.Enum):
+    json = "json"
+    msgpack = "msgpack"
+
 
 NodeStructure.model_rebuild()

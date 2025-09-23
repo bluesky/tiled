@@ -285,6 +285,11 @@ class BaseClient:
         return self.item["links"]["self"]
 
     @property
+    def path_parts(self):
+        "Location of node in tree, given as list of path segments."
+        return self._item["attributes"]["ancestors"] + [self._item["id"]]
+
+    @property
     def structure_family(self):
         "Quick access to this entry"
         return StructureFamily[self.item["attributes"]["structure_family"]]
@@ -880,6 +885,13 @@ class BaseClient:
                         params={"recursive": recursive, "external_only": external_only},
                     )
                 )
+
+    def close_stream(self):
+        "Declare the end of a stream of writes to this node."
+        endpoint = self.uri.replace("/metadata/", "/stream/close/", 1)
+        for attempt in retry_context():
+            with attempt:
+                handle_error(self.context.http_client.delete(endpoint))
 
     def __dask_tokenize__(self):
         return (type(self), self.uri)

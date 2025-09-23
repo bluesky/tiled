@@ -1,13 +1,16 @@
 import contextlib
 import time
 from collections.abc import Generator
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, Optional, Sequence
 
-from fastapi import Request
+from fastapi import Request, WebSocket
 from starlette.types import Scope
 
-from ..access_policies import NO_ACCESS
+from ..access_control.access_policies import NO_ACCESS
 from ..adapters.mapping import MapAdapter
+from ..adapters.protocols import AccessPolicy
+from ..server.schemas import Principal
+from ..type_aliases import Scopes
 
 EMPTY_NODE = MapAdapter({})
 API_KEY_COOKIE_NAME = "tiled_api_key"
@@ -30,6 +33,14 @@ def get_root_url(request: Request) -> str:
     URL at which the app is being server, including API and UI
     """
     return f"{get_root_url_low_level(request.headers, request.scope)}"
+
+
+def get_root_url_websocket(websocket: WebSocket) -> str:
+    return f"{get_root_url_low_level(websocket.headers, websocket.scope)}"
+
+
+def get_base_url_websocket(websocket: WebSocket) -> str:
+    return f"{get_root_url_websocket(websocket)}/api/v1"
 
 
 def get_base_url(request: Request) -> str:
@@ -75,12 +86,29 @@ def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> 
 
 
 async def filter_for_access(
-    entry, access_policy, principal, authn_scopes, scopes, metrics
+    entry,
+    access_policy: Optional[AccessPolicy],
+    principal: Principal,
+    authn_access_tags,
+    authn_scopes: Scopes,
+    scopes: Sequence[str],
+    metrics: dict[str, Any],
 ):
     if access_policy is not None and hasattr(entry, "search"):
         with record_timing(metrics, "acl"):
+            if hasattr(entry, "lookup_adapter") and entry.node.parent is None:
+                # This conditional only catches for the MapAdapter->CatalogAdapter
+                # transition, to cover MapAdapter's lack of access control.
+                # It can be removed once MapAdapter goes away.
+                if not set(scopes).issubset(
+                    await access_policy.allowed_scopes(
+                        entry, principal, authn_access_tags, authn_scopes
+                    )
+                ):
+                    return (entry := EMPTY_NODE)
+
             queries = await access_policy.filters(
-                entry, principal, authn_scopes, set(scopes)
+                entry, principal, authn_access_tags, authn_scopes, set(scopes)
             )
             if queries is NO_ACCESS:
                 entry = EMPTY_NODE

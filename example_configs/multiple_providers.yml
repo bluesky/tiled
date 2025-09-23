@@ -23,4 +23,4 @@ authentication:
         cara: ${CARA_PASSWORD}
 trees:
   - path: /
-    tree: tiled.examples.toy_authentication:tree
+    tree: tiled.examples.nexus:tree

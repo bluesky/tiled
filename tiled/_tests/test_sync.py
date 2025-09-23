@@ -61,7 +61,7 @@ def populate_internal(client):
     client.write_array([1, 2, 3], key="a", metadata={"color": "red"}, specs=["alpha"])
     # table
     df = pandas.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
-    client.write_dataframe(df, key="b", metadata={"color": "green"}, specs=["beta"])
+    client.write_table(df, key="b", metadata={"color": "green"}, specs=["beta"])
     # awkward
     client.write_awkward(
         awkward.Array([1, [2, 3]]), key="d", metadata={"color": "red"}, specs=["alpha"]
@@ -77,7 +77,7 @@ def populate_internal(client):
     container.write_array(
         [1, 2, 3], key="A", metadata={"color": "red"}, specs=["alpha"]
     )
-    container.write_dataframe(df, key="B", metadata={"color": "green"}, specs=["beta"])
+    container.write_table(df, key="B", metadata={"color": "green"}, specs=["beta"])
     container.write_awkward(
         awkward.Array([1, [2, 3]]), key="D", metadata={"color": "red"}, specs=["alpha"]
     )

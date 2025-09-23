@@ -15,20 +15,11 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Iterator,
-    Optional,
-    TextIO,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Generic, Iterator, Optional, Tuple, TypeVar, Union
 from urllib.parse import urlparse, urlunparse
 
 import anyio
+import yaml
 
 # helper for avoiding re-typing patch mimetypes
 # namedtuple for the lack of StrEnum in py<3.11
@@ -483,7 +474,7 @@ def modules_available(*module_names):
     return False
 
 
-def parse(file: TextIO) -> dict[Any, Any]:
+def parse(file: Path) -> dict[Any, Any]:
     """
     Given a config file, parse it.
 
@@ -491,8 +482,9 @@ def parse(file: TextIO) -> dict[Any, Any]:
     """
     import yaml
 
-    content = yaml.safe_load(file.read())
-    return expand_environment_variables(content)
+    with open(file) as src:
+        content = yaml.safe_load(src.read())
+        return expand_environment_variables(content)
 
 
 def expand_environment_variables(config: T) -> T:
@@ -593,11 +585,13 @@ class UnsupportedQueryType(TypeError):
 
 class Conflicts(Exception):
     "Prompts the server to send 409 Conflicts with message"
+
     pass
 
 
 class BrokenLink(Exception):
     "Prompts the server to send 410 Gone with message"
+
     pass
 
 
@@ -883,3 +877,15 @@ def parse_mimetype(mimetype: str) -> tuple[str, dict]:
             )
         params[key] = value
     return base, params
+
+
+class InterningLoader(yaml.loader.BaseLoader):
+    pass
+
+
+def interning_constructor(loader, node):
+    value = loader.construct_scalar(node)
+    return sys.intern(value)
+
+
+InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
