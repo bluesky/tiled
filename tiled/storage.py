@@ -27,6 +27,7 @@ __all__ = [
 @dataclasses.dataclass(frozen=True)
 class Storage:
     "Base class for representing storage location"
+
     uri: str
 
     def __post_init__(self):
@@ -40,6 +41,18 @@ class FileStorage(Storage):
     @functools.cached_property
     def path(self):
         return path_from_uri(self.uri)
+
+
+@dataclasses.dataclass(frozen=True)
+class ObjectStorage(Storage):
+    "Bucket storage location for BLOBS"
+
+    uri: str
+    provider: str
+    config: dict
+
+    def __post_init__(self):
+        object.__setattr__(self, "uri", ensure_uri(self.uri))
 
 
 def _ensure_writable_location(uri: str) -> Path:
@@ -141,6 +154,7 @@ class EmbeddedSQLStorage(SQLStorage):
 @dataclasses.dataclass(frozen=True)
 class RemoteSQLStorage(SQLStorage):
     "Authenticated server-based SQL database storage location"
+
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -185,24 +199,31 @@ class RemoteSQLStorage(SQLStorage):
 
 
 def parse_storage(
-    item: Union[Path, str],
+    item: Union[Path, str, dict],
     *,
     pool_size: Optional[int] = None,
     max_overflow: Optional[int] = None,
 ) -> Storage:
-    "Create a Storage object from a URI or Path."
-    item = ensure_uri(item)
-    scheme = urlparse(item).scheme
-    if scheme == "file":
-        result = FileStorage(item)
-    elif scheme == "postgresql":
-        result = RemoteSQLStorage(item, pool_size=pool_size, max_overflow=max_overflow)
-    elif scheme in {"sqlite", "duckdb"}:
-        result = EmbeddedSQLStorage(
-            item, pool_size=pool_size, max_overflow=max_overflow
+    if isinstance(item, dict):
+        result = ObjectStorage(
+            uri=item["uri"],
+            provider=item["provider"],
+            config=item.get("config", {}),
         )
     else:
-        raise ValueError(f"writable_storage item {item} has unrecognized scheme")
+        "Create a Storage object from a URI or Path."
+        item = ensure_uri(item)
+        scheme = urlparse(item).scheme
+        if scheme == "file":
+            result = FileStorage(item)
+        elif scheme == "postgresql":
+            result = RemoteSQLStorage(item, pool_size=pool_size, max_overflow=max_overflow)
+        elif scheme in {"sqlite", "duckdb"}:
+            result = EmbeddedSQLStorage(
+                item, pool_size=pool_size, max_overflow=max_overflow
+            )
+        else:
+            raise ValueError(f"writable_storage item {item} has unrecognized scheme")
     return result
 
 

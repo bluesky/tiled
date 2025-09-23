@@ -83,7 +83,8 @@ all = [
     "ndindex",
     "numcodecs",
     "numpy",
-    "numba >=0.59.0",  # indirect, pinned to assist uv solve
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve,
+    "obstore",
     "openpyxl",
     "packaging",
     "pandas",
