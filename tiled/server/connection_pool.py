@@ -20,46 +20,34 @@ _connection_pools: dict[DatabaseSettings, AsyncEngine] = {}
 
 
 def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncEngine:
-    parsed_url = make_url(database_settings.uri)
-    if (
-        (parsed_url.get_dialect().name == "sqlite")
-        and (parsed_url.database != ":memory:")
-        and (parsed_url.query.get("mode", None) != "memory")
-    ):
-        # For file-backed SQLite databases, connection pooling offers a
-        # significant performance boost. For SQLite databases that exist
-        # only in process memory, pooling is not applicable.
-        poolclass = AsyncAdaptedQueuePool
-    elif parsed_url.get_dialect().name.startswith("postgresql"):
-        poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
+    if make_url(database_settings.uri).database == ":memory:":
+        # For SQLite databases that exist only in process memory,
+        # pooling is not applicable. Just return an engine and don't cache it.
+        engine = create_async_engine(
+            ensure_specified_sql_driver(database_settings.uri),
+            echo=DEFAULT_ECHO,
+            json_serializer=json_serializer,
+        )
+
     else:
-        poolclass = None  # defer to sqlalchemy default
+        # For file-backed SQLite databases, and for PostgreSQL databases,
+        # connection pooling offers a significant performance boost.
+        engine = create_async_engine(
+            ensure_specified_sql_driver(database_settings.uri),
+            echo=DEFAULT_ECHO,
+            json_serializer=json_serializer,
+            poolclass=AsyncAdaptedQueuePool,
+            pool_size=database_settings.pool_size,
+            max_overflow=database_settings.max_overflow,
+            pool_pre_ping=database_settings.pool_pre_ping,
+        )
 
-    # Optionally set pool size and max overflow for the catalog engine;
-    # if not specified, use the default values from sqlalchemy.
-    pool_kwargs = (
-        {
-            "pool_size": database_settings.pool_size,
-            "max_overflow": database_settings.max_overflow,
-            "pool_pre_ping": database_settings.pool_pre_ping,
-        }
-        if poolclass == AsyncAdaptedQueuePool
-        else {}
-    )
-    pool_kwargs = {k: v for k, v in pool_kwargs.items() if v is not None}
+        # Cache the engine so we don't create more than one pool per database_settings.
+        _connection_pools[database_settings] = engine
 
-    # Create the async engine with the specified parameters
-    engine = create_async_engine(
-        ensure_specified_sql_driver(database_settings.uri),
-        echo=DEFAULT_ECHO,
-        json_serializer=json_serializer,
-        poolclass=poolclass,
-        **pool_kwargs,
-    )
+    # For SQLite, ensure that foreign key constraints are enforced.
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
-
-    _connection_pools[database_settings] = engine
 
     return engine
 
@@ -70,7 +58,7 @@ async def close_database_connection_pool(database_settings: DatabaseSettings):
         await engine.dispose()
 
 
-async def get_database_engine(
+def get_database_engine(
     settings: Union[Settings, DatabaseSettings] = Depends(get_settings),
 ) -> AsyncEngine:
     database_settings = (
@@ -104,7 +92,8 @@ def json_serializer(obj):
 
 
 def _set_sqlite_pragma(conn, record):
-    cursor = conn.cursor()
+    # Support FOREIGN KEY constraint syntax in SQLite; see:
     # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
+    cursor = conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()

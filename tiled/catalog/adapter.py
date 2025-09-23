@@ -172,7 +172,7 @@ class Context:
         storage_pool_size=None,
         storage_max_overflow=None,
     ):
-        self.engine = None
+        self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
         self.writable_storage = []
         self.readable_storage = set()
@@ -217,8 +217,6 @@ class Context:
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
-        if self.engine is None:
-            raise RuntimeError("Context has not been started properly")
         return ExplainAsyncSession(self.engine, autoflush=False, expire_on_commit=False)
 
     async def execute(self, statement, explain=None):
@@ -229,8 +227,6 @@ class Context:
             return result
 
     async def startup(self):
-        self.engine = await get_database_engine(self.database_settings)
-
         if (self.engine.dialect.name == "sqlite") and (
             self.engine.url.database == ":memory:"
             or self.engine.url.query.get("mode") == "memory"
