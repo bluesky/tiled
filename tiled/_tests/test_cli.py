@@ -34,6 +34,7 @@ def scrape_server_url_from_logs(process):
             if match := pattern.search(line.decode()):
                 break
         else:
+            breakpoint()
             raise RuntimeError(
                 "Did not find server URL in log output:\n" + "\n".join(lines)
             )

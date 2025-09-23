@@ -12,9 +12,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 @dataclass(unsafe_hash=True)
 class DatabaseSettings:
     uri: Optional[str] = None
-    pool_size: Optional[int] = 5
-    pool_pre_ping: Optional[bool] = True
-    max_overflow: Optional[int] = 5
+    pool_size: int = 5
+    pool_pre_ping: bool = True
+    max_overflow: int = 5
 
 
 class Settings(BaseSettings):

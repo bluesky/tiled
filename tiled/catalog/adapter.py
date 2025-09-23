@@ -169,8 +169,8 @@ class Context:
         adapters_by_mimetype=None,
         cache_settings=None,
         key_maker=lambda: str(uuid.uuid4()),
-        storage_pool_size=None,
-        storage_max_overflow=None,
+        storage_pool_size=5,
+        storage_max_overflow=10,
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
@@ -1776,10 +1776,10 @@ def from_uri(
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
     cache_settings=None,
-    catalog_pool_size=None,
-    storage_pool_size=None,
-    catalog_max_overflow=None,
-    storage_max_overflow=None,
+    catalog_pool_size=5,
+    storage_pool_size=5,
+    catalog_max_overflow=10,
+    storage_max_overflow=10,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
