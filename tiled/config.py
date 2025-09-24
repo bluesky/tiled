@@ -310,7 +310,7 @@ def parse_configs(src_file: Union[str, Path]) -> Config:
                     # management.
                     mergeable_lists = {"trees", "specs"}
                     for key in common.intersection(mergeable_lists):
-                        conf[key].extend(new_config[key])
+                        conf[key].extend(new_config.pop(key))
                         common.remove(key)
                     if common:
                         raise ValueError(f"Duplicate configuration for {common} in {f}")

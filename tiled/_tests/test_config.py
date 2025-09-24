@@ -124,7 +124,8 @@ def test_multi_file_trees(tmpdir):
         yaml.dump(conf1, c1)
     with open(tmpdir / "conf2.yml", "w") as c2:
         yaml.dump(conf2, c2)
-    parse_configs(tmpdir)
+    config = parse_configs(tmpdir)
+    assert len(config.trees) == 2
 
 
 def test_multi_file_conflict(tmpdir):
