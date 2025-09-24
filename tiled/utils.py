@@ -460,8 +460,20 @@ def import_object(colon_separated_string, accept_live_object=True):
     for attr in obj_path.split("."):
         if not attr.isidentifier():
             raise ValueError(MESSAGE)
-    module = importlib.import_module(import_path)
-    return operator.attrgetter(obj_path)(module)
+    try:
+        module = importlib.import_module(import_path)
+    except ModuleNotFoundError:
+        raise ValueError(
+            f"Could not parse {colon_separated_string!r}: "
+            f"No module {import_path!r} could be found"
+        )
+    try:
+        return operator.attrgetter(obj_path)(module)
+    except AttributeError:
+        raise ValueError(
+            f"Could not parse {colon_separated_string!r}: "
+            f"No object {obj_path!r} found in module {module!r}"
+        )
 
 
 def modules_available(*module_names):

@@ -1,5 +1,7 @@
 import sys
 
+from pydantic import AfterValidator
+
 from tiled.structures.array import ArrayStructure
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.sparse import SparseStructure
@@ -10,7 +12,19 @@ if sys.version_info < (3, 10):
 else:
     from types import EllipsisType
 
-from typing import Any, Callable, Coroutine, Dict, List, Set, TypedDict, Union
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Coroutine,
+    Dict,
+    List,
+    Set,
+    TypedDict,
+    Union,
+)
+
+from .utils import import_object
 
 JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
 
@@ -28,6 +42,12 @@ class TaskMap(TypedDict):
     background: list[AppTask]
     startup: list[AppTask]
     shutdown: list[AppTask]
+
+
+EntryPointString = Annotated[
+    str,
+    AfterValidator(import_object),
+]
 
 
 __all__ = [
