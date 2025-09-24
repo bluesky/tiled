@@ -6,7 +6,7 @@ import re
 import warnings
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
-from functools import partial
+from functools import cache, partial
 from pathlib import Path
 from typing import Callable, List, Optional, Set, TypeVar, Union
 
@@ -20,6 +20,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     Security,
     WebSocket,
 )
@@ -2435,5 +2436,45 @@ def get_router(
                     metadata = result
 
         return metadata_modified, metadata
+
+    return router
+
+
+def get_metrics_router() -> APIRouter:
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    router = APIRouter()
+
+    @cache
+    def prometheus_registry():
+        """
+        Configure prometheus_client.
+
+        This is run the first time the /metrics endpoint is used. The enclosing scope of
+        `get_metrics_router` would normally be created only once (during the app startup),
+        so this function would also be run only once and the registry would be cached.
+        """
+        if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+            # The multiprocess configuration makes it compatible with gunicorn.
+            # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
+            from prometheus_client import CollectorRegistry
+            from prometheus_client.multiprocess import MultiProcessCollector
+
+            registry = CollectorRegistry()
+            MultiProcessCollector(registry)  # This has a side effect.
+        else:
+            from prometheus_client import REGISTRY as registry
+
+        return registry
+
+    @router.get("/metrics")
+    async def metrics(request: Request, _=Security(check_scopes, scopes=["metrics"])):
+        """
+        Prometheus metrics
+        """
+
+        request.state.endpoint = "metrics"
+        data = generate_latest(prometheus_registry())
+        return Response(data, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
     return router
