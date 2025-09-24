@@ -215,3 +215,22 @@ def test_empty_api_key():
         ValidationError, match=r"should match pattern '\[a-zA-Z0-9\]\+'"
     ):
         Config.model_validate({"authentication": {"single_user_api_key": ""}})
+
+
+class Dummy:
+    "Referenced below in test_tree_given_as_method"
+
+    def constructor():
+        return tree
+
+
+def test_tree_given_as_method():
+    config = {
+        "trees": [
+            {
+                "tree": f"{__name__}:Dummy.constructor",
+                "path": "/",
+            },
+        ]
+    }
+    Config.model_validate(config)
