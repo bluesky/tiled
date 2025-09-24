@@ -187,8 +187,8 @@ class RemoteSQLStorage(SQLStorage):
 def parse_storage(
     item: Union[Path, str],
     *,
-    pool_size: Optional[int] = None,
-    max_overflow: Optional[int] = None,
+    pool_size: int = 5,
+    max_overflow: int = 10,
 ) -> Storage:
     "Create a Storage object from a URI or Path."
     item = ensure_uri(item)
