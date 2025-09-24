@@ -544,7 +544,6 @@ def build_app(
                 check_database,
             )
             from ..authn_database import orm
-            from ..authn_database.connection_pool import open_database_connection_pool
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
@@ -552,9 +551,10 @@ def build_app(
                 make_admin_by_identity,
                 purge_expired,
             )
+            from .connection_pool import open_database_connection_pool
 
             # This creates a connection pool and stashes it in a module-global
-            # registry, keyed on database_settings, where can be retrieved by
+            # registry, keyed on database_settings, where it can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
             if not engine.url.database or engine.url.query.get("mode") == "memory":
@@ -671,7 +671,7 @@ def build_app(
 
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
-            from ..authn_database.connection_pool import close_database_connection_pool
+            from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
         for task in app.state.tasks:

@@ -51,7 +51,6 @@ with warnings.catch_warnings():
 from pydantic import BaseModel
 
 from ..authn_database import orm
-from ..authn_database.connection_pool import get_database_session
 from ..authn_database.core import (
     create_service,
     create_user,
@@ -63,6 +62,7 @@ from ..authn_database.core import (
 )
 from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
+from .connection_pool import get_database_session
 from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
 from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
 from .settings import Settings, get_settings

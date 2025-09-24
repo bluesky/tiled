@@ -134,8 +134,8 @@ class Database(BaseModel):
     uri: Optional[str] = None
     init_if_not_exists: Optional[bool] = None
     pool_pre_ping: Optional[bool] = None
-    pool_size: Annotated[Optional[int], Field(ge=2)] = None
-    max_overflow: Optional[int] = None
+    pool_size: Annotated[Optional[int], Field(ge=2)] = 5
+    max_overflow: Optional[int] = 10
 
 
 class AccessControl(BaseModel):
@@ -180,10 +180,10 @@ class Config(BaseModel):
     reject_undeclared_specs: bool = False
     expose_raw_assets: bool = True
 
-    catalog_pool_size: Optional[int] = None
-    storage_pool_size: Optional[int] = None
-    catalog_max_overflow: Optional[int] = None
-    storage_max_overflow: Optional[int] = None
+    catalog_pool_size: int = 5
+    storage_pool_size: int = 5
+    catalog_max_overflow: int = 10
+    storage_max_overflow: int = 10
 
     streaming_cache: Optional[StreamingCache] = None
 

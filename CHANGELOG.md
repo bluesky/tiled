@@ -6,6 +6,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Implemented a process-global connection pool for catalog databases, similarly
+  to the connections to authN database.
+
 ### Fixed
 
 - A regression in v0.1.1 disallowed specifying `allow_origins`, `specs`, and `trees`
