@@ -304,7 +304,16 @@ def parse_configs(src_file: Union[str, Path]) -> Config:
             if f.is_file() and f.suffix == ".yml":
                 new_config = parse(f)
                 if common := new_config.keys() & conf.keys():
-                    raise ValueError(f"Duplicate configuration for {common} in {f}")
+                    # These specific keys can be merged from separate files.
+                    # This can be useful for config.d-style where different
+                    # files are managed by different stages of configuration
+                    # management.
+                    mergeable_lists = {"allow_origins", "specs", "trees"}
+                    for key in common.intersection(mergeable_lists):
+                        conf[key].extend(new_config.pop(key))
+                        common.remove(key)
+                    if common:
+                        raise ValueError(f"Duplicate configuration for {common} in {f}")
                 conf.update(new_config)
     else:
         conf = parse(src_file)

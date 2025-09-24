@@ -114,16 +114,37 @@ def test_extra_files(tmpdir):
     parse_configs(str(tmpdir))
 
 
-def test_multi_file_conflict(tmpdir):
+def test_multi_file_trees(tmpdir):
+    "Test that 'trees' can be specified across more than one file, merged."
     import yaml
 
-    conf1 = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
-    conf2 = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
+    conf1 = {"trees": [{"path": "/a", "tree": "tiled.examples.generated_minimal:tree"}]}
+    conf2 = {"trees": [{"path": "/b", "tree": "tiled.examples.generated_minimal:tree"}]}
     with open(tmpdir / "conf1.yml", "w") as c1:
         yaml.dump(conf1, c1)
     with open(tmpdir / "conf2.yml", "w") as c2:
         yaml.dump(conf2, c2)
-    with pytest.raises(ValueError, match="Duplicate configuration for {'trees'}"):
+    config = parse_configs(tmpdir)
+    assert len(config.trees) == 2
+
+
+def test_multi_file_conflict(tmpdir):
+    "Test that media_types can only be specified in a single config file."
+    import yaml
+
+    conf1 = {
+        "media_types": {},
+        "trees": [{"path": "/a", "tree": "tiled.examples.generated_minimal:tree"}],
+    }
+    conf2 = {
+        "media_types": {},
+        "trees": [{"path": "/b", "tree": "tiled.examples.generated_minimal:tree"}],
+    }
+    with open(tmpdir / "conf1.yml", "w") as c1:
+        yaml.dump(conf1, c1)
+    with open(tmpdir / "conf2.yml", "w") as c2:
+        yaml.dump(conf2, c2)
+    with pytest.raises(ValueError, match="Duplicate configuration for {'media_types'}"):
         parse_configs(tmpdir)
 
 
