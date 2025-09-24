@@ -10,7 +10,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Optional, Union
 
-from pydantic import BaseModel, Field, ImportString, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.type_aliases import AppTask, TaskMap
@@ -26,6 +26,7 @@ from .media_type_registration import (
 from .query_registration import default_query_registry
 from .server.settings import get_settings
 from .structures.core import Spec
+from .type_aliases import EntryPointString
 from .utils import parse, prepend_to_sys_path
 from .validation_registration import ValidationRegistry, default_validation_registry
 
@@ -38,7 +39,7 @@ def sub_paths(segments: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
 
 
 class TreeSpec(BaseModel):
-    tree_type: Annotated[ImportString, Field(alias="tree")]
+    tree_type: Annotated[EntryPointString, Field(alias="tree")]
     path: str
     args: Optional[dict[str, Any]] = None
 
@@ -84,7 +85,7 @@ class TreeSpec(BaseModel):
 
 class AuthenticationProviderSpec(BaseModel):
     provider: str
-    authenticator: ImportString
+    authenticator: EntryPointString
     args: Optional[dict[str, Any]] = None
 
     def into_auth_entry(
@@ -138,7 +139,7 @@ class Database(BaseModel):
 
 
 class AccessControl(BaseModel):
-    access_policy: ImportString
+    access_policy: EntryPointString
     args: Optional[dict[str, Any]]
 
     def build(self):
@@ -151,7 +152,7 @@ class MetricsConfig(BaseModel):
 
 class ValidationSpec(BaseModel):
     spec: str
-    validator: Optional[ImportString] = None
+    validator: Optional[EntryPointString] = None
 
 
 class StreamingCache(BaseModel):
@@ -164,7 +165,7 @@ class StreamingCache(BaseModel):
 
 class Config(BaseModel):
     trees: list[TreeSpec]
-    media_types: dict[str, dict[str, ImportString]] = {}
+    media_types: dict[str, dict[str, EntryPointString]] = {}
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
     database: Optional[Database] = None

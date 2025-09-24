@@ -12,6 +12,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   across multiple files. (This can be useful for config.d-style configuration
   where different config files are managed by different stages of configuration
   management.)
+- A regression in v0.1.1 disallowed specifying
+  `tree: databroker.mongo_normalized:MongoAdapter.from_uri` or in fact
+  specifying any method (e.g. classmethod constructor) as a tree.
 
 
 ## v0.1.2 (2025-09-17)
