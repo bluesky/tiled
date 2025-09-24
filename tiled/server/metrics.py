@@ -65,16 +65,6 @@ COMPRESSION_RATIO = Histogram(
 )
 
 # Database connections pool size metrics
-DB_POOL_SIZE = Gauge(
-    "tiled_db_pool_size",
-    "Size of the connections pool",
-    ["uri"],
-)
-DB_POOL_MAX_OVERFLOW = Gauge(
-    "tiled_db_pool_max_overflow",
-    "Maximum number of overflow connections that can be created beyond the pool_size",
-    ["uri"],
-)
 DB_POOL_CONNECTED = Gauge(
     "tiled_db_pool_established",
     "Number of established connections",
@@ -191,15 +181,6 @@ def monitor_db_pool(pool: QueuePool, name: str):
         name : str
             A name for this pool/engine, typically the sanitized database URI.
     """
-
-    # Initialize the Gauges and Counters with the current values
-    num_established_connections = pool.size() + pool.overflow()
-    DB_POOL_SIZE.labels(name).set(pool.size())
-    DB_POOL_MAX_OVERFLOW.labels(name).set(pool._max_overflow)
-    DB_POOL_CONNECTED.labels(name).set(num_established_connections)
-    DB_POOL_CHECKEDOUT.labels(name).set(pool.checkedout())
-    DB_POOL_OPENED_TOTAL.labels(name).inc(num_established_connections)
-    DB_POOL_CHECKOUTS_TOTAL.labels(name).inc(pool.checkedout())
 
     @event.listens_for(pool, "connect")
     def on_connect(dbapi_connection, connection_record):
