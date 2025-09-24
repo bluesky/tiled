@@ -8,7 +8,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- Configured recycle and added explicit pre-ping option for storage databases.
+- Configured recycle and added explicit pre-ping option (disabled by default) for
+  storage databases.
 
 ### Changed
 
