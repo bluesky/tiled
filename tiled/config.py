@@ -308,7 +308,7 @@ def parse_configs(src_file: Union[str, Path]) -> Config:
                     # This can be useful for config.d-style where different
                     # files are managed by different stages of configuration
                     # management.
-                    mergeable_lists = {"trees", "specs"}
+                    mergeable_lists = {"allow_origins", "specs", "trees"}
                     for key in common.intersection(mergeable_lists):
                         conf[key].extend(new_config.pop(key))
                         common.remove(key)

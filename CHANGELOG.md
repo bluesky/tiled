@@ -8,7 +8,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- A regression in v0.1.1 disallowed specifying `trees` and `media_types`
+- A regression in v0.1.1 disallowed specifying `allow_origins`, `specs`, and `trees`
   across multiple files. (This can be useful for config.d-style configuration
   where different config files are managed by different stages of configuration
   management.)
