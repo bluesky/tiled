@@ -207,5 +207,5 @@ def monitor_db_pool(pool: QueuePool, name: str):
         DB_POOL_INVALID_TOTAL.labels(name).inc()
 
     @event.listens_for(pool, "reset")
-    def on_reset(dbapi_connection, connection_record):
+    def on_reset(dbapi_connection, connection_record, reset_state):
         DB_POOL_RESET_TOTAL.labels(name).inc()
