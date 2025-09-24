@@ -6,6 +6,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Monitoring of the number of connections in the database pools.
+
 ### Changed
 
 - Implemented a process-global connection pool for catalog databases, similarly
