@@ -5,7 +5,7 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
-from typing import Any, Mapping, Optional, cast
+from typing import Any, List, Mapping, Optional, cast
 
 import httpx
 from fastapi import APIRouter, Request
@@ -182,6 +182,9 @@ properties:
             cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
         )
 
+    def keys(self) -> List[str]:
+        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         code = request.query_params["code"]
         # A proxy in the middle may make the request into something like
@@ -202,11 +205,10 @@ properties:
         response_body = response.json()
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
-        keys = httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
         try:
             verified_body = jwt.decode(
                 token=id_token,
-                key=keys,
+                key=self.keys(),
                 algorithms=self.id_token_signing_alg_values_supported,
                 audience=self.audience,
                 access_token=access_token,
@@ -243,7 +245,7 @@ properties:
         audience: str,
         client_id: str,
         well_known_uri: str,
-        scopes: list[str],
+        scopes: List[str],
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -258,10 +260,6 @@ properties:
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
         )
-
-    @functools.cached_property
-    def keys(self):
-        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
     @property
     def oauth2_schema(self) -> OAuth2:

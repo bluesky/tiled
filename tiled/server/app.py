@@ -394,11 +394,11 @@ def build_app(
     if authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
-        from .authentication import oauth2_scheme  # noqa: F811
         from .authentication import (
             add_external_routes,
             add_internal_routes,
             authentication_router,
+            oauth2_scheme,
         )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
@@ -468,20 +468,14 @@ def build_app(
                 settings.database_settings.max_overflow = database.max_overflow
             if database.init_if_not_exists is not None:
                 settings.database_init_if_not_exists = database.init_if_not_exists
-        if authenticators:
-            # If we support authentication providers, we need a database, so if one is
-            # not set, use a SQLite database in memory. Horizontally scaled deployments
-            # must specify a persistent database.
-            settings.database_settings.uri = (
-                settings.database_settings.uri or "sqlite://"
-            )
-            # If the only authentication provider is a ProxiedOIDCAuthenticator,
-            # set it on the settings object for downstream use.
-            if len(authenticators) == 1:
-                _, authenticator = next(iter(authenticators.items()))
-                if isinstance(authenticator, ProxiedOIDCAuthenticator):
-                    settings.authenticator = authenticator
-
+            if authenticators:
+                # If we support authentication providers, we need a database, so if one is
+                # not set, use a SQLite database in memory. Horizontally scaled deployments
+                # must specify a persistent database.
+                settings.database_settings.uri = (
+                    settings.database_settings.uri or "sqlite://"
+                )
+>>>>>>>>> Temporary merge branch 2
         return settings
 
     async def startup_event():
