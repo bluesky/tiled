@@ -220,19 +220,14 @@ def monitor_db_pool(pool: QueuePool, name: str):
         DB_POOL_CHECKEDOUT.labels(name).inc()
         DB_POOL_CHECKOUTS_TOTAL.labels(name).inc()
 
-        # total connections currently established
-        total_size = pool.size()  # base pool connections (checked-in + checked-out)
-        current_overflow = pool.overflow()  # number of checked out overflow conns
-        checked_out = pool.checkedout()  # total currently checked out
-        max_overflow = pool._max_overflow  # configured max overflow
-
         # First overflow: we just used the very first overflow slot
-        if current_overflow == 1:
+        if pool.overflow() == 1:
             DB_POOL_FIRST_OVERFLOW_TOTAL.labels(name).inc()
 
-        # Absolute maximum: we've reached pool_size + max_overflow
-        #    i.e. no further connections can be granted
-        if checked_out == total_size + max_overflow:
+        # Absolute maximum: total number of currently checked out
+        # connections reached (base pool_size) + (configured max_overflow),
+        # i.e. no further connections can be granted
+        if pool.checkedout() == pool.size() + pool._max_overflow:
             DB_POOL_AT_MAX_TOTAL.labels(name).inc()
 
     @event.listens_for(pool, "checkin")
