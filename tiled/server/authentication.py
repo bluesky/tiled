@@ -544,7 +544,7 @@ async def get_current_principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
             type=schemas.PrincipalType.jwt_token,
             identities=[],
-            access_token=access_token
+            access_token=access_token,
         )
     else:
         # No form of authentication is present.

@@ -374,7 +374,7 @@ class Data(BaseModel):
     token: str
     audience: str
     actions: list[str]
-    attribute: Optional[Dict[str,str]]
+    attribute: Optional[Dict[str, str]]
 
 
 class Input(BaseModel):
@@ -386,7 +386,9 @@ class Decision(BaseModel):
 
 
 class ExternalPolicyDecisionPoint:
-    def __init__(self, authorization_provider: HttpUrl, audience: str,attribute:Optional[str]):
+    def __init__(
+        self, authorization_provider: HttpUrl, audience: str, attribute: Optional[str]
+    ):
         self.authorization_provider = authorization_provider
         self.audience = audience
         self.attribute = attribute
@@ -397,14 +399,18 @@ class ExternalPolicyDecisionPoint:
                 "External policy access control requires a bearer token. "
                 "Please ensure that the principal has a access token."
             )
-        
-        attribute = node.metadata().get(self.attribute,None) if hasattr(node,"metadata") else None
+
+        attribute = (
+            node.metadata().get(self.attribute, None)
+            if hasattr(node, "metadata")
+            else None
+        )
         input = Input(
             input=Data(
                 token=principal.access_token,
                 audience=self.audience,
                 actions=actions,
-                attribute=attribute
+                attribute=attribute,
             )
         )
         response = requests.post(

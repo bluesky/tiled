@@ -8,8 +8,12 @@ from tiled.adapters.xarray import DatasetAdapter
 
 tree = MapAdapter(
     {
-        "A": ArrayAdapter.from_array(numpy.ones((100, 100)),metadata={"permission": {"created_by":"alice"}}),
-        "B": ArrayAdapter.from_array(numpy.ones((100, 100, 100)),metadata={"permission": {"created_by":"bob"}}),
+        "A": ArrayAdapter.from_array(
+            numpy.ones((100, 100)), metadata={"permission": {"created_by": "alice"}}
+        ),
+        "B": ArrayAdapter.from_array(
+            numpy.ones((100, 100, 100)), metadata={"permission": {"created_by": "bob"}}
+        ),
         "C": TableAdapter.from_dict(
             {
                 "x": 1 * numpy.ones(100),
@@ -25,5 +29,5 @@ tree = MapAdapter(
             )
         ),
     },
-    metadata={"permission": {"created_by":"allow_all"}},
+    metadata={"permission": {"created_by": "allow_all"}},
 )
