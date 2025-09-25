@@ -6,6 +6,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.1.3 (2025-09-24)
 
+### Fixed
+
+- A regression in v0.1.1 broke the ability of adapters to add custom endpoints
+  on the server, which is used by legacy databroker to add a `/documents`
+  endpoint.
+
+
+## v0.1.3 (2025-09-24)
+
 ### Added
 
 - Monitoring of the number of connections in the database pools.
