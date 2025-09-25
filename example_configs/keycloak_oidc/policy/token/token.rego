@@ -36,3 +36,5 @@ verified := io.jwt.decode_verify(input.token, {
 claims := verified[2] if verified[0]
 
 roles := claims.realm_access.roles
+
+name := claims.preferred_username

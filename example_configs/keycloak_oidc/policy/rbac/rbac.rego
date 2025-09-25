@@ -12,14 +12,6 @@ role_permissions := {
 		{"action": "write:metadata"},
 		{"action": "write:data"},
 	],
-	"admin": [
-		{"action": "read:metadata"},
-		{"action": "read:data"},
-		{"action": "write:metadata"},
-		{"action": "write:data"},
-		{"action": "create"},
-		{"action": "register"},
-	],
 	"service": [{"action": "metrics"}],
 }
 
@@ -28,6 +20,12 @@ default allow := false
 # METADATA
 # description: Check permission for each user
 # entrypoint: true
+allow if token.name == "admin"
+
+allow if token.name == input.attribute.created_by
+
+allow if input.attribute.created_by == "allow_all"
+
 allow if {
 	every action in input.actions {
 		some r in token.roles

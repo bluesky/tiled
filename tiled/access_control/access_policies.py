@@ -1,12 +1,13 @@
 import logging
 import os
 from collections.abc import Iterable
-from typing import List
+from typing import Dict, List, Optional
 
 import requests
 from pydantic import BaseModel, HttpUrl, ValidationError
 
 from tiled.server.schemas import Principal
+from tiled.type_aliases import JSON
 
 from ..queries import AccessBlobFilter
 from ..utils import Sentinel, import_object
@@ -373,7 +374,7 @@ class Data(BaseModel):
     token: str
     audience: str
     actions: list[str]
-    node: List[str]
+    attribute: Optional[Dict[str,str]]
 
 
 class Input(BaseModel):
@@ -385,9 +386,10 @@ class Decision(BaseModel):
 
 
 class ExternalPolicyDecisionPoint:
-    def __init__(self, authorization_provider: HttpUrl, audience: str):
+    def __init__(self, authorization_provider: HttpUrl, audience: str,attribute:Optional[str]):
         self.authorization_provider = authorization_provider
         self.audience = audience
+        self.attribute = attribute
 
     async def authorized(self, node, principal: Principal, actions: List[str]) -> bool:
         if principal.access_token is None:
@@ -395,17 +397,14 @@ class ExternalPolicyDecisionPoint:
                 "External policy access control requires a bearer token. "
                 "Please ensure that the principal has a access token."
             )
-        if isinstance(node, Iterable):
-            paths = [path for path in node]
-        else:
-            paths = [LEAF_NODE]
-
+        
+        attribute = node.metadata().get(self.attribute,None) if hasattr(node,"metadata") else None
         input = Input(
             input=Data(
                 token=principal.access_token,
                 audience=self.audience,
                 actions=actions,
-                node=paths,
+                attribute=attribute
             )
         )
         response = requests.post(
