@@ -475,7 +475,11 @@ def build_app(
                 settings.database_settings.uri = (
                     settings.database_settings.uri or "sqlite://"
                 )
->>>>>>>>> Temporary merge branch 2
+            # ProxiedOIDCAuthenticator cannot be used alongside other authentication providers
+            if len(authenticators) == 1:
+                authenticator = next(iter(authenticators.values()))
+                if isinstance(authenticator, ProxiedOIDCAuthenticator):
+                    settings.authenticator = authenticator
         return settings
 
     async def startup_event():

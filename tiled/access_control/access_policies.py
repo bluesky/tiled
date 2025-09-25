@@ -406,7 +406,6 @@ class ExternalPolicyDecisionPoint:
                 audience=self.audience,
                 actions=actions,
                 node=paths,
-                # TODO: Give the complete path
             )
         )
         response = requests.post(
