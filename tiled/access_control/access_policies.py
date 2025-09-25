@@ -20,7 +20,6 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("TILED ACCESS POLICY: %(message)s"))
 logger.addHandler(handler)
-LEAF_NODE = "leaf_node"
 log_level = os.getenv("TILED_ACCESS_POLICY_LOG_LEVEL")
 if log_level:
     logger.setLevel(log_level.upper())
