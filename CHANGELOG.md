@@ -4,6 +4,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## Unreleased
+
+### Added
+
+- Monitoring of pool overflow and max-out events.
+
+
 ## v0.1.4 (2025-09-24)
 
 ### Fixed
