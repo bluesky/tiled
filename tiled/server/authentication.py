@@ -155,11 +155,10 @@ def decode_token(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    payload = ""
     if proxied_authenticator:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
-            key=proxied_authenticator.keys,
+            key=proxied_authenticator.keys(),
             algorithms=proxied_authenticator.id_token_signing_alg_values_supported,
             audience=proxied_authenticator.audience,
             issuer=proxied_authenticator.issuer,
@@ -525,13 +524,20 @@ async def get_current_principal(
                 for identity in decoded_access_token["ids"]
             ],
         )
-    elif decoded_access_token is not None and isinstance(
+    elif decoded_access_token is not None and not isinstance(
         settings.authenticator, ProxiedOIDCAuthenticator
     ):
-        # TODO: Fix the below code
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
             type=decoded_access_token["type"],
+            identities=[],
+        )
+    elif decoded_access_token is not None and isinstance(
+        settings.authenticator, ProxiedOIDCAuthenticator
+    ):
+        principal = schemas.Principal(
+            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+            type=schemas.PrincipalType.jwt_token,
             identities=[],
         )
     else:
@@ -1191,6 +1197,7 @@ def authentication_router() -> APIRouter:
 
     async def slide_session(refresh_token, settings, db):
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            # Session management should be handled by the client, not by Tiled.
             return
         try:
             payload = decode_token(
