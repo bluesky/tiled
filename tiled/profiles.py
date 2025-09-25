@@ -85,10 +85,10 @@ def gather_profiles(paths, strict=True):
             for filename in path.iterdir():
                 filepath = path / filename
                 # Only parse files in the YAML format.
-                if (
-                    filename.name.startswith(".")
-                    or filename.suffix not in {".yml", ".yaml"}
-                ):
+                if filename.name.startswith(".") or filename.suffix not in {
+                    ".yml",
+                    ".yaml",
+                }:
                     continue
                 try:
                     content = parse(filepath)
