@@ -1,13 +1,11 @@
 import logging
 import os
-from collections.abc import Iterable
 from typing import Dict, List, Optional
 
 import requests
 from pydantic import BaseModel, HttpUrl, ValidationError
 
 from tiled.server.schemas import Principal
-from tiled.type_aliases import JSON
 
 from ..queries import AccessBlobFilter
 from ..utils import Sentinel, import_object

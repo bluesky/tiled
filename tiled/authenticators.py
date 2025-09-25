@@ -236,8 +236,6 @@ properties:
     type: string
   confirmation_message:
     type: string
-  use_external_authorization
-    type: bool
 """
 
     def __init__(
