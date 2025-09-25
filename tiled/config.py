@@ -250,7 +250,7 @@ class Config(BaseModel):
             # containing Adapters at that path.
             root_mapping = trees.pop((), {})
             index: dict[tuple[str, ...], dict] = {(): root_mapping}
-            all_routers = set()
+            all_routers = []
 
             # for rest of trees, build up parent nodes if required
             for segments, tree in trees.items():
@@ -261,7 +261,7 @@ class Config(BaseModel):
                         index[subpath[:-1]][subpath[-1]] = MapAdapter(mapping)
                 index[segments[:-1]][segments[-1]] = tree
                 tree_routers = getattr(tree, "include_routers", [])
-                all_routers.update(tree_routers)
+                all_routers.extend(tree_routers)
 
             root_tree = MapAdapter(root_mapping)
             root_tree.include_routers.extend(all_routers)
