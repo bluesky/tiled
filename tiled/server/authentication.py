@@ -524,14 +524,6 @@ async def get_current_principal(
                 for identity in decoded_access_token["ids"]
             ],
         )
-    elif decoded_access_token is not None and not isinstance(
-        settings.authenticator, ProxiedOIDCAuthenticator
-    ):
-        principal = schemas.Principal(
-            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-            type=decoded_access_token["type"],
-            identities=[],
-        )
     elif decoded_access_token is not None and isinstance(
         settings.authenticator, ProxiedOIDCAuthenticator
     ):
