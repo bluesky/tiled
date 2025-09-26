@@ -1,3 +1,4 @@
+import contextlib
 import os
 from collections.abc import AsyncGenerator
 from typing import Callable, Optional, Union
@@ -77,16 +78,19 @@ def get_database_engine(
 
 async def get_database_session_factory(
     engine: AsyncEngine = Depends(get_database_engine),
-) -> AsyncGenerator[Optional[Callable[[], AsyncSession]]]:
+) -> AsyncGenerator[Callable[[], Optional[AsyncSession]]]:
     # Special case for single-user mode
     if engine is None:
-        yield None
+
+        def f():
+            return contextlib.nullcontext()
+
     else:
         # Let the caller manage the lifecycle of the AsyncSession.
         def f():
             return AsyncSession(engine, autoflush=False, expire_on_commit=False)
 
-        yield f
+    yield f
 
 
 def json_serializer(obj):
