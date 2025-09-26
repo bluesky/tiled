@@ -82,7 +82,7 @@ async def get_database_session_factory(
     if engine is None:
         yield None
     else:
-        # Let the caller manager the lifecycle of the AsyncSession.
+        # Let the caller manage the lifecycle of the AsyncSession.
         def f():
             return AsyncSession(engine, autoflush=False, expire_on_commit=False)
 
