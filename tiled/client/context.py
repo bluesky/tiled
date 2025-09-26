@@ -1063,6 +1063,7 @@ and enter the code:
                         data={
                             "device_code": verification["device_code"],
                             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                            "client_id": client_id,
                         },
                         headers={"Content-Type": "application/x-www-form-urlencoded"},
                     )
@@ -1077,6 +1078,7 @@ and enter the code:
                     )
                 if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
                     access_response.json()["detail"]["error"] == "authorization_pending"
+                    or access_response.json()["error"] == "authorization_pending"
                 ):
                     print(".", end="", flush=True)
                     continue
