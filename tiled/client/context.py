@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import List, Literal
+from typing import List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -134,7 +134,11 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
-        tokens = device_code_grant(http_client, auth_endpoint)
+        client_id = spec.links.get("client_id")
+        token_endpoint = spec.links.get("token_endpoint")
+        tokens = device_code_grant(
+            http_client, auth_endpoint, client_id, token_endpoint
+        )
     else:
         raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
     confirmation_message = spec.confirmation_message
@@ -1010,13 +1014,24 @@ def password_grant(http_client, auth_endpoint, provider, username, password):
     return token_response.json()
 
 
-def device_code_grant(http_client, auth_endpoint):
+def device_code_grant(
+    http_client,
+    auth_endpoint: str,
+    client_id: Optional[str],
+    token_endpoint: Optional[str],
+):
+    if client_id and token_endpoint:
+        data = {"client_id": client_id}
+        uri = "verification_uri_complete"
+    else:
+        data = {}
+        uri = "authorization_uri"
     for attempt in retry_context():
         with attempt:
-            verification_response = http_client.post(auth_endpoint, json={}, auth=None)
+            verification_response = http_client.post(auth_endpoint, data=data)
             handle_error(verification_response)
     verification = verification_response.json()
-    authorization_uri = verification["authorization_uri"]
+    authorization_uri = verification[uri]
     print(
         f"""
 You have {int(verification['expires_in']) // 60} minutes to visit this URL
@@ -1042,14 +1057,24 @@ and enter the code:
             with attempt:
                 # Intentionally do not wrap this in handle_error(...).
                 # Check status codes manually below.
-                access_response = http_client.post(
-                    verification["verification_uri"],
-                    json={
-                        "device_code": verification["device_code"],
-                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    },
-                    auth=None,
-                )
+                if client_id and token_endpoint:  # Oauth2_spec
+                    access_response = http_client.post(
+                        token_endpoint,
+                        data={
+                            "device_code": verification["device_code"],
+                            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                        },
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    )
+                else:
+                    access_response = http_client.post(
+                        verification["verification_uri"],
+                        json={
+                            "device_code": verification["device_code"],
+                            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                        },
+                        auth=None,
+                    )
                 if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
                     access_response.json()["detail"]["error"] == "authorization_pending"
                 ):

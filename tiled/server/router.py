@@ -41,6 +41,7 @@ from starlette.status import (
 )
 
 from tiled.adapters.protocols import AnyAdapter
+from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
 from tiled.schemas import About
@@ -220,6 +221,19 @@ def get_router(
                         authenticator, "confirmation_message", None
                     ),
                 }
+            elif isinstance(authenticator, ProxiedOIDCAuthenticator):
+                spec = {
+                    "provider": provider,
+                    "mode": "external",
+                    "links": {
+                        "auth_endpoint": authenticator.device_authorization_endpoint,
+                        "client_id": authenticator.device_flow_client_id,
+                        "token_endpoint": authenticator.token_endpoint,
+                    },
+                    "confirmation_message": getattr(
+                        authenticator, "confirmation_message", None
+                    ),
+                }
             elif isinstance(authenticator, ExternalAuthenticator):
                 spec = {
                     "provider": provider,
@@ -235,6 +249,7 @@ def get_router(
                 # It should be impossible to reach here.
                 assert False
             provider_specs.append(spec)
+
         if provider_specs:
             # If there are *any* authenticaiton providers, these
             # endpoints will be added.
