@@ -4,15 +4,9 @@ conventions for metrics & labels. We generally prefer naming them
 `tiled_<noun>_<verb>_<type_suffix>`.
 """
 
-import os
-from functools import cache
-
-from fastapi import APIRouter, Request, Response, Security
-from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
-
-from tiled.server.authentication import check_scopes
-
-router = APIRouter()
+from prometheus_client import Counter, Gauge, Histogram
+from sqlalchemy import event
+from sqlalchemy.pool import QueuePool
 
 REQUEST_DURATION = Histogram(
     "tiled_request_duration_seconds",
@@ -68,6 +62,48 @@ COMPRESSION_RATIO = Histogram(
     "compression ratio for all HTTP requests",
     ["method", "code", "endpoint", "encoding"],
     buckets=[1, 2.5, 5, 10, 15, 30, 60, 120, float("inf")],
+)
+
+# Database connections pool size metrics
+DB_POOL_CONNECTED = Gauge(
+    "tiled_db_pool_established",
+    "Number of established connections",
+    ["uri"],
+)
+DB_POOL_CHECKEDOUT = Gauge(
+    "tiled_db_pool_active",
+    "Number of currently active (in-use) connections checked out from the pool",
+    ["uri"],
+)
+DB_POOL_OPENED_TOTAL = Counter(
+    "tiled_db_pool_opened_total",
+    "Total number of established connections over time",
+    ["uri"],
+)
+DB_POOL_CLOSED_TOTAL = Counter(
+    "tiled_db_pool_closed_total",
+    "Total number of closed connections over time",
+    ["uri"],
+)
+DB_POOL_CHECKOUTS_TOTAL = Counter(
+    "tiled_db_pool_checkouts_total",
+    "Total number of checked out connections from the pool over time",
+    ["uri"],
+)
+DB_POOL_CHECKINS_TOTAL = Counter(
+    "tiled_db_pool_checkins_total",
+    "Total number of returned connections to the pool over time",
+    ["uri"],
+)
+DB_POOL_INVALID_TOTAL = Counter(
+    "tiled_db_pool_invalid_total",
+    "Total number of invalidated connections over time",
+    ["uri"],
+)
+DB_POOL_RESET_TOTAL = Counter(
+    "tiled_db_pool_reset_total",
+    "Total number of reset connections over time",
+    ["uri"],
 )
 
 # Initialize labels in advance so that the metrics exist (and can be used in
@@ -135,33 +171,41 @@ def capture_request_metrics(request, response):
             ).observe(metrics["compress"]["ratio"])
 
 
-@cache
-def prometheus_registry():
-    """
-    Configure prometheus_client.
+def monitor_db_pool(pool: QueuePool, name: str):
+    """Set up monitoring of a SQLAlchemy Engine's connection pool.
 
-    This is run the first time the /metrics endpoint is used.
-    """
-    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
-        # The multiprocess configuration makes it compatible with gunicorn.
-        # https://github.com/prometheus/client_python/#multiprocess-mode-eg-gunicorn
-        from prometheus_client import CollectorRegistry
-        from prometheus_client.multiprocess import MultiProcessCollector
-
-        registry = CollectorRegistry()
-        MultiProcessCollector(registry)  # This has a side effect.
-    else:
-        from prometheus_client import REGISTRY as registry
-
-    return registry
-
-
-@router.get("/metrics")
-async def metrics(request: Request, _=Security(check_scopes, scopes=["metrics"])):
-    """
-    Prometheus metrics
+    Parameters
+    ----------
+        pool : sqlalchemy.pool.QueuePool
+            The connection pool to monitor.
+        name : str
+            A name for this pool/engine, typically the sanitized database URI.
     """
 
-    request.state.endpoint = "metrics"
-    data = generate_latest(prometheus_registry())
-    return Response(data, headers={"Content-Type": CONTENT_TYPE_LATEST})
+    @event.listens_for(pool, "connect")
+    def on_connect(dbapi_connection, connection_record):
+        DB_POOL_CONNECTED.labels(name).inc()
+        DB_POOL_OPENED_TOTAL.labels(name).inc()
+
+    @event.listens_for(pool, "close")
+    def on_disconnect(dbapi_connection, connection_record):
+        DB_POOL_CONNECTED.labels(name).dec()
+        DB_POOL_CLOSED_TOTAL.labels(name).inc()
+
+    @event.listens_for(pool, "checkout")
+    def on_checkout(dbapi_connection, connection_record, connection_proxy):
+        DB_POOL_CHECKEDOUT.labels(name).inc()
+        DB_POOL_CHECKOUTS_TOTAL.labels(name).inc()
+
+    @event.listens_for(pool, "checkin")
+    def on_checkin(dbapi_connection, connection_record):
+        DB_POOL_CHECKEDOUT.labels(name).dec()
+        DB_POOL_CHECKINS_TOTAL.labels(name).inc()
+
+    @event.listens_for(pool, "invalidate")
+    def on_invalidate(dbapi_connection, connection_record, exception):
+        DB_POOL_INVALID_TOTAL.labels(name).inc()
+
+    @event.listens_for(pool, "reset")
+    def on_reset(dbapi_connection, connection_record, reset_state):
+        DB_POOL_RESET_TOTAL.labels(name).inc()
