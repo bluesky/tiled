@@ -397,6 +397,7 @@ class Principal(pydantic.BaseModel):
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
     latest_activity: Optional[datetime] = None
+    access_token: Optional[str] = None
 
     @classmethod
     def from_orm(

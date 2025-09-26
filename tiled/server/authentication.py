@@ -404,8 +404,20 @@ async def check_scopes(
     request: Request,
     security_scopes: SecurityScopes,
     scopes: set[str] = Depends(get_current_scopes),
+    settings: Settings = Depends(get_settings),
 ) -> None:
-    if not set(security_scopes.scopes).issubset(scopes):
+    if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+        if not set(settings.authenticator.scopes).issubset(scopes):
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Not enough permissions. "
+                    f"Requires scopes {settings.authenticator.scopes}. "
+                    f"Request had scopes {list(scopes)}"
+                ),
+                headers=headers_for_401(request, security_scopes),
+            )
+    elif not set(security_scopes.scopes).issubset(scopes):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=(
@@ -481,6 +493,7 @@ async def get_current_principal_websocket(
 async def get_current_principal(
     request: Request,
     security_scopes: SecurityScopes,
+    access_token: str = Depends(oauth2_scheme),
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
@@ -531,6 +544,7 @@ async def get_current_principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
             type=schemas.PrincipalType.jwt_token,
             identities=[],
+            access_token=access_token,
         )
     else:
         # No form of authentication is present.
