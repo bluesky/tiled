@@ -10,6 +10,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Monitoring of pool overflow and max-out events.
 
+### Fixed
+
+- Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to
+  the instantiated container when calling `CompositeClient.base`.
+- Fix AuthN database connection lifecycle management. Connections were being
+  held for the duration of the request cycle; now they are released immediately
+  after use.
+
 
 ## v0.1.4 (2025-09-24)
 
