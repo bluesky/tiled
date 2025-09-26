@@ -6,6 +6,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Monitoring of pool overflow and max-out events.
+
 ### Fixed
 
 - Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to

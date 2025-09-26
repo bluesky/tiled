@@ -105,6 +105,16 @@ DB_POOL_RESET_TOTAL = Counter(
     "Total number of reset connections over time",
     ["uri"],
 )
+DB_POOL_FIRST_OVERFLOW_TOTAL = Counter(
+    "tiled_db_pool_first_overflow_total",
+    "Number of times a checkout caused the first overflow connection to be used",
+    ["uri"],
+)
+DB_POOL_AT_MAX_TOTAL = Counter(
+    "tiled_db_pool_at_max_total",
+    "Number of times a checkout occurred when the pool was at its absolute capacity",  # noqa
+    ["uri"],
+)
 
 # Initialize labels in advance so that the metrics exist (and can be used in
 # dashboards and alerts) even if they have not yet occurred.
@@ -182,6 +192,19 @@ def monitor_db_pool(pool: QueuePool, name: str):
             A name for this pool/engine, typically the sanitized database URI.
     """
 
+    # Initialize the gauges and counters in advance so that they exist
+    # (and can be used in dashboards and alerts)
+    DB_POOL_CONNECTED.labels(name).set(0)
+    DB_POOL_CHECKEDOUT.labels(name).set(0)
+    DB_POOL_OPENED_TOTAL.labels(name).inc(0)
+    DB_POOL_CLOSED_TOTAL.labels(name).inc(0)
+    DB_POOL_CHECKOUTS_TOTAL.labels(name).inc(0)
+    DB_POOL_CHECKINS_TOTAL.labels(name).inc(0)
+    DB_POOL_INVALID_TOTAL.labels(name).inc(0)
+    DB_POOL_RESET_TOTAL.labels(name).inc(0)
+    DB_POOL_FIRST_OVERFLOW_TOTAL.labels(name).inc(0)
+    DB_POOL_AT_MAX_TOTAL.labels(name).inc(0)
+
     @event.listens_for(pool, "connect")
     def on_connect(dbapi_connection, connection_record):
         DB_POOL_CONNECTED.labels(name).inc()
@@ -196,6 +219,16 @@ def monitor_db_pool(pool: QueuePool, name: str):
     def on_checkout(dbapi_connection, connection_record, connection_proxy):
         DB_POOL_CHECKEDOUT.labels(name).inc()
         DB_POOL_CHECKOUTS_TOTAL.labels(name).inc()
+
+        # First overflow: we just used the very first overflow slot
+        if pool.overflow() == 1:
+            DB_POOL_FIRST_OVERFLOW_TOTAL.labels(name).inc()
+
+        # Absolute maximum: total number of currently checked out
+        # connections reached (base pool_size) + (configured max_overflow),
+        # i.e. no further connections can be granted
+        if pool.checkedout() == pool.size() + pool._max_overflow:
+            DB_POOL_AT_MAX_TOTAL.labels(name).inc()
 
     @event.listens_for(pool, "checkin")
     def on_checkin(dbapi_connection, connection_record):
