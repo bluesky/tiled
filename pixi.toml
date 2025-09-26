@@ -3,7 +3,7 @@ authors = ["Dan Allan <dallan@bnl.gov>"]
 channels = ["conda-forge"]
 name = "tiled"
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
-version = "0.1.4"
+version = "0.1.5"
 
 [tasks]
 
