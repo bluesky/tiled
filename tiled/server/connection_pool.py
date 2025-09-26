@@ -1,5 +1,5 @@
-import contextlib
 import os
+import sys
 from collections.abc import AsyncGenerator
 from typing import Callable, Optional, Union
 
@@ -12,6 +12,39 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool
 from ..server.settings import DatabaseSettings, Settings, get_settings
 from ..utils import ensure_specified_sql_driver, safe_json_dump, sanitize_uri
 from .metrics import monitor_db_pool
+
+# contextlib.nullcontext got async context manager support in 3.10
+if sys.version_info < (3, 10):
+    from contextlib import AbstractAsyncContextManager, AbstractContextManager
+
+    class nullcontext(AbstractContextManager, AbstractAsyncContextManager):
+        """Context manager that does no additional processing.
+
+        Used as a stand-in for a normal context manager, when a particular
+        block of code is only sometimes used with a normal context manager:
+
+        cm = optional_cm if condition else nullcontext()
+        with cm:
+            # Perform operation, using optional_cm if condition is True
+        """
+
+        def __init__(self, enter_result=None):
+            self.enter_result = enter_result
+
+        def __enter__(self):
+            return self.enter_result
+
+        def __exit__(self, *excinfo):
+            pass
+
+        async def __aenter__(self):
+            return self.enter_result
+
+        async def __aexit__(self, *excinfo):
+            pass
+
+else:
+    from contextlib import nullcontext
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 
@@ -83,7 +116,7 @@ async def get_database_session_factory(
     if engine is None:
 
         def f():
-            return contextlib.nullcontext()
+            return nullcontext()
 
     else:
         # Let the caller manage the lifecycle of the AsyncSession.
