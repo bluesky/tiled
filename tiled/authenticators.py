@@ -182,6 +182,12 @@ properties:
             cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
         )
 
+    @functools.cached_property
+    def device_authorization_endpoint(self) -> str:
+        return cast(
+            str, self._config_from_oidc_url.get("device_authorization_endpoint")
+        )
+
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
@@ -244,6 +250,7 @@ properties:
         client_id: str,
         well_known_uri: str,
         scopes: List[str],
+        device_flow_client_id: str,
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -258,6 +265,7 @@ properties:
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
         )
+        self.device_flow_client_id = device_flow_client_id
 
     @property
     def oauth2_schema(self) -> OAuth2:

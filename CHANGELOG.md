@@ -7,6 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Enable Tiled server to accept bearer access tokens for authentication
 - Allow use of external policy enforcement points for authorization
+- Add Oauth2 spec device flow for client login
 
 ## v0.1.4 (2025-09-24)
 

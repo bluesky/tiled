@@ -512,7 +512,6 @@ async def get_current_principal(
     the Principal will also be `None` - but is differentiated for
     logging with a SingleUserPrincipal sentinel
     """
-
     if api_key is not None:
         principal = await get_current_principal_from_api_key(
             api_key,
@@ -1376,6 +1375,13 @@ def authentication_router() -> APIRouter:
             return json_or_msgpack(request, None)
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.
+        print(f"{principal=}")
+        if principal and principal.type == schemas.PrincipalType.jwt_token:
+            principal.access_token = "secret"
+            return json_or_msgpack(
+                request,
+                principal.model_dump(),
+            )
         principal_orm = (
             await db.execute(
                 select(orm.Principal)

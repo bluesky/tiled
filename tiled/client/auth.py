@@ -146,6 +146,18 @@ class TiledAuth(httpx.Auth):
 
 
 def build_refresh_request(refresh_url, refresh_token, csrf_token):
+    client_id = "tiled-cli"
+    return httpx.Request(
+        "POST",
+        refresh_url,
+        data={
+            "client_id": client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
     return httpx.Request(
         "POST",
         refresh_url,
