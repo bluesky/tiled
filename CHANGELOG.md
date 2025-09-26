@@ -4,6 +4,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## Unreleased
+
+### Fixed
+
+- Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to
+  the instantiated container when calling `CompositeClient.base`.
+
+
 ## v0.1.4 (2025-09-24)
 
 ### Fixed
