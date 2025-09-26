@@ -8,7 +8,7 @@ from pydantic.dataclasses import dataclass
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# hashable cache key for use in tiled.authn_database.connection_pool
+# hashable cache key for use in tiled.server.connection_pool
 @dataclass(unsafe_hash=True)
 class DatabaseSettings:
     uri: Optional[str] = None

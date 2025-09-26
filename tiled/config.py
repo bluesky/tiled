@@ -10,7 +10,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Optional, Union
 
-from pydantic import BaseModel, Field, ImportString, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.type_aliases import AppTask, TaskMap
@@ -26,6 +26,7 @@ from .media_type_registration import (
 from .query_registration import default_query_registry
 from .server.settings import get_settings
 from .structures.core import Spec
+from .type_aliases import EntryPointString
 from .utils import parse, prepend_to_sys_path
 from .validation_registration import ValidationRegistry, default_validation_registry
 
@@ -38,7 +39,7 @@ def sub_paths(segments: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
 
 
 class TreeSpec(BaseModel):
-    tree_type: Annotated[ImportString, Field(alias="tree")]
+    tree_type: Annotated[EntryPointString, Field(alias="tree")]
     path: str
     args: Optional[dict[str, Any]] = None
 
@@ -84,7 +85,7 @@ class TreeSpec(BaseModel):
 
 class AuthenticationProviderSpec(BaseModel):
     provider: str
-    authenticator: ImportString
+    authenticator: EntryPointString
     args: Optional[dict[str, Any]] = None
 
     def into_auth_entry(
@@ -133,12 +134,12 @@ class Database(BaseModel):
     uri: Optional[str] = None
     init_if_not_exists: Optional[bool] = None
     pool_pre_ping: Optional[bool] = None
-    pool_size: Annotated[Optional[int], Field(ge=2)] = None
-    max_overflow: Optional[int] = None
+    pool_size: Annotated[Optional[int], Field(ge=2)] = 5
+    max_overflow: Optional[int] = 10
 
 
 class AccessControl(BaseModel):
-    access_policy: ImportString
+    access_policy: EntryPointString
     args: Optional[dict[str, Any]]
 
     def build(self):
@@ -151,7 +152,7 @@ class MetricsConfig(BaseModel):
 
 class ValidationSpec(BaseModel):
     spec: str
-    validator: Optional[ImportString] = None
+    validator: Optional[EntryPointString] = None
 
 
 class StreamingCache(BaseModel):
@@ -164,7 +165,7 @@ class StreamingCache(BaseModel):
 
 class Config(BaseModel):
     trees: list[TreeSpec]
-    media_types: dict[str, dict[str, ImportString]] = {}
+    media_types: dict[str, dict[str, EntryPointString]] = {}
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
     database: Optional[Database] = None
@@ -179,10 +180,10 @@ class Config(BaseModel):
     reject_undeclared_specs: bool = False
     expose_raw_assets: bool = True
 
-    catalog_pool_size: Optional[int] = None
-    storage_pool_size: Optional[int] = None
-    catalog_max_overflow: Optional[int] = None
-    storage_max_overflow: Optional[int] = None
+    catalog_pool_size: int = 5
+    storage_pool_size: int = 5
+    catalog_max_overflow: int = 10
+    storage_max_overflow: int = 10
 
     streaming_cache: Optional[StreamingCache] = None
 
@@ -249,7 +250,7 @@ class Config(BaseModel):
             # containing Adapters at that path.
             root_mapping = trees.pop((), {})
             index: dict[tuple[str, ...], dict] = {(): root_mapping}
-            all_routers = set()
+            all_routers = []
 
             # for rest of trees, build up parent nodes if required
             for segments, tree in trees.items():
@@ -260,7 +261,7 @@ class Config(BaseModel):
                         index[subpath[:-1]][subpath[-1]] = MapAdapter(mapping)
                 index[segments[:-1]][segments[-1]] = tree
                 tree_routers = getattr(tree, "include_routers", [])
-                all_routers.update(tree_routers)
+                all_routers.extend(tree_routers)
 
             root_tree = MapAdapter(root_mapping)
             root_tree.include_routers.extend(all_routers)
@@ -304,7 +305,16 @@ def parse_configs(src_file: Union[str, Path]) -> Config:
             if f.is_file() and f.suffix == ".yml":
                 new_config = parse(f)
                 if common := new_config.keys() & conf.keys():
-                    raise ValueError(f"Duplicate configuration for {common} in {f}")
+                    # These specific keys can be merged from separate files.
+                    # This can be useful for config.d-style where different
+                    # files are managed by different stages of configuration
+                    # management.
+                    mergeable_lists = {"allow_origins", "specs", "trees"}
+                    for key in common.intersection(mergeable_lists):
+                        conf[key].extend(new_config.pop(key))
+                        common.remove(key)
+                    if common:
+                        raise ValueError(f"Duplicate configuration for {common} in {f}")
                 conf.update(new_config)
     else:
         conf = parse(src_file)

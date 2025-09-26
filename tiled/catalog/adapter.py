@@ -7,7 +7,6 @@ import itertools as it
 import logging
 import operator
 import os
-import re
 import shutil
 import sys
 import uuid
@@ -24,7 +23,6 @@ from fastapi import HTTPException, WebSocketDisconnect
 from sqlalchemy import (
     and_,
     delete,
-    event,
     exists,
     false,
     func,
@@ -38,11 +36,9 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
-from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -74,8 +70,10 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..server.connection_pool import close_database_connection_pool, get_database_engine
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision
+from ..server.settings import DatabaseSettings
 from ..storage import (
     FileStorage,
     SQLStorage,
@@ -101,9 +99,6 @@ from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
-INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
@@ -168,17 +163,17 @@ class RootNode:
 class Context:
     def __init__(
         self,
-        engine: AsyncEngine,
+        database_settings: DatabaseSettings,
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
         cache_settings=None,
         key_maker=lambda: str(uuid.uuid4()),
-        storage_pool_size=None,
-        storage_max_overflow=None,
+        storage_pool_size=5,
+        storage_max_overflow=10,
     ):
-        self.engine = engine
-
+        self.engine = get_database_engine(database_settings)
+        self.database_settings = database_settings
         self.writable_storage = []
         self.readable_storage = set()
 
@@ -264,6 +259,9 @@ class Context:
         self.cache_data_ttl = cache_data_ttl
         self.cache_seq_ttl = cache_seq_ttl
 
+    async def shutdown(self):
+        await close_database_connection_pool(self.database_settings)
+
 
 class CatalogNodeAdapter:
     query_registry = QueryTranslationRegistry()
@@ -322,7 +320,7 @@ class CatalogNodeAdapter:
         self.node.key = mount_path[-1]
 
     async def shutdown(self):
-        await self.context.engine.dispose()
+        await self.context.shutdown()
 
     @property
     def writable(self):
@@ -1743,7 +1741,6 @@ def in_memory(
     specs=None,
     writable_storage=None,
     readable_storage=None,
-    echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     cache_settings=None,
@@ -1761,7 +1758,6 @@ def in_memory(
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         init_if_not_exists=True,
-        echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
         cache_settings=cache_settings,
@@ -1776,19 +1772,18 @@ def from_uri(
     writable_storage=None,
     readable_storage=None,
     init_if_not_exists=False,
-    echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
     cache_settings=None,
-    catalog_pool_size=None,
-    storage_pool_size=None,
-    catalog_max_overflow=None,
-    storage_max_overflow=None,
+    catalog_pool_size=5,
+    storage_pool_size=5,
+    catalog_max_overflow=10,
+    storage_max_overflow=10,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
-        # The alembic stamping can only be does synchronously.
+        # The alembic stamping can only be done synchronously.
         # The cleanest option available is to start a subprocess
         # because SQLite is allergic to threads.
         import subprocess
@@ -1806,48 +1801,14 @@ def from_uri(
         logger.info(f"Subprocess stdout: {stdout}")
         logger.info(f"Subprocess stderr: {stderr}")
 
-    parsed_url = make_url(uri)
-    if (
-        (parsed_url.get_dialect().name == "sqlite")
-        and (parsed_url.database != ":memory:")
-        and (parsed_url.query.get("mode", None) != "memory")
-    ):
-        # For file-backed SQLite databases, connection pooling offers a
-        # significant performance boost. For SQLite databases that exist
-        # only in process memory, pooling is not applicable.
-        poolclass = AsyncAdaptedQueuePool
-    elif parsed_url.get_dialect().name.startswith("postgresql"):
-        poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
-    else:
-        poolclass = None  # defer to sqlalchemy default
-
-    node = RootNode(metadata, specs, top_level_access_blob)
-    mount_path = (
-        [segment for segment in mount_node.split("/") if segment]
-        if isinstance(mount_node, str)
-        else mount_node
+    database_settings = DatabaseSettings(
+        uri=uri,
+        pool_size=catalog_pool_size,
+        max_overflow=catalog_max_overflow,
+        pool_pre_ping=False,
     )
-
-    # Optionally set pool size and max overflow for the catalog engine;
-    # if not specified, use the default values from sqlalchemy.
-    pool_kwargs = (
-        {"pool_size": catalog_pool_size, "max_overflow": catalog_max_overflow}
-        if poolclass == AsyncAdaptedQueuePool
-        else {}
-    )
-    pool_kwargs = {k: v for k, v in pool_kwargs.items() if v is not None}
-    # Create the async engine with the specified parameters
-    engine = create_async_engine(
-        uri,
-        echo=echo,
-        json_serializer=json_serializer,
-        poolclass=poolclass,
-        **pool_kwargs,
-    )
-    if engine.dialect.name == "sqlite":
-        event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     context = Context(
-        engine,
+        database_settings,
         writable_storage,
         readable_storage,
         adapters_by_mimetype,
@@ -1855,16 +1816,15 @@ def from_uri(
         storage_pool_size=storage_pool_size,
         storage_max_overflow=storage_max_overflow,
     )
+    node = RootNode(metadata, specs, top_level_access_blob)
+    mount_path = (
+        [segment for segment in mount_node.split("/") if segment]
+        if isinstance(mount_node, str)
+        else mount_node
+    )
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
 
     return adapter
-
-
-def _set_sqlite_pragma(conn, record):
-    cursor = conn.cursor()
-    # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
 
 
 def format_distinct_result(results, counts):
@@ -1883,11 +1843,6 @@ class WouldDeleteData(RuntimeError):
 
 class Collision(Conflicts):
     pass
-
-
-def json_serializer(obj):
-    "The PostgreSQL JSON serializer requires str, not bytes."
-    return safe_json_dump(obj).decode()
 
 
 def key_array_to_json(keys, value):
