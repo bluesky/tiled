@@ -1,6 +1,6 @@
 import os
 from collections.abc import AsyncGenerator
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from fastapi import Depends
 from sqlalchemy import event
@@ -75,17 +75,18 @@ def get_database_engine(
         return open_database_connection_pool(database_settings)
 
 
-async def get_database_session(
+async def get_database_session_factory(
     engine: AsyncEngine = Depends(get_database_engine),
-) -> AsyncGenerator[Optional[AsyncSession]]:
+) -> AsyncGenerator[Optional[Callable[[], AsyncSession]]]:
     # Special case for single-user mode
     if engine is None:
         yield None
     else:
-        async with AsyncSession(
-            engine, autoflush=False, expire_on_commit=False
-        ) as session:
-            yield session
+        # Let the caller manager the lifecycle of the AsyncSession.
+        def f():
+            return AsyncSession(engine, autoflush=False, expire_on_commit=False)
+
+        yield f
 
 
 def json_serializer(obj):
