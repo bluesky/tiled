@@ -61,7 +61,7 @@ from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
-from .router import get_router
+from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
@@ -550,7 +550,6 @@ def build_app(
                 check_database,
             )
             from ..authn_database import orm
-            from ..authn_database.connection_pool import open_database_connection_pool
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
@@ -558,9 +557,10 @@ def build_app(
                 make_admin_by_identity,
                 purge_expired,
             )
+            from .connection_pool import open_database_connection_pool
 
             # This creates a connection pool and stashes it in a module-global
-            # registry, keyed on database_settings, where can be retrieved by
+            # registry, keyed on database_settings, where it can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
             if not engine.url.database or engine.url.query.get("mode") == "memory":
@@ -677,7 +677,7 @@ def build_app(
 
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
-            from ..authn_database.connection_pool import close_database_connection_pool
+            from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
         for task in app.state.tasks:
@@ -835,7 +835,7 @@ def build_app(
 
         from . import metrics
 
-        app.include_router(metrics.router, prefix="/api/v1")
+        app.include_router(get_metrics_router(), prefix="/api/v1")
 
         @app.middleware("http")
         async def capture_metrics_prometheus(

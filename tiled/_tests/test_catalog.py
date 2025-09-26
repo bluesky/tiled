@@ -921,12 +921,16 @@ def test_pooling_config(sqlite_or_postgres_uri, sql_storage_uri, desired, expect
                     "init_if_not_exists": True,
                 },
             },
-        ],
+        ]
+    }
+    pool_config = {
         "catalog_pool_size": desired[0],
         "storage_pool_size": desired[1],
         "catalog_max_overflow": desired[2],
         "storage_max_overflow": desired[3],
     }
+    if any(v is not None for v in desired):
+        config.update(pool_config)
 
     app = build_app_from_config(config)
 

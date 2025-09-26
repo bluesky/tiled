@@ -8,6 +8,8 @@ from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
 
+from .server.metrics import monitor_db_pool
+
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
 
@@ -99,11 +101,14 @@ class SQLStorage(Storage):
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
         creator = self._adbc_connection.adbc_clone
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
-            return sqlalchemy.pool.StaticPool(creator)
+            pool = sqlalchemy.pool.StaticPool(creator)
         else:
-            return sqlalchemy.pool.QueuePool(
+            pool = sqlalchemy.pool.QueuePool(
                 creator, pool_size=self.pool_size, max_overflow=self.max_overflow
             )
+            monitor_db_pool(pool, self.uri)
+
+        return pool
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
@@ -187,8 +192,8 @@ class RemoteSQLStorage(SQLStorage):
 def parse_storage(
     item: Union[Path, str],
     *,
-    pool_size: Optional[int] = None,
-    max_overflow: Optional[int] = None,
+    pool_size: int = 5,
+    max_overflow: int = 10,
 ) -> Storage:
     "Create a Storage object from a URI or Path."
     item = ensure_uri(item)
