@@ -254,10 +254,15 @@ def get_router(
         if provider_specs:
             # If there are *any* authenticaiton providers, these
             # endpoints will be added.
+            refresh_session = (
+                authenticator.token_endpoint
+                if isinstance(authenticator, ProxiedOIDCAuthenticator)
+                else f"{base_url}/auth/session/refresh"
+            )
             authentication["links"] = {
                 "whoami": f"{base_url}/auth/whoami",
                 "apikey": f"{base_url}/auth/apikey",
-                "refresh_session": f"{base_url}/auth/session/refresh",
+                "refresh_session": refresh_session,
                 "revoke_session": f"{base_url}/auth/session/revoke/{{session_id}}",
                 "logout": f"{base_url}/auth/logout",
             }

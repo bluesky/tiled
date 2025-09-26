@@ -103,6 +103,9 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
         spec = identity_provider_input(providers)
     auth_endpoint = spec.links["auth_endpoint"]
     provider = spec.provider
+    client_id = spec.links.get("client_id")
+    token_endpoint = spec.links.get("token_endpoint")
+    oauth2_spec = True if client_id and token_endpoint else False
     mode = spec.mode
     # Note: "password" is included here for back-compat with older servers;
     # the new name for this mode is "internal".
@@ -134,8 +137,6 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
-        client_id = spec.links.get("client_id")
-        token_endpoint = spec.links.get("token_endpoint")
         tokens = device_code_grant(
             http_client, auth_endpoint, client_id, token_endpoint
         )
@@ -143,7 +144,7 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
         raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
     confirmation_message = spec.confirmation_message
     if confirmation_message:
-        username = tokens["identity"]["id"]
+        username = "jwt_token" if oauth2_spec else tokens["identity"]["id"]
         print(confirmation_message.format(id=username))
     return tokens
 
@@ -1021,9 +1022,11 @@ def device_code_grant(
     token_endpoint: Optional[str],
 ):
     if client_id and token_endpoint:
+        oauth2_spec = True
         data = {"client_id": client_id}
         uri = "verification_uri_complete"
     else:
+        oauth2_spec = False
         data = {}
         uri = "authorization_uri"
     for attempt in retry_context():
@@ -1057,7 +1060,7 @@ and enter the code:
             with attempt:
                 # Intentionally do not wrap this in handle_error(...).
                 # Check status codes manually below.
-                if client_id and token_endpoint:  # Oauth2_spec
+                if oauth2_spec:
                     access_response = http_client.post(
                         token_endpoint,
                         data={
@@ -1076,12 +1079,15 @@ and enter the code:
                         },
                         auth=None,
                     )
-                if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
-                    access_response.json()["detail"]["error"] == "authorization_pending"
-                    or access_response.json()["error"] == "authorization_pending"
-                ):
-                    print(".", end="", flush=True)
-                    continue
+                if access_response.status_code == httpx.codes.BAD_REQUEST:
+                    access_response_error = (
+                        access_response.json()["error"]
+                        if oauth2_spec
+                        else access_response.json()["detail"]["error"]
+                    )
+                    if access_response_error == "authorization_pending":
+                        print(".", end="", flush=True)
+                        continue
                 handle_error(access_response)
         print("")
         break
