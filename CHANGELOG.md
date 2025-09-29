@@ -4,6 +4,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## Unreleased
+
+### Fixed
+
+- Resolved circular dependency in `tiled.storage`.
+
+
 ## v0.1.5 (2025-09-26)
 
 ### Added
