@@ -244,7 +244,9 @@ class Context:
             if self.cache_settings["uri"].startswith("redis"):
                 from redis import asyncio as redis
 
-                socket_timeout = self.cache_settings.get("socket_timeout", None)
+                socket_timeout = self.cache_settings.get(
+                    "socket_timeout", 86400
+                )  # 1 day
                 socket_connect_timeout = self.cache_settings.get(
                     "socket_connect_timeout", 10.0
                 )
