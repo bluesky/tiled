@@ -91,7 +91,7 @@ properties:
       socket_timeout:
         type: number
         description: |
-          Configure Redis client. The default is None, to facilitate
+          Configure Redis client. The default is 1 day, to facilitate
           long-lived streaming clients that may sustain across lengthy
           dormant periods.
 
