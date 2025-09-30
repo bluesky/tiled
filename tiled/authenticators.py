@@ -153,7 +153,7 @@ properties:
         response.raise_for_status()
         return response.json()
 
-    @functools.cached_property
+    @property
     def client_id(self) -> str:
         return self._client_id
 
@@ -186,6 +186,15 @@ properties:
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
+    def decode_token(self, token: str) -> dict[str, Any]:
+        return jwt.decode(
+            token,
+            key=self.keys(),
+            algorithms=self.id_token_signing_alg_values_supported,
+            audience=self._audience,
+            issuer=self.issuer,
+        )
+
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         code = request.query_params["code"]
         # A proxy in the middle may make the request into something like
@@ -207,13 +216,7 @@ properties:
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
         try:
-            verified_body = jwt.decode(
-                token=id_token,
-                key=self.keys(),
-                algorithms=self.id_token_signing_alg_values_supported,
-                audience=self._audience,
-                access_token=access_token,
-            )
+            verified_body = self.decode_token(access_token)
         except JWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
