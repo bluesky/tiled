@@ -6,6 +6,7 @@ import pytest
 
 from ..catalog import from_uri
 from ..client import Context, from_context
+from ..config import parse_configs
 from ..server.app import build_app
 
 pytestmark = pytest.mark.skipif(
@@ -300,3 +301,35 @@ def test_close_stream_wrong_api_key(tiled_websocket_context):
         headers={"Authorization": "Apikey wrong_key"},
     )
     assert response.status_code == 401
+
+
+def test_streaming_cache_config(tmp_path, redis_uri):
+    "Test streaming_cache config parsing"
+    config_path = tmp_path / "config.yml"
+    with open(config_path, "w") as file:
+        file.write(
+            f"""
+trees:
+ - path: /
+   tree: catalog
+   args:
+     uri: sqlite:///:memory:
+     writable_storage:
+        - file://localhost{str(tmp_path / 'data')}
+        - duckdb:///{tmp_path / 'data.duckdb'}
+    init_if_not_exists: true
+    streaming_cache:
+        uri: {redis_uri}
+        data_ttl: 50
+        seq_ttl: 60
+        socket_timeout: 11
+        socket_connect_timeout: 12
+"""
+        )
+    # Test that the config is parsed correctly.
+    config = parse_configs(config_path)
+    assert config.streaming_cahe.redis_uri == redis_uri
+    assert config.streaming_cahe.data_ttl == 50
+    assert config.streaming_cahe.seq_ttl == 60
+    assert config.streaming_cahe.socket_timeout == 11
+    assert config.streaming_cahe.socket_connect_timeout == 12
