@@ -149,20 +149,14 @@ def decode_token(
     token: str,
     secret_keys: List[str],
     proxied_authenticator: Optional[ProxiedOIDCAuthenticator] = None,
-):
+) -> dict[str, Any]:
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     if proxied_authenticator:
-        return jwt.decode(
-            token,
-            key=proxied_authenticator.keys(),
-            algorithms=proxied_authenticator.id_token_signing_alg_values_supported,
-            audience=proxied_authenticator.audience,
-            issuer=proxied_authenticator.issuer,
-        )
+        return proxied_authenticator.decode_token(token)
     else:
         # The first key in settings.secret_keys is used for *encoding*.
         # All keys are tried for *decoding* until one works or they all
@@ -1253,10 +1247,7 @@ def authentication_router() -> APIRouter:
             # Session management should be handled by the client, not by Tiled.
             return
         try:
-            payload = decode_token(
-                refresh_token,
-                settings.secret_keys,
-            )
+            payload = decode_token(refresh_token, settings.secret_keys)
         except ExpiredSignatureError:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
