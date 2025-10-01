@@ -9,7 +9,11 @@ from jose import ExpiredSignatureError, jwt
 from jose.backends import RSAKey
 from respx import MockRouter
 
-from ..authenticators import LDAPAuthenticator, OIDCAuthenticator
+from ..authenticators import (
+    LDAPAuthenticator,
+    OIDCAuthenticator,
+    ProxiedOIDCAuthenticator,
+)
 
 # Set this if there is an LDAP container running for testing.
 # See continuous_integration/docker-configs/ldap-docker-compose.yml
@@ -140,7 +144,7 @@ def test_oidc_decoding(
     encrypted_access_token = encrypted_token(access_token, private_key)
 
     if not expired:
-        # Decode does not currnetly care if issued_at_time > current time
+        # Decode does not currently care if issued_at_time > current time
         assert authenticator.decode_token(encrypted_access_token) == access_token
 
     else:
@@ -150,6 +154,7 @@ def test_oidc_decoding(
 
 @pytest.fixture
 def private_key() -> str:
+    # Key generated just for these tests
     return """-----BEGIN RSA PRIVATE KEY-----
 MIICXQIBAAKBgQCGwHwO3J7L0vdGOw1Hhi6AoN1vnJvDxiUcDu+vF11T6G3KXTpP
 4hGtRTTjemio7kDZKIrX1sDeRRvvBatKkEWV6hgQbzQwllqV6O/McpUeG4snoziB
@@ -193,3 +198,13 @@ def encrypted_token(token: dict[str, str], private_key: str) -> str:
         algorithm="RS256",
         headers={"kid": "secret"},
     )
+
+
+@pytest.mark.asyncio
+async def test_proxied_oidc_token_retrieval(well_known_url: str, mock_oidc_server: MockRouter):
+    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", well_known_url)
+    test_request = httpx.Request("GET", "http://example.com", headers={
+        "Authorization": "bearer FOO"
+    })
+
+    assert "FOO" == await authenticator.oauth2_schema(test_request)
