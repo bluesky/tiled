@@ -5,6 +5,8 @@ from typing import Any
 
 import httpx
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import ExpiredSignatureError, jwt
 from jose.backends import RSAKey
 from respx import MockRouter
@@ -155,21 +157,12 @@ def test_oidc_decoding(
 @pytest.fixture
 def private_key() -> str:
     # Key generated just for these tests
-    return """-----BEGIN RSA PRIVATE KEY-----
-MIICXQIBAAKBgQCGwHwO3J7L0vdGOw1Hhi6AoN1vnJvDxiUcDu+vF11T6G3KXTpP
-4hGtRTTjemio7kDZKIrX1sDeRRvvBatKkEWV6hgQbzQwllqV6O/McpUeG4snoziB
-dPEQ/2DvA8Dik1j3v7jG0ATy+M6EkTmsS7z0H9Eha0wujsrvQxxOV0N1jwIDAQAB
-AoGAYDQqHd4qzPAINC7Ssz68En9GuHmBx4q+UcLkIgg3TEGDqNdYW1HWNvNS6Bkr
-gXff+mn0flZHCiki4UoV2b0Yv/PX/359aXrvtVdcJQfjXj9nEZTFLhd36ARZrrD7
-J+EtHclO7SNjGN3KvhFbUWZ4qgTeNRs7Qa3G0AadlY/ogpkCQQD3dK+/Kn488EjP
-auUC3Rv4h5KpLk1m7d0W2/+fH+UODVgRjCzH9NIQpaET0uXDMzb3UclHYc48UtxD
-OUVhfEftAkEAi2eVrkE1maBQIsvC+wBVavMpleSncUH6h1JvI/gSzApOhWzOSAhy
-AnZ2Zq6mFtqBLZhz2xm8qCXlMkT17CdL6wJBAKm6ED1HkRSNHvOddvyS2feKTa7a
-wl5B8i4WsWrcPoh34JsQkTqJEng2kpf9RHixrRbPswXR8NnxX4CATLVDwDUCQEWH
-9PBlNgbaHx4745SuJeyiPCu3UIz9C6hTRXv7T+TVfzStgHYNQFBaJdQxaEYd1jCX
-ybGOtLpprFfWbZLMRuECQQDtef88ZQUBrMMCleCHP2S+dbLuOxNSEoL3/AzxvVzQ
-MKOzPo5n3HuLXn3c+ej9hpna8XZKweNKb9s44fMBnQh8
------END RSA PRIVATE KEY-----"""
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+        ).decode("utf-8")
 
 
 @pytest.fixture
