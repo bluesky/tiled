@@ -1097,6 +1097,31 @@ class CatalogNodeAdapter:
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
             await db.commit()
+            # Upon successful update, inform websocket subscribers through redis
+            if self.context.cache_client:
+                sequence = await self.context.cache_client.incr(
+                    f"sequence:{self.node.id}"
+                )
+                metadata = {
+                    "sequence": sequence,
+                    "timestamp": datetime.now().isoformat(),
+                    "specs": [spec.model_dump() for spec in (specs or [])],
+                    "metadata": metadata,
+                    "revision_number": next_revision_number,
+                }
+                pipeline = self.context.cache_client.pipeline()
+                pipeline.hset(
+                    f"data:{self.node.id}:{sequence}",
+                    mapping={
+                        "sequence": sequence,
+                        "metadata": safe_json_dump(metadata),
+                    },
+                )
+                pipeline.expire(
+                    f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
+                )
+                pipeline.publish(f"notify:{self.node.id}", sequence)
+                await pipeline.execute()
 
     async def close_stream(self):
         # Check the node status.
