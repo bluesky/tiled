@@ -5,7 +5,6 @@ from typing import Any
 
 import httpx
 import pytest
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import ExpiredSignatureError, jwt
 from jose.backends import RSAKey
@@ -138,7 +137,7 @@ def test_oidc_decoding(
     well_known_url: str,
     issued: bool,
     expired: bool,
-    private_key: str
+    private_key: rsa.RSAPrivateKey
 ):
 
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
@@ -155,18 +154,13 @@ def test_oidc_decoding(
 
 
 @pytest.fixture
-def private_key() -> str:
+def private_key() -> rsa.RSAPrivateKey:
     # Key generated just for these tests
-    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    return private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption(),
-        ).decode("utf-8")
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
 
 @pytest.fixture
-def json_web_keyset(private_key: str) -> list[dict[str, Any]]:
+def json_web_keyset(private_key: rsa.RSAPrivateKey) -> list[dict[str, Any]]:
     return [
         RSAKey(key=private_key, algorithm="RS256").to_dict()
     ]
@@ -184,7 +178,7 @@ def token(issued: bool, expired: bool) -> dict[str, str]:
     return dummy_token
 
 
-def encrypted_token(token: dict[str, str], private_key: str) -> str:
+def encrypted_token(token: dict[str, str], private_key: rsa.RSAPrivateKey) -> str:
     return jwt.encode(
         token,
         key=private_key,
