@@ -6,6 +6,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ## v0.2.0 (unreleased)
 
 - Enable Tiled server to accept bearer access tokens for authentication
+- Allow use of external policy enforcement points for authorization
 
 ## v0.1.6 (2025-09-29)
 
