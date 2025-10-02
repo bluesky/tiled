@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 
-import requests
+import httpx
 from pydantic import BaseModel, HttpUrl, ValidationError
 
 from tiled.server.schemas import Principal
@@ -391,6 +391,7 @@ class ExternalPolicyDecisionPoint:
         self.attribute = attribute
 
     async def authorized(self, node, principal: Principal, actions: List[str]) -> bool:
+        print(f"{node=} {principal=} {actions=}")
         if principal.access_token is None:
             raise RuntimeError(
                 "External policy access control requires a bearer token. "
@@ -410,10 +411,11 @@ class ExternalPolicyDecisionPoint:
                 attribute=attribute,
             )
         )
-        response = requests.post(
-            str(self.authorization_provider), data=input.model_dump_json()
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(self.authorization_provider), content=input.model_dump_json()
+            )
+            response.raise_for_status()
         try:
             decision = Decision.model_validate_json(response.text)
         except ValidationError:
