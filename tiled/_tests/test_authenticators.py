@@ -189,7 +189,8 @@ def encrypted_token(token: dict[str, str], private_key: rsa.RSAPrivateKey) -> st
 
 @pytest.mark.asyncio
 async def test_proxied_oidc_token_retrieval(well_known_url: str, mock_oidc_server: MockRouter):
-    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", well_known_url, scopes=[])
+    authenticator = ProxiedOIDCAuthenticator("tiled", "tiled", well_known_url, scopes=[],
+                                             device_flow_client_id="tiled_cli")
     test_request = httpx.Request("GET", "http://example.com", headers={
         "Authorization": "bearer FOO"
     })

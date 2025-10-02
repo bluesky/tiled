@@ -244,6 +244,10 @@ properties:
     type: string
   well_known_uri:
     type: string
+  scopes:
+    type: array
+  device_flow_client_id:
+    type: string
   confirmation_message:
     type: string
 """
@@ -264,11 +268,12 @@ properties:
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
         )
+        self.scopes = scopes
+        self.device_flow_client_id = device_flow_client_id
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
         )
-        self.device_flow_client_id = device_flow_client_id
 
     @property
     def oauth2_schema(self) -> OAuth2:
