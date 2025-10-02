@@ -678,11 +678,17 @@ class Context:
         # will manage refreshing the tokens as needed.
         refresh_url = self.server_info.authentication.links.refresh_session
         csrf_token = self.http_client.cookies["tiled_csrf"]
+        # As proxied authenticator can be the only authentication provider
+        client_id = next(iter(self.server_info.authentication.providers)).links.get(
+            "client_id"
+        )
         if remember_me:
             token_directory = self._token_directory()
         else:
             # Clear any existing tokens.
-            temp_auth = TiledAuth(refresh_url, csrf_token, self._token_directory())
+            temp_auth = TiledAuth(
+                refresh_url, csrf_token, self._token_directory(), client_id
+            )
             temp_auth.sync_clear_token("access_token")
             temp_auth.sync_clear_token("refresh_token")
             # Store tokens in memory only, with no syncing to disk.
@@ -743,12 +749,18 @@ class Context:
         """
         refresh_url = self.server_info.authentication.links.refresh_session
         csrf_token = self.http_client.cookies["tiled_csrf"]
+        # As proxied authenticator can be the only authentication provider
+        client_id = next(iter(self.server_info.authentication.providers)).links.get(
+            "client_id"
+        )
 
         # Try automatically authenticating using cached tokens, if any.
         token_directory = self._token_directory()
         # We have to make an HTTP request to let the server validate whether we
         # have a valid session.
-        self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        self.http_client.auth = TiledAuth(
+            refresh_url, csrf_token, token_directory, client_id
+        )
         # This will either:
         # * Use an access_token and succeed.
         # * Use a refresh_token to attempt refresh flow and succeed.
@@ -771,7 +783,7 @@ class Context:
         automatically executed by tiled.client.auth.TiledAuth when the current
         access_token expires.
         """
-        if self.http_client.auth is None:
+        if not isinstance(self.http_client.auth, TiledAuth):
             raise RuntimeError(
                 "No authentication has been set up. Cannot reauthenticate."
             )
@@ -785,6 +797,7 @@ class Context:
             self.http_client.auth.refresh_url,
             refresh_token,
             csrf_token,
+            self.http_client.auth.client_id,
         )
         for attempt in retry_context():
             with attempt:

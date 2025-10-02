@@ -8,8 +8,6 @@ from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
 
-from .server.metrics import monitor_db_pool
-
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
 
@@ -99,6 +97,8 @@ class SQLStorage(Storage):
 
     @functools.cached_property
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
+        from .server.metrics import monitor_db_pool
+
         creator = self._adbc_connection.adbc_clone
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             pool = sqlalchemy.pool.StaticPool(creator)

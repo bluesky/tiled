@@ -141,7 +141,7 @@ properties:
         well_known_uri: str,
         confirmation_message: str = "",
     ):
-        self.audience = audience
+        self._audience = audience
         self._client_id = client_id
         self._client_secret = Secret(client_secret)
         self._well_known_url = well_known_uri
@@ -153,7 +153,7 @@ properties:
         response.raise_for_status()
         return response.json()
 
-    @functools.cached_property
+    @property
     def client_id(self) -> str:
         return self._client_id
 
@@ -191,6 +191,15 @@ properties:
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
+    def decode_token(self, token: str) -> dict[str, Any]:
+        return jwt.decode(
+            token,
+            key=self.keys(),
+            algorithms=self.id_token_signing_alg_values_supported,
+            audience=self._audience,
+            issuer=self.issuer,
+        )
+
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         code = request.query_params["code"]
         # A proxy in the middle may make the request into something like
@@ -212,13 +221,7 @@ properties:
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
         try:
-            verified_body = jwt.decode(
-                token=id_token,
-                key=self.keys(),
-                algorithms=self.id_token_signing_alg_values_supported,
-                audience=self.audience,
-                access_token=access_token,
-            )
+            verified_body = self.decode_token(access_token)
         except JWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
@@ -260,7 +263,6 @@ properties:
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
         )
-        self.scopes = scopes
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
@@ -270,6 +272,15 @@ properties:
     @property
     def oauth2_schema(self) -> OAuth2:
         return self._oidc_bearer
+
+    def decode_token(self, token: str) -> dict[str, Any]:
+        return jwt.decode(
+            token,
+            key=self.keys(),
+            algorithms=self.id_token_signing_alg_values_supported,
+            audience=self._audience,
+            issuer=self.issuer,
+        )
 
 
 async def exchange_code(
