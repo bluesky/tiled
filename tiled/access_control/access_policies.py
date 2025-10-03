@@ -391,7 +391,6 @@ class ExternalPolicyDecisionPoint:
         self.attribute = attribute
 
     async def authorized(self, node, principal: Principal, actions: List[str]) -> bool:
-        print(f"{node=} {principal=} {actions=}")
         if principal.access_token is None:
             raise RuntimeError(
                 "External policy access control requires a bearer token. "
@@ -405,7 +404,7 @@ class ExternalPolicyDecisionPoint:
         )
         input = Input(
             input=Data(
-                token=principal.access_token,
+                token=principal.access_token.get_secret_value(),
                 audience=self.audience,
                 actions=actions,
                 attribute=attribute,

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import httpx
 
@@ -131,10 +131,15 @@ class TiledAuth(httpx.Auth):
             tokens = token_response.json()
             # If we get this far, refreshing authentication worked.
             # Store the new refresh token.
-            self.sync_set_token("refresh_token", tokens["refresh_token"])
-            self.sync_set_token("access_token", tokens["access_token"])
+            self.sync_tokens(tokens)
             request.headers["Authorization"] = f"Bearer {tokens['access_token']}"
             yield request
+
+    def sync_tokens(self, tokens: Dict[str, str]):
+        self.sync_set_token("refresh_token", tokens["refresh_token"])
+        self.sync_set_token("access_token", tokens["access_token"])
+        if id_token := tokens.get("id_token"):
+            self.sync_set_token("id_token", id_token)
 
     async def async_get_token(self, key):
         raise NotImplementedError("Async support is planned but not yet implemented.")

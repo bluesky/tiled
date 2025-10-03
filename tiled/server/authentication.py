@@ -1438,7 +1438,6 @@ def authentication_router() -> APIRouter:
             return json_or_msgpack(request, None)
 
         if principal and principal.type == schemas.PrincipalType.jwt_token:
-            principal.access_token = "secret"
             return json_or_msgpack(
                 request,
                 principal.model_dump(),

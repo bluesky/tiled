@@ -24,6 +24,7 @@ from .utils import (
     DEFAULT_TIMEOUT_PARAMS,
     MSGPACK_MIME_TYPE,
     handle_error,
+    polling_retry_context,
     retry_context,
 )
 
@@ -282,6 +283,16 @@ class Context:
         self.server_info: About = TypeAdapter(About).validate_python(server_info)
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
+
+        # Check if the using Oauth2 type of device_flow
+        self.client_id = (
+            self.server_info.authentication.providers[0].links.get("client_id")
+            if len(self.server_info.authentication.providers) >= 1
+            else None
+        )
+
+        if self.client_id:
+            client.headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     def __repr__(self):
         auth_info = []
@@ -679,23 +690,20 @@ class Context:
         refresh_url = self.server_info.authentication.links.refresh_session
         csrf_token = self.http_client.cookies["tiled_csrf"]
         # As proxied authenticator can be the only authentication provider
-        client_id = next(iter(self.server_info.authentication.providers)).links.get(
-            "client_id"
-        )
+
         if remember_me:
             token_directory = self._token_directory()
         else:
             # Clear any existing tokens.
             temp_auth = TiledAuth(
-                refresh_url, csrf_token, self._token_directory(), client_id
+                refresh_url, csrf_token, self._token_directory(), self.client_id
             )
             temp_auth.sync_clear_token("access_token")
             temp_auth.sync_clear_token("refresh_token")
             # Store tokens in memory only, with no syncing to disk.
             token_directory = None
         auth = TiledAuth(refresh_url, csrf_token, token_directory)
-        auth.sync_set_token("access_token", tokens["access_token"])
-        auth.sync_set_token("refresh_token", tokens["refresh_token"])
+        auth.sync_tokens(tokens)
         self.http_client.auth = auth
 
     @property
@@ -749,17 +757,13 @@ class Context:
         """
         refresh_url = self.server_info.authentication.links.refresh_session
         csrf_token = self.http_client.cookies["tiled_csrf"]
-        # As proxied authenticator can be the only authentication provider
-        client_id = next(iter(self.server_info.authentication.providers)).links.get(
-            "client_id"
-        )
 
         # Try automatically authenticating using cached tokens, if any.
         token_directory = self._token_directory()
         # We have to make an HTTP request to let the server validate whether we
         # have a valid session.
         self.http_client.auth = TiledAuth(
-            refresh_url, csrf_token, token_directory, client_id
+            refresh_url, csrf_token, token_directory, self.client_id
         )
         # This will either:
         # * Use an access_token and succeed.
@@ -808,8 +812,7 @@ class Context:
                     )
                 handle_error(token_response)
         tokens = token_response.json()
-        self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
-        self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
+        self.http_client.auth.sync_tokens(tokens)
         return tokens
 
     def whoami(self):
@@ -836,20 +839,33 @@ class Context:
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
         for attempt in retry_context():
             with attempt:
-                handle_error(
-                    self.http_client.post(
-                        f"{self.api_uri}auth/session/revoke",
-                        json={"refresh_token": refresh_token},
-                        # Circumvent auth because this request is not authenticated.
-                        # The refresh_token in the body is the relevant proof, not the
-                        # 'Authentication' header.
-                        auth=None,
+                if self.client_id:
+                    id_token = self.http_client.auth.sync_get_token("id_token")
+                    handle_error(
+                        self.http_client.get(
+                            self.server_info.authentication.links.logout,
+                            params={
+                                "id_token_hint": id_token,
+                                "client_id": self.client_id,
+                            },
+                        )
                     )
-                )
+                else:
+                    handle_error(
+                        self.http_client.post(
+                            f"{self.api_uri}auth/session/revoke",
+                            json={"refresh_token": refresh_token},
+                            # Circumvent auth because this request is not authenticated.
+                            # The refresh_token in the body is the relevant proof, not the
+                            # 'Authentication' header.
+                            auth=None,
+                        )
+                    )
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
         self.http_client.auth.sync_clear_token("refresh_token")
+        self.http_client.auth.sync_clear_token("id_token")
 
         # Clear in-memory state.
         self.http_client.headers.pop("Authorization", None)
@@ -1033,18 +1049,22 @@ def device_code_grant(
     auth_endpoint: str,
     client_id: Optional[str],
     token_endpoint: Optional[str],
+    scopes: str = "openid offline_access",
 ):
-    if client_id and token_endpoint:
-        oauth2_spec = True
-        data = {"client_id": client_id}
-        uri = "verification_uri_complete"
-    else:
-        oauth2_spec = False
-        data = {}
-        uri = "authorization_uri"
     for attempt in retry_context():
         with attempt:
-            verification_response = http_client.post(auth_endpoint, data=data)
+            if client_id and token_endpoint:
+                oauth2_spec = True
+                uri = "verification_uri_complete"
+                verification_response = http_client.post(
+                    auth_endpoint,
+                    data={"client_id": client_id, "scope": scopes},
+                )
+
+            else:
+                oauth2_spec = False
+                uri = "authorization_uri"
+                verification_response = http_client.post(auth_endpoint)
             handle_error(verification_response)
     verification = verification_response.json()
     authorization_uri = verification[uri]
@@ -1069,7 +1089,9 @@ and enter the code:
         time.sleep(verification["interval"])
         if time.monotonic() > deadline:
             raise Exception("Deadline expired.")
-        for attempt in retry_context():
+        for attempt in polling_retry_context(
+            timeout=verification["expires_in"]
+        ):
             with attempt:
                 # Intentionally do not wrap this in handle_error(...).
                 # Check status codes manually below.
@@ -1081,7 +1103,6 @@ and enter the code:
                             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                             "client_id": client_id,
                         },
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
                     )
                 else:
                     access_response = http_client.post(
@@ -1092,6 +1113,7 @@ and enter the code:
                         },
                         auth=None,
                     )
+
                 if access_response.status_code == httpx.codes.BAD_REQUEST:
                     access_response_error = (
                         access_response.json()["error"]
@@ -1100,6 +1122,8 @@ and enter the code:
                     )
                     if access_response_error == "authorization_pending":
                         print(".", end="", flush=True)
+                        time.sleep(verification["interval"])
+                        access_response.raise_for_status()
                         continue
                 handle_error(access_response)
         print("")

@@ -188,6 +188,10 @@ properties:
             str, self._config_from_oidc_url.get("device_authorization_endpoint")
         )
 
+    @functools.cached_property
+    def end_session_endpoint(self) -> str:
+        return cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
+
     # TODO: Cache with expiration to allow for key rotation
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
