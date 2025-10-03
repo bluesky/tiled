@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Dict, Optional
 
 import httpx
 
@@ -11,7 +12,9 @@ class CannotRefreshAuthentication(Exception):
 
 
 class TiledAuth(httpx.Auth):
-    def __init__(self, refresh_url, csrf_token, token_directory):
+    def __init__(
+        self, refresh_url, csrf_token, token_directory, client_id: Optional[str] = None
+    ):
         self.refresh_url = refresh_url
         self.csrf_token = csrf_token
         if token_directory is not None:
@@ -22,6 +25,7 @@ class TiledAuth(httpx.Auth):
         self._sync_lock = SerializableLock()
         # self._async_lock = asyncio.Lock()
         self.tokens = {}
+        self.client_id = client_id
 
     @staticmethod
     def _check_writable_token_directory(token_directory):
@@ -110,7 +114,7 @@ class TiledAuth(httpx.Auth):
                     "For a given client c, use c.context.authenticate()."
                 )
             token_request = build_refresh_request(
-                self.refresh_url, refresh_token, self.csrf_token
+                self.refresh_url, refresh_token, self.csrf_token, self.client_id
             )
             token_response = yield token_request
             if token_response.status_code == httpx.codes.UNAUTHORIZED:
@@ -127,10 +131,15 @@ class TiledAuth(httpx.Auth):
             tokens = token_response.json()
             # If we get this far, refreshing authentication worked.
             # Store the new refresh token.
-            self.sync_set_token("refresh_token", tokens["refresh_token"])
-            self.sync_set_token("access_token", tokens["access_token"])
+            self.sync_tokens(tokens)
             request.headers["Authorization"] = f"Bearer {tokens['access_token']}"
             yield request
+
+    def sync_tokens(self, tokens: Dict[str, str]):
+        self.sync_set_token("refresh_token", tokens["refresh_token"])
+        self.sync_set_token("access_token", tokens["access_token"])
+        if id_token := tokens.get("id_token"):
+            self.sync_set_token("id_token", id_token)
 
     async def async_get_token(self, key):
         raise NotImplementedError("Async support is planned but not yet implemented.")
@@ -145,12 +154,26 @@ class TiledAuth(httpx.Auth):
         raise NotImplementedError("Async support is planned but not yet implemented.")
 
 
-def build_refresh_request(refresh_url, refresh_token, csrf_token):
-    return httpx.Request(
-        "POST",
-        refresh_url,
-        json={"refresh_token": refresh_token},
-        # Submit CSRF token in both header and cookie.
-        # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        headers={"x-csrf": csrf_token},
-    )
+def build_refresh_request(
+    refresh_url, refresh_token, csrf_token, client_id: Optional[str] = None
+):
+    if client_id:
+        return httpx.Request(
+            "POST",
+            refresh_url,
+            data={
+                "client_id": client_id,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    else:
+        return httpx.Request(
+            "POST",
+            refresh_url,
+            json={"refresh_token": refresh_token},
+            # Submit CSRF token in both header and cookie.
+            # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
+            headers={"x-csrf": csrf_token},
+        )

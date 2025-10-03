@@ -404,7 +404,7 @@ class ExternalPolicyDecisionPoint:
         )
         input = Input(
             input=Data(
-                token=principal.access_token,
+                token=principal.access_token.get_secret_value(),
                 audience=self.audience,
                 actions=actions,
                 attribute=attribute,
