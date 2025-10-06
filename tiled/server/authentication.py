@@ -713,7 +713,6 @@ def add_external_routes(
                 user_session_state.state,
             )
             tokens = await create_tokens_from_session(settings, db, session, provider)
-            #if we have redirect success, redirect to that url with tokens
             if authenticator.redirect_on_success:
                 redirect_url = (
                     f"{authenticator.redirect_on_success}"
@@ -723,6 +722,8 @@ def add_external_routes(
                     f"&identity.provider={tokens['identity']['provider']}"
                     f"&principal={tokens['principal']}"
                 )
+                if 'state' in request.query_params:
+                    redirect_url += f"&state={request.query_params['state']}"
                 return RedirectResponse(status_code=302, url=redirect_url)
             else:
                 return tokens
