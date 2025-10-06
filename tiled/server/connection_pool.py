@@ -1,6 +1,7 @@
 import os
+import sys
 from collections.abc import AsyncGenerator
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from fastapi import Depends
 from sqlalchemy import event
@@ -9,7 +10,41 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from ..server.settings import DatabaseSettings, Settings, get_settings
-from ..utils import ensure_specified_sql_driver, safe_json_dump
+from ..utils import ensure_specified_sql_driver, safe_json_dump, sanitize_uri
+from .metrics import monitor_db_pool
+
+# contextlib.nullcontext got async context manager support in 3.10
+if sys.version_info < (3, 10):
+    from contextlib import AbstractAsyncContextManager, AbstractContextManager
+
+    class nullcontext(AbstractContextManager, AbstractAsyncContextManager):
+        """Context manager that does no additional processing.
+
+        Used as a stand-in for a normal context manager, when a particular
+        block of code is only sometimes used with a normal context manager:
+
+        cm = optional_cm if condition else nullcontext()
+        with cm:
+            # Perform operation, using optional_cm if condition is True
+        """
+
+        def __init__(self, enter_result=None):
+            self.enter_result = enter_result
+
+        def __enter__(self):
+            return self.enter_result
+
+        def __exit__(self, *excinfo):
+            pass
+
+        async def __aenter__(self):
+            return self.enter_result
+
+        async def __aexit__(self, *excinfo):
+            pass
+
+else:
+    from contextlib import nullcontext
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 
@@ -43,6 +78,7 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
         )
 
         # Cache the engine so we don't create more than one pool per database_settings.
+        monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
         _connection_pools[database_settings] = engine
 
     # For SQLite, ensure that foreign key constraints are enforced.
@@ -73,17 +109,21 @@ def get_database_engine(
         return open_database_connection_pool(database_settings)
 
 
-async def get_database_session(
+async def get_database_session_factory(
     engine: AsyncEngine = Depends(get_database_engine),
-) -> AsyncGenerator[Optional[AsyncSession]]:
+) -> AsyncGenerator[Callable[[], Optional[AsyncSession]]]:
     # Special case for single-user mode
     if engine is None:
-        yield None
+
+        def f():
+            return nullcontext()
+
     else:
-        async with AsyncSession(
-            engine, autoflush=False, expire_on_commit=False
-        ) as session:
-            yield session
+        # Let the caller manage the lifecycle of the AsyncSession.
+        def f():
+            return AsyncSession(engine, autoflush=False, expire_on_commit=False)
+
+    yield f
 
 
 def json_serializer(obj):

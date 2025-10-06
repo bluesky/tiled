@@ -24,6 +24,7 @@ class TableStructure:
     resizable: Union[bool, Tuple[bool, ...]] = False
 
     def __post_init__(self):
+        self.columns = list(map(str, self.columns))  # Ensure all column names are str
         for column in self.columns:
             if column.startswith("_"):
                 raise ValueError(

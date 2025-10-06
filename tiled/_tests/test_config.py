@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from fastapi import APIRouter
 from pydantic import ValidationError
 
 from ..adapters.array import ArrayAdapter
@@ -234,3 +235,24 @@ def test_tree_given_as_method():
         ]
     }
     Config.model_validate(config)
+
+
+tree.include_routers = [APIRouter()]
+
+
+def test_include_routers():
+    config = {
+        "trees": [
+            {
+                "tree": f"{__name__}:tree",
+                "path": "/a",
+            },
+            {
+                "tree": f"{__name__}:tree",
+                "path": "/b",
+            },
+        ]
+    }
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        from_context(context)
