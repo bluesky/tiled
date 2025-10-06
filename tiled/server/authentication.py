@@ -728,6 +728,27 @@ def add_external_routes(
             else:
                 return tokens
 
+    @router.get(f"/provider/{provider}/authorize")
+    async def authorize_redirect_route(
+        request: Request,
+        state: Optional[str] = Query(None),
+    ):
+        """Redirect browser to OAuth provider for authentication."""
+        
+        redirect_uri = f"{get_base_url(request)}/auth/provider/{provider}/code"
+        
+        params = {
+            "client_id": authenticator.client_id,
+            "response_type": "code", 
+            "scope": "openid",
+            "redirect_uri": redirect_uri,
+        }
+        if state:
+            params["state"] = state
+            
+        auth_url = authenticator.authorization_endpoint.copy_with(params=params)
+        return RedirectResponse(url=str(auth_url))
+
     "Build an /authorize route function for this Authenticator."
 
     @router.post(f"/provider/{provider}/authorize")
