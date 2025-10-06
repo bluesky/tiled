@@ -696,8 +696,11 @@ def add_external_routes(
         user_session_state: Optional[
             UserSessionState
         ] = await authenticator.authenticate(request)
-        # check if redirect on success and redirect on failur exists
         if not user_session_state:
+            if authenticator.redirect_on_failure:
+                return RedirectResponse(
+                    status_code=302, url=authenticator.redirect_on_failure
+                )
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
             )
@@ -715,10 +718,7 @@ def add_external_routes(
                 redirect_url = (
                     f"{authenticator.redirect_on_success}"
                     f"?access_token={tokens['access_token']}"
-                    f"&expires_in={tokens['expires_in']}"
                     f"&refresh_token={tokens['refresh_token']}"
-                    f"&refresh_token_expires_in={tokens['refresh_token_expires_in']}"
-                    f"&token_type={tokens['token_type']}"
                     f"&identity.id={tokens['identity']['id']}"
                     f"&identity.provider={tokens['identity']['provider']}"
                     f"&principal={tokens['principal']}"

@@ -190,7 +190,10 @@ properties:
         )
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
-        code = request.query_params["code"]
+        code = request.query_params.get("code")
+        if not code:
+            logger.warning("Authentication failed: No authorization code parameter provided.")
+            return None
         # A proxy in the middle may make the request into something like
         # 'http://localhost:8000/...' so we fix the first part but keep
         # the original URI path.
