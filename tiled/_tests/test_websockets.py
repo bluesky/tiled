@@ -317,19 +317,19 @@ trees:
      writable_storage:
         - file://localhost{str(tmp_path / 'data')}
         - duckdb:///{tmp_path / 'data.duckdb'}
-    init_if_not_exists: true
-    streaming_cache:
-        uri: {redis_uri}
-        data_ttl: 50
-        seq_ttl: 60
-        socket_timeout: 11
-        socket_connect_timeout: 12
+     init_if_not_exists: true
+streaming_cache:
+  uri: {redis_uri}
+  data_ttl: 50
+  seq_ttl: 60
+  socket_timeout: 11
+  socket_connect_timeout: 12
 """
         )
     # Test that the config is parsed correctly.
     config = parse_configs(config_path)
-    assert config.streaming_cahe.redis_uri == redis_uri
-    assert config.streaming_cahe.data_ttl == 50
-    assert config.streaming_cahe.seq_ttl == 60
-    assert config.streaming_cahe.socket_timeout == 11
-    assert config.streaming_cahe.socket_connect_timeout == 12
+    assert config.streaming_cache.uri == redis_uri
+    assert config.streaming_cache.data_ttl == 50
+    assert config.streaming_cache.seq_ttl == 60
+    assert config.streaming_cache.socket_timeout == 11
+    assert config.streaming_cache.socket_connect_timeout == 12
