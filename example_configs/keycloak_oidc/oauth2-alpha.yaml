@@ -1,0 +1,29 @@
+injectRequestHeaders:
+- name: Authorization
+  values:
+  - claim: access_token
+    prefix: "Bearer "
+providers:
+- provider: oidc
+  clientID: tiled
+  clientSecret: o8b7mIuYmzybNPVS8SSduhMdeqM8NDLp
+  id: authn
+  oidcConfig:
+    audienceClaims: ["aud"]
+    emailClaim: sub
+    insecureAllowUnverifiedEmail: true
+    insecureSkipNonce: true
+    issuerURL: http://localhost:8080/realms/master
+server:
+  BindAddress: localhost:4180
+  SecureBindAddress: ""
+  TLS: null
+upstreamConfig:
+  upstreams:
+  - flushInterval: 1s
+    id: /
+    passHostHeader: true
+    path: /
+    proxyWebSockets: true
+    timeout: 30s
+    uri: http://localhost:8000
