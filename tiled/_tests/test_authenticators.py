@@ -168,8 +168,8 @@ async def test_OIDCAuthenticator_missing_code_parameter():
     mock_request.url = Mock()
     mock_request.url.path = "/api/v1/auth/provider/orcid/code"
     
-    with pytest.raises(KeyError):
-        await authenticator.authenticate(mock_request)
+    result = await authenticator.authenticate(mock_request)
+    assert result is None
 
 
 @pytest.mark.asyncio
