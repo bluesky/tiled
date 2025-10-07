@@ -156,7 +156,7 @@ async def test_OIDCAuthenticator_missing_code_parameter():
     
     # Create mock request without code parameter
     mock_request = Mock(spec=Request)
-    mock_request.query_params = {} #Empty, no code parameter - should raise KeyError
+    mock_request.query_params = {} #Empty, no code parameter
     mock_request.scope = {
         "type": "http",
         "scheme": "http", 
