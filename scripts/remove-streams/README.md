@@ -4,7 +4,7 @@ abolished in favor of placing the individual streams containers (e.g. 'primary')
 root node.
 
 The scripts identifies all nodes named 'streams' that are direct descendant of a node with `BlueskyRun` spec and
-that have children of `BlueskyEventStream` specs (or no children at all). The children of the 'streams' node are 
+that have children of `BlueskyEventStream` specs (or no children at all). The children of the 'streams' node are
 moved in the hierarchy one level up and the emptied 'streams' node are deleted.
 
 One can test the script as follows.

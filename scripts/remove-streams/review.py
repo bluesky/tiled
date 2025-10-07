@@ -1,12 +1,14 @@
-from tiled.server.app import build_app
-from tiled.catalog import from_uri
-from tiled.client import Context, from_context
 import logging
 import sys
+
+import bluesky.plans as bp
 from bluesky import RunEngine
 from bluesky.callbacks.tiled_writer import TiledWriter
-import bluesky.plans as bp
 from ophyd.sim import hw
+
+from tiled.catalog import from_uri
+from tiled.client import Context, from_context
+from tiled.server.app import build_app
 
 # Create and setup a logger
 logger = logging.getLogger()
@@ -16,10 +18,13 @@ logger.addHandler(handler)
 
 catalog_dst = from_uri(
     "postgresql://postgres:secret@localhost:5432/catalog",
-    writable_storage={"filesystem": "file://localhost/tmp/tiled-catalog-data",
-                      "sql": "postgresql://postgres:secret@localhost:5432/storage"}
+    writable_storage={
+        "filesystem": "file://localhost/tmp/tiled-catalog-data",
+        "sql": "postgresql://postgres:secret@localhost:5432/storage",
+    },
 )
 app = build_app(catalog_dst)
+
 
 def recursve_read(client):
     for name, child in client.items():
@@ -30,6 +35,7 @@ def recursve_read(client):
             result = child.read()
             logger.info(f">            {result}")
 
+
 with Context.from_app(app) as context:
     client = from_context(context)
     recursve_read(client)
@@ -38,7 +44,7 @@ with Context.from_app(app) as context:
     RE = RunEngine()
     tw = TiledWriter(client["runs"])
     RE.subscribe(tw)
-    uid, = RE(bp.count([hw(save_path="/tmp/tiled-catalog-data").img], 3))
+    (uid,) = RE(bp.count([hw(save_path="/tmp/tiled-catalog-data").img], 3))
 
 context = Context.from_app(app)
 client = from_context(context)
