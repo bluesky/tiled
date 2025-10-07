@@ -15,17 +15,7 @@ import threading
 import warnings
 from collections import namedtuple
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Iterator,
-    Optional,
-    TextIO,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Generic, Iterator, Optional, Tuple, TypeVar, Union
 from urllib.parse import urlparse, urlunparse
 
 import anyio
@@ -470,8 +460,20 @@ def import_object(colon_separated_string, accept_live_object=True):
     for attr in obj_path.split("."):
         if not attr.isidentifier():
             raise ValueError(MESSAGE)
-    module = importlib.import_module(import_path)
-    return operator.attrgetter(obj_path)(module)
+    try:
+        module = importlib.import_module(import_path)
+    except ModuleNotFoundError:
+        raise ValueError(
+            f"Could not parse {colon_separated_string!r}: "
+            f"No module {import_path!r} could be found"
+        )
+    try:
+        return operator.attrgetter(obj_path)(module)
+    except AttributeError:
+        raise ValueError(
+            f"Could not parse {colon_separated_string!r}: "
+            f"No object {obj_path!r} found in module {module!r}"
+        )
 
 
 def modules_available(*module_names):
@@ -484,7 +486,7 @@ def modules_available(*module_names):
     return False
 
 
-def parse(file: TextIO) -> dict[Any, Any]:
+def parse(file: Path) -> dict[Any, Any]:
     """
     Given a config file, parse it.
 
@@ -492,8 +494,9 @@ def parse(file: TextIO) -> dict[Any, Any]:
     """
     import yaml
 
-    content = yaml.safe_load(file.read())
-    return expand_environment_variables(content)
+    with open(file) as src:
+        content = yaml.safe_load(src.read())
+        return expand_environment_variables(content)
 
 
 def expand_environment_variables(config: T) -> T:

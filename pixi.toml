@@ -3,7 +3,7 @@ authors = ["Dan Allan <dallan@bnl.gov>"]
 channels = ["conda-forge"]
 name = "tiled"
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
-version = "0.1.0b39"
+version = "0.1.6"
 
 [tasks]
 
@@ -89,7 +89,7 @@ asyncpg = "*"
 cachetools = "*"
 canonicaljson = "*"
 dask = "*"
-duckdb = "*"
+duckdb = "<1.4.0"  # https://github.com/bluesky/tiled/issues/1144
 fastapi = ">=0.115.8"
 jinja2 = "*"
 jmespath = "*"

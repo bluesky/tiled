@@ -5,7 +5,19 @@ if sys.version_info < (3, 10):
 else:
     from types import EllipsisType
 
-from typing import Any, List, Mapping, Sequence, Set, Union
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Coroutine,
+    Dict,
+    List,
+    Set,
+    TypedDict,
+    Union,
+)
+
+from .utils import import_object
 
 JSON_ITEM = Union[
     str, int, float, Mapping[str, "JSON_ITEM"], Sequence["JSON_ITEM"], None
@@ -16,10 +28,28 @@ Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
 
+AppTask = Callable[[], Coroutine[None, None, Any]]
+"""Async function to be run as part of the app's lifecycle"""
+
+
+class TaskMap(TypedDict):
+    background: list[AppTask]
+    startup: list[AppTask]
+    shutdown: list[AppTask]
+
+
+EntryPointString = Annotated[
+    str,
+    AfterValidator(import_object),
+]
+
+
 __all__ = [
+    "AppTask",
     "EllipsisType",
     "JSON",
     "Scopes",
     "Query",
     "Filters",
+    "TaskMap",
 ]

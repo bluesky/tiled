@@ -1,12 +1,13 @@
-from unittest.mock import Mock
+from pathlib import Path
 
 import pytest
-import yaml
+from fastapi import APIRouter
+from pydantic import ValidationError
 
 from ..adapters.array import ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..client import Context, from_context
-from ..config import parse_configs
+from ..config import Config, parse_configs
 from ..server.app import build_app_from_config
 
 tree = MapAdapter({"example": ArrayAdapter.from_array([1, 2, 3])})
@@ -104,6 +105,8 @@ def test_many_nested():
 
 
 def test_extra_files(tmpdir):
+    import yaml
+
     config = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
     with open(tmpdir / "config.yml", "w") as config_file:
         yaml.dump(config, config_file)
@@ -112,14 +115,144 @@ def test_extra_files(tmpdir):
     parse_configs(str(tmpdir))
 
 
-@pytest.mark.parametrize(
-    "exists,error", [(True, "not a file or directory"), (False, "doesn't exist")]
-)
-def test_invalid_config_file_path(exists: bool, error: str):
-    invalid = Mock()
-    invalid.is_file.return_value = False
-    invalid.is_dir.return_value = False
-    invalid.exists.return_value = exists
+def test_multi_file_trees(tmpdir):
+    "Test that 'trees' can be specified across more than one file, merged."
+    import yaml
 
-    with pytest.raises(ValueError, match=error):
-        parse_configs(invalid)
+    conf1 = {"trees": [{"path": "/a", "tree": "tiled.examples.generated_minimal:tree"}]}
+    conf2 = {"trees": [{"path": "/b", "tree": "tiled.examples.generated_minimal:tree"}]}
+    with open(tmpdir / "conf1.yml", "w") as c1:
+        yaml.dump(conf1, c1)
+    with open(tmpdir / "conf2.yml", "w") as c2:
+        yaml.dump(conf2, c2)
+    config = parse_configs(tmpdir)
+    assert len(config.trees) == 2
+
+
+def test_multi_file_conflict(tmpdir):
+    "Test that media_types can only be specified in a single config file."
+    import yaml
+
+    conf1 = {
+        "media_types": {},
+        "trees": [{"path": "/a", "tree": "tiled.examples.generated_minimal:tree"}],
+    }
+    conf2 = {
+        "media_types": {},
+        "trees": [{"path": "/b", "tree": "tiled.examples.generated_minimal:tree"}],
+    }
+    with open(tmpdir / "conf1.yml", "w") as c1:
+        yaml.dump(conf1, c1)
+    with open(tmpdir / "conf2.yml", "w") as c2:
+        yaml.dump(conf2, c2)
+    with pytest.raises(ValueError, match="Duplicate configuration for {'media_types'}"):
+        parse_configs(tmpdir)
+
+
+@pytest.mark.parametrize(
+    "path,error",
+    [
+        ("", ValidationError),  # Assumes no config files in root of tmpdir -> no trees
+        ("non-existent-file", FileNotFoundError),
+    ],
+)
+def test_invalid_config_file_path(tmpdir: Path, path: str, error: type[Exception]):
+    with pytest.raises(error):
+        parse_configs(tmpdir / path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "example_configs/toy_authentication.yml",
+        "example_configs/google_auth.yml",
+        "example_configs/multiple_providers.yml",
+        "example_configs/orcid_auth.yml",
+        "example_configs/saml.yml",
+        "example_configs/single_catalog_single_user.yml",
+        "example_configs/small_single_user_demo.yml",
+    ],
+)
+def test_example_configs(path):
+    parse_configs(path)
+
+
+def test_pydantic_config():
+    Config.model_validate({"trees": []})
+
+
+def test_duplicate_auth_providers():
+    with pytest.raises(ValidationError, match="provider names must be unique"):
+        Config.model_validate(
+            {
+                "authentication": {
+                    "providers": [
+                        {
+                            "provider": "one",
+                            "authenticator": "tiled.authenticators:DummyAuthenticator",
+                        },
+                        {
+                            "provider": "one",
+                            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+                        },
+                    ]
+                }
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "paths", [("/", "/one"), ("/one/", "/one/two"), ("one/two", "one"), ("one", "one")]
+)
+def test_overlapping_trees(paths: tuple[str, ...]):
+    with pytest.raises(ValidationError, match="cannot be subpaths of each other"):
+        Config.model_validate(
+            {"trees": [{"tree": "catalog", "path": path} for path in paths]}
+        )
+
+
+def test_empty_api_key():
+    with pytest.raises(
+        ValidationError, match=r"should match pattern '\[a-zA-Z0-9\]\+'"
+    ):
+        Config.model_validate({"authentication": {"single_user_api_key": ""}})
+
+
+class Dummy:
+    "Referenced below in test_tree_given_as_method"
+
+    def constructor():
+        return tree
+
+
+def test_tree_given_as_method():
+    config = {
+        "trees": [
+            {
+                "tree": f"{__name__}:Dummy.constructor",
+                "path": "/",
+            },
+        ]
+    }
+    Config.model_validate(config)
+
+
+tree.include_routers = [APIRouter()]
+
+
+def test_include_routers():
+    config = {
+        "trees": [
+            {
+                "tree": f"{__name__}:tree",
+                "path": "/a",
+            },
+            {
+                "tree": f"{__name__}:tree",
+                "path": "/b",
+            },
+        ]
+    }
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        from_context(context)

@@ -10,6 +10,8 @@ RUN set -ex && npm install && npm run build
 # This stage doubles as setting up for the build and as the devcontainer
 FROM docker.io/python:${PYTHON_VERSION} AS developer
 ARG PYTHON_VERSION=3.12
+ARG TILED_VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${TILED_VERSION}
 
 # Ensure apt-get doesn't open a menu on you.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -50,16 +52,18 @@ WORKDIR /workspaces/tiled
 # Synchronize DEPENDENCIES without the application itself.
 # This layer is cached until the build changes: changes to the
 # application will run require rerunning this step.
-COPY pyproject.toml hatch_build.py README.md .
+RUN mkdir src
+COPY pyproject.toml hatch_build.py README.md src
 RUN set -ex && \
     uv sync \
+        --project src \
         --extra server \
         --no-dev \
         --no-install-project
 
 # Now install the rest from `./src`: The APPLICATION w/o dependencies.
 # `./src` will NOT be copied into the runtime container.
-COPY . src
+COPY tiled src/tiled
 
 ##########################################################################
 
@@ -108,7 +112,11 @@ ENV TILED_CONFIG=/deploy/config
 # Copy the pre-built `/app` directory to the runtime container
 # and change the ownership to user app and group app in one step.
 COPY --from=app_build --chown=app:app /app /app
-COPY --from=web_frontend_build --chown=app:app /src/dist /src/share/tiled/ui
+COPY --from=web_frontend_build --chown=app:app /src/dist /app/share/tiled/ui
+COPY share/tiled/static /app/share/tiled/static
+COPY share/tiled/templates /app/share/tiled/templates
+# See tiled.utils.SHARE_TILED_PATH
+RUN touch /app/share/tiled/.identifying_file_72628d5f953b4229b58c9f1f8f6a9a09
 
 USER app
 WORKDIR /app

@@ -4,6 +4,108 @@ Write the date in place of the "Unreleased" in the case a new version is release
 # Changelog
 
 
+## Unreleased
+
+### Fixed
+
+- Column names in `TableStructure` are explicitly converted to strings.
+
+
+## v0.1.6 (2025-09-29)
+
+### Fixed
+
+- Resolved circular dependency in `tiled.storage`.
+
+
+## v0.1.5 (2025-09-26)
+
+### Added
+
+- Monitoring of pool overflow and max-out events.
+
+### Fixed
+
+- Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to
+  the instantiated container when calling `CompositeClient.base`.
+- Fix AuthN database connection lifecycle management. Connections were being
+  held for the duration of the request cycle; now they are released immediately
+  after use.
+
+
+## v0.1.4 (2025-09-24)
+
+### Fixed
+
+- A regression in v0.1.1 broke the ability of adapters to add custom endpoints
+  on the server, which is used by legacy databroker to add a `/documents`
+  endpoint.
+
+
+## v0.1.3 (2025-09-24)
+
+### Added
+
+- Monitoring of the number of connections in the database pools.
+
+### Changed
+
+- Implemented a process-global connection pool for catalog databases, similarly
+  to the connections to authN database.
+
+### Fixed
+
+- A regression in v0.1.1 disallowed specifying `allow_origins`, `specs`, and `trees`
+  across multiple files. (This can be useful for config.d-style configuration
+  where different config files are managed by different stages of configuration
+  management.)
+- A regression in v0.1.1 disallowed specifying
+  `tree: databroker.mongo_normalized:MongoAdapter.from_uri` or in fact
+  specifying any method (e.g. classmethod constructor) as a tree.
+
+
+## v0.1.2 (2025-09-17)
+
+This release temporarily pins backs the version of the depedency DuckDB to
+avoid breakage (seemingly unintended) to documented behavior.
+
+
+## v0.1.1 (2025-09-10)
+
+### Fixed
+
+- In the Tiled container image, the React UI was misplaced and thus
+  did not function.
+- The Tiled container image was missing some client-side dependencies needed to
+  run the `tiled serve directory ...` command.
+
+### Changed
+
+- Internally, pydantic is used to parse configuration.
+
+
+## v0.1.0 (2025-09-04)
+
+
+### Added
+
+- Convenience method `subscribe` on client `Container` and `ArrayClient`
+  returns an experimental `Subscription`. See the new Streaming tutorial
+  for usage.
+
+### Changed
+
+- Client method for writing tabular data into external files, `write_dataframe`,
+  is deprecated and renamed `write_table`.
+- The order of arguments in the `write_partition` and `append_partition` methods.
+- The experiment `Subscription` object now takes where to start as an argument
+  to `Subscription.start` instead of at initialization time.
+
+### Fixed
+
+- Handling for certain catalog edge cases when building the nodes_closure table.
+- Enforce validity checks when adding appendable tables to "composite"-spec'ed containers.
+
 ## v0.1.0-b39 (2025-08-28)
 
 ### Fixed

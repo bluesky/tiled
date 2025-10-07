@@ -120,34 +120,34 @@ class CSVAdapter(Adapter[TableStructure]):
         return data_source
 
     def append_partition(
-        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
+        self, partition: int, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]
     ) -> None:
         """Append data to an existing partition
 
         Parameters
         ----------
-        data : dask.dataframe.DataFrame or pandas.DataFrame
-            data to be appended
         partition : int
             index of the partition to be appended to
-
+        data : dask.dataframe.DataFrame or pandas.DataFrame
+            data to be appended
         """
+
         uri = self._file_paths[partition]
         data.to_csv(uri, index=False, mode="a", header=False)
 
     def write_partition(
-        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
+        self, partition: int, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]
     ) -> None:
         """Write data to a new partition or overwrite an existing one
 
         Parameters
         ----------
-        data : dask.dataframe.DataFrame or pandas.DataFrame
-            data to be appended
         partition : int
             index of the partition to be appended to
-
+        data : dask.dataframe.DataFrame or pandas.DataFrame
+            data to be appended
         """
+
         uri = self._file_paths[partition]
         data.to_csv(uri, index=False)
 
@@ -158,8 +158,8 @@ class CSVAdapter(Adapter[TableStructure]):
         ----------
         data : dask.dataframe.DataFrame or pandas.DataFrame
             data to be written
-
         """
+
         if self.structure().npartitions != 1:
             raise NotImplementedError
         uri = self._file_paths[0]

@@ -109,17 +109,16 @@ class ParquetDatasetAdapter(Adapter[TableStructure]):
         return data_source
 
     def write_partition(
-        self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame], partition: int
+        self, partition: int, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]
     ) -> None:
-        """
+        """Write data to a specific partition
 
         Parameters
         ----------
-        data :
-        partition :
-
-        Returns
-        -------
+        partition : int
+            index of the partition to be written to
+        data : dask.dataframe.DataFrame or pandas.DataFrame
+            data to be written
 
         """
         uri = self._partition_paths[partition]
