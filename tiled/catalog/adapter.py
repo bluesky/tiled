@@ -1100,7 +1100,7 @@ class CatalogNodeAdapter:
             # Upon successful update, inform websocket subscribers through redis
             if self.context.cache_client:
                 sequence = await self.context.cache_client.incr(
-                    f"sequence:{self.node.id}"
+                    f"sequence:{self.node.parent}"
                 )
                 metadata = {
                     "sequence": sequence,
@@ -1111,16 +1111,16 @@ class CatalogNodeAdapter:
                 }
                 pipeline = self.context.cache_client.pipeline()
                 pipeline.hset(
-                    f"data:{self.node.id}:{sequence}",
+                    f"data:{self.node.parent}:{sequence}",
                     mapping={
                         "sequence": sequence,
                         "metadata": safe_json_dump(metadata),
                     },
                 )
                 pipeline.expire(
-                    f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
+                    f"data:{self.node.parent}:{sequence}", self.context.cache_data_ttl
                 )
-                pipeline.publish(f"notify:{self.node.id}", sequence)
+                pipeline.publish(f"notify:{self.node.parent}", sequence)
                 await pipeline.execute()
 
     async def close_stream(self):
