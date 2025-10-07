@@ -1,5 +1,7 @@
 import sys
 
+from pydantic import AfterValidator
+
 if sys.version_info < (3, 10):
     EllipsisType = type(Ellipsis)
 else:
@@ -10,8 +12,9 @@ from typing import (
     Any,
     Callable,
     Coroutine,
-    Dict,
     List,
+    Mapping,
+    Sequence,
     Set,
     TypedDict,
     Union,
