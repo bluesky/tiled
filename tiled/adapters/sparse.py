@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import dask.dataframe
 import numpy
@@ -6,19 +6,22 @@ import pandas
 import sparse
 from numpy._typing import NDArray
 
+from tiled.adapters.core import Adapter
+
 from ..ndslice import NDSlice
-from ..storage import Storage
 from ..structures.array import BuiltinDtype
 from ..structures.core import Spec, StructureFamily
-from ..structures.sparse import COOStructure
+from ..structures.sparse import COOStructure, SparseStructure
 from ..type_aliases import JSON
 from .array import slice_and_shape_from_block_and_chunks
 
 
-class COOAdapter:
+class SparseAdapter(Adapter[SparseStructure]):
+    structure_family: StructureFamily = StructureFamily.sparse
+
+
+class COOAdapter(SparseAdapter):
     "Wrap sparse Coordinate List (COO) arrays."
-    structure_family = StructureFamily.sparse
-    supported_storage: Set[type[Storage]] = set()
 
     @classmethod
     def from_arrays(
@@ -27,6 +30,7 @@ class COOAdapter:
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         shape: Tuple[int, ...],
         dims: Optional[Tuple[str, ...]] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "COOAdapter":
@@ -159,27 +163,7 @@ class COOAdapter:
         specs :
         """
         self.blocks = blocks
-        self._metadata = metadata or {}
-        self._structure = structure
-        self.specs = specs or []
-
-    def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._metadata
-
-    def structure(self) -> COOStructure:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._structure
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     def read_block(
         self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)

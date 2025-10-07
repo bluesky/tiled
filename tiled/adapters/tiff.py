@@ -1,12 +1,13 @@
 import builtins
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import tifffile
 from numpy._typing import NDArray
 
+from tiled.adapters.core import Adapter
+
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
-from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -17,7 +18,7 @@ from .sequence import FileSequenceAdapter
 from .utils import init_adapter_from_catalog
 
 
-class TiffAdapter:
+class TiffAdapter(Adapter[ArrayStructure]):
     """
     Read a TIFF file.
 
@@ -27,14 +28,13 @@ class TiffAdapter:
     >>> TiffAdapter("path/to/file.tiff")
     """
 
-    structure_family = StructureFamily.array
-    supported_storage: Set[type[Storage]] = set()
+    structure_family: StructureFamily = StructureFamily.array
 
     def __init__(
         self,
         data_uri: str,
-        *,
         structure: Optional[ArrayStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -50,8 +50,6 @@ class TiffAdapter:
         filepath = path_from_uri(data_uri)
         cache_key = (tifffile.TiffFile, filepath)
         self._file = with_resource_cache(cache_key, tifffile.TiffFile, filepath)
-        self.specs = specs or []
-        self._provided_metadata = metadata or {}
         if structure is None:
             if self._file.is_shaped:
                 from_file: Tuple[Dict[str, Any], ...] = cast(
@@ -66,7 +64,7 @@ class TiffAdapter:
                 chunks=tuple((dim,) for dim in shape),
                 data_type=BuiltinDtype.from_numpy_dtype(self._file.series[0].dtype),
             )
-        self._structure = structure
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_catalog(
@@ -76,23 +74,17 @@ class TiffAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "TiffAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(cls, data_uri: str, **kwargs: Optional[Any]) -> "TiffAdapter":
         return cls(data_uri)
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         # This contains some enums, but Python's built-in JSON serializer
         # handles them fine (converting  to str or int as appropriate).
         d = {tag.name: tag.value for tag in self._file.pages[0].tags.values()}
-        d.update(self._provided_metadata)
+        d.update(self._metadata)
         return d
 
     def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
@@ -115,9 +107,6 @@ class TiffAdapter:
         if slice is not None:
             arr = arr[slice]
         return arr
-
-    def structure(self) -> ArrayStructure:
-        return self._structure
 
 
 class TiffSequenceAdapter(FileSequenceAdapter):
