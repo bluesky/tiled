@@ -650,7 +650,7 @@ class CatalogNodeAdapter:
                     # assume it supports file-based storage only.
                     supported_storage = getattr(
                         adapter_cls, "supported_storage", {FileStorage}
-                    )
+                    )()
                     for storage in self.context.writable_storage:
                         if isinstance(storage, tuple(supported_storage)):
                             break

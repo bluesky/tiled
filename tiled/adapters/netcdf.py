@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Any, Optional, Set, Union
+from typing import Any, List, Optional, Union
 
 import xarray
 
+from tiled.adapters.table import TableAdapter
+
 from ..catalog.orm import Node
-from ..storage import Storage
 from ..structures.data_source import DataSource
 from ..utils import path_from_uri
 from .xarray import DatasetAdapter
@@ -25,9 +26,7 @@ def read_netcdf(filepath: Union[str, Path]) -> DatasetAdapter:
     return DatasetAdapter.from_dataset(ds)
 
 
-class NetCDFAdapter:
-    supported_storage: Set[type[Storage]] = set()
-
+class NetCDFAdapter(TableAdapter):
     @classmethod
     def from_catalog(
         cls,
