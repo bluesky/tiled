@@ -29,7 +29,8 @@ def tiled_websocket_context(tmpdir, redis_uri):
         init_if_not_exists=True,
         cache_settings={
             "uri": redis_uri,
-            "ttl": 60,
+            "data_ttl": 60,
+            "seq_ttl": 60,
             "socket_timeout": 10.0,
             "socket_connect_timeout": 10.0,
         },

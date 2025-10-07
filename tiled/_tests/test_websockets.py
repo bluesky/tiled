@@ -313,13 +313,13 @@ trees:
  - path: /
    tree: catalog
    args:
-     uri: sqlite:///:memory:
+     uri: "sqlite:///:memory:"
      writable_storage:
-        - file://localhost{str(tmp_path / 'data')}
-        - duckdb:///{tmp_path / 'data.duckdb'}
+        - "file://localhost{str(tmp_path / 'data')}"
+        - "duckdb:///{tmp_path / 'data.duckdb'}"
      init_if_not_exists: true
 streaming_cache:
-  uri: {redis_uri}
+  uri: "{redis_uri}"
   data_ttl: 50
   seq_ttl: 60
   socket_timeout: 11
