@@ -31,6 +31,8 @@ JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
 Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
+AccessBlob = Dict[str, Any]
+AccessTags = Set[str]
 
 AnyStructure = Union[TableStructure, ArrayStructure, SparseStructure, AwkwardStructure]
 
