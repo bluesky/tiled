@@ -1,14 +1,14 @@
 import contextlib
 import time
 from collections.abc import Generator
-from typing import Any, Literal, Mapping, Optional, Sequence
+from typing import Any, Literal, Mapping, Optional, Sequence, Set
 
 from fastapi import Request, WebSocket
 from starlette.types import Scope
 
 from ..access_control.access_policies import NO_ACCESS
+from ..access_control.protocols import AccessPolicy
 from ..adapters.mapping import MapAdapter
-from ..adapters.protocols import AccessPolicy
 from ..server.schemas import Principal
 from ..type_aliases import Scopes
 
@@ -89,7 +89,7 @@ async def filter_for_access(
     entry,
     access_policy: Optional[AccessPolicy],
     principal: Principal,
-    authn_access_tags,
+    authn_access_tags: Optional[Set[str]],
     authn_scopes: Scopes,
     scopes: Sequence[str],
     metrics: dict[str, Any],

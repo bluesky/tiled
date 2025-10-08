@@ -30,6 +30,8 @@ JSON = Mapping[str, JSON_ITEM]
 Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
+AccessBlob = Dict[str, Any]
+AccessTags = Set[str]
 
 AppTask = Callable[[], Coroutine[None, None, Any]]
 """Async function to be run as part of the app's lifecycle"""
