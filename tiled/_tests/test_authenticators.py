@@ -2,9 +2,10 @@ import asyncio
 import os
 
 import pytest
+import respx
+import httpx
 from ..authenticators import LDAPAuthenticator, OIDCAuthenticator
-from unittest.mock import AsyncMock, Mock, patch
-from starlette.requests import Request
+from starlette.datastructures import QueryParams, URL
 
 
 # Set this if there is an LDAP container running for testing.
@@ -52,14 +53,31 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
 
     asyncio.run(testing())
 
-#add test for the authenticator for oidc
-
-
+def create_mock_OIDC_request(query_params=None):
+    """Helper function to create a realistic request object for testing."""
+    if query_params is None:
+        query_params = {}
+    
+    class MockRequest:
+        def __init__(self, query_params):
+            self.query_params = QueryParams(query_params)
+            self.scope = {
+                "type": "http",
+                "scheme": "http",
+                "server": ("localhost", 8000),
+                "path": "/api/v1/auth/provider/orcid/code",
+                "headers": []
+            }
+            self.headers = {"host": "localhost:8000"}
+            self.url = URL("http://localhost:8000/api/v1/auth/provider/orcid/code")
+    
+    return MockRequest(query_params)
 
 @pytest.mark.asyncio
-async def test_OIDCAuthenticator_mock():
+@respx.mock
+async def test_OIDCAuthenticator_mock(monkeypatch):
     """
-    Test OIDCAuthenticator with mocked external dependencies.
+    Test OIDCAuthenticator with mocked external dependencies using respx.
     """
     # Mock the well-known configuration
     mock_well_known = {
@@ -79,6 +97,25 @@ async def test_OIDCAuthenticator_mock():
         "given_name": "Test User"
     }
     
+    # Mock the well-known configuration endpoint
+    respx.get("https://orcid.org/.well-known/openid-configuration").mock(
+        return_value=httpx.Response(200, json=mock_well_known)
+    )
+    
+    # Mock the JWKS endpoint
+    respx.get("https://orcid.org/oauth/jwks").mock(
+        return_value=httpx.Response(200, json={"keys": [{"kid": "test", "kty": "RSA"}]})
+    )
+    
+    # Mock the token exchange endpoint
+    respx.post("https://orcid.org/oauth/token").mock(
+        return_value=httpx.Response(200, json={
+            "access_token": "mock-access-token",
+            "id_token": "mock-id-token",
+            "token_type": "bearer"
+        })
+    )
+    
     authenticator = OIDCAuthenticator(
         audience="APP-TEST-CLIENT-ID",
         client_id="APP-TEST-CLIENT-ID",
@@ -86,60 +123,24 @@ async def test_OIDCAuthenticator_mock():
         well_known_uri="https://orcid.org/.well-known/openid-configuration"
     )
     
-    # Create a mock request with code parameter
-    mock_request = Mock(spec=Request)
-    mock_request.query_params = {"code": "test-auth-code"}
-    mock_request.scope = {
-        "type": "http",
-        "scheme": "http",
-        "server": ("localhost", 8000),
-        "path": "/api/v1/auth/provider/orcid/code",
-        "headers": []
-    }
-    mock_request.headers = {"host": "localhost:8000"}
-    mock_request.url = Mock()
-    mock_request.url.path = "/api/v1/auth/provider/orcid/code"
+    mock_request = create_mock_OIDC_request({"code": "test-auth-code"})
     
-    with patch('httpx.AsyncClient') as mock_client, \
-         patch('jose.jwt.decode') as mock_jwt_decode, \
-         patch('jose.jwk.construct') as mock_jwk_construct, \
-         patch('tiled.authenticators.exchange_code') as mock_exchange_code, \
-         patch('httpx.get') as mock_httpx_get:
-        
-        # Mock HTTP client responses
-        mock_async_client = AsyncMock()
-        mock_client.return_value.__aenter__.return_value = mock_async_client
-        
-        # Mock well-known config fetch
-        mock_well_known_response = Mock()
-        mock_well_known_response.json.return_value = mock_well_known
-        mock_async_client.get.return_value = mock_well_known_response
-        
-        # Mock token exchange
-        mock_token_response = Mock()
-        mock_token_response.is_error = False
-        mock_token_response.json.return_value = {
-            "access_token": "mock-access-token",
-            "id_token": "mock-id-token",
-            "token_type": "bearer"
-        }
-        mock_exchange_code.return_value = mock_token_response
-        
-        # Mock JWKS fetch
-        mock_jwks_response = Mock()
-        mock_jwks_response.raise_for_status.return_value = mock_jwks_response
-        mock_jwks_response.json.return_value = {"keys": [{"kid": "test", "kty": "RSA"}]}
-        mock_httpx_get.return_value = mock_jwks_response
-        
-        # Mock JWT verification
-        mock_jwt_decode.return_value = mock_jwt_payload
-        mock_jwk_construct.return_value = Mock()
-        
-        # Test authentication
-        user_session = await authenticator.authenticate(mock_request)
-        
-        assert user_session is not None
-        assert user_session.user_name == "0009-0008-8698-7745"
+    def mock_jwt_decode(*args, **kwargs):
+        return mock_jwt_payload
+    
+    def mock_jwk_construct(*args, **kwargs):
+        class MockJWK:
+            pass
+        return MockJWK()
+    
+    monkeypatch.setattr("jose.jwt.decode", mock_jwt_decode)
+    monkeypatch.setattr("jose.jwk.construct", mock_jwk_construct)
+    
+    # Test authentication
+    user_session = await authenticator.authenticate(mock_request)
+    
+    assert user_session is not None
+    assert user_session.user_name == "0009-0008-8698-7745"
 
 
 @pytest.mark.asyncio 
@@ -154,29 +155,37 @@ async def test_OIDCAuthenticator_missing_code_parameter():
         well_known_uri="https://orcid.org/.well-known/openid-configuration"
     )
     
-    # Create mock request without code parameter
-    mock_request = Mock(spec=Request)
-    mock_request.query_params = {} #Empty, no code parameter
-    mock_request.scope = {
-        "type": "http",
-        "scheme": "http", 
-        "server": ("localhost", 8000),
-        "path": "/api/v1/auth/provider/orcid/code",
-        "headers": []
-    }
-    mock_request.headers = {"host": "localhost:8000"}
-    mock_request.url = Mock()
-    mock_request.url.path = "/api/v1/auth/provider/orcid/code"
+    mock_request = create_mock_OIDC_request({})  # Empty, no code parameter
     
     result = await authenticator.authenticate(mock_request)
     assert result is None
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_OIDCAuthenticator_token_exchange_failure():
     """
-    Test OIDCAuthenticator when token exchange fails.
+    Test OIDCAuthenticator when token exchange fails using respx.
     """
+    # Mock the well-known configuration
+    mock_well_known = {
+        "token_endpoint": "https://orcid.org/oauth/token",
+        "jwks_uri": "https://orcid.org/oauth/jwks"
+    }
+    
+    # Mock the well-known configuration endpoint
+    respx.get("https://orcid.org/.well-known/openid-configuration").mock(
+        return_value=httpx.Response(200, json=mock_well_known)
+    )
+    
+    # Mock the token exchange endpoint to return an error
+    respx.post("https://orcid.org/oauth/token").mock(
+        return_value=httpx.Response(400, json={
+            'error': 'invalid_client', 
+            'error_description': 'Client not found: APP-TEST-CLIENT-ID'
+        })
+    )
+    
     authenticator = OIDCAuthenticator(
         audience="APP-TEST-CLIENT-ID",
         client_id="APP-TEST-CLIENT-ID",
@@ -184,41 +193,8 @@ async def test_OIDCAuthenticator_token_exchange_failure():
         well_known_uri="https://orcid.org/.well-known/openid-configuration"
     )
     
-    mock_request = Mock(spec=Request)
-    mock_request.query_params = {"code": "invalid-code"}
-    mock_request.scope = {
-        "type": "http",
-        "scheme": "http",
-        "server": ("localhost", 8000), 
-        "path": "/api/v1/auth/provider/orcid/code",
-        "headers": []
-    }
-    mock_request.headers = {"host": "localhost:8000"}
-    mock_request.url = Mock()
-    mock_request.url.path = "/api/v1/auth/provider/orcid/code"
+    mock_request = create_mock_OIDC_request({"code": "invalid-code"})
     
-    with patch('httpx.AsyncClient') as mock_client, \
-         patch('tiled.authenticators.exchange_code') as mock_exchange_code:
-        mock_async_client = AsyncMock()
-        mock_client.return_value.__aenter__.return_value = mock_async_client
-        
-        # Mock well-known config
-        mock_well_known_response = Mock()
-        mock_well_known_response.json.return_value = {
-            "token_endpoint": "https://orcid.org/oauth/token",
-            "jwks_uri": "https://orcid.org/oauth/jwks"
-        }
-        mock_async_client.get.return_value = mock_well_known_response
-        
-        # Mock failed token exchange - set is_error to True
-        mock_token_response = Mock()
-        mock_token_response.is_error = True
-        mock_token_response.json.return_value = {
-            'error': 'invalid_client', 
-            'error_description': 'Client not found: APP-TEST-CLIENT-ID'
-        }
-        mock_exchange_code.return_value = mock_token_response
-        
-        # This should return None, not raise an exception
-        result = await authenticator.authenticate(mock_request)
-        assert result is None
+    # This should return None, not raise an exception
+    result = await authenticator.authenticate(mock_request)
+    assert result is None
