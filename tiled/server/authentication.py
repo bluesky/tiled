@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Callable, Optional, Sequence, Set
 
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -28,6 +29,7 @@ from fastapi.security.api_key import APIKeyCookie, APIKeyHeader, APIKeyQuery
 from fastapi.security.utils import get_authorization_scheme_param
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import IntegrityError
+from starlette.datastructures import URL
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -714,17 +716,17 @@ def add_external_routes(
             )
             tokens = await create_tokens_from_session(settings, db, session, provider)
             if authenticator.redirect_on_success:
-                redirect_url = (
-                    f"{authenticator.redirect_on_success}"
-                    f"?access_token={tokens['access_token']}"
-                    f"&refresh_token={tokens['refresh_token']}"
-                    f"&identity.id={tokens['identity']['id']}"
-                    f"&identity.provider={tokens['identity']['provider']}"
-                    f"&principal={tokens['principal']}"
-                )
+                params = {
+                    "access_token": tokens['access_token'],
+                    "refresh_token": tokens['refresh_token'],
+                    "identity.id": tokens['identity']['id'],
+                    "identity.provider": tokens['identity']['provider'],
+                    "principal": tokens['principal'],
+                }
                 if 'state' in request.query_params:
-                    redirect_url += f"&state={request.query_params['state']}"
-                return RedirectResponse(status_code=302, url=redirect_url)
+                    params["state"] = request.query_params['state']
+                redirect_url = URL(authenticator.redirect_on_success).include_query_params(**params)
+                return RedirectResponse(status_code=302, url=str(redirect_url))
             else:
                 return tokens
 
