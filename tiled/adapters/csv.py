@@ -316,7 +316,7 @@ class CSVArrayAdapter(ArrayAdapter):
         nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
         _kwargs = {"dtype": dtype_numpy, "header": None}
         _kwargs.update(kwargs)
-        ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
+        ddf = dask.dataframe.read_csv(file_paths, **_kwargs).rename(columns=str)
         chunks_0: tuple[int, ...] = structure.chunks[
             0
         ]  # chunking along the rows dimension (when not stackable)
