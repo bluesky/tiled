@@ -365,7 +365,7 @@ class CSVArrayAdapter(ArrayAdapter):
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
         array = dask.dataframe.read_csv(
-            file_paths, header=None, **kwargs
+            file_paths, **{"header": None, **kwargs}
         ).to_dask_array()
         structure = ArrayStructure.from_array(array)
 
