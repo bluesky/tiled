@@ -51,7 +51,6 @@ class CSVAdapter(Adapter[TableStructure]):
         if structure is None:
             ddf = dask.dataframe.read_csv(self._file_paths, **self._read_csv_kwargs)
             structure = TableStructure.from_dask_dataframe(ddf)
-            structure.npartitions = ddf.npartitions
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
