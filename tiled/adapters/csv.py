@@ -49,11 +49,9 @@ class CSVAdapter(Adapter[TableStructure]):
         self._file_paths = [path_from_uri(uri) for uri in data_uris]
         self._read_csv_kwargs = kwargs
         if structure is None:
-            table = dask.dataframe.read_csv(
-                self._file_paths[0], **self._read_csv_kwargs
-            )
-            structure = TableStructure.from_dask_dataframe(table)
-            structure.npartitions = len(self._file_paths)
+            ddf = dask.dataframe.read_csv(self._file_paths, **self._read_csv_kwargs)
+            structure = TableStructure.from_dask_dataframe(ddf)
+            structure.npartitions = ddf.npartitions
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
