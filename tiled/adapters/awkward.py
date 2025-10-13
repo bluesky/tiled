@@ -4,21 +4,22 @@ import awkward
 import awkward.forms
 from numpy.typing import NDArray
 
-from ..storage import FileStorage
+from tiled.adapters.core import Adapter
+
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
 from .awkward_directory_container import DirectoryContainer
 
 
-class AwkwardAdapter:
-    structure_family = StructureFamily.awkward
-    supported_storage = {FileStorage}
+class AwkwardAdapter(Adapter[AwkwardStructure]):
+    structure_family: StructureFamily = StructureFamily.awkward
 
     def __init__(
         self,
         container: DirectoryContainer,
         structure: AwkwardStructure,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -32,14 +33,13 @@ class AwkwardAdapter:
         specs :
         """
         self.container = container
-        self._metadata = metadata or {}
-        self._structure = structure
-        self.specs = list(specs or [])
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_array(
         cls,
         array: NDArray[Any],
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "AwkwardAdapter":
@@ -63,15 +63,6 @@ class AwkwardAdapter:
             metadata=metadata,
             specs=specs,
         )
-
-    def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._metadata
 
     def read_buffers(self, form_keys: Optional[List[str]] = None) -> Dict[str, bytes]:
         """
@@ -118,6 +109,3 @@ class AwkwardAdapter:
         """
         for form_key, value in container.items():
             self.container[form_key] = value
-
-    def structure(self) -> AwkwardStructure:
-        return self._structure

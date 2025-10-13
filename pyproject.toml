@@ -169,6 +169,7 @@ dev = [
     "sphinx-copybutton",
     "sphinx_rtd_theme",
     "sphinxcontrib-mermaid",
+    "types-cachetools",
 ]
 # These are used by the server to read files in the respective formats.
 formats = [
