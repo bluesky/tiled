@@ -244,8 +244,8 @@ def test_close_stream_success(tiled_websocket_context):
         headers={"Authorization": "Apikey secret"},
     )
 
-    # TODO: I think the test is correct and the server should be updated.
-    assert response.status_code == 404
+    # close_stream is idempotent, so closing again should also return 200
+    assert response.status_code == 200
 
 
 def test_close_stream_not_found(tiled_websocket_context):

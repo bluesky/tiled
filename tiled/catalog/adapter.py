@@ -1103,10 +1103,8 @@ class CatalogNodeAdapter:
         # ttl greater than 0 means that it is marked to expire.
         node_ttl = await self.context.cache_client.ttl(f"sequence:{self.node.id}")
         if node_ttl > 0:
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=f"Stream for node {self.node.id} is already closed.",
-            )
+            # Stream is already closed, return success (idempotent operation)
+            return
         if node_ttl == -2:
             raise HTTPException(
                 status_code=HTTP_404_NOT_FOUND,
