@@ -114,9 +114,11 @@ def test_oidc_authenticator_caching(
     assert keys_request.method == "GET"
     assert keys_request.url == well_known_response["jwks_uri"]
 
-    assert authenticator.keys() == json_web_keyset
-    assert len(mock_oidc_server.calls) == 3  # Getting keys is not cached
-    keys_request = mock_oidc_server.calls[2].request
+    for _ in range(10):
+        assert authenticator.keys() == json_web_keyset
+
+    assert len(mock_oidc_server.calls) == 2  # Getting keys is cached
+    keys_request = mock_oidc_server.calls[1].request
     assert keys_request.method == "GET"
     assert keys_request.url == well_known_response["jwks_uri"]
 

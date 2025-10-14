@@ -194,7 +194,7 @@ properties:
     def end_session_endpoint(self) -> str:
         return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
 
-    @cached(TTLCache(maxsize=1, ttl=timedelta(days=7).seconds))
+    @cached(TTLCache(maxsize=1, ttl=timedelta(days=7).total_seconds()))
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
