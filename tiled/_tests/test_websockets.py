@@ -6,6 +6,7 @@ import pytest
 
 from ..catalog import from_uri
 from ..client import Context, from_context
+from ..config import Authentication, parse_configs
 from ..server.app import build_app
 
 pytestmark = pytest.mark.skipif(
@@ -26,7 +27,8 @@ def tiled_websocket_context(tmpdir, redis_uri):
         init_if_not_exists=True,
         cache_settings={
             "uri": redis_uri,
-            "ttl": 60,
+            "data_ttl": 60,
+            "seq_ttl": 60,
             "socket_timeout": 10.0,
             "socket_connect_timeout": 10.0,
         },
@@ -34,7 +36,7 @@ def tiled_websocket_context(tmpdir, redis_uri):
 
     app = build_app(
         tree,
-        authentication={"single_user_api_key": "secret"},
+        authentication=Authentication(single_user_api_key="secret"),
     )
 
     with Context.from_app(app) as context:
@@ -242,8 +244,8 @@ def test_close_stream_success(tiled_websocket_context):
         headers={"Authorization": "Apikey secret"},
     )
 
-    # TODO: I think the test is correct and the server should be updated.
-    assert response.status_code == 404
+    # close_stream is idempotent, so closing again should also return 200
+    assert response.status_code == 200
 
 
 def test_close_stream_not_found(tiled_websocket_context):
@@ -299,3 +301,35 @@ def test_close_stream_wrong_api_key(tiled_websocket_context):
         headers={"Authorization": "Apikey wrong_key"},
     )
     assert response.status_code == 401
+
+
+def test_streaming_cache_config(tmp_path, redis_uri):
+    "Test streaming_cache config parsing"
+    config_path = tmp_path / "config.yml"
+    with open(config_path, "w") as file:
+        file.write(
+            f"""
+trees:
+ - path: /
+   tree: catalog
+   args:
+     uri: "sqlite:///:memory:"
+     writable_storage:
+        - "file://localhost{str(tmp_path / 'data')}"
+        - "duckdb:///{tmp_path / 'data.duckdb'}"
+     init_if_not_exists: true
+streaming_cache:
+  uri: "{redis_uri}"
+  data_ttl: 50
+  seq_ttl: 60
+  socket_timeout: 11
+  socket_connect_timeout: 12
+"""
+        )
+    # Test that the config is parsed correctly.
+    config = parse_configs(config_path)
+    assert config.streaming_cache.uri == redis_uri
+    assert config.streaming_cache.data_ttl == 50
+    assert config.streaming_cache.seq_ttl == 60
+    assert config.streaming_cache.socket_timeout == 11
+    assert config.streaming_cache.socket_connect_timeout == 12
