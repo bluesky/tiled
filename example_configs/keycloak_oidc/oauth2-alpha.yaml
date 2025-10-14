@@ -10,20 +10,17 @@ providers:
   id: authn
   oidcConfig:
     audienceClaims: ["aud"]
+    extraAudiences: ["tiled_aud"]
     emailClaim: sub
     insecureAllowUnverifiedEmail: true
-    insecureSkipNonce: true
     issuerURL: http://localhost:8080/realms/master
 server:
   BindAddress: localhost:4180
   SecureBindAddress: ""
   TLS: null
 upstreamConfig:
+  proxyRawPath: true
   upstreams:
-  - flushInterval: 1s
-    id: /
-    passHostHeader: true
+  - id: tiled
     path: /
-    proxyWebSockets: true
-    timeout: 30s
     uri: http://localhost:8000

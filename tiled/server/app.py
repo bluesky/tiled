@@ -476,11 +476,24 @@ def build_app(
                     settings.database_settings.uri or "sqlite://"
                 )
         if authenticators:
-            # ProxiedOIDCAuthenticator cannot be used alongside other authentication providers
-            if len(authenticators) == 1:
-                authenticator = next(iter(authenticators.values()))
-                if isinstance(authenticator, ProxiedOIDCAuthenticator):
-                    settings.authenticator = authenticator
+            proxied_authenticator = [
+                auth
+                for auth in authenticators.values()
+                if isinstance(auth, ProxiedOIDCAuthenticator)
+            ]
+            if len(proxied_authenticator) == len(authenticators) == 1:
+                settings.authenticator = proxied_authenticator[0]
+            elif len(proxied_authenticator) >= 2:
+                raise ValueError(
+                    "Multiple ProxiedOIDCAuthenticator instances are configured. Only one is allowed."
+                )
+            elif len(proxied_authenticator) == 1 and len(proxied_authenticator) != len(
+                authenticators
+            ):
+                raise ValueError(
+                    "ProxiedOIDCAuthenticator must not be configured together with other authentication providers."
+                )
+
         return settings
 
     async def startup_event():

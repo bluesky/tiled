@@ -5,9 +5,11 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
+from datetime import timedelta
 from typing import Any, List, Mapping, Optional, cast
 
 import httpx
+from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
 from jose import JWTError, jwt
@@ -153,7 +155,7 @@ properties:
         response.raise_for_status()
         return response.json()
 
-    @property
+    @functools.cached_property
     def client_id(self) -> str:
         return self._client_id
 
@@ -182,7 +184,17 @@ properties:
             cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
         )
 
-    # TODO: Cache with expiration to allow for key rotation
+    @functools.cached_property
+    def device_authorization_endpoint(self) -> str:
+        return cast(
+            str, self._config_from_oidc_url.get("device_authorization_endpoint")
+        )
+
+    @functools.cached_property
+    def end_session_endpoint(self) -> str:
+        return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
+
+    @cached(TTLCache(maxsize=1, ttl=timedelta(days=7).seconds))
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
@@ -238,6 +250,8 @@ properties:
     type: string
   well_known_uri:
     type: string
+  device_flow_client_id:
+    type: string
   confirmation_message:
     type: string
 """
@@ -247,6 +261,7 @@ properties:
         audience: str,
         client_id: str,
         well_known_uri: str,
+        device_flow_client_id: str,
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -256,6 +271,7 @@ properties:
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
         )
+        self.device_flow_client_id = device_flow_client_id
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,

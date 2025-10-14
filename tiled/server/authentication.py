@@ -541,7 +541,7 @@ async def get_current_principal(
     ):
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-            type=schemas.PrincipalType.jwt_token,
+            type=schemas.PrincipalType.external,
             identities=[],
         )
     else:
@@ -1243,9 +1243,6 @@ def authentication_router() -> APIRouter:
         return Response(status_code=HTTP_204_NO_CONTENT)
 
     async def slide_session(refresh_token, settings, db):
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            # Session management should be handled by the client, not by Tiled.
-            return
         try:
             payload = decode_token(refresh_token, settings.secret_keys)
         except ExpiredSignatureError:
