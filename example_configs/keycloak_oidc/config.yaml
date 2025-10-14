@@ -5,7 +5,6 @@ authentication:
     args:
       audience: tiled_aud
       client_id: tiled
-      device_flow_client_id: tiled-cli
       well_known_uri: "http://localhost:8080/realms/master/.well-known/openid-configuration"
       confirmation_message: "You have logged in with Proxied OIDC as {id}."
 

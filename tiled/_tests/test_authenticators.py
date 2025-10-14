@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import Any
+from typing import Any, Tuple
 
 import httpx
 import pytest
@@ -137,9 +137,9 @@ def test_oidc_decoding(
     well_known_url: str,
     issued: bool,
     expired: bool,
-    private_key: rsa.RSAPrivateKey
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]
 ):
-
+    private_key, _ = keys
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
     access_token = token(issued, expired)
     encrypted_access_token = encrypted_token(access_token, private_key)
@@ -154,15 +154,18 @@ def test_oidc_decoding(
 
 
 @pytest.fixture
-def private_key() -> rsa.RSAPrivateKey:
+def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
     # Key generated just for these tests
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = private_key.public_key()
+    return (private_key, public_key)
 
 
 @pytest.fixture
-def json_web_keyset(private_key: rsa.RSAPrivateKey) -> list[dict[str, Any]]:
+def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
+    _, public_key = keys
     return [
-        RSAKey(key=private_key, algorithm="RS256").to_dict()
+        RSAKey(key=public_key, algorithm="RS256").to_dict()
     ]
 
 
