@@ -157,10 +157,10 @@ class ValidationSpec(BaseModel):
 
 class StreamingCache(BaseModel):
     uri: str
-    data_ttl: Optional[int] = None
-    seq_ttl: Optional[int] = None
-    socket_timeout: Optional[int] = None
-    socket_connect_timeout: Optional[int] = None
+    data_ttl: int = 3600  # 1 hr
+    seq_ttl: int = 2592000  # 30 days
+    socket_timeout: int = 86400  # 1 day
+    socket_connect_timeout: int = 10
 
 
 class Config(BaseModel):
