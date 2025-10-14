@@ -63,19 +63,8 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
 
 
 @pytest.fixture
-def well_known_response() -> dict[str, Any]:
-    return {
-        "id_token_signing_alg_values_supported": ["RS256"],
-        "issuer": "https://example.com/realms/example",
-        "jwks_uri": "https://example.com/realms/example/protocol/openid-connect/certs",
-        "authorization_endpoint": "https://example.com/realms/example/protocol/openid-connect/auth",
-        "token_endpoint": "https://example.com/realms/example/protocol/openid-connect/token"
-    }
-
-
-@pytest.fixture
-def well_known_url() -> str:
-    return "http://example.com/well_known/"
+def well_known_url(base_url: str) -> str:
+    return f"{base_url}.well-known/openid-configuration"
 
 
 @pytest.fixture
@@ -86,10 +75,10 @@ def mock_oidc_server(
     json_web_keyset: list[dict[str, Any]],
 ) -> MockRouter:
     respx_mock.get(well_known_url).mock(
-        return_value=httpx.Response(200, json=well_known_response)
+        return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
     )
     respx_mock.get(well_known_response["jwks_uri"]).mock(
-        return_value=httpx.Response(200, json={"keys": json_web_keyset})
+        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
     )
     return respx_mock
 
@@ -110,6 +99,8 @@ def test_oidc_authenticator_caching(
     assert authenticator.issuer == well_known_response["issuer"]
     assert authenticator.jwks_uri == well_known_response["jwks_uri"]
     assert authenticator.token_endpoint == well_known_response["token_endpoint"]
+    assert authenticator.device_authorization_endpoint == well_known_response["device_authorization_endpoint"]
+    assert authenticator.end_session_endpoint == well_known_response["end_session_endpoint"]
 
     # Cached the result of .well_known, only GET once
     assert len(mock_oidc_server.calls) == 1

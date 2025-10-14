@@ -277,15 +277,6 @@ properties:
     def oauth2_schema(self) -> OAuth2:
         return self._oidc_bearer
 
-    def decode_token(self, token: str) -> dict[str, Any]:
-        return jwt.decode(
-            token,
-            key=self.keys(),
-            algorithms=self.id_token_signing_alg_values_supported,
-            audience=self._audience,
-            issuer=self.issuer,
-        )
-
 
 async def exchange_code(
     token_uri: str,
