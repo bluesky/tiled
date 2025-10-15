@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 import pytest
@@ -12,10 +13,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from .. import profiles
 from ..catalog import from_uri, in_memory
-from ..client import Context
 from ..client.base import BaseClient
-from ..config import Authentication
-from ..server.app import build_app
 from ..server.settings import get_settings
 from ..utils import ensure_specified_sql_driver
 from .utils import enter_username_password as utils_enter_uname_passwd
@@ -312,30 +310,19 @@ def redis_uri():
         raise pytest.skip("No TILED_TEST_REDIS configured")
 
 
-@pytest.fixture(scope="function")
-def tiled_websocket_context(tmpdir, redis_uri):
-    """Fixture that provides a Tiled context with websocket support."""
-    tree = from_uri(
-        "sqlite:///:memory:",
-        writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
-            f"duckdb:///{tmpdir / 'data.duckdb'}",
-        ],
-        readable_storage=None,
-        init_if_not_exists=True,
-        cache_settings={
-            "uri": redis_uri,
-            "data_ttl": 60,
-            "seq_ttl": 60,
-            "socket_timeout": 10.0,
-            "socket_connect_timeout": 10.0,
-        },
-    )
+@pytest.fixture
+def base_url() -> str:
+    return "https://example.com/realms/example"
 
-    app = build_app(
-        tree,
-        authentication=Authentication(single_user_api_key="secret"),
-    )
 
-    with Context.from_app(app) as context:
-        yield context
+@pytest.fixture
+def well_known_response(base_url: str) -> dict[str, Any]:
+    return {
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "issuer": base_url,
+        "jwks_uri": f"{base_url}protocol/openid-connect/certs",
+        "authorization_endpoint": f"{base_url}protocol/openid-connect/auth",
+        "token_endpoint": f"{base_url}protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{base_url}protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{base_url}protocol/openid-connect/logout",
+    }
