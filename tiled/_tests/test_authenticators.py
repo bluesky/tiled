@@ -53,6 +53,7 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
 
     asyncio.run(testing())
 
+
 def create_mock_OIDC_request(query_params=None):
     """Helper function to create a realistic request object for testing."""
     if query_params is None:
@@ -72,6 +73,7 @@ def create_mock_OIDC_request(query_params=None):
             self.url = URL("http://localhost:8000/api/v1/auth/provider/orcid/code")
 
     return MockRequest(query_params)
+
 
 @pytest.mark.asyncio
 @respx.mock
