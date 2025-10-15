@@ -22,7 +22,7 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
 from ..catalog import in_memory
@@ -377,25 +377,25 @@ def test_limits(tree):
         x = client.write_array([1, 2, 3], specs=max_allowed_specs)
         x.update_metadata(specs=max_allowed_specs)  # no-op
         too_many_specs = max_allowed_specs + ["one_too_many"]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=too_many_specs)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=too_many_specs)
 
         # Specs cannot repeat.
         has_repeated_spec = ["spec0", "spec1", "spec0"]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=has_repeated_spec)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=has_repeated_spec)
 
         # A given spec cannot be too long.
         max_allowed_chars = ["a" * MAX_SPEC_CHARS]
         client.write_array([1, 2, 3], specs=max_allowed_chars)
         too_many_chars = ["a" * (1 + MAX_SPEC_CHARS)]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=too_many_chars)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=too_many_chars)
 
 

@@ -12,6 +12,7 @@ from typing import Annotated, Any, Iterator, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.type_aliases import AppTask, TaskMap
 
@@ -128,6 +129,25 @@ class Authentication(BaseModel):
         self,
     ) -> dict[str, Union[InternalAuthenticator, ExternalAuthenticator]]:
         return dict(auth.into_auth_entry() for auth in self.providers or ())
+
+    @model_validator(mode="after")
+    def validate_authenticators(self):
+        proxied_auths = [
+            auth
+            for auth in self.authenticators.values()
+            if isinstance(auth, ProxiedOIDCAuthenticator)
+        ]
+
+        if len(proxied_auths) >= 2:
+            raise ValueError(
+                "Multiple ProxiedOIDCAuthenticator instances are configured. Only one is allowed."
+            )
+        if len(proxied_auths) == 1 and len(self.authenticators) != len(proxied_auths):
+            raise ValueError(
+                "ProxiedOIDCAuthenticator must not be configured together with other authentication providers."
+            )
+
+        return self
 
 
 class Database(BaseModel):
