@@ -164,12 +164,14 @@ dev = [
     "pytest-asyncio",
     "pytest-mock",
     "pytest-rerunfailures",
-    "respx",
+    "respx", # Mocking library for httpx
+    "python3-saml",
     "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
     "sphinx-click",
     "sphinx-copybutton",
     "sphinx_rtd_theme",
     "sphinxcontrib-mermaid",
+    "types-cachetools",
 ]
 # These are used by the server to read files in the respective formats.
 formats = [

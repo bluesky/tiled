@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Callable, Optional, Sequence, Set
+from typing import Annotated, Any, Callable, List, Optional, Sequence, Set
 
 from fastapi import (
     APIRouter,
@@ -42,6 +42,7 @@ from starlette.status import (
 )
 
 from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from tiled.authenticators import ProxiedOIDCAuthenticator
 
 # To hide third-party warning
 # .../jose/backends/cryptography_backend.py:18: CryptographyDeprecationWarning:
@@ -146,27 +147,34 @@ def create_refresh_token(session_id, secret_key, expires_delta):
     return encoded_jwt
 
 
-def decode_token(token, secret_keys):
+def decode_token(
+    token: str,
+    secret_keys: List[str],
+    proxied_authenticator: Optional[ProxiedOIDCAuthenticator] = None,
+) -> dict[str, Any]:
     credentials_exception = HTTPException(
         status_code=HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    # The first key in settings.secret_keys is used for *encoding*.
-    # All keys are tried for *decoding* until one works or they all
-    # fail. They supports key rotation.
-    for secret_key in secret_keys:
-        try:
-            payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
-            break
-        except ExpiredSignatureError:
-            # Do not let this be caught below with the other JWTError types.
-            raise
-        except JWTError:
-            # Try the next key in the key rotation.
-            continue
+    if proxied_authenticator:
+        return proxied_authenticator.decode_token(token)
     else:
-        raise credentials_exception
+        # The first key in settings.secret_keys is used for *encoding*.
+        # All keys are tried for *decoding* until one works or they all
+        # fail. They supports key rotation.
+        for secret_key in secret_keys:
+            try:
+                payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+                break
+            except ExpiredSignatureError:
+                # Do not let this be caught below with the other JWTError types.
+                raise
+            except JWTError:
+                # Try the next key in the key rotation.
+                continue
+        else:
+            raise credentials_exception
     return payload
 
 
@@ -215,7 +223,9 @@ async def get_decoded_access_token(
     if not access_token:
         return None
     try:
-        payload = decode_token(access_token, settings.secret_keys)
+        payload = decode_token(
+            access_token, settings.secret_keys, settings.authenticator
+        )
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
@@ -373,7 +383,10 @@ async def get_current_scopes(
                 api_key, settings, request.app.state.authenticated, db
             )
     elif decoded_access_token is not None:
-        return decoded_access_token["scp"]
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            return set(decoded_access_token["scope"].split(" "))
+        else:
+            return decoded_access_token["scp"]
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
@@ -514,7 +527,9 @@ async def get_current_principal(
                 detail="Invalid API key",
                 headers=headers_for_401(request, security_scopes),
             )
-    elif decoded_access_token is not None:
+    elif decoded_access_token is not None and not isinstance(
+        settings.authenticator, ProxiedOIDCAuthenticator
+    ):
         principal = schemas.Principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
             type=decoded_access_token["sub_typ"],
@@ -522,6 +537,14 @@ async def get_current_principal(
                 schemas.Identity(id=identity["id"], provider=identity["idp"])
                 for identity in decoded_access_token["ids"]
             ],
+        )
+    elif decoded_access_token is not None and isinstance(
+        settings.authenticator, ProxiedOIDCAuthenticator
+    ):
+        principal = schemas.Principal(
+            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+            type=schemas.PrincipalType.external,
+            identities=[],
         )
     else:
         # No form of authentication is present.
