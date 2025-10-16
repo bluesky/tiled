@@ -1,3 +1,4 @@
+import enum
 import string
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from ..adapters.csv import CSVArrayAdapter
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..server.app import build_app
-from ..structures.array import ArrayStructure, StructDtype
+from ..structures.array import ArrayStructure, Kind, StructDtype
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
@@ -262,16 +263,19 @@ def test_csv_arrays_from_uris(csv_array1_uri, csv_array2_uri):
         ("arr_all_bool", ["J", "K", "L"]),
     ],
 )
-def test_csv_arrays_from_uris_selected_columns(csv_array3_file, key, columns):
+def test_csv_arrays_from_uris_selected_columns(
+    csv_array3_uri, key, columns, monkeypatch
+):
     orig_arr = df_arr3[columns].to_numpy()  # The original array
-    if "str" in key:
-        pytest.xfail(
-            reason="CSVArrayAdapter does not handle string columns by default."
-        )
 
-    array_adapter = CSVArrayAdapter.from_uris(
-        f"file://localhost/{csv_array3_file}", header=0, usecols=columns
-    )
+    if "str" in key:
+        # Allow object dtype to be used for string columns
+        # This is equivalent to setting TILED_ALLOW_OBJECT_ARRAYS=1
+        kinds = {"object": "O", **{e.name: e.value for e in Kind}}
+        NewKind = enum.Enum("Kind", kinds)
+        monkeypatch.setattr("tiled.structures.array.Kind", NewKind)
+
+    array_adapter = CSVArrayAdapter.from_uris(csv_array3_uri, header=0, usecols=columns)
     read_arr = array_adapter.read()
 
     if "float" in key:
