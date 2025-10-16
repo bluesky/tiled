@@ -439,7 +439,7 @@ def test_replace_metadata(tiled_websocket_context):
             received_event.set()
 
     # Create subscription for the streaming node with start=0
-    subscription = Subscription(context=context, segments=[unique_key])
+    subscription = Subscription(context=context, segments=[])
     subscription.add_callback(callback)
     # Start the subscription
     subscription.start()
@@ -458,9 +458,9 @@ def test_replace_metadata(tiled_websocket_context):
     with fail_with_status_code(HTTP_404_NOT_FOUND):
         ac.metadata_revisions.delete_revision(1)
     # Wait for all messages to be received
-    # assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
     # Ensure each event generated a websocket response
-    # assert len(received) == 2
+    assert len(received) == 2
     # Clean up the subscription
     subscription.stop()
     assert subscription.closed
