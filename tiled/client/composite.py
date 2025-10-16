@@ -1,12 +1,16 @@
 import time
+from typing import TYPE_CHECKING, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
-from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
+from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
-class Composite(Container):
+class CompositeClient(Container):
     def get_contents(self, maxlen=None, include_metadata=False):
         result = {}
         next_page_url = f"{self.item['links']['search']}"
@@ -52,8 +56,16 @@ class Composite(Container):
         return result
 
     @property
-    def parts(self):
-        return CompositeParts(self)
+    def base(self):
+        "Return the base Container client instead of a CompositeClient"
+        return Container(
+            self.context,
+            item=self.item,
+            structure_clients=self.structure_clients,
+            queries=self._queries,
+            sorting=self._sorting,
+            include_data_sources=self._include_data_sources,
+        )
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
         yield from self._flat_keys_mapping.keys()
@@ -81,7 +93,8 @@ class Composite(Container):
             key = self._flat_keys_mapping[key]
         else:
             raise KeyError(
-                f"Key '{key}' not found. If it refers to a table, use .parts['{key}'] instead."
+                f"Key '{key}' not found. If it refers to a table, access it via "
+                f"the base Container client using `.base['{key}']` instead."
             )
 
         return super().__getitem__(key, _ignore_inlined_contents)
@@ -93,9 +106,38 @@ class Composite(Container):
         """Composite nodes can not include nested containers by design."""
         raise NotImplementedError("Cannot create a container within a composite node.")
 
-    def create_composite(self, key=None, *, metadata=None, specs=None):
-        """Composite nodes can not include nested composites by design."""
-        raise NotImplementedError("Cannot create a composite within a composite node.")
+    def delete_contents(
+        self,
+        keys: Optional[Union[str, Iterable[str]]] = None,
+        external_only: bool = True,
+    ) -> "CompositeClient":
+        """Delete the contents of this Composite node.
+
+        Only arrays or entire tables, not individual columns, can be deleted.
+
+        Parameters
+        ----------
+        keys : str or list of str
+            The key(s) to delete. If a list, all keys in the list will be deleted.
+            If None (default), delete all contents.
+        external_only : bool, optional
+            If True, only delete externally-managed data. Defaults to True.
+        """
+
+        parts = set(self.base.keys())
+        if keys is None:
+            keys = parts
+        keys = [keys] if isinstance(keys, str) else keys
+        extra_keys = set(keys).difference(parts)
+        if extra_keys:
+            raise KeyError(
+                f"Keys {extra_keys} not found in composite node parts. "
+                "If the keys reference column names of a constituent "
+                "table, deleting them is not supported. Use the `.base` "
+                "accessor to the Container client to delete the entire table."
+            )
+
+        return super().delete_contents(keys, external_only=external_only)
 
     def read(self, variables=None, dim0=None):
         """Download the contents of a composite node as an xarray.Dataset.
@@ -124,13 +166,13 @@ class Composite(Container):
                 StructureFamily.sparse,
             }:
                 if (variables is None) or (part in variables):
-                    array_client = self.parts[part]
+                    array_client = self.base[part]
                     data_vars[part] = array_client.read()  # [Dask]ArrayClient
                     array_dims[part] = array_client.dims
             elif item["attributes"]["structure_family"] == StructureFamily.awkward:
                 if (variables is None) or (part in variables):
                     try:
-                        data_vars[part] = self.parts[part].read().to_numpy()
+                        data_vars[part] = self.base[part].read().to_numpy()
                     except ValueError as e:
                         raise ValueError(
                             f"Failed to convert awkward array to numpy: {e}"
@@ -139,7 +181,7 @@ class Composite(Container):
                 # For now, greedily load tabular data. We cannot know the shape
                 # of the columns without reading them. Future work may enable
                 # this to be lazy.
-                table_client = self.parts[part]
+                table_client = self.base[part]
                 columns = set(variables or table_client.columns).intersection(
                     table_client.columns
                 )
@@ -183,42 +225,61 @@ class Composite(Container):
 
         return xarray.Dataset(data_vars=data_vars)
 
+    def new(
+        self,
+        structure_family,
+        data_sources,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+    ):
+        if key in self.keys():
+            raise ValueError(f"Key '{key}' already exists in the composite node.")
 
-class CompositeParts:
-    def __init__(self, node):
-        self.contents = node.get_contents(include_metadata=True)
-        self.context = node.context
-        self.structure_clients = node.structure_clients
-        self._include_data_sources = node._include_data_sources
-
-    def __repr__(self):
-        return (
-            f"<{type(self).__name__} {{"
-            + ", ".join(f"'{item}'" for item in self.contents)
-            + "}>"
+        return super().new(
+            structure_family,
+            data_sources,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
         )
 
-    def __getitem__(self, key):
-        key, *tail = key.split("/")
-
-        if key not in self.contents:
-            raise KeyError(key)
-
-        client = client_for_item(
-            self.context,
-            self.structure_clients,
-            self.contents[key],
-            include_data_sources=self._include_data_sources,
+    def write_table(
+        self, data, *, key=None, metadata=None, specs=None, access_tags=None
+    ):
+        if set(self.keys()).intersection(data.columns):
+            raise ValueError(
+                "DataFrame columns must not overlap with existing keys in the composite node."
+            )
+        return super().write_table(
+            data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
 
-        if tail:
-            return client["/".join(tail)]
-        else:
-            return client
+    def create_appendable_table(
+        self,
+        schema: "pyarrow.Schema",
+        npartitions: int = 1,
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+        table_name: Optional[str] = None,
+    ):
+        if set(self.keys()).intersection(schema.names):
+            raise ValueError(
+                "Table columns must not overlap with existing keys in the composite node."
+            )
 
-    def __iter__(self):
-        for key in self.contents:
-            yield key
-
-    def __len__(self) -> int:
-        return len(self.contents)
+        return super().create_appendable_table(
+            schema,
+            npartitions,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+            table_name=table_name,
+        )

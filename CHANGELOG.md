@@ -3,7 +3,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0-b33 (Unreleased)
+## v0.2.0 (unreleased)
 
 ### Added
 
@@ -11,18 +11,221 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
+- Enable Tiled server to accept bearer access tokens for authentication
+
+### Fixed
+
+- Column names in `TableStructure` are explicitly converted to strings.
+
+
+## v0.1.6 (2025-09-29)
+
+### Fixed
+
+- Resolved circular dependency in `tiled.storage`.
+
+
+## v0.1.5 (2025-09-26)
+
+### Added
+
+- Monitoring of pool overflow and max-out events.
+
+### Fixed
+
+- Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to
+  the instantiated container when calling `CompositeClient.base`.
+- Fix AuthN database connection lifecycle management. Connections were being
+  held for the duration of the request cycle; now they are released immediately
+  after use.
+
+
+## v0.1.4 (2025-09-24)
+
+### Fixed
+
+- A regression in v0.1.1 broke the ability of adapters to add custom endpoints
+  on the server, which is used by legacy databroker to add a `/documents`
+  endpoint.
+
+
+## v0.1.3 (2025-09-24)
+
+### Added
+
+- Monitoring of the number of connections in the database pools.
+
+### Changed
+
+- Implemented a process-global connection pool for catalog databases, similarly
+  to the connections to authN database.
+
+### Fixed
+
+- A regression in v0.1.1 disallowed specifying `allow_origins`, `specs`, and `trees`
+  across multiple files. (This can be useful for config.d-style configuration
+  where different config files are managed by different stages of configuration
+  management.)
+- A regression in v0.1.1 disallowed specifying
+  `tree: databroker.mongo_normalized:MongoAdapter.from_uri` or in fact
+  specifying any method (e.g. classmethod constructor) as a tree.
+
+
+## v0.1.2 (2025-09-17)
+
+This release temporarily pins backs the version of the depedency DuckDB to
+avoid breakage (seemingly unintended) to documented behavior.
+
+
+## v0.1.1 (2025-09-10)
+
+### Fixed
+
+- In the Tiled container image, the React UI was misplaced and thus
+  did not function.
+- The Tiled container image was missing some client-side dependencies needed to
+  run the `tiled serve directory ...` command.
+
+### Changed
+
+- Internally, pydantic is used to parse configuration.
+
+
+## v0.1.0 (2025-09-04)
+
+
+### Added
+
+- Convenience method `subscribe` on client `Container` and `ArrayClient`
+  returns an experimental `Subscription`. See the new Streaming tutorial
+  for usage.
+
+### Changed
+
+- Client method for writing tabular data into external files, `write_dataframe`,
+  is deprecated and renamed `write_table`.
+- The order of arguments in the `write_partition` and `append_partition` methods.
+- The experiment `Subscription` object now takes where to start as an argument
+  to `Subscription.start` instead of at initialization time.
+
+### Fixed
+
+- Handling for certain catalog edge cases when building the nodes_closure table.
+- Enforce validity checks when adding appendable tables to "composite"-spec'ed containers.
+
+## v0.1.0-b39 (2025-08-28)
+
+### Fixed
+
+- Default paraneter (`None`) for the `patch` parameter in `PUT /data_source` endpoint.
+
+
+## v0.1.0-b38 (2025-08-28)
+
+### Fixed
+
+- Critical bug in new `tiled.access_control` code, missing `__init__.py`.
+
+
+## v0.1.0-b37 (2025-08-28)
+
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+- API keys can now be restricted to specific access tags
+- New unit tests covering the new access policy and access control features
+- Experimental support for streaming array data over a websocket endpoint.
+  Documentation to follow.
+
+### Changed
+
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+- Access control code is now in the `access_control` subdirectory
+- `SimpleAccessPolicy` has been removed
+- AuthN database can now be in-memory SQLite
+- Catalog database can now be shared when using in-memory SQLite
+- `TagBasedAccessPolicy` now supports anonymous access
+- `AccessTagsParser` is now async
+- `toy_authentication` example config now uses `TagBasedAccessPolicy`
+- Added helpers for setting up the access tag and catalog databases for `toy_authentication`
+
+### Fixed
+
+- Access control on container export was partially broken, now access works as expected.
+
+
+## v0.1.0-b36 (2025-08-26)
+
+### Changed
+
+- Demoted the `Composite` structure family to `composite` spec.
+- Typehint utils collection implementations
+
+
+## v0.1.0-b35 (2025-08-20)
+
+### Changed
+
+- Optimized the calculation of an approximate length of containers.
+
+### Added
+
+- The project ships with a pixi manifest (`pixi.toml`).
+- Connection pool settings for catalog and storage databases.
+
+## v0.1.0-b34 (2025-08-14)
+
+### Fixed
+
+- In the previous release, v0.1.0-b32, a catalog database migration script (for
+  closure tables) ran successfully on some databases but on others it could
+  fail. As designed, the failure mode was a clean rollback, leaving the
+  database correct but unchanged. This release repairs the migration script; it
+  should be re-run on any databases that could not be upgraded with the previous
+  release.
+
+## v0.1.0-b33 (2025-08-13)
+
+_This release requires a database migration of the catalog database._
+
+```none
+tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
+```
+
+### Added
+
+- Endpoints for (read) data access with zarr v2 and v3 protocols.
+- `data_type` and `coord_data_type` properties for sparse arrays in `COOAdapter`
+  and `COOStructure`.
+
+### Changed
+
+- Refactored internal server function ``get_root_tree()`` to not use FastAPI
+  dependencies injection
 - The logic of hierarchical organization of the Nodes table in Catalog: use the concept
   of Closure Table to track ancestors and descendands of the nodes.
+- Shorter string representation of chunks in `ArrayClient`.
+- Refactored internal Zarr version detection
+- For compatibility with older clients, do not require metadata updates to include
+  an `access_blob` in the body of the request.
 
 ### Fixed
 
 - Uniform array columns read from Postgres/DuckDB are now aggregated to an
   NDArray (e.g. scanned `waveform` PVs)
+- Support for deleting separate nodes and contents of containers in client API.
+- The database migration in v0.1.0-b27 was incomplete, and missed an update to
+  the `revisions` table necessary to make metadata updates work correctly.
+  This is resolved by an additional database migration.
+- Correct indentation of authenticator args field in the service config schema
+  and ensure it correctly validates configurations.
+
 
 ## v0.1.0-b32 (2025-08-04)
 
 This release is identical to the previous one; it was made to fix our
 continuous deployment processes.
+
 
 ## v0.1.0-b31 (2025-08-01)
 

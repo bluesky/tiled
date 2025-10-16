@@ -20,15 +20,17 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
 from ..catalog import in_memory
 from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
+from ..client.utils import ClientError
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
 from ..server.app import build_app
+from ..structures.array import BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
@@ -182,7 +184,7 @@ def test_extend_array(tree):
             ac.patch(ones.astype("uint8"), offset=9, extend=True)
 
 
-def test_write_dataframe_full(tree):
+def test_write_table_full(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -194,7 +196,7 @@ def test_write_dataframe_full(tree):
         specs = [Spec("SomeSpec")]
 
         with record_history() as history:
-            client.write_dataframe(df, metadata=metadata, specs=specs)
+            client.write_table(df, metadata=metadata, specs=specs)
         # one request for metadata, one for data
         assert len(history.requests) == 1 + 1
 
@@ -207,7 +209,7 @@ def test_write_dataframe_full(tree):
         assert result.specs == specs
 
 
-def test_write_dataframe_partitioned(tree):
+def test_write_table_partitioned(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -220,7 +222,7 @@ def test_write_dataframe_partitioned(tree):
         specs = [Spec("SomeSpec")]
 
         with record_history() as history:
-            client.write_dataframe(ddf, metadata=metadata, specs=specs)
+            client.write_table(ddf, metadata=metadata, specs=specs)
         # one request for metadata, multiple for data
         assert len(history.requests) == 1 + 3
 
@@ -233,7 +235,7 @@ def test_write_dataframe_partitioned(tree):
         assert result.specs == specs
 
 
-def test_write_dataframe_dict(tree):
+def test_write_table_dict(tree):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
@@ -245,7 +247,7 @@ def test_write_dataframe_dict(tree):
         specs = [Spec("SomeSpec")]
 
         with record_history() as history:
-            client.write_dataframe(data, metadata=metadata, specs=specs)
+            client.write_table(data, metadata=metadata, specs=specs)
         # one request for metadata, one for data
         assert len(history.requests) == 1 + 1
 
@@ -312,7 +314,13 @@ def test_write_sparse_chunked(tree):
                 "sparse",
                 [
                     DataSource(
-                        structure=COOStructure(shape=(2 * N,), chunks=((N, N),)),
+                        structure=COOStructure(
+                            shape=(2 * N,),
+                            chunks=((N, N),),
+                            data_type=BuiltinDtype.from_numpy_dtype(
+                                numpy.dtype("float64")
+                            ),
+                        ),
                         structure_family="sparse",
                     )
                 ],
@@ -366,25 +374,25 @@ def test_limits(tree):
         x = client.write_array([1, 2, 3], specs=max_allowed_specs)
         x.update_metadata(specs=max_allowed_specs)  # no-op
         too_many_specs = max_allowed_specs + ["one_too_many"]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=too_many_specs)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=too_many_specs)
 
         # Specs cannot repeat.
         has_repeated_spec = ["spec0", "spec1", "spec0"]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=has_repeated_spec)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=has_repeated_spec)
 
         # A given spec cannot be too long.
         max_allowed_chars = ["a" * MAX_SPEC_CHARS]
         client.write_array([1, 2, 3], specs=max_allowed_chars)
         too_many_chars = ["a" * (1 + MAX_SPEC_CHARS)]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=too_many_chars)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=too_many_chars)
 
 
@@ -528,7 +536,9 @@ async def test_delete(tree):
                 key="delete_me",
             )
 
-        client.delete("delete_me")
+        with pytest.raises(ClientError):
+            client.delete_contents("delete_me")  # Cannot easily delete internal data
+        client.delete_contents("delete_me", external_only=False)
 
         nodes_after_delete = (await tree.context.execute("SELECT * from nodes")).all()
         assert len(nodes_after_delete) == 0 + 1  # the root node should still exist
@@ -559,20 +569,20 @@ async def test_delete_non_empty_node(tree):
         # Cannot delete non-empty nodes
         assert "a" in client
         with fail_with_status_code(HTTP_409_CONFLICT):
-            client.delete("a")
+            client.delete_contents("a")
         assert "b" in a
         with fail_with_status_code(HTTP_409_CONFLICT):
-            a.delete("b")
+            a.delete_contents("b")
         assert "c" in b
         with fail_with_status_code(HTTP_409_CONFLICT):
-            b.delete("c")
+            b.delete_contents("c")
         assert "d" in c
         assert not list(d)  # leaf is empty
         # Delete from the bottom up.
-        c.delete("d")
-        b.delete("c")
-        a.delete("b")
-        client.delete("a")
+        c.delete_contents("d")
+        b.delete_contents("c")
+        a.delete_contents("b")
+        client.delete_contents("a")
 
 
 @pytest.mark.asyncio
@@ -583,17 +593,17 @@ async def test_write_in_container(tree):
 
         a = client.create_container("a")
         df = pandas.DataFrame({"a": [1, 2, 3]})
-        b = a.write_dataframe(df, key="b")
+        b = a.write_table(df, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
         a = client.create_container("a")
         arr = numpy.array([1, 2, 3])
         b = a.write_array(arr, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
         a = client.create_container("a")
         coo = sparse.COO(
@@ -601,8 +611,8 @@ async def test_write_in_container(tree):
         )
         b = a.write_sparse(coords=coo.coords, data=coo.data, shape=coo.shape, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
         a = client.create_container("a")
         array = awkward.Array(
@@ -614,8 +624,8 @@ async def test_write_in_container(tree):
         )
         b = a.write_awkward(array, key="b")
         b.read()
-        a.delete("b")
-        client.delete("a")
+        a.delete_contents("b", external_only=False)
+        client.delete_contents("a")
 
 
 @pytest.mark.asyncio
@@ -660,7 +670,7 @@ def test_write_with_specified_mimetype(tree):
                     ),
                 ],
             )
-            x.write_partition(df, 0)
+            x.write_partition(0, df)
             x.read()
             x.refresh()
             assert x.data_sources()[0].mimetype == mimetype
@@ -714,8 +724,8 @@ def test_append_partition(
         table_to_append = pyarrow.Table.from_pydict(file_to_append)
 
         x = client.create_appendable_table(orig_table.schema, key="x")
-        x.append_partition(orig_table, 0)
-        x.append_partition(table_to_append, 0)
+        x.append_partition(0, orig_table)
+        x.append_partition(0, table_to_append)
         assert_frame_equal(x.read(), pandas.DataFrame(expected_file), check_dtype=False)
 
 
@@ -755,91 +765,41 @@ def test_create_table_with_custom_name(
                 client.create_appendable_table(table.schema, table_name=table_name)
         else:
             x = client.create_appendable_table(table.schema, table_name=table_name)
-            x.append_partition(table, 0)
+            x.append_partition(0, table)
             assert x.read()["column_name"].to_list() == [1, 2, 3]
 
 
-def test_composite_one_table(tree):
+def test_deprecated_argument_order_raises_warning(tree: CatalogContainerAdapter):
+    table = pyarrow.Table.from_arrays([[1, 2, 3]], ["column_name"])
     with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        df = pandas.DataFrame({"A": [], "B": []})
-        client.create_composite(key="x")
-        client["x"].write_dataframe(df)
-        assert len(client["x"].parts) == 1
+        client = from_context(context, include_data_sources=True)
 
+        # Writable table
+        df = pandas.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+        structure = TableStructure.from_pandas(df)
 
-def test_composite_two_tables(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        df1 = pandas.DataFrame({"A": [], "B": []})
-        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        x = client.create_composite(key="x")
-        x.write_dataframe(df1, key="table1")
-        x.write_dataframe(df2, key="table2")
-        x.parts["table1"].read()
-        x.parts["table2"].read()
+        for mimetype in [
+            PARQUET_MIMETYPE,
+            "text/csv",
+            APACHE_ARROW_FILE_MIME_TYPE,
+        ]:
+            x = client.new(
+                "table",
+                [
+                    DataSource(
+                        structure_family=StructureFamily.table,
+                        structure=structure,
+                        mimetype=mimetype,
+                    ),
+                ],
+            )
+            with pytest.warns(DeprecationWarning, match=r"The order of arguments"):
+                x.write_partition(df, 0)  # this argument order is deprecated
+            x.refresh()
+            assert x.read() is not None
 
-
-def test_composite_two_tables_colliding_names(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        df1 = pandas.DataFrame({"A": [], "B": []})
-        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        x = client.create_composite(key="x")
-        x.write_dataframe(df1, key="table1")
-        with fail_with_status_code(HTTP_409_CONFLICT):
-            x.write_dataframe(df2, key="table1")
-
-
-def test_composite_two_tables_colliding_keys(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        df1 = pandas.DataFrame({"A": [], "B": []})
-        df2 = pandas.DataFrame({"A": [], "C": [], "D": []})
-        x = client.create_composite(key="x")
-        x.write_dataframe(df1, key="table1")
-        with fail_with_status_code(HTTP_409_CONFLICT):
-            x.write_dataframe(df2, key="table2")
-
-
-def test_composite_two_tables_two_arrays(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        df1 = pandas.DataFrame({"A": [], "B": []})
-        df2 = pandas.DataFrame({"C": [], "D": [], "E": []})
-        arr1 = numpy.ones((5, 5), dtype=numpy.float64)
-        arr2 = 2 * numpy.ones((5, 5), dtype=numpy.int8)
-        x = client.create_composite(key="x")
-
-        # Write by data source.
-        x.write_dataframe(df1, key="table1")
-        x.write_dataframe(df2, key="table2")
-        x.write_array(arr1, key="F")
-        x.write_array(arr2, key="G")
-
-        # Read by data source.
-        x.parts["table1"].read()
-        x.parts["table2"].read()
-        x.parts["F"].read()
-        x.parts["G"].read()
-
-        # Read by column.
-        for column in ["A", "B", "C", "D", "E", "F", "G"]:
-            x[column].read()
-
-
-def test_composite_table_column_array_key_collision(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        df = pandas.DataFrame({"A": [], "B": []})
-        arr = numpy.array([1, 2, 3], dtype=numpy.float64)
-
-        x = client.create_composite(key="x")
-        x.write_dataframe(df, key="table1")
-        with fail_with_status_code(HTTP_409_CONFLICT):
-            x.write_array(arr, key="A")
-
-        y = client.create_composite(key="y")
-        y.write_array(arr, key="A")
-        with fail_with_status_code(HTTP_409_CONFLICT):
-            y.write_dataframe(df, key="table1")
+        # Appendable table
+        x = client.create_appendable_table(table.schema)
+        with pytest.warns(DeprecationWarning, match=r"The order of arguments"):
+            x.append_partition(table, 0)  # this argument order is deprecated
+        assert x.read() is not None

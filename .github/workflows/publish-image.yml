@@ -25,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # get full history for `git describe` to produce version
 
       - name: Log in to the Container registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3
@@ -36,6 +36,15 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Get git version
+        id: version
+        run: |
+          TILED_VERSION=$(git describe --tags --always --dirty)
+          # Remove 'v' prefix and convert to PEP 440
+          TILED_VERSION=${TILED_VERSION#v}
+          TILED_VERSION=$(echo $TILED_VERSION | sed 's/-\([0-9]\+\)-g\([0-9a-f]\+\)/.dev\1+\2/')
+          echo "TILED_VERSION=$TILED_VERSION" >> $GITHUB_OUTPUT
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
@@ -51,11 +60,15 @@ jobs:
         if: github.ref_type == 'tag'
         with:
           context: .
-          file: Dockerfile
+          file: Containerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            TILED_VERSION=${{ steps.version.outputs.TILED_VERSION }}
 
       - name: Install Helm
         uses: Azure/setup-helm@v4

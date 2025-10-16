@@ -8,6 +8,7 @@ from ..utils import (
     ListView,
     OneShotCachedMap,
     ensure_specified_sql_driver,
+    parse_mimetype,
     parse_time_string,
     sanitize_uri,
     walk,
@@ -171,10 +172,10 @@ def test_dictview_repr_pretty(monkeypatch):
 
 def test_oneshotcachedmap_repr_lazy_and_evaluated():
     # Value factories
-    def factory1():
+    def factory1() -> int:
         return 42
 
-    def factory2():
+    def factory2() -> str:
         return "foo"
 
     # All values are lazy initially
@@ -199,10 +200,10 @@ def test_oneshotcachedmap_repr_lazy_and_evaluated():
 
 def test_cachingmap_repr_lazy_and_evaluated():
     # Value factories
-    def factory1():
+    def factory1() -> int:
         return 123
 
-    def factory2():
+    def factory2() -> str:
         return "bar"
 
     mapping = {"x": factory1, "y": factory2}
@@ -339,3 +340,28 @@ def test_sanitize_uri(uri, expected_clean_uri, expected_username, expected_passw
     assert clean_uri == expected_clean_uri
     assert username == expected_username
     assert password == expected_password
+
+
+@pytest.mark.parametrize(
+    "mimetype, expected",
+    [
+        ("text/csv", ("text/csv", {})),
+        ("text/csv;header=absent", ("text/csv", {"header": "absent"})),
+        (
+            "text/csv;header=absent; charset=utf-8",
+            ("text/csv", {"header": "absent", "charset": "utf-8"}),
+        ),
+        (
+            "text/csv; header=absent; charset=utf-8",
+            ("text/csv", {"header": "absent", "charset": "utf-8"}),
+        ),
+    ],
+)
+def test_parse_valid_mimetype(mimetype, expected):
+    assert parse_mimetype(mimetype) == expected
+
+
+def test_parse_invalid_mimetype():
+    with pytest.raises(ValueError):
+        # Parameter does not have form 'key=value'
+        assert parse_mimetype("text/csv;oops")

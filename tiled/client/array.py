@@ -1,5 +1,5 @@
 import itertools
-from typing import Union
+from typing import TYPE_CHECKING, Union
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -10,7 +10,16 @@ from numpy.typing import NDArray
 
 from ..structures.core import STRUCTURE_TYPES
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice, retry_context
+from .utils import (
+    chunks_repr,
+    export_util,
+    handle_error,
+    params_from_slice,
+    retry_context,
+)
+
+if TYPE_CHECKING:
+    from .stream import Subscription
 
 
 class _DaskArrayClient(BaseClient):
@@ -53,7 +62,7 @@ class _DaskArrayClient(BaseClient):
         structure = self.structure()
         attrs = {
             "shape": structure.shape,
-            "chunks": structure.chunks,
+            "chunks": chunks_repr(structure.chunks),
             "dtype": structure.data_type.to_numpy_dtype(),
         }
         if structure.dims:
@@ -339,6 +348,19 @@ class _DaskArrayClient(BaseClient):
             self.item["links"][link].format(**template_vars),
             params=params,
         )
+
+    def subscribe(self) -> "Subscription":
+        """
+        Create a Subscription on writes to this node.
+
+        Returns
+        -------
+        subscription : Subscription
+        """
+        # Keep this import here to defer the websockets import until/unless needed.
+        from .stream import Subscription
+
+        return Subscription(self.context, self.path_parts)
 
 
 # Subclass with a public class that adds the dask-specific methods.

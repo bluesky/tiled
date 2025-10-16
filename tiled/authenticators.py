@@ -5,10 +5,13 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
-from typing import Any, Mapping, Optional, cast
+from datetime import timedelta
+from typing import Any, List, Mapping, Optional, cast
 
 import httpx
+from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
+from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
 from jose import JWTError, jwt
 from pydantic import Secret
 from starlette.responses import RedirectResponse
@@ -181,6 +184,29 @@ properties:
             cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
         )
 
+    @functools.cached_property
+    def device_authorization_endpoint(self) -> str:
+        return cast(
+            str, self._config_from_oidc_url.get("device_authorization_endpoint")
+        )
+
+    @functools.cached_property
+    def end_session_endpoint(self) -> str:
+        return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
+
+    @cached(TTLCache(maxsize=1, ttl=timedelta(days=7).total_seconds()))
+    def keys(self) -> List[str]:
+        return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
+
+    def decode_token(self, token: str) -> dict[str, Any]:
+        return jwt.decode(
+            token,
+            key=self.keys(),
+            algorithms=self.id_token_signing_alg_values_supported,
+            audience=self._audience,
+            issuer=self.issuer,
+        )
+
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
         code = request.query_params["code"]
         # A proxy in the middle may make the request into something like
@@ -201,15 +227,8 @@ properties:
         response_body = response.json()
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
-        keys = httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
         try:
-            verified_body = jwt.decode(
-                token=id_token,
-                key=keys,
-                algorithms=self.id_token_signing_alg_values_supported,
-                audience=self._audience,
-                access_token=access_token,
-            )
+            verified_body = self.decode_token(access_token)
         except JWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
@@ -217,6 +236,46 @@ properties:
             )
             return None
         return UserSessionState(verified_body["sub"], {})
+
+
+class ProxiedOIDCAuthenticator(OIDCAuthenticator):
+    configuration_schema = """
+$schema": http://json-schema.org/draft-07/schema#
+type: object
+additionalProperties: false
+properties:
+  audience:
+    type: string
+  client_id:
+    type: string
+  well_known_uri:
+    type: string
+  confirmation_message:
+    type: string
+"""
+
+    def __init__(
+        self,
+        audience: str,
+        client_id: str,
+        well_known_uri: str,
+        confirmation_message: str = "",
+    ):
+        super().__init__(
+            audience=audience,
+            client_id=client_id,
+            client_secret="",
+            well_known_uri=well_known_uri,
+            confirmation_message=confirmation_message,
+        )
+        self._oidc_bearer = OAuth2AuthorizationCodeBearer(
+            authorizationUrl=str(self.authorization_endpoint),
+            tokenUrl=self.token_endpoint,
+        )
+
+    @property
+    def oauth2_schema(self) -> OAuth2:
+        return self._oidc_bearer
 
 
 async def exchange_code(
@@ -274,13 +333,6 @@ class SAMLAuthenticator(ExternalAuthenticator):
         async def saml_login(request: Request) -> RedirectResponse:
             req = await prepare_saml_from_fastapi_request(request)
             auth = OneLogin_Saml2_Auth(req, self.saml_settings)
-            # saml_settings = auth.get_settings()
-            # metadata = saml_settings.get_sp_metadata()
-            # errors = saml_settings.validate_metadata(metadata)
-            # if len(errors) == 0:
-            #   print(metadata)
-            # else:
-            #   print("Error found on Metadata: %s" % (', '.join(errors)))
             callback_url = auth.login()
             return RedirectResponse(url=callback_url)
 

@@ -6,7 +6,7 @@ import pytest
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
-    HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+    HTTP_416_RANGE_NOT_SATISFIABLE,
 )
 
 from ..catalog import in_memory
@@ -75,7 +75,7 @@ def test_raw_export(client, tmpdir):
 def test_asset_range_request(client, tmpdir):
     "Access part of an asset using an HTTP Range header."
     df = pandas.DataFrame({"A": [1, 2, 3], "B": [4.0, 5.0, 6.0]})
-    client.write_dataframe(df, key="x")
+    client.write_table(df, key="x")
     # Fetch the first byte.
     first_byte_response = client.context.http_client.get(
         "/api/v1/asset/bytes/x?id=1",
@@ -99,7 +99,7 @@ def test_asset_range_request(client, tmpdir):
         "/api/v1/asset/bytes/x?id=1",
         headers={"Range": "bytes=1000000-100000000"},
     )
-    with fail_with_status_code(HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE):
+    with fail_with_status_code(HTTP_416_RANGE_NOT_SATISFIABLE):
         out_of_range_response.raise_for_status()
     # Request malformed range
     malformed_response = client.context.http_client.get(

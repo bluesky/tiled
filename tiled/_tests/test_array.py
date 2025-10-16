@@ -202,5 +202,30 @@ def test_unparsable_nested_array_stringified(kind, context):
 
 @pytest.mark.parametrize("kind", list(array_cases))
 def test_as_buffer(kind):
-    output = as_buffer(array_cases[kind], {})
+    output = as_buffer("application/octet-stream", array_cases[kind], {})
     assert len(output) == len(bytes(output))
+
+
+@pytest.mark.parametrize(
+    "chunks, expected",
+    [
+        ((3, 13, 17), "((3, 3, 3, 3, 3), (13,), (17,))"),
+        ((1, 13, 17), "((1, 1, ..., 1), (13,), (17,))"),
+        ((2, 13, 17), "((2, 2, ..., 2, 1), (13,), (17,))"),
+        ((15, 13, 17), "((15,), (13,), (17,))"),
+        (((1, 1, 1, 1, 1, 2, 2, 2, 2, 2), 13, 17), "(variable, (13,), (17,))"),
+    ],
+)
+def test_array_client_repr(tmpdir, chunks, expected):
+    arr = dask.array.random.random(size=(15, 13, 17), chunks=chunks)
+    adapter = MapAdapter({"arr": ArrayAdapter.from_array(arr, dims=("x", "y", "z"))})
+    app = build_app(adapter)
+    with Context.from_app(app) as context:
+        client = from_context(context)
+        rep = repr(client["arr"])
+        assert rep.startswith("<ArrayClient")
+        assert "shape=(15, 13, 17)" in rep
+        assert f"dtype={client['arr'].dtype}" in rep
+        assert f"chunks={expected}" in rep
+        if client["arr"].dims:
+            assert "dims=('x', 'y', 'z')" in rep

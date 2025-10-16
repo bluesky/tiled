@@ -12,8 +12,10 @@ tutorials/login
 tutorials/serving-files
 tutorials/search
 tutorials/writing
+tutorials/streaming
 tutorials/simple-server
 tutorials/plotly-integration
+tutorials/zarr-integration
 ```
 
 ```{toctree}
@@ -52,6 +54,7 @@ explanations/catalog
 explanations/faq
 explanations/roadmap
 explanations/lineage
+explanations/storage-database
 ```
 
 ```{toctree}

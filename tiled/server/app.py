@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from functools import cache, partial
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Callable, Coroutine, Optional, TypedDict, Union
+from typing import Any, Optional, Union
 
 import anyio
 import packaging.version
@@ -24,6 +24,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import FileResponse
 from starlette.status import (
     HTTP_200_OK,
@@ -35,11 +36,20 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.query_registration import QueryRegistry, default_query_registry
-from tiled.server.authentication import move_api_key
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
+from tiled.type_aliases import AppTask, TaskMap
 
-from ..config import construct_build_app_kwargs
+from ..catalog.adapter import WouldDeleteData
+from ..config import (
+    Authentication,
+    Config,
+    Database,
+    MetricsConfig,
+    construct_build_app_kwargs,
+    parse_configs,
+)
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -47,13 +57,14 @@ from ..media_type_registration import (
     default_deserialization_registry,
     default_serialization_registry,
 )
-from ..utils import SHARE_TILED_PATH, Conflicts, SpecialUsers, UnsupportedQueryType
+from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
+from .authentication import move_api_key
 from .compression import CompressionMiddleware
-from .dependencies import get_root_tree
-from .router import get_router
+from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -74,10 +85,6 @@ logger.addHandler(handler)
 
 # This is used to pass the currently-authenticated principal into the logger.
 current_principal = contextvars.ContextVar("current_principal")
-
-
-AppTask = Callable[[], Coroutine[None, None, Any]]
-"""Async function to be run as part of the app's lifecycle"""
 
 
 def custom_openapi(app):
@@ -109,7 +116,7 @@ def custom_openapi(app):
 
 def build_app(
     tree,
-    authentication=None,
+    authentication: Optional[Authentication] = None,
     server_settings=None,
     query_registry: Optional[QueryRegistry] = None,
     serialization_registry: Optional[SerializationRegistry] = None,
@@ -128,18 +135,13 @@ def build_app(
     tree : Tree
     authentication: dict, optional
         Dict of authentication configuration.
-    authenticators: list, optional
-        List of authenticator classes (one per support identity provider)
     server_settings: dict, optional
         Dict of other server configuration.
     access_policy:
         AccessPolicy object encoding rules for which users can see which entries.
     """
-    authentication = authentication or {}
-    authenticators: dict[str, Union[ExternalAuthenticator, InternalAuthenticator]] = {
-        spec["provider"]: spec["authenticator"]
-        for spec in authentication.get("providers", [])
-    }
+    authentication = authentication or Authentication()
+    authenticators = authentication.authenticators
     server_settings = server_settings or {}
     query_registry = query_registry or default_query_registry
     serialization_registry = serialization_registry or default_serialization_registry
@@ -162,13 +164,10 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
-        if authentication.get("providers"):
+        if authenticators:
             # Even if the deployment allows public, anonymous access, secret
             # keys are needed to generate JWTs for any users that do log in.
-            if (
-                "secret_keys" not in authentication
-                and "TILED_SECRET_KEYS" not in os.environ
-            ):
+            if not authentication.secret_keys and "TILED_SECRET_KEYS" not in os.environ:
                 raise UnscalableConfig(
                     dedent(
                         """
@@ -187,7 +186,7 @@ def build_app(
             # Multi-user authentication requires a database. We cannot fall
             # back to the default of an in-memory SQLite database in a
             # horizontally scaled deployment.
-            if not server_settings.get("database", {}).get("uri"):
+            if not (db := server_settings.get("database")) or not db.uri:
                 raise UnscalableConfig(
                     dedent(
                         """
@@ -204,7 +203,7 @@ def build_app(
             # No authentication provider is configured, so no secret keys are
             # needed, but a single-user API key must be set.
             if not (
-                ("single_user_api_key" in authentication)
+                authentication.single_user_api_key
                 or ("TILED_SINGLE_USER_API_KEY" in os.environ)
             ):
                 raise UnscalableConfig(
@@ -232,7 +231,7 @@ def build_app(
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, dependencies=[Depends(move_api_key)])
+    app = FastAPI(lifespan=lifespan)
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -244,7 +243,10 @@ def build_app(
         # If the distribution includes static assets, serve UI routes.
 
         @app.get("/ui/{path:path}")
-        async def ui(path):
+        async def ui(
+            path,
+            _=Depends(move_api_key),
+        ):
             response = await lookup_file(path)
             return response
 
@@ -282,6 +284,7 @@ def build_app(
         @app.get("/", response_class=HTMLResponse)
         async def index(
             request: Request,
+            _=Depends(move_api_key),
         ):
             return templates.TemplateResponse(
                 request,
@@ -331,6 +334,15 @@ def build_app(
             },
         )
 
+    @app.exception_handler(WouldDeleteData)
+    async def would_delete_data_exception_handler(
+        request: Request, exc: WouldDeleteData
+    ):
+        return JSONResponse(
+            status_code=HTTP_409_CONFLICT,
+            content={"detail": exc.args[0]},
+        )
+
     # This list will be mutated when settings are processed at app startup.
     app.state.allow_origins = []
     app.add_middleware(
@@ -349,10 +361,6 @@ def build_app(
     async def unhandled_exception_handler(
         request: Request, exc: Exception
     ) -> JSONResponse:
-        # The current_principal_logging_filter middleware will not have
-        # had a chance to finish running, so set the principal here.
-        principal = getattr(request.state, "principal", None)
-        current_principal.set(principal)
         return await http_exception_handler(
             request,
             HTTPException(
@@ -371,6 +379,9 @@ def build_app(
     )
     app.include_router(router, prefix="/api/v1")
 
+    app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
+    app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
+
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
@@ -380,7 +391,7 @@ def build_app(
 
     app.state.access_policy = access_policy
 
-    if authentication.get("providers", []):
+    if authenticators:
         # Delay this imports to avoid delaying startup with the SQL and cryptography
         # imports if they are not needed.
         from .authentication import (
@@ -391,7 +402,7 @@ def build_app(
         )
 
         # For the OpenAPI schema, inject a OAuth2PasswordBearer URL.
-        first_provider = authentication["providers"][0]["provider"]
+        first_provider = next(iter(authenticators))
         oauth2_scheme.model.flows.password.tokenUrl = (
             f"/api/v1/auth/provider/{first_provider}/token"
         )
@@ -401,9 +412,7 @@ def build_app(
         # This adds the universal routes like /session/refresh and /session/revoke.
         # Below we will add routes specific to our authentication providers.
 
-        for spec in authentication["providers"]:
-            provider = spec["provider"]
-            authenticator = spec["authenticator"]
+        for provider, authenticator in authenticators.items():
             if isinstance(authenticator, InternalAuthenticator):
                 add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
@@ -420,9 +429,9 @@ def build_app(
     else:
         app.state.authenticated = False
 
-    @cache
-    def override_get_root_tree():
-        return tree
+    # Expose the root_tree here to make it accessible from endpoints via
+    # request.app.state and in tests via client.context.app.state
+    app.state.root_tree = tree
 
     @cache
     def override_get_settings():
@@ -435,34 +444,46 @@ def build_app(
             "refresh_token_max_age",
             "session_max_age",
         ]:
-            if authentication.get(item) is not None:
-                setattr(settings, item, authentication[item])
+            if (value := getattr(authentication, item)) is not None:
+                setattr(settings, item, value)
         for item in [
             "allow_origins",
             "response_bytesize_limit",
+            "exact_count_limit",
             "reject_undeclared_specs",
             "expose_raw_assets",
         ]:
             if server_settings.get(item) is not None:
                 setattr(settings, item, server_settings[item])
-        database = server_settings.get("database", {})
-        if uri := database.get("uri"):
-            settings.database_settings.uri = uri
-        if pool_size := database.get("pool_size"):
-            settings.database_settings.pool_size = pool_size
-        if pool_pre_ping := database.get("pool_pre_ping"):
-            settings.database_settings.pool_pre_ping = pool_pre_ping
-        if max_overflow := database.get("max_overflow"):
-            settings.database_settings.max_overflow = max_overflow
-        if init_if_not_exists := database.get("init_if_not_exists"):
-            settings.database_init_if_not_exists = init_if_not_exists
-        if authentication.get("providers"):
-            # If we support authentication providers, we need a database, so if one is
-            # not set, use a SQLite database in memory. Horizontally scaled deployments
-            # must specify a persistent database.
-            settings.database_settings.uri = (
-                settings.database_settings.uri or "sqlite://"
+
+        database: Database = server_settings.get("database")  # type: ignore
+        if database:
+            if database.uri is not None:
+                settings.database_settings.uri = database.uri
+            if database.pool_size is not None:
+                settings.database_settings.pool_size = database.pool_size
+            if database.pool_pre_ping is not None:
+                settings.database_settings.pool_pre_ping = database.pool_pre_ping
+            if database.max_overflow is not None:
+                settings.database_settings.max_overflow = database.max_overflow
+            if database.init_if_not_exists is not None:
+                settings.database_init_if_not_exists = database.init_if_not_exists
+            if authenticators:
+                # If we support authentication providers, we need a database, so if one is
+                # not set, use a SQLite database in memory. Horizontally scaled deployments
+                # must specify a persistent database.
+                settings.database_settings.uri = (
+                    settings.database_settings.uri or "sqlite://"
+                )
+        if (
+            authenticators
+            and len(authenticators) == 1
+            and isinstance(
+                authenticator := next(iter(authenticators.values())),
+                ProxiedOIDCAuthenticator,
             )
+        ):
+            settings.authenticator = authenticator
         return settings
 
     async def startup_event():
@@ -523,10 +544,6 @@ def build_app(
             app.state.tasks.append(asyncio_task)
 
         app.state.allow_origins.extend(settings.allow_origins)
-        # Expose the root_tree here to make it easier to access it from tests,
-        # in usages like:
-        # client.context.app.state.root_tree
-        app.state.root_tree = app.dependency_overrides[get_root_tree]()
 
         if settings.database_settings.uri is not None:
             from sqlalchemy.ext.asyncio import AsyncSession
@@ -537,7 +554,6 @@ def build_app(
                 check_database,
             )
             from ..authn_database import orm
-            from ..authn_database.connection_pool import open_database_connection_pool
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
@@ -545,12 +561,13 @@ def build_app(
                 make_admin_by_identity,
                 purge_expired,
             )
+            from .connection_pool import open_database_connection_pool
 
             # This creates a connection pool and stashes it in a module-global
-            # registry, keyed on database_settings, where can be retrieved by
+            # registry, keyed on database_settings, where it can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
-            if not engine.url.database:
+            if not engine.url.database or engine.url.query.get("mode") == "memory":
                 # Special-case for in-memory SQLite: Because it is transient we can
                 # skip over anything related to migrations.
                 await initialize_database(engine)
@@ -613,7 +630,7 @@ def build_app(
                     raise err from None
                 else:
                     logger.info(f"Connected to existing database at {redacted_url}.")
-            for admin in authentication.get("tiled_admins", []):
+            for admin in authentication.tiled_admins or []:
                 logger.info(
                     f"Ensuring that principal with identity {admin} has role 'admin'"
                 )
@@ -622,9 +639,14 @@ def build_app(
                 ) as session:
                     await make_admin_by_identity(
                         session,
-                        identity_provider=admin["provider"],
-                        id=admin["id"],
+                        identity_provider=admin.provider,
+                        id=admin.id,
                     )
+
+            if app.state.access_policy is not None and hasattr(
+                app.state.access_policy, "access_tags_parser"
+            ):
+                await app.state.access_policy.access_tags_parser.connect()
 
             async def purge_expired_sessions_and_api_keys():
                 PURGE_INTERVAL = 600  # seconds
@@ -659,7 +681,7 @@ def build_app(
 
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
-            from ..authn_database.connection_pool import close_database_connection_pool
+            from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
         for task in app.state.tasks:
@@ -672,7 +694,9 @@ def build_app(
     )
 
     @app.middleware("http")
-    async def double_submit_cookie_csrf_protection(request: Request, call_next):
+    async def double_submit_cookie_csrf_protection(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
         if (request.method not in SAFE_METHODS) and set(request.cookies).intersection(
@@ -711,7 +735,9 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def client_compatibility_check(request: Request, call_next):
+    async def client_compatibility_check(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
         user_agent = request.headers.get("user-agent", "")
         if user_agent.startswith("python-tiled/"):
             agent, _, raw_version = user_agent.partition("/")
@@ -743,7 +769,7 @@ def build_app(
         return response
 
     @app.middleware("http")
-    async def set_cookies(request: Request, call_next):
+    async def set_cookies(request: Request, call_next: RequestResponseEndpoint):
         "This enables dependencies to inject cookies that they want to be set."
         # Create some Request state, to be (possibly) populated by dependencies.
         request.state.cookies_to_set = []
@@ -755,11 +781,10 @@ def build_app(
         return response
 
     app.openapi = partial(custom_openapi, app)
-    app.dependency_overrides[get_root_tree] = override_get_root_tree
     app.dependency_overrides[get_settings] = override_get_settings
 
     @app.middleware("http")
-    async def capture_metrics(request: Request, call_next):
+    async def capture_metrics(request: Request, call_next: RequestResponseEndpoint):
         """
         Place metrics in Server-Timing header, in accordance with HTTP spec.
         """
@@ -793,8 +818,8 @@ def build_app(
         )
         return response
 
-    metrics_config = server_settings.get("metrics", {})
-    if metrics_config.get("prometheus", True):
+    metrics_config: MetricsConfig = server_settings.get("metrics", MetricsConfig())
+    if metrics_config.prometheus:
         # PROMETHEUS_MULTIPROC_DIR puts prometheus_client in multiprocess mode
         # (for e.g. gunicorn) which uses a directory of memory-mapped files.
         # If that environment variable is set, check that the directory exists
@@ -814,10 +839,12 @@ def build_app(
 
         from . import metrics
 
-        app.include_router(metrics.router, prefix="/api/v1")
+        app.include_router(get_metrics_router(), prefix="/api/v1")
 
         @app.middleware("http")
-        async def capture_metrics_prometheus(request: Request, call_next):
+        async def capture_metrics_prometheus(
+            request: Request, call_next: RequestResponseEndpoint
+        ):
             try:
                 response = await call_next(request)
             except Exception:
@@ -836,8 +863,11 @@ def build_app(
             return response
 
     @app.middleware("http")
-    async def current_principal_logging_filter(request: Request, call_next):
-        request.state.principal = SpecialUsers.public
+    async def current_principal_logging_filter(
+        request: Request, call_next: RequestResponseEndpoint
+    ):
+        # Set a default, which may be overridden below by authentication code.
+        request.state.principal = None
         response = await call_next(request)
         current_principal.set(request.state.principal)
         return response
@@ -851,9 +881,17 @@ def build_app(
     return app
 
 
-def build_app_from_config(config, source_filepath=None, scalable=False):
-    "Convenience function that calls build_app(...) given config as dict."
-    kwargs = construct_build_app_kwargs(config, source_filepath=source_filepath)
+def build_app_from_config(config: Union[Config, dict[str, Any]], scalable=False):
+    """
+    Convenience function that calls build_app(...) given config as parsed Config instance
+
+    If passed an unparsed dict, it will attempt to convert it to Config but
+    will omit any path handling around imports.
+    """
+
+    if isinstance(config, dict):
+        config = Config.model_validate(config)
+    kwargs = construct_build_app_kwargs(config)
     return build_app(scalable=scalable, **kwargs)
 
 
@@ -870,16 +908,15 @@ def app_factory():
     config_path = os.getenv("TILED_CONFIG", "config.yml")
     logger.info(f"Using configuration from {Path(config_path).absolute()}")
 
-    from ..config import construct_build_app_kwargs, parse_configs
-
     parsed_config = parse_configs(config_path)
 
     # This config was already validated when it was parsed. Do not re-validate.
-    kwargs = construct_build_app_kwargs(parsed_config, source_filepath=config_path)
-    web_app = build_app(**kwargs)
-    uvicorn_config = parsed_config.get("uvicorn", {})
+    web_app = build_app_from_config(parsed_config)
+    uvicorn_config = parsed_config.uvicorn
     print_server_info(
-        web_app, host=uvicorn_config.get("host"), port=uvicorn_config.get("port")
+        web_app,
+        host=uvicorn_config.get("host", "127.0.0.1"),
+        port=uvicorn_config.get("port", 8000),
     )
     return web_app
 
@@ -935,9 +972,3 @@ def print_server_info(
 
 class UnscalableConfig(Exception):
     pass
-
-
-class TaskMap(TypedDict):
-    background: list[AppTask]
-    startup: list[AppTask]
-    shutdown: list[AppTask]

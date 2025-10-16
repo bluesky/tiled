@@ -17,10 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
-      with:
-        python-version: "3.x"
-        cache: 'pip'
     - uses: pre-commit/action@v3.0.0
 
   linux_checks:
@@ -30,35 +26,29 @@ jobs:
     strategy:
       matrix:
         python-version:
-        - "3.9"
-        - "3.10"
-        - "3.11"
-        - "3.12"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
       fail-fast: false
     steps:
 
     - uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Install uv and set the python version
+      uses: astral-sh/setup-uv@v6
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
 
-    - name: Install
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/install.sh
+    - name: Install tiled
+      run: uv sync --all-extras
 
-    - name: Install test requirements
-      shell: bash -l {0}
-      run: |
-        set -vxeuo pipefail
-        python -m pip install .[dev]
-        python -m pip list
-
-    - name: Start LDAP service in container.
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/start_LDAP.sh
+    # TODO Find a new image to use.
+    # https://github.com/bluesky/tiled/issues/1109
+    # - name: Start LDAP service in container.
+    #   shell: bash -l {0}
+    #   run: source continuous_integration/scripts/start_LDAP.sh
 
     - name: Download SQLite example data.
       shell: bash -l {0}
@@ -68,6 +58,10 @@ jobs:
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_postgres.sh
 
+    - name: Start Redis service in container.
+      shell: bash -l {0}
+      run: source continuous_integration/scripts/start_redis.sh
+
 
     - name: Ensure example data is migrated to current catalog database schema.
       # The example data is expected to be kept up to date to the latest Tiled
@@ -76,20 +70,24 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        tiled catalog upgrade-database sqlite:///tiled_test_db_sqlite.db
-        tiled catalog upgrade-database postgresql://postgres:secret@localhost:5432/tiled-example-data
+        uv run tiled catalog upgrade-database sqlite:///tiled_test_db_sqlite.db
+        uv run tiled catalog upgrade-database postgresql://postgres:secret@localhost:5432/tiled-example-data
 
     - name: Test with pytest
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        coverage run -m pytest -v
-        coverage report -m
+        uv run coverage run -m pytest -v
+        uv run coverage report -m
+        uv run coverage xml -o cov.xml
       env:
-        # Provide test suite with a PostgreSQL database to use.
+        # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
-        # Opt in to LDAPAuthenticator tests.
-        TILED_TEST_LDAP: 1
+        TILED_TEST_REDIS: redis://localhost:6379
+        # TODO Reinstate after finding a new image to use
+        # https://github.com/bluesky/tiled/issues/1109
+        # # Opt in to LDAPAuthenticator tests.
+        # TILED_TEST_LDAP: 1
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -110,27 +108,18 @@ jobs:
 
     - uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Install uv and set the python version
+      uses: astral-sh/setup-uv@v6
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
 
-    - name: Install
-      run: |
-        git fetch --tags --unshallow  # to set __version__ correctly
-        set TILED_BUILD_SKIP_UI=1
-        python -m pip install '.[all]'
-        python -m pip list
-
-    - name: Install test requirements
-      run: |
-        set TILED_BUILD_SKIP_UI=1
-        python -m pip install .[dev]
-        python -m pip list
+    - name: Install tiled
+      run: uv sync --all-extras
+      env:
+        TILED_BUILD_SKIP_UI: 1
 
     - name: Test with pytest
-      run: pytest -v
+      run: uv run pytest -v
 
   container_canary:
     name: Build and validate container
@@ -138,6 +127,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # get full history for `git describe` to produce version
 
     - name: Install Container Canary
       run: |
@@ -147,19 +138,36 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3
 
+    - name: Get git version
+      id: version
+      run: |
+        TILED_VERSION=$(git describe --tags --always --dirty)
+        # Remove 'v' prefix and convert to PEP 440
+        TILED_VERSION=${TILED_VERSION#v}
+        TILED_VERSION=$(echo $TILED_VERSION | sed 's/-\([0-9]\+\)-g\([0-9a-f]\+\)/.dev\1+\2/')
+        echo "TILED_VERSION=$TILED_VERSION" >> $GITHUB_OUTPUT
+
     - name: Build Docker image on multiple arch
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
       with:
         context: .
-        file: Dockerfile
+        file: Containerfile
         platforms: linux/amd64,linux/arm64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          TILED_VERSION=${{ steps.version.outputs.TILED_VERSION }}
 
     - name: Tag and load Docker image on single arch for testing (will use cache)
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6
       with:
+        context: .
+        file: Containerfile
         load: true
         push: false
         tags: ${{ env.TEST_TAG }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
     - name: Validate container
       run: |

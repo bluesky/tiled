@@ -109,7 +109,7 @@ And, finally, there are convenience methods for writing:
    tiled.client.container.Container.create_container
    tiled.client.container.Container.write_array
    tiled.client.container.Container.write_awkward
-   tiled.client.container.Container.write_dataframe
+   tiled.client.container.Container.write_table
    tiled.client.container.Container.write_sparse
 ```
 

@@ -62,6 +62,23 @@ def _ensure_writable_location(uri: str) -> Path:
 class SQLStorage(Storage):
     "General purpose SQL database storage with connection pooling"
 
+    pool_size: int = 5
+    max_overflow: int = 10
+
+    def __post_init__(self):
+        # Ensure pool_size and max_overflow are set to a default if not specified
+        if self.dialect == "duckdb":
+            # DuckDB does not support pooling, so we use StaticPool
+            object.__setattr__(self, "pool_size", 1)
+            object.__setattr__(self, "max_overflow", 0)
+        else:
+            if self.pool_size is None:
+                object.__setattr__(self, "pool_size", 5)
+            if self.max_overflow is None:
+                object.__setattr__(self, "max_overflow", 10)
+
+        super().__post_init__()
+
     @abstractmethod
     def create_adbc_connection(self) -> "adbc_driver_manager.dbapi.Connection":
         "Create a connection to the database."
@@ -80,11 +97,18 @@ class SQLStorage(Storage):
 
     @functools.cached_property
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
+        from .server.metrics import monitor_db_pool
+
         creator = self._adbc_connection.adbc_clone
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
-            return sqlalchemy.pool.StaticPool(creator)
+            pool = sqlalchemy.pool.StaticPool(creator)
         else:
-            return sqlalchemy.pool.QueuePool(creator, pool_size=3, max_overflow=0)
+            pool = sqlalchemy.pool.QueuePool(
+                creator, pool_size=self.pool_size, max_overflow=self.max_overflow
+            )
+            monitor_db_pool(pool, self.uri)
+
+        return pool
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
@@ -142,6 +166,9 @@ class RemoteSQLStorage(SQLStorage):
 
         super().__post_init__()
 
+    def __repr__(self):
+        return f"SQLStorage(uri={self.uri!r}, username={self.username!r})"
+
     @functools.cached_property
     def authenticated_uri(self):
         parsed_uri = urlparse(self.uri)
@@ -162,16 +189,23 @@ class RemoteSQLStorage(SQLStorage):
         return adbc_driver_postgresql.dbapi.connect(self.authenticated_uri)
 
 
-def parse_storage(item: Union[Path, str]) -> Storage:
+def parse_storage(
+    item: Union[Path, str],
+    *,
+    pool_size: int = 5,
+    max_overflow: int = 10,
+) -> Storage:
     "Create a Storage object from a URI or Path."
     item = ensure_uri(item)
     scheme = urlparse(item).scheme
     if scheme == "file":
         result = FileStorage(item)
     elif scheme == "postgresql":
-        result = RemoteSQLStorage(item)
+        result = RemoteSQLStorage(item, pool_size=pool_size, max_overflow=max_overflow)
     elif scheme in {"sqlite", "duckdb"}:
-        result = EmbeddedSQLStorage(item)
+        result = EmbeddedSQLStorage(
+            item, pool_size=pool_size, max_overflow=max_overflow
+        )
     else:
         raise ValueError(f"writable_storage item {item} has unrecognized scheme")
     return result

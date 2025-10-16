@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 import pytest
@@ -66,7 +67,7 @@ def buffer():
 
 
 @pytest.fixture(scope="function")
-def buffer_factory(request):
+def buffer_factory():
     buffers = []
 
     def _buffer():
@@ -74,12 +75,10 @@ def buffer_factory(request):
         buffers.append(buf)
         return buf
 
-    def teardown():
-        for buf in buffers:
-            buf.close()
+    yield _buffer
 
-    request.addfinalizer(teardown)
-    return _buffer
+    for buf in buffers:
+        buf.close()
 
 
 @pytest.fixture
@@ -161,6 +160,11 @@ async def postgres_uri():
 
 @pytest.fixture(params=["sqlite_uri", "postgres_uri"])
 def sqlite_or_postgres_uri(request):
+    yield request.getfixturevalue(request.param)
+
+
+@pytest.fixture(params=["sqlite_uri", "duckdb_uri", "postgres_uri"])
+def sql_storage_uri(request):
     yield request.getfixturevalue(request.param)
 
 
@@ -290,3 +294,35 @@ def url_limit(request: pytest.FixtureRequest):
     yield
     # Then restore the original value.
     BaseClient.URL_CHARACTER_LIMIT = PREVIOUS_LIMIT
+
+
+@pytest.fixture
+def redis_uri():
+    if uri := os.getenv("TILED_TEST_REDIS"):
+        import redis
+
+        client = redis.from_url(uri, socket_timeout=10, socket_connect_timeout=30)
+        # Delete all keys from the current database before and after test.
+        client.flushdb()
+        yield uri
+        client.flushdb()
+    else:
+        raise pytest.skip("No TILED_TEST_REDIS configured")
+
+
+@pytest.fixture
+def base_url() -> str:
+    return "https://example.com/realms/example"
+
+
+@pytest.fixture
+def well_known_response(base_url: str) -> dict[str, Any]:
+    return {
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "issuer": base_url,
+        "jwks_uri": f"{base_url}protocol/openid-connect/certs",
+        "authorization_endpoint": f"{base_url}protocol/openid-connect/auth",
+        "token_endpoint": f"{base_url}protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{base_url}protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{base_url}protocol/openid-connect/logout",
+    }

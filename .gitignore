@@ -69,6 +69,7 @@ config.yml
 prometheus_data
 grafana_data
 data
+alembic.ini
 
 tiled/_version.py
 
@@ -81,3 +82,6 @@ pixi.lock
 # uv environments
 uv.lock
 .venv
+# pixi environments
+.pixi/*
+!.pixi/config.toml

@@ -1,0 +1,150 @@
+[workspace]
+authors = ["Dan Allan <dallan@bnl.gov>"]
+channels = ["conda-forge"]
+name = "tiled"
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+version = "0.1.6"
+
+[tasks]
+
+[dependencies]
+httpx = ">=0.20.0,!=0.23.1"
+json-merge-patch = "*"
+jsonpatch = "*"
+jsonschema = "*"
+msgpack-python = ">=1.0.0"
+orjson = "*"
+platformdirs = "*"
+pydantic = ">=2,<3"
+pydantic-settings = ">=2,<3"
+pyyaml = "*"
+typer = "*"
+
+[pypi-dependencies]
+tiled = { path = ".", editable = true }
+
+[feature.array.dependencies]
+dask = "*"
+numpy = "*"
+
+[feature.awkward.dependencies]
+awkward = ">=2.4.3"
+
+[feature.client.dependencies]
+entrypoints = "*"
+rich = "*"
+stamina = "*"
+watchfiles = "*"
+websockets = "*"
+
+[feature.compression.dependencies]
+# python-blosc2 = "*"  # not available on Python < 3.11
+lz4 = "*"
+zstandard = "*"
+
+[feature.dataframe.dependencies]
+dask = "*"
+pandas = "*"
+pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
+
+[feature.dev.dependencies]
+aiohttp = "*"
+coverage = "*"
+flake8 = "*"
+ipython = "*"
+ldap3 = "*"
+matplotlib = "*"
+mistune = "*"
+myst-parser = "*"
+numpydoc = "*"
+pre-commit = "*"
+pytest = "*"
+pytest-asyncio = "*"
+pytest-mock = "*"
+pytest-rerunfailures = "*"
+sphinx = "!=4.1.0,!=4.1.1,!=4.1.2,!=4.2.0"
+sphinx-click = "*"
+sphinx-copybutton = "*"
+sphinx_rtd_theme = "*"
+sphinxcontrib-mermaid = "*"
+
+[feature.formats.dependencies]
+h5netcdf = "*"
+h5py = "*"
+hdf5plugin = "*"
+openpyxl = "*"
+pillow = "*"
+tifffile = "*"
+
+[feature.server.dependencies]
+adbc-driver-manager = "*"
+adbc-driver-postgresql = "*"
+adbc-driver-sqlite = "*"
+aiofiles = "*"
+aiosqlite = "*"
+alembic = "*"
+anyio = "*"
+asgi-correlation-id = "*"
+asyncpg = "*"
+cachetools = "*"
+canonicaljson = "*"
+dask = "*"
+duckdb = "<1.4.0"  # https://github.com/bluesky/tiled/issues/1144
+fastapi = ">=0.115.8"
+jinja2 = "*"
+jmespath = "*"
+numcodecs = "*"
+packaging = "*"
+prometheus_client = "*"
+python-dateutil = "*"
+python-jose = "*"
+python-multipart = "*"
+redis-py = "*"
+sqlalchemy = ">=2"
+starlette = ">=0.38.0"
+uvicorn = "*"
+zarr = "*"
+
+[feature.sparse.dependencies]
+ndindex = "*"
+pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
+sparse = ">=0.15.5"
+
+[feature.xarray.dependencies]
+dask = "*"
+pandas = "*"
+pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
+xarray = "*"
+
+[feature.py39.dependencies]
+python = "3.9.*"
+# python-blosc2 is not available for Python 3.9
+
+[feature.py310.dependencies]
+python = "3.10.*"
+# python-blosc2 is not available for Python 3.10
+
+[feature.py311.dependencies]
+python = "3.11.*"
+python-blosc2 = "*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+python-blosc2 = "*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+python-blosc2 = "*"
+
+[environments]
+default = { solve-group = "default" }
+all = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
+client = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "sparse", "xarray"], solve-group = "default" }
+dev = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray"], solve-group = "default" }
+server = { features = ["array", "awkward", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
+
+py39  = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py39"] }
+py310 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py310"] }
+py311 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py311"] }
+py312 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py312"] }
+py313 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py313"] }

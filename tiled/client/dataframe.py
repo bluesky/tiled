@@ -1,4 +1,5 @@
 import functools
+import warnings
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -222,23 +223,45 @@ class _DaskDataFrameClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=bytes(serialize_arrow(dataframe, {})),
+                        content=bytes(
+                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
+                        ),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )
 
-    def write_partition(self, dataframe, partition):
+    def write_partition(self, partition, dataframe):
+        # The order of arguments has changed; check that the user input is correct
+        if not isinstance(partition, int):
+            warnings.warn(
+                "The order of arguments has changed: please use write_partition(partition, dataframe).",  # noqa: E501
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            partition, dataframe = dataframe, partition
+
         for attempt in retry_context():
             with attempt:
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["partition"].format(index=partition),
-                        content=bytes(serialize_arrow(dataframe, {})),
+                        content=bytes(
+                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
+                        ),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )
 
-    def append_partition(self, dataframe, partition):
+    def append_partition(self, partition, dataframe):
+        # The order of arguments has changed; check that the user input is correct
+        if not isinstance(partition, int):
+            warnings.warn(
+                "The order of arguments has changed: please use append_partition(partition, dataframe).",  # noqa: E501
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            partition, dataframe = dataframe, partition
+
         if partition > self.structure().npartitions:
             raise ValueError(f"Table has {self.structure().npartitions} partitions")
         for attempt in retry_context():
@@ -246,7 +269,9 @@ class _DaskDataFrameClient(BaseClient):
                 handle_error(
                     self.context.http_client.patch(
                         self.item["links"]["partition"].format(index=partition),
-                        content=bytes(serialize_arrow(dataframe, {})),
+                        content=bytes(
+                            serialize_arrow(APACHE_ARROW_FILE_MIME_TYPE, dataframe, {})
+                        ),
                         headers={"Content-Type": APACHE_ARROW_FILE_MIME_TYPE},
                     )
                 )
