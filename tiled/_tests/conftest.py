@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 import pytest
@@ -307,3 +308,21 @@ def redis_uri():
         client.flushdb()
     else:
         raise pytest.skip("No TILED_TEST_REDIS configured")
+
+
+@pytest.fixture
+def base_url() -> str:
+    return "https://example.com/realms/example"
+
+
+@pytest.fixture
+def well_known_response(base_url: str) -> dict[str, Any]:
+    return {
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "issuer": base_url,
+        "jwks_uri": f"{base_url}protocol/openid-connect/certs",
+        "authorization_endpoint": f"{base_url}protocol/openid-connect/auth",
+        "token_endpoint": f"{base_url}protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{base_url}protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{base_url}protocol/openid-connect/logout",
+    }

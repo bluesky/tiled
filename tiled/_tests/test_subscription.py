@@ -8,6 +8,7 @@ from starlette.testclient import WebSocketDenialResponse
 from ..catalog import from_uri
 from ..client import Context, from_context
 from ..client.stream import Subscription
+from ..config import Authentication
 from ..server.app import build_app
 
 pytestmark = pytest.mark.skipif(
@@ -29,7 +30,8 @@ def tiled_websocket_context(tmpdir, redis_uri):
         init_if_not_exists=True,
         cache_settings={
             "uri": redis_uri,
-            "ttl": 60,
+            "data_ttl": 60,
+            "seq_ttl": 60,
             "socket_timeout": 10.0,
             "socket_connect_timeout": 10.0,
         },
@@ -37,7 +39,7 @@ def tiled_websocket_context(tmpdir, redis_uri):
 
     app = build_app(
         tree,
-        authentication={"single_user_api_key": "secret"},
+        authentication=Authentication(single_user_api_key="secret"),
     )
 
     with Context.from_app(app) as context:
