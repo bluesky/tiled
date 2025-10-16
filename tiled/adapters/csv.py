@@ -11,7 +11,7 @@ from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
-from ..structures.array import ArrayStructure
+from ..structures.array import ArrayStructure, StructDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
@@ -318,15 +318,13 @@ class CSVArrayAdapter(ArrayAdapter):
             ddf = ddf[usecols]
 
         chunks_0: tuple[int, ...] = structure.chunks[0]  # rows chunking, if not stacked
-        dtype_numpy = structure.data_type.to_numpy_dtype()
-        if not dtype_numpy.isbuiltin:
-            # Structural np dtype (0) -- return a records array
+
+        # Read as a structural array if needed; ensure the correct dtype
+        if isinstance(structure.data_type, StructDtype):
             array = ddf.to_records(lengths=chunks_0)[list(ddf.columns)].reshape(-1, 1)
         else:
-            # Simple np dtype (1 or 2) -- all fields have the same type -- return a usual array
             array = ddf.to_dask_array(lengths=chunks_0)
-        # Ensure correct dtype, especially for structured dtypes
-        array = array.astype(dtype_numpy)
+        array = array.astype(structure.data_type.to_numpy_dtype())
 
         # Possibly extend or cut the table according the nrows parameter
         if nrows is not None:
