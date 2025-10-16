@@ -1,5 +1,4 @@
 import copy
-import re
 from collections.abc import Set
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
@@ -359,16 +358,10 @@ class CSVArrayAdapter(ArrayAdapter):
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
-<<<<<<< HEAD
         ddf = dask.dataframe.read_csv(file_paths, **{"header": None, **kwargs})
         if usecols := kwargs.get("usecols"):
             ddf = ddf[usecols]  # Ensure the order of columns is preserved
         array = ddf.to_dask_array()
-=======
-        array = dask.dataframe.read_csv(
-            file_paths, **{"header": None, **kwargs}
-        ).to_dask_array()
->>>>>>> csv-shape
         structure = ArrayStructure.from_array(array)
 
         return cls(array, structure)
