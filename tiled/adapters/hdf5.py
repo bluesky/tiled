@@ -68,7 +68,7 @@ def get_hdf5_attrs(
     dataset: Optional[str] = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
-    locking: Optional[bool] = None,
+    locking: Optional[Union[bool, str]] = None,
 ) -> JSON:
     """Get attributes of an HDF5 dataset"""
     file_path = path_from_uri(file_uri)
@@ -140,7 +140,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         dataset: Optional[str] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[bool] = None,
+        locking: Optional[Union[bool, str]] = None,
     ) -> dask.array.Array:
         """Lazily load arrays from possibly multiple HDF5 files and concatenate them along the first axis
 
@@ -237,7 +237,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         squeeze: Optional[bool] = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[bool] = None,
+        locking: Optional[Union[bool, str]] = None,
     ) -> "HDF5ArrayAdapter":
         structure = data_source.structure
         assets = data_source.assets
@@ -295,7 +295,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[bool] = None,
+        locking: Optional[Union[bool, str]] = None,
     ) -> "HDF5ArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
@@ -391,7 +391,7 @@ class HDF5Adapter(
         dataset: Union[str, list[str]] = "/",
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[bool] = None,
+        locking: Optional[Union[bool, str]] = None,
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         if not isinstance(dataset, str):
             dataset = "/".join(dataset)
@@ -445,7 +445,7 @@ class HDF5Adapter(
         dataset: Optional[str] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        locking: Optional[bool] = None,
+        locking: Optional[Union[bool, str]] = None,
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
         with h5open(fpath, dataset, swmr=swmr, libver=libver, locking=locking) as file:
