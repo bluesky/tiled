@@ -5,45 +5,12 @@ import numpy as np
 import pytest
 from starlette.testclient import WebSocketDenialResponse
 
-from ..catalog import from_uri
-from ..client import Context, from_context
+from ..client import from_context
 from ..client.stream import Subscription
-from ..config import Authentication
-from ..server.app import build_app
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"
 )
-
-
-@pytest.fixture(scope="function")
-def tiled_websocket_context(tmpdir, redis_uri):
-    """Fixture that provides a Tiled context with websocket support."""
-
-    tree = from_uri(
-        "sqlite:///:memory:",
-        writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
-            f"duckdb:///{tmpdir / 'data.duckdb'}",
-        ],
-        readable_storage=None,
-        init_if_not_exists=True,
-        cache_settings={
-            "uri": redis_uri,
-            "data_ttl": 60,
-            "seq_ttl": 60,
-            "socket_timeout": 10.0,
-            "socket_connect_timeout": 10.0,
-        },
-    )
-
-    app = build_app(
-        tree,
-        authentication=Authentication(single_user_api_key="secret"),
-    )
-
-    with Context.from_app(app) as context:
-        yield context
 
 
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
