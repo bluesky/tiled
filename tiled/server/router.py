@@ -42,6 +42,7 @@ from starlette.status import (
 )
 
 from tiled.adapters.protocols import AnyAdapter
+from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
 from tiled.schemas import About
@@ -221,6 +222,19 @@ def get_router(
                         authenticator, "confirmation_message", None
                     ),
                 }
+            elif isinstance(authenticator, ProxiedOIDCAuthenticator):
+                spec = {
+                    "provider": provider,
+                    "mode": "external",
+                    "links": {
+                        "auth_endpoint": authenticator.device_authorization_endpoint,
+                        "client_id": authenticator.device_flow_client_id,
+                        "token_endpoint": authenticator.token_endpoint,
+                    },
+                    "confirmation_message": getattr(
+                        authenticator, "confirmation_message", None
+                    ),
+                }
             elif isinstance(authenticator, ExternalAuthenticator):
                 spec = {
                     "provider": provider,
@@ -236,15 +250,23 @@ def get_router(
                 # It should be impossible to reach here.
                 assert False
             provider_specs.append(spec)
+
         if provider_specs:
             # If there are *any* authenticaiton providers, these
             # endpoints will be added.
+            if isinstance(authenticator, ProxiedOIDCAuthenticator):
+                refresh_session = authenticator.token_endpoint
+                logout_endpoint = authenticator.end_session_endpoint
+            else:
+                refresh_session = f"{base_url}/auth/session/refresh"
+                logout_endpoint = f"{base_url}/auth/logout"
+
             authentication["links"] = {
                 "whoami": f"{base_url}/auth/whoami",
                 "apikey": f"{base_url}/auth/apikey",
-                "refresh_session": f"{base_url}/auth/session/refresh",
+                "refresh_session": refresh_session,
                 "revoke_session": f"{base_url}/auth/session/revoke/{{session_id}}",
-                "logout": f"{base_url}/auth/logout",
+                "logout": logout_endpoint,
             }
         authentication["providers"] = provider_specs
 
