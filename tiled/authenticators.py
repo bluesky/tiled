@@ -5,9 +5,11 @@ import logging
 import re
 import secrets
 from collections.abc import Iterable
+from datetime import timedelta
 from typing import Any, List, Mapping, Optional, cast
 
 import httpx
+from cachetools import TTLCache, cached
 from fastapi import APIRouter, Request
 from fastapi.security import OAuth2, OAuth2AuthorizationCodeBearer
 from jose import JWTError, jwt
@@ -182,7 +184,17 @@ properties:
             cast(str, self._config_from_oidc_url.get("authorization_endpoint"))
         )
 
-    # TODO: Cache with expiration to allow for key rotation
+    @functools.cached_property
+    def device_authorization_endpoint(self) -> str:
+        return cast(
+            str, self._config_from_oidc_url.get("device_authorization_endpoint")
+        )
+
+    @functools.cached_property
+    def end_session_endpoint(self) -> str:
+        return cast(str, self._config_from_oidc_url.get("end_session_endpoint"))
+
+    @cached(TTLCache(maxsize=1, ttl=timedelta(days=7).total_seconds()))
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
@@ -266,15 +278,6 @@ properties:
     @property
     def oauth2_schema(self) -> OAuth2:
         return self._oidc_bearer
-
-    def decode_token(self, token: str) -> dict[str, Any]:
-        return jwt.decode(
-            token,
-            key=self.keys(),
-            algorithms=self.id_token_signing_alg_values_supported,
-            audience=self._audience,
-            issuer=self.issuer,
-        )
 
 
 async def exchange_code(

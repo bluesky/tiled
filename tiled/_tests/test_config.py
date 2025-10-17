@@ -1,6 +1,9 @@
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
+import respx
 from fastapi import APIRouter
 from pydantic import ValidationError
 
@@ -197,6 +200,84 @@ def test_duplicate_auth_providers():
                         },
                     ]
                 }
+            }
+        )
+
+
+@respx.mock
+def test_proxied_authenticator_single_instance_required(
+    well_known_response: dict[str, Any]
+):
+    respx.get("http://example.com").mock(
+        side_effect=[
+            httpx.Response(httpx.codes.OK, json=well_known_response),
+            httpx.Response(httpx.codes.OK, json=well_known_response),
+        ]
+    )
+    with pytest.raises(
+        ValidationError,
+        match="Multiple ProxiedOIDCAuthenticator instances are configured.",
+    ):
+        Config.model_validate(
+            {
+                "trees": [],
+                "authentication": {
+                    "providers": [
+                        {
+                            "provider": "one",
+                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "args": {
+                                "audience": "tiled",
+                                "client_id": "tiled",
+                                "well_known_uri": "http://example.com",
+                            },
+                        },
+                        {
+                            "provider": "two",
+                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "args": {
+                                "audience": "tiled",
+                                "client_id": "tiled",
+                                "well_known_uri": "http://example.com",
+                            },
+                        },
+                    ]
+                },
+            }
+        )
+
+
+@respx.mock
+def test_proxied_authenticator_is_not_used_with_other_authenticators(
+    well_known_response: dict[str, Any],
+):
+    respx.get("http://example.com").mock(
+        return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
+    )
+    with pytest.raises(
+        ValidationError,
+        match="ProxiedOIDCAuthenticator must not be configured together with other authentication providers.",
+    ):
+        Config.model_validate(
+            {
+                "trees": [],
+                "authentication": {
+                    "providers": [
+                        {
+                            "provider": "one",
+                            "authenticator": "tiled.authenticators:DummyAuthenticator",
+                        },
+                        {
+                            "provider": "two",
+                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "args": {
+                                "audience": "tiled",
+                                "client_id": "tiled",
+                                "well_known_uri": "http://example.com",
+                            },
+                        },
+                    ]
+                },
             }
         )
 

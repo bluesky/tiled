@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import Any
+from typing import Any, Tuple
 
 import httpx
 import pytest
@@ -63,19 +63,8 @@ def test_LDAPAuthenticator_01(use_tls, use_ssl, ldap_server_address, ldap_server
 
 
 @pytest.fixture
-def well_known_response() -> dict[str, Any]:
-    return {
-        "id_token_signing_alg_values_supported": ["RS256"],
-        "issuer": "https://example.com/realms/example",
-        "jwks_uri": "https://example.com/realms/example/protocol/openid-connect/certs",
-        "authorization_endpoint": "https://example.com/realms/example/protocol/openid-connect/auth",
-        "token_endpoint": "https://example.com/realms/example/protocol/openid-connect/token"
-    }
-
-
-@pytest.fixture
-def well_known_url() -> str:
-    return "http://example.com/well_known/"
+def well_known_url(base_url: str) -> str:
+    return f"{base_url}.well-known/openid-configuration"
 
 
 @pytest.fixture
@@ -86,10 +75,10 @@ def mock_oidc_server(
     json_web_keyset: list[dict[str, Any]],
 ) -> MockRouter:
     respx_mock.get(well_known_url).mock(
-        return_value=httpx.Response(200, json=well_known_response)
+        return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
     )
     respx_mock.get(well_known_response["jwks_uri"]).mock(
-        return_value=httpx.Response(200, json={"keys": json_web_keyset})
+        return_value=httpx.Response(httpx.codes.OK, json={"keys": json_web_keyset})
     )
     return respx_mock
 
@@ -110,6 +99,8 @@ def test_oidc_authenticator_caching(
     assert authenticator.issuer == well_known_response["issuer"]
     assert authenticator.jwks_uri == well_known_response["jwks_uri"]
     assert authenticator.token_endpoint == well_known_response["token_endpoint"]
+    assert authenticator.device_authorization_endpoint == well_known_response["device_authorization_endpoint"]
+    assert authenticator.end_session_endpoint == well_known_response["end_session_endpoint"]
 
     # Cached the result of .well_known, only GET once
     assert len(mock_oidc_server.calls) == 1
@@ -123,9 +114,11 @@ def test_oidc_authenticator_caching(
     assert keys_request.method == "GET"
     assert keys_request.url == well_known_response["jwks_uri"]
 
-    assert authenticator.keys() == json_web_keyset
-    assert len(mock_oidc_server.calls) == 3  # Getting keys is not cached
-    keys_request = mock_oidc_server.calls[2].request
+    for _ in range(10):
+        assert authenticator.keys() == json_web_keyset
+
+    assert len(mock_oidc_server.calls) == 2  # Getting keys is cached
+    keys_request = mock_oidc_server.calls[1].request
     assert keys_request.method == "GET"
     assert keys_request.url == well_known_response["jwks_uri"]
 
@@ -137,9 +130,9 @@ def test_oidc_decoding(
     well_known_url: str,
     issued: bool,
     expired: bool,
-    private_key: rsa.RSAPrivateKey
+    keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]
 ):
-
+    private_key, _ = keys
     authenticator = OIDCAuthenticator("tiled", "tiled", "secret", well_known_uri=well_known_url)
     access_token = token(issued, expired)
     encrypted_access_token = encrypted_token(access_token, private_key)
@@ -154,15 +147,18 @@ def test_oidc_decoding(
 
 
 @pytest.fixture
-def private_key() -> rsa.RSAPrivateKey:
+def keys() -> Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
     # Key generated just for these tests
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = private_key.public_key()
+    return (private_key, public_key)
 
 
 @pytest.fixture
-def json_web_keyset(private_key: rsa.RSAPrivateKey) -> list[dict[str, Any]]:
+def json_web_keyset(keys: Tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]) -> list[dict[str, Any]]:
+    _, public_key = keys
     return [
-        RSAKey(key=private_key, algorithm="RS256").to_dict()
+        RSAKey(key=public_key, algorithm="RS256").to_dict()
     ]
 
 

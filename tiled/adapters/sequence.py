@@ -8,6 +8,8 @@ import numpy as np
 from ndindex import ndindex
 from numpy._typing import NDArray
 
+from tiled.adapters.core import Adapter
+
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
@@ -59,7 +61,7 @@ def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
     return arr
 
 
-class FileSequenceAdapter:
+class FileSequenceAdapter(Adapter[ArrayStructure]):
     """Base adapter class for image (and other file) sequences
 
     Assumes that each file contains an array of the same shape and dtype, and the sequence of files defines the
@@ -73,8 +75,8 @@ class FileSequenceAdapter:
     def __init__(
         self,
         data_uris: Iterable[str],
-        *,
         structure: Optional[ArrayStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -89,8 +91,6 @@ class FileSequenceAdapter:
         """
         self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         # TODO Check shape, chunks against reality.
-        self.specs = specs or []
-        self._provided_metadata = metadata or {}
         if structure is None:
             dat0 = self._load_from_files(0)
             shape = (len(self.filepaths), *dat0.shape[1:])
@@ -101,7 +101,7 @@ class FileSequenceAdapter:
                 # Assume all files have the same data type
                 data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
-        self._structure = structure
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_uris(cls, *data_uris: str) -> "FileSequenceAdapter":
@@ -115,7 +115,7 @@ class FileSequenceAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @abstractmethod
     def _load_from_files(
@@ -137,14 +137,8 @@ class FileSequenceAdapter:
         pass
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         # TODO How to deal with the many headers?
-        return self._provided_metadata
+        return super().metadata()
 
     def read(
         self, slice: Union[NDSlice, EllipsisType, builtins.slice] = ...
@@ -219,12 +213,3 @@ class FileSequenceAdapter:
             raise IndexError(block)
         arr = self.read(builtins.slice(block[0], block[0] + 1))
         return arr[slice] if slice else arr
-
-    def structure(self) -> ArrayStructure:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._structure

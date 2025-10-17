@@ -475,12 +475,15 @@ def build_app(
                 settings.database_settings.uri = (
                     settings.database_settings.uri or "sqlite://"
                 )
-        if authenticators:
-            # ProxiedOIDCAuthenticator cannot be used alongside other authentication providers
-            if len(authenticators) == 1:
-                authenticator = next(iter(authenticators.values()))
-                if isinstance(authenticator, ProxiedOIDCAuthenticator):
-                    settings.authenticator = authenticator
+        if (
+            authenticators
+            and len(authenticators) == 1
+            and isinstance(
+                authenticator := next(iter(authenticators.values())),
+                ProxiedOIDCAuthenticator,
+            )
+        ):
+            settings.authenticator = authenticator
         return settings
 
     async def startup_event():

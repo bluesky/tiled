@@ -37,8 +37,8 @@ from starlette.status import (
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
-    HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-    HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_416_RANGE_NOT_SATISFIABLE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
 from tiled.adapters.protocols import AnyAdapter
@@ -2005,12 +2005,12 @@ def get_router(
         # Manually validate limits that bypass pydantic validation via patch
         if len(specs) > schemas.MAX_ALLOWED_SPECS:
             raise HTTPException(
-                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Update cannot result in more than {schemas.MAX_ALLOWED_SPECS} specs",
             )
         if len(specs) != len(set(specs)):
             raise HTTPException(
-                status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Update cannot result in non-unique specs",
             )
 
@@ -2317,7 +2317,7 @@ def get_router(
             range = start, _ = (int(match.group(1)), int(match.group(2)))
             if start > stat_result.st_size:
                 raise HTTPException(
-                    status_code=HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                    status_code=HTTP_416_RANGE_NOT_SATISFIABLE,
                     headers={"content-range": f"bytes */{stat_result.st_size}"},
                 )
             status_code = HTTP_206_PARTIAL_CONTENT

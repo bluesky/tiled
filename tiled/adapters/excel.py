@@ -3,13 +3,15 @@ from typing import Any, Optional
 import dask.dataframe
 import pandas
 
+from tiled.adapters.table import TableAdapter
+
 from ..catalog.orm import Node
 from ..structures.data_source import DataSource
 from .dataframe import DataFrameAdapter
 from .mapping import MapAdapter
 
 
-class ExcelAdapter(MapAdapter):
+class ExcelAdapter(MapAdapter[TableAdapter]):
     @classmethod
     def from_file(cls, file: Any, **kwargs: Any) -> "ExcelAdapter":
         """

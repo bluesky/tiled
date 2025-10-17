@@ -4,6 +4,8 @@ from typing import Any, List, Optional, Tuple, Union
 import numpy
 from numpy._typing import NDArray
 
+from tiled.adapters.core import Adapter
+
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
@@ -16,7 +18,7 @@ from .sequence import FileSequenceAdapter
 from .utils import init_adapter_from_catalog
 
 
-class NPYAdapter:
+class NPYAdapter(Adapter[ArrayStructure]):
     """
     Read the Numpy on-disk format, NPY (.npy).
 
@@ -31,8 +33,8 @@ class NPYAdapter:
     def __init__(
         self,
         data_uri: str,
-        *,
         structure: ArrayStructure,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -46,9 +48,7 @@ class NPYAdapter:
         specs :
         """
         self._filepath = path_from_uri(data_uri)
-        self.specs = specs or []
-        self._provided_metadata = metadata or {}
-        self._structure = structure
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_catalog(
@@ -58,7 +58,7 @@ class NPYAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "NPYAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(
@@ -81,9 +81,6 @@ class NPYAdapter:
             structure=structure,
         )
 
-    def metadata(self) -> JSON:
-        return self._provided_metadata.copy()
-
     def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         cache_key = (numpy.load, self._filepath)
         arr = with_resource_cache(cache_key, numpy.load, self._filepath)
@@ -101,9 +98,6 @@ class NPYAdapter:
         if slice is not None:
             arr = arr[slice]
         return arr
-
-    def structure(self) -> ArrayStructure:
-        return self._structure
 
 
 class NPYSequenceAdapter(FileSequenceAdapter):
