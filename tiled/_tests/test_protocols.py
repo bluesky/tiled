@@ -426,7 +426,7 @@ async def accesspolicy_protocol_functions(
     policy: AccessPolicy,
     node: BaseAdapter,
     principal: Principal,
-    authn_access_tags: Optional[Set[str]],
+    authn_access_tags: Optional[AccessTags],
     authn_scopes: Scopes,
     scopes: Scopes,
 ) -> None:

@@ -1,6 +1,6 @@
 import logging
 import os
-from types import Optional, Tuple
+from typing import Optional, Tuple
 
 from ..adapters.protocols import BaseAdapter
 from ..queries import AccessBlobFilter

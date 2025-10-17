@@ -1,4 +1,4 @@
-from typing import List, Optional, Set
+from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
@@ -7,7 +7,7 @@ from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GO
 from ..access_control.protocols import AccessPolicy
 from ..adapters.protocols import AnyAdapter
 from ..structures.core import StructureFamily
-from ..type_aliases import Scopes
+from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink
 from .core import NoEntry
 from .schemas import Principal
@@ -22,7 +22,7 @@ async def get_entry(
     path: str,
     security_scopes: List[str],
     principal: Optional[Principal],
-    authn_access_tags: Optional[Set[str]],
+    authn_access_tags: Optional[AccessTags],
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
