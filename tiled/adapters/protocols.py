@@ -8,14 +8,13 @@ import sparse
 from numpy.typing import NDArray
 
 from ..ndslice import NDSlice
-from ..server.schemas import Principal
 from ..storage import Storage
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
-from ..type_aliases import JSON, Filters, Scopes
+from ..type_aliases import JSON
 from .awkward_directory_container import DirectoryContainer
 
 
@@ -130,26 +129,3 @@ class TableAdapter(BaseAdapter, Protocol):
 AnyAdapter = Union[
     ArrayAdapter, AwkwardAdapter, ContainerAdapter, SparseAdapter, TableAdapter
 ]
-
-
-class AccessPolicy(Protocol):
-    @abstractmethod
-    async def allowed_scopes(
-        self,
-        node: BaseAdapter,
-        principal: Principal,
-        authn_access_tags: Optional[Set[str]],
-        authn_scopes: Scopes,
-    ) -> Scopes:
-        pass
-
-    @abstractmethod
-    async def filters(
-        self,
-        node: BaseAdapter,
-        principal: Principal,
-        authn_access_tags: Optional[Set[str]],
-        authn_scopes: Scopes,
-        scopes: Scopes,
-    ) -> Filters:
-        pass
