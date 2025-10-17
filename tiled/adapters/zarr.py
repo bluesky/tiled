@@ -230,7 +230,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
 
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
-        return {FileStorage}
+        return {FileStorage, ObjectStorage}
 
 
 class ZarrGroupAdapter(
@@ -391,6 +391,8 @@ def decode_bucket_uri(storage_uri: str) -> Tuple[str, str]:
     storage_uri: str
         The tiled storage URI to decode.
     """
+    if storage_uri.startswith("duckdb://") or storage_uri.startswith("file://"):
+        return storage_uri, ""
     # Split on the first single '/' that is not part of '://'
     match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
     return match.group(1) if match else storage_uri, (
