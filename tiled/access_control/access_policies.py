@@ -1,5 +1,11 @@
 import logging
 import os
+from typing import Dict, List, Optional
+
+import httpx
+from pydantic import BaseModel, HttpUrl, ValidationError
+
+from tiled.server.schemas import Principal
 
 from ..queries import AccessBlobFilter
 from ..utils import Sentinel, import_object
@@ -14,7 +20,6 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("TILED ACCESS POLICY: %(message)s"))
 logger.addHandler(handler)
-
 log_level = os.getenv("TILED_ACCESS_POLICY_LOG_LEVEL")
 if log_level:
     logger.setLevel(log_level.upper())
@@ -360,3 +365,58 @@ class TagBasedAccessPolicy:
 
         queries.append(query_filter(identifier, tag_list))
         return queries
+
+
+class Data(BaseModel):
+    token: str
+    audience: str
+    actions: list[str]
+    attribute: Optional[Dict[str, str]]
+
+
+class Input(BaseModel):
+    input: Data
+
+
+class Decision(BaseModel):
+    result: bool
+
+
+class ExternalPolicyDecisionPoint:
+    def __init__(
+        self, authorization_provider: HttpUrl, audience: str, attribute: Optional[str]
+    ):
+        self.authorization_provider = authorization_provider
+        self.audience = audience
+        self.attribute = attribute
+
+    async def authorized(self, node, principal: Principal, actions: List[str]) -> bool:
+        if principal.access_token is None:
+            raise RuntimeError(
+                "External policy access control requires a bearer token. "
+                "Please ensure that the principal has a access token."
+            )
+
+        attribute = (
+            node.metadata().get(self.attribute, None)
+            if hasattr(node, "metadata")
+            else None
+        )
+        input = Input(
+            input=Data(
+                token=principal.access_token,
+                audience=self.audience,
+                actions=actions,
+                attribute=attribute,
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(self.authorization_provider), content=input.model_dump_json()
+            )
+            response.raise_for_status()
+        try:
+            decision = Decision.model_validate_json(response.text)
+        except ValidationError:
+            return False
+        return decision.result

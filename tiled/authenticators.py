@@ -155,7 +155,7 @@ properties:
         response.raise_for_status()
         return response.json()
 
-    @functools.cached_property
+    @property
     def client_id(self) -> str:
         return self._client_id
 
@@ -259,6 +259,7 @@ properties:
         audience: str,
         client_id: str,
         well_known_uri: str,
+        scopes: List[str],
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -268,6 +269,7 @@ properties:
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
         )
+        self.scopes = scopes
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
