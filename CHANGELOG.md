@@ -5,9 +5,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.2.0 (unreleased)
 
-- Enable Tiled server to accept bearer access tokens for authentication
+### Added
 
-## Unreleased
+- Tests to ensure that CSVAdapter can be used with a subset of columns.
+
+### Changed
+
+- Enable Tiled server to accept bearer access tokens for authentication
 
 ### Added
 
