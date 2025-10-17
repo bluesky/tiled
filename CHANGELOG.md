@@ -9,6 +9,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Configured recycle and added explicit pre-ping option (disabled by default) for
+  storage databases.
+
 ### Fixed
 
 - Column names in `TableStructure` are explicitly converted to strings.
