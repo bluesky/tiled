@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from jose import ExpiredSignatureError, jwt
 from jose.backends import RSAKey
 from respx import MockRouter
+from starlette.datastructures import URL, QueryParams
 
 from ..authenticators import (
     LDAPAuthenticator,
@@ -191,3 +192,127 @@ async def test_proxied_oidc_token_retrieval(well_known_url: str, mock_oidc_serve
     })
 
     assert "FOO" == await authenticator.oauth2_schema(test_request)
+
+
+def create_mock_OIDC_request(query_params=None):
+    """Helper function to create a realistic request object for testing."""
+    if query_params is None:
+        query_params = {}
+
+    class MockRequest:
+        def __init__(self, query_params):
+            self.query_params = QueryParams(query_params)
+            self.scope = {
+                "type": "http",
+                "scheme": "http",
+                "server": ("localhost", 8000),
+                "path": "/api/v1/auth/provider/orcid/code",
+                "headers": []
+            }
+            self.headers = {"host": "localhost:8000"}
+            self.url = URL("http://localhost:8000/api/v1/auth/provider/orcid/code")
+
+    return MockRequest(query_params)
+
+
+@pytest.mark.asyncio
+async def test_OIDCAuthenticator_mock(
+    mock_oidc_server: MockRouter,
+    well_known_url: str,
+    well_known_response: dict[str, Any],
+    monkeypatch
+):
+    """
+    Test OIDCAuthenticator with mocked external dependencies using respx.
+    """
+    # Mock JWT token payload
+    mock_jwt_payload = {
+        "sub": "0009-0008-8698-7745",
+        "aud": "APP-TEST-CLIENT-ID",
+        "iss": well_known_response["issuer"],
+        "exp": 9999999999,  # Far future
+        "iat": 1000000000,
+        "given_name": "Test User"
+    }
+
+    # Add token exchange endpoint to existing mock_oidc_server
+    mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
+        return_value=httpx.Response(200, json={
+            "access_token": "mock-access-token",
+            "id_token": "mock-id-token",
+            "token_type": "bearer"
+        })
+    )
+
+    authenticator = OIDCAuthenticator(
+        audience="APP-TEST-CLIENT-ID",
+        client_id="APP-TEST-CLIENT-ID",
+        client_secret="test-secret",
+        well_known_uri=well_known_url  # Use the fixture
+    )
+
+    mock_request = create_mock_OIDC_request({"code": "test-auth-code"})
+
+    def mock_jwt_decode(*args, **kwargs):
+        return mock_jwt_payload
+
+    def mock_jwk_construct(*args, **kwargs):
+        class MockJWK:
+            pass
+        return MockJWK()
+
+    monkeypatch.setattr("jose.jwt.decode", mock_jwt_decode)
+    monkeypatch.setattr("jose.jwk.construct", mock_jwk_construct)
+
+    # Test authentication
+    user_session = await authenticator.authenticate(mock_request)
+
+    assert user_session is not None
+    assert user_session.user_name == "0009-0008-8698-7745"
+
+
+@pytest.mark.asyncio
+async def test_OIDCAuthenticator_missing_code_parameter(well_known_url: str):
+    """
+    Test OIDCAuthenticator when the 'code' query parameter is missing.
+    """
+    authenticator = OIDCAuthenticator(
+        audience="APP-TEST-CLIENT-ID",
+        client_id="APP-TEST-CLIENT-ID",
+        client_secret="test-secret",
+        well_known_uri=well_known_url  # Use the fixture
+    )
+
+    mock_request = create_mock_OIDC_request({})  # Empty, no code parameter
+
+    result = await authenticator.authenticate(mock_request)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_OIDCAuthenticator_token_exchange_failure(
+    well_known_url: str, mock_oidc_server, well_known_response
+):
+    """
+    Test OIDCAuthenticator when token exchange fails.
+    """
+    # Mock the token exchange endpoint to return an error
+    mock_oidc_server.post(well_known_response["token_endpoint"]).mock(
+        return_value=httpx.Response(400, json={
+            'error': 'invalid_client',
+            'error_description': 'Client not found: APP-TEST-CLIENT-ID'
+        })
+    )
+
+    authenticator = OIDCAuthenticator(
+        audience="APP-TEST-CLIENT-ID",
+        client_id="APP-TEST-CLIENT-ID",
+        client_secret="test-secret",
+        well_known_uri=well_known_url
+    )
+
+    mock_request = create_mock_OIDC_request({"code": "invalid-code"})
+
+    # This should return None, not raise an exception
+    result = await authenticator.authenticate(mock_request)
+    assert result is None
