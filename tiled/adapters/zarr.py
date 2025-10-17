@@ -1,6 +1,7 @@
 import builtins
 import copy
 import os
+import re
 from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
 from urllib.parse import quote_plus
@@ -17,7 +18,7 @@ from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..ndslice import NDSlice
-from ..storage import FileStorage, Storage
+from ..storage import FileStorage, ObjectStorage, Storage, get_storage
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -30,8 +31,10 @@ if ZARR_LIB_V2:
     from zarr.storage import DirectoryStore as LocalStore
     from zarr.storage import init_array as create_array
 else:
+    from obstore.store import AzureStore, GCSStore, S3Store
     from zarr import create_array
-    from zarr.storage import LocalStore
+    from zarr.storage import LocalStore, ObjectStore
+
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -60,28 +63,50 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         path_parts: List[str],
     ) -> DataSource[ArrayStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.uri + "".join(
-            f"/{quote_plus(segment)}" for segment in path_parts
-        )
+
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
-        directory = path_from_uri(data_uri)
-        directory.mkdir(parents=True, exist_ok=True)
-        store = LocalStore(str(directory))
-        create_array(
-            store,
-            shape=shape,
-            chunks=zarr_chunks,
-            dtype=data_source.structure.data_type.to_numpy_dtype(),
-        )
+
+        if isinstance(storage, ObjectStorage):
+            data_uri = (
+                storage.uri
+                + "/"
+                + storage.config["bucket"]
+                + "".join(f"/{quote_plus(segment)}" for segment in path_parts)
+            )
+            style = storage_style(storage.provider)
+            object_store = style["class"](
+                **{
+                    style["property"]: storage.uri,
+                    "prefix": "".join(
+                        f"/{quote_plus(segment)}" for segment in path_parts
+                    ),
+                },
+                **storage.config,
+            )
+            store = ObjectStore(store=object_store)
+        if isinstance(storage, FileStorage):
+            data_uri = storage.uri + "".join(
+                f"/{quote_plus(segment)}" for segment in path_parts
+            )
+            # file-based
+            directory = path_from_uri(data_uri)
+            directory.mkdir(parents=True, exist_ok=True)
+            store = LocalStore(str(directory))
         data_source.assets.append(
             Asset(
                 data_uri=data_uri,
                 is_directory=True,
                 parameter="data_uri",
             )
+        )
+        create_array(
+            store,
+            shape=shape,
+            chunks=zarr_chunks,
+            dtype=data_source.structure.data_type.to_numpy_dtype(),
         )
         return data_source
 
@@ -205,7 +230,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
 
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
-        return {FileStorage}
+        return {FileStorage, ObjectStorage}
 
 
 class ZarrGroupAdapter(
@@ -298,10 +323,35 @@ class ZarrAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
-        zarr_obj = zarr.open(
-            path_from_uri(data_source.assets[0].data_uri)
-        )  # Group or Array
-        if node.structure_family == StructureFamily.container:
+        container_type = node.structure_family == StructureFamily.container
+        storage_uri = data_source.assets[0].data_uri
+        location, path = decode_bucket_uri(storage_uri)
+        storage = get_storage(location)
+        if isinstance(storage, FileStorage):
+            zarr_obj = zarr.open(path_from_uri(storage_uri))
+        elif isinstance(storage, ObjectStorage):
+            path = path.replace(storage.config["bucket"] + "/", "")
+            style = storage_style(storage.provider)
+            object_store = style["class"](
+                **{style["property"]: storage.uri},
+                **storage.config,
+            )
+            store = ObjectStore(store=object_store)
+            zarr_obj = (
+                zarr.open_group(
+                    store=store,
+                    path=path,
+                )
+                if container_type
+                else zarr.open_array(
+                    store=store,
+                    path=path,
+                )
+            )
+        else:
+            raise TypeError(f"Unsupported Storage type {storage}")
+
+        if container_type:
             return ZarrGroupAdapter(
                 zarr_obj,
                 metadata=node.metadata_,
@@ -327,3 +377,44 @@ class ZarrAdapter:
         else:
             structure = ArrayStructure.from_array(zarr_obj)
             return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
+
+
+def decode_bucket_uri(storage_uri: str) -> Tuple[str, str]:
+    """
+    Decode a blob storage URI into parts needed by obstore.
+    Returns a tuple of (location, path).
+    Will return the original tiled storage URI and an empty path if filesystem
+    Examples:
+        s3://my-bucket/path/to/array -> (s3://my-bucket, /path/to/array)
+    Parameters
+    ----------
+    storage_uri: str
+        The tiled storage URI to decode.
+    """
+    if storage_uri.startswith("duckdb://") or storage_uri.startswith("file://"):
+        return storage_uri, ""
+    # Split on the first single '/' that is not part of '://'
+    match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
+    return match.group(1) if match else storage_uri, (
+        match.group(2) if match and match.group(2) else ""
+    ).lstrip("/")
+
+
+def storage_style(provider: str) -> dict[str, S3Store | AzureStore | GCSStore]:
+    """
+    Adapt obstore cloud provider methods
+    Parameters
+    ----------
+    provider : str
+        The cloud provider, one of 's3', 'azure', 'google'
+    Returns
+    -------
+    dict{class: obstore class, property: str}
+        The obstore class and endpoint property name
+    """
+    mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
+    urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
+    return {
+        "class": mapping[provider],
+        "property": urlProp[provider],
+    }

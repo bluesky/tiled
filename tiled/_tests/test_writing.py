@@ -49,6 +49,17 @@ def tree(tmpdir):
         writable_storage=[
             f"file://localhost{str(tmpdir / 'data')}",
             f"duckdb:///{tmpdir / 'data.duckdb'}",
+            {
+                "provider": "s3",
+                "uri": "http://localhost:9000",
+                "config": {
+                    "access_key_id": "minioadmin",
+                    "secret_access_key": "minioadmin",
+                    "bucket": "buck",
+                    "virtual_hosted_style_request": False,
+                    "client_options": {"allow_http": True},
+                },
+            },
         ]
     )
 
