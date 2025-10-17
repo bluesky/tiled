@@ -68,11 +68,13 @@ def get_hdf5_attrs(
     dataset: Optional[str] = None,
     swmr: bool = SWMR_DEFAULT,
     libver: str = "latest",
-    **kwargs: Optional[Any],
+    locking: Optional[Union[bool, str]] = None,
 ) -> JSON:
     """Get attributes of an HDF5 dataset"""
     file_path = path_from_uri(file_uri)
-    with h5open(file_path, dataset=dataset, swmr=swmr, libver=libver, **kwargs) as node:
+    with h5open(
+        file_path, dataset=dataset, swmr=swmr, libver=libver, locking=locking
+    ) as node:
         d = dict(getattr(node, "attrs", {}))
         for k, v in d.items():
             # Convert any bytes to str.
@@ -138,6 +140,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         dataset: Optional[str] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
+        locking: Optional[Union[bool, str]] = None,
     ) -> dask.array.Array:
         """Lazily load arrays from possibly multiple HDF5 files and concatenate them along the first axis
 
@@ -153,17 +156,21 @@ class HDF5ArrayAdapter(ArrayAdapter):
             Whether to open the files in single-writer multiple-reader mode
         libver : str
             The HDF5 library version to use
+        locking : bool
+            Whether to use file locking when accessing the files
         """
 
         # Define helper functions for reading and getting specs of HDF5 arrays with dask.delayed
         def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
-            f = h5py.File(fpath, "r", swmr=swmr, libver=libver)
+            f = h5py.File(fpath, "r", swmr=swmr, libver=libver, locking=locking)
             return f[dataset] if dataset else f
 
         def _get_hdf5_specs(
             fpath: Union[str, Path]
         ) -> Tuple[Tuple[int, ...], Union[Tuple[int, ...], None], numpy.dtype]:
-            with h5open(fpath, dataset, swmr=swmr, libver=libver) as ds:
+            with h5open(
+                fpath, dataset, swmr=swmr, libver=libver, locking=locking
+            ) as ds:
                 result = ds.shape, ds.chunks, ds.dtype
             return result
 
@@ -187,7 +194,11 @@ class HDF5ArrayAdapter(ArrayAdapter):
             if check_str_dtype.length is None:
                 # TODO: refactor and test
                 with h5open(
-                    file_paths[0], dataset=dataset, swmr=swmr, libver=libver
+                    file_paths[0],
+                    dataset=dataset,
+                    swmr=swmr,
+                    libver=libver,
+                    locking=locking,
                 ) as value:
                     dataset_names = value.file[value.file.name + "/" + dataset][...][()]
                     if value.size == 1:
@@ -226,7 +237,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         squeeze: Optional[bool] = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        **kwargs: Optional[Any],
+        locking: Optional[Union[bool, str]] = None,
     ) -> "HDF5ArrayAdapter":
         structure = data_source.structure
         assets = data_source.assets
@@ -236,7 +247,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = cls.lazy_load_hdf5_array(
-            *file_paths, dataset=dataset, swmr=swmr, libver=libver
+            *file_paths, dataset=dataset, swmr=swmr, libver=libver, locking=locking
         )
         if slice:
             if isinstance(slice, str):
@@ -263,7 +274,9 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # Pull additional metadata from the file attributes
         metadata = copy.deepcopy(node.metadata_)
         metadata.update(
-            get_hdf5_attrs(data_uris[0], dataset, swmr=swmr, libver=libver, **kwargs)
+            get_hdf5_attrs(
+                data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
+            )
         )
 
         return cls(
@@ -282,12 +295,12 @@ class HDF5ArrayAdapter(ArrayAdapter):
         squeeze: bool = False,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        **kwargs: Optional[Any],
+        locking: Optional[Union[bool, str]] = None,
     ) -> "HDF5ArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
 
         array = cls.lazy_load_hdf5_array(
-            *file_paths, dataset=dataset, swmr=swmr, libver=libver
+            *file_paths, dataset=dataset, swmr=swmr, libver=libver, locking=locking
         )
 
         # Apply slice and squeeze operations, if specified
@@ -301,7 +314,7 @@ class HDF5ArrayAdapter(ArrayAdapter):
         # Construct the structure and pull additional metadata from the file attributes
         structure = ArrayStructure.from_array(array)
         metadata = get_hdf5_attrs(
-            data_uris[0], dataset, swmr=swmr, libver=libver, **kwargs
+            data_uris[0], dataset, swmr=swmr, libver=libver, locking=locking
         )
 
         return cls(array, structure, metadata=metadata)
@@ -361,7 +374,7 @@ class HDF5Adapter(
         self._tree: dict[str, Any] = tree  # type: ignore
         self.uris = data_uris
         self.dataset = dataset  # Referenced to the root of the file
-        self._kwargs = kwargs  # e.g. swmr, libver, etc.
+        self._kwargs = kwargs  # e.g. swmr, libver, locking, etc.
         super().__init__(
             structure=ContainerStructure(keys=list(self._tree.keys())),
             metadata=metadata,
@@ -375,13 +388,11 @@ class HDF5Adapter(
         data_source: DataSource[Union[ArrayStructure, None]],
         node: Node,
         /,
-        dataset: Optional[Union[str, list[str]]] = None,
+        dataset: Union[str, list[str]] = "/",
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        **kwargs: Optional[Any],
+        locking: Optional[Union[bool, str]] = None,
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
-        # Convert the dataset representation (for backward compatibility)
-        dataset = dataset or kwargs.get("path") or []
         if not isinstance(dataset, str):
             dataset = "/".join(dataset)
 
@@ -393,7 +404,7 @@ class HDF5Adapter(
                 dataset=dataset,
                 swmr=swmr,
                 libver=libver,
-                **kwargs,
+                locking=locking,
             )
 
         # Initialize adapter for the entire HDF5 tree
@@ -405,7 +416,9 @@ class HDF5Adapter(
             ast.data_uri for ast in assets if ast.parameter == "data_uris"
         ] or [assets[0].data_uri]
         file_path = path_from_uri(data_uris[0])
-        with h5open(file_path, dataset, swmr=swmr, libver=libver) as file:
+        with h5open(
+            file_path, dataset, swmr=swmr, libver=libver, locking=locking
+        ) as file:
             tree = parse_hdf5_tree(file)
 
         if tree == HDF5_DATASET:
@@ -422,7 +435,7 @@ class HDF5Adapter(
             specs=node.specs,
             swmr=swmr,
             libver=libver,
-            **kwargs,
+            locking=locking,
         )
 
     @classmethod
@@ -432,19 +445,19 @@ class HDF5Adapter(
         dataset: Optional[str] = None,
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
-        **kwargs: Optional[Any],
+        locking: Optional[Union[bool, str]] = None,
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
-        with h5open(fpath, dataset, swmr=swmr, libver=libver) as file:
+        with h5open(fpath, dataset, swmr=swmr, libver=libver, locking=locking) as file:
             tree = parse_hdf5_tree(file)
 
         if tree == HDF5_DATASET:
             return HDF5ArrayAdapter.from_uris(
-                *data_uris, dataset=dataset, swmr=swmr, libver=libver, **kwargs  # type: ignore
+                *data_uris, dataset=dataset, swmr=swmr, libver=libver, locking=locking
             )
 
         return cls(
-            tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver, **kwargs
+            tree, *data_uris, dataset=dataset, swmr=swmr, libver=libver, locking=locking
         )
 
     def __repr__(self) -> str:

@@ -9,6 +9,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- `locking` key-word argument in HDFAdapter and HDF5Adapter.
+
 ### Fixed
 
 - Column names in `TableStructure` are explicitly converted to strings.
