@@ -3,6 +3,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.2.0 (unreleased)
+
+- Enable Tiled server to accept bearer access tokens for authentication
 
 ## Unreleased
 
@@ -10,6 +13,48 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Configured recycle and added explicit pre-ping option (disabled by default) for
   storage databases.
+
+### Fixed
+
+- Column names in `TableStructure` are explicitly converted to strings.
+
+
+## v0.1.6 (2025-09-29)
+
+### Fixed
+
+- Resolved circular dependency in `tiled.storage`.
+
+
+## v0.1.5 (2025-09-26)
+
+### Added
+
+- Monitoring of pool overflow and max-out events.
+
+### Fixed
+
+- Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to
+  the instantiated container when calling `CompositeClient.base`.
+- Fix AuthN database connection lifecycle management. Connections were being
+  held for the duration of the request cycle; now they are released immediately
+  after use.
+
+
+## v0.1.4 (2025-09-24)
+
+### Fixed
+
+- A regression in v0.1.1 broke the ability of adapters to add custom endpoints
+  on the server, which is used by legacy databroker to add a `/documents`
+  endpoint.
+
+
+## v0.1.3 (2025-09-24)
+
+### Added
+
+- Monitoring of the number of connections in the database pools.
 
 ### Changed
 

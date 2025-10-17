@@ -294,6 +294,7 @@ class DeviceCode(pydantic.BaseModel):
 class PrincipalType(str, enum.Enum):
     user = "user"
     service = "service"
+    external = "external"
 
 
 class Identity(pydantic.BaseModel):

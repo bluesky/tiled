@@ -1,15 +1,16 @@
 import builtins
-from typing import Any, List, Optional, Set, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 from numpy._typing import NDArray
 from PIL import Image
 
+from tiled.adapters.array import ArrayAdapter
+
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
-from ..storage import Storage
 from ..structures.array import ArrayStructure, BuiltinDtype
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import Spec
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
@@ -18,7 +19,7 @@ from .sequence import FileSequenceAdapter
 from .utils import init_adapter_from_catalog
 
 
-class JPEGAdapter:
+class JPEGAdapter(ArrayAdapter):
     """
     Read a JPEG file.
 
@@ -28,14 +29,11 @@ class JPEGAdapter:
     >>> JPEGAdapter("path/to/file.jpeg")
     """
 
-    structure_family = StructureFamily.array
-    supported_storage: Set[type[Storage]] = set()
-
     def __init__(
         self,
         data_uri: str,
-        *,
         structure: ArrayStructure,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -51,9 +49,7 @@ class JPEGAdapter:
         filepath = path_from_uri(data_uri)
         cache_key = (Image.open, filepath)
         self._file = with_resource_cache(cache_key, Image.open, filepath)
-        self.specs = specs or []
-        self._provided_metadata = metadata or {}
-        self._structure = structure
+        super().__init__(self._file, structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_catalog(
@@ -63,7 +59,7 @@ class JPEGAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "JPEGAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(
@@ -87,16 +83,15 @@ class JPEGAdapter:
             structure=structure,
         )
 
-    def metadata(self) -> JSON:
-        return self._provided_metadata.copy()
-
     def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         arr = np.asarray(self._file)
         arr = arr[slice] if slice else arr
         return arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: Optional[builtins.slice] = None
+        self,
+        block: Tuple[int, ...],
+        slice: Union[NDSlice, None] = None,
     ) -> NDArray[Any]:
         if sum(block) != 0:
             raise IndexError(block)
@@ -105,9 +100,6 @@ class JPEGAdapter:
         if slice is not None:
             arr = arr[slice]
         return arr
-
-    def structure(self) -> ArrayStructure:
-        return self._structure
 
 
 class JPEGSequenceAdapter(FileSequenceAdapter):

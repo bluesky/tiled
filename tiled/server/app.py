@@ -36,6 +36,7 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.query_registration import QueryRegistry, default_query_registry
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.type_aliases import AppTask, TaskMap
@@ -60,7 +61,7 @@ from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
-from .router import get_router
+from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
@@ -474,6 +475,15 @@ def build_app(
                 settings.database_settings.uri = (
                     settings.database_settings.uri or "sqlite://"
                 )
+        if (
+            authenticators
+            and len(authenticators) == 1
+            and isinstance(
+                authenticator := next(iter(authenticators.values())),
+                ProxiedOIDCAuthenticator,
+            )
+        ):
+            settings.authenticator = authenticator
         return settings
 
     async def startup_event():
@@ -829,7 +839,7 @@ def build_app(
 
         from . import metrics
 
-        app.include_router(metrics.router, prefix="/api/v1")
+        app.include_router(get_metrics_router(), prefix="/api/v1")
 
         @app.middleware("http")
         async def capture_metrics_prometheus(

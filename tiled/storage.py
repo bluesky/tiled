@@ -97,9 +97,11 @@ class SQLStorage(Storage):
 
     @functools.cached_property
     def _connection_pool(self) -> "sqlalchemy.pool.QueuePool":
+        from .server.metrics import monitor_db_pool
+
         creator = self._adbc_connection.adbc_clone
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
-            return sqlalchemy.pool.StaticPool(creator)
+            pool = sqlalchemy.pool.StaticPool(creator)
         else:
             return sqlalchemy.pool.QueuePool(
                 creator,
@@ -108,6 +110,9 @@ class SQLStorage(Storage):
                 recycle=1800,  # Recycle connections after 30 minutes
                 pre_ping=False,  # Default -- don't test connections before using them
             )
+            monitor_db_pool(pool, self.uri)
+
+        return pool
 
     def connect(self) -> "adbc_driver_manager.dbapi.Connection":
         "Get a connection from the pool."
