@@ -114,10 +114,8 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
         context=context,
         segments=["test_stream_after_update"],
     )
-    subscription.add_callback(callback)
-
-    # Start the subscription
-    subscription.start()
+    # Add callback and start the subscription
+    subscription.add_callback(callback).start()
 
     # Write more updates
     for i in range(2, 4):
