@@ -1,7 +1,13 @@
 import inspect
+import sys
 import threading
 import weakref
 from typing import Callable, List, Optional
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 import anyio
 import httpx
@@ -13,6 +19,13 @@ from tiled.client.context import Context
 
 Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
+
+
+API_KEY_LIFETIME = 30  # seconds
+RECEIVE_TIMEOUT = 0.1  # seconds
+
+
+__all__ = ["Subscription"]
 
 
 class _TestClientWebsocketWrapper:
@@ -94,10 +107,9 @@ class Subscription:
             str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
             params=params,
         )
-        name = f"tiled-subscription-{self._uri}"
-        self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._callbacks = set()
         self._close_event = threading.Event()
+        self._thread = None
         if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
                 context.http_client, self._uri
@@ -116,13 +128,21 @@ class Subscription:
     def segments(self) -> List[str]:
         return self._segments
 
-    def add_callback(self, callback: Callback) -> None:
+    def add_callback(self, callback: Callback) -> Self:
         """
         Register a callback to be run when the Subscription receives an update.
 
         The callback registry only holds a weak reference to the callback. If
         no hard references are held elsewhere in the program, the callback will
         be silently removed.
+
+        Parameters
+        ----------
+        callback : Callback
+
+        Returns
+        -------
+        Subscription
 
         Examples
         --------
@@ -151,6 +171,10 @@ class Subscription:
 
         >>> sub.start(3)
 
+        The method calls can be chained like:
+
+        >>> sub.add_callback(f).add_callback(g).start()
+
         """
 
         def cleanup(ref: weakref.ref) -> None:
@@ -165,46 +189,27 @@ class Subscription:
         else:
             ref = weakref.ref(callback, cleanup)
         self._callbacks.add(ref)
+        return self
 
-    def remove_callback(self, callback: Callback) -> None:
+    def remove_callback(self, callback: Callback) -> Self:
         """
         Unregister a callback.
-        """
-        self._callbacks.remove(callback)
-
-    def _receive(self) -> None:
-        "This method is executed on self._thread."
-        TIMEOUT = 0.1  # seconds
-        while not self._close_event.is_set():
-            try:
-                data_bytes = self._websocket.recv(timeout=TIMEOUT)
-            except (TimeoutError, anyio.EndOfStream):
-                continue
-            except websockets.exceptions.ConnectionClosedOK:
-                self._close_event.set()
-                return
-            data = msgpack.unpackb(data_bytes)
-            for ref in self._callbacks:
-                callback = ref()
-                if callback is not None:
-                    callback(self, data)
-
-    def start(self, start: Optional[int] = None) -> None:
-        """
-        Connect to the websocket and launch a thread to receive and process updates.
 
         Parameters
         ----------
-        start : int, optional
-            By default, the stream begins from the most recent update. Use this
-            parameter to replay from some earlier update. Use 1 to start from
-            the first item, 0 to start from as far back as available (which may
-            be later than the first item), or any positive integer to start
-            from a specific point in the sequence.
+        callback : Callback
+
+        Returns
+        -------
+        Subscription
         """
+        self._callbacks.remove(callback)
+        return self
+
+    def _connect(self, start: Optional[int] = None) -> None:
+        "Connect to websocket"
         if self._close_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
-        API_KEY_LIFETIME = 30  # seconds
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
             # Request a short-lived API key to use for authenticating the WS connection.
@@ -224,6 +229,80 @@ class Subscription:
             # TODO: Implement single-use API keys so that revoking is not
             # necessary.
             self.context.revoke_api_key(key_info["first_eight"])
+
+    def _receive(self) -> None:
+        "Blocking loop that receives and processes updates"
+        while not self._close_event.is_set():
+            try:
+                data_bytes = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
+            except (TimeoutError, anyio.EndOfStream):
+                continue
+            except websockets.exceptions.ConnectionClosedOK:
+                self._close_event.set()
+                return
+            data = msgpack.unpackb(data_bytes)
+            for ref in self._callbacks:
+                callback = ref()
+                if callback is not None:
+                    callback(self, data)
+
+    def start(self, start: Optional[int] = None) -> None:
+        """
+        Connect to the websocket, and block while receiving and processing updates.
+
+        Parameters
+        ----------
+        start : int, optional
+            By default, the stream begins from the most recent update. Use this
+            parameter to replay from some earlier update. Use 1 to start from
+            the first item, 0 to start from as far back as available (which may
+            be later than the first item), or any positive integer to start
+            from a specific point in the sequence.
+
+        Examples
+        --------
+
+        Starting the Subscription blocks the current thread. Use Ctrl+C to interrupt.
+
+        >>> sub.start()
+
+        """
+        self._connect(start)
+        self._receive()  # blocks
+
+    def start_on_thread(self, start: Optional[int] = None) -> None:
+        """
+        Connect to the websocket, and receive and process updates on a thread.
+
+        Parameters
+        ----------
+        start : int, optional
+            By default, the stream begins from the most recent update. Use this
+            parameter to replay from some earlier update. Use 1 to start from
+            the first item, 0 to start from as far back as available (which may
+            be later than the first item), or any positive integer to start
+            from a specific point in the sequence.
+
+        Examples
+        --------
+
+        Starting the Subscription connects and then starts a thread to receive
+        and process updates.
+
+        >>> sub.start()
+
+        To stop the thread:
+
+        >>> sub.stop()
+
+
+        """
+        name = f"tiled-subscription-{self._uri}"
+        # Connect on the current thread, so any connection-related exceptions are
+        # raised here.
+        self._connect(start)
+        # Run the receive loop on a thread.
+        self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._thread.start()
 
     @property
@@ -239,4 +318,6 @@ class Subscription:
             return  # nothing to do
         self._close_event.set()
         self._websocket.close()
-        self._thread.join()
+        # If start_on_thread() was used, join the thread.
+        if self._thread is not None:
+            self._thread.join()

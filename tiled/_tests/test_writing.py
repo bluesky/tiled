@@ -5,6 +5,8 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
+import threading
+import uuid
 from datetime import datetime
 
 import awkward
@@ -26,6 +28,7 @@ from starlette.status import (
 from ..catalog import in_memory
 from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
+from ..client.stream import Subscription
 from ..client.utils import ClientError
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
@@ -415,23 +418,52 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
-def test_replace_metadata(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        ac = client.write_array([1, 2, 3], key="revise_me_with_replace")
-        assert len(ac.metadata_revisions[:]) == 0
-        ac.replace_metadata(metadata={"a": 1})
-        assert ac.metadata["a"] == 1
-        assert client["revise_me_with_replace"].metadata["a"] == 1
-        assert len(ac.metadata_revisions[:]) == 1
-        ac.replace_metadata(metadata={"a": 2})
-        assert ac.metadata["a"] == 2
-        assert client["revise_me_with_replace"].metadata["a"] == 2
-        assert len(ac.metadata_revisions[:]) == 2
+def test_replace_metadata(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+
+    unique_key = f"revise_me_with_replace_{uuid.uuid4().hex[:8]}"
+
+    # Write the initial data
+    ac = client.write_array([1, 2, 3], key=unique_key)
+
+    # Add Websocket Testing
+    # Set up subscription using the Subscription class with start=0
+    received = []
+    received_event = threading.Event()
+
+    def callback(subscription, data):
+        """Callback to collect received messages."""
+        received.append(data)
+        if len(received) >= 2:  # 2 new updates
+            received_event.set()
+
+    # Create subscription for the streaming node with start=0
+    subscription = Subscription(context=context, segments=[])
+    subscription.add_callback(callback)
+    # Start the subscription
+    subscription.start_on_thread()
+    # Business Logic
+    assert len(ac.metadata_revisions[:]) == 0
+    ac.replace_metadata(metadata={"a": 1})
+    assert ac.metadata["a"] == 1
+    assert client[unique_key].metadata["a"] == 1
+    assert len(ac.metadata_revisions[:]) == 1
+    ac.replace_metadata(metadata={"a": 2})
+    assert ac.metadata["a"] == 2
+    assert client[unique_key].metadata["a"] == 2
+    assert len(ac.metadata_revisions[:]) == 2
+    ac.metadata_revisions.delete_revision(1)
+    assert len(ac.metadata_revisions[:]) == 1
+    with fail_with_status_code(HTTP_404_NOT_FOUND):
         ac.metadata_revisions.delete_revision(1)
-        assert len(ac.metadata_revisions[:]) == 1
-        with fail_with_status_code(HTTP_404_NOT_FOUND):
-            ac.metadata_revisions.delete_revision(1)
+    # Wait for all messages to be received
+    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+    # Ensure each event generated a websocket response
+    assert len(received) == 2
+    # Clean up the subscription
+    subscription.stop()
+    assert subscription.closed
 
 
 def test_drop_revision(tree):
