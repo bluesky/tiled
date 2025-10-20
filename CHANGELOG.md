@@ -23,6 +23,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Column names in `TableStructure` are explicitly converted to strings.
 - Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
+- Updated minimum version of starlette, which implements new (standard) names
+  for HTTP status codes
 
 ### Refactored
 
