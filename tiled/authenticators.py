@@ -250,6 +250,8 @@ properties:
     type: string
   well_known_uri:
     type: string
+  device_flow_client_id:
+    type: string
   confirmation_message:
     type: string
 """
@@ -259,6 +261,7 @@ properties:
         audience: str,
         client_id: str,
         well_known_uri: str,
+        device_flow_client_id: str,
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -268,6 +271,7 @@ properties:
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
         )
+        self.device_flow_client_id = device_flow_client_id
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
             tokenUrl=self.token_endpoint,
