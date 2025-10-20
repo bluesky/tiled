@@ -7,20 +7,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Tests to ensure that CSVAdapter can be used with a subset of columns.
+- `locking` key-word argument in HDFAdapter and HDF5Adapter.
+
+### Changed
+
 - Enable Tiled server to accept bearer access tokens for authentication
 
 ### Fixed
 
 - Prevent exception when serving asset from a node if stat_result already found
-
-## v0.2.0 (Unreleased)
-
-### Added
-
-- `locking` key-word argument in HDFAdapter and HDF5Adapter.
-
-### Fixed
-
 - Column names in `TableStructure` are explicitly converted to strings.
 - Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
 - Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter`
