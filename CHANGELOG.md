@@ -8,15 +8,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - Enable Tiled server to accept bearer access tokens for authentication
-
-### Fixed
-
-- Prevent exception when serving asset from a node if stat_result already found
-
-## v0.2.0 (Unreleased)
-
-### Added
-
 - `locking` key-word argument in HDFAdapter and HDF5Adapter.
 
 ### Fixed
@@ -25,6 +16,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
 - Updated minimum version of starlette, which implements new (standard) names
   for HTTP status codes
+- Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter`
+  with an explicit `dataset` parameter.
+- Prevent exception when serving asset from a node if stat_result already found
 
 ### Refactored
 
