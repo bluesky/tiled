@@ -39,7 +39,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
     subscription.add_callback(callback)
 
     # Start the subscription
-    subscription.start_on_thread()
+    subscription.start_in_thread()
 
     # Write updates using Tiled client
     for i in range(1, 4):
@@ -83,7 +83,7 @@ def test_websocket_connection_to_non_existent_node_subscription(
 
     # Attempting to start should raise WebSocketDenialResponse
     with pytest.raises(WebSocketDenialResponse):
-        subscription.start_on_thread()
+        subscription.start_in_thread()
 
 
 def test_subscribe_after_first_update_subscription(tiled_websocket_context):
@@ -115,7 +115,7 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
         segments=["test_stream_after_update"],
     )
     # Add callback and start the subscription
-    subscription.add_callback(callback).start_on_thread()
+    subscription.add_callback(callback).start_in_thread()
 
     # Write more updates
     for i in range(2, 4):
@@ -178,7 +178,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     subscription.add_callback(callback)
 
     # Start the subscription
-    subscription.start_on_thread(start=0)
+    subscription.start_in_thread(start=0)
 
     # Write more updates
     for i in range(2, 4):
