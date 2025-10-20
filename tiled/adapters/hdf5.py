@@ -392,6 +392,7 @@ class HDF5Adapter(
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: Optional[Union[bool, str]] = None,
+        **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         if not isinstance(dataset, str):
             dataset = "/".join(dataset)
@@ -405,6 +406,7 @@ class HDF5Adapter(
                 swmr=swmr,
                 libver=libver,
                 locking=locking,
+                **kwargs,
             )
 
         # Initialize adapter for the entire HDF5 tree
