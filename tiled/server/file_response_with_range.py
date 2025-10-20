@@ -63,6 +63,8 @@ class FileResponseWithRange(FileResponse):
                 mode = stat_result.st_mode
                 if not stat.S_ISREG(mode):
                     raise RuntimeError(f"File at path {self.path} is not a file.")
+        else:
+            stat_result = self.stat_result
         await send(
             {
                 "type": "http.response.start",
