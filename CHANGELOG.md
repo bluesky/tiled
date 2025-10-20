@@ -5,7 +5,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.2.0 (unreleased)
 
+### Added
+
 - Enable Tiled server to accept bearer access tokens for authentication
+
+### Fixed
+
+- Prevent exception when serving asset from a node if stat_result already found
 
 ## v0.2.0 (Unreleased)
 
