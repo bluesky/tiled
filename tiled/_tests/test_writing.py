@@ -442,7 +442,7 @@ def test_replace_metadata(tiled_websocket_context):
     subscription = Subscription(context=context, segments=[])
     subscription.add_callback(callback)
     # Start the subscription
-    subscription.start_on_thread()
+    subscription.start_in_thread()
     # Business Logic
     assert len(ac.metadata_revisions[:]) == 0
     ac.replace_metadata(metadata={"a": 1})

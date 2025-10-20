@@ -270,7 +270,7 @@ class Subscription:
         self._connect(start)
         self._receive()  # blocks
 
-    def start_on_thread(self, start: Optional[int] = None) -> None:
+    def start_in_thread(self, start: Optional[int] = None) -> None:
         """
         Connect to the websocket, and receive and process updates on a thread.
 
@@ -318,6 +318,6 @@ class Subscription:
             return  # nothing to do
         self._close_event.set()
         self._websocket.close()
-        # If start_on_thread() was used, join the thread.
+        # If start_in_thread() was used, join the thread.
         if self._thread is not None:
             self._thread.join()
