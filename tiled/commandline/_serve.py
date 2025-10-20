@@ -414,6 +414,7 @@ def serve_catalog(
         from ..alembic_utils import stamp_head
         from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
         from ..catalog.core import initialize_database
+        from ..config import StreamingCache
         from ..utils import ensure_specified_sql_driver
 
         database = ensure_specified_sql_driver(database)
@@ -475,13 +476,17 @@ or use an existing one:
             err=True,
         )
 
-    cache_settings = {}
     if cache_uri:
-        cache_settings["uri"] = cache_uri
-    if cache_data_ttl:
-        cache_settings["data_ttl"] = cache_data_ttl
-    if cache_seq_ttl:
-        cache_settings["seq_ttl"] = cache_seq_ttl
+        cli_cache_settings = {}
+        cli_cache_settings["uri"] = cache_uri
+        if cache_data_ttl:
+            cli_cache_settings["data_ttl"] = cache_data_ttl
+        if cache_seq_ttl:
+            cli_cache_settings["seq_ttl"] = cache_seq_ttl
+        # Apply defaults.
+        cache_settings = StreamingCache(**cli_cache_settings).model_dump()
+    else:
+        cache_settings = None
 
     tree = from_uri(
         database,
