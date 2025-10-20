@@ -133,6 +133,10 @@ properties:
     type: string
   confirmation_message:
     type: string
+  redirect_on_success:
+    type: string
+  redirect_on_failure:
+    type: string
 """
 
     def __init__(
@@ -142,12 +146,16 @@ properties:
         client_secret: str,
         well_known_uri: str,
         confirmation_message: str = "",
+        redirect_on_success: Optional[str] = None,
+        redirect_on_failure: Optional[str] = None,
     ):
         self._audience = audience
         self._client_id = client_id
         self._client_secret = Secret(client_secret)
         self._well_known_url = well_known_uri
         self.confirmation_message = confirmation_message
+        self.redirect_on_success = redirect_on_success
+        self.redirect_on_failure = redirect_on_failure
 
     @functools.cached_property
     def _config_from_oidc_url(self) -> dict[str, Any]:
@@ -208,7 +216,12 @@ properties:
         )
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
-        code = request.query_params["code"]
+        code = request.query_params.get("code")
+        if not code:
+            logger.warning(
+                "Authentication failed: No authorization code parameter provided."
+            )
+            return None
         # A proxy in the middle may make the request into something like
         # 'http://localhost:8000/...' so we fix the first part but keep
         # the original URI path.
