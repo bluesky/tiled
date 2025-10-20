@@ -83,6 +83,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
   specifying any method (e.g. classmethod constructor) as a tree.
 
 
+## Unreleased
+
+### Changed
+
+- `Subscription.add_callback` and `Subscription.remove_callback` now
+  return the `Subscription` instance, enabling this:
+
+  ```py
+  sub.add_callback(f)
+  sub.add_callback(g)
+  sub.start()
+  ```
+
+  to be written as:
+
+  ```py
+  sub.add_callback(f).add_callback(g).start()
+  ```
+
+
 ## v0.1.2 (2025-09-17)
 
 This release temporarily pins backs the version of the depedency DuckDB to
