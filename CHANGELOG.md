@@ -17,7 +17,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Column names in `TableStructure` are explicitly converted to strings.
 - Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
-- Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter.from_uris`
+- Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter`
   with an explicit `dataset` parameter.
 
 
