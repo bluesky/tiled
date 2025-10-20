@@ -12,7 +12,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 
-- Enable Tiled server to accept bearer access tokens for authentication
+- Enable Tiled server to accept bearer access tokens for authentication.
+- Modernize implementation of Device Code Flow.
 - In previous releases, the method `Subscription.start` launched a background
   thread. This was renamed to `Subscription.start_on_thread`. Now
   `Subscription.start` blocks the current thread, leaving any thread management
