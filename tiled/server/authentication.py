@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Callable, List, Optional, Sequence, Set
+from typing import Annotated, Any, Callable, List, Optional, Sequence
 
 from fastapi import (
     APIRouter,
@@ -61,6 +61,7 @@ from ..authn_database.core import (
     lookup_valid_pending_session_by_user_code,
     lookup_valid_session,
 )
+from ..type_aliases import AccessTags
 from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
 from .connection_pool import get_database_session_factory
@@ -240,7 +241,7 @@ async def get_session_state(decoded_access_token=Depends(get_decoded_access_toke
 
 async def get_access_tags_from_api_key(
     api_key: str, authenticated: bool, db: Optional[AsyncSession]
-) -> Optional[Set[str]]:
+) -> Optional[AccessTags]:
     if not authenticated:
         # Tiled is in a "single user" mode with only one API key.
         # In this mode, there is no meaningful access tag limit.
@@ -268,7 +269,7 @@ async def get_current_access_tags(
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
     ),
-) -> Optional[Set[str]]:
+) -> Optional[AccessTags]:
     if api_key is not None:
         async with db_factory() as db:
             return await get_access_tags_from_api_key(
@@ -302,7 +303,7 @@ async def get_current_access_tags_websocket(
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
     ),
-) -> Optional[Set[str]]:
+) -> Optional[AccessTags]:
     if api_key is not None:
         async with db_factory() as db:
             return await get_access_tags_from_api_key(

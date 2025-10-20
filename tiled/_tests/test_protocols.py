@@ -10,10 +10,10 @@ from numpy.typing import NDArray
 from pytest_mock import MockFixture
 
 from ..access_control.access_policies import ALL_ACCESS
+from ..access_control.protocols import AccessPolicy
 from ..access_control.scopes import ALL_SCOPES
 from ..adapters.awkward_directory_container import DirectoryContainer
 from ..adapters.protocols import (
-    AccessPolicy,
     ArrayAdapter,
     AwkwardAdapter,
     BaseAdapter,
@@ -28,7 +28,7 @@ from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
-from ..type_aliases import JSON, Filters, Scopes
+from ..type_aliases import JSON, AccessBlob, AccessTags, Filters, Scopes
 
 
 class CustomArrayAdapter:
@@ -379,11 +379,30 @@ class CustomAccessPolicy(AccessPolicy):
     def _get_id(self, principal: Principal) -> None:
         return None
 
+    async def init_node(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        return (False, access_blob)
+
+    async def modify_node(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        return (False, access_blob)
+
     async def allowed_scopes(
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[Set[str]],
+        authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
     ) -> Scopes:
         allowed = self.scopes
@@ -394,7 +413,7 @@ class CustomAccessPolicy(AccessPolicy):
         self,
         node: BaseAdapter,
         principal: Principal,
-        authn_access_tags: Optional[Set[str]],
+        authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
@@ -407,7 +426,7 @@ async def accesspolicy_protocol_functions(
     policy: AccessPolicy,
     node: BaseAdapter,
     principal: Principal,
-    authn_access_tags: Optional[Set[str]],
+    authn_access_tags: Optional[AccessTags],
     authn_scopes: Scopes,
     scopes: Scopes,
 ) -> None:
