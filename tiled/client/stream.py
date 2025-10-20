@@ -21,6 +21,13 @@ Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
 
 
+API_KEY_LIFETIME = 30  # seconds
+RECEIVE_TIMEOUT = 0.1  # seconds
+
+
+__all__ = ["Subscription"]
+
+
 class _TestClientWebsocketWrapper:
     """Wrapper for TestClient websockets."""
 
@@ -203,7 +210,6 @@ class Subscription:
         "Connect to websocket"
         if self._close_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
-        API_KEY_LIFETIME = 30  # seconds
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
             # Request a short-lived API key to use for authenticating the WS connection.
@@ -226,10 +232,9 @@ class Subscription:
 
     def _receive(self) -> None:
         "Blocking loop that receives and processes updates"
-        TIMEOUT = 0.1  # seconds
         while not self._close_event.is_set():
             try:
-                data_bytes = self._websocket.recv(timeout=TIMEOUT)
+                data_bytes = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
             except websockets.exceptions.ConnectionClosedOK:
