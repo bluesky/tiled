@@ -5,45 +5,12 @@ import numpy as np
 import pytest
 from starlette.testclient import WebSocketDenialResponse
 
-from ..catalog import from_uri
-from ..client import Context, from_context
+from ..client import from_context
 from ..client.stream import Subscription
-from ..config import Authentication
-from ..server.app import build_app
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"
 )
-
-
-@pytest.fixture(scope="function")
-def tiled_websocket_context(tmpdir, redis_uri):
-    """Fixture that provides a Tiled context with websocket support."""
-
-    tree = from_uri(
-        "sqlite:///:memory:",
-        writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
-            f"duckdb:///{tmpdir / 'data.duckdb'}",
-        ],
-        readable_storage=None,
-        init_if_not_exists=True,
-        cache_settings={
-            "uri": redis_uri,
-            "data_ttl": 60,
-            "seq_ttl": 60,
-            "socket_timeout": 10.0,
-            "socket_connect_timeout": 10.0,
-        },
-    )
-
-    app = build_app(
-        tree,
-        authentication=Authentication(single_user_api_key="secret"),
-    )
-
-    with Context.from_app(app) as context:
-        yield context
 
 
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
@@ -72,7 +39,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
     subscription.add_callback(callback)
 
     # Start the subscription
-    subscription.start()
+    subscription.start_in_thread()
 
     # Write updates using Tiled client
     for i in range(1, 4):
@@ -116,7 +83,7 @@ def test_websocket_connection_to_non_existent_node_subscription(
 
     # Attempting to start should raise WebSocketDenialResponse
     with pytest.raises(WebSocketDenialResponse):
-        subscription.start()
+        subscription.start_in_thread()
 
 
 def test_subscribe_after_first_update_subscription(tiled_websocket_context):
@@ -147,10 +114,8 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
         context=context,
         segments=["test_stream_after_update"],
     )
-    subscription.add_callback(callback)
-
-    # Start the subscription
-    subscription.start()
+    # Add callback and start the subscription
+    subscription.add_callback(callback).start_in_thread()
 
     # Write more updates
     for i in range(2, 4):
@@ -213,7 +178,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     subscription.add_callback(callback)
 
     # Start the subscription
-    subscription.start(start=0)
+    subscription.start_in_thread(start=0)
 
     # Write more updates
     for i in range(2, 4):

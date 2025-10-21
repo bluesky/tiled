@@ -4,7 +4,7 @@ import uuid as uuid_module
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Callable, List, Optional, Sequence, Set
+from typing import Annotated, Any, Callable, List, Optional, Sequence
 
 from fastapi import (
     APIRouter,
@@ -18,6 +18,7 @@ from fastapi import (
     Security,
     WebSocket,
 )
+from fastapi.responses import RedirectResponse
 from fastapi.security import (
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
@@ -31,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func
+from starlette.datastructures import URL
 from starlette.status import (
     HTTP_204_NO_CONTENT,
     HTTP_400_BAD_REQUEST,
@@ -61,6 +63,7 @@ from ..authn_database.core import (
     lookup_valid_pending_session_by_user_code,
     lookup_valid_session,
 )
+from ..type_aliases import AccessTags
 from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
 from .connection_pool import get_database_session_factory
@@ -240,7 +243,7 @@ async def get_session_state(decoded_access_token=Depends(get_decoded_access_toke
 
 async def get_access_tags_from_api_key(
     api_key: str, authenticated: bool, db: Optional[AsyncSession]
-) -> Optional[Set[str]]:
+) -> Optional[AccessTags]:
     if not authenticated:
         # Tiled is in a "single user" mode with only one API key.
         # In this mode, there is no meaningful access tag limit.
@@ -268,7 +271,7 @@ async def get_current_access_tags(
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
     ),
-) -> Optional[Set[str]]:
+) -> Optional[AccessTags]:
     if api_key is not None:
         async with db_factory() as db:
             return await get_access_tags_from_api_key(
@@ -302,7 +305,7 @@ async def get_current_access_tags_websocket(
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
     ),
-) -> Optional[Set[str]]:
+) -> Optional[AccessTags]:
     if api_key is not None:
         async with db_factory() as db:
             return await get_access_tags_from_api_key(
@@ -510,7 +513,6 @@ async def get_current_principal(
     the Principal will also be `None` - but is differentiated for
     logging with a SingleUserPrincipal sentinel
     """
-
     if api_key is not None:
         async with db_factory() as db:
             principal = await get_current_principal_from_api_key(
@@ -708,6 +710,7 @@ def add_external_routes(
     @router.get(f"/provider/{provider}/code")
     async def auth_code_route(
         request: Request,
+        response: Response,
         settings: Settings = Depends(get_settings),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
@@ -718,6 +721,10 @@ def add_external_routes(
             UserSessionState
         ] = await authenticator.authenticate(request)
         if not user_session_state:
+            if authenticator.redirect_on_failure:
+                return RedirectResponse(
+                    status_code=302, url=authenticator.redirect_on_failure
+                )
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Authentication failure"
             )
@@ -730,7 +737,43 @@ def add_external_routes(
                 user_session_state.state,
             )
             tokens = await create_tokens_from_session(settings, db, session, provider)
-        return tokens
+            if authenticator.redirect_on_success:
+                params = {
+                    "access_token": tokens["access_token"],
+                    "refresh_token": tokens["refresh_token"],
+                    "identity.id": tokens["identity"]["id"],
+                    "identity.provider": tokens["identity"]["provider"],
+                    "principal": tokens["principal"],
+                }
+                if "state" in request.query_params:
+                    params["state"] = request.query_params["state"]
+                redirect_url = URL(
+                    authenticator.redirect_on_success
+                ).include_query_params(**params)
+                return RedirectResponse(status_code=302, url=str(redirect_url))
+            else:
+                return tokens
+
+    @router.get(f"/provider/{provider}/authorize")
+    async def authorize_redirect_route(
+        request: Request,
+        state: Optional[str] = Query(None),
+    ):
+        """Redirect browser to OAuth provider for authentication."""
+
+        redirect_uri = f"{get_base_url(request)}/auth/provider/{provider}/code"
+
+        params = {
+            "client_id": authenticator.client_id,
+            "response_type": "code",
+            "scope": "openid",
+            "redirect_uri": redirect_uri,
+        }
+        if state:
+            params["state"] = state
+
+        auth_url = authenticator.authorization_endpoint.copy_with(params=params)
+        return RedirectResponse(url=str(auth_url))
 
     "Build an /authorize route function for this Authenticator."
 
@@ -1420,6 +1463,13 @@ def authentication_router() -> APIRouter:
         request.state.endpoint = "auth"
         if principal is None:
             return json_or_msgpack(request, None)
+
+        if principal and principal.type == schemas.PrincipalType.external:
+            return json_or_msgpack(
+                request,
+                principal.model_dump(),
+            )
+
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.
         async with db_factory() as db:

@@ -5,13 +5,34 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## v0.2.0 (unreleased)
 
-- Enable Tiled server to accept bearer access tokens for authentication
+### Added
 
-## Unreleased
+- Tests to ensure that CSVAdapter can be used with a subset of columns.
+- `locking` key-word argument in HDFAdapter and HDF5Adapter.
+
+### Changed
+
+- Enable Tiled server to accept bearer access tokens for authentication.
+- Modernize implementation of Device Code Flow.
+- In previous releases, the method `Subscription.start` launched a background
+  thread. This was renamed to `Subscription.start_in_thread`. Now
+  `Subscription.start` blocks the current thread, leaving any thread management
+  up to the caller.
 
 ### Fixed
 
+- Prevent exception when serving asset from a node if stat_result already found
 - Column names in `TableStructure` are explicitly converted to strings.
+- Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
+- Updated minimum version of starlette, which implements new (standard) names
+  for HTTP status codes
+- Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter`
+  with an explicit `dataset` parameter.
+- Prevent exception when serving asset from a node if stat_result already found
+
+### Refactored
+
+- Use common base type for all access policy types
 
 
 ## v0.1.6 (2025-09-29)
@@ -65,6 +86,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - A regression in v0.1.1 disallowed specifying
   `tree: databroker.mongo_normalized:MongoAdapter.from_uri` or in fact
   specifying any method (e.g. classmethod constructor) as a tree.
+
+
+## Unreleased
+
+### Changed
+
+- `Subscription.add_callback` and `Subscription.remove_callback` now
+  return the `Subscription` instance, enabling this:
+
+  ```py
+  sub.add_callback(f)
+  sub.add_callback(g)
+  sub.start()
+  ```
+
+  to be written as:
+
+  ```py
+  sub.add_callback(f).add_callback(g).start()
+  ```
 
 
 ## v0.1.2 (2025-09-17)
