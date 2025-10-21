@@ -1,4 +1,3 @@
-import asyncio
 import collections
 import copy
 import dataclasses
@@ -18,8 +17,7 @@ from typing import Callable, Dict, List, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
-import orjson
-from fastapi import HTTPException, WebSocketDisconnect
+from fastapi import HTTPException
 from sqlalchemy import (
     and_,
     delete,
@@ -74,6 +72,7 @@ from ..server.connection_pool import close_database_connection_pool, get_databas
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision
 from ..server.settings import DatabaseSettings
+from ..server.streaming import StreamingCache
 from ..storage import (
     FileStorage,
     SQLStorage,
@@ -91,7 +90,6 @@ from ..utils import (
     ensure_specified_sql_driver,
     import_object,
     path_from_uri,
-    safe_json_dump,
 )
 from . import orm
 from .core import check_catalog_database, initialize_database
@@ -237,25 +235,11 @@ class Context:
         else:
             await check_catalog_database(self.engine)
 
-        cache_client = None
-        cache_data_ttl = 0
-        cache_seq_ttl = 0
+        self.streaming_cache = None
         if self.cache_settings:
             if self.cache_settings["uri"].startswith("redis"):
-                from redis import asyncio as redis
-
-                socket_timeout = self.cache_settings["socket_timeout"]
-                socket_connect_timeout = self.cache_settings["socket_connect_timeout"]
-                cache_client = redis.from_url(
-                    self.cache_settings["uri"],
-                    socket_timeout=socket_timeout,
-                    socket_connect_timeout=socket_connect_timeout,
-                )
-                cache_data_ttl = self.cache_settings["data_ttl"]
-                cache_seq_ttl = self.cache_settings["seq_ttl"]
-        self.cache_client = cache_client
-        self.cache_data_ttl = cache_data_ttl
-        self.cache_seq_ttl = cache_seq_ttl
+                self.cache_settings["datastore"] = "redis"
+                self.streaming_cache = StreamingCache(self.cache_settings)
 
     async def shutdown(self):
         await close_database_connection_pool(self.database_settings)
@@ -788,11 +772,9 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            if self.context.cache_client:
+            if self.context.streaming_cache:
                 # Notify subscribers of the *parent* node about the new child.
-                sequence = await self.context.cache_client.incr(
-                    f"sequence:{self.node.id}"
-                )
+                sequence = self.context.streaming_cache.incr_seq(self.node.id)
                 metadata = {
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
@@ -805,21 +787,7 @@ class CatalogNodeAdapter:
 
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
-                pipeline = self.context.cache_client.pipeline()
-                pipeline.hset(
-                    f"data:{self.node.id}:{sequence}",
-                    mapping={
-                        "sequence": sequence,
-                        "metadata": safe_json_dump(metadata),
-                    },
-                )
-                pipeline.expire(
-                    f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
-                )
-                pipeline.publish(f"notify:{self.node.id}", sequence)
-                # Extend the lifetime of the sequence counter.
-                pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
-                await pipeline.execute()
+                self.context.streaming_cache.set(self.node.id, sequence, metadata)
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
@@ -888,8 +856,8 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
-        if self.context.cache_client:
-            sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+        if self.context.streaming_cache:
+            sequence = await self.context.streaming_cache.incr_seq(self.node.id)
             metadata = {
                 "sequence": sequence,
                 "timestamp": datetime.now().isoformat(),
@@ -899,21 +867,7 @@ class CatalogNodeAdapter:
 
             # Cache data in Redis with a TTL, and publish
             # a notification about it.
-            pipeline = self.context.cache_client.pipeline()
-            pipeline.hset(
-                f"data:{self.node.id}:{sequence}",
-                mapping={
-                    "sequence": sequence,
-                    "metadata": orjson.dumps(metadata),
-                },
-            )
-            pipeline.expire(
-                f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
-            )
-            pipeline.publish(f"notify:{self.node.id}", sequence)
-            # Extend the lifetime of the sequence counter.
-            pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
-            await pipeline.execute()
+            await self.context.streaming_cache.set(self.node.id, sequence, metadata)
 
     async def revisions(self, offset, limit):
         async with self.context.session() as db:
@@ -1096,10 +1050,8 @@ class CatalogNodeAdapter:
             )
             await db.commit()
             # Upon successful update, inform websocket subscribers through redis
-            if self.context.cache_client:
-                sequence = await self.context.cache_client.incr(
-                    f"sequence:{self.node.parent}"
-                )
+            if self.context.streaming_cache:
+                sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
                 metadata = {
                     "key": self.node.key,
                     "sequence": sequence,
@@ -1109,131 +1061,17 @@ class CatalogNodeAdapter:
                 }
                 if not drop_revision:
                     metadata["revision_number"] = next_revision_number
-                pipeline = self.context.cache_client.pipeline()
-                pipeline.hset(
-                    f"data:{self.node.parent}:{sequence}",
-                    mapping={
-                        "sequence": sequence,
-                        "metadata": safe_json_dump(metadata),
-                    },
+                await self.context.streaming_cache.set(
+                    self.node.parent, sequence, metadata
                 )
-                pipeline.expire(
-                    f"data:{self.node.parent}:{sequence}", self.context.cache_data_ttl
-                )
-                pipeline.publish(f"notify:{self.node.parent}", sequence)
-                await pipeline.execute()
 
     async def close_stream(self):
-        # Check the node status.
-        # ttl returns -2 if the key does not exist.
-        # ttl returns -1 if the key exists but has no associated expire.
-        # ttl greater than 0 means that it is marked to expire.
-        node_ttl = await self.context.cache_client.ttl(f"sequence:{self.node.id}")
-        if node_ttl > 0:
-            # Stream is already closed, return success (idempotent operation)
-            return
-        if node_ttl == -2:
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=f"Node {self.node.id} not found.",
-            )
-
-        metadata = {
-            "timestamp": datetime.now().isoformat(),
-            "end_of_stream": True,
-        }
-        # Increment the counter for this node.
-        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
-
-        # Cache data in Redis with a TTL, and publish
-        # a notification about it.
-        pipeline = self.context.cache_client.pipeline()
-        pipeline.hset(
-            f"data:{self.node.id}:{sequence}",
-            mapping={
-                "sequence": sequence,
-                "metadata": orjson.dumps(metadata),
-            },
-        )
-        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl)
-        # Expire the sequence more aggressively.  It needs to outlive the last
-        # piece of data for this sequence, but then it can be culled. Any
-        # future writes will restart the sequence from 1.
-        pipeline.expire(f"sequence:{self.node.id}", 1 + self.context.cache_data_ttl)
-        pipeline.publish(f"notify:{self.node.id}", sequence)
-        await pipeline.execute()
+        self.context.streaming_cache.close(self.node.id)
 
     def make_ws_handler(self, websocket, formatter, uri):
-        async def handler(sequence: Optional[int] = None):
-            await websocket.accept()
-            end_stream = asyncio.Event()
-            cache_client = self.context.cache_client
-
-            async def stream_data(sequence):
-                key = f"data:{self.node.id}:{sequence}"
-                payload_bytes, metadata_bytes = await cache_client.hmget(
-                    key, "payload", "metadata"
-                )
-                if metadata_bytes is None:
-                    # This means that redis ttl has expired for this sequence
-                    return
-                metadata = orjson.loads(metadata_bytes)
-                if metadata.get("end_of_stream"):
-                    # This means that the stream is closed by the producer
-                    end_stream.set()
-                    return
-                metadata["uri"] = uri
-                if metadata.get("patch"):
-                    s = ",".join(
-                        f"{offset}:{offset+shape}"
-                        for offset, shape in zip(
-                            metadata["patch"]["offset"], metadata["patch"]["shape"]
-                        )
-                    )
-                    metadata["uri"] = f"{uri}?slice={s}"
-                await formatter(websocket, metadata, payload_bytes)
-
-            # Setup buffer
-            stream_buffer = asyncio.Queue()
-
-            async def buffer_live_events():
-                pubsub = cache_client.pubsub()
-                await pubsub.subscribe(f"notify:{self.node.id}")
-                try:
-                    async for message in pubsub.listen():
-                        if message.get("type") == "message":
-                            try:
-                                live_seq = int(message["data"])
-                                await stream_buffer.put(live_seq)
-                            except Exception as e:
-                                logger.exception(f"Error parsing live message: {e}")
-                except Exception as e:
-                    logger.exception(f"Live subscription error: {e}")
-                finally:
-                    await pubsub.unsubscribe(f"notify:{self.node.id}")
-                    await pubsub.aclose()
-
-            live_task = asyncio.create_task(buffer_live_events())
-
-            if sequence is not None:
-                current_seq = await cache_client.get(f"sequence:{self.node.id}")
-                current_seq = int(current_seq) if current_seq is not None else 0
-                logger.debug("Replaying old data...")
-                for s in range(sequence, current_seq + 1):
-                    await stream_data(s)
-            # New data
-            try:
-                while not end_stream.is_set():
-                    live_seq = await stream_buffer.get()
-                    await stream_data(live_seq)
-                else:
-                    await websocket.close(code=1000, reason="Producer ended stream")
-            except WebSocketDisconnect:
-                logger.info(f"Client disconnected from node {self.node.id}")
-            finally:
-                live_task.cancel()
-
-        return handler
+        return self.context.streaming_cache.make_ws_handler(
+            websocket, formatter, uri, self.node.id
+        )
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
@@ -1312,7 +1150,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
-        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
         metadata = {
             "sequence": sequence,
             "timestamp": datetime.now().isoformat(),
@@ -1322,24 +1160,13 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             "block": block,
         }
 
-        pipeline = self.context.cache_client.pipeline()
-        pipeline.hset(
-            f"data:{self.node.id}:{sequence}",
-            mapping={
-                "sequence": sequence,
-                "metadata": orjson.dumps(metadata),
-                "payload": body,  # raw user input
-            },
+        await self.context.streaming_cache.set(
+            self.node.id, sequence, metadata, payload=body
         )
-        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl)
-        pipeline.publish(f"notify:{self.node.id}", sequence)
-        # Extend the lifetime of the sequence counter.
-        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
-        await pipeline.execute()
 
     async def write(self, media_type, deserializer, entry, body):
         shape = entry.structure().shape
-        if self.context.cache_client:
+        if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape)
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
@@ -1356,7 +1183,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         _, shape = slice_and_shape_from_block_and_chunks(
             block, entry.structure().chunks
         )
-        if self.context.cache_client:
+        if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, block=block)
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
@@ -1370,7 +1197,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def patch(self, shape, offset, extend, media_type, deserializer, entry, body):
-        if self.context.cache_client:
+        if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
         dtype = entry.structure().data_type.to_numpy_dtype()
         data = await ensure_awaitable(deserializer, body, dtype, shape)
