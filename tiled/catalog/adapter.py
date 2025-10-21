@@ -1066,7 +1066,7 @@ class CatalogNodeAdapter:
                 )
 
     async def close_stream(self):
-        self.context.streaming_cache.close(self.node.id)
+        await self.context.streaming_cache.close(self.node.id)
 
     def make_ws_handler(self, websocket, formatter, uri):
         return self.context.streaming_cache.make_ws_handler(

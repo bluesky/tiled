@@ -78,6 +78,9 @@ class StreamingCache:
     async def close(self, node_id):
         await self._datastore.close(node_id)
 
+    def make_ws_handler(self, websocket, formatter, uri, node_id):
+        return self._datastore.make_ws_handler(websocket, formatter, uri, node_id)
+
 
 @register_datastore("redis")
 class RedisStreamingDatastore(StreamingDatastore):
