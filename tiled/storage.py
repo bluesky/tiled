@@ -1,9 +1,10 @@
 import dataclasses
 import functools
 import os
+import re
 from abc import abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
@@ -18,6 +19,7 @@ __all__ = [
     "RemoteSQLStorage",
     "FileStorage",
     "SQLStorage",
+    "ObjectStorage",
     "Storage",
     "get_storage",
     "parse_storage",
@@ -159,6 +161,7 @@ class EmbeddedSQLStorage(SQLStorage):
 @dataclasses.dataclass(frozen=True)
 class RemoteSQLStorage(SQLStorage):
     "Authenticated server-based SQL database storage location"
+
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -244,6 +247,22 @@ def register_storage(storage: Storage) -> None:
     _STORAGE[storage.uri] = storage
 
 
-def get_storage(uri: str) -> Storage:
-    "Look up Storage by URI."
-    return _STORAGE[uri]
+def get_storage(uri: str) -> Storage | Tuple[Storage, str]:
+    scheme = urlparse(uri).scheme
+    if scheme == "file":
+        return FileStorage(uri)
+    elif scheme in {"sqlite", "duckdb"}:
+        return EmbeddedSQLStorage(uri)
+    elif scheme == "http":
+        # Split on the first single '/' that is not part of '://'
+        match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", uri)
+        objstore = ObjectStorage(match.group(1)) if match else ObjectStorage(uri)
+        path = (
+            (match.group(2) if match and match.group(2) else "")
+            .lstrip("/")
+            .replace(objstore.config["bucket"] + "/", "")
+        )
+        return objstore, path
+    else:
+        "Look up Storage by URI."
+        return _STORAGE[uri]

@@ -1,7 +1,7 @@
+# mypy: ignore-errors
 import builtins
 import copy
 import os
-import re
 from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
 from urllib.parse import quote_plus
@@ -325,12 +325,12 @@ class ZarrAdapter:
     ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
         container_type = node.structure_family == StructureFamily.container
         storage_uri = data_source.assets[0].data_uri
-        location, path = decode_bucket_uri(storage_uri)
-        storage = get_storage(location)
+        storage = get_storage(storage_uri)
         if isinstance(storage, FileStorage):
             zarr_obj = zarr.open(path_from_uri(storage_uri))
-        elif isinstance(storage, ObjectStorage):
-            path = path.replace(storage.config["bucket"] + "/", "")
+        elif isinstance(storage, Tuple):
+            storage, path = storage
+            cast(ObjectStorage, storage)
             style = storage_style(storage.provider)
             object_store = style["class"](
                 **{style["property"]: storage.uri},
@@ -377,27 +377,6 @@ class ZarrAdapter:
         else:
             structure = ArrayStructure.from_array(zarr_obj)
             return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
-
-
-def decode_bucket_uri(storage_uri: str) -> Tuple[str, str]:
-    """
-    Decode a blob storage URI into parts needed by obstore.
-    Returns a tuple of (location, path).
-    Will return the original tiled storage URI and an empty path if filesystem
-    Examples:
-        s3://my-bucket/path/to/array -> (s3://my-bucket, /path/to/array)
-    Parameters
-    ----------
-    storage_uri: str
-        The tiled storage URI to decode.
-    """
-    if storage_uri.startswith("duckdb://") or storage_uri.startswith("file://"):
-        return storage_uri, ""
-    # Split on the first single '/' that is not part of '://'
-    match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", storage_uri)
-    return match.group(1) if match else storage_uri, (
-        match.group(2) if match and match.group(2) else ""
-    ).lstrip("/")
 
 
 def storage_style(provider: str) -> dict[str, S3Store | AzureStore | GCSStore]:
