@@ -787,7 +787,7 @@ class CatalogNodeAdapter:
 
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
-                self.context.streaming_cache.set(self.node.id, sequence, metadata)
+                await self.context.streaming_cache.set(self.node.id, sequence, metadata)
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
