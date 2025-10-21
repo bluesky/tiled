@@ -28,7 +28,7 @@ class StreamingDatastore(Protocol):
     async def incr_seq(self, node_id: str) -> int:
         ...
 
-    async def set(self, key, value) -> None:
+    async def set(self, node_id, sequence, metadata, payload=None) -> None:
         ...
 
     async def get(self, key, *fields) -> None:
@@ -68,8 +68,8 @@ class StreamingCache:
     async def incr_seq(self, node_id: str) -> int:
         return await self._datastore.incr_seq(node_id)
 
-    async def set(self, key, value):
-        await self._datastore.set(key, value)
+    async def set(self, node_id, sequence, metadata, payload=None):
+        await self._datastore.set(node_id, sequence, metadata, payload)
 
     @property
     def client(self):
