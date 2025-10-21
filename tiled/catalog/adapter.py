@@ -774,7 +774,7 @@ class CatalogNodeAdapter:
             ).scalar()
             if self.context.streaming_cache:
                 # Notify subscribers of the *parent* node about the new child.
-                sequence = self.context.streaming_cache.incr_seq(self.node.id)
+                sequence = await self.context.streaming_cache.incr_seq(self.node.id)
                 metadata = {
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
