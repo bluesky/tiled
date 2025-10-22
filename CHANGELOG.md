@@ -19,6 +19,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `Subscription.start` blocks the current thread, leaving any thread management
   up to the caller.
 
+### Added
+
+- Configured recycle and added explicit pre-ping option (disabled by default) for
+  storage databases.
+
 ### Fixed
 
 - Prevent exception when serving asset from a node if stat_result already found
