@@ -457,10 +457,11 @@ def test_replace_metadata(tiled_websocket_context):
     assert len(ac.metadata_revisions[:]) == 1
     with fail_with_status_code(HTTP_404_NOT_FOUND):
         ac.metadata_revisions.delete_revision(1)
+    ac.replace_metadata(metadata={"3": 1}, drop_revision=True)
     # Wait for all messages to be received
     assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
     # Ensure each event generated a websocket response
-    assert len(received) == 2
+    assert len(received) == 3
     # Clean up the subscription
     subscription.stop()
     assert subscription.closed

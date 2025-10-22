@@ -1105,8 +1105,9 @@ class CatalogNodeAdapter:
                     "timestamp": datetime.now().isoformat(),
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
-                    "revision_number": next_revision_number,
                 }
+                if not drop_revision:
+                    metadata["revision_number"] = next_revision_number
                 pipeline = self.context.cache_client.pipeline()
                 pipeline.hset(
                     f"data:{self.node.parent}:{sequence}",
