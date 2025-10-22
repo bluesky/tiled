@@ -231,6 +231,12 @@ def test_iterate_parts(context):
         client["x"].base[part].read()
 
 
+def test_reading_dask_table(context):
+    client = from_context(context, "dask")
+    a = client["x"].read(["A"]).compute()
+    assert df1["A"].equals(a.to_pandas()["A"])
+
+
 def test_iterate_columns(context):
     client = from_context(context)
     for col, _client in client["x"].items():
