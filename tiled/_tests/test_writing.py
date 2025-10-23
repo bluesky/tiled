@@ -435,14 +435,14 @@ def test_replace_metadata(tiled_websocket_context):
     def callback(subscription, data):
         """Callback to collect received messages."""
         received.append(data)
-        if len(received) >= 3:  # 3 updates
+        if len(received) >= 4:  # 1 creation + 3 updates
             received_event.set()
 
     # Create subscription for the streaming node with start=0
     subscription = Subscription(context=context, segments=[])
     subscription.add_callback(callback)
     # Start the subscription
-    subscription.start_in_thread()
+    subscription.start_in_thread(start=1)
     # Business Logic
     assert len(ac.metadata_revisions[:]) == 0
     ac.replace_metadata(metadata={"a": 1})  # update #1
@@ -460,11 +460,11 @@ def test_replace_metadata(tiled_websocket_context):
     ac.replace_metadata(metadata={"3": 1}, drop_revision=True)  # update #3
     # Wait for all messages to be received
     assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
-    # Ensure each event generated a websocket response
-    assert len(received) == 3
     # Clean up the subscription
     subscription.stop()
     assert subscription.closed
+    # Ensure each event generated a websocket response
+    assert len(received) == 4
 
 
 def test_drop_revision(tree):
