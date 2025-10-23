@@ -3,6 +3,7 @@ from typing import Generic, Literal, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 
+from .media_type_registration import default_deserialization_registry
 from .structures.array import ArrayStructure
 from .structures.core import Spec, StructureFamily
 from .structures.data_source import Management
@@ -57,6 +58,20 @@ class ArrayDataUpdated(Update):
     offset: Optional[tuple[int]]
     block: Optional[tuple[int]]
     payload: bytes
+
+    def data(self):
+        "Get array"
+        # Registration occurs on import. Ensure this is imported.
+        from .serialization import array
+
+        del array
+
+        # Decode payload (bytes) into array.
+        deserializer = default_deserialization_registry.dispatch("array", self.mimetype)
+        import numpy
+
+        data_type = numpy.int64
+        return deserializer(self.payload, data_type, self.shape)
 
 
 class ArrayPatch(BaseModel):
