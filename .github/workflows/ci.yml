@@ -90,6 +90,7 @@ jobs:
         # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
         TILED_TEST_REDIS: redis://localhost:6379
+        TILED_TEST_BUCKET: http://minioadmin:minioadmin@localhost:9000/buck
         # TODO Reinstate after finding a new image to use
         # https://github.com/bluesky/tiled/issues/1109
         # # Opt in to LDAPAuthenticator tests.

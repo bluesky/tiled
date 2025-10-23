@@ -5,9 +5,11 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
+import os
 import threading
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 
 import awkward
 import dask.dataframe
@@ -48,22 +50,29 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 @pytest.fixture
 def tree(tmpdir):
+    if uri := os.getenv("TILED_TEST_BUCKET"):
+        url = urlparse(uri)
+        bucket = url.path.lstrip("/")
+        uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
     return in_memory(
         writable_storage=[
             f"file://localhost{str(tmpdir / 'data')}",
             f"duckdb:///{tmpdir / 'data.duckdb'}",
+        ].append(
             {
                 "provider": "s3",
-                "uri": "http://localhost:9000",
+                "uri": uri.geturl(),
                 "config": {
-                    "access_key_id": "minioadmin",
-                    "secret_access_key": "minioadmin",
-                    "bucket": "buck",
+                    "access_key_id": url.username,
+                    "secret_access_key": url.password,
+                    "bucket": bucket,
                     "virtual_hosted_style_request": False,
                     "client_options": {"allow_http": True},
                 },
-            },
-        ]
+            }
+        )
+        if uri
+        else None
     )
 
 
