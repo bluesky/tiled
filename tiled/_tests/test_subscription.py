@@ -64,7 +64,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
         np.testing.assert_array_equal(payload_array, expected_array)
 
     # Clean up the subscription
-    subscription.stop()
+    subscription.close()
 
 
 def test_websocket_connection_to_non_existent_node_subscription(
@@ -140,7 +140,7 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
         np.testing.assert_array_equal(payload_array, expected_array)
 
     # Clean up the subscription
-    subscription.stop()
+    subscription.close()
 
 
 def test_subscribe_after_first_update_from_beginning_subscription(
@@ -213,5 +213,5 @@ def test_subscribe_after_first_update_from_beginning_subscription(
         np.testing.assert_array_equal(payload_array, expected_array)
 
     # Clean up the subscription
-    subscription.stop()
+    subscription.close()
     assert subscription.closed
