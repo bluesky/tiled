@@ -324,15 +324,16 @@ def tiled_websocket_context(tmpdir, redis_uri):
         ],
         readable_storage=None,
         init_if_not_exists=True,
+        # This uses shorter defaults than the production defaults. Nothing in
+        # the test suite should be going on for more than ten minutes.
         cache_settings={
             "uri": redis_uri,
-            "data_ttl": 60,
-            "seq_ttl": 60,
-            "socket_timeout": 10.0,
-            "socket_connect_timeout": 10.0,
+            "data_ttl": 600,  # 10 minutes
+            "seq_ttl": 600,  # 10 minutes
+            "socket_timeout": 600,  # 10 minutes
+            "socket_connect_timeout": 10,
         },
     )
-
     app = build_app(
         tree,
         authentication=Authentication(single_user_api_key="secret"),
