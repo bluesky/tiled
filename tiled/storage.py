@@ -4,7 +4,7 @@ import os
 import re
 from abc import abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple, Union
 from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
@@ -66,11 +66,40 @@ class ObjectStorage(Storage):
     "Bucket storage location for BLOBS"
 
     uri: str
-    provider: str
+    provider: Literal["s3", "azure", "google"]
     config: dict
 
     def __post_init__(self):
-        object.__setattr__(self, "uri", ensure_uri(self.uri))
+        base_uri, _ = self.split_blob_uri(ensure_uri(self.uri))
+        object.__setattr__(self, "uri", base_uri)
+
+    @classmethod
+    def split_blob_uri(cls, uri: str) -> tuple[str, str]:
+        """Split a blob URI into base URI and blob path.
+
+        For example, given 'http://example.com/bucket_name/path/to/blob',
+        return ('http://example.com/bucket_name', 'path/to/blob').
+        """
+        parsed_uri = urlparse(uri)
+        full_path = parsed_uri.path  # includes bucket and the rest
+        bucket_name, blob_path = full_path.split("/", 1)
+        base_uri = f"{parsed_uri.scheme}://{parsed_uri.netloc}/{bucket_name}"
+
+        return base_uri, blob_path
+
+    def get_object_store(self, prefix=None) -> "S3Store | AzureStore | GCSStore":
+        """Get an object store instance based on the provider and config."""
+
+        from obstore.azure import AzureStore
+        from obstore.gcs import GCSStore
+        from obstore.s3 import S3Store
+
+        _class = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}[self.provider]
+        _uri_property = {"s3": "endpoint", "azure": "endpoint", "google": "url"}[
+            self.provider
+        ]
+
+        return _class(**{_uri_property: self.uri}, **self.config, prefix=prefix)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -248,12 +277,18 @@ def register_storage(storage: Storage) -> None:
 
 
 def get_storage(uri: str) -> Storage | Tuple[Storage, str]:
-    scheme = urlparse(uri).scheme
-    if scheme == "file":
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme == "file":
         return FileStorage(uri)
-    elif scheme in {"sqlite", "duckdb"}:
+    elif parsed_uri.scheme in {"sqlite", "duckdb"}:
         return EmbeddedSQLStorage(uri)
-    elif scheme == "http":
+    elif parsed_uri.scheme == "http":
+        full_path = parsed_uri.path  # includes bucket and the rest
+        bucket_name, blob_path = full_path.split("/", 1)
+
+        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+        return ObjectStorage(base_url)
+
         # Split on the first single '/' that is not part of '://'
         match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", uri)
         objstore = ObjectStorage(match.group(1)) if match else ObjectStorage(uri)
