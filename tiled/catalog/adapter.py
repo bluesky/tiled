@@ -1158,7 +1158,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             "type": "array-data",
             "sequence": sequence,
             "timestamp": datetime.now().isoformat(),
-            "content-type": media_type,
+            "mimetype": media_type,
             "shape": shape,
             "offset": offset,
             "block": block,
