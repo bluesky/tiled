@@ -461,7 +461,7 @@ def test_replace_metadata(tiled_websocket_context):
     # Wait for all messages to be received
     assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
     # Clean up the subscription
-    subscription.stop()
+    subscription.close()
     assert subscription.closed
     # Ensure each event generated a websocket response
     assert len(received) == 4

@@ -19,6 +19,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `Subscription.start` blocks the current thread, leaving any thread management
   up to the caller.
 - Encapsulated redis code in adapter.py into a StreamingCache object
+- Renamed `Subscription.stop` to `Subscription.close` to match the property
+  `Subscription.closed`.
+- In `Subscription`, use a configurable `concurrent.futures.Executor` to
+  execute callbacks.
 
 ### Fixed
 
