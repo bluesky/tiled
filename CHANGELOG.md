@@ -18,6 +18,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   thread. This was renamed to `Subscription.start_in_thread`. Now
   `Subscription.start` blocks the current thread, leaving any thread management
   up to the caller.
+- Encapsulated redis code in adapter.py into a StreamingCache object
 
 ### Fixed
 
