@@ -776,6 +776,7 @@ class CatalogNodeAdapter:
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
                 metadata = {
+                    "type": "child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
@@ -859,6 +860,7 @@ class CatalogNodeAdapter:
         if self.context.streaming_cache:
             sequence = await self.context.streaming_cache.incr_seq(self.node.id)
             metadata = {
+                "type": "array-ref",
                 "sequence": sequence,
                 "timestamp": datetime.now().isoformat(),
                 "data_source": data_source.dict(),
@@ -1053,6 +1055,7 @@ class CatalogNodeAdapter:
             if self.context.streaming_cache:
                 sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
                 metadata = {
+                    "type": "child-metadata-updated",
                     "key": self.node.key,
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
@@ -1152,6 +1155,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         sequence = await self.context.streaming_cache.incr_seq(self.node.id)
         metadata = {
+            "type": "array-data",
             "sequence": sequence,
             "timestamp": datetime.now().isoformat(),
             "content-type": media_type,
