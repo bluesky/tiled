@@ -54,12 +54,10 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
 
     # Check that we received messages with the expected data
     for i, msg in enumerate(received):
-        assert "timestamp" in msg
-        assert "payload" in msg
-        assert msg["shape"] == [10]
+        assert msg.shape == (10,)
 
         # Verify payload contains the expected array data
-        payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+        payload_array = np.frombuffer(msg.payload, dtype=np.int64)
         expected_array = np.arange(10) + (i + 1)
         np.testing.assert_array_equal(payload_array, expected_array)
 
@@ -130,12 +128,10 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
 
     # Check that we received messages with the expected data
     for i, msg in enumerate(received):
-        assert "timestamp" in msg
-        assert "payload" in msg
-        assert msg["shape"] == [10]
+        assert msg.shape == (10,)
 
         # Verify payload contains the expected array data
-        payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+        payload_array = np.frombuffer(msg.payload, dtype=np.int64)
         expected_array = np.arange(10) + (i + 2)  # i+2 because we start from update 2
         np.testing.assert_array_equal(payload_array, expected_array)
 
@@ -194,21 +190,17 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     # Check the messages in order
     # First message: initial array creation
     msg = received[0]
-    assert "timestamp" in msg
-    assert "payload" in msg
-    assert msg["shape"] == [10]
-    payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+    assert msg.shape == (10,)
+    payload_array = np.frombuffer(msg.payload, dtype=np.int64)
     expected_array = np.arange(10)  # Initial array
     np.testing.assert_array_equal(payload_array, expected_array)
 
     # Remaining messages: updates 1, 2, 3
     for i, msg in enumerate(received[1:], 1):
-        assert "timestamp" in msg
-        assert "payload" in msg
-        assert msg["shape"] == [10]
+        assert msg.shape == (10,)
 
         # Verify payload contains the expected array data
-        payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+        payload_array = np.frombuffer(msg.payload, dtype=np.int64)
         expected_array = np.arange(10) + i
         np.testing.assert_array_equal(payload_array, expected_array)
 

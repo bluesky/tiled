@@ -773,6 +773,15 @@ class CatalogNodeAdapter:
                 )
             ).scalar()
             if self.context.streaming_cache:
+                # Include IDs assigned by database in response.
+                data_sources_with_ids = []
+                for data_source, data_source_orm in zip(
+                    data_sources, refreshed_node.data_sources
+                ):
+                    ds = data_source.model_copy()
+                    ds.id = data_source_orm.id
+                    data_sources_with_ids.append(ds)
+
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
                 metadata = {
@@ -783,7 +792,7 @@ class CatalogNodeAdapter:
                     "structure_family": structure_family,
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
-                    "data_sources": [d.model_dump() for d in data_sources],
+                    "data_sources": [d.model_dump() for d in data_sources_with_ids],
                 }
 
                 # Cache data in Redis with a TTL, and publish
