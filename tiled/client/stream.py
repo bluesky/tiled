@@ -1,3 +1,4 @@
+import concurrent.futures
 import inspect
 import sys
 import threading
@@ -93,9 +94,17 @@ class Subscription:
         Provides connection to Tiled server
     segments : list[str]
         Path to node of interest, given as a list of path segments
+    executor : concurrent.futures.Executor, optional
+        Launches tasks asynchronously, in response to updates
     """
 
-    def __init__(self, context: Context, segments: List[str] = None):
+    def __init__(
+        self,
+        context: Context,
+        segments: List[str] = None,
+        executor: Optional[concurrent.futures.Executor] = None,
+    ):
+        self.executor = executor or concurrent.futures.ThreadPoolExecutor(max_workers=5)
         segments = segments or ["/"]
         self._context = context
         self._segments = segments
@@ -231,7 +240,7 @@ class Subscription:
             self.context.revoke_api_key(key_info["first_eight"])
 
     def _receive(self) -> None:
-        "Blocking loop that receives and processes updates"
+        "Blocking loop that receives updates and submits them to the executor"
         while not self._close_event.is_set():
             try:
                 data_bytes = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
@@ -244,7 +253,7 @@ class Subscription:
             for ref in self._callbacks:
                 callback = ref()
                 if callback is not None:
-                    callback(self, data)
+                    self.executor.submit(callback, self, data)
 
     def start(self, start: Optional[int] = None) -> None:
         """
@@ -321,3 +330,4 @@ class Subscription:
         # If start_in_thread() was used, join the thread.
         if self._thread is not None:
             self._thread.join()
+        self.executor.shutdown()
