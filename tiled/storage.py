@@ -1,9 +1,10 @@
 import dataclasses
 import functools
 import os
+import re
 from abc import abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple, Union
 from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
@@ -18,6 +19,7 @@ __all__ = [
     "RemoteSQLStorage",
     "FileStorage",
     "SQLStorage",
+    "ObjectStorage",
     "Storage",
     "get_storage",
     "parse_storage",
@@ -27,6 +29,7 @@ __all__ = [
 @dataclasses.dataclass(frozen=True)
 class Storage:
     "Base class for representing storage location"
+
     uri: str
 
     def __post_init__(self):
@@ -56,6 +59,47 @@ def _ensure_writable_location(uri: str) -> Path:
     else:
         raise ValueError(f"The directory {directory} does not exist.")
     return filepath
+
+
+@dataclasses.dataclass(frozen=True)
+class ObjectStorage(Storage):
+    "Bucket storage location for BLOBS"
+
+    uri: str
+    provider: Literal["s3", "azure", "google"]
+    config: dict
+
+    def __post_init__(self):
+        base_uri, _ = self.split_blob_uri(ensure_uri(self.uri))
+        object.__setattr__(self, "uri", base_uri)
+
+    @classmethod
+    def split_blob_uri(cls, uri: str) -> tuple[str, str]:
+        """Split a blob URI into base URI and blob path.
+
+        For example, given 'http://example.com/bucket_name/path/to/blob',
+        return ('http://example.com/bucket_name', 'path/to/blob').
+        """
+        parsed_uri = urlparse(uri)
+        full_path = parsed_uri.path  # includes bucket and the rest
+        bucket_name, blob_path = full_path.split("/", 1)
+        base_uri = f"{parsed_uri.scheme}://{parsed_uri.netloc}/{bucket_name}"
+
+        return base_uri, blob_path
+
+    def get_object_store(self, prefix=None) -> "S3Store | AzureStore | GCSStore":
+        """Get an object store instance based on the provider and config."""
+
+        from obstore.azure import AzureStore
+        from obstore.gcs import GCSStore
+        from obstore.s3 import S3Store
+
+        _class = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}[self.provider]
+        _uri_property = {"s3": "endpoint", "azure": "endpoint", "google": "url"}[
+            self.provider
+        ]
+
+        return _class(**{_uri_property: self.uri}, **self.config, prefix=prefix)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -146,6 +190,7 @@ class EmbeddedSQLStorage(SQLStorage):
 @dataclasses.dataclass(frozen=True)
 class RemoteSQLStorage(SQLStorage):
     "Authenticated server-based SQL database storage location"
+
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -190,24 +235,33 @@ class RemoteSQLStorage(SQLStorage):
 
 
 def parse_storage(
-    item: Union[Path, str],
+    item: Union[Path, str, dict],
     *,
     pool_size: int = 5,
     max_overflow: int = 10,
 ) -> Storage:
     "Create a Storage object from a URI or Path."
-    item = ensure_uri(item)
-    scheme = urlparse(item).scheme
-    if scheme == "file":
-        result = FileStorage(item)
-    elif scheme == "postgresql":
-        result = RemoteSQLStorage(item, pool_size=pool_size, max_overflow=max_overflow)
-    elif scheme in {"sqlite", "duckdb"}:
-        result = EmbeddedSQLStorage(
-            item, pool_size=pool_size, max_overflow=max_overflow
+    if isinstance(item, dict):
+        result = ObjectStorage(
+            uri=item["uri"],
+            provider=item["provider"],
+            config=item.get("config", {}),
         )
     else:
-        raise ValueError(f"writable_storage item {item} has unrecognized scheme")
+        item = ensure_uri(item)
+        scheme = urlparse(item).scheme
+        if scheme == "file":
+            result = FileStorage(item)
+        elif scheme == "postgresql":
+            result = RemoteSQLStorage(
+                item, pool_size=pool_size, max_overflow=max_overflow
+            )
+        elif scheme in {"sqlite", "duckdb"}:
+            result = EmbeddedSQLStorage(
+                item, pool_size=pool_size, max_overflow=max_overflow
+            )
+        else:
+            raise ValueError(f"writable_storage item {item} has unrecognized scheme")
     return result
 
 
@@ -222,6 +276,28 @@ def register_storage(storage: Storage) -> None:
     _STORAGE[storage.uri] = storage
 
 
-def get_storage(uri: str) -> Storage:
-    "Look up Storage by URI."
-    return _STORAGE[uri]
+def get_storage(uri: str) -> Storage | Tuple[Storage, str]:
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme == "file":
+        return FileStorage(uri)
+    elif parsed_uri.scheme in {"sqlite", "duckdb"}:
+        return EmbeddedSQLStorage(uri)
+    elif parsed_uri.scheme == "http":
+        full_path = parsed_uri.path  # includes bucket and the rest
+        bucket_name, blob_path = full_path.split("/", 1)
+
+        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+        return ObjectStorage(base_url)
+
+        # Split on the first single '/' that is not part of '://'
+        match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", uri)
+        objstore = ObjectStorage(match.group(1)) if match else ObjectStorage(uri)
+        path = (
+            (match.group(2) if match and match.group(2) else "")
+            .lstrip("/")
+            .replace(objstore.config["bucket"] + "/", "")
+        )
+        return objstore, path
+    else:
+        "Look up Storage by URI."
+        return _STORAGE[uri]

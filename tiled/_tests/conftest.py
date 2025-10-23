@@ -4,6 +4,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import asyncpg
 import pytest
@@ -311,6 +312,40 @@ def redis_uri():
         client.flushdb()
     else:
         raise pytest.skip("No TILED_TEST_REDIS configured")
+
+
+@pytest.fixture
+def minio_uri():
+    if uri := os.getenv("TILED_TEST_BUCKET"):
+        from minio import Minio
+        from minio.deleteobjects import DeleteObject
+
+        # For convenience, we split the bucket from a string
+        url = urlparse(uri)
+        bucket = url.path.lstrip("/")
+        uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
+
+        client = Minio(
+            uri.geturl(),
+            access_key=url.username,
+            secret_key=url.password,
+            secure=False,
+        )
+
+        # Reset the state of the bucket after each test.
+        if client.bucket_exists(bucket):
+            delete_object_list = map(
+                lambda x: DeleteObject(x.object_name),
+                client.list_objects(bucket, recursive=True),
+            )
+            errors = client.remove_objects(bucket, delete_object_list)
+            for error in errors:
+                print("error occurred when deleting object", error)
+        else:
+            client.make_bucket(bucket)
+
+    else:
+        raise pytest.skip("No TILED_TEST_BUCKET configured")
 
 
 @pytest.fixture(scope="function")
