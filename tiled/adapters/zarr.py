@@ -4,7 +4,7 @@ import copy
 import os
 from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import zarr
 from numpy._typing import NDArray
@@ -69,41 +69,23 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
 
+        data_path = "/".join(quote_plus(segment) for segment in path_parts)
         if isinstance(storage, ObjectStorage):
-            data_uri = (
-                storage.uri
-                + "/"
-                + storage.config["bucket"]
-                + "".join(f"/{quote_plus(segment)}" for segment in path_parts)
-            )
-            style = storage_style(storage.provider)
-            object_store = style["class"](
-                **{
-                    style["property"]: storage.uri,
-                    "prefix": "".join(
-                        f"/{quote_plus(segment)}" for segment in path_parts
-                    ),
-                },
-                **storage.config,
-            )
-            store = ObjectStore(store=object_store)
+            zarr_store = ObjectStore(store=storage.get_object_store(prefix=data_path))
+
         if isinstance(storage, FileStorage):
-            data_uri = storage.uri + "".join(
-                f"/{quote_plus(segment)}" for segment in path_parts
-            )
-            # file-based
-            directory = path_from_uri(data_uri)
+            directory = path_from_uri(storage.uri + data_path)
             directory.mkdir(parents=True, exist_ok=True)
-            store = LocalStore(str(directory))
+            zarr_store = LocalStore(str(directory))
         data_source.assets.append(
             Asset(
-                data_uri=data_uri,
+                data_uri=storage.uri + data_path,
                 is_directory=True,
                 parameter="data_uri",
             )
         )
         create_array(
-            store,
+            zarr_store,
             shape=shape,
             chunks=zarr_chunks,
             dtype=data_source.structure.data_type.to_numpy_dtype(),
@@ -323,35 +305,27 @@ class ZarrAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
-        container_type = node.structure_family == StructureFamily.container
-        storage_uri = data_source.assets[0].data_uri
-        storage = get_storage(storage_uri)
-        if isinstance(storage, FileStorage):
-            zarr_obj = zarr.open(path_from_uri(storage_uri))
-        elif isinstance(storage, Tuple):
-            storage, path = storage
-            cast(ObjectStorage, storage)
-            style = storage_style(storage.provider)
-            object_store = style["class"](
-                **{style["property"]: storage.uri},
-                **storage.config,
-            )
-            store = ObjectStore(store=object_store)
-            zarr_obj = (
-                zarr.open_group(
-                    store=store,
-                    path=path,
-                )
-                if container_type
-                else zarr.open_array(
-                    store=store,
-                    path=path,
-                )
-            )
-        else:
-            raise TypeError(f"Unsupported Storage type {storage}")
+        is_container_type = node.structure_family == StructureFamily.container
+        uri = data_source.assets[0].data_uri
 
-        if container_type:
+        if urlparse(uri).scheme == "file":
+            # This is a file-based Zarr storage
+            zarr_obj = zarr.open(path_from_uri(uri))
+
+        elif urlparse(uri).scheme in ("s3", "http", "https"):
+            # This is an object-store-based Zarr storage
+            base_uri, blob_path = ObjectStorage.split_blob_uri(storage_uri)
+            storage = cast(ObjectStorage, get_storage(base_uri))
+            zarr_store = ObjectStore(store=storage.get_object_store())
+            if is_container_type:
+                zarr_obj = zarr.open_group(store=zarr_store, path=blob_path)
+            else:
+                zarr_obj = zarr.open_array(store=zarr_store, path=blob_path)
+
+        else:
+            raise TypeError(f"Unsupported URI scheme in {uri}")
+
+        if is_container_type:
             return ZarrGroupAdapter(
                 zarr_obj,
                 metadata=node.metadata_,
@@ -377,23 +351,3 @@ class ZarrAdapter:
         else:
             structure = ArrayStructure.from_array(zarr_obj)
             return ZarrArrayAdapter(zarr_obj, structure=structure, **kwargs)
-
-
-def storage_style(provider: str) -> dict[str, S3Store | AzureStore | GCSStore]:
-    """
-    Adapt obstore cloud provider methods
-    Parameters
-    ----------
-    provider : str
-        The cloud provider, one of 's3', 'azure', 'google'
-    Returns
-    -------
-    dict{class: obstore class, property: str}
-        The obstore class and endpoint property name
-    """
-    mapping = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}
-    urlProp = {"s3": "endpoint", "azure": "endpoint", "google": "url"}
-    return {
-        "class": mapping[provider],
-        "property": urlProp[provider],
-    }
