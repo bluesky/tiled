@@ -1036,6 +1036,7 @@ class CatalogNodeAdapter:
                     f"sequence:{self.node.parent}"
                 )
                 metadata = {
+                    "key": self.node.key,
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
                     "specs": [spec.model_dump() for spec in (specs or [])],
