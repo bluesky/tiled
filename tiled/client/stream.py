@@ -1,5 +1,6 @@
 import concurrent.futures
 import inspect
+import logging
 import sys
 import threading
 import weakref
@@ -16,7 +17,8 @@ import msgpack
 import websockets.exceptions
 from websockets.sync.client import connect
 
-from tiled.client.context import Context
+from ..stream_messages import MESSAGE_TYPES, Update
+from .context import Context
 
 Callback = Callable[["Subscription", dict], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
@@ -24,6 +26,9 @@ Callback = Callable[["Subscription", dict], None]
 
 API_KEY_LIFETIME = 30  # seconds
 RECEIVE_TIMEOUT = 0.1  # seconds
+
+
+logger = logging.getLogger(__name__)
 
 
 __all__ = ["Subscription"]
@@ -243,17 +248,23 @@ class Subscription:
         "Blocking loop that receives updates and submits them to the executor"
         while not self._close_event.is_set():
             try:
-                data_bytes = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
+                data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
             except websockets.exceptions.ConnectionClosedOK:
                 self._close_event.set()
                 return
-            data = msgpack.unpackb(data_bytes)
+            try:
+                update = parse_message(data)
+            except Exception:
+                logger.exception(
+                    "A websocket message will be ignored because it could not be parsed."
+                )
+                continue
             for ref in self._callbacks:
                 callback = ref()
                 if callback is not None:
-                    self.executor.submit(callback, self, data)
+                    self.executor.submit(callback, self, update)
 
     def start(self, start: Optional[int] = None) -> None:
         """
@@ -331,3 +342,22 @@ class Subscription:
         if self._thread is not None:
             self._thread.join()
         self.executor.shutdown()
+
+
+class UnparseableMessage(RuntimeError):
+    "Message can be decoded but cannot be interpreted by the application"
+    pass
+
+
+def parse_message(data: bytes) -> Update:
+    "Parse msgpack-encoded types into a model."
+    message = msgpack.unpackb(data)
+    try:
+        message_type = message["type"]
+    except KeyError:
+        raise UnparseableMessage(f"Message does not designate a 'type': {message!r}")
+    try:
+        cls = MESSAGE_TYPES[message_type]
+    except KeyError:
+        raise UnparseableMessage(f"Unrecognized message type {message_type!r}")
+    return cls(**message)
