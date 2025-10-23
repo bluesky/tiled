@@ -694,6 +694,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         item = {
             "attributes": {
+                "ancestors": self.path_parts,
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalize_specs(specs or []),
