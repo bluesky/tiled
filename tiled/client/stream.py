@@ -321,7 +321,7 @@ class Subscription:
         """
         return self._close_event.is_set()
 
-    def stop(self) -> None:
+    def close(self) -> None:
         "Close the websocket connection."
         if self._close_event.is_set():
             return  # nothing to do
