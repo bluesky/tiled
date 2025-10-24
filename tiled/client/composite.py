@@ -188,6 +188,8 @@ class CompositeClient(Container):
                 df = table_client.read(list(columns))
                 for column in columns:
                     data_vars[column] = df[column].values
+                    if hasattr(data_vars[column], "compute"):
+                        data_vars[column] = data_vars[column].compute()
                     # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
                     if isinstance(data_vars[column].dtype, pandas.StringDtype):
                         data_vars[column] = data_vars[column].astype("U")
