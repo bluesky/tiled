@@ -43,14 +43,19 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
 
         # Check that we received messages with the expected data
         for i, msg in enumerate(received):
-            assert "timestamp" in msg
-            assert "payload" in msg
-            assert msg["shape"] == [10]
+            if i == 0:  # schema
+                assert "type" in msg
+                assert "version" in msg
+            else:
+                assert "type" in msg
+                assert "timestamp" in msg
+                assert "payload" in msg
+                assert msg["shape"] == [10]
 
-            # Verify payload contains the expected array data
-            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-            expected_array = np.arange(10) + (i + 1)
-            np.testing.assert_array_equal(payload_array, expected_array)
+                # Verify payload contains the expected array data
+                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+                expected_array = np.arange(10) + i
+                np.testing.assert_array_equal(payload_array, expected_array)
 
 
 def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
@@ -105,16 +110,21 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
 
         # Check that we received messages with the expected data
         for i, msg in enumerate(received):
-            assert "timestamp" in msg
-            assert "payload" in msg
-            assert msg["shape"] == [10]
+            if i == 0:  # schema
+                assert "type" in msg
+                assert "version" in msg
+            else:
+                assert "type" in msg
+                assert "timestamp" in msg
+                assert "payload" in msg
+                assert msg["shape"] == [10]
 
-            # Verify payload contains the expected array data
-            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-            expected_array = np.arange(10) + (
-                i + 2
-            )  # i+2 because we start from update 2
-            np.testing.assert_array_equal(payload_array, expected_array)
+                # Verify payload contains the expected array data
+                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+                expected_array = np.arange(10) + (
+                    i + 1
+                )  # i+2 because we start from update 1
+                np.testing.assert_array_equal(payload_array, expected_array)
 
 
 def test_subscribe_after_first_update_from_beginning_websockets(
@@ -142,6 +152,12 @@ def test_subscribe_after_first_update_from_beginning_websockets(
         "/api/v1/stream/single/test_stream_from_beginning?envelope_format=msgpack&start=0",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
+        # Schema
+        schema_msg_bytes = websocket.receive_bytes()
+        schema_msg = msgpack.unpackb(schema_msg_bytes)
+        assert "type" in schema_msg
+        assert "version" in schema_msg
+
         # First, should receive the initial array creation
         historical_msg_bytes = websocket.receive_bytes()
         historical_msg = msgpack.unpackb(historical_msg_bytes)
