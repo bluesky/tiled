@@ -52,7 +52,9 @@ def test_websocket_replay_and_live_events(tiled_websocket_context):
         f"/api/v1/stream/single/{node_key}?envelope_format=msgpack&start=1",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
-        replay_messages = [msgpack.unpackb(websocket.receive_bytes()) for _ in range(2)]
+        schema_message, *replay_messages = [
+            msgpack.unpackb(websocket.receive_bytes()) for _ in range(3)
+        ]
         assert all(msg["shape"] == [6] for msg in replay_messages)
 
         live_msg = msgpack.unpackb(websocket.receive_bytes())
