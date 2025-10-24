@@ -9,7 +9,6 @@ import os
 import threading
 import uuid
 from datetime import datetime
-from urllib.parse import urlparse
 
 import awkward
 import dask.dataframe
@@ -55,17 +54,11 @@ def tree(tmpdir):
         f"duckdb:///{tmpdir / 'data.duckdb'}",
     ]
     if uri := os.getenv("TILED_TEST_BUCKET"):
-        url = urlparse(uri)
-        bucket = url.path.lstrip("/")
-        uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
         writable_storage.append(
             {
                 "provider": "s3",
-                "uri": uri.geturl() + "/" + bucket,
+                "uri": uri,
                 "config": {
-                    "access_key_id": url.username,
-                    "secret_access_key": url.password,
-                    "bucket": bucket,
                     "virtual_hosted_style_request": False,
                     "client_options": {"allow_http": True},
                 },

@@ -87,10 +87,27 @@ class ObjectStorage(Storage):
 
     uri: str
     provider: Literal["s3", "azure", "google"]
-    config: dict
+    username: Optional[str] = None
+    password: Optional[str] = None
+    config: dict = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
         base_uri, _ = self.parse_blob_uri(ensure_uri(self.uri))
+        base_uri, username, password = sanitize_uri(base_uri)
+
+        if (username is not None) or (password is not None):
+            if (
+                (self.username is not None)
+                or (self.password is not None)
+                or ("username" in self.config)
+                or ("password" in self.config)
+            ):
+                raise ValueError(
+                    "Credentials passed in URI and in username, password, or config fields."
+                )
+            object.__setattr__(self, "username", username)
+            object.__setattr__(self, "password", password)
+
         object.__setattr__(self, "uri", base_uri)
 
     @classmethod
