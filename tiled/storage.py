@@ -5,14 +5,15 @@ import re
 from abc import abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple, Union
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import sqlalchemy.pool
 
+from .utils import ensure_uri, path_from_uri, sanitize_uri
+
 if TYPE_CHECKING:
     import adbc_driver_manager.dbapi
-
-from .utils import ensure_uri, path_from_uri, sanitize_uri
+    from obstore.store import AzureStore, GCSStore, LocalStore, S3Store
 
 __all__ = [
     "EmbeddedSQLStorage",
@@ -44,6 +45,23 @@ class FileStorage(Storage):
     def path(self):
         return path_from_uri(self.uri)
 
+    def get_obstore_location(self, prefix=None) -> "LocalStore":
+        """Get an obstore.store.LocalStore instance rooted at specified prefix.
+
+        Parameters
+        ----------
+            prefix : str, optional
+                An optional prefix to append to the base URI.
+        """
+
+        from obstore.store import LocalStore
+
+        data_uri = urljoin(self.uri + "/", prefix)
+        directory = path_from_uri(data_uri)
+        directory.mkdir(parents=True, exist_ok=True)
+
+        return LocalStore(directory), data_uri
+
 
 def _ensure_writable_location(uri: str) -> Path:
     "Ensure path is writable to avoid a confusing error message from driver."
@@ -70,11 +88,11 @@ class ObjectStorage(Storage):
     config: dict
 
     def __post_init__(self):
-        base_uri, _ = self.split_blob_uri(ensure_uri(self.uri))
+        base_uri, _ = self.parse_blob_uri(ensure_uri(self.uri))
         object.__setattr__(self, "uri", base_uri)
 
     @classmethod
-    def split_blob_uri(cls, uri: str) -> tuple[str, str]:
+    def parse_blob_uri(cls, uri: str) -> tuple[str, str]:
         """Split a blob URI into base URI and blob path.
 
         For example, given 'http://example.com/bucket_name/path/to/blob',
@@ -82,24 +100,28 @@ class ObjectStorage(Storage):
         """
         parsed_uri = urlparse(uri)
         full_path = parsed_uri.path  # includes bucket and the rest
-        bucket_name, blob_path = full_path.split("/", 1)
+        bucket_name, *blob_path = full_path.strip("/").split("/", 1)
         base_uri = f"{parsed_uri.scheme}://{parsed_uri.netloc}/{bucket_name}"
 
         return base_uri, blob_path
 
-    def get_object_store(self, prefix=None) -> "S3Store | AzureStore | GCSStore":
-        """Get an object store instance based on the provider and config."""
+    def get_obstore_location(
+        self, prefix=None
+    ) -> tuple["S3Store | AzureStore | GCSStore", str]:
+        """Get an obstore.store instance based on the provider and config
 
-        from obstore.azure import AzureStore
-        from obstore.gcs import GCSStore
-        from obstore.s3 import S3Store
+        Parameters
+        ----------
+            prefix : str, optional
+                An optional prefix to append to the base URI.
+        """
+
+        from obstore.store import AzureStore, GCSStore, S3Store
 
         _class = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}[self.provider]
-        _uri_property = {"s3": "endpoint", "azure": "endpoint", "google": "url"}[
-            self.provider
-        ]
+        data_uri = urljoin(self.uri + "/", prefix)
 
-        return _class(**{_uri_property: self.uri}, **self.config, prefix=prefix)
+        return _class.from_url(data_uri, **self.config), data_uri
 
 
 @dataclasses.dataclass(frozen=True)

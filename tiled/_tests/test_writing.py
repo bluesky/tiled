@@ -50,18 +50,18 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 @pytest.fixture
 def tree(tmpdir):
+    writable_storage = [
+        f"file://localhost{str(tmpdir / 'data')}",
+        f"duckdb:///{tmpdir / 'data.duckdb'}",
+    ]
     if uri := os.getenv("TILED_TEST_BUCKET"):
         url = urlparse(uri)
         bucket = url.path.lstrip("/")
         uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
-    return in_memory(
-        writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
-            f"duckdb:///{tmpdir / 'data.duckdb'}",
-        ].append(
+        writable_storage.append(
             {
                 "provider": "s3",
-                "uri": uri.geturl(),
+                "uri": uri.geturl() + "/" + bucket,
                 "config": {
                     "access_key_id": url.username,
                     "secret_access_key": url.password,
@@ -71,9 +71,7 @@ def tree(tmpdir):
                 },
             }
         )
-        if uri
-        else None
-    )
+    return in_memory(writable_storage=writable_storage)
 
 
 def test_write_array_full(tree):
