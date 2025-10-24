@@ -1307,27 +1307,11 @@ def delete_asset(data_uri, is_directory, parameters=None):
 
     elif url.scheme in SUPPORTED_OBJECT_URI_SCHEMES:
         storage = cast(ObjectStorage, get_storage(data_uri))
-        if storage.provider != "s3":
-            raise NotImplementedError(
-                f"Cannot delete asset at {data_uri!r} because the provider "
-                f"{storage.provider!r} is not supported."
-            )
-
-        from minio import Minio
-
-        minio_client = Minio(
-            urlparse(storage.uri).netloc,
-            access_key=storage.username,
-            secret_key=storage.password,
-            secure=False,
-        )
+        store = storage.get_obstore_location()
 
         if prefix := data_uri.split(f"{storage.bucket}/", 1)[1]:
-            objects = minio_client.list_objects(
-                storage.bucket, prefix=prefix, recursive=True
-            )
-            for obj in objects:
-                minio_client.remove_object(storage.bucket, obj.object_name)
+            for batch in store.list(prefix=prefix):
+                store.delete([obj["path"] for obj in batch])
         else:
             raise ValueError(f"Cannot delete the entire bucket: {storage.bucket!r}")
 
