@@ -4,7 +4,7 @@ import copy
 import os
 from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus, urljoin, urlparse
 
 import zarr
 from numpy._typing import NDArray
@@ -67,12 +67,6 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         data_source: DataSource[ArrayStructure],
         path_parts: List[str],
     ) -> DataSource[ArrayStructure]:
-        if ZARR_LIB_V2 and not isinstance(storage, FileStorage):
-            raise TypeError(
-                "Zarr v2 only supports file-based storage. "
-                "Please consider upgrading to Zarr v3."
-            )
-
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
 
         # Zarr requires evenly-sized chunks within each dimension.
@@ -80,14 +74,14 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
         data_type = data_source.structure.data_type.to_numpy_dtype()
-
-        data_path = "/".join(quote_plus(segment) for segment in path_parts)
-        store, data_uri = storage.get_obstore_location(prefix=data_path)
+        data_uri = urljoin(
+            storage.uri + "/", "/".join(quote_plus(segment) for segment in path_parts)
+        )
 
         if ZARR_LIB_V2:
             zarr_store = LocalStore(str(path_from_uri(data_uri)))
         else:
-            zarr_store = ObjectStore(store=store)
+            zarr_store = ObjectStore(store=storage.get_obstore_location(data_uri))
 
         create_array(zarr_store, shape=shape, chunks=zarr_chunks, dtype=data_type)
 
@@ -222,7 +216,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
 
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
-        return {FileStorage, ObjectStorage}
+        return {FileStorage} if ZARR_LIB_V2 else {FileStorage, ObjectStorage}
 
 
 class ZarrGroupAdapter(
@@ -324,13 +318,15 @@ class ZarrAdapter:
 
         elif urlparse(uri).scheme in SUPPORTED_OBJECT_URI_SCHEMES:
             # This is an object-store-based Zarr storage
-            base_uri, blob_path = ObjectStorage.parse_blob_uri(uri)
-            storage = cast(ObjectStorage, get_storage(base_uri))
-            zarr_store = ObjectStore(store=storage.get_obstore_store())
+            storage = cast(ObjectStorage, get_storage(uri))
+            _, _, prefix = storage.parse_blob_uri(uri)
+            zarr_store = ObjectStore(store=storage.get_obstore_location())
+            # zarr_obj = zarr.open(store=zarr_store)
+
             if is_container_type:
-                zarr_obj = zarr.open_group(store=zarr_store, path=blob_path)
+                zarr_obj = zarr.open_group(store=zarr_store, path=prefix)
             else:
-                zarr_obj = zarr.open_array(store=zarr_store, path=blob_path)
+                zarr_obj = zarr.open_array(store=zarr_store, path=prefix)
 
         else:
             raise TypeError(f"Unsupported URI scheme in {uri}")

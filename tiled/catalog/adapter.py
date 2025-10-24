@@ -74,7 +74,9 @@ from ..server.schemas import Asset, DataSource, Management, Revision
 from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
 from ..storage import (
+    SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
+    ObjectStorage,
     SQLStorage,
     get_storage,
     parse_storage,
@@ -182,7 +184,9 @@ class Context:
         if isinstance(writable_storage, (str, Path)):
             writable_storage = [writable_storage]
         if isinstance(readable_storage, str):
-            raise ValueError("readable_storage should be a list of URIs or paths")
+            raise ValueError(
+                "readable_storage should be a list of URIs, paths, or dicts"
+            )
 
         for item in writable_storage or []:
             storage = parse_storage(
@@ -692,11 +696,11 @@ class CatalogNodeAdapter:
                         )
                     adapter_cls = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
                     # Choose writable storage. Use the first writable storage item
-                    # with a scheme that is supported by this adapter. # For
-                    # back-compat, if an adapter does not declare `supported_storage`
+                    # with a scheme that is supported by this adapter.
+                    # For back-compat, if an adapter does not declare `supported_storage`
                     # assume it supports file-based storage only.
                     supported_storage = getattr(
-                        adapter_cls, "supported_storage", {FileStorage}
+                        adapter_cls, "supported_storage", lambda: {FileStorage}
                     )()
                     for storage in self.context.writable_storage.values():
                         if isinstance(storage, tuple(supported_storage)):
@@ -706,7 +710,7 @@ class CatalogNodeAdapter:
                             f"The adapter {adapter_cls} supports storage types "
                             f"{[cls.__name__ for cls in supported_storage]} "
                             "but the only available storage types "
-                            f"are {self.context.writable_storage}."
+                            f"are {self.context.writable_storage.values()}."
                         )
                     data_source = await ensure_awaitable(
                         adapter_cls.init_storage,
@@ -1300,6 +1304,33 @@ def delete_asset(data_uri, is_directory, parameters=None):
                 if cursor.fetchone()[0] == 0:
                     cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
             conn.commit()
+
+    elif url.scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        storage = cast(ObjectStorage, get_storage(data_uri))
+        if storage.provider != "s3":
+            raise NotImplementedError(
+                f"Cannot delete asset at {data_uri!r} because the provider "
+                f"{storage.provider!r} is not supported."
+            )
+
+        from minio import Minio
+
+        minio_client = Minio(
+            urlparse(storage.uri).netloc,
+            access_key=storage.username,
+            secret_key=storage.password,
+            secure=False,
+        )
+
+        if prefix := data_uri.split(f"{storage.bucket}/", 1)[1]:
+            objects = minio_client.list_objects(
+                storage.bucket, prefix=prefix, recursive=True
+            )
+            for obj in objects:
+                minio_client.remove_object(storage.bucket, obj.object_name)
+        else:
+            raise ValueError(f"Cannot delete the entire bucket: {storage.bucket!r}")
+
     else:
         raise NotImplementedError(
             f"Cannot delete asset at {data_uri!r} because the scheme {url.scheme!r} is not supported."

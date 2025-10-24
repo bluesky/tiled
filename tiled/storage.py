@@ -4,7 +4,7 @@ import os
 from abc import abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Literal, Optional, Union
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 import sqlalchemy.pool
 
@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 
-SUPPORTED_OBJECT_URI_SCHEMES = {"s3", "http", "https", "gs", "azure", "az"}
+SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure", "az"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -47,22 +47,25 @@ class FileStorage(Storage):
     def path(self):
         return path_from_uri(self.uri)
 
-    def get_obstore_location(self, prefix=None) -> "LocalStore":
-        """Get an obstore.store.LocalStore instance rooted at specified prefix.
+    def get_obstore_location(self, uri=None) -> "LocalStore":
+        """Get an obstore.store.LocalStore instance rooted at specified URI.
 
         Parameters
         ----------
-            prefix : str, optional
-                An optional prefix to append to the base URI.
+            uri: str, optional
         """
+
+        if (uri is not None) and (not uri.startswith(self.uri)):
+            raise ValueError(
+                f"Requested URI {uri} is not within the base FileStorage URI {self.uri}"
+            )
 
         from obstore.store import LocalStore
 
-        data_uri = urljoin(self.uri + "/", prefix)
-        directory = path_from_uri(data_uri)
+        directory = path_from_uri(uri)
         directory.mkdir(parents=True, exist_ok=True)
 
-        return LocalStore(directory), data_uri
+        return LocalStore(directory)
 
 
 def _ensure_writable_location(uri: str) -> Path:
@@ -83,16 +86,34 @@ def _ensure_writable_location(uri: str) -> Path:
 
 @dataclasses.dataclass(frozen=True)
 class ObjectStorage(Storage):
-    "Bucket storage location for BLOBS"
+    """Bucket storage location for BLOBS
+
+    The uri should include the bucket, but not the prefix within the bucket. This
+    allows multiple ObjectStorage to point to different buckets with different
+    credentials.
+
+    Parameters
+    ----------
+        uri: str
+            Base URI, including bucket, but without prefix
+        provider: Literal["s3", "azure", "google"]
+        bucket: Optional[str]
+            Only required for s3 and google
+        username: Optional[str]
+        password: Optional[str]
+        config: dict
+            Additional configuration options passed to obstore store classes.
+    """
 
     uri: str
     provider: Literal["s3", "azure", "google"]
+    bucket: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
     config: dict = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
-        base_uri, _ = self.parse_blob_uri(ensure_uri(self.uri))
+        base_uri, bucket_name, _ = self.parse_blob_uri(ensure_uri(self.uri))
         base_uri, username, password = sanitize_uri(base_uri)
 
         if (username is not None) or (password is not None):
@@ -109,38 +130,77 @@ class ObjectStorage(Storage):
             object.__setattr__(self, "password", password)
 
         object.__setattr__(self, "uri", base_uri)
+        object.__setattr__(self, "bucket", bucket_name)
 
     @classmethod
     def parse_blob_uri(cls, uri: str) -> tuple[str, str]:
-        """Split a blob URI into base URI and blob path.
+        """Split a blob URI into base URI, bucket name (optionally), and the prefix.
 
         For example, given 'http://example.com/bucket_name/path/to/blob',
-        return ('http://example.com/bucket_name', 'path/to/blob').
+        return ('http://example.com', 'bucket_name', 'path/to/blob').
         """
+
+        # TODO: THIS NEEDS MORE WORK TO HANDLE S3, GCS, AZURE DIFFERENCES PROPERLY
+        #       CURRENTLY ONLY HANDLES HTTP(S) STYLE URIS
+
         parsed_uri = urlparse(uri)
         full_path = parsed_uri.path  # includes bucket and the rest
         bucket_name, *blob_path = full_path.strip("/").split("/", 1)
         base_uri = f"{parsed_uri.scheme}://{parsed_uri.netloc}/{bucket_name}"
 
-        return base_uri, blob_path
+        return base_uri, bucket_name or None, "/".join(blob_path)
 
     def get_obstore_location(
-        self, prefix=None
-    ) -> tuple[Union["S3Store", "AzureStore", "GCSStore"], str]:
-        """Get an obstore.store instance based on the provider and config
+        self, uri=None
+    ) -> Union["S3Store", "AzureStore", "GCSStore"]:
+        """Get an obstore.store instance rooted at specified URI.
 
         Parameters
         ----------
-            prefix : str, optional
-                An optional prefix to append to the base URI.
+            uri: str, optional
+                The URI to use as the root for the obstore location. If not specified, use the base URI of
+                this ObjectStorage.
+
+        Returns
+        -------
+            An instance of obstore.store.S3Store, obstore.store.AzureStore, or obstore.store.GCSStore,
+            depending on the provider.
         """
+
+        if (uri is not None) and (not uri.startswith(self.uri)):
+            raise ValueError(
+                f"Requested URI {uri} is not within the base ObjectStorage URI {self.uri}"
+            )
 
         from obstore.store import AzureStore, GCSStore, S3Store
 
-        _class = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}[self.provider]
-        data_uri = urljoin(self.uri + "/", prefix)
+        # Build kwargs for the specific store class based on provider
+        if self.provider == "s3":
+            kwargs = {
+                "endpoint": self.uri.split(self.bucket, -1)[0],
+                "bucket": self.bucket,
+            }
+            if self.username is not None:
+                kwargs["access_key_id"] = self.username
+            if self.password is not None:
+                kwargs["secret_access_key"] = self.password
 
-        return _class.from_url(data_uri, **self.config), data_uri
+        elif self.provider == "azure":
+            kwargs = {"endpoint": self.uri}
+            if self.username is not None:
+                kwargs["client_id"] = self.username
+            if self.password is not None:
+                kwargs["client_secret"] = self.password
+
+        elif self.provider == "google":
+            kwargs = {"url": self.uri.split(self.bucket, -1)[0], "bucket": self.bucket}
+            if self.password is not None:
+                kwargs["service_account_key"] = self.password
+
+        _class = {"s3": S3Store, "azure": AzureStore, "google": GCSStore}[self.provider]
+        prefix = uri[len(self.uri) :].lstrip("/") if uri else None  # noqa: E203
+
+        return _class(**kwargs, **self.config, prefix=prefix)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -257,6 +317,9 @@ class RemoteSQLStorage(SQLStorage):
 
     @functools.cached_property
     def authenticated_uri(self):
+        if self.username is None and self.password is None:
+            return self.uri
+
         parsed_uri = urlparse(self.uri)
         components = (
             parsed_uri.scheme,
@@ -321,6 +384,6 @@ def get_storage(uri: str) -> Storage:
     "Look up Storage by URI."
 
     if urlparse(uri).scheme in SUPPORTED_OBJECT_URI_SCHEMES:
-        uri, _ = ObjectStorage.parse_blob_uri(uri)
+        uri, _, _ = ObjectStorage.parse_blob_uri(uri)
 
     return _STORAGE[uri]
