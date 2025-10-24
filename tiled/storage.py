@@ -1,10 +1,9 @@
 import dataclasses
 import functools
 import os
-import re
 from abc import abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Literal, Optional, Union
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import sqlalchemy.pool
@@ -25,6 +24,9 @@ __all__ = [
     "get_storage",
     "parse_storage",
 ]
+
+
+SUPPORTED_OBJECT_URI_SCHEMES = {"s3", "http", "https", "gs", "azure", "az"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -107,7 +109,7 @@ class ObjectStorage(Storage):
 
     def get_obstore_location(
         self, prefix=None
-    ) -> tuple["S3Store | AzureStore | GCSStore", str]:
+    ) -> tuple[Union["S3Store", "AzureStore", "GCSStore"], str]:
         """Get an obstore.store instance based on the provider and config
 
         Parameters
@@ -298,28 +300,10 @@ def register_storage(storage: Storage) -> None:
     _STORAGE[storage.uri] = storage
 
 
-def get_storage(uri: str) -> Storage | Tuple[Storage, str]:
-    parsed_uri = urlparse(uri)
-    if parsed_uri.scheme == "file":
-        return FileStorage(uri)
-    elif parsed_uri.scheme in {"sqlite", "duckdb"}:
-        return EmbeddedSQLStorage(uri)
-    elif parsed_uri.scheme == "http":
-        full_path = parsed_uri.path  # includes bucket and the rest
-        bucket_name, blob_path = full_path.split("/", 1)
+def get_storage(uri: str) -> Storage:
+    "Look up Storage by URI."
 
-        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
-        return ObjectStorage(base_url)
+    if urlparse(uri).scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        uri, _ = ObjectStorage.parse_blob_uri(uri)
 
-        # Split on the first single '/' that is not part of '://'
-        match = re.match(r"([^:/]+://[^/]+|[^/]+)(/.*)?", uri)
-        objstore = ObjectStorage(match.group(1)) if match else ObjectStorage(uri)
-        path = (
-            (match.group(2) if match and match.group(2) else "")
-            .lstrip("/")
-            .replace(objstore.config["bucket"] + "/", "")
-        )
-        return objstore, path
-    else:
-        "Look up Storage by URI."
-        return _STORAGE[uri]
+    return _STORAGE[uri]

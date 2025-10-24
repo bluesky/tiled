@@ -18,7 +18,13 @@ from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..ndslice import NDSlice
-from ..storage import FileStorage, ObjectStorage, Storage, get_storage
+from ..storage import (
+    SUPPORTED_OBJECT_URI_SCHEMES,
+    FileStorage,
+    ObjectStorage,
+    Storage,
+    get_storage,
+)
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -316,7 +322,7 @@ class ZarrAdapter:
             # This is a file-based Zarr storage
             zarr_obj = zarr.open(path_from_uri(uri))
 
-        elif urlparse(uri).scheme in ("s3", "http", "https", "gs", "az"):
+        elif urlparse(uri).scheme in SUPPORTED_OBJECT_URI_SCHEMES:
             # This is an object-store-based Zarr storage
             base_uri, blob_path = ObjectStorage.parse_blob_uri(uri)
             storage = cast(ObjectStorage, get_storage(base_uri))
