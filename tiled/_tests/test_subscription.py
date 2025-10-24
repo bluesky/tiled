@@ -57,7 +57,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
         assert msg.shape == (10,)
 
         # Verify payload contains the expected array data
-        payload_array = np.frombuffer(msg.payload, dtype=np.int64)
+        payload_array = msg.data()
         expected_array = np.arange(10) + (i + 1)
         np.testing.assert_array_equal(payload_array, expected_array)
 
@@ -131,7 +131,7 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
         assert msg.shape == (10,)
 
         # Verify payload contains the expected array data
-        payload_array = np.frombuffer(msg.payload, dtype=np.int64)
+        payload_array = msg.data()
         expected_array = np.arange(10) + (i + 2)  # i+2 because we start from update 2
         np.testing.assert_array_equal(payload_array, expected_array)
 
@@ -191,7 +191,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     # First message: initial array creation
     msg = received[0]
     assert msg.shape == (10,)
-    payload_array = np.frombuffer(msg.payload, dtype=np.int64)
+    payload_array = msg.data()
     expected_array = np.arange(10)  # Initial array
     np.testing.assert_array_equal(payload_array, expected_array)
 
@@ -200,7 +200,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
         assert msg.shape == (10,)
 
         # Verify payload contains the expected array data
-        payload_array = np.frombuffer(msg.payload, dtype=np.int64)
+        payload_array = msg.data()
         expected_array = np.arange(10) + i
         np.testing.assert_array_equal(payload_array, expected_array)
 
