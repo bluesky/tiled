@@ -21,7 +21,12 @@ class StreamingDatastore(Protocol):
         ...
 
     def make_ws_handler(
-        self, websocket, formatter, uri, node_id
+        self,
+        websocket,
+        formatter,
+        uri,
+        node_id,
+        schema,
     ) -> Callable[[int], None]:
         ...
 
@@ -78,8 +83,10 @@ class StreamingCache:
     async def close(self, node_id):
         await self._datastore.close(node_id)
 
-    def make_ws_handler(self, websocket, formatter, uri, node_id):
-        return self._datastore.make_ws_handler(websocket, formatter, uri, node_id)
+    def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
+        return self._datastore.make_ws_handler(
+            websocket, formatter, uri, node_id, schema
+        )
 
 
 @register_datastore("redis")
@@ -161,11 +168,14 @@ class RedisStreamingDatastore(StreamingDatastore):
     async def get(self, key, *fields):
         return await self.client.hmget(key, *fields)
 
-    def make_ws_handler(self, websocket, formatter, uri, node_id):
+    def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
         async def handler(sequence: Optional[int] = None):
             await websocket.accept()
             end_stream = asyncio.Event()
             streaming_cache = self
+
+            # Send schema to provide client context to interpret what follows.
+            await formatter(websocket, schema, None)
 
             async def stream_data(sequence):
                 """Helper function to stream a specific sequence number to a websocket"""

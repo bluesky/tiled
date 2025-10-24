@@ -1081,8 +1081,9 @@ class CatalogNodeAdapter:
         await self.context.streaming_cache.close(self.node.id)
 
     def make_ws_handler(self, websocket, formatter, uri):
+        schema = self.make_ws_schema()
         return self.context.streaming_cache.make_ws_handler(
-            websocket, formatter, uri, self.node.id
+            websocket, formatter, uri, self.node.id, schema
         )
 
 
@@ -1146,6 +1147,9 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return self
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
+    def make_ws_schema(self):
+        return {"type": "container-schema", "version": 1}
+
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
@@ -1176,6 +1180,13 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         await self.context.streaming_cache.set(
             self.node.id, sequence, metadata, payload=body
         )
+
+    def make_ws_schema(self):
+        return {
+            "type": "array-schema",
+            "version": 1,
+            "data_type": dataclasses.asdict(self.structure().data_type),
+        }
 
     async def write(self, media_type, deserializer, entry, body):
         shape = entry.structure().shape

@@ -17,7 +17,7 @@ import msgpack
 import websockets.exceptions
 from websockets.sync.client import connect
 
-from ..stream_messages import MESSAGE_TYPES, Update
+from ..stream_messages import SCHEMA_MESSAGE_TYPES, UPDATE_MESSAGE_TYPES, Schema, Update
 from .context import Context
 
 Callback = Callable[["Subscription", dict], None]
@@ -121,6 +121,7 @@ class Subscription:
             str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
             params=params,
         )
+        self._schema = None
         self._callbacks = set()
         self._close_event = threading.Event()
         self._thread = None
@@ -255,7 +256,11 @@ class Subscription:
                 self._close_event.set()
                 return
             try:
-                update = parse_message(data)
+                if self._schema is None:
+                    self._schema = parse_schema(data)
+                    continue
+                else:
+                    update = parse_update(data, self._schema)
             except Exception:
                 logger.exception(
                     "A websocket message will be ignored because it could not be parsed."
@@ -349,15 +354,29 @@ class UnparseableMessage(RuntimeError):
     pass
 
 
-def parse_message(data: bytes) -> Update:
-    "Parse msgpack-encoded types into a model."
+def parse_schema(data: bytes) -> Schema:
+    "Parse msgpack-encoded bytes into a Schema model."
     message = msgpack.unpackb(data)
     try:
         message_type = message["type"]
     except KeyError:
         raise UnparseableMessage(f"Message does not designate a 'type': {message!r}")
     try:
-        cls = MESSAGE_TYPES[message_type]
+        cls = SCHEMA_MESSAGE_TYPES[message_type]
+    except KeyError:
+        raise UnparseableMessage(f"Unrecognized schema message type {message_type!r}")
+    return cls(**message)
+
+
+def parse_update(data: bytes, schema: Schema) -> Update:
+    "Parse msgpack-encoded bytes into an Update model."
+    message = msgpack.unpackb(data)
+    try:
+        message_type = message["type"]
+    except KeyError:
+        raise UnparseableMessage(f"Message does not designate a 'type': {message!r}")
+    try:
+        cls = UPDATE_MESSAGE_TYPES[message_type]
     except KeyError:
         raise UnparseableMessage(f"Unrecognized message type {message_type!r}")
-    return cls(**message)
+    return cls(**message, **schema.content())

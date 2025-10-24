@@ -1,10 +1,10 @@
 from datetime import datetime
-from typing import Generic, Literal, Optional, TypeVar
+from typing import Generic, Literal, Optional, TypeVar, Union
 
 from pydantic import BaseModel, Field
 
 from .media_type_registration import default_deserialization_registry
-from .structures.array import ArrayStructure
+from .structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from .structures.core import Spec, StructureFamily
 from .structures.data_source import Management
 
@@ -30,6 +30,23 @@ class DataSource(BaseModel, Generic[StructureT]):
     management: Management
 
 
+class Schema(BaseModel):
+    version: int
+
+    def content(self):
+        return self.model_dump(exclude={"type", "version"})
+
+
+class ArraySchema(Schema):
+    type: Literal["array-schema"]
+    data_type: Union[BuiltinDtype, StructDtype]
+
+
+class ContainerSchema(Schema):
+    type: Literal["container-schema"]
+    pass
+
+
 class Update(BaseModel):
     sequence: int = Field(gt=0)
     timestamp: datetime
@@ -44,20 +61,21 @@ class ChildCreated(Update):
     data_sources: list[DataSource]
 
 
-class ChildMetadataUpdated(Update):
+class ChildMetadataUpdate(Update):
     type: Literal["child-metadata-updated"] = "child-metadata-updated"
     key: str
     specs: list[Spec]
     metadata: dict
 
 
-class ArrayDataUpdated(Update):
+class ArrayDataUpdate(Update):
     type: Literal["array-data"] = "array-data"
     mimetype: str
     shape: tuple[int]
     offset: Optional[tuple[int]]
     block: Optional[tuple[int]]
     payload: bytes
+    data_type: Union[BuiltinDtype, StructDtype]
 
     def data(self):
         "Get array"
@@ -68,10 +86,7 @@ class ArrayDataUpdated(Update):
 
         # Decode payload (bytes) into array.
         deserializer = default_deserialization_registry.dispatch("array", self.mimetype)
-        import numpy
-
-        data_type = numpy.int64
-        return deserializer(self.payload, data_type, self.shape)
+        return deserializer(self.payload, self.data_type.to_numpy_dtype(), self.shape)
 
 
 class ArrayPatch(BaseModel):
@@ -80,15 +95,19 @@ class ArrayPatch(BaseModel):
     extend: bool
 
 
-class ArrayRefUpdated(Update):
+class ArrayRefUpdate(Update):
     type: Literal["array-ref"] = "array-ref"
     data_source: DataSource[ArrayStructure]
     patch: Optional[ArrayPatch]
 
 
-MESSAGE_TYPES = {
+SCHEMA_MESSAGE_TYPES = {
+    "array-schema": ArraySchema,
+    "container-schema": ContainerSchema,
+}
+UPDATE_MESSAGE_TYPES = {
     "child-created": ChildCreated,
-    "child-metadata-updated": ChildMetadataUpdated,
-    "array-data": ArrayDataUpdated,
-    "array-ref": ArrayRefUpdated,
+    "child-metadata-updated": ChildMetadataUpdate,
+    "array-data": ArrayDataUpdate,
+    "array-ref": ArrayRefUpdate,
 }
