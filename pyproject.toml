@@ -126,6 +126,7 @@ client = [
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "rich",
     "sparse >=0.15.5",
+    "sqlalchemy[asyncio] >=2",
     "stamina",
     "websockets",
     "watchfiles",
