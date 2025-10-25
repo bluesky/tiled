@@ -465,7 +465,7 @@ class ContainerSubscription(Subscription):
                 structure_for_links = structure_type.from_json(structure_for_item)
             item["attributes"]["structure"] = structure_for_item
             base_url = self.context.server_info.links["self"]
-            path_str = "/".join(self.segments)
+            path_str = "/".join(self.segments + [update.key])
             item["links"] = links_for_node(
                 update.structure_family, structure_for_links, base_url, path_str
             )
