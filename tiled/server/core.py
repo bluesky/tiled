@@ -23,6 +23,7 @@ from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_RE
 # Some are not directly used, but they register things on import.
 from .. import queries
 from ..adapters.mapping import MapAdapter
+from ..links import links_for_node
 from ..queries import KeyLookup, QueryValueError
 from ..serialization import register_builtin_serializers
 from ..structures.core import Spec, StructureFamily
@@ -37,7 +38,6 @@ from ..utils import (
 )
 from . import schemas
 from .etag import tokenize
-from .links import links_for_node
 from .utils import record_timing
 
 del queries
