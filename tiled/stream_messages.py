@@ -59,6 +59,7 @@ class ChildCreated(Update):
     specs: list[Spec]
     metadata: dict
     data_sources: list[DataSource]
+    access_blob: dict
 
 
 class ChildMetadataUpdate(Update):
