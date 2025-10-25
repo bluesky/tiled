@@ -299,8 +299,7 @@ class Subscription(abc.ABC):
             except (TimeoutError, anyio.EndOfStream):
                 continue
             if data is None:
-                self.stream_closed.process(self)
-                self._close_event.set()
+                self._close()
                 return
             try:
                 if self._schema is None:
@@ -386,16 +385,23 @@ class Subscription(abc.ABC):
         """
         return self._close_event.is_set()
 
-    def close(self) -> None:
-        "Close the websocket connection."
+    def _close(self) -> None:
+        # This is called by the user-facing function below and also by the
+        # receive loop if the server closes the connection because the stream
+        # has ended.
         if self._close_event.is_set():
             return  # nothing to do
+        self.stream_closed.process(self)
         self._close_event.set()
         self._websocket.close()
+        self.executor.shutdown()
+
+    def close(self) -> None:
+        "Close the websocket connection."
         # If start_in_thread() was used, join the thread.
+        self._close()
         if self._thread is not None:
             self._thread.join()
-        self.executor.shutdown()
 
 
 class ContainerSubscription(Subscription):
