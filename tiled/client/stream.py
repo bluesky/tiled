@@ -5,6 +5,7 @@ import logging
 import sys
 import threading
 import weakref
+from dataclasses import asdict
 from typing import Callable, List, Optional
 
 if sys.version_info >= (3, 11):
@@ -20,6 +21,7 @@ from websockets.sync.client import connect
 
 from ..stream_messages import SCHEMA_MESSAGE_TYPES, UPDATE_MESSAGE_TYPES, Schema, Update
 from .context import Context
+from .utils import client_for_item, normalize_specs
 
 Callback = Callable[["Subscription", Update], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
@@ -415,7 +417,21 @@ class ContainerSubscription(Subscription):
 
     def process(self, update: Update):
         if update.type == "container-child-created":
-            self.child_created.process(self, update)
+            item = {
+                "id": update.key,
+                "attributes": {
+                    "ancestors": self.segments,
+                    "metadata": update.metadata,
+                    "structure_family": update.structure_family,
+                    "specs": normalize_specs(update.specs or []),
+                    "data_sources": [
+                        asdict(data_source) for data_source in update.data_sources
+                    ],
+                    "access_blob": update.access_blob,
+                },
+            }
+            client = client_for_item(self.context, self.structure_clients, item)
+            self.child_created.process(self, client)
         elif update.type == "container-child-metadata-updated":
             self.child_metadata_updated.process(self, update)
         else:

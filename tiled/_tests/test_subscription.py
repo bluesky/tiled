@@ -209,14 +209,14 @@ def test_subscribe_to_container(
     """Subscribe to updates about a Container"""
     context = tiled_websocket_context
     client = from_context(context)
-    child_created_updates = []
+    child_created_nodes = []
     child_metadata_updated_updates = []
     received_event = threading.Event()
     created_3 = threading.Event()
 
     def child_created_cb(sub, update):
-        child_created_updates.append(update)
-        if len(child_created_updates) == 3:
+        child_created_nodes.append(update)
+        if len(child_created_nodes) == 3:
             created_3.set()
 
     def child_metadata_updated_cb(sub, update):
@@ -230,7 +230,7 @@ def test_subscribe_to_container(
         unique_key = f"test_subscribe_to_container_{uuid.uuid4().hex[:8]}"
         client.create_container(unique_key)
     assert created_3.wait(timeout=5.0), "Timeout waiting for messages"
-    update_keys = [update.key for update in child_created_updates]
+    update_keys = [node.path_parts[-1] for node in child_created_nodes]
     assert update_keys == list(client)
 
     assert len(child_metadata_updated_updates) == 0
