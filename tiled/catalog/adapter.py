@@ -785,7 +785,7 @@ class CatalogNodeAdapter:
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
                 metadata = {
-                    "type": "child-created",
+                    "type": "container-child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
@@ -1064,7 +1064,7 @@ class CatalogNodeAdapter:
             if self.context.streaming_cache:
                 sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
                 metadata = {
-                    "type": "child-metadata-updated",
+                    "type": "container-child-metadata-updated",
                     "key": self.node.key,
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),

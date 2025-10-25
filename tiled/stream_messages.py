@@ -53,7 +53,7 @@ class Update(BaseModel):
 
 
 class ChildCreated(Update):
-    type: Literal["child-created"] = "child-created"
+    type: Literal["container-child-created"] = "child-created"
     key: str
     structure_family: StructureFamily
     specs: list[Spec]
@@ -62,7 +62,7 @@ class ChildCreated(Update):
 
 
 class ChildMetadataUpdate(Update):
-    type: Literal["child-metadata-updated"] = "child-metadata-updated"
+    type: Literal["container-child-metadata-updated"] = "child-metadata-updated"
     key: str
     specs: list[Spec]
     metadata: dict
@@ -106,8 +106,8 @@ SCHEMA_MESSAGE_TYPES = {
     "container-schema": ContainerSchema,
 }
 UPDATE_MESSAGE_TYPES = {
-    "child-created": ChildCreated,
-    "child-metadata-updated": ChildMetadataUpdate,
+    "container-child-created": ChildCreated,
+    "container-child-metadata-updated": ChildMetadataUpdate,
     "array-data": ArrayDataUpdate,
     "array-ref": ArrayRefUpdate,
 }
