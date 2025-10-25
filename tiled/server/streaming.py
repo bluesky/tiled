@@ -4,9 +4,8 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Protocol
 
 import orjson
-from fastapi import HTTPException, WebSocketDisconnect
+from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
-from starlette.status import HTTP_404_NOT_FOUND
 
 from ..utils import safe_json_dump
 
@@ -126,29 +125,15 @@ class RedisStreamingDatastore(StreamingDatastore):
         await pipeline.execute()
 
     async def close(self, node_id):
-        # Check the node status.
-        # ttl returns -2 if the key does not exist.
-        # ttl returns -1 if the key exists but has no associated expire.
-        # ttl greater than 0 means that it is marked to expire.
-        node_ttl = await self.client.ttl(f"sequence:{node_id}")
-        if node_ttl > 0:
-            # Stream is already closed, return success (idempotent operation)
-            return
-        if node_ttl == -2:
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=f"Node {node_id} not found.",
-            )
-
+        # Increment the counter for this node.
+        sequence = await self.incr_seq(node_id)
+        # Publish a special message (end_of_stream) that will signal
+        # any open clients to close.
         metadata = {
             "timestamp": datetime.now().isoformat(),
             "end_of_stream": True,
         }
-        # Increment the counter for this node.
-        sequence = await self.incr_seq(node_id)
 
-        # Cache data in Redis with a TTL, and publish
-        # a notification about it.
         pipeline = self.client.pipeline()
         pipeline.hset(
             f"data:{node_id}:{sequence}",

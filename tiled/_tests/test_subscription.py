@@ -238,3 +238,24 @@ def test_subscribe_to_container(
     assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
     assert len(child_metadata_updated_updates) == 1
     sub.close()
+
+
+def test_subscribe_to_stream_closed(
+    tiled_websocket_context,
+):
+    """Subscribe to notification that the stream has closed"""
+    context = tiled_websocket_context
+    client = from_context(context)
+    unique_key = f"test_subscribe_to_stream_closed_{uuid.uuid4().hex[:8]}"
+    x = client.create_container(unique_key)
+    sub = x.subscribe().start_in_thread()
+    event = threading.Event()
+
+    def callback(sub):
+        event.set()
+
+    sub.stream_closed.add_callback(callback)
+    assert not event.is_set()
+    x.close_stream()
+    assert event.wait(timeout=5.0), "Timeout waiting for messages"
+    sub.close()

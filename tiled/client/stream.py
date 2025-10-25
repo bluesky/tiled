@@ -58,7 +58,14 @@ class _TestClientWebsocketWrapper:
 
     def recv(self, timeout=None):
         """Receive data from websocket with consistent interface."""
-        return self._websocket.receive_bytes()
+        # Hide this import because it is only used for ASGI (tests)
+        # we do not want a server dependency in the client.
+        import starlette.websockets
+
+        try:
+            return self._websocket.receive_bytes()
+        except starlette.websockets.WebSocketDisconnect:
+            return None
 
     def close(self):
         """Close websocket connection."""
@@ -85,7 +92,10 @@ class _RegularWebsocketWrapper:
 
     def recv(self, timeout=None):
         """Receive data from websocket with consistent interface."""
-        return self._websocket.recv(timeout=timeout)
+        try:
+            return self._websocket.recv(timeout=timeout)
+        except websockets.exceptions.ConnectionClosedOK:
+            return None
 
     def close(self):
         """Close websocket connection."""
@@ -239,6 +249,7 @@ class Subscription(abc.ABC):
             )
         else:
             self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
+        self.stream_closed = CallbackRegistry(self.executor)
 
     @property
     def executor(self):
@@ -286,7 +297,8 @@ class Subscription(abc.ABC):
                 data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
-            except websockets.exceptions.ConnectionClosedOK:
+            if data is None:
+                self.stream_closed.process(self)
                 self._close_event.set()
                 return
             try:
