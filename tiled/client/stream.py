@@ -1,3 +1,4 @@
+import abc
 import concurrent.futures
 import inspect
 import logging
@@ -20,7 +21,7 @@ from websockets.sync.client import connect
 from ..stream_messages import SCHEMA_MESSAGE_TYPES, UPDATE_MESSAGE_TYPES, Schema, Update
 from .context import Context
 
-Callback = Callable[["Subscription", dict], None]
+Callback = Callable[["Subscription", Update], None]
 "A Callback will be called with the Subscription calling it and a dict with the update."
 
 
@@ -89,59 +90,31 @@ class _RegularWebsocketWrapper:
         self._websocket.close()
 
 
-class Subscription:
+class CallbackRegistry:
     """
-    Subscribe to streaming updates from a node.
+    Distribute updates to user-provided callback functions.
 
     Parameters
     ----------
-    context : tiled.client.Context
-        Provides connection to Tiled server
-    segments : list[str]
-        Path to node of interest, given as a list of path segments
-    executor : concurrent.futures.Executor, optional
+
+    executor : concurrent.futures.Executor
         Launches tasks asynchronously, in response to updates
     """
 
-    def __init__(
-        self,
-        context: Context,
-        segments: List[str] = None,
-        executor: Optional[concurrent.futures.Executor] = None,
-    ):
-        self.executor = executor or concurrent.futures.ThreadPoolExecutor(max_workers=5)
-        segments = segments or ["/"]
-        self._context = context
-        self._segments = segments
-        params = {"envelope_format": "msgpack"}
-        scheme = "wss" if context.api_uri.scheme == "https" else "ws"
-        self._node_path = "/".join(f"/{segment}" for segment in segments)
-        uri_path = "/api/v1/stream/single" + self._node_path
-        self._uri = httpx.URL(
-            str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
-            params=params,
-        )
-        self._schema = None
+    def __init__(self, executor: concurrent.futures.Executor):
+        self._executor = executor
         self._callbacks = set()
-        self._close_event = threading.Event()
-        self._thread = None
-        if getattr(self.context.http_client, "app", None):
-            self._websocket = _TestClientWebsocketWrapper(
-                context.http_client, self._uri
-            )
-        else:
-            self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
-
-    def __repr__(self):
-        return f"<{type(self).__name__} {self._node_path} >"
 
     @property
-    def context(self) -> Context:
-        return self._context
+    def executor(self):
+        return self._executor
 
-    @property
-    def segments(self) -> List[str]:
-        return self._segments
+    def process(self, sub: "Subscription", *args):
+        "Fan an update out to all registered callbacks."
+        for ref in self._callbacks:
+            callback = ref()
+            if callback is not None:
+                self.executor.submit(callback, sub, *args)
 
     def add_callback(self, callback: Callback) -> Self:
         """
@@ -204,7 +177,6 @@ class Subscription:
         else:
             ref = weakref.ref(callback, cleanup)
         self._callbacks.add(ref)
-        return self
 
     def remove_callback(self, callback: Callback) -> Self:
         """
@@ -219,7 +191,70 @@ class Subscription:
         Subscription
         """
         self._callbacks.remove(callback)
-        return self
+
+    def shutdown(self):
+        self.executor.shutdown()
+
+
+class Subscription(abc.ABC):
+    """
+    Subscribe to streaming updates from a node.
+
+    Parameters
+    ----------
+    context : tiled.client.Context
+        Provides connection to Tiled server
+    segments : list[str]
+        Path to node of interest, given as a list of path segments
+    executor : concurrent.futures.Executor, optional
+        Launches tasks asynchronously, in response to updates. By default,
+        a concurrent.futures.ThreadPoolExecutor is used.
+    """
+
+    def __init__(
+        self,
+        context: Context,
+        segments: List[str] = None,
+        executor: Optional[concurrent.futures.Executor] = None,
+    ):
+        segments = segments or ["/"]
+        self._context = context
+        self._segments = segments
+        self._executor = executor or concurrent.futures.ThreadPoolExecutor(
+            max_workers=5
+        )
+        params = {"envelope_format": "msgpack"}
+        scheme = "wss" if context.api_uri.scheme == "https" else "ws"
+        self._node_path = "/".join(f"/{segment}" for segment in segments)
+        uri_path = "/api/v1/stream/single" + self._node_path
+        self._uri = httpx.URL(
+            str(context.api_uri.copy_with(scheme=scheme, path=uri_path)),
+            params=params,
+        )
+        self._schema = None
+        self._close_event = threading.Event()
+        self._thread = None
+        if getattr(self.context.http_client, "app", None):
+            self._websocket = _TestClientWebsocketWrapper(
+                context.http_client, self._uri
+            )
+        else:
+            self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
+
+    @property
+    def executor(self):
+        return self._executor
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self._node_path} >"
+
+    @property
+    def context(self) -> Context:
+        return self._context
+
+    @property
+    def segments(self) -> List[str]:
+        return self._segments
 
     def _connect(self, start: Optional[int] = None) -> None:
         "Connect to websocket"
@@ -246,7 +281,7 @@ class Subscription:
             self.context.revoke_api_key(key_info["first_eight"])
 
     def _receive(self) -> None:
-        "Blocking loop that receives updates and submits them to the executor"
+        "Blocking loop that receives and processes updates"
         while not self._close_event.is_set():
             try:
                 data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
@@ -266,10 +301,11 @@ class Subscription:
                     "A websocket message will be ignored because it could not be parsed."
                 )
                 continue
-            for ref in self._callbacks:
-                callback = ref()
-                if callback is not None:
-                    self.executor.submit(callback, self, update)
+            self.process(update)
+
+    @abc.abstractmethod
+    def process(sub: "Subscription", *args) -> None:
+        pass
 
     def start(self, start: Optional[int] = None) -> None:
         """
@@ -346,7 +382,71 @@ class Subscription:
         # If start_in_thread() was used, join the thread.
         if self._thread is not None:
             self._thread.join()
-        self.executor.shutdown()
+
+
+class ContainerSubscription(Subscription):
+    """
+    Subscribe to streaming updates from a container.
+
+    Parameters
+    ----------
+    context : tiled.client.Context
+        Provides connection to Tiled server
+    segments : list[str]
+        Path to node of interest, given as a list of path segments
+    executor : concurrent.futures.Executor, optional
+        Launches tasks asynchronously, in response to updates. By default,
+        a concurrent.futures.ThreadPoolExecutor is used.
+    structure_clients : dict
+    """
+
+    def __init__(
+        self,
+        context: Context,
+        segments: List[str] = None,
+        executor: Optional[concurrent.futures.Executor] = None,
+        structure_clients: dict = None,
+    ):
+        super().__init__(context, segments, executor)
+        self.structure_clients = structure_clients
+        self.child_created = CallbackRegistry(self.executor)
+        self.child_metadata_updated = CallbackRegistry(self.executor)
+
+    def process(self, update: Update):
+        if update.type == "container-child-created":
+            self.child_created.process(self, update)
+        elif update.type == "container-child-metadata-updated":
+            self.child_metadata_updated.process(self, update)
+        else:
+            raise RuntimeError(f"Received update with unexpected type: {update}")
+
+
+class ArraySubscription(Subscription):
+    """
+    Subscribe to streaming updates from an array.
+
+    Parameters
+    ----------
+    context : tiled.client.Context
+        Provides connection to Tiled server
+    segments : list[str]
+        Path to node of interest, given as a list of path segments
+    executor : concurrent.futures.Executor, optional
+        Launches tasks asynchronously, in response to updates. By default,
+        a concurrent.futures.ThreadPoolExecutor is used.
+    """
+
+    def __init__(
+        self,
+        context: Context,
+        segments: List[str] = None,
+        executor: Optional[concurrent.futures.Executor] = None,
+    ):
+        super().__init__(context, segments, executor)
+        self.new_data = CallbackRegistry(self.executor)
+
+    def process(self, update: Update):
+        self.new_data.process(self, update)
 
 
 class UnparseableMessage(RuntimeError):
