@@ -194,9 +194,6 @@ class CallbackRegistry:
         """
         self._callbacks.remove(callback)
 
-    def shutdown(self):
-        self.executor.shutdown()
-
 
 class Subscription(abc.ABC):
     """
@@ -385,6 +382,7 @@ class Subscription(abc.ABC):
         # If start_in_thread() was used, join the thread.
         if self._thread is not None:
             self._thread.join()
+        self.executor.shutdown()
 
 
 class ContainerSubscription(Subscription):
