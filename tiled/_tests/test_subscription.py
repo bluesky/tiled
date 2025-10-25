@@ -32,10 +32,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
             received_event.set()
 
     # Create subscription for the streaming node
-    subscription = ArraySubscription(
-        context=context,
-        segments=["test_stream_immediate"],
-    )
+    subscription = streaming_node.subscribe()
     subscription.new_data.add_callback(callback)
 
     # Start the subscription
@@ -108,10 +105,7 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
             received_event.set()
 
     # Create subscription for the streaming node
-    subscription = ArraySubscription(
-        context=context,
-        segments=["test_stream_after_update"],
-    )
+    subscription = streaming_node.subscribe()
     # Add callback and start the subscription
     subscription.new_data.add_callback(callback)
     subscription.start_in_thread()
@@ -171,7 +165,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             received_event.set()
 
     # Create subscription for the streaming node with start=0
-    subscription = ArraySubscription(context=context, segments=[unique_key])
+    subscription = streaming_node.subscribe()
     subscription.new_data.add_callback(callback)
 
     # Start the subscription
