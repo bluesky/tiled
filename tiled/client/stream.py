@@ -331,7 +331,7 @@ class Subscription(abc.ABC):
         self._connect(start)
         self._receive()  # blocks
 
-    def start_in_thread(self, start: Optional[int] = None) -> None:
+    def start_in_thread(self, start: Optional[int] = None) -> Self:
         """
         Connect to the websocket, and receive and process updates on a thread.
 
@@ -365,6 +365,7 @@ class Subscription(abc.ABC):
         # Run the receive loop on a thread.
         self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
         self._thread.start()
+        return self
 
     @property
     def closed(self):
