@@ -37,30 +37,29 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
     subscription.new_data.add_callback(callback)
 
     # Start the subscription
-    subscription.start_in_thread()
+    with subscription.start_in_thread():
+        # Write updates using Tiled client
+        for i in range(1, 4):
+            new_arr = np.arange(10) + i
+            streaming_node.write(new_arr)
 
-    # Write updates using Tiled client
-    for i in range(1, 4):
-        new_arr = np.arange(10) + i
-        streaming_node.write(new_arr)
+        # Wait for all messages to be received
+        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
 
-    # Wait for all messages to be received
-    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        # Verify all updates received in order
+        assert len(received) == 3
 
-    # Verify all updates received in order
-    assert len(received) == 3
+        # Check that we received messages with the expected data
+        for i, msg in enumerate(received):
+            assert msg.shape == (10,)
 
-    # Check that we received messages with the expected data
-    for i, msg in enumerate(received):
-        assert msg.shape == (10,)
+            # Verify payload contains the expected array data
+            payload_array = msg.data()
+            expected_array = np.arange(10) + (i + 1)
+            np.testing.assert_array_equal(payload_array, expected_array)
 
-        # Verify payload contains the expected array data
-        payload_array = msg.data()
-        expected_array = np.arange(10) + (i + 1)
-        np.testing.assert_array_equal(payload_array, expected_array)
-
-    # Clean up the subscription
-    subscription.close()
+        # Clean up the subscription
+        subscription.close()
 
 
 def test_websocket_connection_to_non_existent_node_subscription(
@@ -109,30 +108,28 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
     subscription = streaming_node.subscribe()
     # Add callback and start the subscription
     subscription.new_data.add_callback(callback)
-    subscription.start_in_thread()
+    with subscription.start_in_thread():
+        # Write more updates
+        for i in range(2, 4):
+            new_arr = np.arange(10) + i
+            streaming_node.write(new_arr)
 
-    # Write more updates
-    for i in range(2, 4):
-        new_arr = np.arange(10) + i
-        streaming_node.write(new_arr)
+        # Wait for messages to be received
+        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
 
-    # Wait for messages to be received
-    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        # Should only receive the 2 new updates (not the first one)
+        assert len(received) == 2
 
-    # Should only receive the 2 new updates (not the first one)
-    assert len(received) == 2
+        # Check that we received messages with the expected data
+        for i, msg in enumerate(received):
+            assert msg.shape == (10,)
 
-    # Check that we received messages with the expected data
-    for i, msg in enumerate(received):
-        assert msg.shape == (10,)
-
-        # Verify payload contains the expected array data
-        payload_array = msg.data()
-        expected_array = np.arange(10) + (i + 2)  # i+2 because we start from update 2
-        np.testing.assert_array_equal(payload_array, expected_array)
-
-    # Clean up the subscription
-    subscription.close()
+            # Verify payload contains the expected array data
+            payload_array = msg.data()
+            expected_array = np.arange(10) + (
+                i + 2
+            )  # i+2 because we start from update 2
+            np.testing.assert_array_equal(payload_array, expected_array)
 
 
 def test_subscribe_after_first_update_from_beginning_subscription(
@@ -168,38 +165,35 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     subscription.new_data.add_callback(callback)
 
     # Start the subscription
-    subscription.start_in_thread(start=0)
+    with subscription.start_in_thread(start=0):
+        # Write more updates
+        for i in range(2, 4):
+            new_arr = np.arange(10) + i
+            streaming_node.write(new_arr)
 
-    # Write more updates
-    for i in range(2, 4):
-        new_arr = np.arange(10) + i
-        streaming_node.write(new_arr)
+        # Wait for all messages to be received
+        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
 
-    # Wait for all messages to be received
-    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        # Should receive: initial array + first update + 2 new updates = 4 total
+        assert len(received) == 4
 
-    # Should receive: initial array + first update + 2 new updates = 4 total
-    assert len(received) == 4
-
-    # Check the messages in order
-    # First message: initial array creation
-    msg = received[0]
-    assert msg.shape == (10,)
-    payload_array = msg.data()
-    expected_array = np.arange(10)  # Initial array
-    np.testing.assert_array_equal(payload_array, expected_array)
-
-    # Remaining messages: updates 1, 2, 3
-    for i, msg in enumerate(received[1:], 1):
+        # Check the messages in order
+        # First message: initial array creation
+        msg = received[0]
         assert msg.shape == (10,)
-
-        # Verify payload contains the expected array data
         payload_array = msg.data()
-        expected_array = np.arange(10) + i
+        expected_array = np.arange(10)  # Initial array
         np.testing.assert_array_equal(payload_array, expected_array)
 
-    # Clean up the subscription
-    subscription.close()
+        # Remaining messages: updates 1, 2, 3
+        for i, msg in enumerate(received[1:], 1):
+            assert msg.shape == (10,)
+
+            # Verify payload contains the expected array data
+            payload_array = msg.data()
+            expected_array = np.arange(10) + i
+            np.testing.assert_array_equal(payload_array, expected_array)
+
     assert subscription.closed
 
 
@@ -227,26 +221,25 @@ def test_subscribe_to_container(
         child_metadata_updated_updates.append(update)
         received_event.set()
 
-    sub = client.subscribe().start_in_thread(1)
-    sub.child_created.add_callback(child_created_cb)
-    sub.child_metadata_updated.add_callback(child_metadata_updated_cb)
-    for i in range(3):
-        # This is exposing fragility in SQLite database connection handling.
-        # Once that is resolved, remove the sleep.
-        import time
+    with client.subscribe().start_in_thread(1) as sub:
+        sub.child_created.add_callback(child_created_cb)
+        sub.child_metadata_updated.add_callback(child_metadata_updated_cb)
+        for i in range(3):
+            # This is exposing fragility in SQLite database connection handling.
+            # Once that is resolved, remove the sleep.
+            import time
 
-        time.sleep(0.1)
-        unique_key = f"{uuid.uuid4().hex[:8]}"
-        client.create_container(unique_key)
-    assert created_3.wait(timeout=5.0), "Timeout waiting for messages"
-    update_keys = [node.path_parts[-1] for node in child_created_nodes]
-    assert update_keys == list(client)
+            time.sleep(0.1)
+            unique_key = f"{uuid.uuid4().hex[:8]}"
+            client.create_container(unique_key)
+        assert created_3.wait(timeout=5.0), "Timeout waiting for messages"
+        update_keys = [node.path_parts[-1] for node in child_created_nodes]
+        assert update_keys == list(client)
 
-    assert len(child_metadata_updated_updates) == 0
-    client.values().last().update_metadata({"color": "blue"})
-    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
-    assert len(child_metadata_updated_updates) == 1
-    sub.close()
+        assert len(child_metadata_updated_updates) == 0
+        client.values().last().update_metadata({"color": "blue"})
+        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert len(child_metadata_updated_updates) == 1
 
 
 def test_subscribe_to_stream_closed(
@@ -257,14 +250,13 @@ def test_subscribe_to_stream_closed(
     client = from_context(context)
     unique_key = f"test_subscribe_to_stream_closed_{uuid.uuid4().hex[:8]}"
     x = client.create_container(unique_key)
-    sub = x.subscribe().start_in_thread()
-    event = threading.Event()
+    with x.subscribe().start_in_thread() as sub:
+        event = threading.Event()
 
-    def callback(sub):
-        event.set()
+        def callback(sub):
+            event.set()
 
-    sub.stream_closed.add_callback(callback)
-    assert not event.is_set()
-    x.close_stream()
-    assert event.wait(timeout=5.0), "Timeout waiting for messages"
-    sub.close()
+        sub.stream_closed.add_callback(callback)
+        assert not event.is_set()
+        x.close_stream()
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"

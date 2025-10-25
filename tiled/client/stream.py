@@ -403,6 +403,12 @@ class Subscription(abc.ABC):
         if self._thread is not None:
             self._thread.join()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
 
 class ContainerSubscription(Subscription):
     """

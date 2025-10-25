@@ -441,26 +441,24 @@ def test_replace_metadata(tiled_websocket_context):
     subscription = client.subscribe()
     subscription.child_metadata_updated.add_callback(callback)
     # Start the subscription
-    subscription.start_in_thread(start=1)
-    # Business Logic
-    assert len(ac.metadata_revisions[:]) == 0
-    ac.replace_metadata(metadata={"a": 1})  # update #1
-    assert ac.metadata["a"] == 1
-    assert client[unique_key].metadata["a"] == 1
-    assert len(ac.metadata_revisions[:]) == 1
-    ac.replace_metadata(metadata={"a": 2})  # update #2
-    assert ac.metadata["a"] == 2
-    assert client[unique_key].metadata["a"] == 2
-    assert len(ac.metadata_revisions[:]) == 2
-    ac.metadata_revisions.delete_revision(1)
-    assert len(ac.metadata_revisions[:]) == 1
-    with fail_with_status_code(HTTP_404_NOT_FOUND):
+    with subscription.start_in_thread(start=1):
+        # Business Logic
+        assert len(ac.metadata_revisions[:]) == 0
+        ac.replace_metadata(metadata={"a": 1})  # update #1
+        assert ac.metadata["a"] == 1
+        assert client[unique_key].metadata["a"] == 1
+        assert len(ac.metadata_revisions[:]) == 1
+        ac.replace_metadata(metadata={"a": 2})  # update #2
+        assert ac.metadata["a"] == 2
+        assert client[unique_key].metadata["a"] == 2
+        assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
-    ac.replace_metadata(metadata={"3": 1}, drop_revision=True)  # update #3
-    # Wait for all messages to be received
-    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
-    # Clean up the subscription
-    subscription.close()
+        assert len(ac.metadata_revisions[:]) == 1
+        with fail_with_status_code(HTTP_404_NOT_FOUND):
+            ac.metadata_revisions.delete_revision(1)
+        ac.replace_metadata(metadata={"3": 1}, drop_revision=True)  # update #3
+        # Wait for all messages to be received
+        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
     assert subscription.closed
 
 
