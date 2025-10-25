@@ -793,7 +793,7 @@ class CatalogNodeAdapter:
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
                     "data_sources": [d.model_dump() for d in data_sources_with_ids],
-                    "access_blob": self.node.access_blob,
+                    "access_blob": refreshed_node.access_blob,
                 }
 
                 # Cache data in Redis with a TTL, and publish
