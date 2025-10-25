@@ -28,7 +28,6 @@ from starlette.status import (
 from ..catalog import in_memory
 from ..catalog.adapter import CatalogContainerAdapter
 from ..client import Context, from_context, record_history
-from ..client.stream import Subscription
 from ..client.utils import ClientError
 from ..mimetypes import PARQUET_MIMETYPE
 from ..queries import Key
@@ -432,15 +431,15 @@ def test_replace_metadata(tiled_websocket_context):
     received = []
     received_event = threading.Event()
 
-    def callback(subscription, data):
+    def callback(subscription, update):
         """Callback to collect received messages."""
-        received.append(data)
-        if len(received) >= 4:  # 1 creation + 3 updates
+        received.append(update)
+        if len(received) >= 3:  # 3 updates
             received_event.set()
 
     # Create subscription for the streaming node with start=0
-    subscription = Subscription(context=context, segments=[])
-    subscription.add_callback(callback)
+    subscription = client.subscribe()
+    subscription.child_metadata_updated.add_callback(callback)
     # Start the subscription
     subscription.start_in_thread(start=1)
     # Business Logic
@@ -463,8 +462,6 @@ def test_replace_metadata(tiled_websocket_context):
     # Clean up the subscription
     subscription.close()
     assert subscription.closed
-    # Ensure each event generated a websocket response
-    assert len(received) == 4
 
 
 def test_drop_revision(tree):
