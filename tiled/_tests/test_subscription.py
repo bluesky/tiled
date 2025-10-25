@@ -231,6 +231,11 @@ def test_subscribe_to_container(
     sub.child_created.add_callback(child_created_cb)
     sub.child_metadata_updated.add_callback(child_metadata_updated_cb)
     for i in range(3):
+        # This is exposing fragility in SQLite database connection handling.
+        # Once that is resolved, remove the sleep.
+        import time
+
+        time.sleep(0.1)
         unique_key = f"{uuid.uuid4().hex[:8]}"
         client.create_container(unique_key)
     assert created_3.wait(timeout=5.0), "Timeout waiting for messages"
