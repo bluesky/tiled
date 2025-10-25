@@ -459,7 +459,6 @@ def test_replace_metadata(tiled_websocket_context):
         ac.replace_metadata(metadata={"3": 1}, drop_revision=True)  # update #3
         # Wait for all messages to be received
         assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
-    assert subscription.closed
 
 
 def test_drop_revision(tree):

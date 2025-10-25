@@ -59,7 +59,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
             np.testing.assert_array_equal(payload_array, expected_array)
 
         # Clean up the subscription
-        subscription.close()
+        subscription.disconnect()
 
 
 def test_websocket_connection_to_non_existent_node_subscription(
@@ -194,8 +194,6 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             expected_array = np.arange(10) + i
             np.testing.assert_array_equal(payload_array, expected_array)
 
-    assert subscription.closed
-
 
 def test_subscribe_to_container(
     tiled_websocket_context,
@@ -257,6 +255,40 @@ def test_subscribe_to_stream_closed(
             event.set()
 
         sub.stream_closed.add_callback(callback)
+        assert not event.is_set()
+        x.close_stream()
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+
+
+def test_subscribe_to_disconnected(
+    tiled_websocket_context,
+):
+    """Subscribe to notification that the subscription has disconnected"""
+    context = tiled_websocket_context
+    client = from_context(context)
+    unique_key = f"test_subscribe_to_stream_closed_{uuid.uuid4().hex[:8]}"
+    x = client.create_container(unique_key)
+
+    # Disconnect before the stream is closed.
+    with x.subscribe().start_in_thread() as sub:
+        event = threading.Event()
+
+        def callback(sub):
+            event.set()
+
+        sub.disconnected.add_callback(callback)
+        assert not event.is_set()
+        sub.disconnect()
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+
+    # If the writer closes the stream, the client is disconnected.
+    with x.subscribe().start_in_thread() as sub:
+        event = threading.Event()
+
+        def callback(sub):
+            event.set()
+
+        sub.disconnected.add_callback(callback)
         assert not event.is_set()
         x.close_stream()
         assert event.wait(timeout=5.0), "Timeout waiting for messages"
