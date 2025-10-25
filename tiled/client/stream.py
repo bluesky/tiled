@@ -5,7 +5,6 @@ import logging
 import sys
 import threading
 import weakref
-from dataclasses import asdict
 from typing import Callable, List, Optional
 
 if sys.version_info >= (3, 11):
@@ -19,7 +18,9 @@ import msgpack
 import websockets.exceptions
 from websockets.sync.client import connect
 
+from ..links import links_for_node
 from ..stream_messages import SCHEMA_MESSAGE_TYPES, UPDATE_MESSAGE_TYPES, Schema, Update
+from ..structures.core import STRUCTURE_TYPES, StructureFamily
 from .context import Context
 from .utils import client_for_item, normalize_specs
 
@@ -427,6 +428,10 @@ class ContainerSubscription(Subscription):
 
     def process(self, update: Update):
         if update.type == "container-child-created":
+            # Construct a client object to represent the newly created node.
+            # This has some code in common with tiled.client.container.Container.new.
+            # It is unavoidably a bit fiddly. It can be improved when we are more
+            # consistent about what is a parsed object and what is a dict.
             item = {
                 "id": update.key,
                 "attributes": {
@@ -434,12 +439,25 @@ class ContainerSubscription(Subscription):
                     "metadata": update.metadata,
                     "structure_family": update.structure_family,
                     "specs": normalize_specs(update.specs or []),
-                    "data_sources": [
-                        asdict(data_source) for data_source in update.data_sources
-                    ],
+                    "data_sources": update.data_sources,
                     "access_blob": update.access_blob,
                 },
             }
+            if update.structure_family == StructureFamily.container:
+                structure_for_item = {"contents": None, "count": None}
+                structure_for_links = None
+            else:
+                (data_source,) = update.data_sources
+                structure_for_item = data_source.structure
+                structure_type = STRUCTURE_TYPES[item["attributes"]["structure_family"]]
+                structure_for_links = structure_type.from_json(structure_for_item)
+            item["attributes"]["structure"] = structure_for_item
+            base_url = self.context.server_info.links["self"]
+            path_str = "/".join(self.segments)
+            item["links"] = links_for_node(
+                update.structure_family, structure_for_links, base_url, path_str
+            )
+
             client = client_for_item(self.context, self.structure_clients, item)
             self.child_created.process(self, client)
         elif update.type == "container-child-metadata-updated":
