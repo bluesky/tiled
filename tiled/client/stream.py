@@ -242,7 +242,8 @@ class Subscription(abc.ABC):
             params=params,
         )
         self._schema = None
-        self._close_event = threading.Event()
+        self._disconnect_lock = threading.Lock()
+        self._disconnect_event = threading.Event()
         self._thread = None
         if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
@@ -251,6 +252,7 @@ class Subscription(abc.ABC):
         else:
             self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
         self.stream_closed = CallbackRegistry(self.executor)
+        self.disconnected = CallbackRegistry(self.executor)
 
     @property
     def executor(self):
@@ -269,7 +271,7 @@ class Subscription(abc.ABC):
 
     def _connect(self, start: Optional[int] = None) -> None:
         "Connect to websocket"
-        if self._close_event.is_set():
+        if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
@@ -293,13 +295,14 @@ class Subscription(abc.ABC):
 
     def _receive(self) -> None:
         "Blocking loop that receives and processes updates"
-        while not self._close_event.is_set():
+        while not self._disconnect_event.is_set():
             try:
                 data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
             if data is None:
-                self._close()
+                self.stream_closed.process(self)
+                self._disconnect()
                 return
             try:
                 if self._schema is None:
@@ -378,36 +381,30 @@ class Subscription(abc.ABC):
         self._thread.start()
         return self
 
-    @property
-    def closed(self):
-        """
-        Indicate whether stream has been closed.
-        """
-        return self._close_event.is_set()
-
-    def _close(self) -> None:
-        # This is called by the user-facing function below and also by the
-        # receive loop if the server closes the connection because the stream
-        # has ended.
-        if self._close_event.is_set():
-            return  # nothing to do
-        self.stream_closed.process(self)
-        self._close_event.set()
+    def _disconnect(self, wait=True) -> None:
+        # This is called by the user-facing disconnect method below and also by
+        # the receive loop if the server closes the connection because the
+        # stream has ended.
+        with self._disconnect_lock:
+            if self._disconnect_event.is_set():
+                return  # nothing to do
+            self._disconnect_event.set()
         self._websocket.close()
+        self.disconnected.process(self)
         self.executor.shutdown()
 
-    def close(self) -> None:
+    def disconnect(self, wait=True) -> None:
         "Close the websocket connection."
+        self._disconnect(wait=True)
         # If start_in_thread() was used, join the thread.
-        self._close()
-        if self._thread is not None:
+        if wait and (self._thread is not None):
             self._thread.join()
 
     def __enter__(self):
         return self
 
     def __exit__(self, *args):
-        self.close()
+        self.disconnect()
 
 
 class ContainerSubscription(Subscription):
