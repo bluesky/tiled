@@ -695,7 +695,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.sparse},
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         await entry.close_stream()
