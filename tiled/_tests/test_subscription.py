@@ -1,5 +1,6 @@
 import sys
 import threading
+import uuid
 
 import numpy as np
 import pytest
@@ -142,8 +143,6 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     client = from_context(context)
 
     # Use unique key to avoid interference from other tests
-    import uuid
-
     unique_key = f"test_stream_from_beginning_{uuid.uuid4().hex[:8]}"
 
     # Create streaming array node using Tiled client
