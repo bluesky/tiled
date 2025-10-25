@@ -1,5 +1,6 @@
+import concurrent.futures
 import itertools
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -19,7 +20,7 @@ from .utils import (
 )
 
 if TYPE_CHECKING:
-    from .stream import Subscription
+    from .stream import ArraySubscription
 
 
 class _DaskArrayClient(BaseClient):
@@ -349,18 +350,24 @@ class _DaskArrayClient(BaseClient):
             params=params,
         )
 
-    def subscribe(self) -> "Subscription":
+    def subscribe(
+        self,
+        executor: Optional[concurrent.futures.Executor] = None,
+    ) -> "ArraySubscription":
         """
-        Create a Subscription on writes to this node.
+        Subscribe to streaming updates about this array.
 
         Returns
         -------
         subscription : Subscription
+        executor : concurrent.futures.Executor, optional
+            Launches tasks asynchronously, in response to updates. By default,
+            a concurrent.futures.ThreadPoolExecutor is used.
         """
         # Keep this import here to defer the websockets import until/unless needed.
-        from .stream import Subscription
+        from .stream import ArraySubscription
 
-        return Subscription(self.context, self.path_parts)
+        return ArraySubscription(self.context, self.path_parts, executor)
 
 
 # Subclass with a public class that adds the dask-specific methods.

@@ -6,7 +6,7 @@ import pytest
 from starlette.testclient import WebSocketDenialResponse
 
 from ..client import from_context
-from ..client.stream import Subscription
+from ..client.stream import ArraySubscription
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"
@@ -32,11 +32,11 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
             received_event.set()
 
     # Create subscription for the streaming node
-    subscription = Subscription(
+    subscription = ArraySubscription(
         context=context,
         segments=["test_stream_immediate"],
     )
-    subscription.add_callback(callback)
+    subscription.new_data.add_callback(callback)
 
     # Start the subscription
     subscription.start_in_thread()
@@ -74,7 +74,7 @@ def test_websocket_connection_to_non_existent_node_subscription(
     non_existent_node_id = "definitely_non_existent_websocket_node_99999999"
 
     # Create subscription for non-existent node
-    subscription = Subscription(
+    subscription = ArraySubscription(
         context=context,
         segments=[non_existent_node_id],
     )
@@ -108,12 +108,13 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
             received_event.set()
 
     # Create subscription for the streaming node
-    subscription = Subscription(
+    subscription = ArraySubscription(
         context=context,
         segments=["test_stream_after_update"],
     )
     # Add callback and start the subscription
-    subscription.add_callback(callback).start_in_thread()
+    subscription.new_data.add_callback(callback)
+    subscription.start_in_thread()
 
     # Write more updates
     for i in range(2, 4):
@@ -170,8 +171,8 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             received_event.set()
 
     # Create subscription for the streaming node with start=0
-    subscription = Subscription(context=context, segments=[unique_key])
-    subscription.add_callback(callback)
+    subscription = ArraySubscription(context=context, segments=[unique_key])
+    subscription.new_data.add_callback(callback)
 
     # Start the subscription
     subscription.start_in_thread(start=0)
