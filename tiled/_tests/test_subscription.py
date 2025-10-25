@@ -201,3 +201,40 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     # Clean up the subscription
     subscription.close()
     assert subscription.closed
+
+
+def test_subscribe_to_container(
+    tiled_websocket_context,
+):
+    """Subscribe to updates about a Container"""
+    context = tiled_websocket_context
+    client = from_context(context)
+    child_created_updates = []
+    child_metadata_updated_updates = []
+    received_event = threading.Event()
+    created_3 = threading.Event()
+
+    def child_created_cb(sub, update):
+        child_created_updates.append(update)
+        if len(child_created_updates) == 3:
+            created_3.set()
+
+    def child_metadata_updated_cb(sub, update):
+        child_metadata_updated_updates.append(update)
+        received_event.set()
+
+    sub = client.subscribe().start_in_thread(1)
+    sub.child_created.add_callback(child_created_cb)
+    sub.child_metadata_updated.add_callback(child_metadata_updated_cb)
+    for i in range(3):
+        unique_key = f"test_subscribe_to_container_{uuid.uuid4().hex[:8]}"
+        client.create_container(unique_key)
+    assert created_3.wait(timeout=5.0), "Timeout waiting for messages"
+    update_keys = [update.key for update in child_created_updates]
+    assert update_keys == list(client)
+
+    assert len(child_metadata_updated_updates) == 0
+    client.values().last().update_metadata({"color": "blue"})
+    assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+    assert len(child_metadata_updated_updates) == 1
+    sub.close()
