@@ -5,7 +5,7 @@ import logging
 import sys
 import threading
 import weakref
-from typing import Callable, List, Optional
+from typing import Callable, Generic, List, Optional, TypeVar
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -16,16 +16,27 @@ import anyio
 import httpx
 import msgpack
 import websockets.exceptions
+from pydantic import ConfigDict
 from websockets.sync.client import connect
 
 from ..links import links_for_node
-from ..stream_messages import SCHEMA_MESSAGE_TYPES, UPDATE_MESSAGE_TYPES, Schema, Update
+from ..media_type_registration import default_deserialization_registry
+from ..stream_messages import (
+    ArrayData,
+    ArrayRef,
+    ArraySchema,
+    ChildCreated,
+    ChildMetadataUpdated,
+    ContainerSchema,
+    Schema,
+    Update,
+)
 from ..structures.core import STRUCTURE_TYPES, StructureFamily
 from .context import Context
 from .utils import client_for_item, normalize_specs
 
-Callback = Callable[["Subscription", Update], None]
-"A Callback will be called with the Subscription calling it and a dict with the update."
+T = TypeVar("T")
+Callback = Callable[[T], None]
 
 
 API_KEY_LIFETIME = 30  # seconds
@@ -103,7 +114,7 @@ class _RegularWebsocketWrapper:
         self._websocket.close()
 
 
-class CallbackRegistry:
+class CallbackRegistry(Generic[T]):
     """
     Distribute updates to user-provided callback functions.
 
@@ -116,20 +127,20 @@ class CallbackRegistry:
 
     def __init__(self, executor: concurrent.futures.Executor):
         self._executor = executor
-        self._callbacks = set()
+        self._callbacks: set[T] = set()
 
     @property
     def executor(self):
         return self._executor
 
-    def process(self, sub: "Subscription", *args):
+    def process(self, update: T):
         "Fan an update out to all registered callbacks."
         for ref in self._callbacks:
             callback = ref()
             if callback is not None:
-                self.executor.submit(callback, sub, *args)
+                self.executor.submit(callback, update)
 
-    def add_callback(self, callback: Callback) -> Self:
+    def add_callback(self, callback: Callback[T]) -> Self:
         """
         Register a callback to be run when the Subscription receives an update.
 
@@ -191,7 +202,7 @@ class CallbackRegistry:
             ref = weakref.ref(callback, cleanup)
         self._callbacks.add(ref)
 
-    def remove_callback(self, callback: Callback) -> Self:
+    def remove_callback(self, callback: Callback[T]) -> Self:
         """
         Unregister a callback.
 
@@ -251,8 +262,12 @@ class Subscription(abc.ABC):
             )
         else:
             self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
-        self.stream_closed = CallbackRegistry(self.executor)
-        self.disconnected = CallbackRegistry(self.executor)
+        self.stream_closed: CallbackRegistry["Subscription"] = CallbackRegistry(
+            self.executor
+        )
+        self.disconnected: CallbackRegistry["Subscription"] = CallbackRegistry(
+            self.executor
+        )
 
     @property
     def executor(self):
@@ -309,7 +324,7 @@ class Subscription(abc.ABC):
                     self._schema = parse_schema(data)
                     continue
                 else:
-                    update = parse_update(data, self._schema)
+                    update = parse_update(self, data, self._schema)
             except Exception:
                 logger.exception(
                     "A websocket message will be ignored because it could not be parsed."
@@ -318,7 +333,7 @@ class Subscription(abc.ABC):
             self.process(update)
 
     @abc.abstractmethod
-    def process(sub: "Subscription", *args) -> None:
+    def process(self, *args) -> None:
         pass
 
     def start(self, start: Optional[int] = None) -> None:
@@ -435,45 +450,18 @@ class ContainerSubscription(Subscription):
     ):
         super().__init__(context, segments, executor)
         self.structure_clients = structure_clients
-        self.child_created = CallbackRegistry(self.executor)
-        self.child_metadata_updated = CallbackRegistry(self.executor)
+        self.child_created: CallbackRegistry["LiveChildCreated"] = CallbackRegistry(
+            self.executor
+        )
+        self.child_metadata_updated: CallbackRegistry[
+            "LiveChildMetadataUpdated"
+        ] = CallbackRegistry(self.executor)
 
     def process(self, update: Update):
         if update.type == "container-child-created":
-            # Construct a client object to represent the newly created node.
-            # This has some code in common with tiled.client.container.Container.new.
-            # It is unavoidably a bit fiddly. It can be improved when we are more
-            # consistent about what is a parsed object and what is a dict.
-            item = {
-                "id": update.key,
-                "attributes": {
-                    "ancestors": self.segments,
-                    "metadata": update.metadata,
-                    "structure_family": update.structure_family,
-                    "specs": normalize_specs(update.specs or []),
-                    "data_sources": update.data_sources,
-                    "access_blob": update.access_blob,
-                },
-            }
-            if update.structure_family == StructureFamily.container:
-                structure_for_item = {"contents": None, "count": None}
-                structure_for_links = None
-            else:
-                (data_source,) = update.data_sources
-                structure_for_item = data_source.structure
-                structure_type = STRUCTURE_TYPES[item["attributes"]["structure_family"]]
-                structure_for_links = structure_type.from_json(structure_for_item)
-            item["attributes"]["structure"] = structure_for_item
-            base_url = self.context.server_info.links["self"]
-            path_str = "/".join(self.segments + [update.key])
-            item["links"] = links_for_node(
-                update.structure_family, structure_for_links, base_url, path_str
-            )
-
-            client = client_for_item(self.context, self.structure_clients, item)
-            self.child_created.process(self, client)
+            self.child_created.process(update)
         elif update.type == "container-child-metadata-updated":
-            self.child_metadata_updated.process(self, update)
+            self.child_metadata_updated.process(update)
         else:
             raise RuntimeError(f"Received update with unexpected type: {update}")
 
@@ -500,10 +488,12 @@ class ArraySubscription(Subscription):
         executor: Optional[concurrent.futures.Executor] = None,
     ):
         super().__init__(context, segments, executor)
-        self.new_data = CallbackRegistry(self.executor)
+        self.new_data: CallbackRegistry[
+            "LiveArrayData" | "LiveArrayRef"
+        ] = CallbackRegistry(self.executor)
 
     def process(self, update: Update):
-        self.new_data.process(self, update)
+        self.new_data.process(update)
 
 
 class UnparseableMessage(RuntimeError):
@@ -525,7 +515,7 @@ def parse_schema(data: bytes) -> Schema:
     return cls(**message)
 
 
-def parse_update(data: bytes, schema: Schema) -> Update:
+def parse_update(subscription: Subscription, data: bytes, schema: Schema) -> Update:
     "Parse msgpack-encoded bytes into an Update model."
     message = msgpack.unpackb(data)
     try:
@@ -536,4 +526,81 @@ def parse_update(data: bytes, schema: Schema) -> Update:
         cls = UPDATE_MESSAGE_TYPES[message_type]
     except KeyError:
         raise UnparseableMessage(f"Unrecognized message type {message_type!r}")
-    return cls(**message, **schema.content())
+    return cls(subscription=subscription, **message, **schema.content())
+
+
+class LiveChildCreated(ChildCreated):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    subscription: ContainerSubscription
+
+    def child(self):
+        # Construct a client object to represent the newly created node.
+        # This has some code in common with tiled.client.container.Container.new.
+        # It is unavoidably a bit fiddly. It can be improved when we are more
+        # consistent about what is a parsed object and what is a dict.
+        item = {
+            "id": self.key,
+            "attributes": {
+                "ancestors": self.subscription.segments,
+                "metadata": self.metadata,
+                "structure_family": self.structure_family,
+                "specs": normalize_specs(self.specs or []),
+                "data_sources": self.data_sources,
+                "access_blob": self.access_blob,
+            },
+        }
+        if self.structure_family == StructureFamily.container:
+            structure_for_item = {"contents": None, "count": None}
+            structure_for_links = None
+        else:
+            (data_source,) = self.data_sources
+            structure_for_item = data_source.structure
+            structure_type = STRUCTURE_TYPES[item["attributes"]["structure_family"]]
+            structure_for_links = structure_type.from_json(structure_for_item)
+        item["attributes"]["structure"] = structure_for_item
+        context = self.subscription.context
+        base_url = context.server_info.links["self"]
+        path_str = "/".join(self.subscription.segments + [self.key])
+        item["links"] = links_for_node(
+            self.structure_family, structure_for_links, base_url, path_str
+        )
+
+        return client_for_item(context, self.subscription.structure_clients, item)
+
+
+class LiveChildMetadataUpdated(ChildMetadataUpdated):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    subscription: ContainerSubscription
+
+
+class LiveArrayData(ArrayData):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    subscription: ArraySubscription
+
+    def data(self):
+        "Get array"
+        # Registration occurs on import. Ensure this is imported.
+        from ..serialization import array
+
+        del array
+
+        # Decode payload (bytes) into array.
+        deserializer = default_deserialization_registry.dispatch("array", self.mimetype)
+        return deserializer(self.payload, self.data_type.to_numpy_dtype(), self.shape)
+
+
+class LiveArrayRef(ArrayRef):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    subscription: ArraySubscription
+
+
+SCHEMA_MESSAGE_TYPES = {
+    "array-schema": ArraySchema,
+    "container-schema": ContainerSchema,
+}
+UPDATE_MESSAGE_TYPES = {
+    "container-child-created": LiveChildCreated,
+    "container-child-metadata-updated": LiveChildMetadataUpdated,
+    "array-data": LiveArrayData,
+    "array-ref": LiveArrayRef,
+}

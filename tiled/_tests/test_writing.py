@@ -431,7 +431,7 @@ def test_replace_metadata(tiled_websocket_context):
     received = []
     received_event = threading.Event()
 
-    def callback(subscription, update):
+    def callback(update):
         """Callback to collect received messages."""
         received.append(update)
         if len(received) >= 3:  # 3 updates
