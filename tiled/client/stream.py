@@ -343,7 +343,10 @@ class Subscription(abc.ABC):
 
         """
         self._connect(start)
-        self._receive()  # blocks
+        try:
+            self._receive()  # blocks
+        finally:
+            self.disconnect()
 
     def start_in_thread(self, start: Optional[int] = None) -> Self:
         """
