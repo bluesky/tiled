@@ -519,7 +519,7 @@ def test_streaming_table_write(tiled_websocket_context):
         assert_frame_equal(actual_updated, df2)
 
 
-def test_streaming_table_appends(tiled_websocket_context):
+def test_streaming_table_append(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
     updates = []
