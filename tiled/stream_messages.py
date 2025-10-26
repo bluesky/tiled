@@ -46,6 +46,11 @@ class ContainerSchema(Schema):
     pass
 
 
+class TableSchema(Schema):
+    type: Literal["table-schema"]
+    arrow_schema: str
+
+
 class Update(BaseModel):
     sequence: int = Field(gt=0)
     timestamp: datetime
@@ -92,3 +97,14 @@ class ArrayRef(Update):
     patch: Optional[ArrayPatch]
     uri: Optional[str]
     data_type: Union[BuiltinDtype, StructDtype]
+
+
+class TableData(Update):
+    type: Literal["table-data"] = "table-data"
+    mimetype: str
+    # partition=None means a write to the entire table, an old design choice
+    # that may need revisiting.
+    partition: Optional[int]
+    append: bool
+    payload: bytes
+    arrow_schema: str

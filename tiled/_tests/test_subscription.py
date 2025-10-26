@@ -4,8 +4,10 @@ import threading
 import uuid
 
 import numpy as np
+import pandas as pd
 import pytest
 import tifffile
+from pandas.testing import assert_frame_equal
 from starlette.testclient import WebSocketDenialResponse
 
 from ..client import from_context
@@ -394,3 +396,32 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
     assert update.patch.extend
     actual_streamed = update.data()
     np.testing.assert_array_equal(actual_streamed, arr[2:])
+
+
+def test_streaming_table_data(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+    updates = []
+    event = threading.Event()
+    key = "test_streaming_table_data"
+
+    def collect(update):
+        updates.append(update)
+        event.set()
+
+    df1 = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    df2 = pd.DataFrame({"a": [7, 8, 9], "b": [10, 11, 12]})
+    x = client.write_table(df1, key=key)
+
+    sub = client[key].subscribe()
+    sub.new_data.add_callback(collect)
+    with sub.start_in_thread(1):
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        actual = updates[0].data()
+        assert_frame_equal(actual, df1)
+        event.clear()
+        x.write(df2)
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert not updates[1].append
+        actual_updated = updates[1].data()
+        assert_frame_equal(actual_updated, df2)
