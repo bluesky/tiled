@@ -78,9 +78,9 @@ class ChildMetadataUpdated(Update):
 class ArrayData(Update):
     type: Literal["array-data"] = "array-data"
     mimetype: str
-    shape: tuple[int]
-    offset: Optional[tuple[int]]
-    block: Optional[tuple[int]]
+    shape: tuple[int, ...]
+    offset: Optional[tuple[int, ...]]
+    block: Optional[tuple[int, ...]]
     payload: bytes
     data_type: Union[BuiltinDtype, StructDtype]
 
