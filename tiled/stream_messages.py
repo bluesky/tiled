@@ -10,7 +10,7 @@ from .structures.data_source import Management
 
 
 class Asset(BaseModel):
-    id: int
+    id: Optional[int]  # TODO This should be required, needs work on the SQL
     data_uri: str
     is_directory: bool
     parameter: str
@@ -21,7 +21,7 @@ StructureT = TypeVar("StructureT")
 
 
 class DataSource(BaseModel, Generic[StructureT]):
-    id: int
+    id: Optional[int]  # TODO This should be required, needs work on the SQL
     structure_family: StructureFamily
     structure: StructureT
     mimetype: str
@@ -100,6 +100,7 @@ class ArrayRefUpdate(Update):
     type: Literal["array-ref"] = "array-ref"
     data_source: DataSource[ArrayStructure]
     patch: Optional[ArrayPatch]
+    uri: Optional[str]
 
 
 SCHEMA_MESSAGE_TYPES = {
