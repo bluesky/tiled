@@ -641,7 +641,11 @@ class LiveArrayRef(ArrayRef):
                 ).read()
         # Decode payload (bytes) into array.
         numpy_dtype = self.data_type.to_numpy_dtype()
-        return numpy.frombuffer(content, dtype=numpy_dtype).reshape(self.patch.shape)
+        if self.patch:
+            shape = self.patch.shape
+        else:
+            shape = self.shape
+        return numpy.frombuffer(content, dtype=numpy_dtype).reshape(shape)
 
 
 class LiveTableData(TableData):

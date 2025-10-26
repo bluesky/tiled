@@ -875,6 +875,7 @@ class CatalogNodeAdapter:
                 "timestamp": datetime.now().isoformat(),
                 "data_source": data_source.model_dump(),
                 "patch": patch.model_dump() if patch else None,
+                "shape": structure["shape"],
             }
 
             # Cache data in Redis with a TTL, and publish

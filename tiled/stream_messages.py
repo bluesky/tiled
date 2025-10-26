@@ -96,6 +96,7 @@ class ArrayRef(Update):
     data_source: DataSource[ArrayStructure]
     patch: Optional[ArrayPatch]
     uri: Optional[str]
+    shape: tuple[int, ...]
     data_type: Union[BuiltinDtype, StructDtype]
 
 
