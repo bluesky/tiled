@@ -19,6 +19,7 @@ import websockets.exceptions
 from pydantic import ConfigDict
 from websockets.sync.client import connect
 
+from ..client.base import BaseClient
 from ..links import links_for_node
 from ..media_type_registration import default_deserialization_registry
 from ..stream_messages import (
@@ -533,7 +534,8 @@ class LiveChildCreated(ChildCreated):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     subscription: ContainerSubscription
 
-    def child(self):
+    def child(self) -> BaseClient:
+        "Construct a client object for the child."
         # Construct a client object to represent the newly created node.
         # This has some code in common with tiled.client.container.Container.new.
         # It is unavoidably a bit fiddly. It can be improved when we are more
