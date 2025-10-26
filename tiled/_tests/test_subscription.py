@@ -5,6 +5,7 @@ import uuid
 
 import numpy as np
 import pandas as pd
+import pyarrow
 import pytest
 import tifffile
 from pandas.testing import assert_frame_equal
@@ -398,12 +399,12 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
     np.testing.assert_array_equal(actual_streamed, arr[2:])
 
 
-def test_streaming_table_data(tiled_websocket_context):
+def test_streaming_table_write(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
     updates = []
     event = threading.Event()
-    key = "test_streaming_table_data"
+    key = "test_streaming_table_write"
 
     def collect(update):
         updates.append(update)
@@ -425,3 +426,43 @@ def test_streaming_table_data(tiled_websocket_context):
         assert not updates[1].append
         actual_updated = updates[1].data()
         assert_frame_equal(actual_updated, df2)
+
+
+def test_streaming_table_appends(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+    updates = []
+    event = threading.Event()
+    key = "test_streaming_table_append"
+
+    def collect(update):
+        updates.append(update)
+        event.set()
+
+    df1 = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    df2 = pd.DataFrame({"a": [7, 8, 9], "b": [10, 11, 12]})
+    table1 = pyarrow.Table.from_pandas(df1, preserve_index=False)
+    table2 = pyarrow.Table.from_pandas(df2, preserve_index=False)
+    x = client.create_appendable_table(table1.schema, key=key)
+
+    sub = client[key].subscribe()
+    sub.new_data.add_callback(collect)
+    with sub.start_in_thread(1):
+        x.append_partition(0, table1)
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert updates[0].append
+        streamed1 = updates[0].data()
+        streamed1_pyarrow = pyarrow.Table.from_pandas(streamed1, preserve_index=False)
+        assert streamed1_pyarrow == table1
+        event.clear()
+        x.append_partition(0, table2)
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert updates[1].append
+        streamed2 = updates[1].data()
+        streamed2_pyarrow = pyarrow.Table.from_pandas(streamed2, preserve_index=False)
+        assert streamed2_pyarrow == table2
+        streaming_combined = pyarrow.concat_tables(
+            [streamed1_pyarrow, streamed2_pyarrow]
+        )
+        expected_combined = pyarrow.concat_tables([table1, table2])
+        assert streaming_combined == expected_combined
