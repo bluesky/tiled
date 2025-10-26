@@ -89,3 +89,4 @@ class ArrayRef(Update):
     data_source: DataSource[ArrayStructure]
     patch: Optional[ArrayPatch]
     uri: Optional[str]
+    data_type: Union[BuiltinDtype, StructDtype]

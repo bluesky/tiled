@@ -375,7 +375,12 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
         )
         x.context.http_client.put(
             x.uri.replace("/metadata/", "/data_source/", 1),
-            content=safe_json_dump({"data_source": updated_data_source}),
+            content=safe_json_dump(
+                {
+                    "data_source": updated_data_source,
+                    "patch": {"shape": (1, 7, 13), "offset": (2, 0, 0), "extend": True},
+                }
+            ),
         ).raise_for_status()
         assert event.wait(timeout=5.0), "Timeout waiting for messages"
         x.close_stream()
@@ -384,3 +389,8 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
         actual_updated = x.read()
         np.testing.assert_array_equal(actual_updated, arr[:])
     (update,) = updates
+    assert update.patch.shape == (1, 7, 13)
+    assert update.patch.offset == (2, 0, 0)
+    assert update.patch.extend
+    actual_streamed = update.data()
+    np.testing.assert_array_equal(actual_streamed, arr[2:])
