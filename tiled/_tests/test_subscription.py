@@ -356,7 +356,7 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
             data_sources=[data_source],
             metadata={},
             specs=[],
-            key="x",
+            key="test_subscribe_to_array_registered",
         )
         actual = x.read()  # smoke test
         np.testing.assert_array_equal(actual, arr[:2])
