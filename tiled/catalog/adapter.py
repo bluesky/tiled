@@ -873,8 +873,8 @@ class CatalogNodeAdapter:
                 "type": "array-ref",
                 "sequence": sequence,
                 "timestamp": datetime.now().isoformat(),
-                "data_source": data_source.dict(),
-                "patch": patch.dict() if patch else None,
+                "data_source": data_source.model_dump(),
+                "patch": patch.model_dump() if patch else None,
             }
 
             # Cache data in Redis with a TTL, and publish
