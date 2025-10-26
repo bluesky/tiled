@@ -34,7 +34,7 @@ from ..stream_messages import (
 )
 from ..structures.core import STRUCTURE_TYPES, StructureFamily
 from .context import Context
-from .utils import client_for_item, normalize_specs
+from .utils import client_for_item, handle_error, normalize_specs, retry_context
 
 T = TypeVar("T")
 Callback = Callable[[T], None]
@@ -580,7 +580,7 @@ class LiveArrayData(ArrayData):
     subscription: ArraySubscription
 
     def data(self):
-        "Get array"
+        "Decode array"
         # Registration occurs on import. Ensure this is imported.
         from ..serialization import array
 
@@ -594,6 +594,22 @@ class LiveArrayData(ArrayData):
 class LiveArrayRef(ArrayRef):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     subscription: ArraySubscription
+
+    def data(self):
+        "Fetch array"
+        import numpy
+
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.subscription.context.http_client.get(
+                        self.uri,
+                        headers={"Accept": "application/octet-stream"},
+                    )
+                ).read()
+        # Decode payload (bytes) into array.
+        numpy_dtype = self.data_type.to_numpy_dtype()
+        return numpy.frombuffer(content, dtype=numpy_dtype).reshape(self.patch.shape)
 
 
 SCHEMA_MESSAGE_TYPES = {
