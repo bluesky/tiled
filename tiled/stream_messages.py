@@ -3,7 +3,6 @@ from typing import Generic, Literal, Optional, TypeVar, Union
 
 from pydantic import BaseModel, Field
 
-from .media_type_registration import default_deserialization_registry
 from .structures.array import ArrayStructure, BuiltinDtype, StructDtype
 from .structures.core import Spec, StructureFamily
 from .structures.data_source import Management
@@ -62,14 +61,14 @@ class ChildCreated(Update):
     access_blob: dict
 
 
-class ChildMetadataUpdate(Update):
+class ChildMetadataUpdated(Update):
     type: Literal["container-child-metadata-updated"] = "child-metadata-updated"
     key: str
     specs: list[Spec]
     metadata: dict
 
 
-class ArrayDataUpdate(Update):
+class ArrayData(Update):
     type: Literal["array-data"] = "array-data"
     mimetype: str
     shape: tuple[int]
@@ -78,17 +77,6 @@ class ArrayDataUpdate(Update):
     payload: bytes
     data_type: Union[BuiltinDtype, StructDtype]
 
-    def data(self):
-        "Get array"
-        # Registration occurs on import. Ensure this is imported.
-        from .serialization import array
-
-        del array
-
-        # Decode payload (bytes) into array.
-        deserializer = default_deserialization_registry.dispatch("array", self.mimetype)
-        return deserializer(self.payload, self.data_type.to_numpy_dtype(), self.shape)
-
 
 class ArrayPatch(BaseModel):
     offset: tuple[int, ...]
@@ -96,20 +84,8 @@ class ArrayPatch(BaseModel):
     extend: bool
 
 
-class ArrayRefUpdate(Update):
+class ArrayRef(Update):
     type: Literal["array-ref"] = "array-ref"
     data_source: DataSource[ArrayStructure]
     patch: Optional[ArrayPatch]
     uri: Optional[str]
-
-
-SCHEMA_MESSAGE_TYPES = {
-    "array-schema": ArraySchema,
-    "container-schema": ContainerSchema,
-}
-UPDATE_MESSAGE_TYPES = {
-    "container-child-created": ChildCreated,
-    "container-child-metadata-updated": ChildMetadataUpdate,
-    "array-data": ArrayDataUpdate,
-    "array-ref": ArrayRefUpdate,
-}

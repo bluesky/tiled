@@ -32,9 +32,9 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
     received = []
     received_event = threading.Event()
 
-    def callback(subscription, data):
+    def callback(update):
         """Callback to collect received messages."""
-        received.append(data)
+        received.append(update)
         if len(received) >= 3:
             received_event.set()
 
@@ -104,9 +104,9 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
     received = []
     received_event = threading.Event()
 
-    def callback(subscription, data):
+    def callback(update):
         """Callback to collect received messages."""
-        received.append(data)
+        received.append(update)
         if len(received) >= 2:
             received_event.set()
 
@@ -160,9 +160,9 @@ def test_subscribe_after_first_update_from_beginning_subscription(
     received = []
     received_event = threading.Event()
 
-    def callback(subscription, data):
+    def callback(update):
         """Callback to collect received messages."""
-        received.append(data)
+        received.append(update)
         if len(received) >= 4:  # initial + first update + 2 new updates
             received_event.set()
 
@@ -212,16 +212,16 @@ def test_subscribe_to_container(
     received_event = threading.Event()
     created_3 = threading.Event()
 
-    def child_created_cb(sub, node):
+    def child_created_cb(update):
         try:
-            repr(node)
-            streamed_nodes.append(node)
+            repr(update.child())
+            streamed_nodes.append(update.child())
             if len(streamed_nodes) == 3:
                 created_3.set()
         except Exception as err:
             print(repr(err))
 
-    def child_metadata_updated_cb(sub, update):
+    def child_metadata_updated_cb(update):
         child_metadata_updated_updates.append(update)
         received_event.set()
 
@@ -312,12 +312,12 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
     updates = []
     event = threading.Event()
 
-    def on_array_updated(sub, update):
+    def on_array_updated(update):
         updates.append(update)
         event.set()
 
-    def on_child_created(sub, node):
-        array_sub = node.subscribe()
+    def on_child_created(update):
+        array_sub = update.child().subscribe()
         array_sub.new_data.add_callback(on_array_updated)
         array_sub.start_in_thread(1)
 
