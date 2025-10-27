@@ -52,7 +52,7 @@ class Update(BaseModel):
 
 
 class ChildCreated(Update):
-    type: Literal["container-child-created"] = "child-created"
+    type: Literal["container-child-created"] = "container-child-created"
     key: str
     structure_family: StructureFamily
     specs: list[Spec]
