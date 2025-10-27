@@ -392,6 +392,7 @@ class HDF5Adapter(
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: Optional[Union[bool, str]] = None,
+        **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         if not isinstance(dataset, str):
             dataset = "/".join(dataset)
@@ -405,6 +406,7 @@ class HDF5Adapter(
                 swmr=swmr,
                 libver=libver,
                 locking=locking,
+                **kwargs,
             )
 
         # Initialize adapter for the entire HDF5 tree
@@ -446,6 +448,7 @@ class HDF5Adapter(
         swmr: bool = SWMR_DEFAULT,
         libver: str = "latest",
         locking: Optional[Union[bool, str]] = None,
+        **kwargs: Any,  # Optional kwargs for HDF5ArrayAdapter
     ) -> Union["HDF5Adapter", HDF5ArrayAdapter]:
         fpath = path_from_uri(data_uris[0])
         with h5open(fpath, dataset, swmr=swmr, libver=libver, locking=locking) as file:
@@ -453,7 +456,12 @@ class HDF5Adapter(
 
         if tree == HDF5_DATASET:
             return HDF5ArrayAdapter.from_uris(
-                *data_uris, dataset=dataset, swmr=swmr, libver=libver, locking=locking
+                *data_uris,
+                dataset=dataset,
+                swmr=swmr,
+                libver=libver,
+                locking=locking,
+                **kwargs,
             )
 
         return cls(

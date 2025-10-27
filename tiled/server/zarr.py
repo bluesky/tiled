@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Optional, Set, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numcodecs
 import orjson
@@ -10,7 +10,7 @@ from starlette.responses import Response
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
 from ..structures.core import StructureFamily
-from ..type_aliases import Scopes
+from ..type_aliases import AccessTags, Scopes
 from ..utils import ensure_awaitable
 from .authentication import (
     get_current_access_tags,
@@ -56,7 +56,7 @@ def get_zarr_router_v2() -> APIRouter:
         request: Request,
         path: str,
         principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -92,7 +92,7 @@ def get_zarr_router_v2() -> APIRouter:
         request: Request,
         path: str,
         principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -120,7 +120,7 @@ def get_zarr_router_v2() -> APIRouter:
         request: Request,
         path: str,
         principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -164,7 +164,7 @@ def get_zarr_router_v2() -> APIRouter:
         request: Request,
         path: str,
         principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -283,7 +283,7 @@ def get_zarr_router_v3() -> APIRouter:
         request: Request,
         path: str,
         principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -375,7 +375,7 @@ def get_zarr_router_v3() -> APIRouter:
         path: str,
         block: str,
         principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -456,7 +456,7 @@ def get_zarr_router_v3() -> APIRouter:
         request: Request,
         path: str,
         principal: Union[Principal] = Depends(get_current_principal),
-        authn_access_tags: Optional[Set[str]] = Depends(get_current_access_tags),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),

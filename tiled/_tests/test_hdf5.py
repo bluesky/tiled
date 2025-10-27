@@ -4,7 +4,7 @@ import numpy
 import pytest
 
 from ..adapters import hdf5 as hdf5_adapters
-from ..adapters.hdf5 import HDF5Adapter
+from ..adapters.hdf5 import HDF5Adapter, HDF5ArrayAdapter
 from ..adapters.mapping import MapAdapter
 from ..catalog import in_memory
 from ..client import Context, from_context, record_history
@@ -451,3 +451,20 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
 
     with pytest.raises(KeyError):
         list(client["ds_from_extr"].keys())
+
+
+def test_adapter_kwargs(example_file):
+    # Test that extra kwargs are passed to HDF5ArrayAdapter via HDF5Adapter
+    # when initialized from URIs with `dataset` and `slice` parameters
+
+    adapter = HDF5Adapter.from_uris(
+        example_file,
+        swmr=True,
+        libver="latest",
+        locking=False,
+        dataset="/a/b/c/d",
+        slice="(:, 0:2)",
+        squeeze=True,
+    )
+    assert isinstance(adapter, HDF5ArrayAdapter)
+    assert adapter.read().shape == (3, 2)

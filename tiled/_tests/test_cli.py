@@ -43,7 +43,7 @@ def scrape_server_url_from_logs(process):
     queue = Queue()
     thread = threading.Thread(target=target, args=(queue,))
     thread.start()
-    url = queue.get(timeout=10)
+    url = queue.get(timeout=15)
     # If the server has an error starting up, the target() will
     # never find a match, and a TimeoutError will be raised above.
     # The thread will leak. This is the best reasonably simple,
