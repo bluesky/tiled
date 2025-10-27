@@ -37,3 +37,10 @@ test_created_by_for_all if {
 	rbac.allow with input as {"attribute": {"created_by": "allow_all"}}
 		with data.token as {"name": "bob"}
 }
+
+test_created_by_for_all_new if {
+	rbac.allow with input as {"attribute": {"resource_type": "unknown"}}
+		with data.token as {"name": "bob"}
+}
+
+

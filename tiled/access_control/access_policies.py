@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import httpx
 from pydantic import BaseModel, HttpUrl, ValidationError
 
-from tiled.server.schemas import Principal
+from tiled.server.schemas import Principal, PrincipalType
 
 from ..queries import AccessBlobFilter
 from ..utils import Sentinel, import_object

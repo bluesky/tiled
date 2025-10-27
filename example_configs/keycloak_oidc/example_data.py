@@ -9,10 +9,10 @@ from tiled.adapters.xarray import DatasetAdapter
 tree = MapAdapter(
     {
         "A": ArrayAdapter.from_array(
-            numpy.ones((100, 100)), metadata={"permission": {"created_by": "alice"}}
+            numpy.ones((100, 100)), metadata={"resource_type": "A"}
         ),
         "B": ArrayAdapter.from_array(
-            numpy.ones((100, 100, 100)), metadata={"permission": {"created_by": "bob"}}
+            numpy.ones((100, 100, 100)), metadata={"resource_type": "B"}
         ),
         "C": TableAdapter.from_dict(
             {
@@ -21,6 +21,7 @@ tree = MapAdapter(
                 "z": 3 * numpy.ones(100),
             },
             npartitions=3,
+            metadata={"resource_type":"C"}
         ),
         "D": DatasetAdapter.from_dataset(
             xarray.Dataset(
@@ -29,5 +30,5 @@ tree = MapAdapter(
             )
         ),
     },
-    metadata={"permission": {"created_by": "allow_all"}},
+    metadata={"resource_type": "public"},
 )
