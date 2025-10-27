@@ -59,11 +59,13 @@ client = from_uri('http://localhost:8000', api_key='secret')
 sub = client.subscribe()
 
 # Register a callback, a function that will be called when updates are received.
-# For a simple example, we will just use the print function.
-sub.add_callback(print)
+def on_child_created(update):
+    print("NEW:", update.child())
+
+sub.child_created.add_callback(on_child_created)
 
 # Start listening for updates.
-sub.start()
+sub.start_in_thread()
 ```
 
 In a separate process (if you like) create a new array.
@@ -80,18 +82,19 @@ Back in the process with the subscription, you will see that something has been
 printed.
 
 ```none
-<Subscription / > {'sequence': 1, 'timestamp': '2025-09-03T16:58:59.682183', 'key': 'x', 'structure_family': 'array', 'specs': [], 'metadata': {}, 'data_sources': [{'id': None, 'structure_family': 'array', 'structure': {'data_type': {'endianness': 'little', 'kind': 'i', 'itemsize': 8, 'dt_units': None}, 'chunks': [[3]], 'shape': [3], 'dims': None, 'resizable': False}, 'mimetype': 'application/x-zarr', 'parameters': {}, 'assets': [], 'management': 'writable'}], 'uri': 'http://localhost:8000/api/v1/array/full/'}
+NEW: <ArrayClient shape=(3,) chunks=((3,)) dtype=int64>
 ```
-
-Our callback, `print`, has been called with the arguments `print(sub, data)`
-where `sub` is our Subscription and `data` is a dict with information
-about what is new. In this case, it contains a detailed description of the
-new array named `x` that was created by the other client.
 
 If we are interested, we can subscribe to updates about `x` and its data.
 
 ```py
-x_sub = c['x'].subscribe()
+x_sub = c['x'].new_data.subscribe()
+
+def on_new_data(update):
+    print("offset:", update.offset)
+    print(update.data())
+
+x_sub.new_data.add_callback(on_new_data)
 ```
 
 Suppose that, while we are getting that set up, the other process extends the
@@ -111,22 +114,25 @@ clients to catch up if they start late---such as a live data processing job
 launched after an experiment is already in progress.
 
 ```py
-x_sub.start(0)
+x_sub.start_in_thread(0)
 ```
 
 It will receive updates that have already happened:
 
 ```none
-<Subscription /x > {'sequence': 1, 'timestamp': '2025-09-03T17:37:29.754038', 'content-type': 'application/octet-stream', 'shape': [3], 'offset': None, 'block': None, 'uri': 'http://localhost:8000/api/v1/array/full/x', 'payload': b'\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x00\x00\x00\x00'}
-<Subscription /x > {'sequence': 2, 'timestamp': '2025-09-03T17:37:36.678614', 'content-type': 'application/octet-stream', 'shape': [3], 'offset': [3], 'block': None, 'uri': 'http://localhost:8000/api/v1/array/full/x', 'payload': b'\x04\x00\x00\x00\x00\x00\x00\x00\x05\x00\x00\x00\x00\x00\x00\x00\x06\x00\x00\x00\x00\x00\x00\x00'}
+offset: (0,)
+[1, 2, 3]
+offset: (3,)
+[4, 5, 6]
 ```
 
 and, from there, any new updates as well.
 
-Notice that content of the updates includes a `sequence` counter, starting from
-the number 1. Subscribers can use this if, for example, they need to recover
-from an interruption. They can subscribe from a specific counter index `sub.start(N)`.
-As already mentioned above, `x.start(0)` means, "Start from the oldest record retained."
+The `update` includes a `sequence` counter, starting from the number 1.
+Subscribers can use this if, for example, they need to recover from an
+interruption. They can subscribe from a specific counter index
+`sub.start_in_thread(N)`. As already mentioned above, `x.start_in_thread(0)`
+means, "Start from the oldest record retained."
 
 Of course, clients can always fetch _all_ of the data via the non-streaming
 interface.
@@ -136,7 +142,7 @@ interface.
 A subscriber can disconnect from a stream at any point, like so:
 
 ```py
-sub.stop()
+sub.disconnect()
 ```
 
 Producers (writers) can indicate that no more data is expected (for now).

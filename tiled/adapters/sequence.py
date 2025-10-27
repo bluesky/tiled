@@ -10,6 +10,7 @@ from numpy._typing import NDArray
 
 from tiled.adapters.core import Adapter
 
+from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..catalog.orm import Node
 from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
@@ -211,5 +212,6 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         """
         if any(block[1:]):
             raise IndexError(block)
-        arr = self.read(builtins.slice(block[0], block[0] + 1))
+        slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
+        arr = self.read(slice_[0])
         return arr[slice] if slice else arr

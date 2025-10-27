@@ -50,6 +50,7 @@ from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
 
 from .. import __version__
+from ..links import links_for_node
 from ..ndslice import NDSlice
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
@@ -91,7 +92,6 @@ from .dependencies import (
     shape_param,
 )
 from .file_response_with_range import FileResponseWithRange
-from .links import links_for_node
 from .settings import Settings, get_settings
 from .utils import (
     filter_for_access,
@@ -695,7 +695,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.sparse},
+            None,
             getattr(request.app.state, "access_policy", None),
         )
         await entry.close_stream()

@@ -773,16 +773,27 @@ class CatalogNodeAdapter:
                 )
             ).scalar()
             if self.context.streaming_cache:
+                # Include IDs assigned by database in response.
+                data_sources_with_ids = []
+                for data_source, data_source_orm in zip(
+                    data_sources, refreshed_node.data_sources
+                ):
+                    ds = data_source.model_copy()
+                    ds.id = data_source_orm.id
+                    data_sources_with_ids.append(ds)
+
                 # Notify subscribers of the *parent* node about the new child.
                 sequence = await self.context.streaming_cache.incr_seq(self.node.id)
                 metadata = {
+                    "type": "container-child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
                     "structure_family": structure_family,
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
-                    "data_sources": [d.model_dump() for d in data_sources],
+                    "data_sources": [d.model_dump() for d in data_sources_with_ids],
+                    "access_blob": refreshed_node.access_blob,
                 }
 
                 # Cache data in Redis with a TTL, and publish
@@ -859,10 +870,11 @@ class CatalogNodeAdapter:
         if self.context.streaming_cache:
             sequence = await self.context.streaming_cache.incr_seq(self.node.id)
             metadata = {
+                "type": "array-ref",
                 "sequence": sequence,
                 "timestamp": datetime.now().isoformat(),
-                "data_source": data_source.dict(),
-                "patch": patch.dict() if patch else None,
+                "data_source": data_source.model_dump(),
+                "patch": patch.model_dump() if patch else None,
             }
 
             # Cache data in Redis with a TTL, and publish
@@ -1053,6 +1065,7 @@ class CatalogNodeAdapter:
             if self.context.streaming_cache:
                 sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
                 metadata = {
+                    "type": "container-child-metadata-updated",
                     "key": self.node.key,
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
@@ -1069,8 +1082,9 @@ class CatalogNodeAdapter:
         await self.context.streaming_cache.close(self.node.id)
 
     def make_ws_handler(self, websocket, formatter, uri):
+        schema = self.make_ws_schema()
         return self.context.streaming_cache.make_ws_handler(
-            websocket, formatter, uri, self.node.id
+            websocket, formatter, uri, self.node.id, schema
         )
 
 
@@ -1134,6 +1148,9 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return self
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
+    def make_ws_schema(self):
+        return {"type": "container-schema", "version": 1}
+
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
@@ -1152,9 +1169,10 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
         sequence = await self.context.streaming_cache.incr_seq(self.node.id)
         metadata = {
+            "type": "array-data",
             "sequence": sequence,
             "timestamp": datetime.now().isoformat(),
-            "content-type": media_type,
+            "mimetype": media_type,
             "shape": shape,
             "offset": offset,
             "block": block,
@@ -1163,6 +1181,13 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         await self.context.streaming_cache.set(
             self.node.id, sequence, metadata, payload=body
         )
+
+    def make_ws_schema(self):
+        return {
+            "type": "array-schema",
+            "version": 1,
+            "data_type": dataclasses.asdict(self.structure().data_type),
+        }
 
     async def write(self, media_type, deserializer, entry, body):
         shape = entry.structure().shape

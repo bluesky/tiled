@@ -4,9 +4,8 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Protocol
 
 import orjson
-from fastapi import HTTPException, WebSocketDisconnect
+from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
-from starlette.status import HTTP_404_NOT_FOUND
 
 from ..utils import safe_json_dump
 
@@ -21,7 +20,12 @@ class StreamingDatastore(Protocol):
         ...
 
     def make_ws_handler(
-        self, websocket, formatter, uri, node_id
+        self,
+        websocket,
+        formatter,
+        uri,
+        node_id,
+        schema,
     ) -> Callable[[int], None]:
         ...
 
@@ -78,8 +82,10 @@ class StreamingCache:
     async def close(self, node_id):
         await self._datastore.close(node_id)
 
-    def make_ws_handler(self, websocket, formatter, uri, node_id):
-        return self._datastore.make_ws_handler(websocket, formatter, uri, node_id)
+    def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
+        return self._datastore.make_ws_handler(
+            websocket, formatter, uri, node_id, schema
+        )
 
 
 @register_datastore("redis")
@@ -119,29 +125,15 @@ class RedisStreamingDatastore(StreamingDatastore):
         await pipeline.execute()
 
     async def close(self, node_id):
-        # Check the node status.
-        # ttl returns -2 if the key does not exist.
-        # ttl returns -1 if the key exists but has no associated expire.
-        # ttl greater than 0 means that it is marked to expire.
-        node_ttl = await self.client.ttl(f"sequence:{node_id}")
-        if node_ttl > 0:
-            # Stream is already closed, return success (idempotent operation)
-            return
-        if node_ttl == -2:
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=f"Node {node_id} not found.",
-            )
-
+        # Increment the counter for this node.
+        sequence = await self.incr_seq(node_id)
+        # Publish a special message (end_of_stream) that will signal
+        # any open clients to close.
         metadata = {
             "timestamp": datetime.now().isoformat(),
             "end_of_stream": True,
         }
-        # Increment the counter for this node.
-        sequence = await self.incr_seq(node_id)
 
-        # Cache data in Redis with a TTL, and publish
-        # a notification about it.
         pipeline = self.client.pipeline()
         pipeline.hset(
             f"data:{node_id}:{sequence}",
@@ -161,11 +153,14 @@ class RedisStreamingDatastore(StreamingDatastore):
     async def get(self, key, *fields):
         return await self.client.hmget(key, *fields)
 
-    def make_ws_handler(self, websocket, formatter, uri, node_id):
+    def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
         async def handler(sequence: Optional[int] = None):
             await websocket.accept()
             end_stream = asyncio.Event()
             streaming_cache = self
+
+            # Send schema to provide client context to interpret what follows.
+            await formatter(websocket, schema, None)
 
             async def stream_data(sequence):
                 """Helper function to stream a specific sequence number to a websocket"""
