@@ -62,7 +62,9 @@ class ChildCreated(Update):
 
 
 class ChildMetadataUpdated(Update):
-    type: Literal["container-child-metadata-updated"] = "child-metadata-updated"
+    type: Literal[
+        "container-child-metadata-updated"
+    ] = "container-child-metadata-updated"
     key: str
     specs: list[Spec]
     metadata: dict
