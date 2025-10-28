@@ -17,6 +17,7 @@ from ..structures.array import ArrayStructure
 from ..structures.core import StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..utils import safe_json_dump
+from .utils import fail_with_status_code
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"
@@ -377,14 +378,28 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
                 num=3,
             ),
         )
+        params = {
+            "patch_shape": ",".join(map(str, [1, 7, 13])),
+            "patch_offset": ",".join(map(str, [2, 0, 0])),
+            "patch_extend": True,
+        }
+
+        # First test invalid requests that will be bounced by the server.
+        for key in params:
+            bad_params = params.copy()
+            bad_params.pop(key)  # missing one of the patch params!
+            with fail_with_status_code(400):
+                x.context.http_client.put(
+                    x.uri.replace("/metadata/", "/data_source/", 1),
+                    content=safe_json_dump({"data_source": updated_data_source}),
+                    params=bad_params,
+                ).raise_for_status()
+
+        # Now do a request that is valid.
         x.context.http_client.put(
             x.uri.replace("/metadata/", "/data_source/", 1),
-            content=safe_json_dump(
-                {
-                    "data_source": updated_data_source,
-                    "patch": {"shape": (1, 7, 13), "offset": (2, 0, 0), "extend": True},
-                }
-            ),
+            content=safe_json_dump({"data_source": updated_data_source}),
+            params=params,
         ).raise_for_status()
         assert event.wait(timeout=5.0), "Timeout waiting for messages"
         x.close_stream()
