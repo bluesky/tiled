@@ -46,15 +46,16 @@ async def get_entry(
         entry = entry.with_session_state(session_state)
     # start at the root
     # filter and keep only what we are allowed to see from here
-    entry = await filter_for_access(
-        entry,
-        access_policy,
-        principal,
-        authn_access_tags,
-        authn_scopes,
-        ["read:metadata"],
-        metrics,
-    )
+    if not isinstance(access_policy, ExternalPolicyDecisionPoint):
+        entry = await filter_for_access(
+            entry,
+            access_policy,
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            ["read:metadata"],
+            metrics,
+        )
     try:
         for i, segment in enumerate(path_parts):
             if hasattr(entry, "lookup_adapter"):
@@ -72,40 +73,53 @@ async def get_entry(
                     raise NoEntry(path_parts)
 
             # filter and keep only what we are allowed to see from here
-            entry = await filter_for_access(
-                entry,
-                access_policy,
-                principal,
-                authn_access_tags,
-                authn_scopes,
-                ["read:metadata"],
-                metrics,
-            )
-
-        # Now check that we have the requested scope according to the access policy
-        if access_policy is not None:
-            with record_timing(metrics, "acl"):
-                allowed_scopes = await access_policy.allowed_scopes(
+            if not isinstance(access_policy, ExternalPolicyDecisionPoint):
+                entry = await filter_for_access(
                     entry,
+                    access_policy,
                     principal,
                     authn_access_tags,
                     authn_scopes,
+                    ["read:metadata"],
+                    metrics,
                 )
-                if not set(security_scopes).issubset(allowed_scopes):
-                    if "read:metadata" not in allowed_scopes:
-                        # If you can't read metadata, it does not exist for you.
-                        raise NoEntry(path_parts)
-                    else:
-                        # You can see this, but you cannot perform the requested
-                        # operation on it.
-                        raise HTTPException(
-                            status_code=HTTP_403_FORBIDDEN,
-                            detail=(
-                                "Not enough permissions to perform this action on this node. "
-                                f"Requires scopes {security_scopes}. "
-                                f"Principal had scopes {list(allowed_scopes)} on this node."
-                            ),
-                        )
+
+        # Now check that we have the requested scope according to the access policy
+        if access_policy is not None:
+            if isinstance(access_policy, ExternalPolicyDecisionPoint):
+                if not await access_policy.authorized(
+                    entry, principal, security_scopes
+                ):
+                    raise HTTPException(
+                        status_code=HTTP_403_FORBIDDEN,
+                        detail=(
+                            "Not enough permissions to perform this action on this node. "
+                            f"Requires scopes {security_scopes}. "
+                        ),
+                    )
+            else:
+                with record_timing(metrics, "acl"):
+                    allowed_scopes = await access_policy.allowed_scopes(
+                        entry,
+                        principal,
+                        authn_access_tags,
+                        authn_scopes,
+                    )
+                    if not set(security_scopes).issubset(allowed_scopes):
+                        if "read:metadata" not in allowed_scopes:
+                            # If you can't read metadata, it does not exist for you.
+                            raise NoEntry(path_parts)
+                        else:
+                            # You can see this, but you cannot perform the requested
+                            # operation on it.
+                            raise HTTPException(
+                                status_code=HTTP_403_FORBIDDEN,
+                                detail=(
+                                    "Not enough permissions to perform this action on this node. "
+                                    f"Requires scopes {security_scopes}. "
+                                    f"Principal had scopes {list(allowed_scopes)} on this node."
+                                ),
+                            )
     except BrokenLink as err:
         raise HTTPException(status_code=HTTP_410_GONE, detail=err.args[0])
     except NoEntry:

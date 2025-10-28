@@ -24,6 +24,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - In `Subscription`, use a configurable `concurrent.futures.Executor` to
   execute callbacks.
 
+### Added
+
+- `locking` key-word argument in HDFAdapter and HDF5Adapter.
+
 ### Fixed
 
 - Prevent exception when serving asset from a node if stat_result already found
