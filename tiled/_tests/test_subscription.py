@@ -381,7 +381,6 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
         params = {
             "patch_shape": ",".join(map(str, [1, 7, 13])),
             "patch_offset": ",".join(map(str, [2, 0, 0])),
-            "patch_extend": True,
         }
 
         # First test invalid requests that will be bounced by the server.
@@ -410,7 +409,6 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
     (update,) = updates
     assert update.patch.shape == (1, 7, 13)
     assert update.patch.offset == (2, 0, 0)
-    assert update.patch.extend
     actual_streamed = update.data()
     np.testing.assert_array_equal(actual_streamed, arr[2:])
 
