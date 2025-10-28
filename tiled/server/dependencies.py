@@ -156,9 +156,9 @@ def shape_param(
 
 
 def offset_param(
-    offset: Optional[str] = Query(..., min_length=1, pattern="^[0-9]+(,[0-9]+)*$"),
+    offset: str = Query(..., min_length=1, pattern="^[0-9]+(,[0-9]+)*$"),
 ):
-    "Specify and parse an array patch offset parameter."
+    "Specify and parse an offset parameter."
     return tuple(map(int, offset.split(",")))
 
 
