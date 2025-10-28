@@ -1,5 +1,7 @@
+import concurrent.futures
 import functools
 import warnings
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import parse_qs, urlparse
 
 import dask
@@ -17,6 +19,9 @@ from .utils import (
     handle_error,
     retry_context,
 )
+
+if TYPE_CHECKING:
+    from .stream import TableSubscription
 
 _EXTRA_CHARS_PER_ITEM = len("&column=")
 
@@ -301,6 +306,25 @@ class _DaskDataFrameClient(BaseClient):
             self.item["links"]["full"],
             params=params,
         )
+
+    def subscribe(
+        self,
+        executor: Optional[concurrent.futures.Executor] = None,
+    ) -> "TableSubscription":
+        """
+        Subscribe to streaming updates about this table.
+
+        Returns
+        -------
+        subscription : Subscription
+        executor : concurrent.futures.Executor, optional
+            Launches tasks asynchronously, in response to updates. By default,
+            a concurrent.futures.ThreadPoolExecutor is used.
+        """
+        # Keep this import here to defer the websockets import until/unless needed.
+        from .stream import TableSubscription
+
+        return TableSubscription(self.context, self.path_parts, executor)
 
 
 # Subclass with a public class that adds the dask-specific methods.

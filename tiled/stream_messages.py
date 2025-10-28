@@ -46,6 +46,11 @@ class ContainerSchema(Schema):
     pass
 
 
+class TableSchema(Schema):
+    type: Literal["table-schema"]
+    arrow_schema: str
+
+
 class Update(BaseModel):
     sequence: int = Field(gt=0)
     timestamp: datetime
@@ -73,9 +78,9 @@ class ChildMetadataUpdated(Update):
 class ArrayData(Update):
     type: Literal["array-data"] = "array-data"
     mimetype: str
-    shape: tuple[int]
-    offset: Optional[tuple[int]]
-    block: Optional[tuple[int]]
+    shape: tuple[int, ...]
+    offset: Optional[tuple[int, ...]]
+    block: Optional[tuple[int, ...]]
     payload: bytes
     data_type: Union[BuiltinDtype, StructDtype]
 
@@ -91,4 +96,16 @@ class ArrayRef(Update):
     data_source: DataSource[ArrayStructure]
     patch: Optional[ArrayPatch]
     uri: Optional[str]
+    shape: tuple[int, ...]
     data_type: Union[BuiltinDtype, StructDtype]
+
+
+class TableData(Update):
+    type: Literal["table-data"] = "table-data"
+    mimetype: str
+    # partition=None means a write to the entire table, an old design choice
+    # that may need revisiting.
+    partition: Optional[int]
+    append: bool
+    payload: bytes
+    arrow_schema: str

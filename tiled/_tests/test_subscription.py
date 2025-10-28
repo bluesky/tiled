@@ -4,8 +4,11 @@ import threading
 import uuid
 
 import numpy as np
+import pandas as pd
+import pyarrow
 import pytest
 import tifffile
+from pandas.testing import assert_frame_equal
 from starlette.testclient import WebSocketDenialResponse
 
 from ..client import from_context
@@ -304,7 +307,8 @@ def test_subscribe_to_disconnected(
         assert event.wait(timeout=5.0), "Timeout waiting for messages"
 
 
-def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
+def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_path):
+    "Writer specifies the region of the update (patch)."
     context = tiled_websocket_context
     client = from_context(context)
     container_sub = client.subscribe()
@@ -356,7 +360,7 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
             data_sources=[data_source],
             metadata={},
             specs=[],
-            key="test_subscribe_to_array_registered",
+            key="test_subscribe_to_array_registered_with_patch",
         )
         actual = x.read()  # smoke test
         np.testing.assert_array_equal(actual, arr[:2])
@@ -394,3 +398,162 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
     assert update.patch.extend
     actual_streamed = update.data()
     np.testing.assert_array_equal(actual_streamed, arr[2:])
+
+
+def test_subscribe_to_array_registered_without_patch(tiled_websocket_context, tmp_path):
+    "Writer does not specify the region of the update (patch)."
+    context = tiled_websocket_context
+    client = from_context(context)
+    container_sub = client.subscribe()
+
+    updates = []
+    event = threading.Event()
+
+    def on_array_updated(update):
+        updates.append(update)
+        event.set()
+
+    def on_child_created(update):
+        array_sub = update.child().subscribe()
+        array_sub.new_data.add_callback(on_array_updated)
+        array_sub.start_in_thread(1)
+
+    container_sub.child_created.add_callback(on_child_created)
+
+    arr = np.random.random((3, 7, 13))
+    tifffile.imwrite(tmp_path / "image1.tiff", arr[0])
+    tifffile.imwrite(tmp_path / "image2.tiff", arr[1])
+
+    # Register just the first two images.
+    structure = ArrayStructure.from_array(arr[:2])
+    data_source = DataSource(
+        management=Management.external,
+        mimetype="multipart/related;type=image/tiff",
+        structure_family=StructureFamily.array,
+        structure=structure,
+        assets=[
+            Asset(
+                data_uri=f"file://{tmp_path}/image1.tiff",
+                is_directory=False,
+                parameter="data_uris",
+                num=1,
+            ),
+            Asset(
+                data_uri=f"file://{tmp_path}/image2.tiff",
+                is_directory=False,
+                parameter="data_uris",
+                num=2,
+            ),
+        ],
+    )
+
+    with container_sub.start_in_thread(1):
+        x = client.new(
+            structure_family=StructureFamily.array,
+            data_sources=[data_source],
+            metadata={},
+            specs=[],
+            key="test_subscribe_to_array_registered_without_patch",
+        )
+        actual = x.read()  # smoke test
+        np.testing.assert_array_equal(actual, arr[:2])
+        # Add the third image.
+        tifffile.imwrite(tmp_path / "image3.tiff", arr[2])
+        updated_structure = ArrayStructure.from_array(arr[:])
+        updated_data_source = copy.deepcopy(x.data_sources()[0])
+        updated_data_source.structure = updated_structure
+        updated_data_source.assets.append(
+            Asset(
+                data_uri=f"file://{tmp_path}/image3.tiff",
+                is_directory=False,
+                parameter="data_uris",
+                num=3,
+            ),
+        )
+        x.context.http_client.put(
+            x.uri.replace("/metadata/", "/data_source/", 1),
+            content=safe_json_dump(
+                {
+                    "data_source": updated_data_source,
+                }
+            ),
+        ).raise_for_status()
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        x.close_stream()
+        client.close_stream()
+        x.refresh()
+        actual_updated = x.read()
+        np.testing.assert_array_equal(actual_updated, arr[:])
+    (update,) = updates
+    assert update.patch is None
+    actual_streamed = update.data()
+    np.testing.assert_array_equal(actual_streamed, arr[:])
+
+
+def test_streaming_table_write(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+    updates = []
+    event = threading.Event()
+    key = "test_streaming_table_write"
+
+    def collect(update):
+        updates.append(update)
+        event.set()
+
+    df1 = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    df2 = pd.DataFrame({"a": [7, 8, 9], "b": [10, 11, 12]})
+    x = client.write_table(df1, key=key)
+
+    sub = client[key].subscribe()
+    sub.new_data.add_callback(collect)
+    with sub.start_in_thread(1):
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        actual = updates[0].data()
+        assert_frame_equal(actual, df1)
+        event.clear()
+        x.write(df2)
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert not updates[1].append
+        actual_updated = updates[1].data()
+        assert_frame_equal(actual_updated, df2)
+
+
+def test_streaming_table_appends(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+    updates = []
+    event = threading.Event()
+    key = "test_streaming_table_append"
+
+    def collect(update):
+        updates.append(update)
+        event.set()
+
+    df1 = pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
+    df2 = pd.DataFrame({"a": [7, 8, 9], "b": [10, 11, 12]})
+    table1 = pyarrow.Table.from_pandas(df1, preserve_index=False)
+    table2 = pyarrow.Table.from_pandas(df2, preserve_index=False)
+    x = client.create_appendable_table(table1.schema, key=key)
+
+    sub = client[key].subscribe()
+    sub.new_data.add_callback(collect)
+    with sub.start_in_thread(1):
+        x.append_partition(0, table1)
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert updates[0].append
+        streamed1 = updates[0].data()
+        streamed1_pyarrow = pyarrow.Table.from_pandas(streamed1, preserve_index=False)
+        assert streamed1_pyarrow == table1
+        event.clear()
+        x.append_partition(0, table2)
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert updates[1].append
+        streamed2 = updates[1].data()
+        streamed2_pyarrow = pyarrow.Table.from_pandas(streamed2, preserve_index=False)
+        assert streamed2_pyarrow == table2
+        streaming_combined = pyarrow.concat_tables(
+            [streamed1_pyarrow, streamed2_pyarrow]
+        )
+        expected_combined = pyarrow.concat_tables([table1, table2])
+        assert streaming_combined == expected_combined
