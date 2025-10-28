@@ -88,7 +88,6 @@ class ArrayData(Update):
 class ArrayPatch(BaseModel):
     offset: tuple[int, ...]
     shape: tuple[int, ...]
-    extend: bool
 
 
 class ArrayRef(Update):

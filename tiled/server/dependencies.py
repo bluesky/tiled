@@ -160,3 +160,25 @@ def offset_param(
 ):
     "Specify and parse an offset parameter."
     return tuple(map(int, offset.split(",")))
+
+
+def patch_shape_param(
+    patch_shape: Optional[str] = Query(
+        None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"
+    ),
+):
+    "Specify and parse an array patch shape parameter."
+    if patch_shape is None:
+        return None
+    return tuple(map(int, patch_shape.split(",")))
+
+
+def patch_offset_param(
+    patch_offset: Optional[str] = Query(
+        None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$"
+    ),
+):
+    "Specify and parse an array patch offset parameter."
+    if patch_offset is None:
+        return None
+    return tuple(map(int, patch_offset.split(",")))

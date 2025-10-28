@@ -655,11 +655,11 @@ class LiveTableData(TableData):
     def data(self):
         "Get table"
         # Registration occurs on import. Ensure this is imported.
-        from ..serialization import array
+        from ..serialization import table
 
-        del array
+        del table
 
-        # Decode payload (bytes) into array.
+        # Decode payload (bytes) into table.
         deserializer = default_deserialization_registry.dispatch("table", self.mimetype)
         return deserializer(self.payload)
 

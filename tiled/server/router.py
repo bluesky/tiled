@@ -52,6 +52,7 @@ from tiled.server.schemas import Principal
 from .. import __version__
 from ..links import links_for_node
 from ..ndslice import NDSlice
+from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
@@ -89,6 +90,8 @@ from .dependencies import (
     get_entry,
     get_root_tree,
     offset_param,
+    patch_offset_param,
+    patch_shape_param,
     shape_param,
 )
 from .file_response_with_range import FileResponseWithRange
@@ -1636,6 +1639,8 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
+        patch_shape: Optional[tuple[int, ...]] = Depends(patch_shape_param),
+        patch_offset: Optional[tuple[int, ...]] = Depends(patch_offset_param),
         _=Security(check_scopes, scopes=["write:metadata", "register"]),
     ):
         entry = await get_entry(
@@ -1650,7 +1655,23 @@ def get_router(
             None,
             getattr(request.app.state, "access_policy", None),
         )
-        await entry.put_data_source(data_source=body.data_source, patch=body.patch)
+        patch_params = {
+            "shape": patch_shape,
+            "offset": patch_offset,
+        }
+        if all(value is None for value in patch_params.values()):
+            patch = None
+        elif all(value is not None for value in patch_params.values()):
+            patch = ArrayPatch(**patch_params)
+        else:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=(
+                    "The query parameters patch_shape and patch_offset"
+                    "go together; either all or none must be specified."
+                ),
+            )
+        await entry.put_data_source(data_source=body.data_source, patch=patch)
 
     @router.delete("/metadata/{path:path}")
     async def delete(
