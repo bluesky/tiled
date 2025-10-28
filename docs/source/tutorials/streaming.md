@@ -5,8 +5,10 @@
 Streaming is an experimental feature in Tiled, subject to backward-compatible
 changes without notice.
 
-Additionally, it is only currently supported on arrays and containers.
-Support for tables and other structures is planned but not yet implemented.
+Additionally, it is only currently supported on containers, arrays (both
+uploaded and external registered data), and tables (uploaded data only).
+Support for external registered tabular data and other structures (sparse,
+awkward) is planned but not yet implemented.
 
 ```
 
@@ -177,5 +179,6 @@ serve` CLI they are `--cache-data-ttl` and `--cache-seq-ttl`.)
 
 This feature is in a very early preview stage.
 
-- Other data structures (table, sparse, awkward) are not yet supported.
-- Updates to metadata and deletions of nodes are not yet visible to subscribers.
+- External registered tabular data is not yet supported.
+- Other data structures (sparse, awkward) are not yet supported.
+- Deletions of nodes are not yet visible to subscribers.
