@@ -9,20 +9,45 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Tests to ensure that CSVAdapter can be used with a subset of columns.
 - `locking` key-word argument in HDFAdapter and HDF5Adapter.
+- Support for streaming uploaded tabular data.
 
 ### Changed
 
 - Enable Tiled server to accept bearer access tokens for authentication.
 - Modernize implementation of Device Code Flow.
+- The websocket messages contain a `"type"` field and are not formally
+  specified and validated using pydantic models in `tiled.stream_messages`.
 - In previous releases, the method `Subscription.start` launched a background
   thread. This was renamed to `Subscription.start_in_thread`. Now
   `Subscription.start` blocks the current thread, leaving any thread management
   up to the caller.
 - Encapsulated redis code in adapter.py into a StreamingCache object
-- Renamed `Subscription.stop` to `Subscription.close` to match the property
-  `Subscription.closed`.
+- Renamed `Subscription.stop` to `Subscription.disconnect`.
 - In `Subscription`, use a configurable `concurrent.futures.Executor` to
   execute callbacks.
+- Removed `Subscription.add_callback`, replaced by separate callback registries
+  connected to specific types of updates:
+
+  ```python
+  Subscription.stream_closed  # writer-initiated
+  Subscription.disconnected  # subscriber-initiated
+  ContainerSubscription.child_created
+  ContainerSubscription.child_metadata_updated
+  ArraySubscription.new_data
+  TableSubscription.new_data
+  ```
+
+- The signature of subscription callbacks has been changed. The
+  connection-related callbacks `stream_closed` and `disconnected`
+  receive `f(subscription: Subscription)`. The other callbacks
+  receive an instance of `tiled.client.stream.LiveUpdate`,
+  which provide a reference to the subscription
+  `update.subscription`, all the data from the websocket message,
+  and update-specific convenience methods such as
+  `LiveContainerUpdate.child()` when a new child is created in a
+  container and `ArraySubscription.new_data()` or
+  `TableSubscription.new_data()` to conveniently access an array
+  or table respectively.
 
 ### Fixed
 
