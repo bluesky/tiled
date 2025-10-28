@@ -74,7 +74,9 @@ from ..server.schemas import Asset, DataSource, Management, Revision
 from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
 from ..storage import (
+    SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
+    ObjectStorage,
     SQLStorage,
     get_storage,
     parse_storage,
@@ -172,8 +174,8 @@ class Context:
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
-        self.writable_storage = []
-        self.readable_storage = set()
+        self.writable_storage = {}
+        self.readable_storage = {}
 
         # Back-compat: `writable_storage` used to be a dict: we want its values.
         if isinstance(writable_storage, dict):
@@ -182,21 +184,23 @@ class Context:
         if isinstance(writable_storage, (str, Path)):
             writable_storage = [writable_storage]
         if isinstance(readable_storage, str):
-            raise ValueError("readable_storage should be a list of URIs or paths")
+            raise ValueError(
+                "readable_storage should be a list of URIs, paths, or dicts"
+            )
 
         for item in writable_storage or []:
-            self.writable_storage.append(
-                parse_storage(
-                    item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
-                )
+            storage = parse_storage(
+                item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
             )
+            self.writable_storage[storage.uri] = storage
         for item in readable_storage or []:
-            self.readable_storage.add(parse_storage(item))
+            storage = parse_storage(item)
+            self.readable_storage[storage.uri] = storage
         # Writable storage should also be readable.
         self.readable_storage.update(self.writable_storage)
         # Register all storage in a registry that enables Adapters to access
         # credentials (if applicable).
-        for item in self.readable_storage:
+        for item in self.readable_storage.values():
             register_storage(item)
 
         self.key_maker = key_maker
@@ -508,7 +512,7 @@ class CatalogNodeAdapter:
                 asset_path = path_from_uri(asset.data_uri)
                 for readable_storage in {
                     item
-                    for item in self.context.readable_storage
+                    for item in self.context.readable_storage.values()
                     if isinstance(item, FileStorage)
                 }:
                     if (
@@ -692,13 +696,13 @@ class CatalogNodeAdapter:
                         )
                     adapter_cls = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
                     # Choose writable storage. Use the first writable storage item
-                    # with a scheme that is supported by this adapter. # For
-                    # back-compat, if an adapter does not declare `supported_storage`
+                    # with a scheme that is supported by this adapter.
+                    # For back-compat, if an adapter does not declare `supported_storage`
                     # assume it supports file-based storage only.
                     supported_storage = getattr(
-                        adapter_cls, "supported_storage", {FileStorage}
+                        adapter_cls, "supported_storage", lambda: {FileStorage}
                     )()
-                    for storage in self.context.writable_storage:
+                    for storage in self.context.writable_storage.values():
                         if isinstance(storage, tuple(supported_storage)):
                             break
                     else:
@@ -706,7 +710,7 @@ class CatalogNodeAdapter:
                             f"The adapter {adapter_cls} supports storage types "
                             f"{[cls.__name__ for cls in supported_storage]} "
                             "but the only available storage types "
-                            f"are {self.context.writable_storage}."
+                            f"are {self.context.writable_storage.values()}."
                         )
                     data_source = await ensure_awaitable(
                         adapter_cls.init_storage,
@@ -1325,6 +1329,17 @@ def delete_asset(data_uri, is_directory, parameters=None):
                 if cursor.fetchone()[0] == 0:
                     cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
             conn.commit()
+
+    elif url.scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        storage = cast(ObjectStorage, get_storage(data_uri))
+        store = storage.get_obstore_location()
+
+        if prefix := data_uri.split(f"{storage.bucket}/", 1)[1]:
+            for batch in store.list(prefix=prefix):
+                store.delete([obj["path"] for obj in batch])
+        else:
+            raise ValueError(f"Cannot delete the entire bucket: {storage.bucket!r}")
+
     else:
         raise NotImplementedError(
             f"Cannot delete asset at {data_uri!r} because the scheme {url.scheme!r} is not supported."

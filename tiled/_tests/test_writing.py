@@ -5,9 +5,11 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
+import os
 import threading
 import uuid
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 
 import awkward
 import dask.dataframe
@@ -17,6 +19,8 @@ import pandas.testing
 import pyarrow
 import pytest
 import sparse
+from minio import Minio
+from minio.error import S3Error
 from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_404_NOT_FOUND,
@@ -37,7 +41,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes, sanitize_uri
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
@@ -46,13 +50,55 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
 @pytest.fixture
-def tree(tmpdir):
-    return in_memory(
-        writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
-            f"duckdb:///{tmpdir / 'data.duckdb'}",
-        ]
-    )
+def tmp_minio_bucket():
+    """Create a temporary MinIO bucket and clean it up after tests."""
+    if uri := os.getenv("TILED_TEST_BUCKET"):
+        clean_uri, username, password = sanitize_uri(uri)
+        minio_client = Minio(
+            urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
+            access_key=username or "minioadmin",
+            secret_key=password or "minioadmin",
+            secure=False,
+        )
+
+        bucket_name = f"test-{uuid.uuid4().hex}"
+        minio_client.make_bucket(bucket_name)
+
+        try:
+            yield urljoin(uri, "/" + bucket_name)  # full URI with credentials
+        finally:
+            # Cleanup: remove all objects and delete the bucket
+            try:
+                objects = minio_client.list_objects(bucket_name, recursive=True)
+                for obj in objects:
+                    minio_client.remove_object(bucket_name, obj.object_name)
+                minio_client.remove_bucket(bucket_name)
+            except S3Error as e:
+                print(f"Warning: failed to delete test bucket {bucket_name}: {e}")
+
+    else:
+        yield None
+
+
+@pytest.fixture
+def tree(tmpdir, tmp_minio_bucket):
+    writable_storage = [f"duckdb:///{tmpdir / 'data.duckdb'}"]
+
+    if tmp_minio_bucket:
+        writable_storage.append(
+            {
+                "provider": "s3",
+                "uri": tmp_minio_bucket,
+                "config": {
+                    "virtual_hosted_style_request": False,
+                    "client_options": {"allow_http": True},
+                },
+            }
+        )
+
+    writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
+
+    return in_memory(writable_storage=writable_storage)
 
 
 def test_write_array_full(tree):

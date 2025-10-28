@@ -1,9 +1,10 @@
+# mypy: ignore-errors
 import builtins
 import copy
 import os
 from importlib.metadata import version
 from typing import Any, Iterator, List, Optional, Set, Tuple, Union, cast
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urljoin, urlparse
 
 import zarr
 from numpy._typing import NDArray
@@ -17,7 +18,13 @@ from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..ndslice import NDSlice
-from ..storage import FileStorage, Storage
+from ..storage import (
+    SUPPORTED_OBJECT_URI_SCHEMES,
+    FileStorage,
+    ObjectStorage,
+    Storage,
+    get_storage,
+)
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
@@ -31,7 +38,8 @@ if ZARR_LIB_V2:
     from zarr.storage import init_array as create_array
 else:
     from zarr import create_array
-    from zarr.storage import LocalStore
+    from zarr.storage import LocalStore, ObjectStore
+
 
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
@@ -60,22 +68,24 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         path_parts: List[str],
     ) -> DataSource[ArrayStructure]:
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
-        data_uri = storage.uri + "".join(
-            f"/{quote_plus(segment)}" for segment in path_parts
-        )
+
         # Zarr requires evenly-sized chunks within each dimension.
         # Use the first chunk along each dimension.
         zarr_chunks = tuple(dim[0] for dim in data_source.structure.chunks)
         shape = tuple(dim[0] * len(dim) for dim in data_source.structure.chunks)
-        directory = path_from_uri(data_uri)
-        directory.mkdir(parents=True, exist_ok=True)
-        store = LocalStore(str(directory))
-        create_array(
-            store,
-            shape=shape,
-            chunks=zarr_chunks,
-            dtype=data_source.structure.data_type.to_numpy_dtype(),
+        data_type = data_source.structure.data_type.to_numpy_dtype()
+        data_uri = urljoin(
+            storage.uri + "/", "/".join(quote_plus(segment) for segment in path_parts)
         )
+
+        if ZARR_LIB_V2:
+            zarr_store = LocalStore(str(path_from_uri(data_uri)))
+        else:
+            zarr_store = ObjectStore(store=storage.get_obstore_location(data_uri))
+
+        create_array(zarr_store, shape=shape, chunks=zarr_chunks, dtype=data_type)
+
+        # Update data source to include the new asset
         data_source.assets.append(
             Asset(
                 data_uri=data_uri,
@@ -83,6 +93,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
                 parameter="data_uri",
             )
         )
+
         return data_source
 
     @property
@@ -205,7 +216,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
 
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
-        return {FileStorage}
+        return {FileStorage} if ZARR_LIB_V2 else {FileStorage, ObjectStorage}
 
 
 class ZarrGroupAdapter(
@@ -298,10 +309,29 @@ class ZarrAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> Union[ZarrGroupAdapter, ZarrArrayAdapter]:
-        zarr_obj = zarr.open(
-            path_from_uri(data_source.assets[0].data_uri)
-        )  # Group or Array
-        if node.structure_family == StructureFamily.container:
+        is_container_type = node.structure_family == StructureFamily.container
+        uri = data_source.assets[0].data_uri
+
+        if urlparse(uri).scheme == "file":
+            # This is a file-based Zarr storage
+            zarr_obj = zarr.open(path_from_uri(uri))
+
+        elif urlparse(uri).scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+            # This is an object-store-based Zarr storage
+            storage = cast(ObjectStorage, get_storage(uri))
+            _, _, prefix = storage.parse_blob_uri(uri)
+            zarr_store = ObjectStore(store=storage.get_obstore_location())
+            # zarr_obj = zarr.open(store=zarr_store)
+
+            if is_container_type:
+                zarr_obj = zarr.open_group(store=zarr_store, path=prefix)
+            else:
+                zarr_obj = zarr.open_array(store=zarr_store, path=prefix)
+
+        else:
+            raise TypeError(f"Unsupported URI scheme in {uri}")
+
+        if is_container_type:
             return ZarrGroupAdapter(
                 zarr_obj,
                 metadata=node.metadata_,
