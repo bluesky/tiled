@@ -1641,7 +1641,6 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         patch_shape: Optional[tuple[int, ...]] = Depends(patch_shape_param),
         patch_offset: Optional[tuple[int, ...]] = Depends(patch_offset_param),
-        patch_extend: Optional[bool] = None,
         _=Security(check_scopes, scopes=["write:metadata", "register"]),
     ):
         entry = await get_entry(
@@ -1659,7 +1658,6 @@ def get_router(
         patch_params = {
             "shape": patch_shape,
             "offset": patch_offset,
-            "extend": patch_extend,
         }
         if all(value is None for value in patch_params.values()):
             patch = None
@@ -1669,7 +1667,7 @@ def get_router(
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(
-                    "The query parameters patch_shape, patch_offset, patch_extend "
+                    "The query parameters patch_shape and patch_offset"
                     "go together; either all or none must be specified."
                 ),
             )
