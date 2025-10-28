@@ -731,6 +731,7 @@ def get_router(
                 StructureFamily.array,
                 StructureFamily.container,
                 StructureFamily.sparse,
+                StructureFamily.table,
             },
             getattr(websocket.app.state, "access_policy", None),
         )
@@ -1846,8 +1847,7 @@ def get_router(
         deserializer = deserialization_registry.dispatch(
             StructureFamily.table, media_type
         )
-        data = await ensure_awaitable(deserializer, body)
-        await ensure_awaitable(entry.write, data)
+        await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
         return json_or_msgpack(request, None)
 
     @router.put("/table/partition/{path:path}")
@@ -1884,8 +1884,9 @@ def get_router(
         deserializer = deserialization_registry.dispatch(
             StructureFamily.table, media_type
         )
-        data = await ensure_awaitable(deserializer, body)
-        await ensure_awaitable(entry.write_partition, partition, data)
+        await ensure_awaitable(
+            entry.write_partition, media_type, deserializer, entry, body, partition
+        )
         return json_or_msgpack(request, None)
 
     @router.patch("/table/partition/{path:path}")
@@ -1922,8 +1923,9 @@ def get_router(
         deserializer = deserialization_registry.dispatch(
             StructureFamily.table, media_type
         )
-        data = await ensure_awaitable(deserializer, body)
-        await ensure_awaitable(entry.append_partition, partition, data)
+        await ensure_awaitable(
+            entry.append_partition, media_type, deserializer, entry, body, partition
+        )
         return json_or_msgpack(request, None)
 
     @router.put("/awkward/full/{path:path}")

@@ -176,15 +176,18 @@ class RedisStreamingDatastore(StreamingDatastore):
                     # This means that the stream is closed by the producer
                     end_stream.set()
                     return
-                metadata["uri"] = uri
-                if metadata.get("patch"):
-                    s = ",".join(
-                        f"{offset}:{offset+shape}"
-                        for offset, shape in zip(
-                            metadata["patch"]["offset"], metadata["patch"]["shape"]
+                if metadata.get("type") == "array-ref":
+                    if metadata.get("patch"):
+                        s = ",".join(
+                            f"{offset}:{offset+shape}"
+                            for offset, shape in zip(
+                                metadata["patch"]["offset"], metadata["patch"]["shape"]
+                            )
                         )
-                    )
-                    metadata["uri"] = f"{uri}?slice={s}"
+                        metadata["uri"] = f"{uri}?slice={s}"
+                    else:
+                        s = ",".join(f":{dim}" for dim in metadata["shape"])
+                        metadata["uri"] = f"{uri}?slice={s}"
                 await formatter(websocket, metadata, payload_bytes)
 
             # Setup buffer

@@ -879,6 +879,7 @@ class CatalogNodeAdapter:
                 "timestamp": datetime.now().isoformat(),
                 "data_source": data_source.model_dump(),
                 "patch": patch.model_dump() if patch else None,
+                "shape": structure["shape"],
             }
 
             # Cache data in Redis with a TTL, and publish
@@ -1279,28 +1280,59 @@ class CatalogSparseAdapter(CatalogArrayAdapter):
 
 
 class CatalogTableAdapter(CatalogNodeAdapter):
+    def make_ws_schema(self):
+        return {
+            "type": "table-schema",
+            "version": 1,
+            "arrow_schema": self.structure().arrow_schema,
+        }
+
+    async def _stream(self, media_type, entry, body, partition, append):
+        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
+        metadata = {
+            "type": "table-data",
+            "sequence": sequence,
+            "timestamp": datetime.now().isoformat(),
+            "mimetype": media_type,
+            "partition": partition,
+            "append": append,
+        }
+
+        await self.context.streaming_cache.set(
+            self.node.id, sequence, metadata, payload=body
+        )
+
     async def get(self, *args, **kwargs):
         return (await self.get_adapter()).get(*args, **kwargs)
 
     async def read(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
-    async def write(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+    async def write(self, media_type, deserializer, entry, body):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, None, False)
+        data = await ensure_awaitable(deserializer, body)
+        return await ensure_awaitable((await self.get_adapter()).write, data)
 
     async def read_partition(self, *args, **kwargs):
         return await ensure_awaitable(
             (await self.get_adapter()).read_partition, *args, **kwargs
         )
 
-    async def write_partition(self, *args, **kwargs):
+    async def write_partition(self, media_type, deserializer, entry, body, partition):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, partition, False)
+        data = await ensure_awaitable(deserializer, body)
         return await ensure_awaitable(
-            (await self.get_adapter()).write_partition, *args, **kwargs
+            (await self.get_adapter()).write_partition, partition, data
         )
 
-    async def append_partition(self, *args, **kwargs):
+    async def append_partition(self, media_type, deserializer, entry, body, partition):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, partition, True)
+        data = await ensure_awaitable(deserializer, body)
         return await ensure_awaitable(
-            (await self.get_adapter()).append_partition, *args, **kwargs
+            (await self.get_adapter()).append_partition, partition, data
         )
 
 

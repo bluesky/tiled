@@ -30,6 +30,8 @@ from ..stream_messages import (
     ChildMetadataUpdated,
     ContainerSchema,
     Schema,
+    TableData,
+    TableSchema,
     Update,
 )
 from ..structures.core import STRUCTURE_TYPES, StructureFamily
@@ -497,6 +499,36 @@ class ArraySubscription(Subscription):
         self.new_data.process(update)
 
 
+class TableSubscription(Subscription):
+    """
+    Subscribe to streaming updates from an table.
+
+    Parameters
+    ----------
+    context : tiled.client.Context
+        Provides connection to Tiled server
+    segments : list[str]
+        Path to node of interest, given as a list of path segments
+    executor : concurrent.futures.Executor, optional
+        Launches tasks asynchronously, in response to updates. By default,
+        a concurrent.futures.ThreadPoolExecutor is used.
+    """
+
+    def __init__(
+        self,
+        context: Context,
+        segments: List[str] = None,
+        executor: Optional[concurrent.futures.Executor] = None,
+    ):
+        super().__init__(context, segments, executor)
+        self.new_data: CallbackRegistry["LiveTableData"] = CallbackRegistry(
+            self.executor
+        )
+
+    def process(self, update: Update):
+        self.new_data.process(update)
+
+
 class UnparseableMessage(RuntimeError):
     "Message can be decoded but cannot be interpreted by the application"
     pass
@@ -609,16 +641,38 @@ class LiveArrayRef(ArrayRef):
                 ).read()
         # Decode payload (bytes) into array.
         numpy_dtype = self.data_type.to_numpy_dtype()
-        return numpy.frombuffer(content, dtype=numpy_dtype).reshape(self.patch.shape)
+        if self.patch:
+            shape = self.patch.shape
+        else:
+            shape = self.shape
+        return numpy.frombuffer(content, dtype=numpy_dtype).reshape(shape)
+
+
+class LiveTableData(TableData):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    subscription: TableSubscription
+
+    def data(self):
+        "Get table"
+        # Registration occurs on import. Ensure this is imported.
+        from ..serialization import array
+
+        del array
+
+        # Decode payload (bytes) into array.
+        deserializer = default_deserialization_registry.dispatch("table", self.mimetype)
+        return deserializer(self.payload)
 
 
 SCHEMA_MESSAGE_TYPES = {
     "array-schema": ArraySchema,
     "container-schema": ContainerSchema,
+    "table-schema": TableSchema,
 }
 UPDATE_MESSAGE_TYPES = {
     "container-child-created": LiveChildCreated,
     "container-child-metadata-updated": LiveChildMetadataUpdated,
     "array-data": LiveArrayData,
     "array-ref": LiveArrayRef,
+    "table-data": LiveTableData,
 }
