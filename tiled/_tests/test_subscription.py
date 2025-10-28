@@ -307,7 +307,8 @@ def test_subscribe_to_disconnected(
         assert event.wait(timeout=5.0), "Timeout waiting for messages"
 
 
-def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
+def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_path):
+    "Writer specifies the region of the update (patch)."
     context = tiled_websocket_context
     client = from_context(context)
     container_sub = client.subscribe()
@@ -359,7 +360,7 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
             data_sources=[data_source],
             metadata={},
             specs=[],
-            key="test_subscribe_to_array_registered",
+            key="test_subscribe_to_array_registered_with_patch",
         )
         actual = x.read()  # smoke test
         np.testing.assert_array_equal(actual, arr[:2])
@@ -397,6 +398,96 @@ def test_subscribe_to_array_registered(tiled_websocket_context, tmp_path):
     assert update.patch.extend
     actual_streamed = update.data()
     np.testing.assert_array_equal(actual_streamed, arr[2:])
+
+
+def test_subscribe_to_array_registered_without_patch(tiled_websocket_context, tmp_path):
+    "Writer does not specify the region of the update (patch)."
+    context = tiled_websocket_context
+    client = from_context(context)
+    container_sub = client.subscribe()
+
+    updates = []
+    event = threading.Event()
+
+    def on_array_updated(update):
+        updates.append(update)
+        event.set()
+
+    def on_child_created(update):
+        array_sub = update.child().subscribe()
+        array_sub.new_data.add_callback(on_array_updated)
+        array_sub.start_in_thread(1)
+
+    container_sub.child_created.add_callback(on_child_created)
+
+    arr = np.random.random((3, 7, 13))
+    tifffile.imwrite(tmp_path / "image1.tiff", arr[0])
+    tifffile.imwrite(tmp_path / "image2.tiff", arr[1])
+
+    # Register just the first two images.
+    structure = ArrayStructure.from_array(arr[:2])
+    data_source = DataSource(
+        management=Management.external,
+        mimetype="multipart/related;type=image/tiff",
+        structure_family=StructureFamily.array,
+        structure=structure,
+        assets=[
+            Asset(
+                data_uri=f"file://{tmp_path}/image1.tiff",
+                is_directory=False,
+                parameter="data_uris",
+                num=1,
+            ),
+            Asset(
+                data_uri=f"file://{tmp_path}/image2.tiff",
+                is_directory=False,
+                parameter="data_uris",
+                num=2,
+            ),
+        ],
+    )
+
+    with container_sub.start_in_thread(1):
+        x = client.new(
+            structure_family=StructureFamily.array,
+            data_sources=[data_source],
+            metadata={},
+            specs=[],
+            key="test_subscribe_to_array_registered_without_patch",
+        )
+        actual = x.read()  # smoke test
+        np.testing.assert_array_equal(actual, arr[:2])
+        # Add the third image.
+        tifffile.imwrite(tmp_path / "image3.tiff", arr[2])
+        updated_structure = ArrayStructure.from_array(arr[:])
+        updated_data_source = copy.deepcopy(x.data_sources()[0])
+        updated_data_source.structure = updated_structure
+        updated_data_source.assets.append(
+            Asset(
+                data_uri=f"file://{tmp_path}/image3.tiff",
+                is_directory=False,
+                parameter="data_uris",
+                num=3,
+            ),
+        )
+        x.context.http_client.put(
+            x.uri.replace("/metadata/", "/data_source/", 1),
+            content=safe_json_dump(
+                {
+                    "data_source": updated_data_source,
+                }
+            ),
+        ).raise_for_status()
+        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        x.close_stream()
+        client.close_stream()
+        x.refresh()
+        actual_updated = x.read()
+        np.testing.assert_array_equal(actual_updated, arr[:])
+    (update,) = updates
+    assert update.patch is None
+    actual_streamed = update.data()
+    np.testing.assert_array_equal(actual_streamed, arr[:])
 
 
 def test_streaming_table_write(tiled_websocket_context):
