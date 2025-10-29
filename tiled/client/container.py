@@ -14,13 +14,19 @@ import entrypoints
 import httpx
 import orjson
 
-from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import default_query_registry
 from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource
-from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
+from ..utils import (
+    UNCHANGED,
+    IndexersMixin,
+    OneShotCachedMap,
+    Sentinel,
+    node_repr,
+    safe_json_dump,
+)
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
