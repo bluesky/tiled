@@ -1,4 +1,3 @@
-import warnings
 from collections import defaultdict
 from typing import Any, Optional
 
@@ -7,40 +6,14 @@ from tiled.adapters.core import A, S
 from ..structures.data_source import DataSource
 
 # for back-compat
+from ..utils import IndexersMixin  # noqa: F401
 from ..utils import node_repr as tree_repr  # noqa: F401
 
-_MESSAGE = (
-    "Instead of {name}_indexer[...] use {name}()[...]. "
-    "The {name}_indexer accessor is deprecated."
-)
-
-
-class IndexersMixin:
-    """
-    Provides sliceable attributes keys_indexer, items_indexer, values_indexer.
-
-    This is just for back-ward compatibility.
-    """
-
-    keys: Any
-    values: Any
-    items: Any
-    fn: Any
-
-    @property
-    def keys_indexer(self) -> Any:
-        warnings.warn(_MESSAGE.format(name="keys"), DeprecationWarning)
-        return self.keys()
-
-    @property
-    def values_indexer(self) -> Any:
-        warnings.warn(_MESSAGE.format(name="values"), DeprecationWarning)
-        return self.values()
-
-    @property
-    def items_indexer(self) -> Any:
-        warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
-        return self.items()
+__all__ = [
+    "IndexersMixin",
+    "asset_parameters_to_adapter_kwargs",
+    "init_adapter_from_catalog",
+]
 
 
 class IndexCallable:
