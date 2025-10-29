@@ -3,7 +3,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.2.0 (unreleased)
+## v0.2.0 (2025-10-29)
 
 ### Added
 
@@ -59,6 +59,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter`
   with an explicit `dataset` parameter.
 - Prevent exception when serving asset from a node if stat_result already found
+- Fix bug in reading dask-backed `CompositeClient`.
 
 ### Refactored
 
