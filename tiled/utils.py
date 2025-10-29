@@ -901,3 +901,36 @@ def interning_constructor(loader, node):
 
 
 InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
+
+_MESSAGE = (
+    "Instead of {name}_indexer[...] use {name}()[...]. "
+    "The {name}_indexer accessor is deprecated."
+)
+
+
+class IndexersMixin:
+    """
+    Provides sliceable attributes keys_indexer, items_indexer, values_indexer.
+
+    This is just for back-ward compatibility.
+    """
+
+    keys: Any
+    values: Any
+    items: Any
+    fn: Any
+
+    @property
+    def keys_indexer(self) -> Any:
+        warnings.warn(_MESSAGE.format(name="keys"), DeprecationWarning)
+        return self.keys()
+
+    @property
+    def values_indexer(self) -> Any:
+        warnings.warn(_MESSAGE.format(name="values"), DeprecationWarning)
+        return self.values()
+
+    @property
+    def items_indexer(self) -> Any:
+        warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
+        return self.items()
