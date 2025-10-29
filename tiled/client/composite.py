@@ -186,6 +186,8 @@ class CompositeClient(Container):
                     table_client.columns
                 )
                 df = table_client.read(list(columns))
+                if hasattr(df, "compute"):
+                    df = df.compute()
                 for column in columns:
                     data_vars[column] = df[column].values
                     # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
