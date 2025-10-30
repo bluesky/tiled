@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Optional `persist` query parameter to PUT and PATCH /array/... routes, and
+  the corresponding DaskArrayClient methods: `write`, `write_block`, `patch`.
+
 ### Changed
 
 - The public demo hosted by NSLS2 has moved from `tiled-demo.blueskyproject.io`
