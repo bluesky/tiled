@@ -322,7 +322,7 @@ def parse_configs(src_file: Union[str, Path]) -> Config:
     if src_file.is_dir():
         conf = {}
         for f in src_file.iterdir():
-            if f.is_file() and f.suffix == ".yml":
+            if f.is_file() and f.suffix in (".yml", ".yaml"):
                 new_config = parse(f)
                 if common := new_config.keys() & conf.keys():
                     # These specific keys can be merged from separate files.
