@@ -3,6 +3,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+
+## PLACEHOLDER
+
+### Added
+
+- Optional `persist` query parameter to PUT and PATCH /array/... routes.
+
+
 ## v0.2.0 (2025-10-29)
 
 ### Added
