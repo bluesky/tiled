@@ -33,13 +33,13 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
 
         # Receive all updates
         received = []
-        for _ in range(3):
+        for _ in range(4):
             msg_bytes = websocket.receive_bytes()
             msg = msgpack.unpackb(msg_bytes)
             received.append(msg)
 
-        # Verify all updates received in order
-        assert len(received) == 3
+        # Verify all messages received (schema + 3 updates)
+        assert len(received) == 4
 
         # Check that we received messages with the expected data
         for i, msg in enumerate(received):
@@ -100,13 +100,13 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
 
         # Should only receive the 2 new updates
         received = []
-        for _ in range(2):
+        for _ in range(1 + 2):
             msg_bytes = websocket.receive_bytes()
             msg = msgpack.unpackb(msg_bytes)
             received.append(msg)
 
-        # Verify only new updates received
-        assert len(received) == 2
+        # Verify only the schema + new updates received
+        assert len(received) == (1 + 2)
 
         # Check that we received messages with the expected data
         for i, msg in enumerate(received):
@@ -220,13 +220,13 @@ def test_websockets_persist_array_write(tiled_websocket_context, persist):
 
         # Receive all updates
         received = []
-        for _ in range(3):
+        for _ in range(4):
             msg_bytes = websocket.receive_bytes()
             msg = msgpack.unpackb(msg_bytes)
             received.append(msg)
 
-        # Verify all updates received in order
-        assert len(received) == 3
+        # Verify all messages received (schema + 3 updates)
+        assert len(received) == 4
 
         # Verify payload contains the expected data
         for i, msg in enumerate(received):
@@ -272,13 +272,13 @@ def test_websockets_persist_array_append(tiled_websocket_context, persist):
 
         # Receive all updates
         received = []
-        for _ in range(3):
+        for _ in range(4):
             msg_bytes = websocket.receive_bytes()
             msg = msgpack.unpackb(msg_bytes)
             received.append(msg)
 
-        # Verify all updates received in order
-        assert len(received) == 3
+        # Verify all messages received (schema + 3 updates)
+        assert len(received) == 4
 
         # Verify payload contains the expected data
         for i, msg in enumerate(received):
