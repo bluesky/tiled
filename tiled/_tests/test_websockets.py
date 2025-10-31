@@ -198,6 +198,55 @@ def test_subscribe_after_first_update_from_beginning_websockets(
             np.testing.assert_array_equal(payload_array, expected_array)
 
 
+@pytest.mark.parametrize("persist", (True, False))
+def test_websockets_persist_array_full(tiled_websocket_context, persist):
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node using Tiled client
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
+
+    # Connect WebSocket using TestClient with msgpack format and authorization
+    with test_client.websocket_connect(
+        "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Write updates using Tiled client
+        for i in range(1, 4):
+            new_arr = np.arange(10) + i
+            streaming_node.write(new_arr, persist=persist)
+
+        # Receive all updates
+        received = []
+        for _ in range(3):
+            msg_bytes = websocket.receive_bytes()
+            msg = msgpack.unpackb(msg_bytes)
+            received.append(msg)
+
+        # Verify all updates received in order
+        assert len(received) == 3
+
+        # Verify payload contains the expected data
+        for i, msg in enumerate(received):
+            if i > 0:  # skip schema
+                assert "payload" in msg
+                assert msg["shape"] == [10]
+
+                # Verify payload contains the expected array data
+                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+                expected_array = np.arange(10) + i
+                np.testing.assert_array_equal(payload_array, expected_array)
+
+        # Verify values of persisted data
+        if persist:
+            expected_persisted = np.arange(10) + 3  # Final sent values
+        else:
+            expected_persisted = arr  # Original values
+        persisted_data = streaming_node.read()
+        np.testing.assert_array_equal(persisted_data, expected_persisted)
+
 def test_close_stream_success(tiled_websocket_context):
     """Test successful close of an existing stream."""
     context = tiled_websocket_context
