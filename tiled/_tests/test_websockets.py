@@ -239,13 +239,13 @@ def test_websockets_persist_array_write(tiled_websocket_context, persist):
                 expected_array = np.arange(10) + i
                 np.testing.assert_array_equal(payload_array, expected_array)
 
-        # Verify values of persisted data
-        if persist or persist is None:
-            expected_persisted = np.arange(10) + 3  # Final sent values
-        else:
-            expected_persisted = arr  # Original values
-        persisted_data = streaming_node.read()
-        np.testing.assert_array_equal(persisted_data, expected_persisted)
+    # Verify values of persisted data
+    if persist or persist is None:
+        expected_persisted = np.arange(10) + 3  # Final sent values
+    else:
+        expected_persisted = arr  # Original values
+    persisted_data = streaming_node.read()
+    np.testing.assert_array_equal(persisted_data, expected_persisted)
 
 
 @pytest.mark.parametrize("persist", (None, True, False))
@@ -291,17 +291,17 @@ def test_websockets_persist_array_append(tiled_websocket_context, persist):
                 expected_array = np.arange(10) + i
                 np.testing.assert_array_equal(payload_array, expected_array)
 
-        # Verify values of persisted data
-        if persist or persist is None:
-            # Combined effect of all sent values
-            expected_persisted = np.array(
-                [np.arange(10) + i for i in range(0, 4)]
-            ).flatten()
-        else:
-            # Original values
-            expected_persisted = arr
-        persisted_data = streaming_node.read()
-        np.testing.assert_array_equal(persisted_data, expected_persisted)
+    # Verify values of persisted data
+    if persist or persist is None:
+        # Combined effect of all sent values
+        expected_persisted = np.array(
+            [np.arange(10) + i for i in range(0, 4)]
+        ).flatten()
+    else:
+        # Original values
+        expected_persisted = arr
+    persisted_data = streaming_node.read()
+    np.testing.assert_array_equal(persisted_data, expected_persisted)
 
 
 def test_close_stream_success(tiled_websocket_context):
