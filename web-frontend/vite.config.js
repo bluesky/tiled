@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteRequire } from "vite-require";
 import { webcrypto as crypto } from "crypto";
+import dotenv from "dotenv";
+dotenv.config();
 
 // vite.config.js
 if (!global.crypto) {
@@ -13,12 +15,24 @@ if (!global.crypto) {
 export default defineConfig({
   base: "/ui/",
   server: {
+    //https: true,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: "https://tiled-staging.nsls2.bnl.gov",
+        secure: false,
+        changeOrigin: true,
+        configure: (proxy, options) => {
+          proxy.on("proxyReq", (proxyReq, req, res) => {
+          });
+          proxy.on("error", (err, req, res) => {
+            console.error("Proxy error:", err.message);
+          });
+        },
       },
       "/tiled-ui-settings": {
-        target: "http://127.0.0.1:8000",
+        target: "https://tiled-staging.nsls2.bnl.gov",
+        secure: false,
+        changeOrigin: true,
       },
     },
   },

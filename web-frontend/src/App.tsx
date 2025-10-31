@@ -1,13 +1,17 @@
 import Container from "@mui/material/Container";
 import ErrorBoundary from "./components/error-boundary/error-boundary";
 import { Outlet } from "react-router-dom";
-import TiledAppBar from "./components/tiled-app-bar/tiled-app-bar";
+import { TiledAppBar } from "./components/tiled-app-bar/tiled-app-bar";
 import { useEffect, useState } from "react";
 import { fetchSettings } from "./settings";
 import { SettingsContext, emptySettings } from "./context/settings";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
+import { LoginPage } from "./components/login-page/login-page";
+import { ProtectedRoute } from "./components/protected-route";
+import { Navigate } from "react-router-dom";
+import { AuthProvider } from "./auth/auth-provider";
 
 const Browse = lazy(() => import("./routes/browse"));
 
@@ -39,21 +43,34 @@ function App() {
     <SettingsContext.Provider value={settings}>
       <BrowserRouter basename={basename}>
         <ErrorBoundary>
-          <Suspense fallback={<Skeleton variant="rectangular" />}>
-            <Routes>
-              <Route path="/" element={<MainContainer />}>
-                <Route path="/browse/*" element={<Browse />} />
-              </Route>
-              <Route
-                path="*"
-                element={
-                  <main style={{ padding: "1rem" }}>
-                    <p>There's nothing here!</p>
-                  </main>
-                }
-              />
-            </Routes>
-          </Suspense>
+          <AuthProvider>
+            {" "}
+            {/* <-- Add this wrapper */}
+            <Suspense fallback={<Skeleton variant="rectangular" />}>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <MainContainer />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to="/browse" replace />} />
+                  <Route path="browse/*" element={<Browse />} />
+                </Route>
+                <Route
+                  path="*"
+                  element={
+                    <main style={{ padding: "1rem" }}>
+                      <p>There's nothing here!</p>
+                    </main>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </AuthProvider>
         </ErrorBoundary>
       </BrowserRouter>
     </SettingsContext.Provider>
