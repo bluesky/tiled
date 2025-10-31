@@ -12,6 +12,57 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def send_ws_updates(client, update_func, start=1, count=1, persist=None):
+    """Helper to send updates via Tiled client in websocket tests."""
+    for i in range(start, start + count):
+        new_arr = np.arange(10) + i
+        update_func(client, new_arr, i, persist=persist)
+
+
+# An update_func for send_ws_updates
+def overwrite_array(client, new_arr, seq_num, persist=None):
+    _ = seq_num  # seq_num is unused for these updates
+    client.write(new_arr, persist=persist)
+
+
+# An update_func for send_ws_updates
+def append_array(client, new_arr, seq_num, persist=None):
+    client.patch(new_arr, offset=(10 * seq_num,), extend=True, persist=persist)
+
+
+def receive_ws_updates(websocket, count=1):
+    """Helper to receive updates in websocket tests."""
+    # Receive all updates
+    received = []
+    for _ in range(count + 1):  # +1 for schema
+        msg_bytes = websocket.receive_bytes()
+        msg = msgpack.unpackb(msg_bytes)
+        received.append(msg)
+
+    # Verify all messages received (schema + n updates)
+    assert len(received) == count + 1
+
+    return received
+
+
+def verify_ws_updates(received, start=1):
+    """Verify that we received messages with the expected data"""
+    for i, msg in enumerate(received):
+        if i == 0:  # schema
+            assert "type" in msg
+            assert "version" in msg
+        else:
+            assert "type" in msg
+            assert "timestamp" in msg
+            assert "payload" in msg
+            assert msg["shape"] == [10]
+
+            # Verify payload contains the expected array data
+            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+            expected_array = np.arange(10) + (start - 1) + i
+            np.testing.assert_array_equal(payload_array, expected_array)
+
+
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
     context = tiled_websocket_context
     client = from_context(context)
@@ -26,36 +77,12 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
         "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
-        # Write updates using Tiled client
-        for i in range(1, 4):
-            new_arr = np.arange(10) + i
-            streaming_node.write(new_arr)
+        # Send 3 updates using Tiled client that overwrite the array
+        send_ws_updates(streaming_node, overwrite_array, count=3)
 
-        # Receive all updates
-        received = []
-        for _ in range(4):
-            msg_bytes = websocket.receive_bytes()
-            msg = msgpack.unpackb(msg_bytes)
-            received.append(msg)
-
-        # Verify all messages received (schema + 3 updates)
-        assert len(received) == 4
-
-        # Check that we received messages with the expected data
-        for i, msg in enumerate(received):
-            if i == 0:  # schema
-                assert "type" in msg
-                assert "version" in msg
-            else:
-                assert "type" in msg
-                assert "timestamp" in msg
-                assert "payload" in msg
-                assert msg["shape"] == [10]
-
-                # Verify payload contains the expected array data
-                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-                expected_array = np.arange(10) + i
-                np.testing.assert_array_equal(payload_array, expected_array)
+        # Receive and validate all updates
+        received = receive_ws_updates(websocket, count=3)
+        verify_ws_updates(received)
 
 
 def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
@@ -93,38 +120,13 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
         "/api/v1/stream/single/test_stream_after_update?envelope_format=msgpack",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
-        # Write more updates
-        for i in range(2, 4):
-            new_arr = np.arange(10) + i
-            streaming_node.write(new_arr)
+        # Send 2 more updates that overwrite the array
+        send_ws_updates(streaming_node, overwrite_array, start=2, count=2)
 
         # Should only receive the 2 new updates
-        received = []
-        for _ in range(1 + 2):
-            msg_bytes = websocket.receive_bytes()
-            msg = msgpack.unpackb(msg_bytes)
-            received.append(msg)
-
-        # Verify only the schema + new updates received
-        assert len(received) == (1 + 2)
-
-        # Check that we received messages with the expected data
-        for i, msg in enumerate(received):
-            if i == 0:  # schema
-                assert "type" in msg
-                assert "version" in msg
-            else:
-                assert "type" in msg
-                assert "timestamp" in msg
-                assert "payload" in msg
-                assert msg["shape"] == [10]
-
-                # Verify payload contains the expected array data
-                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-                expected_array = np.arange(10) + (
-                    i + 1
-                )  # i+2 because we start from update 1
-                np.testing.assert_array_equal(payload_array, expected_array)
+        received = receive_ws_updates(websocket, count=2)
+        # Content starts with update #2
+        verify_ws_updates(received, start=2)
 
 
 def test_subscribe_after_first_update_from_beginning_websockets(
@@ -199,7 +201,7 @@ def test_subscribe_after_first_update_from_beginning_websockets(
 
 
 @pytest.mark.parametrize("persist", (None, True, False))
-def test_websockets_persist_array_write(tiled_websocket_context, persist):
+def test_updates_persist_write(tiled_websocket_context, persist):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -213,31 +215,14 @@ def test_websockets_persist_array_write(tiled_websocket_context, persist):
         "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
-        # Write updates using Tiled client
-        for i in range(1, 4):
-            new_arr = np.arange(10) + i
-            streaming_node.write(new_arr, persist=persist)
+        # Send 3 updates using Tiled client that overwrite the array
+        send_ws_updates(
+            streaming_node, overwrite_array, count=3, persist=persist
+        )
 
-        # Receive all updates
-        received = []
-        for _ in range(4):
-            msg_bytes = websocket.receive_bytes()
-            msg = msgpack.unpackb(msg_bytes)
-            received.append(msg)
-
-        # Verify all messages received (schema + 3 updates)
-        assert len(received) == 4
-
-        # Verify payload contains the expected data
-        for i, msg in enumerate(received):
-            if i > 0:  # skip schema
-                assert "payload" in msg
-                assert msg["shape"] == [10]
-
-                # Verify payload contains the expected array data
-                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-                expected_array = np.arange(10) + i
-                np.testing.assert_array_equal(payload_array, expected_array)
+        # Receive and validate all updates
+        received = receive_ws_updates(websocket, count=3)
+        verify_ws_updates(received)
 
     # Verify values of persisted data
     if persist or persist is None:
@@ -249,7 +234,7 @@ def test_websockets_persist_array_write(tiled_websocket_context, persist):
 
 
 @pytest.mark.parametrize("persist", (None, True, False))
-def test_websockets_persist_array_append(tiled_websocket_context, persist):
+def test_updates_persist_append(tiled_websocket_context, persist):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -263,33 +248,14 @@ def test_websockets_persist_array_append(tiled_websocket_context, persist):
         "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
-        # Append updates using Tiled client
-        for i in range(1, 4):
-            new_arr = np.arange(10) + i
-            streaming_node.patch(
-                new_arr, offset=(10 * i,), extend=True, persist=persist
-            )
+        # Send 3 updates using Tiled client that append to the array
+        send_ws_updates(
+            streaming_node, append_array, count=3, persist=persist
+        )
 
-        # Receive all updates
-        received = []
-        for _ in range(4):
-            msg_bytes = websocket.receive_bytes()
-            msg = msgpack.unpackb(msg_bytes)
-            received.append(msg)
-
-        # Verify all messages received (schema + 3 updates)
-        assert len(received) == 4
-
-        # Verify payload contains the expected data
-        for i, msg in enumerate(received):
-            if i > 0:  # skip schema
-                assert "payload" in msg
-                assert msg["shape"] == [10]
-
-                # Verify payload contains the expected array data
-                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-                expected_array = np.arange(10) + i
-                np.testing.assert_array_equal(payload_array, expected_array)
+        # Receive and validate all updates
+        received = receive_ws_updates(websocket, count=3)
+        verify_ws_updates(received)
 
     # Verify values of persisted data
     if persist or persist is None:
