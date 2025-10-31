@@ -198,7 +198,7 @@ def test_subscribe_after_first_update_from_beginning_websockets(
             np.testing.assert_array_equal(payload_array, expected_array)
 
 
-@pytest.mark.parametrize("persist", (True, False))
+@pytest.mark.parametrize("persist", (None, True, False))
 def test_websockets_persist_array_write(tiled_websocket_context, persist):
     context = tiled_websocket_context
     client = from_context(context)
@@ -240,7 +240,7 @@ def test_websockets_persist_array_write(tiled_websocket_context, persist):
                 np.testing.assert_array_equal(payload_array, expected_array)
 
         # Verify values of persisted data
-        if persist:
+        if persist or persist is None:
             expected_persisted = np.arange(10) + 3  # Final sent values
         else:
             expected_persisted = arr  # Original values
@@ -248,7 +248,7 @@ def test_websockets_persist_array_write(tiled_websocket_context, persist):
         np.testing.assert_array_equal(persisted_data, expected_persisted)
 
 
-@pytest.mark.parametrize("persist", (True, False))
+@pytest.mark.parametrize("persist", (None, True, False))
 def test_websockets_persist_array_append(tiled_websocket_context, persist):
     context = tiled_websocket_context
     client = from_context(context)
@@ -292,8 +292,8 @@ def test_websockets_persist_array_append(tiled_websocket_context, persist):
                 np.testing.assert_array_equal(payload_array, expected_array)
 
         # Verify values of persisted data
-        if persist:
-            # Final sent values
+        if persist or persist is None:
+            # Combined effect of all sent values
             expected_persisted = np.array(
                 [np.arange(10) + i for i in range(0, 4)]
             ).flatten()

@@ -177,7 +177,11 @@ class _DaskArrayClient(BaseClient):
             dask_array = dask_array[slice]
         return dask_array
 
-    def write(self, array, persist=True):
+    def write(self, array, persist=None):
+        if persist is None:
+            params = {}
+        else:
+            params = {"persist": persist}
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -185,16 +189,20 @@ class _DaskArrayClient(BaseClient):
                         self.item["links"]["full"],
                         content=array.tobytes(),
                         headers={"Content-Type": "application/octet-stream"},
-                        params={"persist": bool(persist)},
+                        params=params,
                     )
                 )
 
-    def write_block(self, array, block, slice=..., persist=True):
+    def write_block(self, array, block, slice=..., persist=None):
+        if persist is None:
+            quiet_params = {}
+        else:
+            quiet_params = {"persist": persist}
         url_path = self.item["links"]["block"].format(*block)
         params = {
             **parse_qs(urlparse(url_path).query),
             **params_from_slice(slice),
-            "persist": bool(persist),
+            **quiet_params,
         }
         for attempt in retry_context():
             with attempt:
@@ -212,7 +220,7 @@ class _DaskArrayClient(BaseClient):
         array: NDArray,
         offset: Union[int, tuple[int, ...]],
         extend=False,
-        persist=True,
+        persist=None,
     ):
         """
         Write data into a slice of an array, maybe extending the shape.
@@ -225,6 +233,9 @@ class _DaskArrayClient(BaseClient):
             Where to place this data in the array
         extend : bool
             Extend the array shape to fit the new slice, if necessary
+        persist : bool | None
+            Persist the changes on server storage if True. [default behavior]
+            If False, the update is still streamed to subscribed listeners.
 
         Examples
         --------
@@ -273,13 +284,17 @@ class _DaskArrayClient(BaseClient):
         array_ = numpy.ascontiguousarray(array)
         if isinstance(offset, int):
             offset = (offset,)
+        if persist is None:
+            quiet_params = {}
+        else:
+            quiet_params = {"persist": persist}
         url_path = self.item["links"]["full"]
         params = {
             **parse_qs(urlparse(url_path).query),
             "offset": ",".join(map(str, offset)),
             "shape": ",".join(map(str, array_.shape)),
             "extend": bool(extend),
-            "persist": bool(persist),
+            **quiet_params,
         }
         for attempt in retry_context():
             with attempt:
