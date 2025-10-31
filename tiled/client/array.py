@@ -177,11 +177,11 @@ class _DaskArrayClient(BaseClient):
             dask_array = dask_array[slice]
         return dask_array
 
-    def write(self, array, persist=None):
-        if persist is None:
-            params = {}
-        else:
-            params = {"persist": persist}
+    def write(self, array, persist=True):
+        params = {}
+        if persist is False:
+            # Extend the query only for non-default behavior.
+            params["persist"] = persist
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -193,17 +193,15 @@ class _DaskArrayClient(BaseClient):
                     )
                 )
 
-    def write_block(self, array, block, slice=..., persist=None):
-        if persist is None:
-            quiet_params = {}
-        else:
-            quiet_params = {"persist": persist}
+    def write_block(self, array, block, slice=..., persist=True):
         url_path = self.item["links"]["block"].format(*block)
         params = {
             **parse_qs(urlparse(url_path).query),
             **params_from_slice(slice),
-            **quiet_params,
         }
+        if persist is False:
+            # Extend the query only for non-default behavior.
+            params["persist"] = persist
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -220,7 +218,7 @@ class _DaskArrayClient(BaseClient):
         array: NDArray,
         offset: Union[int, tuple[int, ...]],
         extend=False,
-        persist=None,
+        persist=True,
     ):
         """
         Write data into a slice of an array, maybe extending the shape.
@@ -284,18 +282,16 @@ class _DaskArrayClient(BaseClient):
         array_ = numpy.ascontiguousarray(array)
         if isinstance(offset, int):
             offset = (offset,)
-        if persist is None:
-            quiet_params = {}
-        else:
-            quiet_params = {"persist": persist}
         url_path = self.item["links"]["full"]
         params = {
             **parse_qs(urlparse(url_path).query),
             "offset": ",".join(map(str, offset)),
             "shape": ",".join(map(str, array_.shape)),
             "extend": bool(extend),
-            **quiet_params,
         }
+        if persist is False:
+            # Extend the query only for non-default behavior.
+            params["persist"] = persist
         for attempt in retry_context():
             with attempt:
                 response = self.context.http_client.patch(
