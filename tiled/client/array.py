@@ -177,7 +177,7 @@ class _DaskArrayClient(BaseClient):
             dask_array = dask_array[slice]
         return dask_array
 
-    def write(self, array):
+    def write(self, array, persist=True):
         for attempt in retry_context():
             with attempt:
                 handle_error(
@@ -185,14 +185,16 @@ class _DaskArrayClient(BaseClient):
                         self.item["links"]["full"],
                         content=array.tobytes(),
                         headers={"Content-Type": "application/octet-stream"},
+                        params={"persist": bool(persist)},
                     )
                 )
 
-    def write_block(self, array, block, slice=...):
+    def write_block(self, array, block, slice=..., persist=True):
         url_path = self.item["links"]["block"].format(*block)
         params = {
             **parse_qs(urlparse(url_path).query),
             **params_from_slice(slice),
+            "persist": bool(persist),
         }
         for attempt in retry_context():
             with attempt:
@@ -205,7 +207,7 @@ class _DaskArrayClient(BaseClient):
                     )
                 )
 
-    def patch(self, array: NDArray, offset: Union[int, tuple[int, ...]], extend=False):
+    def patch(self, array: NDArray, offset: Union[int, tuple[int, ...]], extend=False, persist=True):
         """
         Write data into a slice of an array, maybe extending the shape.
 
@@ -271,6 +273,7 @@ class _DaskArrayClient(BaseClient):
             "offset": ",".join(map(str, offset)),
             "shape": ",".join(map(str, array_.shape)),
             "extend": bool(extend),
+            "persist": bool(persist),
         }
         for attempt in retry_context():
             with attempt:
