@@ -1752,7 +1752,9 @@ def get_router(
             deserializer = deserialization_registry.dispatch("sparse", media_type)
         else:
             raise NotImplementedError(entry.structure_family)
-        await ensure_awaitable(entry.write, media_type, deserializer, entry, body, persist)
+        await ensure_awaitable(
+            entry.write, media_type, deserializer, entry, body, persist
+        )
         return json_or_msgpack(request, None)
 
     @router.put("/array/block/{path:path}")
@@ -1833,7 +1835,15 @@ def get_router(
         media_type = request.headers["content-type"]
         deserializer = deserialization_registry.dispatch("array", media_type)
         structure = await ensure_awaitable(
-            entry.patch, shape, offset, extend, media_type, deserializer, entry, body, persist
+            entry.patch,
+            shape,
+            offset,
+            extend,
+            media_type,
+            deserializer,
+            entry,
+            body,
+            persist,
         )
         return json_or_msgpack(request, structure)
 

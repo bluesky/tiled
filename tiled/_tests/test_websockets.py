@@ -267,7 +267,7 @@ def test_websockets_persist_array_append(tiled_websocket_context, persist):
         for i in range(1, 4):
             new_arr = np.arange(10) + i
             streaming_node.patch(
-                new_arr, offset=(10*i,), extend=True, persist=persist
+                new_arr, offset=(10 * i,), extend=True, persist=persist
             )
 
         # Receive all updates
@@ -295,8 +295,8 @@ def test_websockets_persist_array_append(tiled_websocket_context, persist):
         if persist:
             # Final sent values
             expected_persisted = np.array(
-                    [np.arange(10) + i for i in range(0, 4)]
-                ).flatten()
+                [np.arange(10) + i for i in range(0, 4)]
+            ).flatten()
         else:
             # Original values
             expected_persisted = arr

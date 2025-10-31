@@ -1209,7 +1209,9 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable((await self.get_adapter()).write, data)
 
-    async def write_block(self, block, media_type, deserializer, entry, body, persist=True):
+    async def write_block(
+        self, block, media_type, deserializer, entry, body, persist=True
+    ):
         from tiled.adapters.array import slice_and_shape_from_block_and_chunks
 
         _, shape = slice_and_shape_from_block_and_chunks(
@@ -1230,7 +1232,9 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, data, block
         )
 
-    async def patch(self, shape, offset, extend, media_type, deserializer, entry, body, persist=True):
+    async def patch(
+        self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
+    ):
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
         if not persist:
