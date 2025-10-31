@@ -8,7 +8,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- Optional `persist` query parameter to PUT and PATCH /array/... routes.
+- Optional `persist` query parameter to PUT and PATCH /array/... routes, and
+  the corresponding DaskArrayClient methods: `write`, `write_block`, `patch`.
 
 
 ## v0.2.0 (2025-10-29)
