@@ -49,6 +49,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `TableSubscription.new_data()` to conveniently access an array
   or table respectively.
 
+### Added
+
+- A script to remove the 'streams' node as part of the updating BlueskyRun catalogs.
+
 ### Fixed
 
 - Prevent exception when serving asset from a node if stat_result already found
