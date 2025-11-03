@@ -1,5 +1,3 @@
-// src/components/TiledAppBar.tsx (or whatever your nav component is called)
-
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/auth-context";
@@ -18,19 +16,11 @@ import LoginIcon from "@mui/icons-material/Login";
 export const TiledAppBar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
 
   const handleLogout = async () => {
     await logout();
     navigate("/login");
-  };
-
-  const handleLogin = () => {
-    navigate("/login");
-  };
-
-  const handleBrowse = () => {
-    navigate("/browse");
   };
 
   return (
@@ -51,9 +41,8 @@ export const TiledAppBar: React.FC = () => {
             TILED
           </Typography>
 
-
-          {isAuthenticated && location.pathname !== "/ui/browse" && (
-            <Button color="inherit" onClick={handleBrowse} sx={{ mr: 1 }}>
+          {isAuthenticated && location.pathname !== "/browse" && (
+            <Button color="inherit" onClick={() => navigate("/browse")}>
               Browse
             </Button>
           )}
@@ -69,7 +58,7 @@ export const TiledAppBar: React.FC = () => {
           ) : (
             <Button
               color="inherit"
-              onClick={handleLogin}
+              onClick={() => navigate("/login")}
               startIcon={<LoginIcon />}
             >
               Login

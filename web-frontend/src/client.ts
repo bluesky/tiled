@@ -2,10 +2,65 @@ import axios from "axios";
 import { components } from "./openapi_schemas";
 
 const axiosInstance = axios.create({
+  //baseURL: "/api/v1",
   headers: {
     "Content-Type": "application/json",
   },
 });
+
+// Helper to convert absolute URLs to relative paths
+function toRelativePath(urlString: string): string {
+  try {
+    const url = new URL(urlString);
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return urlString;
+  }
+}
+
+// Transform all links in the response to relative paths
+function transformLinks(data: any): any {
+  if (!data) return data;
+
+  if (typeof data === "string" && data.startsWith("http")) {
+    return toRelativePath(data);
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(transformLinks);
+  }
+
+  if (typeof data === "object") {
+    const transformed: any = {};
+    for (const key in data) {
+      if (key === "links" && typeof data[key] === "object") {
+        // Transform all link values
+        transformed[key] = {};
+        for (const linkKey in data[key]) {
+          const linkValue = data[key][linkKey];
+          transformed[key][linkKey] =
+            typeof linkValue === "string"
+              ? toRelativePath(linkValue)
+              : linkValue;
+        }
+      } else {
+        transformed[key] = transformLinks(data[key]);
+      }
+    }
+    return transformed;
+  }
+
+  return data;
+}
+
+// Add response interceptor to transform all links
+axiosInstance.interceptors.response.use(
+  (response) => {
+    response.data = transformLinks(response.data);
+    return response;
+  },
+  (error) => Promise.reject(error),
+);
 
 export function setupAuthInterceptor(getAccessToken: () => string | null) {
   axiosInstance.interceptors.request.use(

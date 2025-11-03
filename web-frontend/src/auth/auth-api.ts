@@ -1,16 +1,13 @@
 import { AuthConfig, AuthTokens, User } from "./types";
+//const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+const API_BASE = "/api/v1";
 
-const API_BASE_URL = "";
-const API_PREFIX = "/api/v1";
-console.log(" Auth Service initialized with backend:", API_BASE_URL);
 export const authService = {
   async getAuthConfig(): Promise<AuthConfig> {
-    const response = await fetch(`${API_BASE_URL}${API_PREFIX}/`);
-    
-    if (!response.ok) {
-      throw new Error("Failed to fetch auth configuration");
-    }
-    const data = await response.json();
+    const res = await fetch(`${API_BASE}/`);
+    if (!res.ok) throw new Error("Failed to fetch auth config");
+
+    const data = await res.json();
     return data.authentication;
   },
 
@@ -19,87 +16,48 @@ export const authService = {
     username: string,
     password: string,
   ): Promise<AuthTokens> {
-    
-    const url = `${API_BASE_URL}${API_PREFIX}/auth/provider/${provider}/token`;
+    const body = new URLSearchParams({ username, password });
 
-    const formData = new URLSearchParams();
-    formData.append("username", username);
-    formData.append("password", password);
-
-    const response = await fetch(url, {
+    const res = await fetch(`${API_BASE}/auth/provider/${provider}/token`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
     });
 
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ detail: "Login failed" }));
-      throw new Error(error.detail || "Invalid credentials");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Login failed" }));
+      throw new Error(err.detail || "Invalid credentials");
     }
 
-    return response.json();
+    return res.json();
   },
 
- 
-
   async refreshSession(refreshToken: string): Promise<AuthTokens> {
-    const response = await fetch(
-      `${API_BASE_URL}${API_PREFIX}/auth/session/refresh`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      },
-    );
+    const res = await fetch(`${API_BASE}/auth/session/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
 
-    if (!response.ok) {
-      throw new Error("Failed to refresh session");
-    }
-
-    return response.json();
+    if (!res.ok) throw new Error("Failed to refresh session");
+    return res.json();
   },
 
   async getCurrentUser(accessToken: string): Promise<User> {
-    const response = await fetch(`${API_BASE_URL}${API_PREFIX}/auth/whoami`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+    const res = await fetch(`${API_BASE}/auth/whoami`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    if (!response.ok) {
-      throw new Error("Failed to get user info");
-    }
+    if (!res.ok) throw new Error("Failed to get user info");
 
-    const data = await response.json();
-    return data.data; // Tiled returns user in data.data
+    const data = await res.json();
+    return data.data;
   },
 
   async logout(accessToken: string): Promise<void> {
-    await fetch(`${API_BASE_URL}${API_PREFIX}/auth/logout`, {
+    await fetch(`${API_BASE}/auth/logout`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-  },
-
-  async authenticatedFetch(
-    url: string,
-    accessToken: string,
-    options: RequestInit = {},
-  ): Promise<Response> {
-    return fetch(url, {
-      ...options,
-      headers: {
-        ...options.headers,
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
   },
 };

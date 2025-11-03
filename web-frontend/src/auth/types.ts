@@ -27,15 +27,17 @@ export interface AuthConfig {
   };
 }
 
+export interface UserIdentity {
+  id: string;
+  provider: string;
+  latest_login?: string;
+}
+
 export interface User {
   uuid: string;
   id: string;
   type: string;
-  identities?: Array<{
-    id: string;
-    provider: string;
-    latest_login?: string;
-  }>;
+  identities?: UserIdentity[];
   roles?: string[];
 }
 

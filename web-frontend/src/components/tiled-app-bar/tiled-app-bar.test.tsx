@@ -19,6 +19,17 @@ describe("TiledAppBar", () => {
       refreshTokens: vi.fn(),
       tokens: null,
       error: null,
+      authConfig: {
+        required: false,
+        providers: [],
+        links: {
+          whoami: "",
+          apikey: "",
+          refresh_session: "",
+          revoke_session: "",
+          logout: "",
+        },
+      },
     });
 
     return render(
@@ -26,7 +37,7 @@ describe("TiledAppBar", () => {
         <AuthProvider>
           <TiledAppBar />
         </AuthProvider>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
   };
 
@@ -34,7 +45,6 @@ describe("TiledAppBar", () => {
     renderAppBar();
     expect(screen.getByText("TILED")).toBeInTheDocument();
   });
-
 
   it("has a working Browse button that links to the browse page", () => {
     renderAppBar("/login", true);

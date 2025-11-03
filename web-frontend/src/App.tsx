@@ -35,6 +35,8 @@ function App() {
     const controller = new AbortController();
     async function initSettingsContext() {
       const data = await fetchSettings(controller.signal);
+      data.api_url = "/api/v1";
+      console.log("Modified api_url:", data.api_url);
       setSettings(data);
     }
     initSettingsContext();

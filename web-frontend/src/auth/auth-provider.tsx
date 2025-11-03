@@ -20,7 +20,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Setup auth token interceptor
     setupAuthInterceptor(() => {
       const tokens = tokenManager.getTokens();
       if (tokens?.access_token) {
@@ -30,7 +29,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return null;
     });
 
-    // Setup refresh token interceptor
     setupRefreshInterceptor(
       () => {
         const tokens = tokenManager.getTokens();
@@ -90,11 +88,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Fetch auth configuration from server
         const config = await authService.getAuthConfig();
         setAuthConfig(config);
 
-        //Check if we have stored tokens
         const tokens = tokenManager.getTokens();
 
         if (!tokens) {
@@ -106,7 +102,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           return;
         }
 
-        // Check if access token is expired
         if (tokenManager.isAccessTokenExpired(tokens)) {
           try {
             const newTokens = await authService.refreshSession(
@@ -114,7 +109,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             );
             tokenManager.saveTokens(newTokens);
 
-            // Get user info with new token
             const user = await authService.getCurrentUser(
               newTokens.access_token,
             );
@@ -159,7 +153,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     initAuth();
 
-    // Cleanup timeout on unmount
     return () => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
@@ -255,6 +248,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         login,
         logout,
         refreshTokens,
+        authConfig,
       }}
     >
       {children}

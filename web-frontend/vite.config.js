@@ -5,7 +5,6 @@ import { webcrypto as crypto } from "crypto";
 import dotenv from "dotenv";
 dotenv.config();
 
-// vite.config.js
 if (!global.crypto) {
   global.crypto = require("crypto");
   global.crypto.getRandomValues = (arr) =>
@@ -21,13 +20,7 @@ export default defineConfig({
         target: "https://tiled-staging.nsls2.bnl.gov",
         secure: false,
         changeOrigin: true,
-        configure: (proxy, options) => {
-          proxy.on("proxyReq", (proxyReq, req, res) => {
-          });
-          proxy.on("error", (err, req, res) => {
-            console.error("Proxy error:", err.message);
-          });
-        },
+        rewrite: (path) => path,
       },
       "/tiled-ui-settings": {
         target: "https://tiled-staging.nsls2.bnl.gov",

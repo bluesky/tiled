@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { AuthState } from "./types";
+import { AuthState, AuthConfig } from "./types";
 
 interface AuthContextType extends AuthState {
   login: (
@@ -9,16 +9,17 @@ interface AuthContextType extends AuthState {
   ) => Promise<void>;
   logout: () => Promise<void>;
   refreshTokens: () => Promise<void>;
+  authConfig: AuthConfig | null;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(
-  undefined,
-);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
-};
+}
+
+export { AuthContext };

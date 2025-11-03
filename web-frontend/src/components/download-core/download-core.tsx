@@ -19,6 +19,7 @@ import { about } from "../../client";
 import { components } from "../../openapi_schemas";
 import copy from "clipboard-copy";
 import { SettingsContext } from "../../context/settings";
+//import { toRelativePath } from "../../utils/url-helper";
 
 interface Format {
   mimetype: string;
