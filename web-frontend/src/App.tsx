@@ -3,7 +3,7 @@ import ErrorBoundary from "./components/error-boundary/error-boundary";
 import { Outlet } from "react-router-dom";
 import { TiledAppBar } from "./components/tiled-app-bar/tiled-app-bar";
 import { useEffect, useState } from "react";
-import { fetchSettings } from "./settings";
+import { fetchSettings, getApiBaseUrl } from "./settings";
 import { SettingsContext, emptySettings } from "./context/settings";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Suspense, lazy } from "react";
@@ -12,6 +12,7 @@ import { LoginPage } from "./components/login-page/login-page";
 import { ProtectedRoute } from "./components/protected-route";
 import { Navigate } from "react-router-dom";
 import { AuthProvider } from "./auth/auth-provider";
+
 
 const Browse = lazy(() => import("./routes/browse"));
 
@@ -30,24 +31,22 @@ function MainContainer() {
 const basename = import.meta.env.BASE_URL;
 
 function App() {
-  const [settings, setSettings] = useState(emptySettings);
+  const [settings, setSettings] = useState({
+    ...emptySettings,
+    api_url: `${getApiBaseUrl()}/api/v1`,
+
+  });
+
   useEffect(() => {
     const controller = new AbortController();
-    async function initSettingsContext() {
-      const data = await fetchSettings(controller.signal);
-      data.api_url = "/api/v1";
-      console.log("Modified api_url:", data.api_url);
-      setSettings(data);
-    }
-    initSettingsContext();
+    fetchSettings(controller.signal).then(setSettings);
+    return () => controller.abort();
   }, []);
   return (
-    <SettingsContext.Provider value={settings}>
-      <BrowserRouter basename={basename}>
-        <ErrorBoundary>
-          <AuthProvider>
-            {" "}
-            {/* <-- Add this wrapper */}
+    <BrowserRouter basename={basename}>
+      <ErrorBoundary>
+        <AuthProvider>
+          <SettingsContext.Provider value={settings}>
             <Suspense fallback={<Skeleton variant="rectangular" />}>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
@@ -72,10 +71,10 @@ function App() {
                 />
               </Routes>
             </Suspense>
-          </AuthProvider>
-        </ErrorBoundary>
-      </BrowserRouter>
-    </SettingsContext.Provider>
+          </SettingsContext.Provider>
+        </AuthProvider>
+      </ErrorBoundary>
+    </BrowserRouter>
   );
 }
 

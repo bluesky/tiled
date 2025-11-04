@@ -8,7 +8,7 @@ const axiosInstance = axios.create({
   },
 });
 
-// Helper to convert absolute URLs to relative paths
+
 function toRelativePath(urlString: string): string {
   try {
     const url = new URL(urlString);
@@ -18,7 +18,7 @@ function toRelativePath(urlString: string): string {
   }
 }
 
-// Transform all links in the response to relative paths
+
 function transformLinks(data: any): any {
   if (!data) return data;
 
@@ -53,7 +53,7 @@ function transformLinks(data: any): any {
   return data;
 }
 
-// Add response interceptor to transform all links
+
 axiosInstance.interceptors.response.use(
   (response) => {
     response.data = transformLinks(response.data);
