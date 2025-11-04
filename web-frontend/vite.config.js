@@ -17,13 +17,13 @@ export default defineConfig({
     //https: true,
     proxy: {
       "/api": {
-        target: "https://tiled-staging.nsls2.bnl.gov",
+        target: "http://127.0.0.1:8000",
         secure: false,
         changeOrigin: true,
         rewrite: (path) => path,
       },
       "/tiled-ui-settings": {
-        target: "https://tiled-staging.nsls2.bnl.gov",
+        target: "http://127.0.0.1:8000",
         secure: false,
         changeOrigin: true,
       },
