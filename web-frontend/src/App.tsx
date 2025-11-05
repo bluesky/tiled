@@ -34,7 +34,6 @@ function App() {
   const [settings, setSettings] = useState({
     ...emptySettings,
     api_url: `${getApiBaseUrl()}/api/v1`,
-
   });
 
   useEffect(() => {

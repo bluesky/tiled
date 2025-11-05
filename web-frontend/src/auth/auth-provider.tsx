@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { AuthContext } from "./auth-context";
 import { authService } from "./auth-api";
 import { tokenManager } from "./token-manager";
-import { AuthState, AuthConfig, AuthTokens, User } from "./types";
+import { AuthState, AuthConfig, AuthTokens } from "./types";
 import { setupAuthInterceptor, setupRefreshInterceptor } from "../client";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -19,13 +19,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const logout = useCallback(async () => {
+    try {
+      if (state.tokens?.access_token) {
+        await authService.logout(state.tokens.access_token);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      tokenManager.clearTokens();
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      setState({
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        tokens: null,
+        error: null,
+      });
+    }
+  }, [state.tokens]);
+
+  const refreshTokens = useCallback(async () => {
+    if (!state.tokens?.refresh_token) {
+      throw new Error("No refresh token available");
+    }
+
+    try {
+      const newTokens = await authService.refreshSession(
+        state.tokens.refresh_token,
+      );
+      tokenManager.saveTokens(newTokens);
+
+      setState((prev) => ({
+        ...prev,
+        tokens: newTokens,
+      }));
+    } catch (error) {
+      await logout();
+      throw error;
+    }
+  }, [state.tokens, logout]);
+
   useEffect(() => {
     setupAuthInterceptor(() => {
       const tokens = tokenManager.getTokens();
       if (tokens?.access_token) {
         return tokens.access_token;
       }
-
       return null;
     });
 
@@ -56,34 +98,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         });
       },
     );
-  }, [state.isAuthenticated]);
-
-  const scheduleTokenRefresh = useCallback((tokens: AuthTokens) => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-
-    if (!tokens.expires_in) {
-      return;
-    }
-
-    // Calculate when to refresh (5 minutes before expiry, or half the lifetime)
-    const bufferTime = Math.min(5 * 60 * 1000, (tokens.expires_in * 1000) / 2);
-    const refreshIn = tokens.expires_in * 1000 - bufferTime;
-
-    if (refreshIn <= 0) {
-      return;
-    }
-
-    refreshTimeoutRef.current = setTimeout(async () => {
-      try {
-        await refreshTokens();
-      } catch (error) {
-        // If auto-refresh fails, user will need to log in again
-        logout();
-      }
-    }, refreshIn);
   }, []);
+
+  const scheduleTokenRefresh = useCallback(
+    (tokens: AuthTokens): void => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+
+      if (!tokens.expires_in) {
+        return;
+      }
+
+      const bufferTime = Math.min(
+        5 * 60 * 1000,
+        (tokens.expires_in * 1000) / 2,
+      );
+      const refreshIn = tokens.expires_in * 1000 - bufferTime;
+
+      if (refreshIn <= 0) {
+        return;
+      }
+
+      refreshTimeoutRef.current = setTimeout(async () => {
+        try {
+          await refreshTokens();
+        } catch (error) {
+          logout();
+        }
+      }, refreshIn);
+    },
+    [refreshTokens, logout],
+  );
 
   useEffect(() => {
     const initAuth = async () => {
@@ -194,50 +240,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         error: error.message || "Login failed",
       }));
       throw error;
-    }
-  };
-
-  const refreshTokens = async () => {
-    if (!state.tokens?.refresh_token) {
-      throw new Error("No refresh token available");
-    }
-
-    try {
-      const newTokens = await authService.refreshSession(
-        state.tokens.refresh_token,
-      );
-      tokenManager.saveTokens(newTokens);
-
-      setState((prev) => ({
-        ...prev,
-        tokens: newTokens,
-      }));
-
-      scheduleTokenRefresh(newTokens);
-    } catch (error) {
-      throw error;
-    }
-  };
-
-  const logout = async () => {
-    try {
-      if (state.tokens?.access_token) {
-        await authService.logout(state.tokens.access_token);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      tokenManager.clearTokens();
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      setState({
-        isAuthenticated: false,
-        isLoading: false,
-        user: null,
-        tokens: null,
-        error: null,
-      });
     }
   };
 

@@ -1,8 +1,6 @@
 import axios from "axios";
-import { components } from "./openapi_schemas";
 
 const axiosInstance = axios.create({
-  //baseURL: "/api/v1",
   headers: {
     "Content-Type": "application/json",
   },
@@ -20,18 +18,8 @@ function toRelativePath(urlString: string): string {
 
 
 function transformLinks(data: any): any {
-  if (!data) return data;
-
-  if (typeof data === "string" && data.startsWith("http")) {
-    return toRelativePath(data);
-  }
-
-  if (Array.isArray(data)) {
-    return data.map(transformLinks);
-  }
-
-  if (typeof data === "object") {
-    const transformed: any = {};
+  if (typeof data === "object" && data !== null) {
+    const transformed: any = Array.isArray(data) ? [] : {};
     for (const key in data) {
       if (key === "links" && typeof data[key] === "object") {
         // Transform all link values
@@ -49,7 +37,6 @@ function transformLinks(data: any): any {
     }
     return transformed;
   }
-
   return data;
 }
 
