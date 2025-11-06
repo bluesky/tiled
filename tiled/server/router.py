@@ -1692,11 +1692,11 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["write:data", "write:metadata"]),
+        _=Security(check_scopes, scopes=["delete:data", "delete:metadata"]),
     ):
         entry = await get_entry(
             path,
-            ["write:data", "write:metadata"],
+            ["delete:data", "delete:metadata"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -2252,11 +2252,11 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["write:metadata"]),
+        _=Security(check_scopes, scopes=["delete:metadata"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata"],
+            ["delete:metadata"],
             principal,
             authn_access_tags,
             authn_scopes,
