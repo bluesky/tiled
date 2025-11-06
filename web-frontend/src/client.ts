@@ -6,7 +6,6 @@ const axiosInstance = axios.create({
   },
 });
 
-
 function toRelativePath(urlString: string): string {
   try {
     const url = new URL(urlString);
@@ -16,13 +15,11 @@ function toRelativePath(urlString: string): string {
   }
 }
 
-
 function transformLinks(data: any): any {
   if (typeof data === "object" && data !== null) {
     const transformed: any = Array.isArray(data) ? [] : {};
     for (const key in data) {
       if (key === "links" && typeof data[key] === "object") {
-        // Transform all link values
         transformed[key] = {};
         for (const linkKey in data[key]) {
           const linkValue = data[key][linkKey];
@@ -39,7 +36,6 @@ function transformLinks(data: any): any {
   }
   return data;
 }
-
 
 axiosInstance.interceptors.response.use(
   (response) => {

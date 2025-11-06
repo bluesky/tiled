@@ -60,9 +60,6 @@ export const LoginPage: React.FC = () => {
             <Typography component="h1" variant="h4" gutterBottom>
               Login to Tiled
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Enter your credentials
-            </Typography>
           </Box>
 
           {error && (
@@ -82,6 +79,10 @@ export const LoginPage: React.FC = () => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={isLoading}
+              InputLabelProps={{
+                shrink: true,
+                sx: { fontSize: "1.20rem", top: "-5px" },
+              }}
             />
             <TextField
               margin="normal"
@@ -93,6 +94,10 @@ export const LoginPage: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={isLoading}
+              InputLabelProps={{
+                shrink: true,
+                sx: { fontSize: "1.20rem", top: "-5px" },
+              }}
             />
             <Button
               type="submit"

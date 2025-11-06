@@ -13,7 +13,6 @@ import { ProtectedRoute } from "./components/protected-route";
 import { Navigate } from "react-router-dom";
 import { AuthProvider } from "./auth/auth-provider";
 
-
 const Browse = lazy(() => import("./routes/browse"));
 
 function MainContainer() {

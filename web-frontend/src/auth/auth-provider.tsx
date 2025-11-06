@@ -21,8 +21,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const logout = useCallback(async () => {
     try {
-      if (state.tokens?.access_token) {
-        await authService.logout(state.tokens.access_token);
+      const currentTokens = tokenManager.getTokens();
+      if (currentTokens?.access_token) {
+        await authService.logout(currentTokens.access_token);
       }
     } catch (error) {
       console.error(error);
@@ -39,16 +40,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         error: null,
       });
     }
-  }, [state.tokens]);
+  }, []);
 
   const refreshTokens = useCallback(async () => {
-    if (!state.tokens?.refresh_token) {
+    const currentTokens = tokenManager.getTokens();
+    if (!currentTokens?.refresh_token) {
       throw new Error("No refresh token available");
     }
 
     try {
       const newTokens = await authService.refreshSession(
-        state.tokens.refresh_token,
+        currentTokens.refresh_token,
       );
       tokenManager.saveTokens(newTokens);
 
@@ -60,45 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await logout();
       throw error;
     }
-  }, [state.tokens, logout]);
-
-  useEffect(() => {
-    setupAuthInterceptor(() => {
-      const tokens = tokenManager.getTokens();
-      if (tokens?.access_token) {
-        return tokens.access_token;
-      }
-      return null;
-    });
-
-    setupRefreshInterceptor(
-      () => {
-        const tokens = tokenManager.getTokens();
-        return tokens?.refresh_token || null;
-      },
-      async (refreshToken: string) => {
-        const newTokens = await authService.refreshSession(refreshToken);
-        return newTokens;
-      },
-      (tokens: AuthTokens) => {
-        tokenManager.saveTokens(tokens);
-        setState((prev) => ({
-          ...prev,
-          tokens,
-        }));
-      },
-      () => {
-        tokenManager.clearTokens();
-        setState({
-          isAuthenticated: false,
-          isLoading: false,
-          user: null,
-          tokens: null,
-          error: null,
-        });
-      },
-    );
-  }, []);
+  }, [logout]);
 
   const scheduleTokenRefresh = useCallback(
     (tokens: AuthTokens): void => {
@@ -130,6 +94,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [refreshTokens, logout],
   );
+
+  useEffect(() => {
+    setupAuthInterceptor(() => {
+      const tokens = tokenManager.getTokens();
+      return tokens?.access_token || null;
+    });
+
+    setupRefreshInterceptor(
+      () => tokenManager.getTokens()?.refresh_token || null,
+      async (refreshToken: string) =>
+        await authService.refreshSession(refreshToken),
+      (tokens: AuthTokens) => {
+        tokenManager.saveTokens(tokens);
+        setState((prev) => ({ ...prev, tokens }));
+      },
+      () => {
+        tokenManager.clearTokens();
+        setState({
+          isAuthenticated: false,
+          isLoading: false,
+          user: null,
+          tokens: null,
+          error: null,
+        });
+      },
+    );
+  }, []);
 
   useEffect(() => {
     const initAuth = async () => {

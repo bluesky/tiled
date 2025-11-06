@@ -37,21 +37,24 @@ export const TiledAppBar: React.FC = () => {
             <MenuIcon />
           </IconButton>
 
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h5" component="div">
             TILED
           </Typography>
 
           {isAuthenticated && location.pathname !== "/browse" && (
-            <Button color="inherit" onClick={() => navigate("/browse")}>
+            <Button color="inherit" onClick={() => navigate("/browse")} sx={{ ml: 2, minWidth: 120 }}>
               Browse
             </Button>
           )}
+
+          <Box sx={{ flexGrow: 12 }} />
 
           {isAuthenticated ? (
             <Button
               color="inherit"
               onClick={handleLogout}
               startIcon={<LogoutIcon />}
+              sx={{ minWidth: 120 }}
             >
               Logout
             </Button>
