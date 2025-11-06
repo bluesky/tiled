@@ -1,8 +1,10 @@
 import asyncio
 import logging
+from collections import defaultdict
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Protocol
 
+import cachetools
 import orjson
 from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
@@ -94,6 +96,70 @@ class StreamingCache:
         )
 
 
+class PubSub:
+    def __init__(self):
+        self._topics = defaultdict(set)
+
+    async def publish(self, topic: str, message):
+        for q in list(self._topics.get(topic, ())):
+            q.put_nowait(message)
+
+    def subscribe(self, topic: str):
+        q = asyncio.Queue()
+        self._topics[topic].add(q)
+
+        async def gen():
+            try:
+                while True:
+                    yield await q.get()
+            finally:
+                self._topics[topic].discard(q)
+
+        return gen()
+
+
+@register_datastore("ttlcache")
+class TTLCacheDatastore(StreamingDatastore):
+    def __init__(self, settings: Dict[str, Any]):
+        self._settings = settings
+        self._seq_cache = cachetools.TTLCache(
+            maxsize=self._settings.get("maxsize", 1000), ttl=self._settings["seq_ttl"]
+        )
+        self._data_cache = cachetools.TTLCache(
+            maxsize=self._settings.get("maxsize", 1000), ttl=self._settings["data_ttl"]
+        )
+        self._pubsub = PubSub()
+
+    async def incr_seq(self, node_id: str) -> int:
+        if node_id not in self._seq_cache:
+            self._seq_cache[node_id] = 0
+        self._seq_cache[node_id] += 1
+        return self._seq_cache[node_id]
+
+    async def set(self, node_id, sequence, metadata, payload=None):
+        mapping = {
+            "sequence": sequence,
+            "metadata": safe_json_dump(metadata),
+        }
+        if payload:
+            mapping["payload"] = payload
+        self._data_cache[f"data:{node_id}:{sequence}"] = mapping
+        await self._pubsub.publish(f"sequence:{node_id}", sequence)
+
+    async def close(self, node_id: str):
+        # Increment the counter for this node.
+        sequence = await self.incr_seq(node_id)
+        # Publish a special message (end_of_stream) that will signal
+        # any open clients to close.
+        metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "end_of_stream": True,
+        }
+        mapping = {"sequence": sequence, "metadata": safe_json_dump(metadata)}
+        self._data_cache[f"data:{node_id}:{sequence}"] = mapping
+        await self._pubsub.publish(f"sequence:{node_id}", sequence)
+
+
 @register_datastore("redis")
 class RedisStreamingDatastore(StreamingDatastore):
     def __init__(self, settings: Dict[str, Any]):
@@ -109,7 +175,7 @@ class RedisStreamingDatastore(StreamingDatastore):
         self.seq_ttl = self._settings["seq_ttl"]
 
     @property
-    def client(self) -> Any:
+    def client(self) -> redis.Redis:
         return self._client
 
     async def incr_seq(self, node_id: str) -> int:
