@@ -2,7 +2,7 @@
 # Log into an Authenticated Tiled Server
 
 For this tutorial, we will log in to the demo Tiled server at
-`https://tiled-demo.blueskyproject.io`. This server is configured to use
+`https://tiled-demo.nsls2.bnl.gov`. This server is configured to use
 [ORCID](https://orcid.org) for authentication, so you will need an ORCID
 account.
 
@@ -10,7 +10,7 @@ From Python, connect as usual.
 
 ```python
 >>> from tiled.client import from_uri
->>> c = from_uri("https://tiled-demo.blueskyproject.io")
+>>> c = from_uri("https://tiled-demo.nsls2.bnl.gov")
 ```
 
 Now, ask to log in.
@@ -62,13 +62,13 @@ Next, quit Python and start it fresh.
 
 ```python
 >>> from tiled.client import from_uri
->>> c = from_uri("https://tiled-demo.blueskyproject.io")
+>>> c = from_uri("https://tiled-demo.nsls2.bnl.gov")
 >>> c
 <Container {'big_image', 'small_image', 'medium_image', ...} ~13 entries>
 ```
 
 Notice that you are _not_ prompted to log in again. The login process
-stashed a file (under `~/.config/tiled/tokens/tiled-demo.blueskyproject.io/`)
+stashed a file (under `~/.config/tiled/tokens/tiled-demo.nsls2.bnl.gov/`)
 that enables the session to be reused. It expires if unused for some period. By
 default it expires after one week of disuse, but this is configurable and can
 vary from one Tiled server to another.

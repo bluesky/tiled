@@ -12,7 +12,7 @@ from ..client.cache import Cache
 from ..client.context import Context
 
 MIN_VERSION = "0.1.0a104"
-API_URL = "https://tiled-demo.blueskyproject.io/api/v1/"
+API_URL = "https://tiled-demo.nsls2.bnl.gov/api/v1/"
 
 
 def test_pickle_context():

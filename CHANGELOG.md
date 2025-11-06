@@ -3,6 +3,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The public demo hosted by NSLS2 has moved from `tiled-demo.blueskyproject.io`
+  to `tiled-demo.nsls2.bnl.gov`, for purely practical reasons. (It is easier to
+  manage the deployment and associated certificates.) **The demo remains
+  world-public, with no login required.** This change affects some
+  documentation and one test.
+
 ## v0.2.0 (2025-10-29)
 
 ### Added

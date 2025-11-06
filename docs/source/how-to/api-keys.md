@@ -41,7 +41,7 @@ is useful when:
 
 To follow along, you may start a Tiled server with a simple authentication provider,
 as shown. Alternatively, you may use an existing authenticated Tiled server, such as
-`https://tiled-demo.blueskyproject.io`; if you do, replace `http://localhost:8000`
+`https://tiled-demo.nsls2.bnl.gov`; if you do, replace `http://localhost:8000`
 in the example below with that address.
 
 ```
