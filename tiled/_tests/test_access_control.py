@@ -66,6 +66,8 @@ access_tag_config = {
                 "read:metadata",
                 "write:data",
                 "write:metadata",
+                "delete:data",
+                "delete:metadata",
                 "create",
                 "register",
             ]
@@ -649,6 +651,23 @@ def test_writing_access_control(access_control_test_context_factory):
     assert "chemists_tag" in access_tags
     with fail_with_status_code(HTTP_403_FORBIDDEN):
         sue_client[top].write_array(arr, key="data_X", access_tags=["chemists_tag"])
+
+
+def test_deletion_access_control(access_control_test_context_factory):
+    """
+    Test that deletion access control is working.
+    Only tests that the deletion request does not fail.
+    Does not test that data is actually deleted.
+    """
+
+    alice_client = access_control_test_context_factory("alice", "alice")
+    chris_client = access_control_test_context_factory("chris", "chris")
+
+    top = "foo"
+    alice_client[top].write_array(arr, key="data_H", access_tags=["alice_tag"])
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        chris_client[top]["data_H"].delete(external_only=False)
+    alice_client[top]["data_H"].delete(external_only=False)
 
 
 def test_user_owned_node_access_control(access_control_test_context_factory):
