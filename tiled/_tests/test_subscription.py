@@ -28,7 +28,6 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture
 def stamina_active():
-    """Re-activate stamina for retry tests (it's deactivated globally in conftest)."""
     import stamina
 
     stamina.set_active(True)
