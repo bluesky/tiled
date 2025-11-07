@@ -216,9 +216,7 @@ def test_updates_persist_write(tiled_websocket_context, persist):
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that overwrite the array
-        send_ws_updates(
-            streaming_node, overwrite_array, count=3, persist=persist
-        )
+        send_ws_updates(streaming_node, overwrite_array, count=3, persist=persist)
 
         # Receive and validate all updates
         received = receive_ws_updates(websocket, count=3)
@@ -249,9 +247,7 @@ def test_updates_persist_append(tiled_websocket_context, persist):
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that append to the array
-        send_ws_updates(
-            streaming_node, append_array, count=3, persist=persist
-        )
+        send_ws_updates(streaming_node, append_array, count=3, persist=persist)
 
         # Receive and validate all updates
         received = receive_ws_updates(websocket, count=3)
