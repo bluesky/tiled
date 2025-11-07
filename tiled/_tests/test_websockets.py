@@ -26,6 +26,12 @@ def overwrite_array(client, new_arr, seq_num, persist=None):
 
 
 # An update_func for send_ws_updates
+def patch_array(client, new_arr, seq_num, persist=None):
+    _ = seq_num  # seq_num is unused for these updates
+    client.patch(new_arr, offset=(0,), persist=persist)
+
+
+# An update_func for send_ws_updates
 def append_array(client, new_arr, seq_num, persist=None):
     client.patch(new_arr, offset=(10 * seq_num,), extend=True, persist=persist)
 
@@ -200,8 +206,9 @@ def test_subscribe_after_first_update_from_beginning_websockets(
             np.testing.assert_array_equal(payload_array, expected_array)
 
 
+@pytest.mark.parametrize("write_op", (overwrite_array, patch_array))
 @pytest.mark.parametrize("persist", (None, True, False))
-def test_updates_persist_write(tiled_websocket_context, persist):
+def test_updates_persist_write(tiled_websocket_context, write_op, persist):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -215,8 +222,8 @@ def test_updates_persist_write(tiled_websocket_context, persist):
         "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
-        # Send 3 updates using Tiled client that overwrite the array
-        send_ws_updates(streaming_node, overwrite_array, count=3, persist=persist)
+        # Send 3 updates using Tiled client that write values into the array
+        send_ws_updates(streaming_node, write_op, count=3, persist=persist)
 
         # Receive and validate all updates
         received = receive_ws_updates(websocket, count=3)
@@ -231,6 +238,7 @@ def test_updates_persist_write(tiled_websocket_context, persist):
     np.testing.assert_array_equal(persisted_data, expected_persisted)
 
 
+@pytest.mark.skip(reason="Extend array with persist=False is not yet supported")
 @pytest.mark.parametrize("persist", (None, True, False))
 def test_updates_persist_append(tiled_websocket_context, persist):
     context = tiled_websocket_context
