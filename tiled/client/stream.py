@@ -15,6 +15,7 @@ else:
 import anyio
 import httpx
 import msgpack
+import stamina
 import websockets.exceptions
 from pydantic import ConfigDict
 from websockets.sync.client import connect
@@ -36,7 +37,14 @@ from ..stream_messages import (
 )
 from ..structures.core import STRUCTURE_TYPES, StructureFamily
 from .context import Context
-from .utils import client_for_item, handle_error, normalize_specs, retry_context
+from .utils import (
+    TILED_RETRY_ATTEMPTS,
+    TILED_RETRY_TIMEOUT,
+    client_for_item,
+    handle_error,
+    normalize_specs,
+    retry_context,
+)
 
 T = TypeVar("T")
 Callback = Callable[[T], None]
@@ -47,6 +55,30 @@ RECEIVE_TIMEOUT = 0.1  # seconds
 
 
 logger = logging.getLogger(__name__)
+
+
+def should_retry_websocket(exception: Exception) -> bool:
+    """
+    Determine if a websocket error should trigger automatic reconnection.
+
+    Returns True for network errors and connection failures,
+    but False for normal connection closes.
+    """
+    # Network errors
+    if isinstance(exception, (OSError, TimeoutError)):
+        return True
+
+    # Websocket connection errors (but NOT normal close)
+    if isinstance(exception, websockets.exceptions.ConnectionClosed):
+        # ConnectionClosedOK means server closed normally, don't retry
+        return not isinstance(exception, websockets.exceptions.ConnectionClosedOK)
+
+    # Starlette websocket errors (for test client)
+    if "starlette.websockets" in str(type(exception).__module__):
+        # This catches starlette.websockets.WebSocketDisconnect
+        return True
+
+    return False
 
 
 __all__ = ["Subscription"]
@@ -259,6 +291,7 @@ class Subscription(abc.ABC):
         self._disconnect_lock = threading.Lock()
         self._disconnect_event = threading.Event()
         self._thread = None
+        self._last_received_sequence = None  # Track last sequence for reconnection
         if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
                 context.http_client, self._uri
@@ -287,10 +320,29 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
+    def _websocket_retry_context(self):
+        """
+        Iterable that yields a context manager per retry attempt.
+
+        Follows the same pattern as retry_context() in tiled.client.utils.
+        """
+        # Specify exception types to retry on
+        # ConnectionClosedError will trigger retry, ConnectionClosedOK won't (it's not in the list)
+        return stamina.retry_context(
+            on=(
+                websockets.exceptions.ConnectionClosedError,
+                OSError,
+                TimeoutError,
+            ),
+            attempts=TILED_RETRY_ATTEMPTS,
+            timeout=TILED_RETRY_TIMEOUT,
+        )
+
     def _connect(self, start: Optional[int] = None) -> None:
         "Connect to websocket"
-        if self._disconnect_event.is_set():
-            raise RuntimeError("Cannot be restarted once stopped.")
+        # Note: We no longer check _disconnect_event here to allow automatic
+        # reconnection. The _receive loop checks _disconnect_event to prevent
+        # reconnection when user explicitly calls disconnect().
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
             # Request a short-lived API key to use for authenticating the WS connection.
@@ -311,17 +363,61 @@ class Subscription(abc.ABC):
             # necessary.
             self.context.revoke_api_key(key_info["first_eight"])
 
+    def _reconnect(self, attempt_num: int) -> None:
+        """Reconnect to websocket after connection failure."""
+        logger.debug(f"Reconnecting after connection failure (attempt {attempt_num})")
+
+        # Close old connection before reconnecting
+        try:
+            self._websocket.close()
+        except Exception:
+            pass  # Ignore errors closing dead connection
+
+        # Reset schema - server will send it again on new connection
+        self._schema = None
+
+        # Resume from last received sequence if available
+        if self._last_received_sequence is not None:
+            logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
+            self._connect(start=self._last_received_sequence + 1)
+        else:
+            logger.debug("Reconnecting from start (no sequence yet)")
+            self._connect()
+
     def _receive(self) -> None:
         "Blocking loop that receives and processes updates"
         while not self._disconnect_event.is_set():
-            try:
-                data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
-            except (TimeoutError, anyio.EndOfStream):
+            # Receive message with automatic retry on connection errors
+            data = None
+            for attempt in self._websocket_retry_context():
+                with attempt:
+                    if attempt.num > 1:
+                        self._reconnect(attempt.num)
+
+                    # Receive message - exceptions will be caught by stamina
+                    logger.debug(f"Receive attempt {attempt.num}")
+                    try:
+                        data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
+                    except (TimeoutError, anyio.EndOfStream):
+                        # These are normal, not errors - skip this iteration
+                        data = "timeout"  # Sentinel value
+                        break
+
+                    # Successfully received data (or None for normal close)
+                    break
+
+            # Handle timeout/EndOfStream sentinel
+            if data == "timeout":
                 continue
+
+            # Check if server closed the connection normally
             if data is None:
+                # Server closed stream normally - don't retry
                 self.stream_closed.process(self)
                 self._disconnect()
                 return
+
+            # Parse and process message
             try:
                 if self._schema is None:
                     self._schema = parse_schema(data)
@@ -333,6 +429,9 @@ class Subscription(abc.ABC):
                     "A websocket message will be ignored because it could not be parsed."
                 )
                 continue
+
+            # Track sequence for reconnection
+            self._last_received_sequence = update.sequence
             self.process(update)
 
     @abc.abstractmethod
