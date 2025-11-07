@@ -775,6 +775,8 @@ def test_update_node_access_control(access_control_test_context_factory):
     This tests the following:
       - Update metadata while having write access
       - Prevent updating metadata without having write access
+      - Prevent deleting a metadata revision without having deletion access
+      - Delete a metadata revision while having deletion access
       - Successfully add an access tag and remove an access tag
       - Prevent adding or removing an access tag without having write access
       - Prevent adding or removing access tags which the user does not own
@@ -801,6 +803,13 @@ def test_update_node_access_control(access_control_test_context_factory):
                 metadata={"materials": ["Ag", "Au"]}
             )
         assert "Au" not in chris_client[top][data].metadata["materials"]
+
+        # fails to delete a metadata revision
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            chris_client[top][data].metadata_revisions.delete_revision(1)
+
+        # succeeds to delete a metadata revision
+        alice_client[top][data].metadata_revisions.delete_revision(1)
 
         # succeeds to add a new access tag and remove the old access tag
         alice_client[top][data].replace_metadata(access_tags=["biologists_tag"])
