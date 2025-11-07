@@ -18,7 +18,6 @@ from .utils import Server
 
 @pytest.fixture(scope="module")
 def server_url():
-
     EXAMPLE = "tiled.examples.generated:tree"
     tree = import_object(EXAMPLE)
     app = build_app(tree, authentication=Authentication(single_user_api_key="secret"))
