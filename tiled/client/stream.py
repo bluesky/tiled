@@ -367,16 +367,13 @@ class Subscription(abc.ABC):
         """Reconnect to websocket after connection failure."""
         logger.debug(f"Reconnecting after connection failure (attempt {attempt_num})")
 
-        # Close old connection before reconnecting
         try:
             self._websocket.close()
         except Exception:
-            pass  # Ignore errors closing dead connection
+            pass
 
-        # Reset schema - server will send it again on new connection
-        self._schema = None
+        self._schema = None  # Server will resend schema
 
-        # Resume from last received sequence if available
         if self._last_received_sequence is not None:
             logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
             self._connect(start=self._last_received_sequence + 1)
@@ -387,37 +384,29 @@ class Subscription(abc.ABC):
     def _receive(self) -> None:
         "Blocking loop that receives and processes updates"
         while not self._disconnect_event.is_set():
-            # Receive message with automatic retry on connection errors
             data = None
             for attempt in self._websocket_retry_context():
                 with attempt:
                     if attempt.num > 1:
                         self._reconnect(attempt.num)
 
-                    # Receive message - exceptions will be caught by stamina
                     logger.debug(f"Receive attempt {attempt.num}")
                     try:
                         data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
                     except (TimeoutError, anyio.EndOfStream):
-                        # These are normal, not errors - skip this iteration
-                        data = "timeout"  # Sentinel value
+                        data = "timeout"
                         break
 
-                    # Successfully received data (or None for normal close)
                     break
 
-            # Handle timeout/EndOfStream sentinel
             if data == "timeout":
                 continue
 
-            # Check if server closed the connection normally
             if data is None:
-                # Server closed stream normally - don't retry
                 self.stream_closed.process(self)
                 self._disconnect()
                 return
 
-            # Parse and process message
             try:
                 if self._schema is None:
                     self._schema = parse_schema(data)
@@ -430,7 +419,6 @@ class Subscription(abc.ABC):
                 )
                 continue
 
-            # Track sequence for reconnection
             self._last_received_sequence = update.sequence
             self.process(update)
 
