@@ -11,8 +11,8 @@ from sqlalchemy.orm.session import Session
 from tiled.authn_database.orm import Role
 
 # revision identifiers, used by Alembic.
-revision = '27e069ba3bf5'
-down_revision = 'a806cc635ab2'
+revision = "27e069ba3bf5"
+down_revision = "a806cc635ab2"
 branch_labels = None
 depends_on = None
 
