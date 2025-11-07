@@ -56,31 +56,6 @@ RECEIVE_TIMEOUT = 0.1  # seconds
 
 logger = logging.getLogger(__name__)
 
-
-def should_retry_websocket(exception: Exception) -> bool:
-    """
-    Determine if a websocket error should trigger automatic reconnection.
-
-    Returns True for network errors and connection failures,
-    but False for normal connection closes.
-    """
-    # Network errors
-    if isinstance(exception, (OSError, TimeoutError)):
-        return True
-
-    # Websocket connection errors (but NOT normal close)
-    if isinstance(exception, websockets.exceptions.ConnectionClosed):
-        # ConnectionClosedOK means server closed normally, don't retry
-        return not isinstance(exception, websockets.exceptions.ConnectionClosedOK)
-
-    # Starlette websocket errors (for test client)
-    if "starlette.websockets" in str(type(exception).__module__):
-        # This catches starlette.websockets.WebSocketDisconnect
-        return True
-
-    return False
-
-
 __all__ = ["Subscription"]
 
 
@@ -321,13 +296,6 @@ class Subscription(abc.ABC):
         return self._segments
 
     def _websocket_retry_context(self):
-        """
-        Iterable that yields a context manager per retry attempt.
-
-        Follows the same pattern as retry_context() in tiled.client.utils.
-        """
-        # Specify exception types to retry on
-        # ConnectionClosedError will trigger retry, ConnectionClosedOK won't (it's not in the list)
         return stamina.retry_context(
             on=(
                 websockets.exceptions.ConnectionClosedError,
@@ -340,9 +308,6 @@ class Subscription(abc.ABC):
 
     def _connect(self, start: Optional[int] = None) -> None:
         "Connect to websocket"
-        # Note: We no longer check _disconnect_event here to allow automatic
-        # reconnection. The _receive loop checks _disconnect_event to prevent
-        # reconnection when user explicitly calls disconnect().
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
             # Request a short-lived API key to use for authenticating the WS connection.
