@@ -1,5 +1,4 @@
 import sys
-from contextlib import nullcontext as does_not_raise
 
 import msgpack
 import numpy as np
@@ -239,16 +238,9 @@ def test_updates_persist_write(tiled_websocket_context, write_op, persist):
     np.testing.assert_array_equal(persisted_data, expected_persisted)
 
 
-@pytest.mark.parametrize(
-    "persist, maybe_raise",
-    (
-        (None, does_not_raise()),
-        (True, does_not_raise()),
-        # Extending an array with persist=False is not yet supported
-        (False, pytest.raises(ValueError)),
-    ),
-)
-def test_updates_persist_append(tiled_websocket_context, persist, maybe_raise):
+# Extending an array with persist=False is not yet supported
+@pytest.mark.parametrize("persist", (None, True))
+def test_updates_persist_append(tiled_websocket_context, persist):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -263,8 +255,7 @@ def test_updates_persist_append(tiled_websocket_context, persist, maybe_raise):
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that append to the array
-        with maybe_raise:
-            send_ws_updates(streaming_node, append_array, count=3, persist=persist)
+        send_ws_updates(streaming_node, append_array, count=3, persist=persist)
 
         # Receive and validate all updates
         received = receive_ws_updates(websocket, count=3)
@@ -281,6 +272,19 @@ def test_updates_persist_append(tiled_websocket_context, persist, maybe_raise):
         expected_persisted = arr
     persisted_data = streaming_node.read()
     np.testing.assert_array_equal(persisted_data, expected_persisted)
+
+
+def test_updates_append_without_persist(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+
+    # Create streaming array node using Tiled client
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
+
+    with pytest.raises(ValueError, match="Cannot PATCH an array with both parameters"):
+        # Extending an array with persist=False is not yet supported
+        send_ws_updates(streaming_node, append_array, count=1, persist=False)
 
 
 def test_close_stream_success(tiled_websocket_context):
