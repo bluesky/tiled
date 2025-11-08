@@ -302,9 +302,12 @@ class _DaskArrayClient(BaseClient):
                 )
                 if response.status_code == httpx.codes.CONFLICT:
                     raise ValueError(
-                        f"Slice {slice} does not fit within current array shape. "
-                        "Pass keyword argument extend=True to extend the array "
-                        "dimensions to fit."
+                        response.json()
+                        .get("detail", "Conflict error.")
+                        .replace(
+                            "Use ?",  # URL query param
+                            "Pass keyword argument ",  # Python function argument
+                        )
                     )
                 handle_error(response)
         # Update cached structure.
