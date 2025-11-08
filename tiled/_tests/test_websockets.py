@@ -1,5 +1,6 @@
 import sys
 
+import dask.array
 import msgpack
 import numpy as np
 import pytest
@@ -23,6 +24,11 @@ def send_ws_updates(client, update_func, start=1, count=1, persist=None):
 def overwrite_array(client, new_arr, seq_num, persist=None):
     _ = seq_num  # seq_num is unused for these updates
     client.write(new_arr, persist=persist)
+
+
+# An update_func for send_ws_updates
+def write_array_block(client, new_arr, seq_num, persist=None):
+    client.write_block(new_arr, block=(seq_num - 1, 0), persist=persist)
 
 
 # An update_func for send_ws_updates
@@ -51,7 +57,7 @@ def receive_ws_updates(websocket, count=1):
     return received
 
 
-def verify_ws_updates(received, start=1):
+def verify_ws_updates(received, start=1, chunked=False):
     """Verify that we received messages with the expected data"""
     for i, msg in enumerate(received):
         if i == 0:  # schema
@@ -61,7 +67,10 @@ def verify_ws_updates(received, start=1):
             assert "type" in msg
             assert "timestamp" in msg
             assert "payload" in msg
-            assert msg["shape"] == [10]
+            if chunked:
+                assert msg["shape"] == [1, 10]
+            else:
+                assert msg["shape"] == [10]
 
             # Verify payload contains the expected array data
             payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
@@ -234,6 +243,40 @@ def test_updates_persist_write(tiled_websocket_context, write_op, persist):
         expected_persisted = np.arange(10) + 3  # Final sent values
     else:
         expected_persisted = arr  # Original values
+    persisted_data = streaming_node.read()
+    np.testing.assert_array_equal(persisted_data, expected_persisted)
+
+
+@pytest.mark.parametrize("persist", (None, True, False))
+def test_updates_persist_write_block(tiled_websocket_context, persist):
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create a streaming chunked array node using Tiled client
+    _arr = np.array([np.arange(10) for _ in range(3)])
+    arr = dask.array.from_array(_arr, chunks=(1, 10))  # Chunk along first axis
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
+
+    # Connect WebSocket using TestClient with msgpack format and authorization
+    with test_client.websocket_connect(
+        "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Send 3 updates using Tiled client that write values into the array
+        send_ws_updates(streaming_node, write_array_block, count=3, persist=persist)
+
+        # Receive and validate all updates
+        received = receive_ws_updates(websocket, count=3)
+        verify_ws_updates(received, chunked=True)
+
+    # Verify values of persisted data
+    if persist or persist is None:
+        # Combined effect of all sent values
+        expected_persisted = np.array([np.arange(10) + i for i in range(1, 4)])
+    else:
+        # Original values
+        expected_persisted = arr
     persisted_data = streaming_node.read()
     np.testing.assert_array_equal(persisted_data, expected_persisted)
 
