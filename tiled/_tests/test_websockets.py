@@ -1,4 +1,5 @@
 import sys
+from contextlib import nullcontext as does_not_raise
 
 import msgpack
 import numpy as np
@@ -238,9 +239,16 @@ def test_updates_persist_write(tiled_websocket_context, write_op, persist):
     np.testing.assert_array_equal(persisted_data, expected_persisted)
 
 
-@pytest.mark.skip(reason="Extend array with persist=False is not yet supported")
-@pytest.mark.parametrize("persist", (None, True, False))
-def test_updates_persist_append(tiled_websocket_context, persist):
+@pytest.mark.parametrize(
+    "persist, maybe_raise",
+    (
+        (None, does_not_raise()),
+        (True, does_not_raise()),
+        # Extending an array with persist=False is not yet supported
+        (False, pytest.raises(ValueError)),
+    ),
+)
+def test_updates_persist_append(tiled_websocket_context, persist, maybe_raise):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -255,7 +263,8 @@ def test_updates_persist_append(tiled_websocket_context, persist):
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that append to the array
-        send_ws_updates(streaming_node, append_array, count=3, persist=persist)
+        with maybe_raise:
+            send_ws_updates(streaming_node, append_array, count=3, persist=persist)
 
         # Receive and validate all updates
         received = receive_ws_updates(websocket, count=3)
