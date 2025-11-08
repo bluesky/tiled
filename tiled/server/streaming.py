@@ -7,9 +7,15 @@ import orjson
 from fastapi import WebSocketDisconnect
 from redis import asyncio as redis
 
-from ..utils import safe_json_dump
+from ..ndslice import NDSlice
+from ..utils import safe_json_dump as _safe_json_dump
 
 logger = logging.getLogger(__name__)
+
+
+def safe_json_dump(content):
+    """Additional handling for NDSlice serialization."""
+    return _safe_json_dump(content, auto_json_types=(NDSlice,))
 
 
 class StreamingDatastore(Protocol):
