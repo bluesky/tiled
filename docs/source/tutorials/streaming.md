@@ -219,6 +219,33 @@ x.patch(numpy.array([13], offset=(2,)), persist=False)
 x.write(numpy.array([11, 12, 13]))  # x == [11, 12, 13], persist == True
 ```
 
+The array could initially be left empty to further reduce the writes to disk.
+
+```py
+client = from_uri('http://localhost:8000', api_key='secret')
+x = client.new(
+    structure_family=StructureFamily.array,
+    data_sources=[tiff_data_source],  # DataSource details omitted for brevity
+    data_sources=[
+        # In-memory DataSource details omitted for brevity
+        DataSource(structure=structure, structure_family=StructureFamily.array),
+        # Or use an external data source, such as a TIFF file
+        tiff_data_source,  # DataSource details omitted for brevity
+    ],
+    key='x',
+)
+# Intial state: x == [?, ?, ?]
+
+# PUT (write) new values
+x.write(numpy.array([4, 5, 6]), persist=False)
+  # x == [?, ?, ?], update.data() == [4, 5, 6]
+x.write(numpy.array([7, 8, 9]), persist=False)
+  # x == [?, ?, ?], update.data() == [7, 8, 9]
+
+# Persist the final array
+x.write(numpy.array([11, 12, 13]))  # x == [11, 12, 13], persist == True
+```
+
 ## Limitations
 
 This feature is in a very early preview stage.
