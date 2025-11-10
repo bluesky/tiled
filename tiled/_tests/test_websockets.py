@@ -4,6 +4,7 @@ import dask.array
 import msgpack
 import numpy as np
 import pytest
+from starlette.testclient import WebSocketDenialResponse
 
 from ..client import from_context
 from ..config import parse_configs
@@ -381,8 +382,6 @@ def test_close_stream_not_found(tiled_websocket_context):
 
 def test_websocket_connection_wrong_api_key(tiled_websocket_context):
     """Test websocket connection with wrong API key fails with 401."""
-    from starlette.testclient import WebSocketDenialResponse
-
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -400,6 +399,41 @@ def test_websocket_connection_wrong_api_key(tiled_websocket_context):
             pass
 
     assert exc_info.value.status_code == 401
+
+
+def test_websocket_connection_no_api_key(tiled_websocket_context):
+    """Test websocket connection with no API key fails with 401."""
+
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node using correct key
+    arr = np.arange(10)
+    client.write_array(arr, key="test_auth_websocket")
+
+    # Try to connect to websocket with wrong API key
+    with test_client.websocket_connect(
+        "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
+    ):
+        pass
+
+
+def test_websocket_connection_public_no_api_key(tiled_websocket_context_public):
+    """Test websocket connection to a public server with no API key works."""
+    context = tiled_websocket_context_public
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node using correct key
+    arr = np.arange(10)
+    client.write_array(arr, key="test_auth_websocket")
+
+    # Try to connect to websocket with no API key
+    with test_client.websocket_connect(
+        "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
+    ):
+        pass
 
 
 def test_close_stream_wrong_api_key(tiled_websocket_context):
