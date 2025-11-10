@@ -1719,6 +1719,7 @@ def get_router(
     async def put_array_full(
         request: Request,
         path: str,
+        persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1751,7 +1752,9 @@ def get_router(
             deserializer = deserialization_registry.dispatch("sparse", media_type)
         else:
             raise NotImplementedError(entry.structure_family)
-        await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
+        await ensure_awaitable(
+            entry.write, media_type, deserializer, entry, body, persist
+        )
         return json_or_msgpack(request, None)
 
     @router.put("/array/block/{path:path}")
@@ -1759,6 +1762,7 @@ def get_router(
         request: Request,
         path: str,
         block=Depends(block),
+        persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1790,7 +1794,7 @@ def get_router(
             entry.structure_family, media_type
         )
         await ensure_awaitable(
-            entry.write_block, block, media_type, deserializer, entry, body
+            entry.write_block, block, media_type, deserializer, entry, body, persist
         )
         return json_or_msgpack(request, None)
 
@@ -1801,6 +1805,7 @@ def get_router(
         offset=Depends(offset_param),
         shape=Depends(shape_param),
         extend: bool = False,
+        persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1808,6 +1813,17 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
+        if extend and not persist:
+            bad_args_message = (
+                "Cannot PATCH an array with both parameters"
+                " extend=True and persist=False."
+                " To extend the array, you must persist the changes."
+                " To skip persisting the changes, you must not extend the array."
+            )
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=bad_args_message,
+            )
         entry = await get_entry(
             path,
             ["write:data"],
@@ -1830,7 +1846,15 @@ def get_router(
         media_type = request.headers["content-type"]
         deserializer = deserialization_registry.dispatch("array", media_type)
         structure = await ensure_awaitable(
-            entry.patch, shape, offset, extend, media_type, deserializer, entry, body
+            entry.patch,
+            shape,
+            offset,
+            extend,
+            media_type,
+            deserializer,
+            entry,
+            body,
+            persist,
         )
         return json_or_msgpack(request, structure)
 

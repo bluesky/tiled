@@ -546,9 +546,12 @@ def prepend_to_sys_path(*paths: Union[str, Path]) -> Iterator[None]:
             sys.path.pop(0)
 
 
-def safe_json_dump(content):
+def safe_json_dump(content, *, auto_json_types=None):
     """
     Baes64-encode raw bytes, and provide a fallback if orjson numpy handling fails.
+
+    auto_json_types: list of types, optional
+        Additional types with a `to_json()` method to try to serialize automatically.
     """
     import orjson
 
@@ -558,6 +561,10 @@ def safe_json_dump(content):
             return content
         if isinstance(content, Path):
             return str(content)
+        if isinstance(auto_json_types, collections.abc.Sequence) and isinstance(
+            content, auto_json_types
+        ):
+            return content.to_json()
         # No need to import numpy if it hasn't been used already.
         numpy = sys.modules.get("numpy", None)
         if numpy is not None:

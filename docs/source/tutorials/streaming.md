@@ -49,6 +49,7 @@ If using a config file, add this section:
     ```
 ````
 
+(write-stream-data)=
 ## Write and Stream Data
 
 ```py
@@ -175,10 +176,82 @@ dormant. These intervals are configurable via the settings `data_ttl` and
 `seq_ttl` respectively under `streaming_cach` configuration.  (In the `tiled
 serve` CLI they are `--cache-data-ttl` and `--cache-seq-ttl`.)
 
+## Performance Optimization: Non-persistent Updates
+
+To rapidly stream large arrays of transitory data, it might be unnecessary
+or even undesirable to persist the intermediate arrays to storage.
+In this case, pass the parameter `persist=False` to `ArrayClient.write()`
+or `ArrayClient.patch()`.
+
+This could be useful for serving reconstructed images to an on-screen display
+while an iterative algorithm is refining that reconstruction. Only the final
+image needs to be persisted. The intermediate images can be discarded as each
+new image is received.
+
+To try this yourself, modify the code in [](#write-stream-data) to include the
+`persist=False` when sending updates.
+
+```py
+# Intial state: x == [1, 2, 3]
+
+# PUT (write) new values
+x.write(numpy.array([4, 5, 6]), persist=False)
+  # x == [1, 2, 3], update.data() == [4, 5, 6]
+x.write(numpy.array([7, 8, 9]), persist=False)
+  # x == [1, 2, 3], update.data() == [7, 8, 9]
+
+# Persist the final array
+x.write(numpy.array([11, 12, 13]))  # x == [11, 12, 13], persist == True
+```
+
+```py
+# Intial state: x == [1, 2, 3]
+
+# PATCH (patch) new values
+x.patch(numpy.array([11], offset=(0,)), persist=False)
+  # x == [1, 2, 3], update.data() == [11], update.offset() == (0,)
+x.patch(numpy.array([12], offset=(1,)), persist=False)
+  # x == [1, 2, 3], update.data() == [12], update.offset() == (1,)
+x.patch(numpy.array([13], offset=(2,)), persist=False)
+  # x == [1, 2, 3], update.data() == [13], update.offset() == (2,)
+
+# Persist the final array
+x.write(numpy.array([11, 12, 13]))  # x == [11, 12, 13], persist == True
+```
+
+The array could initially be left empty to further reduce the writes to disk.
+
+```py
+client = from_uri('http://localhost:8000', api_key='secret')
+x = client.new(
+    structure_family=StructureFamily.array,
+    data_sources=[tiff_data_source],  # DataSource details omitted for brevity
+    data_sources=[
+        # In-memory DataSource details omitted for brevity
+        DataSource(structure=structure, structure_family=StructureFamily.array),
+        # Or use an external data source, such as a TIFF file
+        tiff_data_source,  # DataSource details omitted for brevity
+    ],
+    key='x',
+)
+# Intial state: x == [?, ?, ?]
+
+# PUT (write) new values
+x.write(numpy.array([4, 5, 6]), persist=False)
+  # x == [?, ?, ?], update.data() == [4, 5, 6]
+x.write(numpy.array([7, 8, 9]), persist=False)
+  # x == [?, ?, ?], update.data() == [7, 8, 9]
+
+# Persist the final array
+x.write(numpy.array([11, 12, 13]))  # x == [11, 12, 13], persist == True
+```
+
 ## Limitations
 
 This feature is in a very early preview stage.
 
 - External registered tabular data is not yet supported.
 - Other data structures (sparse, awkward) are not yet supported.
+- Arrays can be patched with either `extend=True` or `persist=False`,
+  but not both.
 - Deletions of nodes are not yet visible to subscribers.
