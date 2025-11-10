@@ -1235,13 +1235,6 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def patch(
         self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
     ):
-        if extend and not persist:
-            raise Conflicts(
-                "Cannot PATCH an array with both parameters"
-                " extend=True and persist=False."
-                " To extend the array, you must persist the changes."
-                " To skip persisting the changes, you must not extend the array."
-            )
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
         if not persist:

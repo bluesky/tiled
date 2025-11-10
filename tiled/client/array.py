@@ -300,10 +300,13 @@ class _DaskArrayClient(BaseClient):
                     headers={"Content-Type": "application/octet-stream"},
                     params=params,
                 )
-                if response.status_code == httpx.codes.CONFLICT:
+                if response.status_code in [
+                    httpx.codes.BAD_REQUEST,
+                    httpx.codes.CONFLICT,
+                ]:
                     raise ValueError(
                         response.json()
-                        .get("detail", "Conflict error.")
+                        .get("detail", "Array parameters conflict.")
                         .replace(
                             "Use ?",  # URL query param
                             "Pass keyword argument ",  # Python function argument

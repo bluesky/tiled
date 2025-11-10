@@ -1813,6 +1813,17 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
+        if extend and not persist:
+            bad_args_message = (
+                "Cannot PATCH an array with both parameters"
+                " extend=True and persist=False."
+                " To extend the array, you must persist the changes."
+                " To skip persisting the changes, you must not extend the array."
+            )
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=bad_args_message,
+            )
         entry = await get_entry(
             path,
             ["write:data"],
