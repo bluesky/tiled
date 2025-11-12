@@ -610,19 +610,20 @@ def test_subscription_auto_reconnect_on_network_failure(
         # Simulate network failure once, then restore normal behavior
         original_recv = subscription._websocket.recv
 
-        class FailOnce:
-            """Fails on first call, then delegates to original."""
+        class FailNTimes:
+            """Fails on first N calls, then delegates to original."""
 
-            def __init__(self):
+            def __init__(self, n):
+                self.n = n
                 self.call_count = 0
 
             def __call__(self, timeout=None):
                 self.call_count += 1
-                if self.call_count == 1:
+                if self.call_count <= self.n:
                     raise websockets.exceptions.ConnectionClosedError(None, None)
                 return original_recv(timeout)
 
-        monkeypatch.setattr(subscription._websocket, "recv", FailOnce())
+        monkeypatch.setattr(subscription._websocket, "recv", FailNTimes(1))
 
         # Send more updates after simulated disconnect
         for i in range(4, 7):

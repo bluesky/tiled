@@ -353,7 +353,6 @@ class Subscription(abc.ABC):
                     self._reconnect(attempt.num)
 
                 while not self._disconnect_event.is_set():
-                    logger.debug(f"Receive attempt {attempt.num}")
                     try:
                         data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
                     except (TimeoutError, anyio.EndOfStream):
