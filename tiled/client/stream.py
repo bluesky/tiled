@@ -300,7 +300,6 @@ class Subscription(abc.ABC):
             on=(
                 websockets.exceptions.ConnectionClosedError,
                 OSError,
-                TimeoutError,
             ),
             attempts=TILED_RETRY_ATTEMPTS,
             timeout=TILED_RETRY_TIMEOUT,
@@ -348,44 +347,42 @@ class Subscription(abc.ABC):
 
     def _receive(self) -> None:
         "Blocking loop that receives and processes updates"
-        while not self._disconnect_event.is_set():
-            data = None
-            for attempt in self._websocket_retry_context():
-                with attempt:
-                    if attempt.num > 1:
-                        self._reconnect(attempt.num)
+        for attempt in self._websocket_retry_context():
+            with attempt:
+                if attempt.num > 1:
+                    self._reconnect(attempt.num)
 
+                while not self._disconnect_event.is_set():
                     logger.debug(f"Receive attempt {attempt.num}")
                     try:
                         data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
                     except (TimeoutError, anyio.EndOfStream):
-                        data = "timeout"
-                        break
+                        continue
 
-                    break
+                    if data is None:
+                        self.stream_closed.process(self)
+                        self._disconnect()
+                        return
 
-            if data == "timeout":
-                continue
+                    try:
+                        if self._schema is None:
+                            self._schema = parse_schema(data)
+                            continue
+                        else:
+                            update = parse_update(self, data, self._schema)
+                    except Exception:
+                        logger.exception(
+                            "A websocket message will be ignored because it could not be parsed."
+                        )
+                        continue
 
-            if data is None:
-                self.stream_closed.process(self)
-                self._disconnect()
+                    self._last_received_sequence = update.sequence
+                    self.process(update)
+
                 return
-
-            try:
-                if self._schema is None:
-                    self._schema = parse_schema(data)
-                    continue
-                else:
-                    update = parse_update(self, data, self._schema)
-            except Exception:
-                logger.exception(
-                    "A websocket message will be ignored because it could not be parsed."
-                )
-                continue
-
-            self._last_received_sequence = update.sequence
-            self.process(update)
+        else:
+            logger.warning("All reconnection attempts exhausted")
+            self._disconnect()
 
     @abc.abstractmethod
     def process(self, *args) -> None:
