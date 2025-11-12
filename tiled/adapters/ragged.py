@@ -90,6 +90,12 @@ class RaggedAdapter:
         # _array[...] requires an actual tuple, not just a subclass of tuple
         return self._array[tuple(slice)] if slice else self._array
 
+    def write(
+        self,
+        array: ragged.array,
+    ) -> None:
+        raise Exception
+
     def metadata(self) -> JSON:
         return self._metadata
 

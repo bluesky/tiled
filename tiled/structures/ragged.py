@@ -1,6 +1,9 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Any, Dict, List, SupportsInt, Tuple, Union
 
+import awkward
+import numpy as np
 import ragged
 
 from tiled.structures.array import ArrayStructure, BuiltinDtype, StructDtype
@@ -9,8 +12,7 @@ from tiled.structures.array import ArrayStructure, BuiltinDtype, StructDtype
 @dataclass(kw_only=True)
 class RaggedStructure(ArrayStructure):
     shape: Tuple[Union[int, None], ...]  # type: ignore[reportIncompatibleVariableOverride]
-    length: int
-    form: dict
+    offsets: List[List[int]]
 
     @classmethod
     def from_array(cls, array, shape=None, chunks=None, dims=None) -> "RaggedStructure":
@@ -31,8 +33,12 @@ class RaggedStructure(ArrayStructure):
         else:
             data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
 
-        length = array._impl.layout.length
-        form = array._impl.layout.form.to_dict()
+        content = array._impl.layout  # noqa: SLF001
+        offsets = []
+
+        while isinstance(content, awkward.contents.ListOffsetArray):
+            offsets.append(np.array(content.offsets).tolist())
+            content = content.content
 
         return cls(
             data_type=data_type,
@@ -40,12 +46,11 @@ class RaggedStructure(ArrayStructure):
             shape=shape,
             dims=dims,
             resizable=False,
-            length=length,
-            form=form,
+            offsets=offsets,
         )
 
     @classmethod
-    def from_json(cls, structure):
+    def from_json(cls, structure: dict) -> "RaggedStructure":
         if "fields" in structure["data_type"]:
             data_type = StructDtype.from_json(structure["data_type"])
         else:
@@ -59,6 +64,25 @@ class RaggedStructure(ArrayStructure):
             shape=tuple(structure["shape"]),
             dims=dims,
             resizable=structure.get("resizable", False),
-            length=structure["length"],
-            form=dict(structure["form"]),
+            offsets=structure.get("offsets", []),
         )
+
+    @property
+    def npartitions(self) -> int:
+        return 1
+
+    @property
+    def form(self) -> Dict[str, Any]:
+        def build(depth: int):
+            if depth:
+                return {
+                    "class": "NumpyArray",
+                    "primitive": self.data_type.to_numpy_dtype().name,
+                }
+            return {
+                "class": "ListOffsetArray",
+                "offsets": "i64",
+                "content": build(depth - 1),
+            }
+
+        return build(len(self.offsets))

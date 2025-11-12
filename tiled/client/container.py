@@ -1011,16 +1011,8 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 shape=tuple(d if d is not None else array.size for d in array.shape),
             )
 
-        form, length, container = awkward.to_buffers(array._impl)  # noqa: SLF001
+        structure = RaggedStructure.from_array(array, chunks=chunks, dims=dims)
 
-        structure = RaggedStructure(
-            shape=array.shape,
-            chunks=chunks,
-            dims=dims,
-            data_type=BuiltinDtype.from_numpy_dtype(array.dtype),
-            form=form.to_dict(),
-            length=length,
-        )
         client = self.new(
             StructureFamily.ragged,
             [
