@@ -36,10 +36,8 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from tiled.query_registration import QueryRegistry, default_query_registry
-from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
-from tiled.type_aliases import AppTask, TaskMap
-
+from ..access_control.protocols import AccessPolicy
+from ..authenticators import ProxiedOIDCAuthenticator
 from ..catalog.adapter import WouldDeleteData
 from ..config import (
     Authentication,
@@ -56,11 +54,14 @@ from ..media_type_registration import (
     default_deserialization_registry,
     default_serialization_registry,
 )
+from ..query_registration import QueryRegistry, default_query_registry
+from ..type_aliases import AppTask, TaskMap
 from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
-from .router import get_router
+from .protocols import ExternalAuthenticator, InternalAuthenticator
+from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
@@ -124,7 +125,7 @@ def build_app(
     validation_registry: Optional[ValidationRegistry] = None,
     tasks: Optional[dict[str, list[AppTask]]] = None,
     scalable=False,
-    access_policy=None,
+    access_policy: Optional[AccessPolicy] = None,
 ):
     """
     Serve a Tree
@@ -136,7 +137,7 @@ def build_app(
         Dict of authentication configuration.
     server_settings: dict, optional
         Dict of other server configuration.
-    access_policy:
+    access_policy: AccessPolicy, optional
         AccessPolicy object encoding rules for which users can see which entries.
     """
     authentication = authentication or Authentication()
@@ -474,6 +475,15 @@ def build_app(
                 settings.database_settings.uri = (
                     settings.database_settings.uri or "sqlite://"
                 )
+        if (
+            authenticators
+            and len(authenticators) == 1
+            and isinstance(
+                authenticator := next(iter(authenticators.values())),
+                ProxiedOIDCAuthenticator,
+            )
+        ):
+            settings.authenticator = authenticator
         return settings
 
     async def startup_event():
@@ -544,7 +554,6 @@ def build_app(
                 check_database,
             )
             from ..authn_database import orm
-            from ..authn_database.connection_pool import open_database_connection_pool
             from ..authn_database.core import (
                 ALL_REVISIONS,
                 REQUIRED_REVISION,
@@ -552,9 +561,10 @@ def build_app(
                 make_admin_by_identity,
                 purge_expired,
             )
+            from .connection_pool import open_database_connection_pool
 
             # This creates a connection pool and stashes it in a module-global
-            # registry, keyed on database_settings, where can be retrieved by
+            # registry, keyed on database_settings, where it can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
             if not engine.url.database or engine.url.query.get("mode") == "memory":
@@ -671,7 +681,7 @@ def build_app(
 
         settings: Settings = app.dependency_overrides[get_settings]()
         if settings.database_settings.uri is not None:
-            from ..authn_database.connection_pool import close_database_connection_pool
+            from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
         for task in app.state.tasks:
@@ -829,7 +839,7 @@ def build_app(
 
         from . import metrics
 
-        app.include_router(metrics.router, prefix="/api/v1")
+        app.include_router(get_metrics_router(), prefix="/api/v1")
 
         @app.middleware("http")
         async def capture_metrics_prometheus(

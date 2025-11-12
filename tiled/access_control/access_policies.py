@@ -1,8 +1,13 @@
 import logging
 import os
+from typing import Optional, Tuple
 
+from ..adapters.protocols import BaseAdapter
 from ..queries import AccessBlobFilter
+from ..server.schemas import Principal
+from ..type_aliases import AccessBlob, AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
+from .protocols import AccessPolicy
 from .scopes import ALL_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
@@ -20,17 +25,42 @@ if log_level:
     logger.setLevel(log_level.upper())
 
 
-class DummyAccessPolicy:
+class DummyAccessPolicy(AccessPolicy):
     "Impose no access restrictions."
 
-    async def allowed_scopes(self, node, principal, authn_access_tags, authn_scopes):
+    async def init_node(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, AccessBlob]:
+        "Do nothing; there is no persistent state to initialize."
+        return (False, access_blob)
+
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
+        "Always allow all scopes."
         return ALL_SCOPES
 
-    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
+        "Always impose no filtering on results."
         return []
 
 
-class TagBasedAccessPolicy:
+class TagBasedAccessPolicy(AccessPolicy):
     def __init__(
         self,
         *,
@@ -73,8 +103,12 @@ class TagBasedAccessPolicy:
         return False
 
     async def init_node(
-        self, principal, authn_access_tags, authn_scopes, access_blob=None
-    ):
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, AccessBlob]:
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -156,8 +190,13 @@ class TagBasedAccessPolicy:
         return access_blob_modified, access_blob_from_policy
 
     async def modify_node(
-        self, node, principal, authn_access_tags, authn_scopes, access_blob
-    ):
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob],
+    ) -> Tuple[bool, AccessBlob]:
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -278,7 +317,13 @@ class TagBasedAccessPolicy:
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
-    async def allowed_scopes(self, node, principal, authn_access_tags, authn_scopes):
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
         # If this is being called, filter_for_access has let us get this far.
         # However, filters and allowed_scopes should always be implemented to
         # give answers consistent with each other.
@@ -317,7 +362,14 @@ class TagBasedAccessPolicy:
 
         return allowed
 
-    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
         queries = []
         query_filter = AccessBlobFilter
 

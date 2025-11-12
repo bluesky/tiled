@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Set
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
@@ -6,9 +7,11 @@ from urllib.parse import quote_plus
 import dask.dataframe
 import pandas
 
+from tiled.adapters.core import Adapter
+
 from ..catalog.orm import Node
 from ..storage import FileStorage, Storage
-from ..structures.array import ArrayStructure
+from ..structures.array import ArrayStructure, StructDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource, Management
 from ..structures.table import TableStructure
@@ -18,16 +21,16 @@ from .array import ArrayAdapter
 from .utils import init_adapter_from_catalog
 
 
-class CSVAdapter:
+class CSVAdapter(Adapter[TableStructure]):
     """Adapter for tabular data stored as partitioned text (csv) files"""
 
     structure_family = StructureFamily.table
-    supported_storage = {FileStorage}
 
     def __init__(
         self,
         data_uris: Iterable[str],
         structure: Optional[TableStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
         **kwargs: Optional[Any],
@@ -44,16 +47,15 @@ class CSVAdapter:
             any keyword arguments that can be passed to the pandas.read_csv function, e.g. names, sep, dtype, etc.
         """
         self._file_paths = [path_from_uri(uri) for uri in data_uris]
-        self._metadata = metadata or {}
         self._read_csv_kwargs = kwargs
         if structure is None:
-            table = dask.dataframe.read_csv(
-                self._file_paths[0], **self._read_csv_kwargs
-            )
-            structure = TableStructure.from_dask_dataframe(table)
-            structure.npartitions = len(self._file_paths)
-        self._structure = structure
-        self.specs = list(specs or [])
+            ddf = dask.dataframe.read_csv(self._file_paths, **self._read_csv_kwargs)
+            structure = TableStructure.from_dask_dataframe(ddf)
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
 
     @classmethod
     def from_catalog(
@@ -63,7 +65,7 @@ class CSVAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "CSVAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def from_uris(
@@ -75,9 +77,6 @@ class CSVAdapter:
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure.columns!r})"
-
-    def metadata(self) -> JSON:
-        return self._metadata
 
     @classmethod
     def init_storage(
@@ -205,9 +204,6 @@ class CSVAdapter:
 
         return df.compute()
 
-    def structure(self) -> TableStructure:
-        return self._structure
-
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         """
 
@@ -313,23 +309,22 @@ class CSVArrayAdapter(ArrayAdapter):
         # Load the array lazily with Dask
         file_paths = [path_from_uri(ast.data_uri) for ast in data_source.assets]
         structure = data_source.structure
-        dtype_numpy = structure.data_type.to_numpy_dtype()
         nrows = kwargs.pop("nrows", None)  # dask doesn't accept nrows
-        _kwargs = {"dtype": dtype_numpy, "header": None}
-        _kwargs.update(kwargs)
-        ddf = dask.dataframe.read_csv(file_paths, **_kwargs)
-        chunks_0: tuple[int, ...] = structure.chunks[
-            0
-        ]  # chunking along the rows dimension (when not stackable)
-        if not dtype_numpy.isbuiltin:
-            # Structural np dtype (0) -- return a records array
-            # NOTE: dask.DataFrame.to_records() allows one to pass `index=False` to drop the index column, but as
-            #       of desk ver. 2024.2.1 it seems broken and doesn't do anything. Instead, we set an index to any
-            #       (first) column in the df to prevent it from creating an extra one.
-            array = ddf.set_index(ddf.columns[0]).to_records(lengths=chunks_0)
+        kwargs = {"header": None, **kwargs}  # no header for arrays by default
+        ddf = dask.dataframe.read_csv(file_paths, **kwargs).rename(columns=str)
+
+        # Ensure columns are in the same order as in the usecols parameter
+        if usecols := kwargs.get("usecols"):
+            ddf = ddf[usecols]
+
+        chunks_0: tuple[int, ...] = structure.chunks[0]  # rows chunking, if not stacked
+
+        # Read as a structural array if needed; ensure the correct dtype
+        if isinstance(structure.data_type, StructDtype):
+            array = ddf.to_records(lengths=chunks_0)[list(ddf.columns)].reshape(-1, 1)
         else:
-            # Simple np dtype (1 or 2) -- all fields have the same type -- return a usual array
             array = ddf.to_dask_array(lengths=chunks_0)
+        array = array.astype(structure.data_type.to_numpy_dtype())
 
         # Possibly extend or cut the table according the nrows parameter
         if nrows is not None:
@@ -361,9 +356,10 @@ class CSVArrayAdapter(ArrayAdapter):
         **kwargs: Optional[Any],
     ) -> "CSVArrayAdapter":
         file_paths = [path_from_uri(uri) for uri in data_uris]
-        array = dask.dataframe.read_csv(
-            file_paths, header=None, **kwargs
-        ).to_dask_array()
+        ddf = dask.dataframe.read_csv(file_paths, **{"header": None, **kwargs})
+        if usecols := kwargs.get("usecols"):
+            ddf = ddf[usecols]  # Ensure the order of columns is preserved
+        array = ddf.to_dask_array()
         structure = ArrayStructure.from_array(array)
 
         return cls(array, structure)

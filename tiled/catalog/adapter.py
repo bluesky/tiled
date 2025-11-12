@@ -1,4 +1,3 @@
-import asyncio
 import collections
 import copy
 import dataclasses
@@ -7,7 +6,6 @@ import itertools as it
 import logging
 import operator
 import os
-import re
 import shutil
 import sys
 import uuid
@@ -19,12 +17,10 @@ from typing import Callable, Dict, List, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
-import orjson
-from fastapi import HTTPException, WebSocketDisconnect
+from fastapi import HTTPException
 from sqlalchemy import (
     and_,
     delete,
-    event,
     exists,
     false,
     func,
@@ -38,11 +34,9 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, REGCONFIG, TEXT
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
-from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast as sql_cast
 from sqlalchemy.sql.sqltypes import MatchType
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -74,10 +68,15 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
+from ..server.connection_pool import close_database_connection_pool, get_database_engine
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision
+from ..server.settings import DatabaseSettings
+from ..server.streaming import StreamingCache
 from ..storage import (
+    SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
+    ObjectStorage,
     SQLStorage,
     get_storage,
     parse_storage,
@@ -93,7 +92,6 @@ from ..utils import (
     ensure_specified_sql_driver,
     import_object,
     path_from_uri,
-    safe_json_dump,
 )
 from . import orm
 from .core import check_catalog_database, initialize_database
@@ -101,9 +99,6 @@ from .explain import ExplainAsyncSession
 from .utils import compute_structure_id
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
-INDEX_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # When data is uploaded, how is it saved?
 # TODO: Make this configurable at Catalog construction time.
@@ -169,19 +164,19 @@ class RootNode:
 class Context:
     def __init__(
         self,
-        engine: AsyncEngine,
+        database_settings: DatabaseSettings,
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
         cache_settings=None,
         key_maker=lambda: str(uuid.uuid4()),
-        storage_pool_size=None,
-        storage_max_overflow=None,
+        storage_pool_size=5,
+        storage_max_overflow=10,
     ):
-        self.engine = engine
-
-        self.writable_storage = []
-        self.readable_storage = set()
+        self.engine = get_database_engine(database_settings)
+        self.database_settings = database_settings
+        self.writable_storage = {}
+        self.readable_storage = {}
 
         # Back-compat: `writable_storage` used to be a dict: we want its values.
         if isinstance(writable_storage, dict):
@@ -190,21 +185,23 @@ class Context:
         if isinstance(writable_storage, (str, Path)):
             writable_storage = [writable_storage]
         if isinstance(readable_storage, str):
-            raise ValueError("readable_storage should be a list of URIs or paths")
+            raise ValueError(
+                "readable_storage should be a list of URIs, paths, or dicts"
+            )
 
         for item in writable_storage or []:
-            self.writable_storage.append(
-                parse_storage(
-                    item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
-                )
+            storage = parse_storage(
+                item, pool_size=storage_pool_size, max_overflow=storage_max_overflow
             )
+            self.writable_storage[storage.uri] = storage
         for item in readable_storage or []:
-            self.readable_storage.add(parse_storage(item))
+            storage = parse_storage(item)
+            self.readable_storage[storage.uri] = storage
         # Writable storage should also be readable.
         self.readable_storage.update(self.writable_storage)
         # Register all storage in a registry that enables Adapters to access
         # credentials (if applicable).
-        for item in self.readable_storage:
+        for item in self.readable_storage.values():
             register_storage(item)
 
         self.key_maker = key_maker
@@ -243,27 +240,14 @@ class Context:
         else:
             await check_catalog_database(self.engine)
 
-        cache_client = None
-        cache_data_ttl = 0
-        cache_seq_ttl = 0
+        self.streaming_cache = None
         if self.cache_settings:
             if self.cache_settings["uri"].startswith("redis"):
-                from redis import asyncio as redis
+                self.cache_settings["datastore"] = "redis"
+                self.streaming_cache = StreamingCache(self.cache_settings)
 
-                socket_timeout = self.cache_settings.get("socket_timeout", None)
-                socket_connect_timeout = self.cache_settings.get(
-                    "socket_connect_timeout", 10.0
-                )
-                cache_client = redis.from_url(
-                    self.cache_settings["uri"],
-                    socket_timeout=socket_timeout,
-                    socket_connect_timeout=socket_connect_timeout,
-                )
-                cache_data_ttl = self.cache_settings.get("data_ttl", 3600)  # 1 hr
-                cache_seq_ttl = self.cache_settings.get("seq_ttl", 2592000)  # 30 days
-        self.cache_client = cache_client
-        self.cache_data_ttl = cache_data_ttl
-        self.cache_seq_ttl = cache_seq_ttl
+    async def shutdown(self):
+        await close_database_connection_pool(self.database_settings)
 
 
 class CatalogNodeAdapter:
@@ -323,7 +307,7 @@ class CatalogNodeAdapter:
         self.node.key = mount_path[-1]
 
     async def shutdown(self):
-        await self.context.engine.dispose()
+        await self.context.shutdown()
 
     @property
     def writable(self):
@@ -529,7 +513,7 @@ class CatalogNodeAdapter:
                 asset_path = path_from_uri(asset.data_uri)
                 for readable_storage in {
                     item
-                    for item in self.context.readable_storage
+                    for item in self.context.readable_storage.values()
                     if isinstance(item, FileStorage)
                 }:
                     if (
@@ -713,13 +697,13 @@ class CatalogNodeAdapter:
                         )
                     adapter_cls = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
                     # Choose writable storage. Use the first writable storage item
-                    # with a scheme that is supported by this adapter. # For
-                    # back-compat, if an adapter does not declare `supported_storage`
+                    # with a scheme that is supported by this adapter.
+                    # For back-compat, if an adapter does not declare `supported_storage`
                     # assume it supports file-based storage only.
                     supported_storage = getattr(
-                        adapter_cls, "supported_storage", {FileStorage}
-                    )
-                    for storage in self.context.writable_storage:
+                        adapter_cls, "supported_storage", lambda: {FileStorage}
+                    )()
+                    for storage in self.context.writable_storage.values():
                         if isinstance(storage, tuple(supported_storage)):
                             break
                     else:
@@ -727,7 +711,7 @@ class CatalogNodeAdapter:
                             f"The adapter {adapter_cls} supports storage types "
                             f"{[cls.__name__ for cls in supported_storage]} "
                             "but the only available storage types "
-                            f"are {self.context.writable_storage}."
+                            f"are {self.context.writable_storage.values()}."
                         )
                     data_source = await ensure_awaitable(
                         adapter_cls.init_storage,
@@ -793,38 +777,33 @@ class CatalogNodeAdapter:
                     )
                 )
             ).scalar()
-            if self.context.cache_client:
+            if self.context.streaming_cache:
+                # Include IDs assigned by database in response.
+                data_sources_with_ids = []
+                for data_source, data_source_orm in zip(
+                    data_sources, refreshed_node.data_sources
+                ):
+                    ds = data_source.model_copy()
+                    ds.id = data_source_orm.id
+                    data_sources_with_ids.append(ds)
+
                 # Notify subscribers of the *parent* node about the new child.
-                sequence = await self.context.cache_client.incr(
-                    f"sequence:{self.node.id}"
-                )
+                sequence = await self.context.streaming_cache.incr_seq(self.node.id)
                 metadata = {
+                    "type": "container-child-created",
                     "sequence": sequence,
                     "timestamp": datetime.now().isoformat(),
                     "key": key,
                     "structure_family": structure_family,
                     "specs": [spec.model_dump() for spec in (specs or [])],
                     "metadata": metadata,
-                    "data_sources": [d.model_dump() for d in data_sources],
+                    "data_sources": [d.model_dump() for d in data_sources_with_ids],
+                    "access_blob": refreshed_node.access_blob,
                 }
 
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
-                pipeline = self.context.cache_client.pipeline()
-                pipeline.hset(
-                    f"data:{self.node.id}:{sequence}",
-                    mapping={
-                        "sequence": sequence,
-                        "metadata": safe_json_dump(metadata),
-                    },
-                )
-                pipeline.expire(
-                    f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
-                )
-                pipeline.publish(f"notify:{self.node.id}", sequence)
-                # Extend the lifetime of the sequence counter.
-                pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
-                await pipeline.execute()
+                await self.context.streaming_cache.set(self.node.id, sequence, metadata)
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
@@ -893,32 +872,20 @@ class CatalogNodeAdapter:
                     db.add(assoc_orm)
 
             await db.commit()
-        if self.context.cache_client:
-            sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+        if self.context.streaming_cache:
+            sequence = await self.context.streaming_cache.incr_seq(self.node.id)
             metadata = {
+                "type": "array-ref",
                 "sequence": sequence,
                 "timestamp": datetime.now().isoformat(),
-                "data_source": data_source.dict(),
-                "patch": patch.dict() if patch else None,
+                "data_source": data_source.model_dump(),
+                "patch": patch.model_dump() if patch else None,
+                "shape": structure["shape"],
             }
 
             # Cache data in Redis with a TTL, and publish
             # a notification about it.
-            pipeline = self.context.cache_client.pipeline()
-            pipeline.hset(
-                f"data:{self.node.id}:{sequence}",
-                mapping={
-                    "sequence": sequence,
-                    "metadata": orjson.dumps(metadata),
-                },
-            )
-            pipeline.expire(
-                f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl
-            )
-            pipeline.publish(f"notify:{self.node.id}", sequence)
-            # Extend the lifetime of the sequence counter.
-            pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
-            await pipeline.execute()
+            await self.context.streaming_cache.set(self.node.id, sequence, metadata)
 
     async def revisions(self, offset, limit):
         async with self.context.session() as db:
@@ -1100,120 +1067,31 @@ class CatalogNodeAdapter:
                 update(orm.Node).where(orm.Node.id == self.node.id).values(**values)
             )
             await db.commit()
+            # Upon successful update, inform websocket subscribers through redis
+            if self.context.streaming_cache:
+                sequence = await self.context.streaming_cache.incr_seq(self.node.parent)
+                metadata = {
+                    "type": "container-child-metadata-updated",
+                    "key": self.node.key,
+                    "sequence": sequence,
+                    "timestamp": datetime.now().isoformat(),
+                    "specs": [spec.model_dump() for spec in (specs or [])],
+                    "metadata": metadata,
+                }
+                if not drop_revision:
+                    metadata["revision_number"] = next_revision_number
+                await self.context.streaming_cache.set(
+                    self.node.parent, sequence, metadata
+                )
 
     async def close_stream(self):
-        # Check the node status.
-        # ttl returns -2 if the key does not exist.
-        # ttl returns -1 if the key exists but has no associated expire.
-        # ttl greater than 0 means that it is marked to expire.
-        node_ttl = await self.context.cache_client.ttl(f"sequence:{self.node.id}")
-        if node_ttl > 0:
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=f"Stream for node {self.node.id} is already closed.",
-            )
-        if node_ttl == -2:
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=f"Node {self.node.id} not found.",
-            )
-
-        metadata = {
-            "timestamp": datetime.now().isoformat(),
-            "end_of_stream": True,
-        }
-        # Increment the counter for this node.
-        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
-
-        # Cache data in Redis with a TTL, and publish
-        # a notification about it.
-        pipeline = self.context.cache_client.pipeline()
-        pipeline.hset(
-            f"data:{self.node.id}:{sequence}",
-            mapping={
-                "sequence": sequence,
-                "metadata": orjson.dumps(metadata),
-            },
-        )
-        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl)
-        # Expire the sequence more aggressively.  It needs to outlive the last
-        # piece of data for this sequence, but then it can be culled. Any
-        # future writes will restart the sequence from 1.
-        pipeline.expire(f"sequence:{self.node.id}", 1 + self.context.cache_data_ttl)
-        pipeline.publish(f"notify:{self.node.id}", sequence)
-        await pipeline.execute()
+        await self.context.streaming_cache.close(self.node.id)
 
     def make_ws_handler(self, websocket, formatter, uri):
-        async def handler(sequence: Optional[int] = None):
-            await websocket.accept()
-            end_stream = asyncio.Event()
-            cache_client = self.context.cache_client
-
-            async def stream_data(sequence):
-                key = f"data:{self.node.id}:{sequence}"
-                payload_bytes, metadata_bytes = await cache_client.hmget(
-                    key, "payload", "metadata"
-                )
-                if metadata_bytes is None:
-                    # This means that redis ttl has expired for this sequence
-                    return
-                metadata = orjson.loads(metadata_bytes)
-                if metadata.get("end_of_stream"):
-                    # This means that the stream is closed by the producer
-                    end_stream.set()
-                    return
-                metadata["uri"] = uri
-                if metadata.get("patch"):
-                    s = ",".join(
-                        f"{offset}:{offset+shape}"
-                        for offset, shape in zip(
-                            metadata["patch"]["offset"], metadata["patch"]["shape"]
-                        )
-                    )
-                    metadata["uri"] = f"{uri}?slice={s}"
-                await formatter(websocket, metadata, payload_bytes)
-
-            # Setup buffer
-            stream_buffer = asyncio.Queue()
-
-            async def buffer_live_events():
-                pubsub = cache_client.pubsub()
-                await pubsub.subscribe(f"notify:{self.node.id}")
-                try:
-                    async for message in pubsub.listen():
-                        if message.get("type") == "message":
-                            try:
-                                live_seq = int(message["data"])
-                                await stream_buffer.put(live_seq)
-                            except Exception as e:
-                                logger.exception(f"Error parsing live message: {e}")
-                except Exception as e:
-                    logger.exception(f"Live subscription error: {e}")
-                finally:
-                    await pubsub.unsubscribe(f"notify:{self.node.id}")
-                    await pubsub.aclose()
-
-            live_task = asyncio.create_task(buffer_live_events())
-
-            if sequence is not None:
-                current_seq = await cache_client.get(f"sequence:{self.node.id}")
-                current_seq = int(current_seq) if current_seq is not None else 0
-                logger.debug("Replaying old data...")
-                for s in range(sequence, current_seq + 1):
-                    await stream_data(s)
-            # New data
-            try:
-                while not end_stream.is_set():
-                    live_seq = await stream_buffer.get()
-                    await stream_data(live_seq)
-                else:
-                    await websocket.close(code=1000, reason="Producer ended stream")
-            except WebSocketDisconnect:
-                logger.info(f"Client disconnected from node {self.node.id}")
-            finally:
-                live_task.cancel()
-
-        return handler
+        schema = self.make_ws_schema()
+        return self.context.streaming_cache.make_ws_handler(
+            websocket, formatter, uri, self.node.id, schema
+        )
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
@@ -1276,6 +1154,9 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             return self
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
+    def make_ws_schema(self):
+        return {"type": "container-schema", "version": 1}
+
 
 class CatalogArrayAdapter(CatalogNodeAdapter):
     async def read(self, *args, **kwargs):
@@ -1292,35 +1173,34 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
 
     async def _stream(self, media_type, entry, body, shape, block=None, offset=None):
-        sequence = await self.context.cache_client.incr(f"sequence:{self.node.id}")
+        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
         metadata = {
+            "type": "array-data",
             "sequence": sequence,
             "timestamp": datetime.now().isoformat(),
-            "content-type": media_type,
+            "mimetype": media_type,
             "shape": shape,
             "offset": offset,
             "block": block,
         }
 
-        pipeline = self.context.cache_client.pipeline()
-        pipeline.hset(
-            f"data:{self.node.id}:{sequence}",
-            mapping={
-                "sequence": sequence,
-                "metadata": orjson.dumps(metadata),
-                "payload": body,  # raw user input
-            },
+        await self.context.streaming_cache.set(
+            self.node.id, sequence, metadata, payload=body
         )
-        pipeline.expire(f"data:{self.node.id}:{sequence}", self.context.cache_data_ttl)
-        pipeline.publish(f"notify:{self.node.id}", sequence)
-        # Extend the lifetime of the sequence counter.
-        pipeline.expire(f"sequence:{self.node.id}", self.context.cache_seq_ttl)
-        await pipeline.execute()
 
-    async def write(self, media_type, deserializer, entry, body):
+    def make_ws_schema(self):
+        return {
+            "type": "array-schema",
+            "version": 1,
+            "data_type": dataclasses.asdict(self.structure().data_type),
+        }
+
+    async def write(self, media_type, deserializer, entry, body, persist=True):
         shape = entry.structure().shape
-        if self.context.cache_client:
+        if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape)
+        if not persist:
+            return None
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
             data = await ensure_awaitable(deserializer, body, dtype, shape)
@@ -1330,14 +1210,18 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable((await self.get_adapter()).write, data)
 
-    async def write_block(self, block, media_type, deserializer, entry, body):
+    async def write_block(
+        self, block, media_type, deserializer, entry, body, persist=True
+    ):
         from tiled.adapters.array import slice_and_shape_from_block_and_chunks
 
         _, shape = slice_and_shape_from_block_and_chunks(
             block, entry.structure().chunks
         )
-        if self.context.cache_client:
+        if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, block=block)
+        if not persist:
+            return None
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
             data = await ensure_awaitable(deserializer, body, dtype, shape)
@@ -1349,9 +1233,13 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, data, block
         )
 
-    async def patch(self, shape, offset, extend, media_type, deserializer, entry, body):
-        if self.context.cache_client:
+    async def patch(
+        self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
+    ):
+        if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
+        if not persist:
+            return entry.structure()
         dtype = entry.structure().data_type.to_numpy_dtype()
         data = await ensure_awaitable(deserializer, body, dtype, shape)
         # assumes a single DataSource (currently only supporting zarr)
@@ -1407,28 +1295,59 @@ class CatalogSparseAdapter(CatalogArrayAdapter):
 
 
 class CatalogTableAdapter(CatalogNodeAdapter):
+    def make_ws_schema(self):
+        return {
+            "type": "table-schema",
+            "version": 1,
+            "arrow_schema": self.structure().arrow_schema,
+        }
+
+    async def _stream(self, media_type, entry, body, partition, append):
+        sequence = await self.context.streaming_cache.incr_seq(self.node.id)
+        metadata = {
+            "type": "table-data",
+            "sequence": sequence,
+            "timestamp": datetime.now().isoformat(),
+            "mimetype": media_type,
+            "partition": partition,
+            "append": append,
+        }
+
+        await self.context.streaming_cache.set(
+            self.node.id, sequence, metadata, payload=body
+        )
+
     async def get(self, *args, **kwargs):
         return (await self.get_adapter()).get(*args, **kwargs)
 
     async def read(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).read, *args, **kwargs)
 
-    async def write(self, *args, **kwargs):
-        return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+    async def write(self, media_type, deserializer, entry, body):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, None, False)
+        data = await ensure_awaitable(deserializer, body)
+        return await ensure_awaitable((await self.get_adapter()).write, data)
 
     async def read_partition(self, *args, **kwargs):
         return await ensure_awaitable(
             (await self.get_adapter()).read_partition, *args, **kwargs
         )
 
-    async def write_partition(self, *args, **kwargs):
+    async def write_partition(self, media_type, deserializer, entry, body, partition):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, partition, False)
+        data = await ensure_awaitable(deserializer, body)
         return await ensure_awaitable(
-            (await self.get_adapter()).write_partition, *args, **kwargs
+            (await self.get_adapter()).write_partition, partition, data
         )
 
-    async def append_partition(self, *args, **kwargs):
+    async def append_partition(self, media_type, deserializer, entry, body, partition):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, partition, True)
+        data = await ensure_awaitable(deserializer, body)
         return await ensure_awaitable(
-            (await self.get_adapter()).append_partition, *args, **kwargs
+            (await self.get_adapter()).append_partition, partition, data
         )
 
 
@@ -1457,6 +1376,17 @@ def delete_asset(data_uri, is_directory, parameters=None):
                 if cursor.fetchone()[0] == 0:
                     cursor.execute(f'DROP TABLE IF EXISTS "{table_name}";')
             conn.commit()
+
+    elif url.scheme in SUPPORTED_OBJECT_URI_SCHEMES:
+        storage = cast(ObjectStorage, get_storage(data_uri))
+        store = storage.get_obstore_location()
+
+        if prefix := data_uri.split(f"{storage.bucket}/", 1)[1]:
+            for batch in store.list(prefix=prefix):
+                store.delete([obj["path"] for obj in batch])
+        else:
+            raise ValueError(f"Cannot delete the entire bucket: {storage.bucket!r}")
+
     else:
         raise NotImplementedError(
             f"Cannot delete asset at {data_uri!r} because the scheme {url.scheme!r} is not supported."
@@ -1748,7 +1678,6 @@ def in_memory(
     specs=None,
     writable_storage=None,
     readable_storage=None,
-    echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     cache_settings=None,
@@ -1766,7 +1695,6 @@ def in_memory(
         writable_storage=writable_storage,
         readable_storage=readable_storage,
         init_if_not_exists=True,
-        echo=echo,
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
         cache_settings=cache_settings,
@@ -1781,19 +1709,18 @@ def from_uri(
     writable_storage=None,
     readable_storage=None,
     init_if_not_exists=False,
-    echo=DEFAULT_ECHO,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
     cache_settings=None,
-    catalog_pool_size=None,
-    storage_pool_size=None,
-    catalog_max_overflow=None,
-    storage_max_overflow=None,
+    catalog_pool_size=5,
+    storage_pool_size=5,
+    catalog_max_overflow=10,
+    storage_max_overflow=10,
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
-        # The alembic stamping can only be does synchronously.
+        # The alembic stamping can only be done synchronously.
         # The cleanest option available is to start a subprocess
         # because SQLite is allergic to threads.
         import subprocess
@@ -1811,48 +1738,14 @@ def from_uri(
         logger.info(f"Subprocess stdout: {stdout}")
         logger.info(f"Subprocess stderr: {stderr}")
 
-    parsed_url = make_url(uri)
-    if (
-        (parsed_url.get_dialect().name == "sqlite")
-        and (parsed_url.database != ":memory:")
-        and (parsed_url.query.get("mode", None) != "memory")
-    ):
-        # For file-backed SQLite databases, connection pooling offers a
-        # significant performance boost. For SQLite databases that exist
-        # only in process memory, pooling is not applicable.
-        poolclass = AsyncAdaptedQueuePool
-    elif parsed_url.get_dialect().name.startswith("postgresql"):
-        poolclass = AsyncAdaptedQueuePool  # Default for PostgreSQL
-    else:
-        poolclass = None  # defer to sqlalchemy default
-
-    node = RootNode(metadata, specs, top_level_access_blob)
-    mount_path = (
-        [segment for segment in mount_node.split("/") if segment]
-        if isinstance(mount_node, str)
-        else mount_node
+    database_settings = DatabaseSettings(
+        uri=uri,
+        pool_size=catalog_pool_size,
+        max_overflow=catalog_max_overflow,
+        pool_pre_ping=False,
     )
-
-    # Optionally set pool size and max overflow for the catalog engine;
-    # if not specified, use the default values from sqlalchemy.
-    pool_kwargs = (
-        {"pool_size": catalog_pool_size, "max_overflow": catalog_max_overflow}
-        if poolclass == AsyncAdaptedQueuePool
-        else {}
-    )
-    pool_kwargs = {k: v for k, v in pool_kwargs.items() if v is not None}
-    # Create the async engine with the specified parameters
-    engine = create_async_engine(
-        uri,
-        echo=echo,
-        json_serializer=json_serializer,
-        poolclass=poolclass,
-        **pool_kwargs,
-    )
-    if engine.dialect.name == "sqlite":
-        event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     context = Context(
-        engine,
+        database_settings,
         writable_storage,
         readable_storage,
         adapters_by_mimetype,
@@ -1860,16 +1753,15 @@ def from_uri(
         storage_pool_size=storage_pool_size,
         storage_max_overflow=storage_max_overflow,
     )
+    node = RootNode(metadata, specs, top_level_access_blob)
+    mount_path = (
+        [segment for segment in mount_node.split("/") if segment]
+        if isinstance(mount_node, str)
+        else mount_node
+    )
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
 
     return adapter
-
-
-def _set_sqlite_pragma(conn, record):
-    cursor = conn.cursor()
-    # https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#foreign-key-support
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
 
 
 def format_distinct_result(results, counts):
@@ -1888,11 +1780,6 @@ class WouldDeleteData(RuntimeError):
 
 class Collision(Conflicts):
     pass
-
-
-def json_serializer(obj):
-    "The PostgreSQL JSON serializer requires str, not bytes."
-    return safe_json_dump(obj).decode()
 
 
 def key_array_to_json(keys, value):

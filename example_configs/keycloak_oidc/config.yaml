@@ -1,0 +1,16 @@
+authentication:
+  providers:
+  - provider: keycloak_oidc
+    authenticator: tiled.authenticators:ProxiedOIDCAuthenticator
+    args:
+      audience: tiled_aud
+      client_id: tiled
+      device_flow_client_id: tiled-cli
+      well_known_uri: "http://localhost:8080/realms/master/.well-known/openid-configuration"
+      confirmation_message: "You have logged in with Proxied OIDC as {id}."
+
+trees:
+ # Just some arbitrary example data...
+ # The point of this example is the authenticaiton above.
+ - tree: tiled.examples.generated_minimal:tree
+   path: /

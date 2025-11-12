@@ -59,7 +59,12 @@ class CompositeClient(Container):
     def base(self):
         "Return the base Container client instead of a CompositeClient"
         return Container(
-            self.context, item=self.item, structure_clients=self.structure_clients
+            self.context,
+            item=self.item,
+            structure_clients=self.structure_clients,
+            queries=self._queries,
+            sorting=self._sorting,
+            include_data_sources=self._include_data_sources,
         )
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
@@ -181,6 +186,8 @@ class CompositeClient(Container):
                     table_client.columns
                 )
                 df = table_client.read(list(columns))
+                if hasattr(df, "compute"):
+                    df = df.compute()
                 for column in columns:
                     data_vars[column] = df[column].values
                     # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype

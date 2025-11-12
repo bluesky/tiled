@@ -40,7 +40,7 @@ then, you can launch the server:
 ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/toy_authentication.yml
 ```
 
-To test the second kind, we'll use `https://tiled-demo.blueskyproject.io`, which
+To test the second kind, we'll use `https://tiled-demo.nsls2.bnl.gov`, which
 is configured to use [ORCID](https://orcid.org/) for authentication.
 
 ### Scenario 1: Authenticator Directly Handles Credentials
@@ -162,7 +162,7 @@ An initial handshake with the `/` route tells us that this server uses
 `"external"` authentication.
 
 ```
-$ http https://tiled-demo.blueskyproject.io/api/v1/ | jq .authentication.type
+$ http https://tiled-demo.nsls2.bnl.gov/api/v1/ | jq .authentication.type
 "external"
 ```
 
@@ -170,18 +170,18 @@ Elsewhere in this same response, we can find the authentication endpoint for
 this external identity provider.
 
 ```
-$ http https://tiled-demo.blueskyproject.io/api/v1/ | jq .authentication.endpoint
-"https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.blueskyproject.io/auth/code",
+$ http https://tiled-demo.nsls2.bnl.gov/api/v1/ | jq .authentication.endpoint
+"https://orcid.org/oauth/authorize?client_id=APP-0ROS9DU5F717F7XN&response_type=code&scope=openid&redirect_uri=https://tiled-demo.nsls2.bnl.gov/auth/code",
 ```
 
 Navigate to this address in a web browser, log in when prompted, and authorize
 Tiled when prompted.  You will be redirected to a page at
-`https://tiled-demo.blueskyproject.io/auth/code?code=[redacted]` and shown
+`https://tiled-demo.nsls2.bnl.gov/auth/code?code=[redacted]` and shown
 a valid refresh token from Tiled that encodes your ORCID username. Exchange the
 refresh token for an access token and a fresh refresh token like so.
 
 ```
-$ http POST https://tiled-demo.blueskyproject.io/api/v1/auth/session/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
+$ http POST https://tiled-demo.nsls2.bnl.gov/api/v1/auth/session/refresh refresh_token="TOKEN PASTED FROM WEB BROWSER" > tokens.json
 ```
 
 From here, everything follows the same as in Scenario 1, above.

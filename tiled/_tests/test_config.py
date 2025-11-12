@@ -1,6 +1,10 @@
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
+import respx
+from fastapi import APIRouter
 from pydantic import ValidationError
 
 from ..adapters.array import ArrayAdapter
@@ -114,16 +118,37 @@ def test_extra_files(tmpdir):
     parse_configs(str(tmpdir))
 
 
-def test_multi_file_conflict(tmpdir):
+def test_multi_file_trees(tmpdir):
+    "Test that 'trees' can be specified across more than one file, merged."
     import yaml
 
-    conf1 = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
-    conf2 = {"trees": [{"path": "/", "tree": "tiled.examples.generated_minimal:tree"}]}
+    conf1 = {"trees": [{"path": "/a", "tree": "tiled.examples.generated_minimal:tree"}]}
+    conf2 = {"trees": [{"path": "/b", "tree": "tiled.examples.generated_minimal:tree"}]}
     with open(tmpdir / "conf1.yml", "w") as c1:
         yaml.dump(conf1, c1)
     with open(tmpdir / "conf2.yml", "w") as c2:
         yaml.dump(conf2, c2)
-    with pytest.raises(ValueError, match="Duplicate configuration for {'trees'}"):
+    config = parse_configs(tmpdir)
+    assert len(config.trees) == 2
+
+
+def test_multi_file_conflict(tmpdir):
+    "Test that media_types can only be specified in a single config file."
+    import yaml
+
+    conf1 = {
+        "media_types": {},
+        "trees": [{"path": "/a", "tree": "tiled.examples.generated_minimal:tree"}],
+    }
+    conf2 = {
+        "media_types": {},
+        "trees": [{"path": "/b", "tree": "tiled.examples.generated_minimal:tree"}],
+    }
+    with open(tmpdir / "conf1.yml", "w") as c1:
+        yaml.dump(conf1, c1)
+    with open(tmpdir / "conf2.yml", "w") as c2:
+        yaml.dump(conf2, c2)
+    with pytest.raises(ValueError, match="Duplicate configuration for {'media_types'}"):
         parse_configs(tmpdir)
 
 
@@ -179,6 +204,87 @@ def test_duplicate_auth_providers():
         )
 
 
+@respx.mock
+def test_proxied_authenticator_single_instance_required(
+    well_known_response: dict[str, Any]
+):
+    respx.get("http://example.com").mock(
+        side_effect=[
+            httpx.Response(httpx.codes.OK, json=well_known_response),
+            httpx.Response(httpx.codes.OK, json=well_known_response),
+        ]
+    )
+    with pytest.raises(
+        ValidationError,
+        match="Multiple ProxiedOIDCAuthenticator instances are configured.",
+    ):
+        Config.model_validate(
+            {
+                "trees": [],
+                "authentication": {
+                    "providers": [
+                        {
+                            "provider": "one",
+                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "args": {
+                                "audience": "tiled",
+                                "client_id": "tiled",
+                                "device_flow_client_id": "tiled-cli",
+                                "well_known_uri": "http://example.com",
+                            },
+                        },
+                        {
+                            "provider": "two",
+                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "args": {
+                                "audience": "tiled",
+                                "client_id": "tiled",
+                                "device_flow_client_id": "tiled-cli",
+                                "well_known_uri": "http://example.com",
+                            },
+                        },
+                    ]
+                },
+            }
+        )
+
+
+@respx.mock
+def test_proxied_authenticator_is_not_used_with_other_authenticators(
+    well_known_response: dict[str, Any],
+):
+    respx.get("http://example.com").mock(
+        return_value=httpx.Response(httpx.codes.OK, json=well_known_response)
+    )
+    with pytest.raises(
+        ValidationError,
+        match="ProxiedOIDCAuthenticator must not be configured together with other authentication providers.",
+    ):
+        Config.model_validate(
+            {
+                "trees": [],
+                "authentication": {
+                    "providers": [
+                        {
+                            "provider": "one",
+                            "authenticator": "tiled.authenticators:DummyAuthenticator",
+                        },
+                        {
+                            "provider": "two",
+                            "authenticator": "tiled.authenticators:ProxiedOIDCAuthenticator",
+                            "args": {
+                                "audience": "tiled",
+                                "client_id": "tiled",
+                                "well_known_uri": "http://example.com",
+                                "device_flow_client_id": "tiled-cli",
+                            },
+                        },
+                    ]
+                },
+            }
+        )
+
+
 @pytest.mark.parametrize(
     "paths", [("/", "/one"), ("/one/", "/one/two"), ("one/two", "one"), ("one", "one")]
 )
@@ -194,3 +300,43 @@ def test_empty_api_key():
         ValidationError, match=r"should match pattern '\[a-zA-Z0-9\]\+'"
     ):
         Config.model_validate({"authentication": {"single_user_api_key": ""}})
+
+
+class Dummy:
+    "Referenced below in test_tree_given_as_method"
+
+    def constructor():
+        return tree
+
+
+def test_tree_given_as_method():
+    config = {
+        "trees": [
+            {
+                "tree": f"{__name__}:Dummy.constructor",
+                "path": "/",
+            },
+        ]
+    }
+    Config.model_validate(config)
+
+
+tree.include_routers = [APIRouter()]
+
+
+def test_include_routers():
+    config = {
+        "trees": [
+            {
+                "tree": f"{__name__}:tree",
+                "path": "/a",
+            },
+            {
+                "tree": f"{__name__}:tree",
+                "path": "/b",
+            },
+        ]
+    }
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        from_context(context)

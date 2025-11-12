@@ -3,6 +3,156 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Optional `persist` query parameter to PUT and PATCH /array/... routes, and
+  the corresponding DaskArrayClient methods: `write`, `write_block`, `patch`.
+
+### Changed
+
+- The public demo hosted by NSLS2 has moved from `tiled-demo.blueskyproject.io`
+  to `tiled-demo.nsls2.bnl.gov`, for purely practical reasons. (It is easier to
+  manage the deployment and associated certificates.) **The demo remains
+  world-public, with no login required.** This change affects some
+  documentation and one test.
+
+## v0.2.0 (2025-10-29)
+
+### Added
+
+- Tests to ensure that CSVAdapter can be used with a subset of columns.
+- `locking` key-word argument in HDFAdapter and HDF5Adapter.
+- Support for streaming uploaded tabular data.
+
+### Changed
+
+- Enable Tiled server to accept bearer access tokens for authentication.
+- Modernize implementation of Device Code Flow.
+- The websocket messages contain a `"type"` field and are not formally
+  specified and validated using pydantic models in `tiled.stream_messages`.
+- In previous releases, the method `Subscription.start` launched a background
+  thread. This was renamed to `Subscription.start_in_thread`. Now
+  `Subscription.start` blocks the current thread, leaving any thread management
+  up to the caller.
+- Encapsulated redis code in adapter.py into a StreamingCache object
+- Renamed `Subscription.stop` to `Subscription.disconnect`.
+- In `Subscription`, use a configurable `concurrent.futures.Executor` to
+  execute callbacks.
+- Removed `Subscription.add_callback`, replaced by separate callback registries
+  connected to specific types of updates:
+
+  ```python
+  Subscription.stream_closed  # writer-initiated
+  Subscription.disconnected  # subscriber-initiated
+  ContainerSubscription.child_created
+  ContainerSubscription.child_metadata_updated
+  ArraySubscription.new_data
+  TableSubscription.new_data
+  ```
+
+- The signature of subscription callbacks has been changed. The
+  connection-related callbacks `stream_closed` and `disconnected`
+  receive `f(subscription: Subscription)`. The other callbacks
+  receive an instance of `tiled.client.stream.LiveUpdate`,
+  which provide a reference to the subscription
+  `update.subscription`, all the data from the websocket message,
+  and update-specific convenience methods such as
+  `LiveContainerUpdate.child()` when a new child is created in a
+  container and `ArraySubscription.new_data()` or
+  `TableSubscription.new_data()` to conveniently access an array
+  or table respectively.
+
+### Fixed
+
+- Prevent exception when serving asset from a node if stat_result already found
+- Column names in `TableStructure` are explicitly converted to strings.
+- Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
+- Updated minimum version of starlette, which implements new (standard) names
+  for HTTP status codes
+- Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter`
+  with an explicit `dataset` parameter.
+- Prevent exception when serving asset from a node if stat_result already found
+- Fix bug in reading dask-backed `CompositeClient`.
+
+### Refactored
+
+- Use common base type for all access policy types
+
+
+## v0.1.6 (2025-09-29)
+
+### Fixed
+
+- Resolved circular dependency in `tiled.storage`.
+
+
+## v0.1.5 (2025-09-26)
+
+### Added
+
+- Monitoring of pool overflow and max-out events.
+
+### Fixed
+
+- Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to
+  the instantiated container when calling `CompositeClient.base`.
+- Fix AuthN database connection lifecycle management. Connections were being
+  held for the duration of the request cycle; now they are released immediately
+  after use.
+
+
+## v0.1.4 (2025-09-24)
+
+### Fixed
+
+- A regression in v0.1.1 broke the ability of adapters to add custom endpoints
+  on the server, which is used by legacy databroker to add a `/documents`
+  endpoint.
+
+
+## v0.1.3 (2025-09-24)
+
+### Added
+
+- Monitoring of the number of connections in the database pools.
+
+### Changed
+
+- Implemented a process-global connection pool for catalog databases, similarly
+  to the connections to authN database.
+
+### Fixed
+
+- A regression in v0.1.1 disallowed specifying `allow_origins`, `specs`, and `trees`
+  across multiple files. (This can be useful for config.d-style configuration
+  where different config files are managed by different stages of configuration
+  management.)
+- A regression in v0.1.1 disallowed specifying
+  `tree: databroker.mongo_normalized:MongoAdapter.from_uri` or in fact
+  specifying any method (e.g. classmethod constructor) as a tree.
+
+
+## Unreleased
+
+### Changed
+
+- `Subscription.add_callback` and `Subscription.remove_callback` now
+  return the `Subscription` instance, enabling this:
+
+  ```py
+  sub.add_callback(f)
+  sub.add_callback(g)
+  sub.start()
+  ```
+
+  to be written as:
+
+  ```py
+  sub.add_callback(f).add_callback(g).start()
+  ```
+
 
 ## v0.1.2 (2025-09-17)
 

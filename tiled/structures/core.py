@@ -68,5 +68,8 @@ STRUCTURE_TYPES = OneShotCachedMap[StructureFamily, type](
         StructureFamily.ragged: lambda: importlib.import_module(
             "...structures.ragged", StructureFamily.__module__
         ).RaggedStructure,
+        StructureFamily.container: lambda: importlib.import_module(
+            "...structures.container", StructureFamily.__module__
+        ).ContainerStructure,
     }
 )

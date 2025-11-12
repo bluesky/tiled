@@ -2,6 +2,7 @@ import copy
 import hashlib
 import logging
 import re
+from collections.abc import Set
 from contextlib import closing
 from typing import (
     Any,
@@ -21,8 +22,16 @@ import pandas
 import pyarrow
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
+from tiled.adapters.core import Adapter
+
 from ..catalog.orm import Node
-from ..storage import EmbeddedSQLStorage, RemoteSQLStorage, SQLStorage, get_storage
+from ..storage import (
+    EmbeddedSQLStorage,
+    RemoteSQLStorage,
+    SQLStorage,
+    Storage,
+    get_storage,
+)
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
@@ -64,7 +73,7 @@ FORBIDDEN_CHARACTERS = re.compile(
 logger = logging.getLogger(__name__)
 
 
-class SQLAdapter:
+class SQLAdapter(Adapter[TableStructure]):
     """SQLAdapter Class
 
     This class provides an interface for interacting with SQL databases.
@@ -80,8 +89,7 @@ class SQLAdapter:
     specs : the specs.
     """
 
-    structure_family = StructureFamily.table
-    supported_storage = {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
+    structure_family: StructureFamily = StructureFamily.table
 
     def __init__(
         self,
@@ -89,6 +97,7 @@ class SQLAdapter:
         structure: TableStructure,
         table_name: str,
         dataset_id: int,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -98,6 +107,7 @@ class SQLAdapter:
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     def metadata(self) -> JSON:
         """The metadata representing the actual data.
@@ -107,6 +117,10 @@ class SQLAdapter:
         The metadata representing the actual data.
         """
         return self._metadata
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
 
     @classmethod
     def init_storage(
@@ -206,7 +220,7 @@ class SQLAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "SQLAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     def structure(self) -> TableStructure:
         """

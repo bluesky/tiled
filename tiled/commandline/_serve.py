@@ -5,8 +5,6 @@ from typing import Any, List, Optional
 
 import typer
 
-from tiled.config import Authentication, parse_configs
-
 serve_app = typer.Typer(no_args_is_help=True)
 
 SQLITE_CATALOG_FILENAME = "catalog.db"
@@ -140,6 +138,7 @@ def serve_directory(
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
     from ..catalog import from_uri as catalog_from_uri
+    from ..config import Authentication
     from ..server.app import build_app, print_server_info
 
     if keep_ext:
@@ -377,6 +376,7 @@ def serve_catalog(
     import urllib.parse
 
     from ..catalog import from_uri
+    from ..config import Authentication
     from ..server.app import build_app, print_server_info
 
     parsed_database = urllib.parse.urlparse(database)
@@ -414,6 +414,7 @@ def serve_catalog(
         from ..alembic_utils import stamp_head
         from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
         from ..catalog.core import initialize_database
+        from ..config import StreamingCache
         from ..utils import ensure_specified_sql_driver
 
         database = ensure_specified_sql_driver(database)
@@ -475,13 +476,17 @@ or use an existing one:
             err=True,
         )
 
-    cache_settings = {}
     if cache_uri:
-        cache_settings["uri"] = cache_uri
-    if cache_data_ttl:
-        cache_settings["data_ttl"] = cache_data_ttl
-    if cache_seq_ttl:
-        cache_settings["seq_ttl"] = cache_seq_ttl
+        cli_cache_settings = {}
+        cli_cache_settings["uri"] = cache_uri
+        if cache_data_ttl:
+            cli_cache_settings["data_ttl"] = cache_data_ttl
+        if cache_seq_ttl:
+            cli_cache_settings["seq_ttl"] = cache_seq_ttl
+        # Apply defaults.
+        cache_settings = StreamingCache(**cli_cache_settings).model_dump()
+    else:
+        cache_settings = None
 
     tree = from_uri(
         database,
@@ -555,6 +560,7 @@ def serve_pyobject(
     ),
 ):
     "Serve a Tree instance from a Python module."
+    from ..config import Authentication
     from ..server.app import build_app, print_server_info
     from ..utils import import_object
 
@@ -588,6 +594,7 @@ def serve_demo(
     port: int = typer.Option(8000, help="Bind to a socket with this port."),
 ):
     "Start a public server with example data."
+    from ..config import Authentication
     from ..server.app import build_app, print_server_info
     from ..utils import import_object
 
@@ -655,6 +662,8 @@ def serve_config(
 ):
     "Serve a Tree as specified in configuration file(s)."
     import os
+
+    from ..config import parse_configs
 
     config_path = config_path or Path(os.getenv("TILED_CONFIG", "config.yml"))
     try:

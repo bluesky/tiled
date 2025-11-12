@@ -1,24 +1,37 @@
 import sys
 
-from tiled.structures.array import ArrayStructure
-from tiled.structures.awkward import AwkwardStructure
-from tiled.structures.sparse import SparseStructure
-from tiled.structures.table import TableStructure
+from pydantic import AfterValidator
 
 if sys.version_info < (3, 10):
     EllipsisType = type(Ellipsis)
 else:
     from types import EllipsisType
 
-from typing import Any, Callable, Coroutine, Dict, List, Set, TypedDict, Union
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Coroutine,
+    List,
+    Mapping,
+    Sequence,
+    Set,
+    TypedDict,
+    Union,
+)
 
-JSON = Dict[str, Union[str, int, float, bool, Dict[str, "JSON"], List["JSON"]]]
+from .utils import import_object
+
+JSON_ITEM = Union[
+    str, int, float, Mapping[str, "JSON_ITEM"], Sequence["JSON_ITEM"], None
+]
+JSON = Mapping[str, JSON_ITEM]
 
 Scopes = Set[str]
 Query = Any  # for now...
 Filters = List[Query]
-
-AnyStructure = Union[TableStructure, ArrayStructure, SparseStructure, AwkwardStructure]
+AccessBlob = Mapping[str, Any]
+AccessTags = Set[str]
 
 AppTask = Callable[[], Coroutine[None, None, Any]]
 """Async function to be run as part of the app's lifecycle"""
@@ -30,8 +43,13 @@ class TaskMap(TypedDict):
     shutdown: list[AppTask]
 
 
+EntryPointString = Annotated[
+    str,
+    AfterValidator(import_object),
+]
+
+
 __all__ = [
-    "AnyStructure",
     "AppTask",
     "EllipsisType",
     "JSON",
