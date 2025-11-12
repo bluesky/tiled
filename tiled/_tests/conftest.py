@@ -357,7 +357,7 @@ def tiled_websocket_context(tmpdir, redis_uri):
             f"file://localhost{str(tmpdir / 'data')}",
             f"duckdb:///{tmpdir / 'data.duckdb'}",
         ],
-        readable_storage=[str(Path(tempfile.gettempdir()).resolve())],
+        readable_storage=[Path(tempfile.gettempdir()).resolve()],
         init_if_not_exists=True,
         # This uses shorter defaults than the production defaults. Nothing in
         # the test suite should be going on for more than ten minutes.

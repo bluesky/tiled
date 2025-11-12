@@ -380,7 +380,6 @@ class Subscription(abc.ABC):
 
                 return
         else:
-            logger.warning("All reconnection attempts exhausted")
             self._disconnect()
 
     @abc.abstractmethod
