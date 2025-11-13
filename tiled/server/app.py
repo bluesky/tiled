@@ -468,13 +468,13 @@ def build_app(
                 settings.database_settings.max_overflow = database.max_overflow
             if database.init_if_not_exists is not None:
                 settings.database_init_if_not_exists = database.init_if_not_exists
-            if authenticators:
-                # If we support authentication providers, we need a database, so if one is
-                # not set, use a SQLite database in memory. Horizontally scaled deployments
-                # must specify a persistent database.
-                settings.database_settings.uri = (
-                    settings.database_settings.uri or "sqlite://"
-                )
+        if authenticators:
+            # If we support authentication providers, we need a database, so if one is
+            # not set, use a SQLite database in memory. Horizontally scaled deployments
+            # must specify a persistent database.
+            settings.database_settings.uri = (
+                settings.database_settings.uri or "sqlite://"
+            )
         if (
             authenticators
             and len(authenticators) == 1
