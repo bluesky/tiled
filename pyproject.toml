@@ -164,7 +164,7 @@ dev = [
     "numpydoc",
     "pre-commit",
     "pytest <9",
-    "pytest-asyncio < 1.3.0",
+    "pytest-asyncio <1.3.0",
     "pytest-mock",
     "pytest-rerunfailures",
     "respx", # Mocking library for httpx
