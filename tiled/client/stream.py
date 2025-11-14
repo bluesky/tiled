@@ -267,6 +267,7 @@ class Subscription(abc.ABC):
         self._disconnect_event = threading.Event()
         self._thread = None
         self._last_received_sequence = None  # Track last sequence for reconnection
+        self._connected = False  # Track connection state
         if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
                 context.http_client, self._uri
@@ -302,7 +303,8 @@ class Subscription(abc.ABC):
                 self._connect(start)
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
-                # Connection lost, loop will retry with fresh attempts
+                # Connection lost, mark as disconnected so we can reconnect
+                self._connected = False
                 continue
             # Clean shutdown (no exception)
             break
@@ -316,6 +318,10 @@ class Subscription(abc.ABC):
         """Connect to websocket with retry."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
+
+        # If already connected, nothing to do (idempotent)
+        if self._connected:
+            return
 
         # Resume from last received sequence if available (for reconnects)
         if self._last_received_sequence is not None:
@@ -341,6 +347,8 @@ class Subscription(abc.ABC):
             # TODO: Implement single-use API keys so that revoking is not
             # necessary.
             self.context.revoke_api_key(key_info["first_eight"])
+
+        self._connected = True
 
     def _receive(self) -> None:
         """Receive and process websocket messages."""
@@ -427,6 +435,9 @@ class Subscription(abc.ABC):
 
 
         """
+        # Connect on the main thread so that connection errors are raised here.
+        self._connect(start)
+        # Run the receive loop on a thread.
         name = f"tiled-subscription-{self._uri}"
         self._thread = threading.Thread(
             target=lambda: self._run(start), daemon=True, name=name
@@ -447,6 +458,7 @@ class Subscription(abc.ABC):
         except Exception:
             # Websocket may not have been fully connected
             pass
+        self._connected = False
         self.disconnected.process(self)
         self.executor.shutdown()
 
