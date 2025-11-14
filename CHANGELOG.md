@@ -64,6 +64,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `TableSubscription.new_data()` to conveniently access an array
   or table respectively.
 
+### Added
+
+- `locking` key-word argument in HDFAdapter and HDF5Adapter.
+
 ### Fixed
 
 - Prevent exception when serving asset from a node if stat_result already found

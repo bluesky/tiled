@@ -1,14 +1,18 @@
 import logging
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple, Union
+from urllib.parse import urljoin, urlsplit
+
+import httpx
+from pydantic import BaseModel, HttpUrl, ValidationError
 
 from ..adapters.protocols import BaseAdapter
 from ..queries import AccessBlobFilter
-from ..server.schemas import Principal
+from ..server.schemas import Principal, PrincipalType
 from ..type_aliases import AccessBlob, AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
 from .protocols import AccessPolicy
-from .scopes import ALL_SCOPES, PUBLIC_SCOPES
+from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -19,7 +23,6 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("TILED ACCESS POLICY: %(message)s"))
 logger.addHandler(handler)
-
 log_level = os.getenv("TILED_ACCESS_POLICY_LOG_LEVEL")
 if log_level:
     logger.setLevel(log_level.upper())
@@ -412,3 +415,178 @@ class TagBasedAccessPolicy(AccessPolicy):
 
         queries.append(query_filter(identifier, tag_list))
         return queries
+
+
+class Data(BaseModel):
+    token: str
+    audience: Optional[str]
+    access_blob: Optional[AccessBlob]
+
+
+class Input(BaseModel):
+    input: Data
+
+
+class Decision(BaseModel):
+    result: Union[List[str], bool]
+
+
+class ExternalPolicyDecisionPoint(AccessPolicy):
+    def __init__(
+        self,
+        authorization_provider: HttpUrl,
+        node_access: str,
+        filter_nodes: str,
+        scopes_access: str,
+        audience: str,
+        provider: Optional[str] = None,
+    ):
+        self.authorization_provider = authorization_provider
+
+        self._node_access = urljoin(
+            str(self.authorization_provider),
+            urlsplit(node_access).path,
+        )
+        self._filter_nodes = urljoin(
+            str(self.authorization_provider),
+            urlsplit(filter_nodes).path,
+        )
+        self._scopes_access = urljoin(
+            str(self.authorization_provider),
+            urlsplit(scopes_access).path,
+        )
+
+        self.audience = audience
+        self.provider = provider
+
+    def _identifier(self, principal) -> str:
+        if principal.type == PrincipalType.service:
+            return str(principal.uuid)
+        elif principal.type == PrincipalType.external:
+            if not principal.access_token:
+                raise ValueError(
+                    "Access token not provided for external principal type"
+                )
+            return principal.access_token.get_secret_value()
+        else:
+            for identity in principal.identities:
+                if identity.provider == self.provider:
+                    return identity.id
+            else:
+                raise ValueError(
+                    f"Principal {principal} has no identity from provider {self.provider}."
+                    f"The Principal's identities are: {principal.identities}"
+                )
+
+    async def init_node(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        input = Input(
+            input=Data(
+                token=self._identifier(principal),
+                audience=self.audience,
+                access_blob=access_blob,
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(self._node_access), content=input.model_dump_json(exclude_none=True)
+            )
+        response.raise_for_status()
+        decision = Decision.model_validate_json(response.text)
+        if not decision.result:
+            raise ValueError("Permission denied not able to add the node")
+        return (True, access_blob)
+
+    async def modify_node(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob],
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        if access_blob == node.access_blob:
+            logger.info(
+                f"Node access_blob not modified; access_blob is identical: {access_blob}"
+            )
+            return (False, node.access_blob)
+        input = Input(
+            input=Data(
+                token=self._identifier(principal),
+                audience=self.audience,
+                access_blob=access_blob,
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(self._node_access), content=input.model_dump_json(exclude_none=True)
+            )
+        response.raise_for_status()
+        decision = Decision.model_validate_json(response.text)
+        if not decision.result:
+            raise ValueError("Permission denied not able to add the node")
+        return (True, access_blob)
+
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
+        queries = []
+        query_filter = AccessBlobFilter
+        input = Input(
+            input=Data(
+                token=self._identifier(principal),
+                audience=self.audience,
+                access_blob=None,
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(self._filter_nodes),
+                content=input.model_dump_json(exclude_none=True),
+            )
+        response.raise_for_status()
+        result = Decision.model_validate_json(response.text).result
+        if isinstance(result, List):
+            queries.append(query_filter(tags=result, user_id=None))
+        return queries
+
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
+        access_blob = node.access_blob if hasattr(node, "access_blob") else None
+
+        input = Input(
+            input=Data(
+                token=self._identifier(principal),
+                audience=self.audience,
+                access_blob=access_blob,
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(self._scopes_access),
+                content=input.model_dump_json(exclude_none=True),
+            )
+        response.raise_for_status()
+        try:
+            result = Decision.model_validate_json(response.text).result
+        except ValidationError:
+            return NO_SCOPES
+        if isinstance(result, List):
+            return set(result)
+        else:
+            return NO_SCOPES
