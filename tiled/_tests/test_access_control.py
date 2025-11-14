@@ -66,8 +66,8 @@ access_tag_config = {
                 "read:metadata",
                 "write:data",
                 "write:metadata",
-                "delete:data",
-                "delete:metadata",
+                "delete:node",
+                "delete:revision",
                 "create",
                 "register",
             ]

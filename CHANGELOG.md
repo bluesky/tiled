@@ -9,7 +9,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Optional `persist` query parameter to PUT and PATCH /array/... routes, and
   the corresponding DaskArrayClient methods: `write`, `write_block`, `patch`.
-- Added new delete:data and delete:metadata scopes
+- Added new delete:node and delete:revision scopes
 
 ### Changed
 

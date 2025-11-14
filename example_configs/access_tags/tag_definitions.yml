@@ -4,7 +4,7 @@ roles:
   facility_admin:
     scopes: ["read:data", "read:metadata",
              "write:data", "write:metadata",
-             "delete:data", "delete:metadata",
+             "delete:node", "delete:revision",
              "create", "register"]
 tags:
   data_A:

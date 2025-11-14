@@ -18,7 +18,7 @@ depends_on = None
 
 
 ROLES = ["admin", "user"]
-NEW_SCOPES = ["delete:metadata", "delete:data"]
+NEW_SCOPES = ["delete:revision", "delete:node"]
 
 
 def upgrade():

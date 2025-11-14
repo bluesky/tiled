@@ -24,8 +24,8 @@ access_control:
     - "read:data"
     - "write:metadata"
     - "write:data"
-    - "delete:metadata"
-    - "delete:data"
+    - "delete:revision"
+    - "delete:node"
     - "create"
     - "register"
     tags_db:
