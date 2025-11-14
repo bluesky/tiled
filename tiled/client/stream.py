@@ -295,45 +295,20 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
-    def _run(self, start: Optional[int] = None) -> None:
-        """This runs once for the lifecycle of the Subscription."""
-        first_connect = True
-
-        while not self._disconnect_event.is_set():
-            # Connect with fresh retry context for each disconnect
-            if first_connect:
-                self._connect(start)
-                first_connect = False
-            else:
-                self._connect()
-
-            try:
-                self._receive()
-            except (websockets.exceptions.ConnectionClosedError, OSError):
-                logger.debug("Disconnected! Will attempt to reconnect")
-                continue  # reconnect
-
     @stamina.retry(
         on=(websockets.exceptions.ConnectionClosedError, OSError),
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
     )
-    def _connect(self, start: Optional[int] = None) -> None:
-        """Connect to websocket with retry logic."""
-        # Clean up old connection if retrying
-        if (
-            hasattr(self._websocket, "_websocket")
-            and self._websocket._websocket is not None
-        ):
-            try:
-                self._websocket.close()
-            except Exception:
-                pass
-            # Reset schema - server will resend it
-            self._schema = None
+    def _run(self, start: Optional[int] = None) -> None:
+        """This runs once for the lifecycle of the Subscription."""
+        self._connect(start)
+        self._receive()
 
+    def _connect(self, start: Optional[int] = None) -> None:
+        """Connect to websocket."""
         # Resume from last received sequence if available (for reconnects)
-        if self._last_received_sequence is not None and start is None:
+        if self._last_received_sequence is not None:
             logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
             start = self._last_received_sequence + 1
 
