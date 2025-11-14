@@ -295,18 +295,49 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
-    def _websocket_retry_context(self):
-        return stamina.retry_context(
-            on=(
-                websockets.exceptions.ConnectionClosedError,
-                OSError,
-            ),
-            attempts=TILED_RETRY_ATTEMPTS,
-            timeout=TILED_RETRY_TIMEOUT,
-        )
+    def _run(self, start: Optional[int] = None) -> None:
+        """This runs once for the lifecycle of the Subscription."""
+        # Flag to track if this is the first connection
+        first_connect = True
 
+        while not self._disconnect_event.is_set():
+            # Fresh retry context for each disconnect
+            if first_connect:
+                self._connect(start)  # Use user-provided start on first connect
+                first_connect = False
+            else:
+                self._connect()  # Will resume from _last_received_sequence
+
+            try:
+                self._receive()
+            except (websockets.exceptions.ConnectionClosedError, OSError):
+                logger.debug("Disconnected! Will attempt to reconnect")
+                continue  # reconnect
+
+    @stamina.retry(
+        on=(websockets.exceptions.ConnectionClosedError, OSError),
+        attempts=TILED_RETRY_ATTEMPTS,
+        timeout=TILED_RETRY_TIMEOUT,
+    )
     def _connect(self, start: Optional[int] = None) -> None:
-        "Connect to websocket"
+        """Connect to websocket with retry logic."""
+        # Clean up old connection if retrying
+        if (
+            hasattr(self._websocket, "_websocket")
+            and self._websocket._websocket is not None
+        ):
+            try:
+                self._websocket.close()
+            except Exception:
+                pass
+            # Reset schema - server will resend it
+            self._schema = None
+
+        # Resume from last received sequence if available (for reconnects)
+        if self._last_received_sequence is not None and start is None:
+            logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
+            start = self._last_received_sequence + 1
+
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
             # Request a short-lived API key to use for authenticating the WS connection.
@@ -327,60 +358,34 @@ class Subscription(abc.ABC):
             # necessary.
             self.context.revoke_api_key(key_info["first_eight"])
 
-    def _reconnect(self, attempt_num: int) -> None:
-        """Reconnect to websocket after connection failure."""
-        logger.debug(f"Reconnecting after connection failure (attempt {attempt_num})")
-
-        try:
-            self._websocket.close()
-        except Exception:
-            pass
-
-        self._schema = None  # Server will resend schema
-
-        if self._last_received_sequence is not None:
-            logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
-            self._connect(start=self._last_received_sequence + 1)
-        else:
-            logger.debug("Reconnecting from start (no sequence yet)")
-            self._connect()
-
     def _receive(self) -> None:
-        "Blocking loop that receives and processes updates"
-        for attempt in self._websocket_retry_context():
-            with attempt:
-                if attempt.num > 1:
-                    self._reconnect(attempt.num)
+        """Receive and process websocket messages."""
+        while not self._disconnect_event.is_set():
+            try:
+                data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
+            except (TimeoutError, anyio.EndOfStream):
+                continue
+            # Let ConnectionClosedError and OSError propagate to _run()
 
-                while not self._disconnect_event.is_set():
-                    try:
-                        data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
-                    except (TimeoutError, anyio.EndOfStream):
-                        continue
-
-                    if data is None:
-                        self.stream_closed.process(self)
-                        self._disconnect()
-                        return
-
-                    try:
-                        if self._schema is None:
-                            self._schema = parse_schema(data)
-                            continue
-                        else:
-                            update = parse_update(self, data, self._schema)
-                    except Exception:
-                        logger.exception(
-                            "A websocket message will be ignored because it could not be parsed."
-                        )
-                        continue
-
-                    self._last_received_sequence = update.sequence
-                    self.process(update)
-
+            if data is None:
+                self.stream_closed.process(self)
+                self._disconnect()
                 return
-        else:
-            self._disconnect()
+
+            try:
+                if self._schema is None:
+                    self._schema = parse_schema(data)
+                    continue
+                else:
+                    update = parse_update(self, data, self._schema)
+            except Exception:
+                logger.exception(
+                    "A websocket message will be ignored because it could not be parsed."
+                )
+                continue
+
+            self._last_received_sequence = update.sequence
+            self.process(update)
 
     @abc.abstractmethod
     def process(self, *args) -> None:
@@ -407,9 +412,8 @@ class Subscription(abc.ABC):
         >>> sub.start()
 
         """
-        self._connect(start)
         try:
-            self._receive()  # blocks
+            self._run(start)  # blocks
         finally:
             self.disconnect()
 
@@ -444,8 +448,19 @@ class Subscription(abc.ABC):
         # Connect on the current thread, so any connection-related exceptions are
         # raised here.
         self._connect(start)
-        # Run the receive loop on a thread.
-        self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
+
+        # Run the receive loop with reconnect logic on a thread.
+        # Reconnections will happen on the background thread.
+        def run_receive_loop():
+            while not self._disconnect_event.is_set():
+                try:
+                    self._receive()
+                except (websockets.exceptions.ConnectionClosedError, OSError):
+                    logger.debug("Disconnected! Will attempt to reconnect")
+                    self._connect()  # Fresh retry context for each disconnect
+                    continue  # reconnect
+
+        self._thread = threading.Thread(target=run_receive_loop, daemon=True, name=name)
         self._thread.start()
         return self
 
