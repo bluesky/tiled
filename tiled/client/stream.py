@@ -295,23 +295,21 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
-    def _run(self, start: Optional[int] = None) -> None:
+    def _run(
+        self, start: Optional[int] = None, skip_initial_connect: bool = False
+    ) -> None:
         """This runs once for the lifecycle of the Subscription."""
-        # Flag to track if this is the first connection
-        first_connect = True
+        # Do initial connection unless already connected
+        if not skip_initial_connect:
+            self._connect(start)
 
+        # Reconnection loop
         while not self._disconnect_event.is_set():
-            # Fresh retry context for each disconnect
-            if first_connect:
-                self._connect(start)  # Use user-provided start on first connect
-                first_connect = False
-            else:
-                self._connect()  # Will resume from _last_received_sequence
-
             try:
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
                 logger.debug("Disconnected! Will attempt to reconnect")
+                self._connect()  # Fresh retry context for each disconnect
                 continue  # reconnect
 
     @stamina.retry(
@@ -451,16 +449,9 @@ class Subscription(abc.ABC):
 
         # Run the receive loop with reconnect logic on a thread.
         # Reconnections will happen on the background thread.
-        def run_receive_loop():
-            while not self._disconnect_event.is_set():
-                try:
-                    self._receive()
-                except (websockets.exceptions.ConnectionClosedError, OSError):
-                    logger.debug("Disconnected! Will attempt to reconnect")
-                    self._connect()  # Fresh retry context for each disconnect
-                    continue  # reconnect
-
-        self._thread = threading.Thread(target=run_receive_loop, daemon=True, name=name)
+        self._thread = threading.Thread(
+            target=lambda: self._run(skip_initial_connect=True), daemon=True, name=name
+        )
         self._thread.start()
         return self
 
