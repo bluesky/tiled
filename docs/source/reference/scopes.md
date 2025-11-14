@@ -11,6 +11,8 @@ with restricted scopes.
 * `create` --- Create a new node.
 * `write:metadata` --- Write metadata.
 * `write:data` --- Write (array, table) data.
+* `delete:revision` --- Delete metadata revisions
+* `delete:node` --- Delete a node
 * `apikeys` --- Manage API keys for the currently-authenticated user or service.
 * `metrics` --- Access Prometheus metrics.
 * `admin:apikeys` --- Manage API keys on behalf of any user or service.

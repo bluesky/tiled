@@ -9,6 +9,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Optional `persist` query parameter to PUT and PATCH /array/... routes, and
   the corresponding DaskArrayClient methods: `write`, `write_block`, `patch`.
+- Added new delete:node and delete:revision scopes
 
 ### Changed
 
@@ -17,6 +18,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   manage the deployment and associated certificates.) **The demo remains
   world-public, with no login required.** This change affects some
   documentation and one test.
+- Deletion of nodes or metadata revisions now requires deletion scopes,
+  rather than writing scopes.
+
+## Fixed
+
+- Fixed a couple of bugs in the example config, to restore it to working order
+
 
 ## v0.2.0 (2025-10-29)
 
