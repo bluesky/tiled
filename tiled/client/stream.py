@@ -295,18 +295,28 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
+    def _run(self, start: Optional[int] = None) -> None:
+        """Outer loop - runs for the lifecycle of the Subscription."""
+        while not self._disconnect_event.is_set():
+            try:
+                self._connect(start)
+                self._receive()
+            except (websockets.exceptions.ConnectionClosedError, OSError):
+                # Connection lost, loop will retry with fresh attempts
+                continue
+            # Clean shutdown (no exception)
+            break
+
     @stamina.retry(
         on=(websockets.exceptions.ConnectionClosedError, OSError),
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
     )
-    def _run(self, start: Optional[int] = None) -> None:
-        """This runs once for the lifecycle of the Subscription."""
-        self._connect(start)
-        self._receive()
-
     def _connect(self, start: Optional[int] = None) -> None:
-        """Connect to websocket."""
+        """Connect to websocket with retry."""
+        if self._disconnect_event.is_set():
+            raise RuntimeError("Cannot be restarted once stopped.")
+
         # Resume from last received sequence if available (for reconnects)
         if self._last_received_sequence is not None:
             logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")

@@ -37,8 +37,8 @@ def stamina_active():
 
 @pytest.fixture(autouse=True)
 def fast_retries(monkeypatch):
-    """Set retry attempts to 1 for faster tests."""
-    monkeypatch.setattr("tiled.client.utils.TILED_RETRY_ATTEMPTS", 1)
+    """Set retry attempts to 2 for faster tests (down from default 10)."""
+    monkeypatch.setattr("tiled.client.stream.TILED_RETRY_ATTEMPTS", 2)
 
 
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
