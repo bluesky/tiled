@@ -295,15 +295,13 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
-    def _run(
-        self, start: Optional[int] = None, skip_initial_connect: bool = False
-    ) -> None:
+    def _run(self, start: Optional[int] = None) -> None:
         """This runs once for the lifecycle of the Subscription."""
-        # Do initial connection unless already connected
-        if not skip_initial_connect:
-            self._connect(start)
+        self._connect(start)
+        self._reconnection_loop()
 
-        # Reconnection loop
+    def _reconnection_loop(self) -> None:
+        """Run the receive loop with automatic reconnection."""
         while not self._disconnect_event.is_set():
             try:
                 self._receive()
@@ -450,7 +448,7 @@ class Subscription(abc.ABC):
         # Run the receive loop with reconnect logic on a thread.
         # Reconnections will happen on the background thread.
         self._thread = threading.Thread(
-            target=lambda: self._run(skip_initial_connect=True), daemon=True, name=name
+            target=self._reconnection_loop, daemon=True, name=name
         )
         self._thread.start()
         return self
