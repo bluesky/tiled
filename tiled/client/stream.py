@@ -299,8 +299,8 @@ class Subscription(abc.ABC):
     def _run(self, start: Optional[int] = None) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
         while not self._disconnect_event.is_set():
+            self._connect(start)
             try:
-                self._connect(start)
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
                 # Connection lost, mark as disconnected so we can reconnect
