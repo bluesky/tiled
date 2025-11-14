@@ -607,7 +607,7 @@ def test_subscription_auto_reconnect_on_network_failure(
     subscription = streaming_node.subscribe()
     subscription.new_data.add_callback(callback)
 
-    with subscription.start_in_thread():
+    with subscription.start_in_thread(1):
         # Send first 3 updates
         for i in range(1, 4):
             streaming_node.write(np.arange(10) + i)
@@ -641,3 +641,6 @@ def test_subscription_auto_reconnect_on_network_failure(
 
         # Verify we received all 6 updates (3 before disconnect + 3 after)
         assert len(received) >= 6, f"Expected at least 6 updates, got {len(received)}"
+
+        # Restore original recv before disconnecting to avoid cleanup issues
+        subscription._websocket.recv = original_recv

@@ -323,6 +323,9 @@ class Subscription(abc.ABC):
         if self._connected:
             return
 
+        # Reset schema so first message on new connection is parsed as schema
+        self._schema = None
+
         # Resume from last received sequence if available (for reconnects)
         if self._last_received_sequence is not None:
             logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
