@@ -297,17 +297,20 @@ class Subscription(abc.ABC):
 
     def _run(self, start: Optional[int] = None) -> None:
         """This runs once for the lifecycle of the Subscription."""
-        self._connect(start)
-        self._reconnection_loop()
+        first_connect = True
 
-    def _reconnection_loop(self) -> None:
-        """Run the receive loop with automatic reconnection."""
         while not self._disconnect_event.is_set():
+            # Connect with fresh retry context for each disconnect
+            if first_connect:
+                self._connect(start)
+                first_connect = False
+            else:
+                self._connect()
+
             try:
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
                 logger.debug("Disconnected! Will attempt to reconnect")
-                self._connect()  # Fresh retry context for each disconnect
                 continue  # reconnect
 
     @stamina.retry(
@@ -415,7 +418,7 @@ class Subscription(abc.ABC):
 
     def start_in_thread(self, start: Optional[int] = None) -> Self:
         """
-        Connect to the websocket, and receive and process updates on a thread.
+        Start a thread to connect to the websocket and receive updates.
 
         Parameters
         ----------
@@ -429,26 +432,19 @@ class Subscription(abc.ABC):
         Examples
         --------
 
-        Starting the Subscription connects and then starts a thread to receive
-        and process updates.
+        Starting the Subscription starts a thread that connects and receives updates.
 
-        >>> sub.start()
+        >>> sub.start_in_thread()
 
         To stop the thread:
 
-        >>> sub.stop()
+        >>> sub.disconnect()
 
 
         """
         name = f"tiled-subscription-{self._uri}"
-        # Connect on the current thread, so any connection-related exceptions are
-        # raised here.
-        self._connect(start)
-
-        # Run the receive loop with reconnect logic on a thread.
-        # Reconnections will happen on the background thread.
         self._thread = threading.Thread(
-            target=self._reconnection_loop, daemon=True, name=name
+            target=lambda: self._run(start), daemon=True, name=name
         )
         self._thread.start()
         return self
@@ -461,7 +457,11 @@ class Subscription(abc.ABC):
             if self._disconnect_event.is_set():
                 return  # nothing to do
             self._disconnect_event.set()
-        self._websocket.close()
+        try:
+            self._websocket.close()
+        except Exception:
+            # Websocket may not have been fully connected
+            pass
         self.disconnected.process(self)
         self.executor.shutdown()
 
