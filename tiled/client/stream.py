@@ -15,6 +15,7 @@ else:
 import anyio
 import httpx
 import msgpack
+import stamina
 import websockets.exceptions
 from pydantic import ConfigDict
 from websockets.sync.client import connect
@@ -36,7 +37,14 @@ from ..stream_messages import (
 )
 from ..structures.core import STRUCTURE_TYPES, StructureFamily
 from .context import Context
-from .utils import client_for_item, handle_error, normalize_specs, retry_context
+from .utils import (
+    TILED_RETRY_ATTEMPTS,
+    TILED_RETRY_TIMEOUT,
+    client_for_item,
+    handle_error,
+    normalize_specs,
+    retry_context,
+)
 
 T = TypeVar("T")
 Callback = Callable[[T], None]
@@ -47,7 +55,6 @@ RECEIVE_TIMEOUT = 0.1  # seconds
 
 
 logger = logging.getLogger(__name__)
-
 
 __all__ = ["Subscription"]
 
@@ -259,6 +266,8 @@ class Subscription(abc.ABC):
         self._disconnect_lock = threading.Lock()
         self._disconnect_event = threading.Event()
         self._thread = None
+        self._last_received_sequence = None  # Track last sequence for reconnection
+        self._connected = False  # Track connection state
         if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
                 context.http_client, self._uri
@@ -287,10 +296,41 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
+    def _run(self, start: Optional[int] = None) -> None:
+        """Outer loop - runs for the lifecycle of the Subscription."""
+        while not self._disconnect_event.is_set():
+            try:
+                self._connect(start)
+                self._receive()
+            except (websockets.exceptions.ConnectionClosedError, OSError):
+                # Connection lost, mark as disconnected so we can reconnect
+                self._connected = False
+                continue
+            # Clean shutdown (no exception)
+            break
+
+    @stamina.retry(
+        on=(websockets.exceptions.ConnectionClosedError, OSError),
+        attempts=TILED_RETRY_ATTEMPTS,
+        timeout=TILED_RETRY_TIMEOUT,
+    )
     def _connect(self, start: Optional[int] = None) -> None:
-        "Connect to websocket"
+        """Connect to websocket with retry."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
+
+        # If already connected, nothing to do (idempotent)
+        if self._connected:
+            return
+
+        # Reset schema so first message on new connection is parsed as schema
+        self._schema = None
+
+        # Resume from last received sequence if available (for reconnects)
+        if self._last_received_sequence is not None:
+            logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
+            start = self._last_received_sequence + 1
+
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
             # Request a short-lived API key to use for authenticating the WS connection.
@@ -311,17 +351,22 @@ class Subscription(abc.ABC):
             # necessary.
             self.context.revoke_api_key(key_info["first_eight"])
 
+        self._connected = True
+
     def _receive(self) -> None:
-        "Blocking loop that receives and processes updates"
+        """Receive and process websocket messages."""
         while not self._disconnect_event.is_set():
             try:
                 data = self._websocket.recv(timeout=RECEIVE_TIMEOUT)
             except (TimeoutError, anyio.EndOfStream):
                 continue
+            # Let ConnectionClosedError and OSError propagate to _run()
+
             if data is None:
                 self.stream_closed.process(self)
                 self._disconnect()
                 return
+
             try:
                 if self._schema is None:
                     self._schema = parse_schema(data)
@@ -333,6 +378,8 @@ class Subscription(abc.ABC):
                     "A websocket message will be ignored because it could not be parsed."
                 )
                 continue
+
+            self._last_received_sequence = update.sequence
             self.process(update)
 
     @abc.abstractmethod
@@ -360,15 +407,14 @@ class Subscription(abc.ABC):
         >>> sub.start()
 
         """
-        self._connect(start)
         try:
-            self._receive()  # blocks
+            self._run(start)  # blocks
         finally:
             self.disconnect()
 
     def start_in_thread(self, start: Optional[int] = None) -> Self:
         """
-        Connect to the websocket, and receive and process updates on a thread.
+        Start a thread to connect to the websocket and receive updates.
 
         Parameters
         ----------
@@ -382,23 +428,23 @@ class Subscription(abc.ABC):
         Examples
         --------
 
-        Starting the Subscription connects and then starts a thread to receive
-        and process updates.
+        Starting the Subscription starts a thread that connects and receives updates.
 
-        >>> sub.start()
+        >>> sub.start_in_thread()
 
         To stop the thread:
 
-        >>> sub.stop()
+        >>> sub.disconnect()
 
 
         """
-        name = f"tiled-subscription-{self._uri}"
-        # Connect on the current thread, so any connection-related exceptions are
-        # raised here.
+        # Connect on the main thread so that connection errors are raised here.
         self._connect(start)
         # Run the receive loop on a thread.
-        self._thread = threading.Thread(target=self._receive, daemon=True, name=name)
+        name = f"tiled-subscription-{self._uri}"
+        self._thread = threading.Thread(
+            target=lambda: self._run(start), daemon=True, name=name
+        )
         self._thread.start()
         return self
 
@@ -410,7 +456,12 @@ class Subscription(abc.ABC):
             if self._disconnect_event.is_set():
                 return  # nothing to do
             self._disconnect_event.set()
-        self._websocket.close()
+        try:
+            self._websocket.close()
+        except Exception:
+            # Websocket may not have been fully connected
+            pass
+        self._connected = False
         self.disconnected.process(self)
         self.executor.shutdown()
 
