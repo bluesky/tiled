@@ -145,7 +145,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
             raise NotImplementedError
         self._array[self._stencil()] = data
 
-    async def write_block(
+    def write_block(
         self,
         data: NDArray[Any],
         block: Tuple[int, ...],
@@ -155,7 +155,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         )
         self._array[block_slice] = data
 
-    async def patch(
+    def patch(
         self,
         data: NDArray[Any],
         offset: Tuple[int, ...],
