@@ -12,6 +12,9 @@ authentication:
   tiled_admins:
     - provider: toy
       id: admin
+database:
+  uri: "sqlite:///file:authn_mem?mode=memory&cache=shared&uri=true"
+  init_if_not_exists: true
 access_control:
   access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
   args:
@@ -21,7 +24,10 @@ access_control:
     - "read:data"
     - "write:metadata"
     - "write:data"
+    - "delete:revision"
+    - "delete:node"
     - "create"
+    - "register"
     tags_db:
       uri: "file:example_configs/access_tags/compiled_tags.sqlite"
     access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"
