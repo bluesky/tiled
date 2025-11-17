@@ -481,10 +481,11 @@ async def get_current_principal_websocket(
         get_database_session_factory
     ),
 ):
-    async with db_factory() as db:
-        principal = await get_current_principal_from_api_key(
-            api_key, websocket.app.state.authenticated, db, settings
-        )
+    if api_key is not None:
+        async with db_factory() as db:
+            principal = await get_current_principal_from_api_key(
+                api_key, websocket.app.state.authenticated, db, settings
+            )
     if principal is None and websocket.app.state.authenticated:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     return principal
