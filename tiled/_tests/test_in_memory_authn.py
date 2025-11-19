@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import numpy
 import yaml
 
 from tiled._tests.utils import enter_username_password
@@ -11,6 +10,7 @@ CONFIG_NAME = "in_memory_db.yml"
 CATALOG_STORAGE = "data/"
 
 here = Path(__file__).parent.absolute()
+
 
 def test_good_path():
     """Test authn database defaults to in-memory catalog"""
