@@ -55,7 +55,10 @@ _connection_pools: dict[DatabaseSettings, AsyncEngine] = {}
 
 
 def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncEngine:
-    if make_url(database_settings.uri).database == ":memory:" or database_settings.uri == "sqlite://":
+    if (
+        make_url(database_settings.uri).database == ":memory:"
+        or database_settings.uri == "sqlite://"
+    ):
         # For SQLite databases that exist only in process memory,
         engine = create_async_engine(
             ensure_specified_sql_driver(database_settings.uri),
