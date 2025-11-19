@@ -171,9 +171,8 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=5,
         storage_max_overflow=10,
-        use_cached_database=True,
     ):
-        self.engine = get_database_engine(database_settings, use_cached_database=use_cached_database)
+        self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
         self.writable_storage = {}
         self.readable_storage = {}
@@ -1677,7 +1676,6 @@ def in_memory(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     cache_settings=None,
-    use_cached_database=True
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -1695,7 +1693,6 @@ def in_memory(
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
         cache_settings=cache_settings,
-        use_cached_database=use_cached_database
     )
 
 
@@ -1715,7 +1712,6 @@ def from_uri(
     storage_pool_size=5,
     catalog_max_overflow=10,
     storage_max_overflow=10,
-    use_cached_database=True
 ):
     uri = ensure_specified_sql_driver(uri)
     if init_if_not_exists:
@@ -1751,7 +1747,6 @@ def from_uri(
         cache_settings,
         storage_pool_size=storage_pool_size,
         storage_max_overflow=storage_max_overflow,
-        use_cached_database=use_cached_database,
     )
     node = RootNode(metadata, specs, top_level_access_blob)
     mount_path = (
