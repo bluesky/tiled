@@ -6,9 +6,6 @@ from tiled._tests.utils import enter_username_password
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
 
-CONFIG_NAME = "in_memory_db.yml"
-CATALOG_STORAGE = "data/"
-
 here = Path(__file__).parent.absolute()
 
 
