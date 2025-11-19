@@ -57,7 +57,6 @@ _connection_pools: dict[DatabaseSettings, AsyncEngine] = {}
 def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncEngine:
     if make_url(database_settings.uri).database == ":memory:" or database_settings.uri == "sqlite://":
         # For SQLite databases that exist only in process memory,
-        # pooling is not applicable. Just return an engine and don't cache it.
         engine = create_async_engine(
             ensure_specified_sql_driver(database_settings.uri),
             echo=DEFAULT_ECHO,
@@ -77,9 +76,9 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
             pool_pre_ping=database_settings.pool_pre_ping,
         )
 
-        # Cache the engine so we don't create more than one pool per database_settings.
-        monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
-        _connection_pools[database_settings] = engine
+    # Cache the engine so we don't create more than one pool per database_settings.
+    monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
+    _connection_pools[database_settings] = engine
 
     # For SQLite, ensure that foreign key constraints are enforced.
     if engine.dialect.name == "sqlite":
