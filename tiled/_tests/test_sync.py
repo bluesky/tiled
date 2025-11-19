@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import tempfile
+from pathlib import Path
 
 import awkward
 import h5py
@@ -10,7 +11,7 @@ import pytest
 import sparse
 import tifffile
 
-from tiled.catalog import in_memory
+from tiled.catalog import from_uri
 from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.smoke import read
@@ -23,8 +24,11 @@ from tiled.server.app import build_app
 @contextlib.contextmanager
 def client_factory(readable_storage=None):
     with tempfile.TemporaryDirectory() as tempdir:
-        catalog = in_memory(
-            writable_storage=str(tempdir), readable_storage=readable_storage
+        catalog = from_uri(
+            Path(tempdir, "catalog.db"),
+            writable_storage=str(tempdir),
+            readable_storage=readable_storage,
+            init_if_not_exists=True,
         )
         app = build_app(catalog)
         with Context.from_app(app) as context:
