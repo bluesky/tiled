@@ -78,7 +78,6 @@ async def initialize_database(engine: AsyncEngine) -> None:
     # Initialize Roles table.
     async with AsyncSession(engine) as db:
         await create_default_roles(db)
-        db.commit()
 
 async def purge_expired(db: AsyncSession, cls) -> int:
     """
