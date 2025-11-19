@@ -98,6 +98,7 @@ async def close_database_connection_pool(database_settings: DatabaseSettings):
 
 def get_database_engine(
     settings: Union[Settings, DatabaseSettings] = Depends(get_settings),
+    use_cached_database = True,
 ) -> AsyncEngine:
     database_settings = (
         settings.database_settings if isinstance(settings, Settings) else settings
@@ -105,7 +106,7 @@ def get_database_engine(
     # Special case for single-user mode
     if database_settings.uri is None:
         return None
-    if database_settings in _connection_pools:
+    if database_settings in _connection_pools and use_cached_database:
         return _connection_pools[database_settings]
     else:
         return open_database_connection_pool(database_settings)
