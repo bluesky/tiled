@@ -12,9 +12,6 @@ authentication:
   tiled_admins:
     - provider: toy
       id: admin
-database:
-  uri: "sqlite:///file:authn_mem?mode=memory&cache=shared&uri=true"
-  init_if_not_exists: true
 access_control:
   access_policy: "tiled.access_control.access_policies:TagBasedAccessPolicy"
   args:
