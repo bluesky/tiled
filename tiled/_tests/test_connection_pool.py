@@ -13,6 +13,7 @@ from tiled.server.connection_pool import is_memory_sqlite
         (make_url("sqlite://"), True),  # accepts URL
         ("sqlite:///:memory:", True),
         ("sqlite:///file::memory:?cache=shared", True),
+        ("sqlite:///file:name:?cache=shared&mode=memory", True),
         ("sqlite:////tmp/example.db", False),
     ],
 )
