@@ -473,7 +473,8 @@ def build_app(
             # not set, use a SQLite database in memory. Horizontally scaled deployments
             # must specify a persistent database.
             settings.database_settings.uri = (
-                settings.database_settings.uri or "sqlite:///file:authdb?mode=memory&cache=shared&uri=true"
+                settings.database_settings.uri
+                or "sqlite:///file:authdb?mode=memory&cache=shared&uri=true"
             )
         if (
             authenticators
