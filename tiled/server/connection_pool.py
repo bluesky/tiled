@@ -160,7 +160,7 @@ def is_memory_sqlite(url: Union[URL, str]) -> bool:
         return True
 
     # Check for mode=memory query parameter
-    if url.query.get("mode").lower() == "memory":
+    if (mode := url.query.get("mode")) and mode.lower() == "memory":
         return True
 
     return False
