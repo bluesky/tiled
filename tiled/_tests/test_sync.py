@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
+import itertools
 import tempfile
-from pathlib import Path
 
 import awkward
 import h5py
@@ -11,7 +11,7 @@ import pytest
 import sparse
 import tifffile
 
-from tiled.catalog import from_uri
+from tiled.catalog import in_memory
 from tiled.client import Context, from_context
 from tiled.client.register import register
 from tiled.client.smoke import read
@@ -20,15 +20,16 @@ from tiled.client.utils import ClientError
 from tiled.queries import Key
 from tiled.server.app import build_app
 
+unique_database_num = itertools.count(1)
+
 
 @contextlib.contextmanager
 def client_factory(readable_storage=None):
     with tempfile.TemporaryDirectory() as tempdir:
-        catalog = from_uri(
-            Path(tempdir, "catalog.db"),
+        catalog = in_memory(
+            named_memory=f"database{next(unique_database_num)}",
             writable_storage=str(tempdir),
             readable_storage=readable_storage,
-            init_if_not_exists=True,
         )
         app = build_app(catalog)
         with Context.from_app(app) as context:
