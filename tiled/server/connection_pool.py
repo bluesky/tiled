@@ -73,9 +73,9 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
             pool_pre_ping=database_settings.pool_pre_ping,
         )
 
-    # Cache the engine so we don't create more than one pool per database_settings.
-    monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
-    _connection_pools[database_settings] = engine
+        # Cache the engine so we don't create more than one pool per database_settings.
+        monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
+        _connection_pools[database_settings] = engine
 
     # For SQLite, ensure that foreign key constraints are enforced.
     if engine.dialect.name == "sqlite":

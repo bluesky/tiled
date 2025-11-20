@@ -1,8 +1,6 @@
 """
 This tests tiled's validation registry
 """
-import uuid
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -108,7 +106,6 @@ def test_unknown_spec_strict(tmpdir):
                 "path": "/",
                 "args": {
                     "writable_storage": str(tmpdir),
-                    "named_memory": str(uuid.uuid4())[:8],
                 },
             },
         ],
