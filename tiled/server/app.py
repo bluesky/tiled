@@ -37,6 +37,8 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
+from tiled.adapters.core import Adapter
+
 from ..access_control.protocols import AccessPolicy
 from ..access_control.scopes import ScopeName
 from ..authenticators import ProxiedOIDCAuthenticator
@@ -148,7 +150,7 @@ def _find_catalog_context(tree):
 
 
 def build_app(
-    tree,
+    tree: Adapter[Any],
     authentication: Optional[Authentication] = None,
     server_settings=None,
     query_registry: Optional[QueryRegistry] = None,
@@ -167,7 +169,7 @@ def build_app(
 
     Parameters
     ----------
-    tree : Tree
+    tree : Adapter[Any]
     authentication: dict, optional
         Dict of authentication configuration.
     server_settings: dict, optional
