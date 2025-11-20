@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
-import itertools
 import tempfile
+import uuid
 
 import awkward
 import h5py
@@ -20,14 +20,12 @@ from tiled.client.utils import ClientError
 from tiled.queries import Key
 from tiled.server.app import build_app
 
-unique_database_num = itertools.count(1)
-
 
 @contextlib.contextmanager
 def client_factory(readable_storage=None):
     with tempfile.TemporaryDirectory() as tempdir:
         catalog = in_memory(
-            named_memory=f"database{next(unique_database_num)}",
+            named_memory=str(uuid.uuid4())[:8],
             writable_storage=str(tempdir),
             readable_storage=readable_storage,
         )
