@@ -8,11 +8,10 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import cache, partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar, Union
+from typing import Any, Callable, List, Optional, TypeVar, Union
 
 import anyio
 import packaging
-import pydantic_settings
 from fastapi import (
     APIRouter,
     Body,
@@ -41,7 +40,7 @@ from starlette.status import (
     HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
-from tiled.adapters.protocols import AnyAdapter
+from tiled.adapters.core import Adapter
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.media_type_registration import SerializationRegistry
 from tiled.query_registration import QueryRegistry
@@ -683,7 +682,7 @@ def get_router(
         request: Request,
         path: str,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        root_tree: pydantic_settings.BaseSettings = Depends(get_root_tree),
+        root_tree: Adapter[Any] = Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
         authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
@@ -862,7 +861,7 @@ def get_router(
     async def table_partition(
         request: Request,
         partition: int,
-        entry: AnyAdapter,
+        entry: Adapter[Any],
         column: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
@@ -998,7 +997,7 @@ def get_router(
 
     async def table_full(
         request: Request,
-        entry: AnyAdapter,
+        entry: Adapter[Any],
         column: Optional[List[str]],
         format: Optional[str],
         filename: Optional[str],
@@ -2461,7 +2460,7 @@ def get_router(
     async def validate_specs(
         specs: List[Spec],
         metadata: dict,
-        entry: Optional[AnyAdapter] = None,
+        entry: Optional[Adapter[Any]] = None,
         structure_family: Optional[StructureFamily] = None,
         structure: Optional[dict] = None,
         settings: Settings = Depends(get_settings),
