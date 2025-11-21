@@ -857,6 +857,14 @@
       "nodeReRegistrationTimeout": -1,
       "protocolMappers": [
         {
+          "id": "dccb8ada-64d3-40a7-8c44-002c01df48ed",
+          "name": "Nonce",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-nonce-backwards-compatible-mapper",
+          "consentRequired": false,
+          "config": {}
+        },
+        {
           "id": "72c90cf1-f71c-434c-bf8b-6135bc5e0f81",
           "name": "email",
           "protocol": "cas",
@@ -866,6 +874,20 @@
             "claim.name": "mail",
             "user.attribute": "email",
             "jsonType.label": "String"
+          }
+        },
+        {
+          "id": "af58bf06-d7d3-4046-80eb-f58d5ae35aca",
+          "name": "tiled_aud",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "false",
+            "lightweight.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "included.custom.audience": "tiled_aud"
           }
         },
         {
@@ -889,21 +911,6 @@
             "claim.name": "givenName",
             "user.attribute": "firstName",
             "jsonType.label": "String"
-          }
-        },
-        {
-          "id": "bf2af61b-7c02-4a8e-9217-e89e113e6541",
-          "name": "tiled",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "id.token.claim": "false",
-            "lightweight.claim": "false",
-            "introspection.token.claim": "true",
-            "access.token.claim": "true",
-            "included.custom.audience": "tiled_aud",
-            "userinfo.token.claim": "false"
           }
         },
         {
@@ -966,6 +973,7 @@
       "attributes": {
         "standard.token.exchange.enabled": "false",
         "frontchannel.logout.session.required": "true",
+        "post.logout.redirect.uris": "+",
         "oauth2.device.authorization.grant.enabled": "true",
         "backchannel.logout.revoke.offline.tokens": "false",
         "use.refresh.tokens": "true",
@@ -993,8 +1001,10 @@
           "config": {
             "id.token.claim": "false",
             "lightweight.claim": "false",
+            "introspection.token.claim": "true",
             "access.token.claim": "true",
-            "introspection.token.claim": "true"
+            "included.custom.audience": "tiled_aud",
+            "userinfo.token.claim": "false"
           }
         },
         {
@@ -1048,6 +1058,7 @@
       "defaultClientScopes": [
         "web-origins",
         "acr",
+        "offline_access",
         "roles",
         "profile",
         "basic",
@@ -1057,7 +1068,6 @@
         "address",
         "phone",
         "read:metadata",
-        "offline_access",
         "microprofile-jwt"
       ]
     }
@@ -1808,13 +1818,13 @@
         "config": {
           "allowed-protocol-mapper-types": [
             "oidc-usermodel-property-mapper",
+            "oidc-usermodel-attribute-mapper",
             "oidc-address-mapper",
-            "saml-user-attribute-mapper",
             "oidc-full-name-mapper",
             "saml-user-property-mapper",
-            "saml-role-list-mapper",
             "oidc-sha256-pairwise-sub-mapper",
-            "oidc-usermodel-attribute-mapper"
+            "saml-role-list-mapper",
+            "saml-user-attribute-mapper"
           ]
         }
       },
@@ -1827,12 +1837,12 @@
         "config": {
           "allowed-protocol-mapper-types": [
             "oidc-sha256-pairwise-sub-mapper",
-            "oidc-usermodel-attribute-mapper",
-            "saml-user-attribute-mapper",
-            "oidc-address-mapper",
-            "oidc-usermodel-property-mapper",
             "saml-user-property-mapper",
             "oidc-full-name-mapper",
+            "saml-user-attribute-mapper",
+            "oidc-usermodel-attribute-mapper",
+            "oidc-usermodel-property-mapper",
+            "oidc-address-mapper",
             "saml-role-list-mapper"
           ]
         }
@@ -2680,7 +2690,7 @@
     "cibaInterval": "5",
     "realmReusableOtpCode": "false"
   },
-  "keycloakVersion": "26.3.3",
+  "keycloakVersion": "26.4.5",
   "userManagedAccessAllowed": false,
   "organizationsEnabled": false,
   "verifiableCredentialsEnabled": false,

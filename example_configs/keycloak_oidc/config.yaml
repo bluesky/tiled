@@ -7,10 +7,34 @@ authentication:
       client_id: tiled
       device_flow_client_id: tiled-cli
       well_known_uri: "http://localhost:8080/realms/master/.well-known/openid-configuration"
+      scopes:
+        - openid
+        - email
+        - profile
       confirmation_message: "You have logged in with Proxied OIDC as {id}."
 
+access_control:
+  access_policy: "tiled.access_control.access_policies:ExternalPolicyDecisionPoint"
+  args:
+    authorization_provider: http://localhost:8181/v1/data/rbac/
+    audience: tiled_aud
+    node_access: "allow"
+    filter_nodes: "tags"
+    scopes_access: "scopes"
+
 trees:
- # Just some arbitrary example data...
- # The point of this example is the authenticaiton above.
- - tree: tiled.examples.generated_minimal:tree
-   path: /
+  - path: /
+    tree: catalog
+    args:
+      uri: "sqlite:///./catalog.db"
+      writable_storage: "./data"
+      # This creates the database if it does not exist. This is convenient, but in
+      # a horizontally-scaled deployment, this can be a race condition and multiple
+      # containers may simultaneously attempt to create the database.
+      # If that is a problem, set this to false, and run:
+      #
+      # tiled catalog init URI
+      #
+      # separately.
+      init_if_not_exists: true
+      top_level_access_blob: {"tags": ["public"]}

@@ -1,14 +1,17 @@
 import logging
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple, Union
+
+import httpx
+from pydantic import BaseModel, HttpUrl, ValidationError
 
 from ..adapters.protocols import BaseAdapter
 from ..queries import AccessBlobFilter
-from ..server.schemas import Principal
+from ..server.schemas import Principal, PrincipalType
 from ..type_aliases import AccessBlob, AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
 from .protocols import AccessPolicy
-from .scopes import ALL_SCOPES, PUBLIC_SCOPES
+from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -19,7 +22,6 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("TILED ACCESS POLICY: %(message)s"))
 logger.addHandler(handler)
-
 log_level = os.getenv("TILED_ACCESS_POLICY_LOG_LEVEL")
 if log_level:
     logger.setLevel(log_level.upper())
@@ -412,3 +414,167 @@ class TagBasedAccessPolicy(AccessPolicy):
 
         queries.append(query_filter(identifier, tag_list))
         return queries
+
+
+class Data(BaseModel):
+    token: str
+    audience: Optional[str]
+    access_blob: Optional[AccessBlob]
+
+
+class Input(BaseModel):
+    input: Data
+
+
+class Decision(BaseModel):
+    result: Union[List[str], bool]
+
+
+class ExternalPolicyDecisionPoint(AccessPolicy):
+    def __init__(
+        self,
+        authorization_provider: HttpUrl,
+        node_access: str,
+        filter_nodes: str,
+        scopes_access: str,
+        audience: str,
+        provider: Optional[str] = None,
+    ):
+        """
+        Initialize an access policy configuration.
+
+        Parameters
+        ----------
+        authorization_provider : HttpUrl
+            The base URL of the authorization provider.
+        node_access : str
+            The endpoint path for node access validation. Will be joined with the
+            authorization_provider base URL.
+        filter_nodes : str
+            The endpoint path for filtering nodes. Will be joined with the
+            authorization_provider base URL.
+        scopes_access : str
+            The endpoint path for scopes access validation. Will be joined with the
+            authorization_provider base URL.
+        audience : str
+            The intended audience for the authorization tokens.
+        provider : Optional[str], optional
+            The name of the authorization provider, by default None.
+
+        Notes
+        -----
+        The endpoint paths are combined with the authorization_provider URL using
+        urljoin, extracting only the path component from each endpoint parameter.
+        """
+        self._node_access = str(authorization_provider) + node_access
+        self._filter_nodes = str(authorization_provider) + filter_nodes
+        self._scopes_access = str(authorization_provider) + scopes_access
+        self._audience = audience
+        self._provider = provider
+
+    async def _get_external_decision(
+        self,
+        decision_endpoint: str,
+        principal: Principal,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Optional[Union[List[str], bool]]:
+        input = Input(
+            input=Data(
+                token=self._identifier(principal),
+                audience=self._audience,
+                access_blob=access_blob,
+            )
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                decision_endpoint, content=input.model_dump_json(exclude_none=True)
+            )
+        response.raise_for_status()
+        try:
+            return Decision.model_validate_json(response.text).result
+        except ValidationError:
+            return None
+
+    def _identifier(self, principal: Principal) -> str:
+        if principal.type == PrincipalType.service:
+            return str(principal.uuid)
+        elif principal.type == PrincipalType.external:
+            if not principal.access_token:
+                raise ValueError(
+                    "Access token not provided for external principal type"
+                )
+            return principal.access_token.get_secret_value()
+        else:
+            for identity in principal.identities:
+                if identity.provider == self._provider:
+                    return identity.id
+            else:
+                raise ValueError(
+                    f"Principal {principal} has no identity from provider {self._provider}."
+                    f"The Principal's identities are: {principal.identities}"
+                )
+
+    async def init_node(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        decision = await self._get_external_decision(
+            self._node_access, principal, access_blob
+        )
+        if not decision:
+            raise ValueError("Permission denied not able to add the node")
+        return (True, access_blob)
+
+    async def modify_node(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob],
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        if access_blob == node.access_blob:
+            logger.info(
+                f"Node access_blob not modified; access_blob is identical: {access_blob}"
+            )
+            return (False, node.access_blob)
+        decision = await self._get_external_decision(
+            self._node_access, principal, access_blob
+        )
+        if not decision:
+            raise ValueError("Permission denied not able to add the node")
+        return (True, access_blob)
+
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
+        queries = []
+        query_filter = AccessBlobFilter
+        result = await self._get_external_decision(self._filter_nodes, principal)
+        if isinstance(result, List):
+            queries.append(query_filter(tags=result, user_id=None))
+        return queries
+
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
+        access_blob = node.access_blob if hasattr(node, "access_blob") else None
+        scopes = await self._get_external_decision(
+            self._scopes_access, principal, access_blob
+        )
+        if isinstance(scopes, List):
+            return set(scopes)
+        else:
+            return NO_SCOPES
