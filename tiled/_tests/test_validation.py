@@ -1,7 +1,6 @@
 """
 This tests tiled's validation registry
 """
-
 import numpy as np
 import pandas as pd
 import pytest
