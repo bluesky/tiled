@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import tempfile
+import uuid
 
 import awkward
 import h5py
@@ -24,7 +25,9 @@ from tiled.server.app import build_app
 def client_factory(readable_storage=None):
     with tempfile.TemporaryDirectory() as tempdir:
         catalog = in_memory(
-            writable_storage=str(tempdir), readable_storage=readable_storage
+            named_memory=str(uuid.uuid4())[:8],
+            writable_storage=str(tempdir),
+            readable_storage=readable_storage,
         )
         app = build_app(catalog)
         with Context.from_app(app) as context:

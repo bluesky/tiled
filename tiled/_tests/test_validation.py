@@ -1,6 +1,8 @@
 """
 This tests tiled's validation registry
 """
+import uuid
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -50,7 +52,10 @@ def client(tmpdir_module):
             {
                 "tree": "tiled.catalog:in_memory",
                 "path": "/",
-                "args": {"writable_storage": str(tmpdir_module)},
+                "args": {
+                    "named_memory": str(uuid.uuid4())[:8],
+                    "writable_storage": str(tmpdir_module),
+                },
             },
         ],
         "specs": [
@@ -104,7 +109,10 @@ def test_unknown_spec_strict(tmpdir):
             {
                 "tree": "tiled.catalog:in_memory",
                 "path": "/",
-                "args": {"writable_storage": str(tmpdir)},
+                "args": {
+                    "named_memory": str(uuid.uuid4())[:8],
+                    "writable_storage": str(tmpdir),
+                },
             },
         ],
         "specs": [

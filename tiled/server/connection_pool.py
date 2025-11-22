@@ -7,7 +7,7 @@ from fastapi import Depends
 from sqlalchemy import event
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, StaticPool
 
 from ..server.settings import DatabaseSettings, Settings, get_settings
 from ..utils import ensure_specified_sql_driver, safe_json_dump, sanitize_uri
@@ -60,8 +60,8 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
             ensure_specified_sql_driver(database_settings.uri),
             echo=DEFAULT_ECHO,
             json_serializer=json_serializer,
+            poolclass=StaticPool,
         )
-
     else:
         engine = create_async_engine(
             ensure_specified_sql_driver(database_settings.uri),
@@ -73,9 +73,9 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
             pool_pre_ping=database_settings.pool_pre_ping,
         )
 
-        # Cache the engine so we don't create more than one pool per database_settings.
-        monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
-        _connection_pools[database_settings] = engine
+    # Cache the engine so we don't create more than one pool per database_settings.
+    monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
+    _connection_pools[database_settings] = engine
 
     # For SQLite, ensure that foreign key constraints are enforced.
     if engine.dialect.name == "sqlite":
