@@ -24,7 +24,7 @@ from starlette.status import HTTP_200_OK, HTTP_304_NOT_MODIFIED, HTTP_400_BAD_RE
 from .. import queries
 from ..adapters.mapping import MapAdapter
 from ..links import links_for_node
-from ..queries import KeyLookup, QueryValueError
+from ..queries import KeyLookup
 from ..serialization import register_builtin_serializers
 from ..structures.core import Spec, StructureFamily
 from ..utils import (
@@ -184,7 +184,7 @@ async def apply_search(tree, filters, query_registry):
                     key_lookups.append(query.key)
                     continue
                 tree = tree.search(query)
-            except QueryValueError as err:
+            except TypeError as err:
                 raise HTTPException(
                     status_code=HTTP_400_BAD_REQUEST, detail=err.args[0]
                 )
