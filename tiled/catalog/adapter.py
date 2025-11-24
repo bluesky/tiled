@@ -68,7 +68,11 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.connection_pool import close_database_connection_pool, get_database_engine
+from ..server.connection_pool import (
+    close_database_connection_pool,
+    get_database_engine,
+    is_memory_sqlite,
+)
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision
 from ..server.settings import DatabaseSettings
@@ -230,10 +234,7 @@ class Context:
             return result
 
     async def startup(self):
-        if (self.engine.dialect.name == "sqlite") and (
-            self.engine.url.database == ":memory:"
-            or self.engine.url.query.get("mode") == "memory"
-        ):
+        if is_memory_sqlite(self.engine.url):
             # Special-case for in-memory SQLite: Because it is transient we can
             # skip over anything related to migrations.
             await initialize_database(self.engine)

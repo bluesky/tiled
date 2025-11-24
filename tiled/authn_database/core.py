@@ -76,14 +76,13 @@ async def create_default_roles(db):
 
 
 async def initialize_database(engine: AsyncEngine) -> None:
-    async with engine.connect() as conn:
+    async with engine.begin() as conn:
         # Create all tables.
         await conn.run_sync(Base.metadata.create_all)
-        await conn.commit()
 
-        # Initialize Roles table.
-        async with AsyncSession(engine) as db:
-            await create_default_roles(db)
+    # Initialize Roles table.
+    async with AsyncSession(engine) as db:
+        await create_default_roles(db)
 
 
 async def purge_expired(db: AsyncSession, cls) -> int:
