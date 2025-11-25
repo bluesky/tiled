@@ -62,7 +62,7 @@ def tmp_minio_bucket():
         )
 
         bucket_name = f"test-{uuid.uuid4().hex}"
-        minio_client.make_bucket(bucket_name)
+        minio_client.make_bucket(bucket_name=bucket_name)
 
         try:
             yield urljoin(uri, "/" + bucket_name)  # full URI with credentials

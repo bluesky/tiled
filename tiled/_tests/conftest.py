@@ -342,7 +342,7 @@ def minio_uri():
             for error in errors:
                 print("error occurred when deleting object", error)
         else:
-            client.make_bucket(bucket)
+            client.make_bucket(bucket_name=bucket)
 
     else:
         raise pytest.skip("No TILED_TEST_BUCKET configured")
