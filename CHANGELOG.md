@@ -3,7 +3,27 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.2.2 (2025-11-25)
+
+### Changed
+
+- Deletion of nodes or metadata revisions now requires deletion scopes.
+
+### Fixed
+
+- In-memory SQLite databases are connection pooled / cached.
+- Addressed backward-incompatible changes in dependencies `fastapi` and `minio`.
+  rather than writing scopes.
+- Pinned down pydantic-settings until breaking changes can be addressed.
+- Writing I/O calls in the Zarr adapter were blocking the server event loop;
+  they are now properly on a thread.
+
+## Fixed
+
+- Fixed a couple of bugs in the example config, to restore it to working order
+
+
+## v0.2.1 (2025-11-12)
 
 ### Added
 
@@ -18,14 +38,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   manage the deployment and associated certificates.) **The demo remains
   world-public, with no login required.** This change affects some
   documentation and one test.
-- Deletion of nodes or metadata revisions now requires deletion scopes,
-  rather than writing scopes.
-- In-memory SQLite databases are connection pooled / cached.
-
-## Fixed
-
-- Fixed a couple of bugs in the example config, to restore it to working order
-
 
 ## v0.2.0 (2025-10-29)
 
