@@ -69,10 +69,14 @@ def tmp_minio_bucket():
         finally:
             # Cleanup: remove all objects and delete the bucket
             try:
-                objects = minio_client.list_objects(bucket_name, recursive=True)
+                objects = minio_client.list_objects(
+                    bucket_name=bucket_name, recursive=True
+                )
                 for obj in objects:
-                    minio_client.remove_object(bucket_name, obj.object_name)
-                minio_client.remove_bucket(bucket_name)
+                    minio_client.remove_object(
+                        bucket_name=bucket_name, object_name=obj.object_name
+                    )
+                minio_client.remove_bucket(bucket_name=bucket_name)
             except S3Error as e:
                 print(f"Warning: failed to delete test bucket {bucket_name}: {e}")
 
