@@ -326,7 +326,7 @@ def minio_uri():
         uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
 
         client = Minio(
-            uri.geturl(),
+            endpoint=uri.geturl(),
             access_key=url.username,
             secret_key=url.password,
             secure=False,

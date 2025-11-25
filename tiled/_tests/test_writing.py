@@ -55,7 +55,7 @@ def tmp_minio_bucket():
     if uri := os.getenv("TILED_TEST_BUCKET"):
         clean_uri, username, password = sanitize_uri(uri)
         minio_client = Minio(
-            urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
+            endpoint=urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
             access_key=username or "minioadmin",
             secret_key=password or "minioadmin",
             secure=False,
