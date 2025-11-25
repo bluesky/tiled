@@ -73,7 +73,7 @@ all = [
     "dask[dataframe]",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
-    "fastapi >=0.115.8",
+    "fastapi >=0.122.0",
     "h5netcdf",
     "h5py",
     "hdf5plugin",
