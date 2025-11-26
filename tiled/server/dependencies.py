@@ -1,11 +1,10 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
-import pydantic_settings
 from fastapi import HTTPException, Query, Request
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
 
 from ..access_control.protocols import AccessPolicy
-from ..adapters.protocols import AnyAdapter
+from ..adapters.core import Adapter
 from ..structures.core import StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink
@@ -14,7 +13,7 @@ from .schemas import Principal
 from .utils import filter_for_access, record_timing
 
 
-def get_root_tree(request: Request):
+def get_root_tree(request: Request) -> Adapter[Any]:
     return request.app.state.root_tree
 
 
@@ -24,12 +23,12 @@ async def get_entry(
     principal: Optional[Principal],
     authn_access_tags: Optional[AccessTags],
     authn_scopes: Scopes,
-    root_tree: pydantic_settings.BaseSettings,
+    root_tree: Adapter[Any],
     session_state: dict,
     metrics: dict,
     structure_families: Optional[set[StructureFamily]] = None,
     access_policy: Optional[AccessPolicy] = None,
-) -> AnyAdapter:
+) -> Adapter[Any]:
     """
     Obtain a node in the tree from its path.
 

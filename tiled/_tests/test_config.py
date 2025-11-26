@@ -305,7 +305,8 @@ def test_empty_api_key():
 class Dummy:
     "Referenced below in test_tree_given_as_method"
 
-    def constructor():
+    @classmethod
+    def constructor(cls):
         return tree
 
 
@@ -318,7 +319,8 @@ def test_tree_given_as_method():
             },
         ]
     }
-    Config.model_validate(config)
+    conf = Config.model_validate(config)
+    assert conf.merged_trees == tree
 
 
 tree.include_routers = [APIRouter()]
