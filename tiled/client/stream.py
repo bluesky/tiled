@@ -267,7 +267,6 @@ class Subscription(abc.ABC):
         self._disconnect_event = threading.Event()
         self._thread = None
         self._last_received_sequence = None  # Track last sequence for reconnection
-        self._connected = False  # Track connection state
         if getattr(self.context.http_client, "app", None):
             self._websocket = _TestClientWebsocketWrapper(
                 context.http_client, self._uri
@@ -296,19 +295,24 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
-    def _run(self, start: Optional[int] = None) -> None:
+    def _run(
+        self, start: Optional[int] = None, skip_initial_connect: bool = False
+    ) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
+        first_iteration = True
         while not self._disconnect_event.is_set():
             try:
-                self._connect(start)
+                # Skip initial connect if already connected by caller
+                if not (first_iteration and skip_initial_connect):
+                    self._connect(start)
+                first_iteration = False
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
-                # Connection lost, close the websocket and mark as disconnected
+                # Connection lost, close the websocket and reconnect
                 try:
                     self._websocket.close()
                 except Exception:
                     pass  # Ignore errors closing failed connection
-                self._connected = False
                 continue
             # Clean shutdown (no exception)
             break
@@ -322,10 +326,6 @@ class Subscription(abc.ABC):
         """Connect to websocket with retry."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
-
-        # If already connected, nothing to do (idempotent)
-        if self._connected:
-            return
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
@@ -354,8 +354,6 @@ class Subscription(abc.ABC):
             # TODO: Implement single-use API keys so that revoking is not
             # necessary.
             self.context.revoke_api_key(key_info["first_eight"])
-
-        self._connected = True
 
     def _receive(self) -> None:
         """Receive and process websocket messages."""
@@ -447,7 +445,9 @@ class Subscription(abc.ABC):
         # Run the receive loop on a thread.
         name = f"tiled-subscription-{self._uri}"
         self._thread = threading.Thread(
-            target=lambda: self._run(start), daemon=True, name=name
+            target=lambda: self._run(start, skip_initial_connect=True),
+            daemon=True,
+            name=name,
         )
         self._thread.start()
         return self
@@ -465,7 +465,6 @@ class Subscription(abc.ABC):
         except Exception:
             # Websocket may not have been fully connected
             pass
-        self._connected = False
         self.disconnected.process(self)
         self.executor.shutdown()
 
