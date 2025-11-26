@@ -50,7 +50,7 @@ T = TypeVar("T")
 Callback = Callable[[T], None]
 
 
-API_KEY_LIFETIME = 30  # seconds
+API_KEY_LIFETIME = TILED_RETRY_TIMEOUT + 15  # seconds
 RECEIVE_TIMEOUT = 0.1  # seconds
 
 
