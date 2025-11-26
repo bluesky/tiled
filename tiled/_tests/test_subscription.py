@@ -27,18 +27,15 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def stamina_active():
+def stamina_testing():
+    """Enable stamina retries with fast testing mode (2 attempts, no backoff)."""
     import stamina
 
     stamina.set_active(True)
+    stamina.set_testing(True, attempts=2)
     yield
+    stamina.set_testing(False)
     stamina.set_active(False)
-
-
-@pytest.fixture(autouse=True)
-def fast_retries(monkeypatch):
-    """Set retry attempts to 2 for faster tests (down from default 10)."""
-    monkeypatch.setattr("tiled.client.stream.TILED_RETRY_ATTEMPTS", 2)
 
 
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
@@ -588,7 +585,7 @@ def test_streaming_table_append(tiled_websocket_context):
 
 
 def test_subscription_auto_reconnect_on_network_failure(
-    tiled_websocket_context, stamina_active, monkeypatch
+    tiled_websocket_context, stamina_testing, monkeypatch
 ):
     """Test that subscription automatically reconnects after network failure."""
     context = tiled_websocket_context
