@@ -304,7 +304,13 @@ class Subscription(abc.ABC):
             try:
                 # Skip initial connect if already connected by caller
                 if not (first_iteration and skip_initial_connect):
-                    self._connect(start)
+                    # Resume from last received sequence if reconnecting
+                    start_from = (
+                        self._last_received_sequence + 1
+                        if self._last_received_sequence is not None
+                        else start
+                    )
+                    self._connect(start_from)
                 first_iteration = False
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
@@ -329,11 +335,6 @@ class Subscription(abc.ABC):
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
-
-        # Resume from last received sequence if available (for reconnects)
-        if self._last_received_sequence is not None:
-            logger.debug(f"Resuming from sequence {self._last_received_sequence + 1}")
-            start = self._last_received_sequence + 1
 
         needs_api_key = self.context.server_info.authentication.providers
         if needs_api_key:
