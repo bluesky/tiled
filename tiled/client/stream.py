@@ -320,7 +320,7 @@ class Subscription(abc.ABC):
     @stamina.retry(
         on=(websockets.exceptions.ConnectionClosedError, OSError),
         attempts=TILED_RETRY_ATTEMPTS,
-        timeout=TILED_RETRY_TIMEOUT,
+        timeout=TILED_RETRY_TIMEOUT,  # Maximum total time across all retry attempts
     )
     def _connect(self, start: Optional[int] = None) -> None:
         """Connect to websocket with retry."""
