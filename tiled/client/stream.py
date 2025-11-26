@@ -49,7 +49,6 @@ from .utils import (
 T = TypeVar("T")
 Callback = Callable[[T], None]
 
-
 API_KEY_LIFETIME = TILED_RETRY_TIMEOUT + 15  # seconds
 RECEIVE_TIMEOUT = 0.1  # seconds
 
@@ -320,7 +319,7 @@ class Subscription(abc.ABC):
     @stamina.retry(
         on=(websockets.exceptions.ConnectionClosedError, OSError),
         attempts=TILED_RETRY_ATTEMPTS,
-        timeout=TILED_RETRY_TIMEOUT,  # Maximum total time across all retry attempts
+        wait_max=TILED_RETRY_TIMEOUT,
     )
     def _connect(self, start: Optional[int] = None) -> None:
         """Connect to websocket with retry."""
