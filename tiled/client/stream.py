@@ -295,23 +295,17 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
-    def _run(
-        self, start: Optional[int] = None, skip_initial_connect: bool = False
-    ) -> None:
+    def _run(self, start: Optional[int] = None) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
-        first_iteration = True
         while not self._disconnect_event.is_set():
             try:
-                # Skip initial connect if already connected by caller
-                if not (first_iteration and skip_initial_connect):
-                    # Resume from last received sequence if reconnecting
-                    start_from = (
-                        self._last_received_sequence + 1
-                        if self._last_received_sequence is not None
-                        else start
-                    )
-                    self._connect(start_from)
-                first_iteration = False
+                # Resume from last received sequence if reconnecting
+                start_from = (
+                    self._last_received_sequence + 1
+                    if self._last_received_sequence is not None
+                    else start
+                )
+                self._connect(start_from)
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
                 # Connection lost, close the websocket and reconnect
@@ -441,12 +435,9 @@ class Subscription(abc.ABC):
 
 
         """
-        # Connect on the main thread so that connection errors are raised here.
-        self._connect(start)
-        # Run the receive loop on a thread.
         name = f"tiled-subscription-{self._uri}"
         self._thread = threading.Thread(
-            target=lambda: self._run(start, skip_initial_connect=True),
+            target=lambda: self._run(start),
             daemon=True,
             name=name,
         )

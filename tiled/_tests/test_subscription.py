@@ -102,7 +102,7 @@ def test_websocket_connection_to_non_existent_node_subscription(
 
     # Attempting to start should raise WebSocketDenialResponse
     with pytest.raises(WebSocketDenialResponse):
-        subscription.start_in_thread()
+        subscription.start()
 
 
 def test_subscribe_after_first_update_subscription(tiled_websocket_context):
