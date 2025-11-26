@@ -303,7 +303,11 @@ class Subscription(abc.ABC):
                 self._connect(start)
                 self._receive()
             except (websockets.exceptions.ConnectionClosedError, OSError):
-                # Connection lost, mark as disconnected so we can reconnect
+                # Connection lost, close the websocket and mark as disconnected
+                try:
+                    self._websocket.close()
+                except Exception:
+                    pass  # Ignore errors closing failed connection
                 self._connected = False
                 continue
             # Clean shutdown (no exception)
