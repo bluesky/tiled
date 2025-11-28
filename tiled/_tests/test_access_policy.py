@@ -1,5 +1,5 @@
-from typing import Optional
 import uuid
+from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,6 +26,7 @@ def external_policy() -> ExternalPolicyDecisionPoint:
             access_blob: Optional[AccessBlob] = None,
         ) -> str:
             return ""
+
     return TestExternalPolicyDecisionPoint(
         authorization_provider=HttpUrl("http://example.com"),
         create_node_endpoint="allow",
@@ -137,9 +138,7 @@ async def test_access_filters(
     external_policy: ExternalPolicyDecisionPoint, principal: Principal
 ):
     output = {"result": ["beamline_x"]}
-    respx.post(external_policy._user_tags).mock(
-        return_value=Response(200, json=output)
-    )
+    respx.post(external_policy._user_tags).mock(return_value=Response(200, json=output))
 
     filters = await external_policy.filters(
         node=MagicMock(),
@@ -193,9 +192,7 @@ async def test_allowed_scopes_return_no_scopes_if_invalid_response(
 async def test_allowed_scopes_return_no_scopes_if_validation_error(
     external_policy: ExternalPolicyDecisionPoint, principal: Principal
 ):
-    respx.post(external_policy._node_scopes).mock(
-        return_value=Response(200, json=True)
-    )
+    respx.post(external_policy._node_scopes).mock(return_value=Response(200, json=True))
 
     allowed_scopes = await external_policy.allowed_scopes(
         node=None,

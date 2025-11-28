@@ -1,6 +1,6 @@
-from abc import ABC, abstractmethod
 import logging
 import os
+from abc import ABC, abstractmethod
 from typing import Generic, Optional, Tuple, TypeVar
 
 import httpx
@@ -8,7 +8,7 @@ from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 
 from ..adapters.protocols import BaseAdapter
 from ..queries import AccessBlobFilter
-from ..server.schemas import Principal, PrincipalType
+from ..server.schemas import Principal
 from ..type_aliases import AccessBlob, AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
 from .protocols import AccessPolicy
@@ -455,7 +455,9 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             The name of the authorization provider, by default None.
         """
         self._create_node = str(authorization_provider) + create_node_endpoint
-        self._modify_node = str(authorization_provider) + (modify_node_endpoint or create_node_endpoint)
+        self._modify_node = str(authorization_provider) + (
+            modify_node_endpoint or create_node_endpoint
+        )
         self._user_tags = str(authorization_provider) + allowed_tags_endpoint
         self._node_scopes = str(authorization_provider) + scopes_endpoint
         self._empty_access_blob_public = empty_access_blob_public
@@ -479,9 +481,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
     ) -> Optional[T]:
         logger.debug(f"Requesting auth {decision_endpoint=} for {input=}")
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                decision_endpoint, content=input
-            )
+            response = await client.post(decision_endpoint, content=input)
         response.raise_for_status()
         try:
             logger.debug(f"Deserialising auth {response.text=} as {decision_type=}")
@@ -523,7 +523,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         decision = await self._get_external_decision(
             self._modify_node,
             self.build_input(principal, authn_access_tags, authn_scopes, access_blob),
-            ResultHolder[bool]
+            ResultHolder[bool],
         )
         if decision and decision.result:
             return (True, access_blob)
@@ -542,7 +542,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         tags = await self._get_external_decision(
             self._user_tags,
             self.build_input(principal, authn_access_tags, authn_scopes),
-            ResultHolder[list[str]]
+            ResultHolder[list[str]],
         )
         if tags is not None:
             queries.append(query_filter(tags=tags.result, user_id=None))
@@ -557,7 +557,12 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
     ) -> Scopes:
         scopes = await self._get_external_decision(
             self._node_scopes,
-            self.build_input(principal, authn_access_tags, authn_scopes, getattr(node, "access_blob", None)),
+            self.build_input(
+                principal,
+                authn_access_tags,
+                authn_scopes,
+                getattr(node, "access_blob", None),
+            ),
             ResultHolder[set[str]],
         )
         if scopes:
