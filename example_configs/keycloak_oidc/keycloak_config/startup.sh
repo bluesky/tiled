@@ -1,7 +1,7 @@
 #!/bin/bash
 export PATH=$PATH:/opt/keycloak/bin
 
-sleep 2
+sleep 30
 while ! kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password admin; do
     sleep 1
 done
