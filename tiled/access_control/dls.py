@@ -2,11 +2,8 @@
 import json
 import logging
 from pydantic import HttpUrl, TypeAdapter
-from tiled.access_control.access_policies import ExternalPolicyDecisionPoint, ResultHolder
-from typing import Any, Optional, TypedDict
-
-from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES
-from tiled.adapters.protocols import BaseAdapter
+from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
+from typing import Optional, TypedDict
 
 from ..server.schemas import Principal, PrincipalType
 from ..type_aliases import AccessBlob, AccessTags, Scopes
@@ -22,15 +19,6 @@ class AccessBlob(TypedDict):
 
 
 class DiamondOpenPolicyAgentAuthorizationPolicy(ExternalPolicyDecisionPoint):
-    READ_SCOPES: set[str] = PUBLIC_SCOPES
-    WRITE_SCOPES: set[str] = frozenset(
-        (
-            "write:metadata",
-            "write:data",
-            "create",
-            "register",
-        )
-    )
 
     def __init__(
         self,
@@ -45,8 +33,8 @@ class DiamondOpenPolicyAgentAuthorizationPolicy(ExternalPolicyDecisionPoint):
         super().__init__(
             authorization_provider,
             "session/write_to_beamline_visit",
-            "session/user_sessions",  # TODO: New endpoint
-            "token/claims",
+            "session/user_sessions",
+            "tiled/scopes",
             provider,
             empty_access_blob_public
         )
@@ -73,25 +61,3 @@ class DiamondOpenPolicyAgentAuthorizationPolicy(ExternalPolicyDecisionPoint):
                 "audience": self._token_audience,
             }
         })
-
-    async def allowed_scopes(
-        self,
-        node: BaseAdapter,
-        principal: Principal,
-        authn_access_tags: Optional[AccessTags],
-        authn_scopes: Scopes,
-    ) -> Scopes:
-        logger.warning(self._node_scopes)
-        logger.warning(self.build_input(principal, authn_access_tags, authn_scopes))
-        scopes = await self._get_external_decision(
-            self._node_scopes,
-            self.build_input(principal, authn_access_tags, authn_scopes),
-            ResultHolder[dict[str, Any]],
-        )
-        logger.warning(scopes)
-        if scopes and scopes.result:
-            return_scopes = set(self.READ_SCOPES)
-            if "azp" in scopes.result and str(scopes.result["azp"]).endswith("-blueapi"):
-                return_scopes |= self.WRITE_SCOPES
-            return return_scopes
-        return NO_SCOPES

@@ -477,13 +477,14 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         input: str,
         decision_type: type[T],
     ) -> Optional[T]:
+        logger.debug(f"Requesting auth {decision_endpoint=} for {input=}")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 decision_endpoint, content=input
             )
         response.raise_for_status()
         try:
-            logger.warning(response.text)
+            logger.debug(f"Deserialising auth {response.text=} as {decision_type=}")
             return TypeAdapter(decision_type).validate_json(response.text)
         except ValidationError:
             return None

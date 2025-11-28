@@ -7,10 +7,6 @@ authentication:
       client_id: tiled
       device_flow_client_id: tiled-cli
       well_known_uri: "http://localhost:8080/realms/master/.well-known/openid-configuration"
-      scopes:
-        - openid
-        - email
-        - profile
       confirmation_message: "You have logged in with Proxied OIDC as {id}."
 
 access_control:
@@ -18,9 +14,9 @@ access_control:
   args:
     authorization_provider: http://localhost:8181/v1/data/rbac/
     audience: tiled_aud
-    node_access: "allow"
-    filter_nodes: "tags"
-    scopes_access: "scopes"
+    create_node_endpoint: "allow"
+    allowed_tags_endpoint: "tags"
+    scopes_endpoint: "scopes"
 
 trees:
   - path: /
