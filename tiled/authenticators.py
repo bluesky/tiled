@@ -263,6 +263,14 @@ properties:
     type: string
   well_known_uri:
     type: string
+  scopes:
+    type: array
+    items:
+      type: string
+    description: |
+      Optional list of OAuth2 scopes to request. If provided, authorization
+      should be enforced by an external policy agent (for example ExternalPolicyDecisionPoint)
+      rather than by this authenticator.
   device_flow_client_id:
     type: string
   confirmation_message:
@@ -275,6 +283,7 @@ properties:
         client_id: str,
         well_known_uri: str,
         device_flow_client_id: str,
+        scopes: Optional[List[str]] = None,
         confirmation_message: str = "",
     ):
         super().__init__(
@@ -284,6 +293,7 @@ properties:
             well_known_uri=well_known_uri,
             confirmation_message=confirmation_message,
         )
+        self.scopes = scopes
         self.device_flow_client_id = device_flow_client_id
         self._oidc_bearer = OAuth2AuthorizationCodeBearer(
             authorizationUrl=str(self.authorization_endpoint),
