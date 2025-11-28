@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
 
 import pydantic.generics
-from pydantic import ConfigDict, Field, StringConstraints
+from pydantic import ConfigDict, Field, SecretStr, StringConstraints
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
@@ -381,6 +381,7 @@ class Principal(pydantic.BaseModel):
     api_keys: List[APIKey] = []
     sessions: List[Session] = []
     latest_activity: Optional[datetime] = None
+    access_token: Optional[SecretStr] = Field(exclude=True, default=None)
 
     @classmethod
     def from_orm(

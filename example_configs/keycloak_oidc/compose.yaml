@@ -34,3 +34,17 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
+
+  opa:
+    network_mode: host
+    image: openpolicyagent/opa
+    ports:
+      - 8181:8181
+    volumes:
+      - "./policy:/policy"
+    environment:
+      - ISSUER=http://localhost:8080/realms/master
+    command: ["run","--server","--addr",":8181","-b","/policy"]
+    depends_on:
+      keycloak:
+        condition: service_healthy
