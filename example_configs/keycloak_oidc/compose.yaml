@@ -1,14 +1,10 @@
 services:
 
   keycloak:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: keycloak/keycloak:26.4
     environment:
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
-      - KC_HEALTH_ENABLED=true
-      - KC_METRICS_ENABLED=true
     command: ["start-dev"]
     volumes:
       - ./keycloak_config/:/mnt
@@ -16,9 +12,8 @@ services:
       - command: bash /mnt/startup.sh
     ports:
       - 8080:8080
-      - 9000:9000
     healthcheck:
-      test: "curl --head -fsS http://localhost:9000/health/ready"
+      test: /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password admin
       interval: 5s
       timeout: 5s
       retries: 10
