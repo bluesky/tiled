@@ -65,17 +65,19 @@ class _TestClientWebsocketWrapper:
         self._http_client = http_client
         self._uri = uri
         self._websocket = None
+        self._connection_lock = threading.Lock()
 
     def connect(self, api_key: str, start: Optional[int] = None):
         """Connect to the websocket."""
-        params = self._uri.params
-        if start is not None:
-            params = params.set("start", start)
-        self._websocket = self._http_client.websocket_connect(
-            str(self._uri.copy_with(params=params)),
-            headers={"Authorization": f"Apikey {api_key}"},
-        )
-        self._websocket.__enter__()
+        with self._connection_lock:
+            params = self._uri.params
+            if start is not None:
+                params = params.set("start", start)
+            self._websocket = self._http_client.websocket_connect(
+                str(self._uri.copy_with(params=params)),
+                headers={"Authorization": f"Apikey {api_key}"},
+            )
+            self._websocket.__enter__()
 
     def recv(self, timeout=None):
         """Receive data from websocket with consistent interface."""
@@ -90,7 +92,9 @@ class _TestClientWebsocketWrapper:
 
     def close(self):
         """Close websocket connection."""
-        self._websocket.__exit__(None, None, None)
+        with self._connection_lock:
+            if self._websocket is not None:
+                self._websocket.__exit__(None, None, None)
 
 
 class _RegularWebsocketWrapper:
