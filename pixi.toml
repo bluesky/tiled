@@ -16,7 +16,7 @@ msgpack-python = ">=1.0.0"
 orjson = "*"
 platformdirs = "*"
 pydantic = ">=2,<3"
-pydantic-settings = ">=2, <2.12.0",
+pydantic-settings = ">=2, <2.12.0"
 pyyaml = "*"
 typer = "*"
 
@@ -120,7 +120,7 @@ pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 xarray = "*"
 
 [feature.py39.dependencies]
-python = "3.9.*"
+python = "3.13.*" # python 3.9 reached end of life in October 2025
 # python-blosc2 is not available for Python 3.9
 
 [feature.py310.dependencies]
