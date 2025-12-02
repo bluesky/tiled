@@ -440,7 +440,8 @@ class Subscription(abc.ABC):
         """
         name = f"tiled-subscription-{self._uri}"
         self._thread = threading.Thread(
-            target=lambda: self._run(start),
+            target=self._run,
+            args=(start,),
             daemon=True,
             name=name,
         )
