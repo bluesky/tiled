@@ -462,7 +462,7 @@ class Subscription(abc.ABC):
             # Websocket may not have been fully connected
             pass
         self.disconnected.process(self)
-        self.executor.shutdown()
+        self.executor.shutdown(wait=True)
 
     def disconnect(self, wait=True) -> None:
         "Close the websocket connection."
