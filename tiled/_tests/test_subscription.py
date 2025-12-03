@@ -1,6 +1,7 @@
 import copy
 import sys
 import threading
+import time
 import uuid
 
 import numpy as np
@@ -8,6 +9,7 @@ import pandas as pd
 import pyarrow
 import pytest
 import tifffile
+import websockets.exceptions
 from pandas.testing import assert_frame_equal
 from starlette.testclient import WebSocketDenialResponse
 
@@ -22,6 +24,18 @@ from .utils import fail_with_status_code
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"
 )
+
+
+@pytest.fixture
+def stamina_testing():
+    """Enable stamina retries with fast testing mode (2 attempts, no backoff)."""
+    import stamina
+
+    stamina.set_active(True)
+    stamina.set_testing(True, attempts=2)
+    yield
+    stamina.set_testing(False)
+    stamina.set_active(False)
 
 
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
@@ -88,7 +102,7 @@ def test_websocket_connection_to_non_existent_node_subscription(
 
     # Attempting to start should raise WebSocketDenialResponse
     with pytest.raises(WebSocketDenialResponse):
-        subscription.start_in_thread()
+        subscription.start()
 
 
 def test_subscribe_after_first_update_subscription(tiled_websocket_context):
@@ -236,8 +250,6 @@ def test_subscribe_to_container(
         for i in range(3):
             # This is exposing fragility in SQLite database connection handling.
             # Once that is resolved, remove the sleep.
-            import time
-
             time.sleep(0.1)
             unique_key = f"{uuid.uuid4().hex[:8]}"
             uploaded_nodes.append(client.create_container(unique_key))
@@ -570,3 +582,62 @@ def test_streaming_table_append(tiled_websocket_context):
         )
         expected_combined = pyarrow.concat_tables([table1, table2])
         assert streaming_combined == expected_combined
+
+
+def test_subscription_auto_reconnect_on_network_failure(
+    tiled_websocket_context, stamina_testing, monkeypatch
+):
+    """Test that subscription automatically reconnects after network failure."""
+    context = tiled_websocket_context
+    client = from_context(context)
+
+    # Create streaming array node
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_reconnect")
+
+    # Track received updates
+    received = []
+
+    def callback(update):
+        received.append(update)
+
+    subscription = streaming_node.subscribe()
+    subscription.new_data.add_callback(callback)
+
+    with subscription.start_in_thread(1):
+        # Send first 3 updates
+        for i in range(1, 4):
+            streaming_node.write(np.arange(10) + i)
+            time.sleep(0.1)
+
+        # Simulate network failure once, then restore normal behavior
+        original_recv = subscription._websocket.recv
+
+        class FailNTimes:
+            """Fails on first N calls, then delegates to original."""
+
+            def __init__(self, n):
+                self.n = n
+                self.call_count = 0
+
+            def __call__(self, timeout=None):
+                self.call_count += 1
+                if self.call_count <= self.n:
+                    raise websockets.exceptions.ConnectionClosedError(None, None)
+                return original_recv(timeout)
+
+        monkeypatch.setattr(subscription._websocket, "recv", FailNTimes(1))
+
+        # Send more updates after simulated disconnect
+        for i in range(4, 7):
+            streaming_node.write(np.arange(10) + i)
+            time.sleep(0.1)
+
+        # Give time for reconnection and receiving all updates
+        time.sleep(2)
+
+        # Verify we received all 6 updates (3 before disconnect + 3 after)
+        assert len(received) >= 6, f"Expected at least 6 updates, got {len(received)}"
+
+        # Restore original recv before disconnecting to avoid cleanup issues
+        subscription._websocket.recv = original_recv
