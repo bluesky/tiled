@@ -17,7 +17,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 12s
+      start_period: 30s
 
   oauth2-proxy:
     network_mode: host
