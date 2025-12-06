@@ -66,6 +66,7 @@ def check_server_readiness(process):
         "",
         "--verbose",
         "--api-key secret",
+        "--keep-ext",
     ],
 )
 def test_serve_directory(args, tmp_path):
