@@ -138,6 +138,10 @@ class TTLCacheDatastore(StreamingDatastore):
         )
         self._pubsub = PubSub()
 
+    @property
+    def client(self):
+        return self
+
     async def incr_seq(self, node_id: str) -> int:
         counter = self._seq_counters.get(node_id)
         if counter is None:
