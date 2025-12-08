@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+import weakref
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Protocol
@@ -99,22 +100,34 @@ class StreamingCache:
 
 class PubSub:
     def __init__(self):
-        self._topics = defaultdict(set)
+        self._topics: dict[str, set[weakref.ref[asyncio.Queue]]] = defaultdict(set)
+
+    def _cleanup(self, topic: str, ref: weakref.ref) -> None:
+        # Remove references that were GC'd or explicitly unsubscribed.
+        topic_subscribers = self._topics.get(topic)
+        if topic_subscribers is None:
+            return
+        topic_subscribers.discard(ref)
+        if not topic_subscribers:
+            self._topics.pop(topic, None)
 
     async def publish(self, topic: str, message):
-        for q in list(self._topics.get(topic, ())):
-            q.put_nowait(message)
+        for ref in list(self._topics.get(topic, ())):
+            q = ref()
+            if q:
+                q.put_nowait(message)
 
     def subscribe(self, topic: str):
         q = asyncio.Queue()
-        self._topics[topic].add(q)
+        ref = weakref.ref(q, lambda _ref, topic=topic: self._cleanup(topic, _ref))
+        self._topics[topic].add(ref)
 
         async def gen():
             try:
                 while True:
                     yield await q.get()
             finally:
-                self._topics[topic].discard(q)
+                self._cleanup(topic, ref)
 
         return gen()
 
@@ -253,6 +266,12 @@ class TTLCacheDatastore(StreamingDatastore):
             mapping["payload"] = payload
         self._data_cache[f"data:{node_id}:{sequence}"] = mapping
         await self._pubsub.publish(f"notify:{node_id}", sequence)
+
+    async def get(self, key, *fields):
+        mapping = self._data_cache.get(key)
+        if mapping is None:
+            return [None for _ in fields]
+        return [mapping.get(field) for field in fields]
 
     async def close(self, node_id: str):
         # Increment the counter for this node.
