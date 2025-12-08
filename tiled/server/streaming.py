@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -122,19 +123,30 @@ class PubSub:
 class TTLCacheDatastore(StreamingDatastore):
     def __init__(self, settings: Dict[str, Any]):
         self._settings = settings
+        maxsize = self._settings.get("maxsize", 1000)
+        seq_ttl = self._settings["seq_ttl"]
         self._seq_cache = cachetools.TTLCache(
-            maxsize=self._settings.get("maxsize", 1000), ttl=self._settings["seq_ttl"]
+            maxsize=maxsize,
+            ttl=seq_ttl,
+        )
+        self._seq_counters = cachetools.TTLCache(
+            maxsize=maxsize,
+            ttl=seq_ttl,
         )
         self._data_cache = cachetools.TTLCache(
-            maxsize=self._settings.get("maxsize", 1000), ttl=self._settings["data_ttl"]
+            maxsize=maxsize, ttl=self._settings["data_ttl"]
         )
         self._pubsub = PubSub()
 
     async def incr_seq(self, node_id: str) -> int:
-        if node_id not in self._seq_cache:
-            self._seq_cache[node_id] = 0
-        self._seq_cache[node_id] += 1
-        return self._seq_cache[node_id]
+        counter = self._seq_counters.get(node_id)
+        if counter is None:
+            counter = itertools.count(1)
+        sequence = next(counter)
+        # Refresh TTL on each access to mimic redis' expire behavior.
+        self._seq_counters[node_id] = counter
+        self._seq_cache[node_id] = sequence
+        return sequence
 
     async def set(self, node_id, sequence, metadata, payload=None):
         mapping = {
