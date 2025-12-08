@@ -119,6 +119,98 @@ class PubSub:
         return gen()
 
 
+def _make_ws_handler_common(
+    *,
+    websocket,
+    formatter,
+    uri: str,
+    node_id: str,
+    schema,
+    get_func: Callable[..., Any],
+    current_sequence_getter: Callable[[], Any],
+    live_sequence_source: Callable[
+        [], Any
+    ],  # returns (AsyncIterator[int], Optional[Callable[[], Awaitable[None]]])
+):
+    async def handler(sequence: Optional[int] = None):
+        await websocket.accept()
+        end_stream = asyncio.Event()
+
+        # Send schema to provide client context to interpret what follows.
+        await formatter(websocket, schema, None)
+
+        async def stream_data(sequence):
+            """Helper function to stream a specific sequence number to a websocket"""
+
+            key = f"data:{node_id}:{sequence}"
+            payload_bytes, metadata_bytes = await get_func(key, "payload", "metadata")
+            if metadata_bytes is None:
+                # This means that ttl has expired for this sequence
+                return
+            metadata = orjson.loads(metadata_bytes)
+            if metadata.get("end_of_stream"):
+                # This means that the stream is closed by the producer
+                end_stream.set()
+                return
+            if metadata.get("type") == "array-ref":
+                if metadata.get("patch"):
+                    s = ",".join(
+                        f"{offset}:{offset+shape}"
+                        for offset, shape in zip(
+                            metadata["patch"]["offset"], metadata["patch"]["shape"]
+                        )
+                    )
+                    metadata["uri"] = f"{uri}?slice={s}"
+                else:
+                    s = ",".join(f":{dim}" for dim in metadata["shape"])
+                    metadata["uri"] = f"{uri}?slice={s}"
+            await formatter(websocket, metadata, payload_bytes)
+
+        # Setup buffer
+        stream_buffer = asyncio.Queue()
+
+        async def buffer_live_events():
+            """Function that adds currently streaming data to an asyncio.Queue"""
+            live_cleanup = None
+            try:
+                live_iter, live_cleanup = await live_sequence_source()
+                async for live_seq in live_iter:
+                    await stream_buffer.put(live_seq)
+            except asyncio.CancelledError:
+                # Task cancelled during shutdown.
+                pass
+            except Exception as e:
+                logger.exception(
+                    f"Live subscription error for node {node_id}: {e}",
+                )
+            finally:
+                if live_cleanup is not None:
+                    await live_cleanup()
+
+        live_task = asyncio.create_task(buffer_live_events())
+
+        if sequence is not None:
+            # If a sequence number is passed, replay old data
+            current_seq = int(await current_sequence_getter())
+            logger.debug("Replaying old data...")
+            for s in range(sequence, current_seq + 1):
+                await stream_data(s)
+        # Finally stream all buffered data into the websocket
+        try:
+            while not end_stream.is_set():
+                live_seq = await stream_buffer.get()
+                await stream_data(live_seq)
+            else:
+                await websocket.close(code=1000, reason="Producer ended stream")
+        except WebSocketDisconnect:
+            logger.info(f"Client disconnected from node {node_id}")
+        finally:
+            live_task.cancel()
+            await live_task
+
+    return handler
+
+
 @register_datastore("ttlcache")
 class TTLCacheDatastore(StreamingDatastore):
     def __init__(self, settings: Dict[str, Any]):
@@ -174,6 +266,25 @@ class TTLCacheDatastore(StreamingDatastore):
         mapping = {"sequence": sequence, "metadata": safe_json_dump(metadata)}
         self._data_cache[f"data:{node_id}:{sequence}"] = mapping
         await self._pubsub.publish(f"notify:{node_id}", sequence)
+
+    def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
+        async def current_sequence_getter():
+            return int(self._seq_cache.get(node_id, 0))
+
+        async def live_sequence_source():
+            agen = self._pubsub.subscribe(f"notify:{node_id}")
+            return agen, agen.aclose
+
+        return _make_ws_handler_common(
+            websocket=websocket,
+            formatter=formatter,
+            uri=uri,
+            node_id=node_id,
+            schema=schema,
+            get_func=self.get,
+            current_sequence_getter=current_sequence_getter,
+            live_sequence_source=live_sequence_source,
+        )
 
 
 @register_datastore("redis")
@@ -242,82 +353,35 @@ class RedisStreamingDatastore(StreamingDatastore):
         return await self.client.hmget(key, *fields)
 
     def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
-        async def handler(sequence: Optional[int] = None):
-            await websocket.accept()
-            end_stream = asyncio.Event()
-            streaming_cache = self
+        async def current_sequence_getter():
+            current_seq = await self.client.get(f"sequence:{node_id}")
+            return int(current_seq) if current_seq is not None else 0
 
-            # Send schema to provide client context to interpret what follows.
-            await formatter(websocket, schema, None)
+        async def live_sequence_source():
+            pubsub = self.client.pubsub()
+            await pubsub.subscribe(f"notify:{node_id}")
 
-            async def stream_data(sequence):
-                """Helper function to stream a specific sequence number to a websocket"""
-                key = f"data:{node_id}:{sequence}"
-                payload_bytes, metadata_bytes = await streaming_cache.get(
-                    key, "payload", "metadata"
-                )
-                if metadata_bytes is None:
-                    # This means that redis ttl has expired for this sequence
-                    return
-                metadata = orjson.loads(metadata_bytes)
-                if metadata.get("end_of_stream"):
-                    # This means that the stream is closed by the producer
-                    end_stream.set()
-                    return
-                if metadata.get("type") == "array-ref":
-                    if metadata.get("patch"):
-                        s = ",".join(
-                            f"{offset}:{offset+shape}"
-                            for offset, shape in zip(
-                                metadata["patch"]["offset"], metadata["patch"]["shape"]
-                            )
-                        )
-                        metadata["uri"] = f"{uri}?slice={s}"
-                    else:
-                        s = ",".join(f":{dim}" for dim in metadata["shape"])
-                        metadata["uri"] = f"{uri}?slice={s}"
-                await formatter(websocket, metadata, payload_bytes)
+            async def live_iter():
+                async for message in pubsub.listen():
+                    if message.get("type") == "message":
+                        try:
+                            yield int(message["data"])
+                        except Exception as e:
+                            logger.exception(f"Error parsing live message: {e}")
 
-            # Setup buffer
-            stream_buffer = asyncio.Queue()
+            async def cleanup():
+                await pubsub.unsubscribe(f"notify:{node_id}")
+                await pubsub.aclose()
 
-            async def buffer_live_events():
-                """Function that adds currently streaming data to an asyncio.Queue"""
-                pubsub = streaming_cache.client.pubsub()
-                await pubsub.subscribe(f"notify:{node_id}")
-                try:
-                    async for message in pubsub.listen():
-                        if message.get("type") == "message":
-                            try:
-                                live_seq = int(message["data"])
-                                await stream_buffer.put(live_seq)
-                            except Exception as e:
-                                logger.exception(f"Error parsing live message: {e}")
-                except Exception as e:
-                    logger.exception(f"Live subscription error: {e}")
-                finally:
-                    await pubsub.unsubscribe(f"notify:{node_id}")
-                    await pubsub.aclose()
+            return live_iter(), cleanup
 
-            live_task = asyncio.create_task(buffer_live_events())
-
-            if sequence is not None:
-                # If a sequence number is passed, replay old data
-                current_seq = await streaming_cache.client.get(f"sequence:{node_id}")
-                current_seq = int(current_seq) if current_seq is not None else 0
-                logger.debug("Replaying old data...")
-                for s in range(sequence, current_seq + 1):
-                    await stream_data(s)
-            # Finally stream all buffered data into the websocket
-            try:
-                while not end_stream.is_set():
-                    live_seq = await stream_buffer.get()
-                    await stream_data(live_seq)
-                else:
-                    await websocket.close(code=1000, reason="Producer ended stream")
-            except WebSocketDisconnect:
-                logger.info(f"Client disconnected from node {node_id}")
-            finally:
-                live_task.cancel()
-
-        return handler
+        return _make_ws_handler_common(
+            websocket=websocket,
+            formatter=formatter,
+            uri=uri,
+            node_id=node_id,
+            schema=schema,
+            get_func=self.get,
+            current_sequence_getter=current_sequence_getter,
+            live_sequence_source=live_sequence_source,
+        )
