@@ -1477,11 +1477,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata", "create"]),
+        _=Security(check_scopes, scopes=["write:metadata", "create:node"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata", "create"],
+            ["write:metadata", "create:node"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -1524,11 +1524,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata", "create", "register"]),
+        _=Security(check_scopes, scopes=["write:metadata", "create:node", "register"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata", "create", "register"],
+            ["write:metadata", "create:node", "register"],
             principal,
             authn_access_tags,
             authn_scopes,

@@ -5,6 +5,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+- Rename "create" scope to the more explicit "create:node"
+- Split "apikeys" scope into "create:apikeys" and "delete:apikeys" scopes
+
 ### Fixed
 
 - Made provision for forks of the repository to publish Helm charts.
