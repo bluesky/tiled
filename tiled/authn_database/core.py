@@ -43,7 +43,7 @@ async def create_default_roles(db):
                 "delete:revision",
                 "delete:node",
                 "create:apikeys",
-                "delete:apikeys",
+                "revoke:apikeys",
             ],
         ),
         Role(

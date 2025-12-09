@@ -18,7 +18,7 @@ depends_on = None
 
 
 ROLES = ["admin", "user"]
-NEW_SCOPES = ["create:apikeys", "delete:apikeys", "create:node"]
+NEW_SCOPES = ["create:apikeys", "revoke:apikeys", "create:node"]
 OLD_SCOPES = ["apikeys", "create"]
 
 

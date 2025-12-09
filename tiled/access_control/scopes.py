@@ -11,7 +11,7 @@ SCOPES = {
     "create:apikeys": {
         "description": "Create API keys as the currently-authenticated user or service."
     },
-    "delete:apikeys": {
+    "revoke:apikeys": {
         "description": "Revoke API keys as the currently-authenticated user or service."
     },
     "admin:apikeys": {

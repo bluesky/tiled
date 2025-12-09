@@ -7,7 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Changed
 - Rename "create" scope to the more explicit "create:node"
-- Split "apikeys" scope into "create:apikeys" and "delete:apikeys" scopes
+- Split "apikeys" scope into "create:apikeys" and "revoke:apikeys" scopes
 
 ### Fixed
 
