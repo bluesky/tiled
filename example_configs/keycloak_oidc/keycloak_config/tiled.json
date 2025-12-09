@@ -10,7 +10,7 @@
   "enabled" : true,
   "alwaysDisplayInConsole" : false,
   "clientAuthenticatorType" : "client-secret",
-  "secret" : "o8b7mIuYmzybNPVS8SSduhMdeqM8NDLp",
+  "secret" : "secret",
   "defaultRoles" : [ ],
   "redirectUris" : [ "http://localhost:4180/*" ],
   "webOrigins" : [ "http://localhost:4180/*" ],

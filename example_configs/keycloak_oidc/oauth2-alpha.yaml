@@ -6,7 +6,7 @@ injectRequestHeaders:
 providers:
 - provider: oidc
   clientID: tiled
-  clientSecret: o8b7mIuYmzybNPVS8SSduhMdeqM8NDLp
+  clientSecret: secret
   id: authn
   oidcConfig:
     audienceClaims: ["aud"]
