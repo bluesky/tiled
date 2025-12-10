@@ -5,7 +5,7 @@ roles:
     scopes: ["read:data", "read:metadata",
              "write:data", "write:metadata",
              "delete:node", "delete:revision",
-             "create", "register"]
+             "create:node", "register"]
 tags:
   data_A:
     groups:

@@ -1357,7 +1357,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         apikey_params: schemas.APIKeyRequestParams,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        _=Security(check_scopes, scopes=["apikeys"]),
+        _=Security(check_scopes, scopes=["create:apikeys"]),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
@@ -1422,7 +1422,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         first_eight: str,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        _=Security(check_scopes, scopes=["apikeys"]),
+        _=Security(check_scopes, scopes=["revoke:apikeys"]),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
