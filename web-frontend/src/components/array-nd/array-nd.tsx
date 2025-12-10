@@ -4,12 +4,14 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import CutSlider from "../cut-slider/cut-slider";
 import Typography from "@mui/material/Typography";
+import CircularProgress from "@mui/material/CircularProgress";
 import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "@mui/material/styles";
-
+import { axiosInstance } from "../../client";
+import { tokenManager } from "../../auth/token-manager";
 interface IProps {
   segments: string[];
   link: string;
@@ -97,21 +99,88 @@ interface ImageDisplayProps {
 }
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
-  let url: string;
-  url = `${props.link}?format=image/png&slice=${props.cuts.join(",")}`;
-  if (props.stride !== 1) {
-    // Downsample the image dimensions.
-    url = url.concat(`,::${props.stride},::${props.stride}`);
+  const [imageSrc, setImageSrc] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchImage = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        let url = `${props.link}?format=image/png&slice=${props.cuts.join(",")}`;
+        if (props.stride !== 1) {
+          url += `,::${props.stride},::${props.stride}`;
+        }
+
+        const tokens = tokenManager.getTokens();
+        if (!tokens?.access_token) {
+          throw new Error("Not authenticated");
+        }
+
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load image: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          if (!cancelled) {
+            setImageSrc(reader.result as string);
+            setLoading(false);
+          }
+        };
+
+        reader.onerror = () => {
+          if (!cancelled) {
+            setLoading(false);
+          }
+        };
+
+        reader.readAsDataURL(blob);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err.message);
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchImage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [props.link, props.cuts.join(","), props.stride]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
+
+  if (error) {
+    return <Alert severity="error">{error}</Alert>;
+  }
+
   return (
     <Box
       component="img"
       sx={{ maxWidth: 1 }}
       alt="Data rendered"
-      src={url}
+      src={imageSrc}
       loading="lazy"
     />
   );
 };
-
 export default ArrayND;
