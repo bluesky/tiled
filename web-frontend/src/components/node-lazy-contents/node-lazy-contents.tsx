@@ -2,6 +2,7 @@ import {
   DataGrid,
   GridRowModel,
   GridRowParams,
+  GridSortModel,
   GridToolbarColumnsButton,
   GridToolbarContainer,
   GridToolbarDensitySelector,
@@ -74,7 +75,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     rows: [],
     loading: false,
   });
-  const [sortModel, setSortModel] = useState<any[]>([]);
+  const [sortModel, setSortModel] = useState<GridSortModel>([]);
   type IdsToAncestors = { [key: string]: string[] };
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
   const [rowCount, setRowCount] = useState<number>(0);
