@@ -15,13 +15,13 @@ sequenceDiagram
     participant Server as Tiled Server
     participant IdP as Keycloak
 
-    User->>CLI: run "tiled login"
+    User->>CLI: client.login()
     CLI->>Server: Request auth configuration (/api/v1)
     Server-->>CLI: Device flow endpoints (client_id, auth-endpoint, token_endpoint)
     CLI->>IdP: POST /device (client_id, scopes)
     IdP-->>CLI: device_code, user_code, verification_uri, interval
     CLI->>User: "Visit verification URL and enter user code"
-    
+
     par User Authentication
         User->>IdP: Open verification URL and authenticate
         IdP-->>User: Login successful
@@ -29,7 +29,7 @@ sequenceDiagram
         CLI->>IdP: Poll /token with device_code
         IdP-->>CLI: "authorization_pending" (repeat until login)
     end
-    
+
     IdP-->>CLI: access_token, refresh_token
     CLI->>CLI: Store tokens (~/.cache/tiled)
     CLI-->>User: "You have logged in with Proxied OIDC as external user."
@@ -39,7 +39,22 @@ After login, subsequent requests include the access token in the Authorization h
 
 ## Tiled Web UI Authentication
 
-The web server uses a simpler flow with a confidential Keycloak client (named `tiled` in this example) and OAuth2 Proxy:
+The Tiled Web UI uses [OAuth2 Proxy](https://oauth2-proxy.github.io/oauth2-proxy/) as a reverse proxy to the Tiled server. OAuth2 Proxy handles all session management, including login, logout, and access token refresh.
+The web server uses a confidential Keycloak client (named `tiled` in this example).
+To logout, users are redirected to the Keycloak end_session_endpoint via OAuth2 Proxy's sign-out handler:
+
+```
+http://localhost:4180/oauth2/sign_out?rd=http%3A%2F%2Flocalhost%3A8080%2Frealms%2Fmaster%2Fprotocol%2Fopenid-connect%2Flogout
+
+# The logout URL can be build as follow:-
+end_session_endpoint = "http://localhost:8080/realms/master/protocol/openid-connect/logout"
+# end_session_endpoint can be found at http://localhost:8080/realms/master/.well-known/openid-configuration
+encoded_url = urllib.parse.quote_plus(end_session_endpoint)
+
+logout_url= "http://localhost:4180" + "oauth2/sign_out?rd=" + encoded_url
+```
+
+For better user experience, you can configure a `/logout` endpoint to redirect to this URL automatically.
 
 ```mermaid
 sequenceDiagram
@@ -63,13 +78,13 @@ sequenceDiagram
    - **Keycloak**: Authentication provider
    - **oauth2-proxy**: Authentication proxy
 
-2. Start the Tiled server with `example_configs/keycloak_oidc/config.yaml`.
+2. Start the Tiled server with `tiled server config example_configs/keycloak_oidc/config.yaml`.
 
-3. Open [http://localhost:4180](http://localhost:4180) in your browser and log in with:
+3. Open http://localhost:4180 (Oauth2 proxy address) in your browser and log in with:
    - Username: `admin`
    - Password: `admin`
 
-4. After authentication, you'll access all resources. Three additional test users are available:
+4. After authentication, you'll access all resources. Three additional test users are also available:
    - **alice** (password: alice)
    - **bob** (password: bob)
    - **carol** (password: carol)
