@@ -8,12 +8,13 @@ with restricted scopes.
 
 * `read:metadata` --- List and search metadata.
 * `read:data` --- Fetch (array, table) data.
-* `create` --- Create a new node.
+* `create:node` --- Create a new node.
 * `write:metadata` --- Write metadata.
 * `write:data` --- Write (array, table) data.
 * `delete:revision` --- Delete metadata revisions
 * `delete:node` --- Delete a node
-* `apikeys` --- Manage API keys for the currently-authenticated user or service.
+* `create:apikeys` --- Create API keys for the currently-authenticated user or service.
+* `revoke:apikeys` --- Revoke API keys for the currently-authenticated user or service.
 * `metrics` --- Access Prometheus metrics.
 * `admin:apikeys` --- Manage API keys on behalf of any user or service.
 * `read:principals` --- Read list of all users and services and their attributes.
@@ -27,7 +28,7 @@ access time.
 An authenticated entity ("Principal") may be assigned roles that confer a list
 of scopes.
 
-* `user` --- default role, granted scopes `["read:metadata", "read:data", "write:metadata", "write:data", "create", "apikeys"]`
+* `user` --- default role, granted scopes `["read:metadata", "read:data", "write:metadata", "write:data", "create:node", "create:apikeys", "revoke:apikeys"]`
 * `admin` --- granted all scopes
 
 There is support for custom roles at the database level, but neither role

@@ -23,7 +23,7 @@ access_control:
     - "write:data"
     - "delete:revision"
     - "delete:node"
-    - "create"
+    - "create:node"
     - "register"
     tags_db:
       uri: "file:example_configs/access_tags/compiled_tags.sqlite"
