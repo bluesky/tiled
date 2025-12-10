@@ -75,12 +75,12 @@ sequenceDiagram
 ## Getting Started
 
 1. Run `docker compose up` in this directory. This starts:
-   - **Keycloak**: Authentication provider
-   - **oauth2-proxy**: Authentication proxy
+   - **Keycloak**: Identity Provider (IdP)
+   - **OAuth2-proxy**: Reverse-proxy to access OAuth2 secured Tiled
 
-2. Start the Tiled server with `tiled server config example_configs/keycloak_oidc/config.yaml`.
+2. Start the Tiled server with `tiled server config example_configs/keycloak_oidc/config.yaml`. Tiled will make a call to Keycloak at startup to get the .well-known/openid-configuration.
 
-3. Open http://localhost:4180 (Oauth2 proxy address) in your browser and log in with:
+3. Open http://localhost:4180 (OAuth2 proxy address) in your browser and log in with:
    - Username: `admin`
    - Password: `admin`
 
