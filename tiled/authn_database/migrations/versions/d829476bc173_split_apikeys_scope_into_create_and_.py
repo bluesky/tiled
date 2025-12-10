@@ -18,8 +18,10 @@ depends_on = None
 
 
 ROLES = ["admin", "user"]
-NEW_SCOPES = ["create:apikeys", "revoke:apikeys", "create:node"]
-OLD_SCOPES = ["apikeys", "create"]
+NEW_SCOPES_USER = ["create:apikeys", "revoke:apikeys", "create:node"]
+OLD_SCOPES_USER = ["apikeys", "create"]
+NEW_SCOPES_ADMIN = ["create:node"]
+OLD_SCOPES_ADMIN = ["create"]
 
 
 def upgrade():
@@ -32,6 +34,12 @@ def upgrade():
         for role_name in ROLES:
             role = db.query(Role).filter(Role.name == role_name).first()
             scopes = role.scopes.copy()
+            if role_name == "admin":
+                NEW_SCOPES = NEW_SCOPES_ADMIN
+                OLD_SCOPES = OLD_SCOPES_ADMIN
+            else:
+                NEW_SCOPES = NEW_SCOPES_USER
+                OLD_SCOPES = OLD_SCOPES_USER
             for scope in OLD_SCOPES:
                 if scope in scopes:
                     scopes.remove(scope)
@@ -50,6 +58,12 @@ def downgrade():
         for role_name in ROLES:
             role = db.query(Role).filter(Role.name == role_name).first()
             scopes = role.scopes.copy()
+            if role_name == "admin":
+                NEW_SCOPES = NEW_SCOPES_ADMIN
+                OLD_SCOPES = OLD_SCOPES_ADMIN
+            else:
+                NEW_SCOPES = NEW_SCOPES_USER
+                OLD_SCOPES = OLD_SCOPES_USER
             for scope in NEW_SCOPES:
                 if scope in scopes:
                     scopes.remove(scope)
