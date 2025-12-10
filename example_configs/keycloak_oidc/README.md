@@ -10,5 +10,9 @@ This will start three services defined in the Docker Compose file:
 3. Open your browser and go to [http://localhost:4180](http://localhost:4180) (served by oauth2-proxy). You will be prompted to log in. Use `admin` for both the username and password.
 
 4. After logging in as `admin`, you will have access to all resources.
+Additionally, three test users are created at startup:
+- **alice** (password: alice)
+- **bob** (password: bob)
+- **carol** (password: carol)
 
 > **Note:** This configuration exposes all secrets and passwords to make it easier to use as an example. **Do not use this setup in production.**
