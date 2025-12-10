@@ -74,6 +74,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     rows: [],
     loading: false,
   });
+  const [sortModel, setSortModel] = useState<any[]>([]);
   type IdsToAncestors = { [key: string]: string[] };
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
   const [rowCount, setRowCount] = useState<number>(0);
@@ -101,6 +102,13 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
             .join(",") +
           "}";
       }
+      // Build sort string for API
+      let sort: string | null = null;
+      if (sortModel.length > 0) {
+        sort = sortModel
+          .map((item) => (item.sort === "desc" ? `-${item.field}` : item.field))
+          .join(",");
+      }
       const data = await search(
         settings.api_url,
         props.segments,
@@ -109,6 +117,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
         selectMetadata,
         rowsState.pageSize * rowsState.page,
         rowsState.pageSize,
+        sort,
       );
       setRowCount(data.meta!.count! as number);
       const items = data.data;
@@ -145,7 +154,6 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
         return;
       }
 
-      // TODO Synchronize these. (Clear rows first?)
       setIdsToAncestors(idsToAncestors);
       setRowsState((prev) => ({ ...prev, loading: false, rows: newRows }));
     })();
@@ -153,7 +161,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     return () => {
       active = false;
     };
-  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments]);
+  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments, sortModel]);
 
   return (
     <Box sx={{ my: 4 }}>
@@ -163,6 +171,8 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           pagination
           rowCount={rowCount}
           {...rowsState}
+          // Controlled pagination model to keep footer rows-per-page in sync
+          paginationModel={{ page: rowsState.page, pageSize: rowsState.pageSize }}
           paginationMode="server"
           pageSizeOptions={[10, 30, 100]}
           onPaginationModelChange={({
@@ -188,6 +198,9 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           }}
           disableColumnFilter
           autoHeight
+          sortingMode="server"
+          sortModel={sortModel}
+          onSortModelChange={(model) => setSortModel([...model])}
         />
       </Container>
     </Box>
