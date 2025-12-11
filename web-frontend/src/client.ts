@@ -11,6 +11,7 @@ export const search = async (
   selectMetadata: any = null,
   pageOffset: number = 0,
   pageLimit: number = 100,
+  sort: string | null = null,
 ): Promise<
   components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]
 > => {
@@ -21,6 +22,9 @@ export const search = async (
   )}`;
   if (selectMetadata !== null) {
     url = url.concat(`&select_metadata=${selectMetadata}`);
+  }
+  if (sort) {
+    url = url.concat(`&sort=${encodeURIComponent(sort)}`);
   }
   const response = await axiosInstance.get(url, { signal: signal });
   return response.data;
