@@ -79,6 +79,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
   type IdsToAncestors = { [key: string]: string[] };
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
   const [rowCount, setRowCount] = useState<number>(0);
+  
   useEffect(() => {
     let active = true;
 
@@ -162,7 +163,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
     return () => {
       active = false;
     };
-  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments, sortModel]);
+  }, [rowsState.page, rowsState.pageSize, props.columns, props.segments, sortModel, settings.api_url]);
 
   return (
     <Box sx={{ my: 4 }}>
@@ -201,7 +202,11 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
           autoHeight
           sortingMode="server"
           sortModel={sortModel}
-          onSortModelChange={(model) => setSortModel([...model])}
+          onSortModelChange={(model) => {
+            setSortModel(model);
+            // Reset to first page when sort changes to avoid confusing UX
+            setRowsState((prev) => ({ ...prev, page: 0 }));
+          }}
         />
       </Container>
     </Box>
