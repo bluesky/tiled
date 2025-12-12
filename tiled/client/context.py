@@ -291,9 +291,6 @@ class Context:
             else None
         )
 
-        if self.client_id:
-            client.headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
     def __repr__(self):
         auth_info = []
         if (self.api_key is None) and (self.http_client.auth is None):
