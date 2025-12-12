@@ -331,7 +331,7 @@ class TTLCacheDatastore(StreamingDatastore):
         super().__init__()
         self._settings = settings
         maxsize = self._settings.get("maxsize", 1000)
-        seq_ttl = self._settings["seq_ttl"]
+        seq_ttl = self._settings.get("seq_ttl", 3600)
         self._seq_cache = cachetools.TTLCache(
             maxsize=maxsize,
             ttl=seq_ttl,
@@ -341,7 +341,7 @@ class TTLCacheDatastore(StreamingDatastore):
             ttl=seq_ttl,
         )
         self._data_cache = cachetools.TTLCache(
-            maxsize=maxsize, ttl=self._settings["data_ttl"]
+            maxsize=maxsize, ttl=self._settings.get("data_ttl", 2592000)
         )
         self._pubsub = PubSub()
 
