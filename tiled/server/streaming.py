@@ -328,8 +328,8 @@ class TTLCacheDatastore(StreamingDatastore):
     """
 
     def __init__(self, settings: Dict[str, Any]):
-        super().__init__()
         self._settings = settings
+        self._lock = asyncio.Lock()
         maxsize = self._settings.get("maxsize", 1000)
         seq_ttl = self._settings.get("seq_ttl", 3600)
         self._seq_cache = cachetools.TTLCache(
@@ -350,14 +350,15 @@ class TTLCacheDatastore(StreamingDatastore):
         return self
 
     async def incr_seq(self, node_id: str) -> int:
-        counter = self._seq_counters.get(node_id)
-        if counter is None:
-            counter = itertools.count(1)
+        async with self._lock:
+            counter = self._seq_counters.get(node_id)
+            if counter is None:
+                counter = itertools.count(1)
+                self._seq_counters[node_id] = counter
+            sequence = next(counter)
+            # Refresh TTL on each access to mimic redis' expire behavior.
             self._seq_counters[node_id] = counter
-        sequence = next(counter)
-        # Refresh TTL on each access to mimic redis' expire behavior.
-        self._seq_counters[node_id] = counter
-        self._seq_cache[node_id] = sequence
+            self._seq_cache[node_id] = sequence
         return sequence
 
     async def set(self, node_id, sequence, metadata, payload=None):
@@ -367,11 +368,13 @@ class TTLCacheDatastore(StreamingDatastore):
         }
         if payload:
             mapping["payload"] = payload
-        self._data_cache[f"data:{node_id}:{sequence}"] = mapping
+        async with self._lock:
+            self._data_cache[f"data:{node_id}:{sequence}"] = mapping
         await self._pubsub.publish(f"notify:{node_id}", sequence)
 
     async def get(self, key, *fields):
-        mapping = self._data_cache.get(key)
+        async with self._lock:
+            mapping = self._data_cache.get(key)
         if mapping is None:
             return [None for _ in fields]
         return [mapping.get(field) for field in fields]
@@ -386,12 +389,14 @@ class TTLCacheDatastore(StreamingDatastore):
             "end_of_stream": True,
         }
         mapping = {"sequence": sequence, "metadata": safe_json_dump(metadata)}
-        self._data_cache[f"data:{node_id}:{sequence}"] = mapping
+        async with self._lock:
+            self._data_cache[f"data:{node_id}:{sequence}"] = mapping
         await self._pubsub.publish(f"notify:{node_id}", sequence)
 
     def make_ws_handler(self, websocket, formatter, uri, node_id, schema):
         async def current_sequence_getter():
-            return int(self._seq_cache.get(node_id, 0))
+            async with self._lock:
+                return int(self._seq_cache.get(node_id, 0))
 
         async def live_sequence_source():
             agen = self._pubsub.subscribe(f"notify:{node_id}")
