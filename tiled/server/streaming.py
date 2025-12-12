@@ -277,8 +277,8 @@ def _make_ws_handler_common(
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
                 await stream_data(live_seq)
-            else:
-                await websocket.close(code=1000, reason="Producer ended stream")
+
+            await websocket.close(code=1000, reason="Producer ended stream")
         except WebSocketDisconnect:
             logger.info(f"Client disconnected from node {node_id}")
         finally:
@@ -317,6 +317,7 @@ class TTLCacheDatastore(StreamingDatastore):
           StreamingDatastore instead.
     """
     def __init__(self, settings: Dict[str, Any]):
+        super().__init__()
         self._settings = settings
         maxsize = self._settings.get("maxsize", 1000)
         seq_ttl = self._settings["seq_ttl"]
