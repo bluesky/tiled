@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    String,
     Table,
     Unicode,
     event,
@@ -29,15 +30,15 @@ from .base import Base
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
-class Timestamped:
+class TimedStampedBase:
     """
+    Base TimeStamp class that gives independent bheavior to Node and Revision classes.
+
     Mixin for providing timestamps of creation and update time.
 
     These are not used by application code, but they may be useful for
     forensics.
     """
-
-    time_created = Column(DateTime(timezone=False), server_default=func.now())
     time_updated = Column(
         DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
     )
@@ -52,6 +53,17 @@ class Timestamped:
             )
             + ")"
         )
+
+
+class Timestamped(TimedStampedBase):
+    """
+    Mixin for providing timestamps of creation and update time.
+
+    These are not used by application code, but they may be useful for
+    forensics.
+    """
+
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
 
 
 class Node(Timestamped, Base):
@@ -76,6 +88,8 @@ class Node(Timestamped, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
+    created_by = Column("created_by", String, nullable=False)
+    updated_by = Column("updated_by", String, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -532,7 +546,7 @@ class Asset(Timestamped, Base):
     )
 
 
-class Revision(Timestamped, Base):
+class Revision(TimedStampedBase, Base):
     """
     This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
     """
@@ -551,6 +565,7 @@ class Revision(Timestamped, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
+    updated_by = Column("updated_by", String, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
