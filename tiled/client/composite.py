@@ -1,3 +1,4 @@
+import itertools as it
 import time
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
@@ -68,10 +69,10 @@ class CompositeClient(Container):
         )
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
-        yield from self._flat_keys_mapping.keys()
+        yield from it.islice(self._flat_keys_mapping.keys(), start, stop)
 
     def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
-        for key in self._flat_keys_mapping.keys():
+        for key in it.islice(self._flat_keys_mapping.keys(), start, stop):
             yield key, self[key]
 
     def __iter__(self):
