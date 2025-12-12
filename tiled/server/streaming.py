@@ -99,6 +99,29 @@ class StreamingCache:
 
 
 class PubSub:
+    """
+    Lightweight in-process publish/subscribe mechanism for TTLCache backend.
+
+    This class provides a simple pub/sub system for use within a single process,
+    intended as a backend for streaming data (e.g., with TTLCache). It allows
+    multiple subscribers to listen for messages on named topics.
+
+    Subscribers are tracked using weak references to asyncio.Queue objects.
+    When a subscriber is garbage collected or unsubscribed, its weak reference
+    is automatically removed from the topic's subscriber set, ensuring that
+    resources are cleaned up without manual intervention.
+
+    Thread-safety: This class is NOT thread-safe and is intended for use within
+    a single asyncio event loop (i.e., within a single thread).
+
+    Comparison to Redis pub/sub:
+        - This implementation is in-process only; it does not support
+          cross-process or cross-machine communication.
+        - It is lightweight and has no external dependencies beyond Python's
+          standard library and asyncio.
+        - Unlike Redis pub/sub, messages are only delivered to subscribers
+          within the same process.
+    """
     def __init__(self):
         self._topics: dict[str, set[weakref.ref[asyncio.Queue]]] = defaultdict(set)
 
@@ -145,6 +168,47 @@ def _make_ws_handler_common(
         [], Any
     ],  # returns (AsyncIterator[int], Optional[Callable[[], Awaitable[None]]])
 ):
+    """
+    Create a websocket handler that implements the streaming protocol for a node.
+
+    Parameters
+    ----------
+    websocket : fastapi.WebSocket
+        The websocket connection to communicate with the client.
+    formatter : Callable[[Any, Any, Optional[int]], Awaitable[None]]
+        Async function to serialize and send data to the websocket. Typically, it takes (websocket, data, sequence).
+    uri : str
+        The URI identifying the resource being streamed.
+    node_id : str
+        The unique identifier for the node whose data is being streamed.
+    schema : Any
+        The schema object describing the structure of the streamed data.
+    get_func : Callable[..., Any]
+        Function to retrieve data for a given sequence number. Signature: get_func(node_id, sequence, ...).
+    current_sequence_getter : Callable[[], Any]
+        Function to get the current/latest sequence number for the node.
+    live_sequence_source : Callable[[], Tuple[AsyncIterator[int], Optional[Callable[[], Awaitable[None]]]]]
+        Function returning an async iterator of new sequence numbers as they become available,
+        and optionally a cleanup callback to be awaited when the stream ends.
+
+    Returns
+    -------
+    handler : Callable[[Optional[int]], Awaitable[None]]
+        An async function that, when called with an optional starting sequence number,
+        handles the websocket protocol for streaming data to the client.
+
+    Protocol Flow
+    -------------
+    1. Sends the schema to the client to provide context for interpreting subsequent data.
+    2. If a starting sequence is provided, replays historical data from that sequence up to the current sequence.
+    3. Streams new data live as it becomes available.
+
+    Error Handling
+    --------------
+    - Handles websocket disconnects gracefully.
+    - Catches and logs exceptions during streaming; closes the websocket on error.
+    - Ensures cleanup of resources (e.g., live stream subscriptions) on exit.
+    """
     async def handler(sequence: Optional[int] = None):
         await websocket.accept()
         end_stream = asyncio.Event()
@@ -158,7 +222,7 @@ def _make_ws_handler_common(
             key = f"data:{node_id}:{sequence}"
             payload_bytes, metadata_bytes = await get_func(key, "payload", "metadata")
             if metadata_bytes is None:
-                # This means that ttl has expired for this sequence
+                # This means that the data is no longer available (either expired or not found)
                 return
             metadata = orjson.loads(metadata_bytes)
             if metadata.get("end_of_stream"):
@@ -226,6 +290,32 @@ def _make_ws_handler_common(
 
 @register_datastore("ttlcache")
 class TTLCacheDatastore(StreamingDatastore):
+    """
+    An in-memory, TTL-based streaming datastore for single-process deployments.
+
+    This class provides a drop-in, in-memory alternative to the Redis-backed
+    streaming datastore. It is intended for development, testing, or
+    single-process production deployments where persistence and multi-process
+    support are not required.
+
+    Configuration:
+        settings: dict with the following keys:
+            - maxsize (int, optional): Maximum number of items to cache per node.
+              Defaults to 1000.
+            - seq_ttl (float): Time-to-live (in seconds) for sequence counters.
+            - data_ttl (float): Time-to-live (in seconds) for data entries.
+
+    Limitations:
+        - Not suitable for multi-process or distributed deployments.
+        - No persistence: all data is lost when the process exits.
+        - Not safe for use with multiple server processes or workers.
+
+    When to use:
+        - Use this class for local development, testing, or simple single-process
+          deployments where persistence and multi-process support are not needed.
+        - For production or distributed deployments, use the Redis-backed
+          StreamingDatastore instead.
+    """
     def __init__(self, settings: Dict[str, Any]):
         self._settings = settings
         maxsize = self._settings.get("maxsize", 1000)
