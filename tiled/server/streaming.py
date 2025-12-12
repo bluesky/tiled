@@ -122,6 +122,7 @@ class PubSub:
         - Unlike Redis pub/sub, messages are only delivered to subscribers
           within the same process.
     """
+
     def __init__(self):
         self._topics: dict[str, set[weakref.ref[asyncio.Queue]]] = defaultdict(set)
 
@@ -142,15 +143,22 @@ class PubSub:
 
     def subscribe(self, topic: str):
         q = asyncio.Queue()
-        ref = weakref.ref(q, lambda _ref, topic=topic: self._cleanup(topic, _ref))
+        self_ref = weakref.ref(self)
+
+        def _cleanup_cb(_ref: Optional[weakref.ref] = None):
+            # The weakref callback must not strongly reference self to avoid a reference cycle.
+            self_obj = self_ref()
+            if self_obj is None:
+                return
+            self_obj._cleanup(topic, _ref or ref)
+
+        # Cleanup runs only when the queue is GC'd via the weakref callback.
+        ref = weakref.ref(q, _cleanup_cb)
         self._topics[topic].add(ref)
 
         async def gen():
-            try:
-                while True:
-                    yield await q.get()
-            finally:
-                self._cleanup(topic, ref)
+            while True:
+                yield await q.get()
 
         return gen()
 
@@ -176,7 +184,8 @@ def _make_ws_handler_common(
     websocket : fastapi.WebSocket
         The websocket connection to communicate with the client.
     formatter : Callable[[Any, Any, Optional[int]], Awaitable[None]]
-        Async function to serialize and send data to the websocket. Typically, it takes (websocket, data, sequence).
+        Async function to serialize and send data to the websocket.
+        Typically, it takes (websocket, data, sequence).
     uri : str
         The URI identifying the resource being streamed.
     node_id : str
@@ -209,6 +218,7 @@ def _make_ws_handler_common(
     - Catches and logs exceptions during streaming; closes the websocket on error.
     - Ensures cleanup of resources (e.g., live stream subscriptions) on exit.
     """
+
     async def handler(sequence: Optional[int] = None):
         await websocket.accept()
         end_stream = asyncio.Event()
@@ -316,6 +326,7 @@ class TTLCacheDatastore(StreamingDatastore):
         - For production or distributed deployments, use the Redis-backed
           StreamingDatastore instead.
     """
+
     def __init__(self, settings: Dict[str, Any]):
         super().__init__()
         self._settings = settings
