@@ -204,7 +204,25 @@ async def _walk(
     walkers,
     settings,
 ):
-    "This is the recursive inner loop of walk."
+    """The recursive inner loop of walk
+
+    Parameters
+    ----------
+        node : tiled.client.node.Node
+            The Tiled Node corresponding to the root container at which the directory
+            would be registered.
+        path : pathlib.Path
+            The filesystem path to walk; must be a directory.
+        walkers : list of callables
+            The list of walker functions to apply at each directory level. Should either
+            register encountered files/directories as Nodes, or return lists of unhandled
+            files and directories for the next walker to process.
+        settings : Settings
+            The registration settings.
+    """
+
+    directories = [path]
+
     files = []
     directories = []
     logger.info("  Walking '%s'", path)
