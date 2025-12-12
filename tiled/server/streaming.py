@@ -353,6 +353,7 @@ class TTLCacheDatastore(StreamingDatastore):
         counter = self._seq_counters.get(node_id)
         if counter is None:
             counter = itertools.count(1)
+            self._seq_counters[node_id] = counter
         sequence = next(counter)
         # Refresh TTL on each access to mimic redis' expire behavior.
         self._seq_counters[node_id] = counter
