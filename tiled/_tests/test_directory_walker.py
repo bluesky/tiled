@@ -14,7 +14,6 @@ from starlette.status import HTTP_415_UNSUPPORTED_MEDIA_TYPE
 from ..adapters.hdf5 import HDF5Adapter
 from ..adapters.tiff import TiffAdapter
 from ..adapters.utils import init_adapter_from_catalog
-from ..adapters.zarr import ZARR_LIB_V2
 from ..catalog import in_memory
 from ..client import Context, from_context
 from ..client.register import (
@@ -337,14 +336,9 @@ async def test_zarr_directory(tmpdir, register_parent):
     # Create a Zarr directory with some contents.
     zarr_dir = Path(tmpdir, "test.zarr")
     zarr_data = numpy.arange(200).reshape(10, 20)
-    if ZARR_LIB_V2:
-        zarr_array = zarr.open(
-            zarr_dir, mode="w", shape=(10, 20), chunks=(5, 5), dtype="i4"
-        )
-    else:
-        zarr_array = zarr.create_array(
-            store=zarr_dir, shape=(10, 20), chunks=(5, 5), dtype="i4"
-        )
+    zarr_array = zarr.open(
+        zarr_dir, mode="w", shape=(10, 20), chunks=(5, 5), dtype="i4"
+    )
     zarr_array[:] = zarr_data
 
     # Register either the Zarr directory itself, or its parent directory.
