@@ -15,19 +15,18 @@ from ..access_control.access_policies import ExternalPolicyDecisionPoint
 from ..server.schemas import Principal, PrincipalType
 
 
-class TestExternalPolicyDecisionPoint(ExternalPolicyDecisionPoint):
-    def build_input(
-        self,
-        principal: Principal,
-        authn_access_tags: Optional[AccessTags],
-        authn_scopes: Scopes,
-        access_blob: Optional[AccessBlob] = None,
-    ) -> str:
-        return ""
-
-
 @pytest.fixture
 def external_policy() -> ExternalPolicyDecisionPoint:
+    class TestExternalPolicyDecisionPoint(ExternalPolicyDecisionPoint):
+        def build_input(
+            self,
+            principal: Principal,
+            authn_access_tags: Optional[AccessTags],
+            authn_scopes: Scopes,
+            access_blob: Optional[AccessBlob] = None,
+        ) -> str:
+            return ""
+
     return TestExternalPolicyDecisionPoint(
         authorization_provider=HttpUrl("http://example.com"),
         create_node_endpoint="allow",
@@ -223,16 +222,13 @@ async def test_allowed_scopes_return_no_scopes_if_validation_error(
     "allow,remote_allow", [(True, None), (False, None), (None, True), (None, False)]
 )
 async def test_empty_access_blob_public(
-    principal: Principal, allow: Optional[bool], remote_allow: Optional[bool]
+    external_policy: ExternalPolicyDecisionPoint,
+    principal: Principal,
+    allow: Optional[bool],
+    remote_allow: Optional[bool],
 ):
-    policy = TestExternalPolicyDecisionPoint(
-        authorization_provider=HttpUrl("http://example.com"),
-        create_node_endpoint="allow",
-        allowed_tags_endpoint="tags",
-        scopes_endpoint="scopes",
-        empty_access_blob_public=allow,
-    )
-
+    external_policy._empty_access_blob_public = allow
+    policy = external_policy
     if remote_allow is not None:
         route = respx.post(policy._create_node).mock(
             return_value=Response(200, json={"result": remote_allow})
