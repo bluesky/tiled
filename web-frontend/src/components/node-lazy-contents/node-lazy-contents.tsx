@@ -79,7 +79,7 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
   type IdsToAncestors = { [key: string]: string[] };
   const [idsToAncestors, setIdsToAncestors] = useState<IdsToAncestors>({});
   const [rowCount, setRowCount] = useState<number>(0);
-  
+
   useEffect(() => {
     let active = true;
 
