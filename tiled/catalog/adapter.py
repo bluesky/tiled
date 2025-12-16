@@ -535,7 +535,7 @@ class CatalogNodeAdapter:
             ),
         )
         for query in self.queries:
-            if hasattr(adapter, "searc"):
+            if hasattr(adapter, "search"):
                 adapter = adapter.search(query)
         return adapter
 
