@@ -350,9 +350,7 @@ def minio_uri():
         raise pytest.skip("No TILED_TEST_BUCKET configured")
 
 
-@pytest.fixture(scope="function")
-def tiled_websocket_context(tmpdir, redis_uri):
-    """Fixture that provides a Tiled context with websocket support."""
+def build_test_app(tmpdir, redis_uri, public=False):
     tree = from_uri(
         "sqlite:///:memory:",
         writable_storage=[
@@ -373,10 +371,25 @@ def tiled_websocket_context(tmpdir, redis_uri):
     )
     app = build_app(
         tree,
-        authentication=Authentication(single_user_api_key="secret"),
+        authentication=Authentication(
+            single_user_api_key="secret",
+            allow_anonymous_access=public,
+        ),
     )
+    return app
 
-    with Context.from_app(app) as context:
+
+@pytest.fixture(scope="function")
+def tiled_websocket_context(tmpdir, redis_uri):
+    """Fixture that provides a Tiled context with websocket support."""
+    with Context.from_app(build_test_app(tmpdir, redis_uri, public=False)) as context:
+        yield context
+
+
+@pytest.fixture(scope="function")
+def tiled_websocket_context_public(tmpdir, redis_uri):
+    """Fixture that provides a Tiled context with websocket support."""
+    with Context.from_app(build_test_app(tmpdir, redis_uri, public=True)) as context:
         yield context
 
 

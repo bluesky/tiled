@@ -284,12 +284,9 @@ async def get_current_access_tags(
 
 def get_api_key_websocket(
     authorization: Annotated[Optional[str], Header()] = None,
-):
+) -> Optional[str]:
     if authorization is None:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="An API key must be passed in the Authorization header",
-        )
+        return None
     scheme, api_key = get_authorization_scheme_param(authorization)
     if scheme.lower() != "apikey":
         raise HTTPException(
@@ -489,19 +486,30 @@ async def get_current_principal_from_api_key(
 
 async def get_current_principal_websocket(
     websocket: WebSocket,
-    api_key: str = Depends(get_api_key_websocket),
+    api_key: Optional[str] = Depends(get_api_key_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
     ),
 ):
-    async with db_factory() as db:
-        principal = await get_current_principal_from_api_key(
-            api_key, websocket.app.state.authenticated, db, settings
-        )
-    if principal is None and websocket.app.state.authenticated:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-    return principal
+    if api_key is not None:
+        async with db_factory() as db:
+            principal = await get_current_principal_from_api_key(
+                api_key, websocket.app.state.authenticated, db, settings
+            )
+        if (principal is None) and websocket.app.state.authenticated:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
+        return principal
+    else:
+        if settings.allow_anonymous_access:
+            return None
+        else:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="No API key was provided with this request.",
+            )
 
 
 async def get_current_principal(
