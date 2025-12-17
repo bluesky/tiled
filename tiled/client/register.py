@@ -164,7 +164,7 @@ async def register(
     for segment in prefix_parts:
         child_node = await anyio.to_thread.run_sync(node.get, segment)
         if child_node is None:
-            key = key_from_filename(segment)
+            key = settings.key_from_filename(segment)
             await create_node_or_drop_collision(
                 node,
                 structure_family=StructureFamily.container,
@@ -186,7 +186,9 @@ async def register(
         if overwrite:
             logger.info(f"  Overwriting '/{'/'.join(prefix_parts)}'")
             # TODO When we have a tiled AsyncClient, use that.
-            await anyio.to_thread.run_sync(partial(node.delete, recursive=True))
+            await anyio.to_thread.run_sync(
+                partial(node.delete_contents, recursive=True)
+            )
         await _walk(node, Path(path), parsed_walkers, settings=settings)
     else:
         await register_single_item(node, path, is_directory=False, settings=settings)
