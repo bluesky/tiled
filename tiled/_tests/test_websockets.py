@@ -382,6 +382,7 @@ def test_close_stream_not_found(tiled_websocket_context):
 
 def test_websocket_connection_wrong_api_key(tiled_websocket_context):
     """Test websocket connection with wrong API key fails with 401."""
+
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -412,11 +413,17 @@ def test_websocket_connection_no_api_key(tiled_websocket_context):
     arr = np.arange(10)
     client.write_array(arr, key="test_auth_websocket")
 
-    # Try to connect to websocket with wrong API key
-    with test_client.websocket_connect(
-        "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
-    ):
-        pass
+    # Strip API key so requests below are unauthenticated.
+    context.api_key = None
+
+    # Try to connect to websocket with no API key
+    with pytest.raises(WebSocketDenialResponse) as exc_info:
+        with test_client.websocket_connect(
+            "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
+        ):
+            pass
+
+    assert exc_info.value.status_code == 401
 
 
 def test_websocket_connection_public_no_api_key(tiled_websocket_context_public):
@@ -429,7 +436,10 @@ def test_websocket_connection_public_no_api_key(tiled_websocket_context_public):
     arr = np.arange(10)
     client.write_array(arr, key="test_auth_websocket")
 
-    # Try to connect to websocket with no API key
+    # Strip API key so requests below are unauthenticated.
+    context.api_key = None
+
+    # Try to connect to (public) websocket with no API key
     with test_client.websocket_connect(
         "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
     ):

@@ -503,7 +503,13 @@ async def get_current_principal_websocket(
             )
         return principal
     else:
-        return None
+        if settings.allow_anonymous_access:
+            return None
+        else:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="No API key was provided with this request.",
+            )
 
 
 async def get_current_principal(
