@@ -97,6 +97,24 @@ async def test_same_filename_separate_directory(tmpdir):
 
 
 @pytest.mark.asyncio
+async def test_register_prefix(tmpdir):
+    "Register under a prefix"
+    df1.to_csv(Path(tmpdir, "a.csv"))
+    catalog = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        x = client.create_container("x")
+        y = x.create_container("y")
+        y.create_container("z")  # will be overwritten
+        # Test that node is present.
+        client["x", "y", "z"]
+        await register(client, tmpdir, prefix="/x/y")
+        # New node is present; old contents were overwritten.
+        assert "a" in client["x/y"]
+        assert "z" not in client["x/y"]
+
+
+@pytest.mark.asyncio
 async def test_mimetype_detection_hook(tmpdir):
     content = "a, b, c\n1, 2 ,3\n4, 5, 6\n"
     with open(Path(tmpdir / "a0"), "w") as file:
