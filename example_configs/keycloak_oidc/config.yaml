@@ -10,10 +10,10 @@ authentication:
       confirmation_message: "You have logged in with Proxied OIDC as {id}."
 
 access_control:
-  access_policy: "tiled.access_control.access_policies:ExternalPolicyDecisionPoint"
+  access_policy: "tiled_policy.example_pdp:ExampleAuthorizationPolicy"
   args:
     authorization_provider: http://localhost:8181/v1/data/rbac/
-    audience: tiled_aud
+    token_audience: tiled_aud
     create_node_endpoint: "allow"
     allowed_tags_endpoint: "tags"
     scopes_endpoint: "scopes"

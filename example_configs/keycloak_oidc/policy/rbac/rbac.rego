@@ -15,10 +15,10 @@ tag_permissions := {
 		"read:metadata",
 		"write:data",
 		"write:metadata",
-		"create",
+		"create:node",
 		"register",
 		"delete:revision",
-		"delete:node"
+		"delete:node",
 	],
 	"beamline_x_user": [
 		"read:data",
@@ -58,7 +58,7 @@ tags contains tag if {
 	some tag in object.keys(tag_permissions)
 }
 
-input_tags contains tag if some tag in input.access_blob.tags
+input_tags contains tag if some tag in input.tags
 allowed_tags := tags & input_tags
 
 scopes contains p if {

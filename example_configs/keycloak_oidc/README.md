@@ -1,4 +1,4 @@
-# Running a Local Keycloak Instance for Authentication and OPA for Authorization
+# Running a Local Keycloak Instance for Authentication and Open Policy Agent for Authorization
 
 This example demonstrates how to set up authentication using Keycloak (or any OAuth2-compliant provider). Two clients require authentication:
 1. Tiled CLI (command-line client)
@@ -75,18 +75,42 @@ sequenceDiagram
 ## Getting Started
 
 1. Run `docker compose up` in this directory. This starts:
-   - **Keycloak**: Identity Provider (IdP)
-   - **OAuth2-proxy**: Reverse-proxy to access OAuth2 secured Tiled
+    - **Keycloak**: Identity Provider (IdP)
+    - **OAuth2-proxy**: Reverse-proxy to access OAuth2 secured Tiled
+    - **Open Policy Agent**: Manages authorization based on defined policies. The current example uses role-based access control, granting permissions according to user roles.
+2. Start the Tiled server with `tiled server config example_configs/keycloak_oidc/config.yaml`. Set the Python path first by running `export PYTHONPATH="$(PWD)example_configs/keycloak_oidc"` so Tiled can locate the `ExternalPolicyDecisionPoint` implementation. Upon startup, Tiled will retrieve the OpenID Connect configuration from Keycloak's `.well-known/openid-configuration` endpoint.
 
-2. Start the Tiled server with `tiled server config example_configs/keycloak_oidc/config.yaml`. Tiled will make a call to Keycloak at startup to get the .well-known/openid-configuration.
+3. Open http://localhost:4180 (OAuth2 proxy address) in your browser and log in with the following users
+    - **admin** (password: admin)
+    - **alice** (password: alice)
+    - **bob** (password: bob)
+    - **cara** (password: cara)
 
-3. Open http://localhost:4180 (OAuth2 proxy address) in your browser and log in with:
-   - Username: `admin`
-   - Password: `admin`
+4. After authentication, access to resources depends on your user role. Users can only create nodes with valid tags they have permissions to access.
 
-4. After authentication, you'll access all resources. Three additional test users are also available:
-   - **alice** (password: alice)
-   - **bob** (password: bob)
-   - **carol** (password: carol)
+Valid tags: `["beamline_x_user", "beamline_y_user", "facility_admin", "public"]`
+
+The [example_data.py](example_data.py) script creates sample data with these access levels:
+
+| Data | Access Blob     |
+|------|-----------------|
+| A    | public          |
+| B    | beamline_x_user |
+| C    | beamline_y_user |
+
+Access permissions by user:
+
+| User  | Accessible Data | Allowed Tags    |
+|-------|-----------------|-----------------|
+| admin | A, B, C         | All valid tags  |
+| alice | A, B            | beamline_x_user |
+| bob   | A, C            | beamline_y_user |
+| cara  | A, B, C         | All valid tags  |
+
+The [RBAC policy](policy/rbac/rbac.rego) enforces three authorization rules:
+1. **tags** - Returns all tags a user can access
+2. **scopes** - Determines user permissions for a specific node
+3. **allow** - Permits or denies node creation/modification
+
 
 > **Note:** This example exposes secrets and passwords for demonstration only. **Do not use in production.**

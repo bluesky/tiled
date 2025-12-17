@@ -491,7 +491,7 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
             response = await client.post(decision_endpoint, content=input)
         response.raise_for_status()
         try:
-            logger.debug(f"Deserialising auth {response.text=} as {decision_type=}")
+            logger.debug(f"Deserializing auth {response.text=} as {decision_type=}")
             return TypeAdapter(decision_type).validate_json(response.text)
         except ValidationError:
             return None
