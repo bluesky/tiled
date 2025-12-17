@@ -67,15 +67,18 @@ class _TestClientWebsocketWrapper:
         self._websocket = None
         self._connection_lock = threading.Lock()
 
-    def connect(self, api_key: str, start: Optional[int] = None):
+    def connect(self, api_key: Optional[str], start: Optional[int] = None):
         """Connect to the websocket."""
+        params = self._uri.params
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Apikey {api_key}"
+        if start is not None:
+            params = params.set("start", start)
         with self._connection_lock:
-            params = self._uri.params
-            if start is not None:
-                params = params.set("start", start)
             self._websocket = self._http_client.websocket_connect(
                 str(self._uri.copy_with(params=params)),
-                headers={"Authorization": f"Apikey {api_key}"},
+                headers=headers,
             )
             self._websocket.__enter__()
 
@@ -105,14 +108,17 @@ class _RegularWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: str, start: Optional[int] = None):
+    def connect(self, api_key: Optional[str], start: Optional[int] = None):
         """Connect to the websocket."""
         params = self._uri.params
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Apikey {api_key}"
         if start is not None:
             params = params.set("start", start)
         self._websocket = connect(
             str(self._uri.copy_with(params=params)),
-            additional_headers={"Authorization": f"Apikey {api_key}"},
+            additional_headers=headers,
         )
 
     def recv(self, timeout=None):
@@ -341,7 +347,7 @@ class Subscription(abc.ABC):
             )
             api_key = key_info["secret"]
         else:
-            # Use single-user API key.
+            # Use single-user API key or None (if unauthenticated).
             api_key = self.context.api_key
 
         # Connect using the websocket wrapper
