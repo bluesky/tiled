@@ -10,6 +10,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Add ExternalPolicyDecisionPoint for authorization and an example with Open Policy Agent
 
 ### Changed
+
 - Rename "create" scope to the more explicit "create:node"
 - Split "apikeys" scope into "create:apikeys" and "revoke:apikeys" scopes
 
@@ -19,6 +20,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Allow clients to register standalone data directories as single nodes
   (e.g. Zarr stores) directly rather than discovering them by walking their
   parent directory.
+- Fix regression that broke registering files at a prefix.
 
 ## v0.2.2 (2025-11-25)
 
