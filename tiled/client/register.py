@@ -178,24 +178,18 @@ async def register(
             child_node = await anyio.to_thread.run_sync(node.get, segment)
         node = child_node
     if path.is_dir():
-        # Recursively enter the directory and any subdirectories.
+        # Try to register the directory itself as a Node (e.g. a Zarr store)
+        if await register_single_item(node, path, is_directory=True, settings=settings):
+            return
+
+        # Couldn't register the directory itself. Enter it and register the contents recursively.
         if overwrite:
             logger.info(f"  Overwriting '/{'/'.join(prefix_parts)}'")
             # TODO When we have a tiled AsyncClient, use that.
             await anyio.to_thread.run_sync(partial(node.delete, recursive=True))
-        await _walk(
-            node,
-            Path(path),
-            parsed_walkers,
-            settings=settings,
-        )
+        await _walk(node, Path(path), parsed_walkers, settings=settings)
     else:
-        await register_single_item(
-            node,
-            path,
-            is_directory=False,
-            settings=settings,
-        )
+        await register_single_item(node, path, is_directory=False, settings=settings)
 
 
 async def _walk(
@@ -204,7 +198,23 @@ async def _walk(
     walkers,
     settings,
 ):
-    "This is the recursive inner loop of walk."
+    """The recursive inner loop of walk
+
+    Parameters
+    ----------
+        node : tiled.client.node.Node
+            The Tiled Node corresponding to the root container at which the directory
+            would be registered.
+        path : pathlib.Path
+            The filesystem path to walk; must be a directory.
+        walkers : list of callables
+            The list of walker functions to apply at each directory level. Should either
+            register encountered files/directories as Nodes, or return lists of unhandled
+            files and directories for the next walker to process.
+        settings : Settings
+            The registration settings.
+    """
+
     files = []
     directories = []
     logger.info("  Walking '%s'", path)
