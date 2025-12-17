@@ -3,11 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.2.3 (2025-12-17)
 
 ### Added
 
 - Add ExternalPolicyDecisionPoint for authorization and an example with Open Policy Agent
+- Subscriptions retry connecting if the websocket connection is interrupted.
+- React UI supports server-side sorting.
 
 ### Changed
 
@@ -16,11 +18,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Slicing on a CompositeClient previous always returned the full results.
+  Now it slices as expected.
 - Made provision for forks of the repository to publish Helm charts.
 - Allow clients to register standalone data directories as single nodes
   (e.g. Zarr stores) directly rather than discovering them by walking their
   parent directory.
 - Fix regression that broke registering files at a prefix.
+- Servers that allow anonymous access (i.e. `--public`) allow streaming
+  subscribers to connect without authentication.
 
 ## v0.2.2 (2025-11-25)
 
