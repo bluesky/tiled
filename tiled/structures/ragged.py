@@ -1,6 +1,6 @@
-from collections.abc import Iterable
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, List, SupportsInt, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import awkward
 import numpy as np
@@ -50,7 +50,7 @@ class RaggedStructure(ArrayStructure):
         )
 
     @classmethod
-    def from_json(cls, structure: dict) -> "RaggedStructure":
+    def from_json(cls, structure: Mapping[str, Any]) -> "RaggedStructure":
         if "fields" in structure["data_type"]:
             data_type = StructDtype.from_json(structure["data_type"])
         else:
@@ -74,7 +74,8 @@ class RaggedStructure(ArrayStructure):
     @property
     def form(self) -> Dict[str, Any]:
         def build(depth: int):
-            if depth:
+            if depth == 1:
+                # TODO: Handle EmptyArray, e.g. ragged.array([[], []])
                 return {
                     "class": "NumpyArray",
                     "primitive": self.data_type.to_numpy_dtype().name,

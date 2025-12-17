@@ -38,6 +38,8 @@ def client(context):
 RNG = np.random.default_rng(42)
 
 arrays = {
+    # "empty_1": ragged.array([]),
+    # "empty_2": ragged.array([[], [], []]),
     "regular_1d": ragged.array(RNG.random(10)),
     "regular_nd": ragged.array(RNG.random((2, 3, 4))),
     "ragged_simple": ragged.array(
