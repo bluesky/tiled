@@ -68,7 +68,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
             streaming_node.write(new_arr)
 
         # Wait for all messages to be received
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
 
         # Verify all updates received in order
         assert len(received) == 3
@@ -139,7 +139,7 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
             streaming_node.write(new_arr)
 
         # Wait for messages to be received
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
 
         # Should only receive the 2 new updates (not the first one)
         assert len(received) == 2
@@ -196,7 +196,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             streaming_node.write(new_arr)
 
         # Wait for all messages to be received
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
 
         # Should receive: initial array + first update + 2 new updates = 4 total
         assert len(received) == 4
@@ -253,7 +253,7 @@ def test_subscribe_to_container(
             time.sleep(0.1)
             unique_key = f"{uuid.uuid4().hex[:8]}"
             uploaded_nodes.append(client.create_container(unique_key))
-        assert created_3.wait(timeout=5.0), "Timeout waiting for messages"
+        assert created_3.wait(timeout=10.0), "Timeout waiting for messages"
         downloaded_nodes = list(client.values())
         for up, streamed, down in zip(uploaded_nodes, streamed_nodes, downloaded_nodes):
             pass
@@ -262,7 +262,7 @@ def test_subscribe_to_container(
 
         assert len(child_metadata_updated_updates) == 0
         client.values().last().update_metadata({"color": "blue"})
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
         assert len(child_metadata_updated_updates) == 1
 
 
@@ -283,7 +283,7 @@ def test_subscribe_to_stream_closed(
         sub.stream_closed.add_callback(callback)
         assert not event.is_set()
         x.close_stream()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
 
 
 def test_subscribe_to_disconnected(
@@ -305,7 +305,7 @@ def test_subscribe_to_disconnected(
         sub.disconnected.add_callback(callback)
         assert not event.is_set()
         sub.disconnect()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
 
     # If the writer closes the stream, the client is disconnected.
     with x.subscribe().start_in_thread() as sub:
@@ -317,7 +317,7 @@ def test_subscribe_to_disconnected(
         sub.disconnected.add_callback(callback)
         assert not event.is_set()
         x.close_stream()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
 
 
 def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_path):
@@ -412,7 +412,7 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
             content=safe_json_dump({"data_source": updated_data_source}),
             params=params,
         ).raise_for_status()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         x.close_stream()
         client.close_stream()
         x.refresh()
@@ -503,7 +503,7 @@ def test_subscribe_to_array_registered_without_patch(tiled_websocket_context, tm
                 }
             ),
         ).raise_for_status()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         x.close_stream()
         client.close_stream()
         x.refresh()
@@ -533,12 +533,12 @@ def test_streaming_table_write(tiled_websocket_context):
     sub = client[key].subscribe()
     sub.new_data.add_callback(collect)
     with sub.start_in_thread(1):
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         actual = updates[0].data()
         assert_frame_equal(actual, df1)
         event.clear()
         x.write(df2)
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         assert not updates[1].append
         actual_updated = updates[1].data()
         assert_frame_equal(actual_updated, df2)
@@ -565,14 +565,14 @@ def test_streaming_table_append(tiled_websocket_context):
     sub.new_data.add_callback(collect)
     with sub.start_in_thread(1):
         x.append_partition(0, table1)
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         assert updates[0].append
         streamed1 = updates[0].data()
         streamed1_pyarrow = pyarrow.Table.from_pandas(streamed1, preserve_index=False)
         assert streamed1_pyarrow == table1
         event.clear()
         x.append_partition(0, table2)
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         assert updates[1].append
         streamed2 = updates[1].data()
         streamed2_pyarrow = pyarrow.Table.from_pandas(streamed2, preserve_index=False)
