@@ -5,6 +5,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Add ExternalPolicyDecisionPoint for authorization and an example with Open Policy Agent
+
 ### Changed
 - Rename "create" scope to the more explicit "create:node"
 - Split "apikeys" scope into "create:apikeys" and "revoke:apikeys" scopes

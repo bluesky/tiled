@@ -8,7 +8,7 @@ while ! kcadm.sh config credentials --server http://localhost:8080 --realm maste
 done
 
 # Add users to Keycloak
-for user in alice bob carol; do
+for user in alice bob cara; do
   kcadm.sh create users -r master -s username="$user" -s enabled=true
   kcadm.sh set-password -r master --username "$user" --new-password "$user"
 done
