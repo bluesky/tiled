@@ -641,3 +641,51 @@ def test_subscription_auto_reconnect_on_network_failure(
 
         # Restore original recv before disconnecting to avoid cleanup issues
         subscription._websocket.recv = original_recv
+
+
+def test_subscribe_no_api_key_rejected(tiled_websocket_context):
+    "Private server does not allow anonymous user to subscribe."
+    context = tiled_websocket_context
+    client = from_context(context)
+
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
+
+    received_event = threading.Event()
+
+    def callback(update):
+        "Set event once any update has been received."
+        received_event.set()
+
+    # Any further requests will be unauthenticated.
+    context.api_key = None
+
+    subscription = streaming_node.subscribe()
+    subscription.new_data.add_callback(callback)
+
+    with pytest.raises(WebSocketDenialResponse):
+        subscription.start(0)
+
+
+def test_subscribe_no_api_key_public(tiled_websocket_context_public):
+    "Public server allows anonymous user to subscribe."
+    context = tiled_websocket_context_public
+    client = from_context(context)
+
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
+
+    received_event = threading.Event()
+
+    def callback(update):
+        "Set event once any update has been received."
+        received_event.set()
+
+    # Any further requests will be unauthenticated.
+    context.api_key = None
+
+    subscription = streaming_node.subscribe()
+    subscription.new_data.add_callback(callback)
+
+    with subscription.start_in_thread(0):
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
