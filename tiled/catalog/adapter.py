@@ -171,7 +171,7 @@ class Context:
         writable_storage=None,
         readable_storage=None,
         adapters_by_mimetype=None,
-        cache_settings=None,
+        cache_config=None,
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=5,
         storage_max_overflow=10,
@@ -219,7 +219,7 @@ class Context:
             adapters_by_mimetype, DEFAULT_ADAPTERS_BY_MIMETYPE
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
-        self.cache_settings = cache_settings
+        self.cache_config = cache_config
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -241,10 +241,12 @@ class Context:
             await check_catalog_database(self.engine)
 
         self.streaming_cache = None
-        if self.cache_settings:
-            if self.cache_settings["uri"].startswith("redis"):
-                self.cache_settings["datastore"] = "redis"
-                self.streaming_cache = StreamingCache(self.cache_settings)
+        if self.cache_config:
+            if self.cache_config["uri"].startswith("redis"):
+                self.cache_config["datastore"] = "redis"
+            elif self.cache_config["uri"].startswith("ttlcache"):
+                self.cache_config["datastore"] = "ttlcache"
+            self.streaming_cache = StreamingCache(self.cache_config)
 
     async def shutdown(self):
         await close_database_connection_pool(self.database_settings)
@@ -1676,7 +1678,7 @@ def in_memory(
     readable_storage=None,
     adapters_by_mimetype=None,
     top_level_access_blob=None,
-    cache_settings=None,
+    cache_config=None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -1693,7 +1695,7 @@ def in_memory(
         init_if_not_exists=True,
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
-        cache_settings=cache_settings,
+        cache_config=cache_config,
     )
 
 
@@ -1708,7 +1710,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
-    cache_settings=None,
+    cache_config=None,
     catalog_pool_size=5,
     storage_pool_size=5,
     catalog_max_overflow=10,
@@ -1745,7 +1747,7 @@ def from_uri(
         writable_storage,
         readable_storage,
         adapters_by_mimetype,
-        cache_settings,
+        cache_config,
         storage_pool_size=storage_pool_size,
         storage_max_overflow=storage_max_overflow,
     )

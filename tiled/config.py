@@ -175,7 +175,7 @@ class ValidationSpec(BaseModel):
     validator: Optional[EntryPointString] = None
 
 
-class StreamingCache(BaseModel):
+class StreamingCacheConfig(BaseModel):
     uri: str
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
@@ -205,7 +205,7 @@ class Config(BaseModel):
     catalog_max_overflow: int = 10
     storage_max_overflow: int = 10
 
-    streaming_cache: Optional[StreamingCache] = None
+    streaming_cache: Optional[StreamingCacheConfig] = None
 
     @field_validator("access_policy")
     @classmethod
@@ -249,7 +249,7 @@ class Config(BaseModel):
                     self.storage_max_overflow or defaults.storage_max_overflow
                 )
             if tree.tree_type in (from_uri, in_memory):
-                tree.args["cache_settings"] = (
+                tree.args["cache_config"] = (
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
         return self
