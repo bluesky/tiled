@@ -165,8 +165,8 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
-        datastore = server_settings.get("datastore", "").lower()
-        if not datastore or datastore == "ttlcache":
+        streaming_cache = server_settings.get("streaming_cache", None)
+        if streaming_cache and streaming_cache["uri"].startswith("ttlcache"):
             raise UnscalableConfig(
                 dedent(
                     """
