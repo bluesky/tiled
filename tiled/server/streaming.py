@@ -66,9 +66,9 @@ def register_datastore(name: str):
 
 
 class StreamingCache:
-    def __init__(self, cache_settings: dict[str, Any]) -> None:
-        self._settings = cache_settings
-        datastore_name = (self._settings.get("datastore", "")).lower()
+    def __init__(self, cache_config: dict[str, Any]) -> None:
+        self._config = cache_config
+        datastore_name = (self._config.get("datastore", "")).lower()
         if not datastore_name:
             raise ValueError("backend not specified in streaming_cache_config")
         try:
@@ -77,7 +77,7 @@ class StreamingCache:
             raise ValueError(
                 f"Unknown backend '{datastore_name}'. Available backends: {sorted(_DATASTORES)}"
             )
-        self._datastore = datastore_cls(self._settings)
+        self._datastore = datastore_cls(self._config)
 
     async def incr_seq(self, node_id: str) -> int:
         return await self._datastore.incr_seq(node_id)
