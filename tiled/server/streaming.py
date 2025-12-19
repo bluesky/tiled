@@ -139,7 +139,12 @@ class PubSub:
         for ref in list(self._topics.get(topic, ())):
             q = ref()
             if q:
-                q.put_nowait(message)
+                try:
+                    q.put_nowait(message)
+                except asyncio.QueueFull as e:
+                    logger.exception(
+                        f"Queue full while adding message to topic, {topic}: {e}",
+                    )
 
     def subscribe(self, topic: str):
         q = asyncio.Queue()
