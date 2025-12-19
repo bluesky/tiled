@@ -119,6 +119,7 @@ class _RegularWebsocketWrapper:
         self._websocket = connect(
             str(self._uri.copy_with(params=params)),
             additional_headers=headers,
+            max_size=1073741824,  # 1 GB
         )
 
     def recv(self, timeout=None):

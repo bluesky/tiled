@@ -786,7 +786,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     # When (re)chunking arrays for upload, we use this limit
     # to attempt to avoid bumping into size limits.
-    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
+    _SUGGESTED_MAX_UPLOAD_SIZE = 1_000_000_000  # 1 GB
 
     def create_container(
         self,
