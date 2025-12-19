@@ -165,6 +165,17 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
+        datastore = server_settings.get("datastore", "").lower()
+        if not datastore or datastore == "ttlcache":
+            raise UnscalableConfig(
+                dedent(
+                    """
+                    In a scaled (multi-process) deployment, Tiled cannot
+                    use ttlcache as its streaming datastore.
+
+                    """
+                )
+            )
         if authenticators:
             # Even if the deployment allows public, anonymous access, secret
             # keys are needed to generate JWTs for any users that do log in.
