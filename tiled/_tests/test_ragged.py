@@ -7,7 +7,16 @@ import ragged
 
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
+from tiled.serialization.ragged import (
+    from_flattened_array,
+    from_flattened_octet_stream,
+    from_json,
+    to_flattened_array,
+    to_flattened_octet_stream,
+    to_json,
+)
 from tiled.server.app import build_app
+from tiled.structures.ragged import RaggedStructure
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 
 
@@ -38,16 +47,15 @@ def client(context):
 RNG = np.random.default_rng(42)
 
 arrays = {
-    # "empty_1": ragged.array([]),
-    # "empty_2": ragged.array([[], [], []]),
-    "regular_1d": ragged.array(RNG.random(10)),
-    "regular_nd": ragged.array(RNG.random((2, 3, 4))),
+    # "empty_1d": ragged.array([]),
+    # "empty_nd": ragged.array([[], [], []]),
+    "numpy_1d": ragged.array(RNG.random(10)),
+    "numpy_nd": ragged.array(RNG.random((2, 3, 4))),
     "ragged_simple": ragged.array(
-        [
-            RNG.random(3).tolist(),
-            RNG.random(5).tolist(),
-            RNG.random(8).tolist(),
-        ]
+        [RNG.random(3).tolist(), RNG.random(5).tolist(), RNG.random(8).tolist()],
+    ),
+    "ragged_simple_nd": ragged.array(
+        [RNG.random((2, 3, 4)).tolist(), RNG.random((3, 4, 5)).tolist()],
     ),
     "ragged_complex": ragged.array(
         [
@@ -55,17 +63,70 @@ arrays = {
             [RNG.random(8).tolist(), []],
             [RNG.random(5).tolist(), RNG.random(2).tolist()],
             [[], RNG.random(7).tolist()],
-        ]
+        ],
     ),
     "ragged_complex_nd": ragged.array(
         [
             [RNG.random((4, 3)).tolist()],
-            [RNG.random((2, 8)).tolist(), []],
+            [RNG.random((2, 8)).tolist(), [[]]],
             [RNG.random((5, 2)).tolist(), RNG.random((3, 3)).tolist()],
-            [[], RNG.random((7, 1)).tolist()],
-        ]
+            [[[]], RNG.random((7, 1)).tolist()],
+        ],
     ),
 }
+
+
+@pytest.mark.parametrize("name", arrays.keys())
+def test_structure(name):
+    array = arrays[name]
+    expected_form, expected_len, expected_nodes = ak.to_buffers(
+        array._impl,  # noqa: SLF001
+    )
+
+    structure = RaggedStructure.from_array(array)
+    form = ak.forms.from_dict(structure.form)
+
+    assert expected_form == form
+    assert expected_len == structure.shape[0]
+    assert len(expected_nodes) == len(structure.offsets) + 1
+
+
+@pytest.mark.parametrize("name", arrays.keys())
+def test_serialization_roundtrip(name):
+    array = arrays[name]
+    structure = RaggedStructure.from_array(array)
+
+    # Test JSON serialization.
+    json_contents = to_json("application/json", array, metadata={})
+    array_from_json = from_json(
+        json_contents,
+        dtype=array.dtype.type,
+        offsets=structure.offsets,
+        shape=structure.shape,
+    )
+    assert ak.array_equal(array._impl, array_from_json._impl)  # noqa: SLF001
+
+    # Test flattened numpy array.
+    flattened_array = to_flattened_array(array)
+    array_from_flattened = from_flattened_array(
+        flattened_array,
+        dtype=array.dtype.type,
+        offsets=structure.offsets,
+        shape=structure.shape,
+    )
+    assert ak.array_equal(array._impl, array_from_flattened._impl)  # noqa: SLF001
+
+    # Test flattened octet-stream serialization.
+    octet_stream_contents = to_flattened_octet_stream(
+        "application/octet-stream", array, metadata={}
+    )
+    array_from_octet_stream = from_flattened_octet_stream(
+        octet_stream_contents,
+        dtype=array.dtype.type,
+        offsets=structure.offsets,
+        shape=structure.shape,
+    )
+    assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
 
 
 @pytest.mark.parametrize("name", arrays.keys())

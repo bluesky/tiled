@@ -1,6 +1,7 @@
-from collections.abc import Mapping
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, Self
 
 import awkward
 import numpy as np
@@ -8,14 +9,23 @@ import ragged
 
 from tiled.structures.array import ArrayStructure, BuiltinDtype, StructDtype
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
 
 @dataclass(kw_only=True)
 class RaggedStructure(ArrayStructure):
-    shape: Tuple[Union[int, None], ...]  # type: ignore[reportIncompatibleVariableOverride]
-    offsets: List[List[int]]
+    shape: tuple[int | None, ...]  # type: ignore[reportIncompatibleVariableOverride]
+    offsets: list[list[int]]
 
     @classmethod
-    def from_array(cls, array, shape=None, chunks=None, dims=None) -> "RaggedStructure":
+    def from_array(
+        cls,
+        array: Iterable,
+        shape: tuple[int | None, ...] | None = None,
+        chunks: tuple[str, ...] | None = None,
+        dims: int | None = None,
+    ) -> Self:
         if not isinstance(array, ragged.array):
             array = (
                 ragged.asarray(array.tolist())
@@ -72,18 +82,20 @@ class RaggedStructure(ArrayStructure):
         return 1
 
     @property
-    def form(self) -> Dict[str, Any]:
+    def form(self) -> dict[str, Any]:
         def build(depth: int):
-            if depth == 1:
+            if depth <= 0:
                 # TODO: Handle EmptyArray, e.g. ragged.array([[], []])
                 return {
                     "class": "NumpyArray",
                     "primitive": self.data_type.to_numpy_dtype().name,
+                    "form_key": f"node{len(self.offsets) - depth}",
                 }
             return {
                 "class": "ListOffsetArray",
                 "offsets": "i64",
                 "content": build(depth - 1),
+                "form_key": f"node{len(self.offsets) - depth}",
             }
 
         return build(len(self.offsets))

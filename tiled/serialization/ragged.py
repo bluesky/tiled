@@ -1,4 +1,4 @@
-from typing import List, Union
+from __future__ import annotations
 
 import awkward
 import numpy as np
@@ -16,53 +16,74 @@ from tiled.utils import modules_available, safe_json_dump
 
 
 @default_serialization_registry.register(StructureFamily.ragged, "application/json")
-def to_json(mimetype: str, array: ragged.array, metadata: dict):  # noqa: ARG001
+def to_json(
+    mimetype: str, array: ragged.array, metadata: dict  # noqa: ARG001
+) -> bytes:
     return safe_json_dump(array.tolist())
 
 
 @default_deserialization_registry.register(StructureFamily.ragged, "application/json")
-def from_json(contents: Union[str, bytes]):
-    return ragged.array(orjson.loads(contents))
+def from_json(
+    contents: str | bytes,
+    dtype: type,
+    offsets: list[list[int]],
+    shape: tuple[int | None, ...],
+) -> ragged.array:
+    lists_of_lists = orjson.loads(contents)
+    if all(shape) and not any(offsets):
+        # No raggedness, but array is not strictly N-D. Map to numpy array first.
+        # Otherwise, it will infer an offset array of type='x0 * Any * ... * Any * dtype'
+        # rather than a simple numpy array of type='x0 * x1 * ... * xN * dtype'.
+        return ragged.array(np.array(lists_of_lists, dtype=dtype))
+    return ragged.array(lists_of_lists, dtype=dtype)
+
+
+def to_flattened_array(array: ragged.array) -> np.ndarray:
+    content = array._impl.layout  # noqa: SLF001
+    while isinstance(content, awkward.contents.ListOffsetArray):
+        content = content.content
+    return awkward.to_numpy(content)
 
 
 @default_serialization_registry.register(
     StructureFamily.ragged, "application/octet-stream"
 )
-def to_flattened_octet_stream(mimetype: str, array: ragged.array, metadata: dict):
-    content = array._impl.layout  # noqa: SLF001
-    while isinstance(content, awkward.contents.ListOffsetArray):
-        content = content.content
-    return np.asarray(awkward.to_numpy(content)).tobytes()
+def to_flattened_octet_stream(
+    mimetype: str, array: ragged.array, metadata: dict  # noqa: ARG001
+) -> bytes:
+    return np.asarray(to_flattened_array(array)).tobytes()
+
+
+def from_flattened_array(
+    array: np.ndarray,
+    dtype: type,
+    offsets: list[list[int]],
+    shape: tuple[int | None, ...],
+) -> ragged.array:
+    if all(shape) and not any(offsets):
+        # No raggedness, but need to reshape the flat array
+        return ragged.array(array.reshape(shape), dtype=dtype)
+
+    def rebuild(offsets: list[list[int]]) -> awkward.contents.Content:
+        nonlocal array
+        if not offsets:
+            return awkward.contents.NumpyArray(array.tolist())
+        return awkward.contents.ListOffsetArray(
+            offsets=awkward.index.Index(offsets[0]), content=rebuild(offsets[1:])
+        )
+
+    return ragged.array(rebuild(offsets), dtype=dtype)
 
 
 @default_deserialization_registry.register(
     StructureFamily.ragged, "application/octet-stream"
 )
-def from_flattened_octet_stream(buffer, dtype: type, offsets: List[List[int]]):
-    # return np.frombuffer(buffer, dtype=dtype)
-    def rebuild(offsets: List[List[int]], data: np.ndarray) -> awkward.contents.Content:
-        if not offsets:
-            return awkward.contents.NumpyArray(data)
-        return awkward.contents.ListOffsetArray(
-            offsets=awkward.index.Index(offsets[0]),
-            content=rebuild(offsets[1:], data),
-        )
-
-    data = np.frombuffer(buffer, dtype=dtype)
-    return ragged.array(rebuild(offsets, data), dtype=dtype)
-
-
-# @default_serialization_registry.register(StructureFamily.ragged, "application/zip")
-# def to_zipped_buffers(mimetype: str, array: ragged.array, metadata: dict):
-#     packed = awkward.to_packed(array._impl)  # noqa: SLF001
-#     components = awkward.to_buffers(packed)
-#     return awkward_serialization.to_zipped_buffers(mimetype, components, metadata)
-
-
-# @default_deserialization_registry.register(StructureFamily.ragged, "application/zip")
-# def from_zipped_buffers(buffer: bytes, form: dict, length: int):
-#     # this should return the container dict immediately, to be used by `AwkwardBuffersAdapter`.
-#     return awkward_serialization.from_zipped_buffers(buffer, form, length)
+def from_flattened_octet_stream(
+    buffer: bytes, dtype: type, offsets: list[list[int]], shape: tuple[int | None, ...]
+) -> ragged.array:
+    return from_flattened_array(
+        np.frombuffer(buffer, dtype=dtype), dtype, offsets, shape
+    )
 
 
 if modules_available("pyarrow"):
