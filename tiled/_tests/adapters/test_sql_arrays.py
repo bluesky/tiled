@@ -247,7 +247,7 @@ def test_compare_field_data_from_array_adapter(
     sql_adapter: SQLAdapter = request.getfixturevalue(sql_adapter_name)
 
     table = pa.Table.from_batches([batch0, batch1, batch2])
-    sql_adapter.append_partition(table, 0)
+    sql_adapter.append_partition(0, table)
 
     array_adapter = sql_adapter[field]
     assert isinstance(array_adapter, array_adapter_type)
