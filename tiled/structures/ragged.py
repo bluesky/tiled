@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 class RaggedStructure(ArrayStructure):
     shape: tuple[int | None, ...]  # type: ignore[reportIncompatibleVariableOverride]
     offsets: list[list[int]]
+    size: int
 
     @classmethod
     def from_array(
@@ -50,6 +51,8 @@ class RaggedStructure(ArrayStructure):
             offsets.append(np.array(content.offsets).tolist())
             content = content.content
 
+        size = int(array.size)  # should never not be an int
+
         return cls(
             data_type=data_type,
             chunks=chunks,
@@ -57,6 +60,7 @@ class RaggedStructure(ArrayStructure):
             dims=dims,
             resizable=False,
             offsets=offsets,
+            size=size,
         )
 
     @classmethod
@@ -75,6 +79,7 @@ class RaggedStructure(ArrayStructure):
             dims=dims,
             resizable=structure.get("resizable", False),
             offsets=structure.get("offsets", []),
+            size=structure["size"],
         )
 
     @property

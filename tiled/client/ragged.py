@@ -97,9 +97,20 @@ class RaggedClient(BaseClient):
         return structure.shape
 
     @property
+    def size(self):
+        structure = cast("RaggedStructure", self.structure())
+        return structure.size
+
+    @property
     def dtype(self):
         structure = cast("RaggedStructure", self.structure())
         return structure.data_type.to_numpy_dtype()
+
+    @property
+    def nbytes(self):
+        structure = cast("RaggedStructure", self.structure())
+        itemsize = structure.data_type.to_numpy_dtype().itemsize
+        return structure.size * itemsize
 
     @property
     def chunks(self):
