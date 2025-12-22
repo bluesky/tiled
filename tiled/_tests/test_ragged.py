@@ -156,13 +156,13 @@ def test_slicing(client, name):
 
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_export_json(client, buffer, name):
+def test_export_json(tmpdir, client, name):
     array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
-    file = buffer
-    rac.export(file, format="application/json")
-    actual = bytes(file.getbuffer()).decode()
+    filepath = tmpdir / "actual.json"
+    rac.export(str(filepath), format="application/json")
+    actual = filepath.read_text(encoding="utf-8")
     assert actual == ak.to_json(array._impl)  # noqa: SLF001
 
 
