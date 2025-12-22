@@ -112,7 +112,7 @@ class StrictAPIKeyHeader(APIKeyHeader):
         api_key: Optional[str] = request.headers.get(self.model.name)
         scheme, param = get_authorization_scheme_param(api_key)
         if not scheme or scheme.lower() == "bearer":
-            return self.check_api_key(None, self.auto_error)
+            return self.check_api_key(None)
         if scheme.lower() != self.scheme_name.lower():
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -122,7 +122,7 @@ class StrictAPIKeyHeader(APIKeyHeader):
                     "'Bearer SECRET' or 'Apikey SECRET'. "
                 ),
             )
-        return self.check_api_key(param, self.auto_error)
+        return self.check_api_key(param)
 
 
 # The tokenUrl below is patched at app startup when we know it.
@@ -284,12 +284,9 @@ async def get_current_access_tags(
 
 def get_api_key_websocket(
     authorization: Annotated[Optional[str], Header()] = None,
-):
+) -> Optional[str]:
     if authorization is None:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="An API key must be passed in the Authorization header",
-        )
+        return None
     scheme, api_key = get_authorization_scheme_param(authorization)
     if scheme.lower() != "apikey":
         raise HTTPException(
@@ -413,8 +410,22 @@ async def check_scopes(
     request: Request,
     security_scopes: SecurityScopes,
     scopes: set[str] = Depends(get_current_scopes),
+    settings: Settings = Depends(get_settings),
 ) -> None:
-    if not set(security_scopes.scopes).issubset(scopes):
+    if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+        if settings.authenticator.scopes and not set(
+            settings.authenticator.scopes
+        ).issubset(scopes):
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=(
+                    "Not enough permissions. "
+                    f"Requires scopes {settings.authenticator.scopes}. "
+                    f"Request had scopes {list(scopes)}"
+                ),
+                headers=headers_for_401(request, security_scopes),
+            )
+    elif not set(security_scopes.scopes).issubset(scopes):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=(
@@ -475,24 +486,36 @@ async def get_current_principal_from_api_key(
 
 async def get_current_principal_websocket(
     websocket: WebSocket,
-    api_key: str = Depends(get_api_key_websocket),
+    api_key: Optional[str] = Depends(get_api_key_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
     ),
 ):
-    async with db_factory() as db:
-        principal = await get_current_principal_from_api_key(
-            api_key, websocket.app.state.authenticated, db, settings
-        )
-    if principal is None and websocket.app.state.authenticated:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-    return principal
+    if api_key is not None:
+        async with db_factory() as db:
+            principal = await get_current_principal_from_api_key(
+                api_key, websocket.app.state.authenticated, db, settings
+            )
+        if (principal is None) and websocket.app.state.authenticated:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
+        return principal
+    else:
+        if settings.allow_anonymous_access:
+            return None
+        else:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail="No API key was provided with this request.",
+            )
 
 
 async def get_current_principal(
     request: Request,
     security_scopes: SecurityScopes,
+    access_token: str = Depends(oauth2_scheme),
     decoded_access_token: str = Depends(get_decoded_access_token),
     api_key: str = Depends(get_api_key),
     settings: Settings = Depends(get_settings),
@@ -545,6 +568,7 @@ async def get_current_principal(
             uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
             type=schemas.PrincipalType.external,
             identities=[],
+            access_token=access_token,
         )
     else:
         # No form of authentication is present.
@@ -1357,7 +1381,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         apikey_params: schemas.APIKeyRequestParams,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        _=Security(check_scopes, scopes=["apikeys"]),
+        _=Security(check_scopes, scopes=["create:apikeys"]),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),
@@ -1422,7 +1446,7 @@ def authentication_router() -> APIRouter:
         request: Request,
         first_eight: str,
         principal: Optional[schemas.Principal] = Depends(get_current_principal),
-        _=Security(check_scopes, scopes=["apikeys"]),
+        _=Security(check_scopes, scopes=["revoke:apikeys"]),
         db_factory: Callable[[], Optional[AsyncSession]] = Depends(
             get_database_session_factory
         ),

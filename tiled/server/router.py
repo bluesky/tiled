@@ -2,7 +2,6 @@ import collections
 import dataclasses
 import inspect
 import os
-import re
 import warnings
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -24,20 +23,18 @@ from fastapi import (
     Security,
     WebSocket,
 )
+from fastapi.responses import FileResponse
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
 from starlette.requests import URL
 from starlette.status import (
-    HTTP_200_OK,
-    HTTP_206_PARTIAL_CONTENT,
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
-    HTTP_416_RANGE_NOT_SATISFIABLE,
     HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
@@ -95,7 +92,6 @@ from .dependencies import (
     patch_shape_param,
     shape_param,
 )
-from .file_response_with_range import FileResponseWithRange
 from .settings import Settings, get_settings
 from .utils import (
     filter_for_access,
@@ -1605,11 +1601,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata", "create"]),
+        _=Security(check_scopes, scopes=["write:metadata", "create:node"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata", "create"],
+            ["write:metadata", "create:node"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -1652,11 +1648,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata", "create", "register"]),
+        _=Security(check_scopes, scopes=["write:metadata", "create:node", "register"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata", "create", "register"],
+            ["write:metadata", "create:node", "register"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -2406,11 +2402,6 @@ def get_router(
         await entry.delete_revision(number)
         return json_or_msgpack(request, None)
 
-    # For simplicity of implementation, we support a restricted subset of the full
-    # Range spec. This could be extended if the need arises.
-    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
-    RANGE_HEADER_PATTERN = re.compile(r"^bytes=(\d+)-(\d+)$")
-
     @router.get("/asset/bytes/{path:path}")
     async def get_asset(
         request: Request,
@@ -2497,33 +2488,10 @@ def get_router(
             full_path = path
         stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
         filename = full_path.name
-        if "range" in request.headers:
-            range_header = request.headers["range"]
-            match = RANGE_HEADER_PATTERN.match(range_header)
-            if match is None:
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Only a Range headers of the form 'bytes=start-end' are supported. "
-                        f"Could not parse Range header: {range_header}",
-                    ),
-                )
-            range = start, _ = (int(match.group(1)), int(match.group(2)))
-            if start > stat_result.st_size:
-                raise HTTPException(
-                    status_code=HTTP_416_RANGE_NOT_SATISFIABLE,
-                    headers={"content-range": f"bytes */{stat_result.st_size}"},
-                )
-            status_code = HTTP_206_PARTIAL_CONTENT
-        else:
-            range = None
-            status_code = HTTP_200_OK
-        return FileResponseWithRange(
+        return FileResponse(
             full_path,
             stat_result=stat_result,
-            status_code=status_code,
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-            range=range,
         )
 
     @router.get("/asset/manifest/{path:path}")

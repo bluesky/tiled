@@ -3,7 +3,52 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.2.3 (2025-12-17)
+
+### Added
+
+- Add ExternalPolicyDecisionPoint for authorization and an example with Open Policy Agent
+- Subscriptions retry connecting if the websocket connection is interrupted.
+- React UI supports server-side sorting.
+
+### Changed
+
+- Rename "create" scope to the more explicit "create:node"
+- Split "apikeys" scope into "create:apikeys" and "revoke:apikeys" scopes
+
+### Fixed
+
+- Slicing on a CompositeClient previous always returned the full results.
+  Now it slices as expected.
+- Made provision for forks of the repository to publish Helm charts.
+- Allow clients to register standalone data directories as single nodes
+  (e.g. Zarr stores) directly rather than discovering them by walking their
+  parent directory.
+- Fix regression that broke registering files at a prefix.
+- Servers that allow anonymous access (i.e. `--public`) allow streaming
+  subscribers to connect without authentication.
+
+## v0.2.2 (2025-11-25)
+
+### Changed
+
+- Deletion of nodes or metadata revisions now requires deletion scopes.
+
+### Fixed
+
+- In-memory SQLite databases are connection pooled / cached.
+- Addressed backward-incompatible changes in dependencies `fastapi` and `minio`.
+  rather than writing scopes.
+- Pinned down pydantic-settings until breaking changes can be addressed.
+- Writing I/O calls in the Zarr adapter were blocking the server event loop;
+  they are now properly on a thread.
+
+## Fixed
+
+- Fixed a couple of bugs in the example config, to restore it to working order
+
+
+## v0.2.1 (2025-11-12)
 
 ### Added
 
@@ -18,14 +63,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   manage the deployment and associated certificates.) **The demo remains
   world-public, with no login required.** This change affects some
   documentation and one test.
-- Deletion of nodes or metadata revisions now requires deletion scopes,
-  rather than writing scopes.
-- In-memory SQLite databases are connection pooled / cached.
-
-## Fixed
-
-- Fixed a couple of bugs in the example config, to restore it to working order
-
 
 ## v0.2.0 (2025-10-29)
 

@@ -8,6 +8,7 @@ import numpy
 import pytest
 import tifffile
 import yaml
+import zarr
 from starlette.status import HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
 from ..adapters.hdf5 import HDF5Adapter
@@ -93,6 +94,24 @@ async def test_same_filename_separate_directory(tmpdir):
         await register(client, tmpdir)
         assert "a" in client["one"]
         assert "a" in client["two"]
+
+
+@pytest.mark.asyncio
+async def test_register_prefix(tmpdir):
+    "Register under a prefix"
+    df1.to_csv(Path(tmpdir, "a.csv"))
+    catalog = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        x = client.create_container("x")
+        y = x.create_container("y")
+        y.create_container("z")  # will be overwritten
+        # Test that node is present.
+        client["x", "y", "z"]
+        await register(client, tmpdir, prefix="/x/y")
+        # New node is present; old contents were overwritten.
+        assert "a" in client["x/y"]
+        assert "z" not in client["x/y"]
 
 
 @pytest.mark.asyncio
@@ -263,7 +282,7 @@ async def test_image_file_with_sidecar_metadata_file(tmpdir):
 
 @pytest.mark.asyncio
 async def test_hdf5_virtual_datasets(tmpdir):
-    # A virtual database comprises one master file and N data files. The master
+    # A virtual dataset comprises one master file and N data files. The master
     # file must be handed to the Adapter for opening. The data files are not
     # handled directly by the Adapter but they still ought to be tracked as
     # Assets for purposes of data movement, accounting for data size, etc.
@@ -327,6 +346,28 @@ async def test_hdf5_virtual_datasets(tmpdir):
             ],
         )
         client["VDS"]["data"][:]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("register_parent", [False, True])
+async def test_zarr_directory(tmpdir, register_parent):
+    # Create a Zarr directory with some contents.
+    zarr_dir = Path(tmpdir, "test.zarr")
+    zarr_data = numpy.arange(200).reshape(10, 20)
+    zarr_array = zarr.open(
+        zarr_dir, mode="w", shape=(10, 20), chunks=(5, 5), dtype="i4"
+    )
+    zarr_array[:] = zarr_data
+
+    # Register either the Zarr directory itself, or its parent directory.
+    catalog = in_memory(writable_storage=str(tmpdir))
+    with Context.from_app(build_app(catalog)) as context:
+        client = from_context(context)
+        await register(client, tmpdir if register_parent else zarr_dir)
+
+        assert list(client) == ["test"]
+        assert client["test"].structure_family == "array"
+        assert numpy.array_equal(client["test"][:], zarr_data)
 
 
 def test_unknown_mimetype(tmpdir):
