@@ -60,7 +60,7 @@ class RaggedStructure(ArrayStructure):
         )
 
     @classmethod
-    def from_json(cls, structure: Mapping[str, Any]) -> "RaggedStructure":
+    def from_json(cls, structure: Mapping[str, Any]) -> Self:
         if "fields" in structure["data_type"]:
             data_type = StructDtype.from_json(structure["data_type"])
         else:

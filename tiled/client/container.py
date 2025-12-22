@@ -983,15 +983,18 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         specs=None,
         access_tags=None,
     ):
-        import awkward
         import ragged
 
-        from tiled.structures.ragged import BuiltinDtype, RaggedStructure
+        from tiled.structures.ragged import RaggedStructure
 
         if not (hasattr(array, "shape") and hasattr(array, "dtype")):
             # This does not implement enough of the array-like interface.
             # Coerce to numpy-like ragged array.
-            array = ragged.asarray(array)
+            array = (
+                ragged.array(array, dtype=array.dtype)
+                if hasattr(array, "dtype")
+                else ragged.array(array)
+            )
 
         # TODO
         from dask.array.core import normalize_chunks

@@ -1,28 +1,36 @@
-from collections.abc import Iterable
-from typing import Any, ClassVar, List, Optional, Set, Union
+from __future__ import annotations
 
-import awkward
+from typing import TYPE_CHECKING, Any, Self
+
 import numpy as np
 import ragged
-from numpy.typing import NDArray
 
+from tiled.adapters.core import Adapter
+from tiled.adapters.utils import init_adapter_from_catalog
+from tiled.catalog.orm import Node
 from tiled.ndslice import NDSlice
-from tiled.storage import FileStorage, Storage
 from tiled.structures.core import Spec, StructureFamily
+from tiled.structures.data_source import DataSource
 from tiled.structures.ragged import RaggedStructure
-from tiled.type_aliases import JSON
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    import awkward
+    from numpy.typing import NDArray
+
+    from tiled.type_aliases import JSON
 
 
-class RaggedAdapter:
+class RaggedAdapter(Adapter[RaggedStructure]):
     structure_family = StructureFamily.ragged
-    supported_storage: ClassVar[Set[type[Storage]]] = {FileStorage}
 
     def __init__(
         self,
-        array: ragged.array,
+        array: ragged.array | None,
         structure: RaggedStructure,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
     ) -> None:
         """
 
@@ -39,14 +47,22 @@ class RaggedAdapter:
         self.specs = list(specs or [])
 
     @classmethod
+    def from_catalog(
+        cls,
+        data_source: DataSource[RaggedStructure],
+        node: Node,
+        /,
+        **kwargs: Any | None,
+    ) -> Self:
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+
+    @classmethod
     def from_array(
         cls,
-        array: Union[
-            ragged.array, awkward.Array, NDArray[Any], Iterable[Iterable[Any]]
-        ],
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-    ) -> "RaggedAdapter":
+        array: ragged.array | awkward.Array | NDArray[Any] | Iterable[Iterable[Any]],
+        metadata: JSON | None = None,
+        specs: list[Spec] | None = None,
+    ) -> Self:
         """
 
         Parameters
@@ -87,6 +103,8 @@ class RaggedAdapter:
         -------
 
         """
+        if self._array is None:
+            raise NotImplementedError
         # _array[...] requires an actual tuple, not just a subclass of tuple
         return self._array[tuple(slice)] if slice else self._array
 
@@ -94,7 +112,7 @@ class RaggedAdapter:
         self,
         array: ragged.array,
     ) -> None:
-        raise Exception
+        raise NotImplementedError
 
     def metadata(self) -> JSON:
         return self._metadata

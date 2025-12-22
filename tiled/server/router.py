@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import cache, partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar, Union, cast
+from typing import Callable, List, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -45,7 +45,6 @@ from tiled.query_registration import QueryRegistry
 from tiled.schemas import About
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
-from tiled.structures.ragged import RaggedStructure
 
 from .. import __version__
 from ..links import links_for_node
@@ -538,7 +537,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.ragged, StructureFamily.sparse},
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         shape = entry.structure().shape
@@ -629,7 +628,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.ragged, StructureFamily.sparse},
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         structure_family = entry.structure_family
@@ -749,7 +748,7 @@ def get_router(
     @router.get(
         "/ragged/full/{path:path}", response_model=schemas.Response, name="ragged full"
     )
-    async def ragged_full(
+    async def get_ragged_full(
         request: Request,
         path: str,
         slice=Depends(NDSlice.from_query),
@@ -760,34 +759,30 @@ def get_router(
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
         entry = await get_entry(
-            path,
-            ["read:data"],
-            principal,
-            authn_scopes,
-            root_tree,
-            session_state,
-            request.state.metrics,
-            {StructureFamily.ragged},
-            getattr(request.app.state, "access_policy", None),
+            path=path,
+            security_scopes=["read:data"],
+            principal=principal,
+            authn_access_tags=authn_access_tags,
+            authn_scopes=authn_scopes,
+            root_tree=root_tree,
+            session_state=session_state,
+            metrics=request.state.metrics,
+            structure_families={StructureFamily.ragged},
+            access_policy=getattr(request.app.state, "access_policy", None),
         )
         structure_family = entry.structure_family
 
-        import awkward
         import ragged
 
         with record_timing(request.state.metrics, "read"):
-            container = await ensure_awaitable(
-                entry.read  # this is AwkwardAdapter.read()
-            )
-        structure = cast("RaggedStructure", entry.structure())
-        components = (structure.form, structure.length, container)
-        awk_array = awkward.from_buffers(*components)
-        sliced_ragged_array = ragged.array(awk_array[slice], copy=True)[slice]
-        if sliced_ragged_array._impl.nbytes > settings.response_bytesize_limit:
+            ragged_array: ragged.array = await ensure_awaitable(entry.read, slice)
+
+        if ragged_array._impl.nbytes > settings.response_bytesize_limit:  # noqa: SLF001
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(
@@ -800,7 +795,7 @@ def get_router(
                 return await construct_data_response(
                     structure_family,
                     serialization_registry,
-                    sliced_ragged_array,
+                    ragged_array[slice],
                     entry.metadata(),
                     request,
                     format,
@@ -818,7 +813,7 @@ def get_router(
         response_model=schemas.Response,
         name="ragged block",
     )
-    async def ragged_block(
+    async def get_ragged_block(
         request: Request,
         path: str,
         block=Depends(block),
@@ -830,44 +825,155 @@ def get_router(
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
-        return await array_block(
-            request,
-            path,
-            block,
-            slice,
-            expected_shape,
-            format,
-            filename,
-            settings,
-            principal,
-            root_tree,
-            session_state,
-            authn_scopes,
-            _,
-        )
+        raise NotImplementedError
 
     @router.put("/ragged/full/{path:path}")
     async def put_ragged_full(
         request: Request,
         path: str,
+        persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
-        return await put_array_full(
-            request,
+        entry = await get_entry(
             path,
+            ["write:data"],
             principal,
+            authn_access_tags,
+            authn_scopes,
             root_tree,
             session_state,
-            authn_scopes,
-            _,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
         )
+        body = await request.body()
+        if not hasattr(entry, "write"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node cannot accept array data.",
+            )
+        media_type = request.headers["content-type"]
+        if entry.structure_family == "ragged":
+            deserializer = deserialization_registry.dispatch("ragged", media_type)
+        else:
+            raise NotImplementedError(entry.structure_family)
+        await ensure_awaitable(
+            entry.write, media_type, deserializer, entry, body, persist
+        )
+        return json_or_msgpack(request, None)
+
+    @router.put("/ragged/block/{path:path}")
+    async def put_ragged_block(
+        request: Request,
+        path: str,
+        block=Depends(block),
+        persist: bool = Query(True, description="Persist data to storage"),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        raise NotImplementedError
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "write_block"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node cannot accept array data.",
+            )
+
+        body = await request.body()
+        media_type = request.headers["content-type"]
+        deserializer = deserialization_registry.dispatch(
+            entry.structure_family, media_type
+        )
+        await ensure_awaitable(
+            entry.write_block, block, media_type, deserializer, entry, body, persist
+        )
+        return json_or_msgpack(request, None)
+
+    @router.patch("/ragged/full/{path:path}")
+    async def patch_ragged_full(
+        request: Request,
+        path: str,
+        offset=Depends(offset_param),
+        shape=Depends(shape_param),
+        extend: bool = False,
+        persist: bool = Query(True, description="Persist data to storage"),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        if extend and not persist:
+            bad_args_message = (
+                "Cannot PATCH an array with both parameters"
+                " extend=True and persist=False."
+                " To extend the array, you must persist the changes."
+                " To skip persisting the changes, you must not extend the array."
+            )
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=bad_args_message,
+            )
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "patch"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node cannot accept array data.",
+            )
+
+        body = await request.body()
+        media_type = request.headers["content-type"]
+        deserializer = deserialization_registry.dispatch(
+            entry.structure_family, media_type
+        )
+        structure = await ensure_awaitable(
+            entry.patch,
+            shape,
+            offset,
+            extend,
+            media_type,
+            deserializer,
+            entry,
+            body,
+            persist,
+        )
+        return json_or_msgpack(request, structure)
 
     @router.get(
         "/table/partition/{path:path}",
@@ -1856,7 +1962,7 @@ def get_router(
             root_tree,
             session_state,
             request.state.metrics,
-            {StructureFamily.array, StructureFamily.ragged, StructureFamily.sparse},
+            {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
         body = await request.body()
@@ -1870,13 +1976,6 @@ def get_router(
             deserializer = deserialization_registry.dispatch("array", media_type)
         elif entry.structure_family == "sparse":
             deserializer = deserialization_registry.dispatch("sparse", media_type)
-            # data = await ensure_awaitable(deserializer, body)
-        # elif entry.structure_family == "ragged":
-        #     structure = cast("RaggedStructure", entry.structure())
-        #     deserializer = deserialization_registry.dispatch("ragged", media_type)
-        #     data = await ensure_awaitable(
-        #         deserializer, body, structure.form, structure.length
-        #     )
         else:
             raise NotImplementedError(entry.structure_family)
         await ensure_awaitable(
