@@ -103,7 +103,7 @@ class _TestClientWebsocketWrapper:
 class _RegularWebsocketWrapper:
     """Wrapper for regular websockets."""
 
-    def __init__(self, http_client, uri: httpx.URL, max_size: int = 1048576):
+    def __init__(self, http_client, uri: httpx.URL, max_size: int = 1_000_000):
         self._http_client = http_client
         self._uri = uri
         self._websocket = None
@@ -258,7 +258,7 @@ class Subscription(abc.ABC):
         context: Context,
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
-        max_size: int = 1048576,
+        max_size: int = 1_000_000,
     ):
         segments = segments or ["/"]
         self._context = context
@@ -512,7 +512,7 @@ class ContainerSubscription(Subscription):
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
         structure_clients: dict = None,
-        max_size: int = 1048576,
+        max_size: int = 1_000_000,
     ):
         super().__init__(context, segments, executor, max_size=max_size)
         self.structure_clients = structure_clients

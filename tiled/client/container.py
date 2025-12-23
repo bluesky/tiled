@@ -1207,7 +1207,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def subscribe(
         self,
         executor: Optional[concurrent.futures.Executor] = None,
-        max_size: int = 1048576,
+        max_size: int = 1_000_000,
     ) -> "ContainerSubscription":
         """
         Subscribe to streaming updates about this container.
