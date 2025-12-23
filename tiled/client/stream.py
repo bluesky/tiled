@@ -342,7 +342,7 @@ class Subscription(abc.ABC):
                     elif start is not None:
                         start += 1
                     else:
-                        # No sequence info, skip by setting to 1
+                        # No sequence info, set to 0 so next iteration starts at 1
                         self._last_received_sequence = 0
                 # Connection lost, close the websocket and reconnect
                 try:
