@@ -1219,7 +1219,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             a concurrent.futures.ThreadPoolExecutor is used.
         max_size : int, optional
             Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
-            Increase this for large array updates (e.g., 1_000_000_000 for 1 GB).
 
         Returns
         -------
