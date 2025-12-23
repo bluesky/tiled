@@ -322,7 +322,38 @@ class Subscription(abc.ABC):
                 )
                 self._connect(start_from)
                 self._receive()
-            except (websockets.exceptions.ConnectionClosedError, OSError):
+            except websockets.exceptions.ConnectionClosedError as exc:
+                # Check if connection was closed due to message too big
+                # The client sends close code 1009 when a message exceeds max_size.
+                # Check both sent (what we sent) and rcvd (what server sent) frames.
+                close_code = None
+                if hasattr(exc, "sent") and exc.sent:
+                    close_code = exc.sent.code
+                elif hasattr(exc, "rcvd") and exc.rcvd:
+                    close_code = exc.rcvd.code
+                elif hasattr(exc, "code"):
+                    close_code = exc.code
+
+                if close_code == 1009:  # MESSAGE_TOO_BIG
+                    logger.error(
+                        f"Skipping message that exceeds max_size ({self._max_size} bytes). "
+                        f"Increase max_size in subscribe() to receive large messages."
+                    )
+                    # Skip the too-large message by advancing the sequence
+                    if self._last_received_sequence is not None:
+                        self._last_received_sequence += 1
+                    elif start is not None:
+                        start += 1
+                    else:
+                        # No sequence info, skip by setting to 1
+                        self._last_received_sequence = 0
+                # Connection lost, close the websocket and reconnect
+                try:
+                    self._websocket.close()
+                except Exception:
+                    pass  # Ignore errors closing failed connection
+                continue
+            except OSError:
                 # Connection lost, close the websocket and reconnect
                 try:
                     self._websocket.close()
