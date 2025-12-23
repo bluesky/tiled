@@ -103,10 +103,11 @@ class _TestClientWebsocketWrapper:
 class _RegularWebsocketWrapper:
     """Wrapper for regular websockets."""
 
-    def __init__(self, http_client, uri: httpx.URL):
+    def __init__(self, http_client, uri: httpx.URL, max_size: int = 1_000_000):
         self._http_client = http_client
         self._uri = uri
         self._websocket = None
+        self._max_size = max_size
 
     def connect(self, api_key: Optional[str], start: Optional[int] = None):
         """Connect to the websocket."""
@@ -119,6 +120,7 @@ class _RegularWebsocketWrapper:
         self._websocket = connect(
             str(self._uri.copy_with(params=params)),
             additional_headers=headers,
+            max_size=self._max_size,
         )
 
     def recv(self, timeout=None):
@@ -256,6 +258,7 @@ class Subscription(abc.ABC):
         context: Context,
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1_000_000,
     ):
         segments = segments or ["/"]
         self._context = context
@@ -263,6 +266,7 @@ class Subscription(abc.ABC):
         self._executor = executor or concurrent.futures.ThreadPoolExecutor(
             max_workers=5
         )
+        self._max_size = max_size
         params = {"envelope_format": "msgpack"}
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
         self._node_path = "/".join(f"/{segment}" for segment in segments)
@@ -281,7 +285,9 @@ class Subscription(abc.ABC):
                 context.http_client, self._uri
             )
         else:
-            self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
+            self._websocket = _RegularWebsocketWrapper(
+                context.http_client, self._uri, max_size=max_size
+            )
         self.stream_closed: CallbackRegistry["Subscription"] = CallbackRegistry(
             self.executor
         )
@@ -316,7 +322,28 @@ class Subscription(abc.ABC):
                 )
                 self._connect(start_from)
                 self._receive()
-            except (websockets.exceptions.ConnectionClosedError, OSError):
+            except (websockets.exceptions.ConnectionClosedError, OSError) as exc:
+                # Check if it's a "message too big" error
+                # The client sends close code 1009 when received message exceeds max_size
+                close_code = None
+                if isinstance(exc, websockets.exceptions.ConnectionClosedError):
+                    close_code = (
+                        exc.sent.code if hasattr(exc, "sent") and exc.sent else None
+                    )
+
+                if close_code == 1009:  # MESSAGE_TOO_BIG
+                    logger.error(
+                        f"Skipping message that exceeds max_size ({self._max_size} bytes). "
+                        f"Increase max_size in subscribe() to receive large messages."
+                    )
+                    # Skip the too-large message by advancing the sequence
+                    if self._last_received_sequence is not None:
+                        self._last_received_sequence += 1
+                    elif start is not None:
+                        start += 1
+                    else:
+                        # No sequence info, set to 0 so next iteration starts at 1
+                        self._last_received_sequence = 0
                 # Connection lost, close the websocket and reconnect
                 try:
                     self._websocket.close()
@@ -506,8 +533,9 @@ class ContainerSubscription(Subscription):
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
         structure_clients: dict = None,
+        max_size: int = 1_000_000,
     ):
-        super().__init__(context, segments, executor)
+        super().__init__(context, segments, executor, max_size=max_size)
         self.structure_clients = structure_clients
         self.child_created: CallbackRegistry["LiveChildCreated"] = CallbackRegistry(
             self.executor
@@ -545,8 +573,9 @@ class ArraySubscription(Subscription):
         context: Context,
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1_000_000,
     ):
-        super().__init__(context, segments, executor)
+        super().__init__(context, segments, executor, max_size=max_size)
         self.new_data: CallbackRegistry[
             "LiveArrayData" | "LiveArrayRef"
         ] = CallbackRegistry(self.executor)
@@ -575,8 +604,9 @@ class TableSubscription(Subscription):
         context: Context,
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1_000_000,
     ):
-        super().__init__(context, segments, executor)
+        super().__init__(context, segments, executor, max_size=max_size)
         self.new_data: CallbackRegistry["LiveTableData"] = CallbackRegistry(
             self.executor
         )

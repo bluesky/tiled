@@ -310,21 +310,29 @@ class _DaskDataFrameClient(BaseClient):
     def subscribe(
         self,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1_000_000,
     ) -> "TableSubscription":
         """
         Subscribe to streaming updates about this table.
 
-        Returns
-        -------
-        subscription : Subscription
+        Parameters
+        ----------
         executor : concurrent.futures.Executor, optional
             Launches tasks asynchronously, in response to updates. By default,
             a concurrent.futures.ThreadPoolExecutor is used.
+        max_size : int, optional
+            Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
+
+        Returns
+        -------
+        subscription : TableSubscription
         """
         # Keep this import here to defer the websockets import until/unless needed.
         from .stream import TableSubscription
 
-        return TableSubscription(self.context, self.path_parts, executor)
+        return TableSubscription(
+            self.context, self.path_parts, executor, max_size=max_size
+        )
 
 
 # Subclass with a public class that adds the dask-specific methods.

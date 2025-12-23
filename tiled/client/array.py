@@ -379,21 +379,29 @@ class _DaskArrayClient(BaseClient):
     def subscribe(
         self,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1_000_000,
     ) -> "ArraySubscription":
         """
         Subscribe to streaming updates about this array.
 
-        Returns
-        -------
-        subscription : Subscription
+        Parameters
+        ----------
         executor : concurrent.futures.Executor, optional
             Launches tasks asynchronously, in response to updates. By default,
             a concurrent.futures.ThreadPoolExecutor is used.
+        max_size : int, optional
+            Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
+
+        Returns
+        -------
+        subscription : ArraySubscription
         """
         # Keep this import here to defer the websockets import until/unless needed.
         from .stream import ArraySubscription
 
-        return ArraySubscription(self.context, self.path_parts, executor)
+        return ArraySubscription(
+            self.context, self.path_parts, executor, max_size=max_size
+        )
 
 
 # Subclass with a public class that adds the dask-specific methods.
