@@ -786,7 +786,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
     # When (re)chunking arrays for upload, we use this limit
     # to attempt to avoid bumping into size limits.
-    _SUGGESTED_MAX_UPLOAD_SIZE = 1_000_000_000  # 1 GB
+    _SUGGESTED_MAX_UPLOAD_SIZE = 100_000_000  # 100 MB
 
     def create_container(
         self,
@@ -1207,22 +1207,33 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def subscribe(
         self,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1048576,
     ) -> "ContainerSubscription":
         """
         Subscribe to streaming updates about this container.
 
-        Returns
-        -------
-        subscription : Subscription
+        Parameters
+        ----------
         executor : concurrent.futures.Executor, optional
             Launches tasks asynchronously, in response to updates. By default,
             a concurrent.futures.ThreadPoolExecutor is used.
+        max_size : int, optional
+            Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
+            Increase this for large array updates (e.g., 1_000_000_000 for 1 GB).
+
+        Returns
+        -------
+        subscription : ContainerSubscription
         """
         # Keep this import here to defer the websockets import until/unless needed.
         from .stream import ContainerSubscription
 
         return ContainerSubscription(
-            self.context, self.path_parts, executor, self.structure_clients
+            self.context,
+            self.path_parts,
+            executor,
+            self.structure_clients,
+            max_size=max_size,
         )
 
 

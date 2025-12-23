@@ -103,10 +103,11 @@ class _TestClientWebsocketWrapper:
 class _RegularWebsocketWrapper:
     """Wrapper for regular websockets."""
 
-    def __init__(self, http_client, uri: httpx.URL):
+    def __init__(self, http_client, uri: httpx.URL, max_size: int = 1048576):
         self._http_client = http_client
         self._uri = uri
         self._websocket = None
+        self._max_size = max_size
 
     def connect(self, api_key: Optional[str], start: Optional[int] = None):
         """Connect to the websocket."""
@@ -119,7 +120,7 @@ class _RegularWebsocketWrapper:
         self._websocket = connect(
             str(self._uri.copy_with(params=params)),
             additional_headers=headers,
-            max_size=1073741824,  # 1 GB
+            max_size=self._max_size,
         )
 
     def recv(self, timeout=None):
@@ -257,6 +258,7 @@ class Subscription(abc.ABC):
         context: Context,
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1048576,
     ):
         segments = segments or ["/"]
         self._context = context
@@ -264,6 +266,7 @@ class Subscription(abc.ABC):
         self._executor = executor or concurrent.futures.ThreadPoolExecutor(
             max_workers=5
         )
+        self._max_size = max_size
         params = {"envelope_format": "msgpack"}
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
         self._node_path = "/".join(f"/{segment}" for segment in segments)
@@ -282,7 +285,9 @@ class Subscription(abc.ABC):
                 context.http_client, self._uri
             )
         else:
-            self._websocket = _RegularWebsocketWrapper(context.http_client, self._uri)
+            self._websocket = _RegularWebsocketWrapper(
+                context.http_client, self._uri, max_size=max_size
+            )
         self.stream_closed: CallbackRegistry["Subscription"] = CallbackRegistry(
             self.executor
         )
@@ -507,8 +512,9 @@ class ContainerSubscription(Subscription):
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
         structure_clients: dict = None,
+        max_size: int = 1048576,
     ):
-        super().__init__(context, segments, executor)
+        super().__init__(context, segments, executor, max_size=max_size)
         self.structure_clients = structure_clients
         self.child_created: CallbackRegistry["LiveChildCreated"] = CallbackRegistry(
             self.executor
