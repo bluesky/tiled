@@ -552,8 +552,9 @@ class ArraySubscription(Subscription):
         context: Context,
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1_000_000,
     ):
-        super().__init__(context, segments, executor)
+        super().__init__(context, segments, executor, max_size=max_size)
         self.new_data: CallbackRegistry[
             "LiveArrayData" | "LiveArrayRef"
         ] = CallbackRegistry(self.executor)
@@ -582,8 +583,9 @@ class TableSubscription(Subscription):
         context: Context,
         segments: List[str] = None,
         executor: Optional[concurrent.futures.Executor] = None,
+        max_size: int = 1_000_000,
     ):
-        super().__init__(context, segments, executor)
+        super().__init__(context, segments, executor, max_size=max_size)
         self.new_data: CallbackRegistry["LiveTableData"] = CallbackRegistry(
             self.executor
         )
