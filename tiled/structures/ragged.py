@@ -47,8 +47,11 @@ class RaggedStructure(ArrayStructure):
         content = array._impl.layout  # noqa: SLF001
         offsets = []
 
-        while isinstance(content, awkward.contents.ListOffsetArray):
-            offsets.append(np.array(content.offsets).tolist())
+        while isinstance(
+            content, (awkward.contents.ListOffsetArray, awkward.contents.ListArray)
+        ):
+            if isinstance(content, awkward.contents.ListOffsetArray):
+                offsets.append(np.array(content.offsets).tolist())
             content = content.content
 
         size = int(array.size)  # should never not be an int

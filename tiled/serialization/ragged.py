@@ -40,7 +40,9 @@ def from_json(
 
 def to_flattened_array(array: ragged.array) -> np.ndarray:
     content = array._impl.layout  # noqa: SLF001
-    while isinstance(content, awkward.contents.ListOffsetArray):
+    while isinstance(
+        content, (awkward.contents.ListOffsetArray, awkward.contents.ListArray)
+    ):
         content = content.content
     return awkward.to_numpy(content)
 
@@ -63,6 +65,7 @@ def from_flattened_array(
     if all(shape) and not any(offsets):
         # No raggedness, but need to reshape the flat array
         return ragged.array(array.reshape(shape), dtype=dtype)
+        # return ragged.reshape(ragged.array(array, dtype=dtype), shape)
 
     def rebuild(offsets: list[list[int]]) -> awkward.contents.Content:
         nonlocal array

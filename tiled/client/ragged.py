@@ -60,11 +60,17 @@ class RaggedClient(BaseClient):
                         params=url_params,
                     ),
                 ).read()
+        # shape = (
+        #     reshape_from_slice(structure.shape, slice)
+        #     if isinstance(slice, NDSlice)
+        #     else structure.shape
+        # )
+        shape = structure.shape
         return from_flattened_octet_stream(
             buffer=content,
             dtype=structure.data_type.to_numpy_dtype(),
             offsets=structure.offsets,
-            shape=structure.shape,
+            shape=shape,
         )
 
     def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
@@ -75,7 +81,7 @@ class RaggedClient(BaseClient):
         self, slice: NDSlice
     ) -> ragged.array:  # this is true even when slicing to return a single item
         # TODO: should we be smarter, and return the scalar rather a singular array
-        return self.read(slice=slice)
+        return self.read(slice=NDSlice(slice))
 
     def export(self, filepath, *, format=None):
         return export_util(
@@ -136,3 +142,26 @@ class RaggedClient(BaseClient):
             + "".join(f" {k}={v}" for k, v in attrs.items())
             + ">"
         )
+
+
+def reshape_from_slice(
+    _shape: tuple[int | None, ...],
+    _slice: NDSlice | None,
+) -> tuple[int | None, ...]:
+    if not _slice:
+        return _shape
+    new_shape = []
+    for dim_size, dim_slice in zip(_shape, _slice):
+        if isinstance(dim_slice, slice):
+            if dim_size is None:
+                new_shape.append(None)
+            else:
+                start, stop, step = dim_slice.indices(dim_size)
+                length = max(0, (stop - start + (step - 1)) // step)
+                new_shape.append(length)
+        # elif dim_slice == Ellipsis:
+        #     remaining_dims = len(_shape) - len(_slice) + 1
+        #     new_shape.extend(_shape[len(new_shape) : len(new_shape) + remaining_dims])
+        else:
+            new_shape.append(1)
+    return tuple(new_shape)

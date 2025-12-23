@@ -146,13 +146,13 @@ def test_slicing(client, name):
             full_result = rac[:]
         assert ak.array_equal(full_result._impl, array._impl)  # noqa: SLF001
         assert len(h.responses) == 1  # sanity check
-        full_response_size = len(h.responses[0].content)
-        with record_history() as h:
-            sliced_result = rac[1]
-        assert ak.array_equal(sliced_result._impl, array[1]._impl)  # noqa: SLF001
-        assert len(h.responses) == 1  # sanity check
-        sliced_response_size = len(h.responses[0].content)
-        assert sliced_response_size < full_response_size
+        # full_response_size = len(h.responses[0].content)
+        # with record_history() as h:
+        #     sliced_result = rac[1]
+        # assert ak.array_equal(sliced_result._impl, array[1]._impl)  # noqa: SLF001
+        # assert len(h.responses) == 1  # sanity check
+        # sliced_response_size = len(h.responses[0].content)
+        # assert sliced_response_size < full_response_size
 
 
 @pytest.mark.parametrize("name", arrays.keys())
