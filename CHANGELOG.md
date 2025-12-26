@@ -16,6 +16,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Rename "create" scope to the more explicit "create:node"
 - Split "apikeys" scope into "create:apikeys" and "revoke:apikeys" scopes
 
+### Added
+
+- A script to remove the 'streams' node as part of the updating BlueskyRun catalogs.
+
 ### Fixed
 
 - Slicing on a CompositeClient previous always returned the full results.
