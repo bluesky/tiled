@@ -189,6 +189,7 @@ def unique_parameter_num_null_check(target, connection, **kw):
     # that runs when NEW.num IS NULL and one trigger than runs when
     # NEW.num IS NOT NULL. Thus, for a given insert, only one of these
     # triggers is run.
+    set_limit = {"limit": 100000}
     if connection.engine.dialect.name == "sqlite":
         connection.execute(
             text(
@@ -226,6 +227,18 @@ BEGIN
     );
 END"""
             )
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER assets_exceed_set_limit
+BEFORE INSERT ON data_source_asset_association
+WHEN SELECT COUNT(*) FROM data_source_asset_association >= :limit
+BEGIN
+    SELECT RAISE(ABORT, 'Hard limit on number of associated assets exceeded :limit')
+END"""
+            ),
+            set_limit,
         )
     elif connection.engine.dialect.name == "postgresql":
         connection.execute(
