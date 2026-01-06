@@ -30,7 +30,12 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const provider = authConfig?.providers[0]?.provider || "pam";
+    
+    if (!authConfig || !authConfig.providers || authConfig.providers.length === 0) {
+      console.error("Auth configuration not yet loaded or no providers available");
+      return;
+    }
+    const provider = authConfig.providers[0].provider;
 
     try {
       await login(provider, username, password);
@@ -104,12 +109,12 @@ export const LoginPage: React.FC = () => {
               fullWidth
               variant="contained"
               sx={{ mt: 3, mb: 2 }}
-              disabled={isLoading}
+              disabled={isLoading || !authConfig || !authConfig.providers?.length}
               startIcon={
                 isLoading ? <CircularProgress size={20} /> : <LoginIcon />
               }
             >
-              {isLoading ? "Logging in..." : "Login"}
+              {isLoading ? "Logging in..." : !authConfig ? "Loading..." : "Login"}
             </Button>
           </Box>
         </Paper>

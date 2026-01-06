@@ -15,14 +15,10 @@ export default defineConfig({
     //https: true,
     proxy: {
       "/api": {
-        target: "https://tiled-staging.nsls2.bnl.gov",
-        secure: false,
-        changeOrigin: true,
+        target: "http://127.0.0.1:8000",
       },
       "/tiled-ui-settings": {
-        target: "https://tiled-staging.nsls2.bnl.gov",
-        secure: false,
-        changeOrigin: true,
+        target: "http://127.0.0.1:8000",
       },
     },
   },

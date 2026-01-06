@@ -12,6 +12,8 @@ import { useState, useEffect } from "react";
 import { useTheme } from "@mui/material/styles";
 import { axiosInstance } from "../../client";
 import { tokenManager } from "../../auth/token-manager";
+import { useAuth } from "../../auth/auth-context";
+
 interface IProps {
   segments: string[];
   link: string;
@@ -102,9 +104,11 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   const [imageSrc, setImageSrc] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const {tokens} = useAuth();
 
   useEffect(() => {
     let cancelled = false;
+    let objectUrl: string | null = null;
 
     const fetchImage = async () => {
       try {
@@ -116,39 +120,31 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
           url += `,::${props.stride},::${props.stride}`;
         }
 
-        const tokens = tokenManager.getTokens();
-        if (!tokens?.access_token) {
-          throw new Error("Not authenticated");
+        const token = tokens?.access_token;
+        if (!token) {
+          throw new Error("No authentication token available");
         }
 
         const response = await fetch(url, {
-          headers: { Authorization: `Bearer ${tokens.access_token}` },
+          headers:{
+            'Authorization': `Bearer ${token}`,
+          },
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to load image: ${response.status}`);
+          throw new Error(`Failed to load image: ${response.status} ${response.statusText}`);
         }
 
         const blob = await response.blob();
-        const reader = new FileReader();
 
-        reader.onload = () => {
-          if (!cancelled) {
-            setImageSrc(reader.result as string);
-            setLoading(false);
-          }
-        };
-
-        reader.onerror = () => {
-          if (!cancelled) {
-            setLoading(false);
-          }
-        };
-
-        reader.readAsDataURL(blob);
+        if (!cancelled) {
+          objectUrl = URL.createObjectURL(blob);
+          setImageSrc(objectUrl);
+          setLoading(false);
+        }
       } catch (err: any) {
         if (!cancelled) {
-          setError(err.message);
+          setError(err.response?.data?.message || err.message || "Failed to load image");
           setLoading(false);
         }
       }
@@ -158,8 +154,11 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
 
     return () => {
       cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
-  }, [props.link, props.cuts.join(","), props.stride]);
+  }, [props.link, props.cuts.join(","), props.stride, tokens?.access_token]);
 
   if (loading) {
     return (
