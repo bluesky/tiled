@@ -1720,19 +1720,21 @@ def from_uri(
         # The cleanest option available is to start a subprocess
         # because SQLite is allergic to threads.
         import subprocess
+        from subprocess import CalledProcessError
 
         # TODO Check if catalog exists.
-        process = subprocess.run(
-            [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        )
-        # Capture stdout and stderr from the subprocess and write to logging
-        stdout = process.stdout.decode()
-        stderr = process.stderr.decode()
-        logger.info(f"Subprocess stdout: {stdout}")
-        logger.info(f"Subprocess stderr: {stderr}")
+        cmd = [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri]
+        try:
+            process = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
+            )
+            # Capture stdout and stderr from the subprocess and write to logging
+            logger.info(f"Subprocess stdout: {process.stdout.decode()}")
+            logger.info(f"Subprocess stderr: {process.stderr.decode()}")
+
+        except CalledProcessError as cpe:
+            cpe.__cause__ = DatabaseInitializationError(cpe.stderr.decode())
+            raise
 
     database_settings = DatabaseSettings(
         uri=uri,
@@ -1862,3 +1864,7 @@ STRUCTURES = {
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }
+
+
+class DatabaseInitializationError(Exception):
+    pass
