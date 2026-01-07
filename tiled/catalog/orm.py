@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from sqlalchemy import (
@@ -189,7 +190,8 @@ def unique_parameter_num_null_check(target, connection, **kw):
     # that runs when NEW.num IS NULL and one trigger than runs when
     # NEW.num IS NOT NULL. Thus, for a given insert, only one of these
     # triggers is run.
-    set_limit = {"limit": 100000}
+    DEFAULT_LIMIT = int(os.getenv("TILED_ASSET_LIMIT", "100000") or "100000")
+    set_limit = {"limit": DEFAULT_LIMIT}
     if connection.engine.dialect.name == "sqlite":
         connection.execute(
             text(
@@ -241,6 +243,31 @@ END"""
             set_limit,
         )
     elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION assets_exceed_limit()
+RETURNS TRIGGER AS
+$$
+BEGIN
+    IF (SELECT count(*) FROM your_table) > :limit
+    THEN
+        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded :limit'
+    END IF;
+END;
+$$
+LANGUAGE plpgsql;"""
+            ),
+            set_limit,
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER assets_exceed_set_limit
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW EXECUTE PROCEDURE assets_exceed_limit();"""
+            )
+        )
         connection.execute(
             text(
                 """
