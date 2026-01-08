@@ -1,0 +1,27 @@
+injectRequestHeaders:
+- name: Authorization
+  values:
+  - claim: access_token
+    prefix: "Bearer "
+providers:
+- provider: oidc
+  clientID: tiled
+  clientSecret: secret
+  id: authn
+  oidcConfig:
+    audienceClaims: ["aud"]
+    extraAudiences: ["tiled_aud"]
+    emailClaim: sub
+    insecureAllowUnverifiedEmail: true
+    insecureSkipNonce: true
+    issuerURL: http://localhost:8080/realms/master
+server:
+  BindAddress: localhost:4180
+  SecureBindAddress: ""
+  TLS: null
+upstreamConfig:
+  proxyRawPath: true
+  upstreams:
+  - id: tiled
+    path: /
+    uri: http://localhost:8000

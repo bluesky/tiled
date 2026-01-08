@@ -5,43 +5,52 @@ import pickle
 
 import httpx
 import pytest
-from packaging.version import parse
+import uvicorn
 
 from ..client import from_context
 from ..client.cache import Cache
 from ..client.context import Context
+from ..config import Authentication
+from ..server.app import build_app
+from ..utils import import_object
+from .utils import Server
 
-MIN_VERSION = "0.1.0a104"
-API_URL = "https://tiled-demo.blueskyproject.io/api/v1/"
+
+@pytest.fixture(scope="module")
+def server_url():
+    EXAMPLE = "tiled.examples.generated:tree"
+    tree = import_object(EXAMPLE)
+    app = build_app(tree, authentication=Authentication(single_user_api_key="secret"))
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="info")
+    server = Server(config)
+    with server.run_in_thread() as url:
+        yield url
 
 
-def test_pickle_context():
+def test_pickle_context(server_url):
     try:
-        httpx.get(API_URL).raise_for_status()
+        httpx.get(server_url).raise_for_status()
     except Exception:
-        raise pytest.skip(f"Could not connect to {API_URL}")
-    with Context(API_URL) as context:
+        raise pytest.skip(f"Could not connect to {server_url}")
+    with Context.from_any_uri(server_url, api_key="secret")[0] as context:
         pickle.loads(pickle.dumps(context))
 
 
 @pytest.mark.parametrize("structure_clients", ["numpy", "dask"])
-def test_pickle_clients(structure_clients, tmpdir):
+def test_pickle_clients(server_url, structure_clients, tmpdir):
     try:
-        httpx.get(API_URL).raise_for_status()
+        httpx.get(server_url).raise_for_status()
     except Exception:
-        raise pytest.skip(f"Could not connect to {API_URL}")
+        raise pytest.skip(f"Could not connect to {server_url}")
     cache = Cache(tmpdir / "http_response_cache.db")
-    with Context(API_URL, cache=cache) as context:
-        if parse(context.server_info.library_version) < parse(MIN_VERSION):
-            raise pytest.skip(
-                f"Server at {API_URL} is running too old a version to test against."
-            )
+    with Context.from_any_uri(server_url, api_key="secret", cache=cache)[0] as context:
         client = from_context(context, structure_clients)
         pickle.loads(pickle.dumps(client))
         for segments in [
-            ["generated"],
-            ["generated", "small_image"],
-            ["generated", "short_table"],
+            [],
+            ["nested", "images", "small_image"],
+            ["tables", "short_table"],
         ]:
             original = client
             for segment in segments:

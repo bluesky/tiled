@@ -1,3 +1,4 @@
+import itertools as it
 import time
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
@@ -59,14 +60,19 @@ class CompositeClient(Container):
     def base(self):
         "Return the base Container client instead of a CompositeClient"
         return Container(
-            self.context, item=self.item, structure_clients=self.structure_clients
+            self.context,
+            item=self.item,
+            structure_clients=self.structure_clients,
+            queries=self._queries,
+            sorting=self._sorting,
+            include_data_sources=self._include_data_sources,
         )
 
     def _keys_slice(self, start, stop, direction, _ignore_inlined_contents=False):
-        yield from self._flat_keys_mapping.keys()
+        yield from it.islice(self._flat_keys_mapping.keys(), start, stop)
 
     def _items_slice(self, start, stop, direction, _ignore_inlined_contents=False):
-        for key in self._flat_keys_mapping.keys():
+        for key in it.islice(self._flat_keys_mapping.keys(), start, stop):
             yield key, self[key]
 
     def __iter__(self):
@@ -181,6 +187,8 @@ class CompositeClient(Container):
                     table_client.columns
                 )
                 df = table_client.read(list(columns))
+                if hasattr(df, "compute"):
+                    df = df.compute()
                 for column in columns:
                     data_vars[column] = df[column].values
                     # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype

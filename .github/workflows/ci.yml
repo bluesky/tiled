@@ -62,6 +62,12 @@ jobs:
       shell: bash -l {0}
       run: source continuous_integration/scripts/start_redis.sh
 
+    - name: Start Minio service in container.
+      #TODO: This product is leaving open-source container distribution
+      # Find a new image or product to use
+      # https://github.com/minio/minio/issues/21647#issuecomment-3418675115
+      shell: bash -l {0}
+      run: source continuous_integration/scripts/start_minio.sh
 
     - name: Ensure example data is migrated to current catalog database schema.
       # The example data is expected to be kept up to date to the latest Tiled
@@ -83,7 +89,8 @@ jobs:
       env:
         # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
-        TILED_TEST_REIDS_URI: redis://localhost:6379
+        TILED_TEST_REDIS: redis://localhost:6379
+        TILED_TEST_BUCKET: http://minioadmin:minioadmin@localhost:9000/buck
         # TODO Reinstate after finding a new image to use
         # https://github.com/bluesky/tiled/issues/1109
         # # Opt in to LDAPAuthenticator tests.

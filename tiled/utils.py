@@ -546,9 +546,12 @@ def prepend_to_sys_path(*paths: Union[str, Path]) -> Iterator[None]:
             sys.path.pop(0)
 
 
-def safe_json_dump(content):
+def safe_json_dump(content, *, auto_json_types=None):
     """
     Baes64-encode raw bytes, and provide a fallback if orjson numpy handling fails.
+
+    auto_json_types: list of types, optional
+        Additional types with a `to_json()` method to try to serialize automatically.
     """
     import orjson
 
@@ -558,6 +561,10 @@ def safe_json_dump(content):
             return content
         if isinstance(content, Path):
             return str(content)
+        if isinstance(auto_json_types, collections.abc.Sequence) and isinstance(
+            content, auto_json_types
+        ):
+            return content.to_json()
         # No need to import numpy if it hasn't been used already.
         numpy = sys.modules.get("numpy", None)
         if numpy is not None:
@@ -901,3 +908,36 @@ def interning_constructor(loader, node):
 
 
 InterningLoader.add_constructor("tag:yaml.org,2002:str", interning_constructor)
+
+_MESSAGE = (
+    "Instead of {name}_indexer[...] use {name}()[...]. "
+    "The {name}_indexer accessor is deprecated."
+)
+
+
+class IndexersMixin:
+    """
+    Provides sliceable attributes keys_indexer, items_indexer, values_indexer.
+
+    This is just for back-ward compatibility.
+    """
+
+    keys: Any
+    values: Any
+    items: Any
+    fn: Any
+
+    @property
+    def keys_indexer(self) -> Any:
+        warnings.warn(_MESSAGE.format(name="keys"), DeprecationWarning)
+        return self.keys()
+
+    @property
+    def values_indexer(self) -> Any:
+        warnings.warn(_MESSAGE.format(name="values"), DeprecationWarning)
+        return self.values()
+
+    @property
+    def items_indexer(self) -> Any:
+        warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
+        return self.items()

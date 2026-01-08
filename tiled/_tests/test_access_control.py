@@ -66,7 +66,9 @@ access_tag_config = {
                 "read:metadata",
                 "write:data",
                 "write:metadata",
-                "create",
+                "delete:node",
+                "delete:revision",
+                "create:node",
                 "register",
             ]
         },
@@ -651,6 +653,23 @@ def test_writing_access_control(access_control_test_context_factory):
         sue_client[top].write_array(arr, key="data_X", access_tags=["chemists_tag"])
 
 
+def test_deletion_access_control(access_control_test_context_factory):
+    """
+    Test that deletion access control is working.
+    Only tests that the deletion request does not fail.
+    Does not test that data is actually deleted.
+    """
+
+    alice_client = access_control_test_context_factory("alice", "alice")
+    chris_client = access_control_test_context_factory("chris", "chris")
+
+    top = "foo"
+    alice_client[top].write_array(arr, key="data_H", access_tags=["alice_tag"])
+    with fail_with_status_code(HTTP_403_FORBIDDEN):
+        chris_client[top]["data_H"].delete(external_only=False)
+    alice_client[top]["data_H"].delete(external_only=False)
+
+
 def test_user_owned_node_access_control(access_control_test_context_factory):
     """
     Test that user-owned nodes (i.e. nodes created without access tags applied)
@@ -756,6 +775,8 @@ def test_update_node_access_control(access_control_test_context_factory):
     This tests the following:
       - Update metadata while having write access
       - Prevent updating metadata without having write access
+      - Prevent deleting a metadata revision without having deletion access
+      - Delete a metadata revision while having deletion access
       - Successfully add an access tag and remove an access tag
       - Prevent adding or removing an access tag without having write access
       - Prevent adding or removing access tags which the user does not own
@@ -782,6 +803,13 @@ def test_update_node_access_control(access_control_test_context_factory):
                 metadata={"materials": ["Ag", "Au"]}
             )
         assert "Au" not in chris_client[top][data].metadata["materials"]
+
+        # fails to delete a metadata revision
+        with fail_with_status_code(HTTP_403_FORBIDDEN):
+            chris_client[top][data].metadata_revisions.delete_revision(1)
+
+        # succeeds to delete a metadata revision
+        alice_client[top][data].metadata_revisions.delete_revision(1)
 
         # succeeds to add a new access tag and remove the old access tag
         alice_client[top][data].replace_metadata(access_tags=["biologists_tag"])

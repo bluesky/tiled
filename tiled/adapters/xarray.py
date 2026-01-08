@@ -2,14 +2,14 @@ import itertools
 from collections.abc import Mapping
 from typing import Any, Iterator, List, Optional
 
-import xarray
+from xarray import DataArray, Dataset
 
 from ..structures.core import Spec
 from .array import ArrayAdapter
 from .mapping import MapAdapter
 
 
-class DatasetAdapter(MapAdapter):
+class DatasetAdapter(MapAdapter[ArrayAdapter]):
     """
     Wrap an xarray.Dataset
     """
@@ -17,7 +17,7 @@ class DatasetAdapter(MapAdapter):
     @classmethod
     def from_dataset(
         cls,
-        dataset: Any,
+        dataset: Dataset[DataArray],
         *,
         specs: Optional[List[Spec]] = None,
     ) -> "DatasetAdapter":
@@ -44,7 +44,7 @@ class DatasetAdapter(MapAdapter):
 
     def __init__(
         self,
-        mapping: Any,
+        mapping: "_DatasetMap",
         *args: Any,
         specs: Optional[List[Spec]] = None,
         **kwargs: Any,
@@ -58,7 +58,7 @@ class DatasetAdapter(MapAdapter):
         specs :
         kwargs :
         """
-        if isinstance(mapping, xarray.Dataset):
+        if isinstance(mapping, Dataset):
             raise TypeError(
                 "Use DatasetAdapter.from_dataset(...), not DatasetAdapter(...)."
             )
@@ -81,8 +81,8 @@ class DatasetAdapter(MapAdapter):
         return True
 
 
-class _DatasetMap(Mapping[str, Any]):
-    def __init__(self, dataset: Any) -> None:
+class _DatasetMap(Mapping[str, ArrayAdapter]):
+    def __init__(self, dataset: Dataset[DataArray]) -> None:
         """
 
         Parameters

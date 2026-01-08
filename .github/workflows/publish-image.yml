@@ -10,10 +10,6 @@ on:
     branches: ['main']
     tags: ['v*']
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -30,7 +26,7 @@ jobs:
       - name: Log in to the Container registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,7 +46,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f  # v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
@@ -80,7 +76,7 @@ jobs:
 
       - name: Log in to the Chart registry
         run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --username ${{ github.repository_owner }} --password-stdin
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io/${{ github.repository }} --username ${{ github.repository_owner }} --password-stdin
 
       - name: Package and Push chart
         if: github.ref_type == 'tag'
@@ -90,5 +86,7 @@ jobs:
 
       - name: Publish Helm chart
         if: github.ref_type == 'tag'
+        env:
+          REPO: ${{ github.repository_owner }}
         run: |
-          helm push /tmp/tiled-${{ steps.meta.outputs.version }}.tgz oci://ghcr.io/bluesky/charts
+          helm push /tmp/tiled-${{ steps.meta.outputs.version }}.tgz oci://ghcr.io/${REPO@L}/charts

@@ -1,5 +1,6 @@
 import collections
 import collections.abc
+import concurrent.futures
 import functools
 import importlib
 import itertools
@@ -13,13 +14,19 @@ import entrypoints
 import httpx
 import orjson
 
-from ..adapters.utils import IndexersMixin
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
 from ..query_registration import default_query_registry
 from ..structures.core import StructureFamily
 from ..structures.data_source import DataSource
-from ..utils import UNCHANGED, OneShotCachedMap, Sentinel, node_repr, safe_json_dump
+from ..utils import (
+    UNCHANGED,
+    IndexersMixin,
+    OneShotCachedMap,
+    Sentinel,
+    node_repr,
+    safe_json_dump,
+)
 from .base import STRUCTURE_TYPES, BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
@@ -35,7 +42,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from .stream import Subscription
+    from .stream import ContainerSubscription
 
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
@@ -694,6 +701,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         item = {
             "attributes": {
+                "ancestors": self.path_parts,
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalize_specs(specs or []),
@@ -1196,18 +1204,26 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
         )
 
-    def subscribe(self) -> "Subscription":
+    def subscribe(
+        self,
+        executor: Optional[concurrent.futures.Executor] = None,
+    ) -> "ContainerSubscription":
         """
-        Create a Subscription on writes to this node.
+        Subscribe to streaming updates about this container.
 
         Returns
         -------
         subscription : Subscription
+        executor : concurrent.futures.Executor, optional
+            Launches tasks asynchronously, in response to updates. By default,
+            a concurrent.futures.ThreadPoolExecutor is used.
         """
         # Keep this import here to defer the websockets import until/unless needed.
-        from .stream import Subscription
+        from .stream import ContainerSubscription
 
-        return Subscription(self.context, self.path_parts)
+        return ContainerSubscription(
+            self.context, self.path_parts, executor, self.structure_clients
+        )
 
 
 def _queries_to_params(*queries):

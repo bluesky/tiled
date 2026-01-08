@@ -3,6 +3,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
 
 import asyncpg
 import pytest
@@ -12,7 +14,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from .. import profiles
 from ..catalog import from_uri, in_memory
+from ..client import Context
 from ..client.base import BaseClient
+from ..config import Authentication
+from ..server.app import build_app
 from ..server.settings import get_settings
 from ..utils import ensure_specified_sql_driver
 from .utils import enter_username_password as utils_enter_uname_passwd
@@ -307,3 +312,100 @@ def redis_uri():
         client.flushdb()
     else:
         raise pytest.skip("No TILED_TEST_REDIS configured")
+
+
+@pytest.fixture
+def minio_uri():
+    if uri := os.getenv("TILED_TEST_BUCKET"):
+        from minio import Minio
+        from minio.deleteobjects import DeleteObject
+
+        # For convenience, we split the bucket from a string
+        url = urlparse(uri)
+        bucket_name = url.path.lstrip("/")
+        uri = url._replace(netloc="{}:{}".format(url.hostname, url.port), path="")
+
+        client = Minio(
+            endpoint=uri.geturl(),
+            access_key=url.username,
+            secret_key=url.password,
+            secure=False,
+        )
+
+        # Reset the state of the bucket after each test.
+        if client.bucket_exists(bucket_name=bucket_name):
+            delete_object_list = map(
+                lambda x: DeleteObject(object_name=x.object_name),
+                client.list_objects(bucket_name=bucket_name, recursive=True),
+            )
+            errors = client.remove_objects(
+                bucket_name=bucket_name, delete_object_list=delete_object_list
+            )
+            for error in errors:
+                print("error occurred when deleting object", error)
+        else:
+            client.make_bucket(bucket_name=bucket_name)
+
+    else:
+        raise pytest.skip("No TILED_TEST_BUCKET configured")
+
+
+def build_test_app(tmpdir, redis_uri, public=False):
+    tree = from_uri(
+        "sqlite:///:memory:",
+        writable_storage=[
+            f"file://localhost{str(tmpdir / 'data')}",
+            f"duckdb:///{tmpdir / 'data.duckdb'}",
+        ],
+        readable_storage=[Path(tempfile.gettempdir()).resolve()],
+        init_if_not_exists=True,
+        # This uses shorter defaults than the production defaults. Nothing in
+        # the test suite should be going on for more than ten minutes.
+        cache_settings={
+            "uri": redis_uri,
+            "data_ttl": 600,  # 10 minutes
+            "seq_ttl": 600,  # 10 minutes
+            "socket_timeout": 600,  # 10 minutes
+            "socket_connect_timeout": 10,
+        },
+    )
+    app = build_app(
+        tree,
+        authentication=Authentication(
+            single_user_api_key="secret",
+            allow_anonymous_access=public,
+        ),
+    )
+    return app
+
+
+@pytest.fixture(scope="function")
+def tiled_websocket_context(tmpdir, redis_uri):
+    """Fixture that provides a Tiled context with websocket support."""
+    with Context.from_app(build_test_app(tmpdir, redis_uri, public=False)) as context:
+        yield context
+
+
+@pytest.fixture(scope="function")
+def tiled_websocket_context_public(tmpdir, redis_uri):
+    """Fixture that provides a Tiled context with websocket support."""
+    with Context.from_app(build_test_app(tmpdir, redis_uri, public=True)) as context:
+        yield context
+
+
+@pytest.fixture
+def base_url() -> str:
+    return "https://example.com/realms/example"
+
+
+@pytest.fixture
+def well_known_response(base_url: str) -> dict[str, Any]:
+    return {
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "issuer": base_url,
+        "jwks_uri": f"{base_url}protocol/openid-connect/certs",
+        "authorization_endpoint": f"{base_url}protocol/openid-connect/auth",
+        "token_endpoint": f"{base_url}protocol/openid-connect/token",
+        "device_authorization_endpoint": f"{base_url}protocol/openid-connect/auth/device",
+        "end_session_endpoint": f"{base_url}protocol/openid-connect/logout",
+    }

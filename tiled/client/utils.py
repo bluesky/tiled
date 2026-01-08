@@ -115,6 +115,8 @@ def should_retry(exception: Exception) -> bool:
 TILED_RETRY_ATTEMPTS = int(os.getenv("TILED_RETRY_ATTEMPTS", "10"))
 TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_TIMEOUT", "45.0"))
 
+TILED_DEVICE_FLOW_ATTEMPTS = int(os.getenv("TILED_DEVICE_FLOW_ATTEMPTS", "100"))
+
 
 def retry_context():
     "Iterable that yields a context manager per retry attempt"
@@ -122,6 +124,22 @@ def retry_context():
         on=should_retry,
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
+    )
+
+
+def should_poll_for_tokens(exception: Exception) -> bool:
+    # If the error is an HTTP status error, only retry on 400.
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code == httpx.codes.BAD_REQUEST
+    else:
+        return False
+
+
+def polling_retry_context(timeout: float):
+    return stamina.retry_context(
+        on=should_poll_for_tokens,
+        attempts=TILED_DEVICE_FLOW_ATTEMPTS,
+        timeout=timeout,
     )
 
 

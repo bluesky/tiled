@@ -5,7 +5,11 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
+import os
+import threading
+import uuid
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 
 import awkward
 import dask.dataframe
@@ -15,12 +19,14 @@ import pandas.testing
 import pyarrow
 import pytest
 import sparse
+from minio import Minio
+from minio.error import S3Error
 from pandas.testing import assert_frame_equal
 from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_409_CONFLICT,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
 from ..catalog import in_memory
@@ -35,7 +41,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..structures.sparse import COOStructure
 from ..structures.table import TableStructure
-from ..utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes
+from ..utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes, sanitize_uri
 from ..validation_registration import ValidationRegistry
 from .utils import fail_with_status_code
 
@@ -44,13 +50,59 @@ validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
 @pytest.fixture
-def tree(tmpdir):
-    return in_memory(
-        writable_storage=[
-            f"file://localhost{str(tmpdir / 'data')}",
-            f"duckdb:///{tmpdir / 'data.duckdb'}",
-        ]
-    )
+def tmp_minio_bucket():
+    """Create a temporary MinIO bucket and clean it up after tests."""
+    if uri := os.getenv("TILED_TEST_BUCKET"):
+        clean_uri, username, password = sanitize_uri(uri)
+        minio_client = Minio(
+            endpoint=urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
+            access_key=username or "minioadmin",
+            secret_key=password or "minioadmin",
+            secure=False,
+        )
+
+        bucket_name = f"test-{uuid.uuid4().hex}"
+        minio_client.make_bucket(bucket_name=bucket_name)
+
+        try:
+            yield urljoin(uri, "/" + bucket_name)  # full URI with credentials
+        finally:
+            # Cleanup: remove all objects and delete the bucket
+            try:
+                objects = minio_client.list_objects(
+                    bucket_name=bucket_name, recursive=True
+                )
+                for obj in objects:
+                    minio_client.remove_object(
+                        bucket_name=bucket_name, object_name=obj.object_name
+                    )
+                minio_client.remove_bucket(bucket_name=bucket_name)
+            except S3Error as e:
+                print(f"Warning: failed to delete test bucket {bucket_name}: {e}")
+
+    else:
+        yield None
+
+
+@pytest.fixture
+def tree(tmpdir, tmp_minio_bucket):
+    writable_storage = [f"duckdb:///{tmpdir / 'data.duckdb'}"]
+
+    if tmp_minio_bucket:
+        writable_storage.append(
+            {
+                "provider": "s3",
+                "uri": tmp_minio_bucket,
+                "config": {
+                    "virtual_hosted_style_request": False,
+                    "client_options": {"allow_http": True},
+                },
+            }
+        )
+
+    writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
+
+    return in_memory(writable_storage=writable_storage)
 
 
 def test_write_array_full(tree):
@@ -374,25 +426,25 @@ def test_limits(tree):
         x = client.write_array([1, 2, 3], specs=max_allowed_specs)
         x.update_metadata(specs=max_allowed_specs)  # no-op
         too_many_specs = max_allowed_specs + ["one_too_many"]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=too_many_specs)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=too_many_specs)
 
         # Specs cannot repeat.
         has_repeated_spec = ["spec0", "spec1", "spec0"]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=has_repeated_spec)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=has_repeated_spec)
 
         # A given spec cannot be too long.
         max_allowed_chars = ["a" * MAX_SPEC_CHARS]
         client.write_array([1, 2, 3], specs=max_allowed_chars)
         too_many_chars = ["a" * (1 + MAX_SPEC_CHARS)]
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             client.write_array([1, 2, 3], specs=too_many_chars)
-        with fail_with_status_code(HTTP_422_UNPROCESSABLE_ENTITY):
+        with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
             x.update_metadata(specs=too_many_chars)
 
 
@@ -415,23 +467,48 @@ def test_metadata_revisions(tree):
             ac.metadata_revisions.delete_revision(1)
 
 
-def test_replace_metadata(tree):
-    with Context.from_app(build_app(tree)) as context:
-        client = from_context(context)
-        ac = client.write_array([1, 2, 3], key="revise_me_with_replace")
+def test_replace_metadata(tiled_websocket_context):
+    context = tiled_websocket_context
+    client = from_context(context)
+
+    unique_key = f"revise_me_with_replace_{uuid.uuid4().hex[:8]}"
+
+    # Write the initial data
+    ac = client.write_array([1, 2, 3], key=unique_key)
+
+    # Add Websocket Testing
+    # Set up subscription using the Subscription class with start=0
+    received = []
+    received_event = threading.Event()
+
+    def callback(update):
+        """Callback to collect received messages."""
+        received.append(update)
+        if len(received) >= 3:  # 3 updates
+            received_event.set()
+
+    # Create subscription for the streaming node with start=0
+    subscription = client.subscribe()
+    subscription.child_metadata_updated.add_callback(callback)
+    # Start the subscription
+    with subscription.start_in_thread(start=1):
+        # Business Logic
         assert len(ac.metadata_revisions[:]) == 0
-        ac.replace_metadata(metadata={"a": 1})
+        ac.replace_metadata(metadata={"a": 1})  # update #1
         assert ac.metadata["a"] == 1
-        assert client["revise_me_with_replace"].metadata["a"] == 1
+        assert client[unique_key].metadata["a"] == 1
         assert len(ac.metadata_revisions[:]) == 1
-        ac.replace_metadata(metadata={"a": 2})
+        ac.replace_metadata(metadata={"a": 2})  # update #2
         assert ac.metadata["a"] == 2
-        assert client["revise_me_with_replace"].metadata["a"] == 2
+        assert client[unique_key].metadata["a"] == 2
         assert len(ac.metadata_revisions[:]) == 2
         ac.metadata_revisions.delete_revision(1)
         assert len(ac.metadata_revisions[:]) == 1
         with fail_with_status_code(HTTP_404_NOT_FOUND):
             ac.metadata_revisions.delete_revision(1)
+        ac.replace_metadata(metadata={"3": 1}, drop_revision=True)  # update #3
+        # Wait for all messages to be received
+        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
 
 
 def test_drop_revision(tree):

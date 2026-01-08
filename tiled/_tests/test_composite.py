@@ -231,6 +231,15 @@ def test_iterate_parts(context):
         client["x"].base[part].read()
 
 
+def test_reading_dask(context):
+    client = from_context(context, "dask")
+    a = client["x"].read(["A"]).compute()
+    assert df1["A"].equals(a.to_pandas()["A"])
+    assert numpy.array_equal(
+        arr1, client["x"].read(["arr1"]).compute()["arr1"].to_numpy()
+    )
+
+
 def test_iterate_columns(context):
     client = from_context(context)
     for col, _client in client["x"].items():
@@ -415,6 +424,16 @@ def test_write_one_table(client_for_writing):
     client_for_writing["z"].write_table(df)
     assert len(client_for_writing["z"].base) == 1  # One table
     assert len(client_for_writing["z"]) == 2  # Two columns
+
+
+def test_pagination(client_for_writing):
+    df = pandas.DataFrame({"A": [], "B": []})
+    z = client_for_writing.create_container(key="z", specs=["composite"])
+    z.write_table(df)
+    # Exercise pagination
+    assert len(z.keys()[:1]) == 1
+    assert len(z.values()[:1]) == 1
+    assert len(z.items()[:1]) == 1
 
 
 def test_write_dataframe_and_warn(client_for_writing):

@@ -1,16 +1,50 @@
 import os
+import sys
 from collections.abc import AsyncGenerator
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from fastapi import Depends
 from sqlalchemy import event
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, StaticPool
 
 from ..server.settings import DatabaseSettings, Settings, get_settings
 from ..utils import ensure_specified_sql_driver, safe_json_dump, sanitize_uri
 from .metrics import monitor_db_pool
+
+# contextlib.nullcontext got async context manager support in 3.10
+if sys.version_info < (3, 10):
+    from contextlib import AbstractAsyncContextManager, AbstractContextManager
+
+    class nullcontext(AbstractContextManager, AbstractAsyncContextManager):
+        """Context manager that does no additional processing.
+
+        Used as a stand-in for a normal context manager, when a particular
+        block of code is only sometimes used with a normal context manager:
+
+        cm = optional_cm if condition else nullcontext()
+        with cm:
+            # Perform operation, using optional_cm if condition is True
+        """
+
+        def __init__(self, enter_result=None):
+            self.enter_result = enter_result
+
+        def __enter__(self):
+            return self.enter_result
+
+        def __exit__(self, *excinfo):
+            pass
+
+        async def __aenter__(self):
+            return self.enter_result
+
+        async def __aexit__(self, *excinfo):
+            pass
+
+else:
+    from contextlib import nullcontext
 
 DEFAULT_ECHO = bool(int(os.getenv("TILED_ECHO_SQL", "0") or "0"))
 
@@ -21,18 +55,14 @@ _connection_pools: dict[DatabaseSettings, AsyncEngine] = {}
 
 
 def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncEngine:
-    if make_url(database_settings.uri).database == ":memory:":
-        # For SQLite databases that exist only in process memory,
-        # pooling is not applicable. Just return an engine and don't cache it.
+    if is_memory_sqlite(database_settings.uri):
         engine = create_async_engine(
             ensure_specified_sql_driver(database_settings.uri),
             echo=DEFAULT_ECHO,
             json_serializer=json_serializer,
+            poolclass=StaticPool,
         )
-
     else:
-        # For file-backed SQLite databases, and for PostgreSQL databases,
-        # connection pooling offers a significant performance boost.
         engine = create_async_engine(
             ensure_specified_sql_driver(database_settings.uri),
             echo=DEFAULT_ECHO,
@@ -43,9 +73,9 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
             pool_pre_ping=database_settings.pool_pre_ping,
         )
 
-        # Cache the engine so we don't create more than one pool per database_settings.
-        monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
-        _connection_pools[database_settings] = engine
+    # Cache the engine so we don't create more than one pool per database_settings.
+    monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
+    _connection_pools[database_settings] = engine
 
     # For SQLite, ensure that foreign key constraints are enforced.
     if engine.dialect.name == "sqlite":
@@ -75,17 +105,21 @@ def get_database_engine(
         return open_database_connection_pool(database_settings)
 
 
-async def get_database_session(
+async def get_database_session_factory(
     engine: AsyncEngine = Depends(get_database_engine),
-) -> AsyncGenerator[Optional[AsyncSession]]:
+) -> AsyncGenerator[Callable[[], Optional[AsyncSession]]]:
     # Special case for single-user mode
     if engine is None:
-        yield None
+
+        def f():
+            return nullcontext()
+
     else:
-        async with AsyncSession(
-            engine, autoflush=False, expire_on_commit=False
-        ) as session:
-            yield session
+        # Let the caller manage the lifecycle of the AsyncSession.
+        def f():
+            return AsyncSession(engine, autoflush=False, expire_on_commit=False)
+
+    yield f
 
 
 def json_serializer(obj):
@@ -99,3 +133,34 @@ def _set_sqlite_pragma(conn, record):
     cursor = conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+def is_memory_sqlite(url: Union[URL, str]) -> bool:
+    """
+    Check if a SQLAlchemy URL is a memory-backed SQLite database.
+
+    Handles various memory database URL formats:
+    - sqlite:///:memory:
+    - sqlite:///file::memory:?cache=shared
+    - sqlite://
+    - etc.
+    """
+    url = make_url(url)
+    # Check if it's SQLite at all
+    if url.get_dialect().name != "sqlite":
+        return False
+
+    # Check if database is None or empty (default memory DB)
+    if not url.database:
+        return True
+
+    # Check for explicit :memory: string (case-insensitive)
+    database = str(url.database).lower()
+    if ":memory:" in database:
+        return True
+
+    # Check for mode=memory query parameter
+    if (mode := url.query.get("mode")) and mode.lower() == "memory":
+        return True
+
+    return False

@@ -1,9 +1,18 @@
 import logging
 import os
+from abc import ABC, abstractmethod
+from typing import Generic, Optional, Tuple, TypeVar
 
+import httpx
+from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
+
+from ..adapters.protocols import BaseAdapter
 from ..queries import AccessBlobFilter
+from ..server.schemas import Principal
+from ..type_aliases import AccessBlob, AccessTags, Filters, Scopes
 from ..utils import Sentinel, import_object
-from .scopes import ALL_SCOPES, PUBLIC_SCOPES
+from .protocols import AccessPolicy
+from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES
 
 ALL_ACCESS = Sentinel("ALL_ACCESS")
 NO_ACCESS = Sentinel("NO_ACCESS")
@@ -14,23 +23,47 @@ handler = logging.StreamHandler()
 handler.setLevel("DEBUG")
 handler.setFormatter(logging.Formatter("TILED ACCESS POLICY: %(message)s"))
 logger.addHandler(handler)
-
 log_level = os.getenv("TILED_ACCESS_POLICY_LOG_LEVEL")
 if log_level:
     logger.setLevel(log_level.upper())
 
 
-class DummyAccessPolicy:
+class DummyAccessPolicy(AccessPolicy):
     "Impose no access restrictions."
 
-    async def allowed_scopes(self, node, principal, authn_access_tags, authn_scopes):
+    async def init_node(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, AccessBlob]:
+        "Do nothing; there is no persistent state to initialize."
+        return (False, access_blob)
+
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
+        "Always allow all scopes."
         return ALL_SCOPES
 
-    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
+        "Always impose no filtering on results."
         return []
 
 
-class TagBasedAccessPolicy:
+class TagBasedAccessPolicy(AccessPolicy):
     def __init__(
         self,
         *,
@@ -73,8 +106,12 @@ class TagBasedAccessPolicy:
         return False
 
     async def init_node(
-        self, principal, authn_access_tags, authn_scopes, access_blob=None
-    ):
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, AccessBlob]:
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -156,8 +193,13 @@ class TagBasedAccessPolicy:
         return access_blob_modified, access_blob_from_policy
 
     async def modify_node(
-        self, node, principal, authn_access_tags, authn_scopes, access_blob
-    ):
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob],
+    ) -> Tuple[bool, AccessBlob]:
         if principal.type == "service":
             identifier = str(principal.uuid)
         else:
@@ -278,7 +320,13 @@ class TagBasedAccessPolicy:
         # modified means the blob to-be-used was changed in comparison to the user input
         return access_blob_modified, access_blob_from_policy
 
-    async def allowed_scopes(self, node, principal, authn_access_tags, authn_scopes):
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
         # If this is being called, filter_for_access has let us get this far.
         # However, filters and allowed_scopes should always be implemented to
         # give answers consistent with each other.
@@ -317,7 +365,14 @@ class TagBasedAccessPolicy:
 
         return allowed
 
-    async def filters(self, node, principal, authn_access_tags, authn_scopes, scopes):
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
         queries = []
         query_filter = AccessBlobFilter
 
@@ -360,3 +415,162 @@ class TagBasedAccessPolicy:
 
         queries.append(query_filter(identifier, tag_list))
         return queries
+
+
+T = TypeVar("T")
+
+
+class ResultHolder(BaseModel, Generic[T]):
+    result: T
+
+
+class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
+    def __init__(
+        self,
+        authorization_provider: HttpUrl,
+        create_node_endpoint: str,
+        allowed_tags_endpoint: str,
+        scopes_endpoint: str,
+        modify_node_endpoint: Optional[str] = None,
+        provider: Optional[str] = None,
+        empty_access_blob_public: Optional[bool] = None,
+    ):
+        """
+        Initialize an access policy configuration.
+
+        Parameters
+        ----------
+        authorization_provider : HttpUrl
+            The base URL of the authorization provider.
+        create_node_endpoint : str
+            An endpoint that returns a boolean decision on whether a use may create a node
+        allowed_tags_endpoint : str
+            An endpoint that returns a list[str] of tags a user may view on a node
+        scopes_endpoint : str
+            An endpoint that returns a set[str] of scopes a user has on a node
+        modify_node_endpoint : str, optional
+            An endpoint that returns a boolean decision on whether a use may modify a node
+            Defaults to create_node_endpoint if not set
+        provider : Optional[str], optional
+            The name of the authorization provider, by default None.
+        empty_access_blob_public: bool, optional
+            Should a node (e.g. the root node) with no access_blob be treated as public,
+            read/writable by any request with correct scopes? Default None, which does not
+            short circuit the logic and lets the remote provider decide.
+        empty_tag_list_include_all: bool, optional, default False
+            Should an empty list of filters the unfiltered list of child nodes, rather
+            than filtering out all nodes with any tags? Default False
+        """
+        self._create_node = str(authorization_provider) + create_node_endpoint
+        self._modify_node = str(authorization_provider) + (
+            modify_node_endpoint or create_node_endpoint
+        )
+        self._user_tags = str(authorization_provider) + allowed_tags_endpoint
+        self._node_scopes = str(authorization_provider) + scopes_endpoint
+        self._empty_access_blob_public = empty_access_blob_public
+        self._provider = provider
+
+    @abstractmethod
+    def build_input(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> str:
+        ...
+
+    async def _get_external_decision(
+        self,
+        decision_endpoint: str,
+        input: str,
+        decision_type: type[T],
+    ) -> Optional[T]:
+        logger.debug(f"Requesting auth {decision_endpoint=} for {input=}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(decision_endpoint, content=input)
+        response.raise_for_status()
+        try:
+            logger.debug(f"Deserializing auth {response.text=} as {decision_type=}")
+            return TypeAdapter(decision_type).validate_json(response.text)
+        except ValidationError:
+            return None
+
+    async def init_node(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        if access_blob is None and self._empty_access_blob_public is not None:
+            return self._empty_access_blob_public, access_blob
+        decision = await self._get_external_decision(
+            self._create_node,
+            self.build_input(principal, authn_access_tags, authn_scopes, access_blob),
+            ResultHolder[bool],
+        )
+        if decision:
+            return (decision.result, access_blob)
+        raise ValueError("Permission denied not able to add the node")
+
+    async def modify_node(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob],
+    ) -> Tuple[bool, Optional[AccessBlob]]:
+        if access_blob == node.access_blob:
+            logger.info(
+                f"Node access_blob not modified; access_blob is identical: {access_blob}"
+            )
+            return (False, node.access_blob)
+        decision = await self._get_external_decision(
+            self._modify_node,
+            self.build_input(principal, authn_access_tags, authn_scopes, access_blob),
+            ResultHolder[bool],
+        )
+        if decision:
+            return (decision.result, access_blob)
+        raise ValueError("Permission denied not able to add the node")
+
+    async def filters(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        scopes: Scopes,
+    ) -> Filters:
+        tags = await self._get_external_decision(
+            self._user_tags,
+            self.build_input(principal, authn_access_tags, authn_scopes),
+            ResultHolder[list[str]],
+        )
+        if tags is not None:
+            return [AccessBlobFilter(tags=tags.result, user_id=None)]
+        else:
+            return NO_ACCESS
+
+    async def allowed_scopes(
+        self,
+        node: BaseAdapter,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+    ) -> Scopes:
+        scopes = await self._get_external_decision(
+            self._node_scopes,
+            self.build_input(
+                principal,
+                authn_access_tags,
+                authn_scopes,
+                getattr(node, "access_blob", None),
+            ),
+            ResultHolder[set[str]],
+        )
+        if scopes:
+            return scopes.result
+        return NO_SCOPES

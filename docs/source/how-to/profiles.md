@@ -9,7 +9,7 @@ parameters in a file and gives them an alias, so that something like this:
 from tiled.client import from_uri
 from tiled.client.cache import Cache
 
-client = from_uri("https://tiled-demo.blueskyproject.io")
+client = from_uri("https://tiled-demo.nsls2.bnl.gov")
 ```
 
 can be replaced with the more memorable and succinct
@@ -24,7 +24,7 @@ client = from_profile("demo")
 ## Create a profile
 
 ```
-$ tiled profile create --name demo https://tiled-demo.blueskyproject.io
+$ tiled profile create --name demo https://tiled-demo.nsls2.bnl.gov
 ```
 
 ## Review and edit profiles
