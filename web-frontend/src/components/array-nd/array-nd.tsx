@@ -125,20 +125,13 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
           throw new Error("No authentication token available");
         }
 
-        const response = await fetch(url, {
-          headers:{
-            'Authorization': `Bearer ${token}`,
-          },
+        const response = await axiosInstance.get(url, {
+          //headers: token ? { Authorization: `Bearer ${token}` } : {},
+          responseType: "blob",
         });
 
-        if (!response.ok) {
-          throw new Error(`Failed to load image: ${response.status} ${response.statusText}`);
-        }
-
-        const blob = await response.blob();
-
         if (!cancelled) {
-          objectUrl = URL.createObjectURL(blob);
+          objectUrl = URL.createObjectURL(response.data);
           setImageSrc(objectUrl);
           setLoading(false);
         }

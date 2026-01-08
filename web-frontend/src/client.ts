@@ -39,6 +39,9 @@ function transformLinks(data: any): any {
 
 axiosInstance.interceptors.response.use(
   (response) => {
+    if (response.config.responseType === "blob"){
+      return response;
+    }
     response.data = transformLinks(response.data);
     return response;
   },
