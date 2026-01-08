@@ -2,7 +2,10 @@ roles:
   facility_user:
     scopes: ["read:data", "read:metadata"]
   facility_admin:
-    scopes: ["read:data", "read:metadata", "write:data", "write:metadata", "create", "register"]
+    scopes: ["read:data", "read:metadata",
+             "write:data", "write:metadata",
+             "delete:node", "delete:revision",
+             "create:node", "register"]
 tags:
   data_A:
     groups:

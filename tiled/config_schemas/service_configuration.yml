@@ -301,8 +301,8 @@ properties:
           used without authentication providers, no database is used.)
 
           If Tiled is configured with authentication providers above but a database
-          URI is not specified, `sqlite:///./tiled.sqlite` (i.e. a SQLite database in
-          the current working directory) will be used.
+          URI is not specified, `sqlite:///file:authdb?mode=memory&cache=shared&uri=true`
+          (i.e. a SQLite database in process memory) will be used.
 
           Tiled officially supports PostgreSQL and SQLite, but any database engine
           supported by SQLAlchemy *may* work.

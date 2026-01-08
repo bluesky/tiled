@@ -145,7 +145,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
             raise NotImplementedError
         self._array[self._stencil()] = data
 
-    async def write_block(
+    def write_block(
         self,
         data: NDArray[Any],
         block: Tuple[int, ...],
@@ -155,7 +155,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         )
         self._array[block_slice] = data
 
-    async def patch(
+    def patch(
         self,
         data: NDArray[Any],
         offset: Tuple[int, ...],
@@ -199,8 +199,9 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
                 self._array.resize(new_shape_tuple)
             else:
                 raise Conflicts(
-                    f"Slice {slice} does not fit into array shape {current_shape}. "
-                    "Use ?extend=true to extend array dimension to fit."
+                    f"Slice {slice} does not fit "
+                    f"within current array shape {current_shape}. "
+                    "Use ?extend=true to extend the array dimensions to fit."
                 )
         self._array[tuple(slice_)] = data
         new_chunks = []

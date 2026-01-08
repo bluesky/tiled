@@ -3,7 +3,7 @@ authors = ["Dan Allan <dallan@bnl.gov>"]
 channels = ["conda-forge"]
 name = "tiled"
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
-version = "0.1.6"
+version = "0.2.2"
 
 [tasks]
 
@@ -16,7 +16,7 @@ msgpack-python = ">=1.0.0"
 orjson = "*"
 platformdirs = "*"
 pydantic = ">=2,<3"
-pydantic-settings = ">=2,<3"
+pydantic-settings = ">=2, <2.12.0"
 pyyaml = "*"
 typer = "*"
 
@@ -93,7 +93,7 @@ cachetools = "*"
 canonicaljson = "*"
 dask = "*"
 duckdb = "<1.4.0"  # https://github.com/bluesky/tiled/issues/1144
-fastapi = ">=0.115.8"
+fastapi = ">=0.122.0"
 jinja2 = "*"
 jmespath = "*"
 numcodecs = "*"
@@ -120,7 +120,7 @@ pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
 xarray = "*"
 
 [feature.py39.dependencies]
-python = "3.9.*"
+python = "3.13.*"
 # python-blosc2 is not available for Python 3.9
 
 [feature.py310.dependencies]

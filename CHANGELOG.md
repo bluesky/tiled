@@ -3,6 +3,67 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## v0.2.3 (2025-12-17)
+
+### Added
+
+- Add ExternalPolicyDecisionPoint for authorization and an example with Open Policy Agent
+- Subscriptions retry connecting if the websocket connection is interrupted.
+- React UI supports server-side sorting.
+
+### Changed
+
+- Rename "create" scope to the more explicit "create:node"
+- Split "apikeys" scope into "create:apikeys" and "revoke:apikeys" scopes
+
+### Fixed
+
+- Slicing on a CompositeClient previous always returned the full results.
+  Now it slices as expected.
+- Made provision for forks of the repository to publish Helm charts.
+- Allow clients to register standalone data directories as single nodes
+  (e.g. Zarr stores) directly rather than discovering them by walking their
+  parent directory.
+- Fix regression that broke registering files at a prefix.
+- Servers that allow anonymous access (i.e. `--public`) allow streaming
+  subscribers to connect without authentication.
+
+## v0.2.2 (2025-11-25)
+
+### Changed
+
+- Deletion of nodes or metadata revisions now requires deletion scopes.
+
+### Fixed
+
+- In-memory SQLite databases are connection pooled / cached.
+- Addressed backward-incompatible changes in dependencies `fastapi` and `minio`.
+  rather than writing scopes.
+- Pinned down pydantic-settings until breaking changes can be addressed.
+- Writing I/O calls in the Zarr adapter were blocking the server event loop;
+  they are now properly on a thread.
+
+## Fixed
+
+- Fixed a couple of bugs in the example config, to restore it to working order
+
+
+## v0.2.1 (2025-11-12)
+
+### Added
+
+- Optional `persist` query parameter to PUT and PATCH /array/... routes, and
+  the corresponding DaskArrayClient methods: `write`, `write_block`, `patch`.
+- Added new delete:node and delete:revision scopes
+
+### Changed
+
+- The public demo hosted by NSLS2 has moved from `tiled-demo.blueskyproject.io`
+  to `tiled-demo.nsls2.bnl.gov`, for purely practical reasons. (It is easier to
+  manage the deployment and associated certificates.) **The demo remains
+  world-public, with no login required.** This change affects some
+  documentation and one test.
+
 ## v0.2.0 (2025-10-29)
 
 ### Added

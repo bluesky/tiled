@@ -55,24 +55,28 @@ def tmp_minio_bucket():
     if uri := os.getenv("TILED_TEST_BUCKET"):
         clean_uri, username, password = sanitize_uri(uri)
         minio_client = Minio(
-            urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
+            endpoint=urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
             access_key=username or "minioadmin",
             secret_key=password or "minioadmin",
             secure=False,
         )
 
         bucket_name = f"test-{uuid.uuid4().hex}"
-        minio_client.make_bucket(bucket_name)
+        minio_client.make_bucket(bucket_name=bucket_name)
 
         try:
             yield urljoin(uri, "/" + bucket_name)  # full URI with credentials
         finally:
             # Cleanup: remove all objects and delete the bucket
             try:
-                objects = minio_client.list_objects(bucket_name, recursive=True)
+                objects = minio_client.list_objects(
+                    bucket_name=bucket_name, recursive=True
+                )
                 for obj in objects:
-                    minio_client.remove_object(bucket_name, obj.object_name)
-                minio_client.remove_bucket(bucket_name)
+                    minio_client.remove_object(
+                        bucket_name=bucket_name, object_name=obj.object_name
+                    )
+                minio_client.remove_bucket(bucket_name=bucket_name)
             except S3Error as e:
                 print(f"Warning: failed to delete test bucket {bucket_name}: {e}")
 

@@ -2,7 +2,6 @@ import collections
 import dataclasses
 import inspect
 import os
-import re
 import warnings
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -24,20 +23,18 @@ from fastapi import (
     Security,
     WebSocket,
 )
+from fastapi.responses import FileResponse
 from jmespath.exceptions import JMESPathError
 from json_merge_patch import merge as apply_merge_patch
 from jsonpatch import apply_patch as apply_json_patch
 from starlette.requests import URL
 from starlette.status import (
-    HTTP_200_OK,
-    HTTP_206_PARTIAL_CONTENT,
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
-    HTTP_416_RANGE_NOT_SATISFIABLE,
     HTTP_422_UNPROCESSABLE_CONTENT,
 )
 
@@ -94,7 +91,6 @@ from .dependencies import (
     patch_shape_param,
     shape_param,
 )
-from .file_response_with_range import FileResponseWithRange
 from .settings import Settings, get_settings
 from .utils import (
     filter_for_access,
@@ -1481,11 +1477,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata", "create"]),
+        _=Security(check_scopes, scopes=["write:metadata", "create:node"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata", "create"],
+            ["write:metadata", "create:node"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -1528,11 +1524,11 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata", "create", "register"]),
+        _=Security(check_scopes, scopes=["write:metadata", "create:node", "register"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata", "create", "register"],
+            ["write:metadata", "create:node", "register"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -1692,11 +1688,11 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["write:data", "write:metadata"]),
+        _=Security(check_scopes, scopes=["delete:node", "delete:revision"]),
     ):
         entry = await get_entry(
             path,
-            ["write:data", "write:metadata"],
+            ["delete:node", "delete:revision"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -1719,6 +1715,7 @@ def get_router(
     async def put_array_full(
         request: Request,
         path: str,
+        persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1751,7 +1748,9 @@ def get_router(
             deserializer = deserialization_registry.dispatch("sparse", media_type)
         else:
             raise NotImplementedError(entry.structure_family)
-        await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
+        await ensure_awaitable(
+            entry.write, media_type, deserializer, entry, body, persist
+        )
         return json_or_msgpack(request, None)
 
     @router.put("/array/block/{path:path}")
@@ -1759,6 +1758,7 @@ def get_router(
         request: Request,
         path: str,
         block=Depends(block),
+        persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1790,7 +1790,7 @@ def get_router(
             entry.structure_family, media_type
         )
         await ensure_awaitable(
-            entry.write_block, block, media_type, deserializer, entry, body
+            entry.write_block, block, media_type, deserializer, entry, body, persist
         )
         return json_or_msgpack(request, None)
 
@@ -1801,6 +1801,7 @@ def get_router(
         offset=Depends(offset_param),
         shape=Depends(shape_param),
         extend: bool = False,
+        persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -1808,6 +1809,17 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
+        if extend and not persist:
+            bad_args_message = (
+                "Cannot PATCH an array with both parameters"
+                " extend=True and persist=False."
+                " To extend the array, you must persist the changes."
+                " To skip persisting the changes, you must not extend the array."
+            )
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=bad_args_message,
+            )
         entry = await get_entry(
             path,
             ["write:data"],
@@ -1830,7 +1842,15 @@ def get_router(
         media_type = request.headers["content-type"]
         deserializer = deserialization_registry.dispatch("array", media_type)
         structure = await ensure_awaitable(
-            entry.patch, shape, offset, extend, media_type, deserializer, entry, body
+            entry.patch,
+            shape,
+            offset,
+            extend,
+            media_type,
+            deserializer,
+            entry,
+            body,
+            persist,
         )
         return json_or_msgpack(request, structure)
 
@@ -2228,11 +2248,11 @@ def get_router(
         session_state: dict = Depends(get_session_state),
         authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
         authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["write:metadata"]),
+        _=Security(check_scopes, scopes=["delete:revision"]),
     ):
         entry = await get_entry(
             path,
-            ["write:metadata"],
+            ["delete:revision"],
             principal,
             authn_access_tags,
             authn_scopes,
@@ -2250,11 +2270,6 @@ def get_router(
 
         await entry.delete_revision(number)
         return json_or_msgpack(request, None)
-
-    # For simplicity of implementation, we support a restricted subset of the full
-    # Range spec. This could be extended if the need arises.
-    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
-    RANGE_HEADER_PATTERN = re.compile(r"^bytes=(\d+)-(\d+)$")
 
     @router.get("/asset/bytes/{path:path}")
     async def get_asset(
@@ -2342,33 +2357,10 @@ def get_router(
             full_path = path
         stat_result = await anyio.to_thread.run_sync(os.stat, full_path)
         filename = full_path.name
-        if "range" in request.headers:
-            range_header = request.headers["range"]
-            match = RANGE_HEADER_PATTERN.match(range_header)
-            if match is None:
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Only a Range headers of the form 'bytes=start-end' are supported. "
-                        f"Could not parse Range header: {range_header}",
-                    ),
-                )
-            range = start, _ = (int(match.group(1)), int(match.group(2)))
-            if start > stat_result.st_size:
-                raise HTTPException(
-                    status_code=HTTP_416_RANGE_NOT_SATISFIABLE,
-                    headers={"content-range": f"bytes */{stat_result.st_size}"},
-                )
-            status_code = HTTP_206_PARTIAL_CONTENT
-        else:
-            range = None
-            status_code = HTTP_200_OK
-        return FileResponseWithRange(
+        return FileResponse(
             full_path,
             stat_result=stat_result,
-            status_code=status_code,
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-            range=range,
         )
 
     @router.get("/asset/manifest/{path:path}")

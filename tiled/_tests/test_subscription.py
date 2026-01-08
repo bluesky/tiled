@@ -1,6 +1,7 @@
 import copy
 import sys
 import threading
+import time
 import uuid
 
 import numpy as np
@@ -8,6 +9,7 @@ import pandas as pd
 import pyarrow
 import pytest
 import tifffile
+import websockets.exceptions
 from pandas.testing import assert_frame_equal
 from starlette.testclient import WebSocketDenialResponse
 
@@ -22,6 +24,18 @@ from .utils import fail_with_status_code
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Requires Redis service"
 )
+
+
+@pytest.fixture
+def stamina_testing():
+    """Enable stamina retries with fast testing mode (2 attempts, no backoff)."""
+    import stamina
+
+    stamina.set_active(True)
+    stamina.set_testing(True, attempts=2)
+    yield
+    stamina.set_testing(False)
+    stamina.set_active(False)
 
 
 def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
@@ -54,7 +68,7 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
             streaming_node.write(new_arr)
 
         # Wait for all messages to be received
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
 
         # Verify all updates received in order
         assert len(received) == 3
@@ -88,7 +102,7 @@ def test_websocket_connection_to_non_existent_node_subscription(
 
     # Attempting to start should raise WebSocketDenialResponse
     with pytest.raises(WebSocketDenialResponse):
-        subscription.start_in_thread()
+        subscription.start()
 
 
 def test_subscribe_after_first_update_subscription(tiled_websocket_context):
@@ -125,7 +139,7 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
             streaming_node.write(new_arr)
 
         # Wait for messages to be received
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
 
         # Should only receive the 2 new updates (not the first one)
         assert len(received) == 2
@@ -182,7 +196,7 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             streaming_node.write(new_arr)
 
         # Wait for all messages to be received
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
 
         # Should receive: initial array + first update + 2 new updates = 4 total
         assert len(received) == 4
@@ -236,12 +250,10 @@ def test_subscribe_to_container(
         for i in range(3):
             # This is exposing fragility in SQLite database connection handling.
             # Once that is resolved, remove the sleep.
-            import time
-
             time.sleep(0.1)
             unique_key = f"{uuid.uuid4().hex[:8]}"
             uploaded_nodes.append(client.create_container(unique_key))
-        assert created_3.wait(timeout=5.0), "Timeout waiting for messages"
+        assert created_3.wait(timeout=10.0), "Timeout waiting for messages"
         downloaded_nodes = list(client.values())
         for up, streamed, down in zip(uploaded_nodes, streamed_nodes, downloaded_nodes):
             pass
@@ -250,7 +262,7 @@ def test_subscribe_to_container(
 
         assert len(child_metadata_updated_updates) == 0
         client.values().last().update_metadata({"color": "blue"})
-        assert received_event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
         assert len(child_metadata_updated_updates) == 1
 
 
@@ -271,7 +283,7 @@ def test_subscribe_to_stream_closed(
         sub.stream_closed.add_callback(callback)
         assert not event.is_set()
         x.close_stream()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
 
 
 def test_subscribe_to_disconnected(
@@ -293,7 +305,7 @@ def test_subscribe_to_disconnected(
         sub.disconnected.add_callback(callback)
         assert not event.is_set()
         sub.disconnect()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
 
     # If the writer closes the stream, the client is disconnected.
     with x.subscribe().start_in_thread() as sub:
@@ -305,7 +317,7 @@ def test_subscribe_to_disconnected(
         sub.disconnected.add_callback(callback)
         assert not event.is_set()
         x.close_stream()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
 
 
 def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_path):
@@ -400,7 +412,7 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
             content=safe_json_dump({"data_source": updated_data_source}),
             params=params,
         ).raise_for_status()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         x.close_stream()
         client.close_stream()
         x.refresh()
@@ -491,7 +503,7 @@ def test_subscribe_to_array_registered_without_patch(tiled_websocket_context, tm
                 }
             ),
         ).raise_for_status()
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         x.close_stream()
         client.close_stream()
         x.refresh()
@@ -521,12 +533,12 @@ def test_streaming_table_write(tiled_websocket_context):
     sub = client[key].subscribe()
     sub.new_data.add_callback(collect)
     with sub.start_in_thread(1):
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         actual = updates[0].data()
         assert_frame_equal(actual, df1)
         event.clear()
         x.write(df2)
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         assert not updates[1].append
         actual_updated = updates[1].data()
         assert_frame_equal(actual_updated, df2)
@@ -553,14 +565,14 @@ def test_streaming_table_append(tiled_websocket_context):
     sub.new_data.add_callback(collect)
     with sub.start_in_thread(1):
         x.append_partition(0, table1)
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         assert updates[0].append
         streamed1 = updates[0].data()
         streamed1_pyarrow = pyarrow.Table.from_pandas(streamed1, preserve_index=False)
         assert streamed1_pyarrow == table1
         event.clear()
         x.append_partition(0, table2)
-        assert event.wait(timeout=5.0), "Timeout waiting for messages"
+        assert event.wait(timeout=10.0), "Timeout waiting for messages"
         assert updates[1].append
         streamed2 = updates[1].data()
         streamed2_pyarrow = pyarrow.Table.from_pandas(streamed2, preserve_index=False)
@@ -570,3 +582,110 @@ def test_streaming_table_append(tiled_websocket_context):
         )
         expected_combined = pyarrow.concat_tables([table1, table2])
         assert streaming_combined == expected_combined
+
+
+def test_subscription_auto_reconnect_on_network_failure(
+    tiled_websocket_context, stamina_testing, monkeypatch
+):
+    """Test that subscription automatically reconnects after network failure."""
+    context = tiled_websocket_context
+    client = from_context(context)
+
+    # Create streaming array node
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_reconnect")
+
+    # Track received updates
+    received = []
+
+    def callback(update):
+        received.append(update)
+
+    subscription = streaming_node.subscribe()
+    subscription.new_data.add_callback(callback)
+
+    with subscription.start_in_thread(1):
+        # Send first 3 updates
+        for i in range(1, 4):
+            streaming_node.write(np.arange(10) + i)
+            time.sleep(0.1)
+
+        # Simulate network failure once, then restore normal behavior
+        original_recv = subscription._websocket.recv
+
+        class FailNTimes:
+            """Fails on first N calls, then delegates to original."""
+
+            def __init__(self, n):
+                self.n = n
+                self.call_count = 0
+
+            def __call__(self, timeout=None):
+                self.call_count += 1
+                if self.call_count <= self.n:
+                    raise websockets.exceptions.ConnectionClosedError(None, None)
+                return original_recv(timeout)
+
+        monkeypatch.setattr(subscription._websocket, "recv", FailNTimes(1))
+
+        # Send more updates after simulated disconnect
+        for i in range(4, 7):
+            streaming_node.write(np.arange(10) + i)
+            time.sleep(0.1)
+
+        # Give time for reconnection and receiving all updates
+        time.sleep(2)
+
+        # Verify we received all 6 updates (3 before disconnect + 3 after)
+        assert len(received) >= 6, f"Expected at least 6 updates, got {len(received)}"
+
+        # Restore original recv before disconnecting to avoid cleanup issues
+        subscription._websocket.recv = original_recv
+
+
+def test_subscribe_no_api_key_rejected(tiled_websocket_context):
+    "Private server does not allow anonymous user to subscribe."
+    context = tiled_websocket_context
+    client = from_context(context)
+
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
+
+    received_event = threading.Event()
+
+    def callback(update):
+        "Set event once any update has been received."
+        received_event.set()
+
+    # Any further requests will be unauthenticated.
+    context.api_key = None
+
+    subscription = streaming_node.subscribe()
+    subscription.new_data.add_callback(callback)
+
+    with pytest.raises(WebSocketDenialResponse):
+        subscription.start(0)
+
+
+def test_subscribe_no_api_key_public(tiled_websocket_context_public):
+    "Public server allows anonymous user to subscribe."
+    context = tiled_websocket_context_public
+    client = from_context(context)
+
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_stream_immediate")
+
+    received_event = threading.Event()
+
+    def callback(update):
+        "Set event once any update has been received."
+        received_event.set()
+
+    # Any further requests will be unauthenticated.
+    context.api_key = None
+
+    subscription = streaming_node.subscribe()
+    subscription.new_data.add_callback(callback)
+
+    with subscription.start_in_thread(0):
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"

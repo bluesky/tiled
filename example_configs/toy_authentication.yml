@@ -21,7 +21,10 @@ access_control:
     - "read:data"
     - "write:metadata"
     - "write:data"
-    - "create"
+    - "delete:revision"
+    - "delete:node"
+    - "create:node"
+    - "register"
     tags_db:
       uri: "file:example_configs/access_tags/compiled_tags.sqlite"
     access_tags_parser: "tiled.access_control.access_tags:AccessTagsParser"

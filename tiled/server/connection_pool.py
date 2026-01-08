@@ -5,9 +5,9 @@ from typing import Callable, Optional, Union
 
 from fastapi import Depends
 from sqlalchemy import event
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, StaticPool
 
 from ..server.settings import DatabaseSettings, Settings, get_settings
 from ..utils import ensure_specified_sql_driver, safe_json_dump, sanitize_uri
@@ -55,18 +55,14 @@ _connection_pools: dict[DatabaseSettings, AsyncEngine] = {}
 
 
 def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncEngine:
-    if make_url(database_settings.uri).database == ":memory:":
-        # For SQLite databases that exist only in process memory,
-        # pooling is not applicable. Just return an engine and don't cache it.
+    if is_memory_sqlite(database_settings.uri):
         engine = create_async_engine(
             ensure_specified_sql_driver(database_settings.uri),
             echo=DEFAULT_ECHO,
             json_serializer=json_serializer,
+            poolclass=StaticPool,
         )
-
     else:
-        # For file-backed SQLite databases, and for PostgreSQL databases,
-        # connection pooling offers a significant performance boost.
         engine = create_async_engine(
             ensure_specified_sql_driver(database_settings.uri),
             echo=DEFAULT_ECHO,
@@ -77,9 +73,9 @@ def open_database_connection_pool(database_settings: DatabaseSettings) -> AsyncE
             pool_pre_ping=database_settings.pool_pre_ping,
         )
 
-        # Cache the engine so we don't create more than one pool per database_settings.
-        monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
-        _connection_pools[database_settings] = engine
+    # Cache the engine so we don't create more than one pool per database_settings.
+    monitor_db_pool(engine.pool, sanitize_uri(database_settings.uri)[0])
+    _connection_pools[database_settings] = engine
 
     # For SQLite, ensure that foreign key constraints are enforced.
     if engine.dialect.name == "sqlite":
@@ -137,3 +133,34 @@ def _set_sqlite_pragma(conn, record):
     cursor = conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+def is_memory_sqlite(url: Union[URL, str]) -> bool:
+    """
+    Check if a SQLAlchemy URL is a memory-backed SQLite database.
+
+    Handles various memory database URL formats:
+    - sqlite:///:memory:
+    - sqlite:///file::memory:?cache=shared
+    - sqlite://
+    - etc.
+    """
+    url = make_url(url)
+    # Check if it's SQLite at all
+    if url.get_dialect().name != "sqlite":
+        return False
+
+    # Check if database is None or empty (default memory DB)
+    if not url.database:
+        return True
+
+    # Check for explicit :memory: string (case-insensitive)
+    database = str(url.database).lower()
+    if ":memory:" in database:
+        return True
+
+    # Check for mode=memory query parameter
+    if (mode := url.query.get("mode")) and mode.lower() == "memory":
+        return True
+
+    return False

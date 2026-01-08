@@ -27,7 +27,7 @@ dependencies = [
     "orjson",
     "platformdirs",
     "pydantic >=2, <3",
-    "pydantic-settings >=2, <3",
+    "pydantic-settings >=2, <2.12.0",
     "pyyaml",
     "typer",
 ]
@@ -73,7 +73,7 @@ all = [
     "dask[dataframe]",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
-    "fastapi >=0.115.8",
+    "fastapi >=0.122.0",
     "h5netcdf",
     "h5py",
     "hdf5plugin",
@@ -203,7 +203,7 @@ minimal-server = [
     "cachetools",
     "canonicaljson",
     "dask",
-    "fastapi >=0.115.8",
+    "fastapi >=0.122.0",
     "jinja2",
     "jmespath",
     "numcodecs",
@@ -238,7 +238,7 @@ server = [
     "dask[dataframe]",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
-    "fastapi >=0.115.8",
+    "fastapi >=0.122.0",
     "h5netcdf",
     "h5py",
     "hdf5plugin",

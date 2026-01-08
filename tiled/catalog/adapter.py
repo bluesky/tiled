@@ -68,7 +68,11 @@ from ..mimetypes import (
     ZARR_MIMETYPE,
 )
 from ..query_registration import QueryTranslationRegistry
-from ..server.connection_pool import close_database_connection_pool, get_database_engine
+from ..server.connection_pool import (
+    close_database_connection_pool,
+    get_database_engine,
+    is_memory_sqlite,
+)
 from ..server.core import NoEntry
 from ..server.schemas import Asset, DataSource, Management, Revision
 from ..server.settings import DatabaseSettings
@@ -229,10 +233,7 @@ class Context:
             return result
 
     async def startup(self):
-        if (self.engine.dialect.name == "sqlite") and (
-            self.engine.url.database == ":memory:"
-            or self.engine.url.query.get("mode") == "memory"
-        ):
+        if is_memory_sqlite(self.engine.url):
             # Special-case for in-memory SQLite: Because it is transient we can
             # skip over anything related to migrations.
             await initialize_database(self.engine)
@@ -534,7 +535,7 @@ class CatalogNodeAdapter:
             ),
         )
         for query in self.queries:
-            if hasattr(adapter, "searc"):
+            if hasattr(adapter, "search"):
                 adapter = adapter.search(query)
         return adapter
 
@@ -1194,10 +1195,12 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             "data_type": dataclasses.asdict(self.structure().data_type),
         }
 
-    async def write(self, media_type, deserializer, entry, body):
+    async def write(self, media_type, deserializer, entry, body, persist=True):
         shape = entry.structure().shape
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape)
+        if not persist:
+            return None
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
             data = await ensure_awaitable(deserializer, body, dtype, shape)
@@ -1207,7 +1210,9 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable((await self.get_adapter()).write, data)
 
-    async def write_block(self, block, media_type, deserializer, entry, body):
+    async def write_block(
+        self, block, media_type, deserializer, entry, body, persist=True
+    ):
         from tiled.adapters.array import slice_and_shape_from_block_and_chunks
 
         _, shape = slice_and_shape_from_block_and_chunks(
@@ -1215,6 +1220,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
         )
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, block=block)
+        if not persist:
+            return None
         if entry.structure_family == "array":
             dtype = entry.structure().data_type.to_numpy_dtype()
             data = await ensure_awaitable(deserializer, body, dtype, shape)
@@ -1226,9 +1233,13 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             (await self.get_adapter()).write_block, data, block
         )
 
-    async def patch(self, shape, offset, extend, media_type, deserializer, entry, body):
+    async def patch(
+        self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
+    ):
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, offset=offset)
+        if not persist:
+            return entry.structure()
         dtype = entry.structure().data_type.to_numpy_dtype()
         data = await ensure_awaitable(deserializer, body, dtype, shape)
         # assumes a single DataSource (currently only supporting zarr)
@@ -1709,19 +1720,21 @@ def from_uri(
         # The cleanest option available is to start a subprocess
         # because SQLite is allergic to threads.
         import subprocess
+        from subprocess import CalledProcessError
 
         # TODO Check if catalog exists.
-        process = subprocess.run(
-            [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        )
-        # Capture stdout and stderr from the subprocess and write to logging
-        stdout = process.stdout.decode()
-        stderr = process.stderr.decode()
-        logger.info(f"Subprocess stdout: {stdout}")
-        logger.info(f"Subprocess stderr: {stderr}")
+        cmd = [sys.executable, "-m", "tiled", "catalog", "init", "--if-not-exists", uri]
+        try:
+            process = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
+            )
+            # Capture stdout and stderr from the subprocess and write to logging
+            logger.info(f"Subprocess stdout: {process.stdout.decode()}")
+            logger.info(f"Subprocess stderr: {process.stderr.decode()}")
+
+        except CalledProcessError as cpe:
+            cpe.__cause__ = DatabaseInitializationError(cpe.stderr.decode())
+            raise
 
     database_settings = DatabaseSettings(
         uri=uri,
@@ -1851,3 +1864,7 @@ STRUCTURES = {
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }
+
+
+class DatabaseInitializationError(Exception):
+    pass

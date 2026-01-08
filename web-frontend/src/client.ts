@@ -123,8 +123,10 @@ export const search = async (
   if (selectMetadata !== null) {
     url += `&select_metadata=${selectMetadata}`;
   }
-
-  const response = await axiosInstance.get(url, { signal });
+  if (sort) {
+    url = url.concat(`&sort=${encodeURIComponent(sort)}`);
+  }
+  const response = await axiosInstance.get(url, { signal: signal });
   return response.data;
 };
 

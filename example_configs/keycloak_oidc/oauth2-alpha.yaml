@@ -6,13 +6,14 @@ injectRequestHeaders:
 providers:
 - provider: oidc
   clientID: tiled
-  clientSecret: o8b7mIuYmzybNPVS8SSduhMdeqM8NDLp
+  clientSecret: secret
   id: authn
   oidcConfig:
     audienceClaims: ["aud"]
     extraAudiences: ["tiled_aud"]
     emailClaim: sub
     insecureAllowUnverifiedEmail: true
+    insecureSkipNonce: true
     issuerURL: http://localhost:8080/realms/master
 server:
   BindAddress: localhost:4180

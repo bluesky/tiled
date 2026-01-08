@@ -468,13 +468,14 @@ def build_app(
                 settings.database_settings.max_overflow = database.max_overflow
             if database.init_if_not_exists is not None:
                 settings.database_init_if_not_exists = database.init_if_not_exists
-            if authenticators:
-                # If we support authentication providers, we need a database, so if one is
-                # not set, use a SQLite database in memory. Horizontally scaled deployments
-                # must specify a persistent database.
-                settings.database_settings.uri = (
-                    settings.database_settings.uri or "sqlite://"
-                )
+        if authenticators:
+            # If we support authentication providers, we need a database, so if one is
+            # not set, use a SQLite database in memory. Horizontally scaled deployments
+            # must specify a persistent database.
+            settings.database_settings.uri = (
+                settings.database_settings.uri
+                or "sqlite:///file:authdb?mode=memory&cache=shared&uri=true"
+            )
         if (
             authenticators
             and len(authenticators) == 1
@@ -561,13 +562,13 @@ def build_app(
                 make_admin_by_identity,
                 purge_expired,
             )
-            from .connection_pool import open_database_connection_pool
+            from .connection_pool import is_memory_sqlite, open_database_connection_pool
 
             # This creates a connection pool and stashes it in a module-global
             # registry, keyed on database_settings, where it can be retrieved by
             # the Dependency get_database_session.
             engine = open_database_connection_pool(settings.database_settings)
-            if not engine.url.database or engine.url.query.get("mode") == "memory":
+            if is_memory_sqlite(engine.url):
                 # Special-case for in-memory SQLite: Because it is transient we can
                 # skip over anything related to migrations.
                 await initialize_database(engine)
