@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Raise an error with a suitable message when trying to create an API key
+  on a server that does not support it.
+
 ## v0.2.3 (2025-12-17)
 
 ### Added
