@@ -560,11 +560,18 @@ class Context:
         """
         if isinstance(expires_in, str):
             expires_in = parse_time_string(expires_in)
+
+        authn_links = self.server_info.authentication.links
+        if (authn_links is None) or (not authn_links.apikey):
+            raise RuntimeError(
+                "Server does not support API key creation for the current user."
+            )
+
         for attempt in retry_context():
             with attempt:
                 return handle_error(
                     self.http_client.post(
-                        self.server_info.authentication.links.apikey,
+                        authn_links.apikey,
                         headers={"Accept": MSGPACK_MIME_TYPE},
                         json={
                             "scopes": scopes,
