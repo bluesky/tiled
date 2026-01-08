@@ -126,7 +126,6 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
         }
 
         const response = await axiosInstance.get(url, {
-          //headers: token ? { Authorization: `Bearer ${token}` } : {},
           responseType: "blob",
         });
 

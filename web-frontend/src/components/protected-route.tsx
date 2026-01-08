@@ -7,8 +7,8 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }:{ children: React.ReactNode}) => {
+  const { isAuthenticated, isLoading, authConfig } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -29,6 +29,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
         </Typography>
       </Box>
     );
+  }
+
+  //scenario 2, if no providers, allow public access
+  const hasProviders = authConfig && Array.isArray(authConfig.providers) && authConfig.providers.length>0;
+  const isPublicAccess = authConfig?.required === false; 
+  if (!hasProviders && isPublicAccess) {
+    return <>{children}</>;
   }
 
   if (!isAuthenticated) {
