@@ -297,38 +297,36 @@ def asset_limit_check(target, connection, **kw):
     # Triggers cannot define hard limits so if there are concurrent inserts
     # it is possible to exceed the limit slightly.
     DEFAULT_LIMIT = int(os.getenv("TILED_ASSET_LIMIT", "100000") or "100000")
-    set_limit = {"limit": DEFAULT_LIMIT}
-    if connection.engine.dialect.name == "sqlite":
-        connection.execute(
-            text(
-                """
+
+    sqliteString = f"""
 CREATE TRIGGER assets_exceed_set_limit
 BEFORE INSERT ON data_source_asset_association
-WHEN (SELECT COUNT(*) FROM data_source_asset_association) >= 100000
+WHEN (SELECT COUNT(*) FROM data_source_asset_association) >= {DEFAULT_LIMIT}
 BEGIN
-    SELECT RAISE(ABORT, 'Hard limit on number of associated assets exceeded');
+    SELECT RAISE(ABORT, 'Hard limit on number of associated assets exceeded : {DEFAULT_LIMIT}');
 END"""
-            ),
-            set_limit,
-        )
-    elif connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                """
+
+    postgresqlString = f"""
 CREATE OR REPLACE FUNCTION assets_exceed_limit()
 RETURNS TRIGGER AS
 $$
 BEGIN
-    IF (SELECT count(*) FROM data_source_asset_association) > 100000
+    IF (SELECT count(*) FROM data_source_asset_association) > {DEFAULT_LIMIT}
     THEN
-        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded';
+        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded : {DEFAULT_LIMIT}';
     END IF;
     RETURN NEW;
 END;
 $$
 LANGUAGE plpgsql;"""
-            ),
-            set_limit,
+
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(sqliteString),
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(postgresqlString),
         )
         connection.execute(
             text(
