@@ -34,6 +34,7 @@ class DataSource(Generic[StructureT]):
     id: Optional[int] = None
     mimetype: Optional[str] = None
     parameters: dict = dataclasses.field(default_factory=dict)
+    properties: dict = dataclasses.field(default_factory=dict)
     assets: List[Asset] = dataclasses.field(default_factory=list)
     management: Management = Management.writable
 
