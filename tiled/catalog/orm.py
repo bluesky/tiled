@@ -190,8 +190,6 @@ def unique_parameter_num_null_check(target, connection, **kw):
     # that runs when NEW.num IS NULL and one trigger than runs when
     # NEW.num IS NOT NULL. Thus, for a given insert, only one of these
     # triggers is run.
-    DEFAULT_LIMIT = int(os.getenv("TILED_ASSET_LIMIT", "100000") or "100000")
-    set_limit = {"limit": DEFAULT_LIMIT}
     if connection.engine.dialect.name == "sqlite":
         connection.execute(
             text(
@@ -230,36 +228,7 @@ BEGIN
 END"""
             )
         )
-        connection.execute(
-            text(
-                """
-CREATE TRIGGER assets_exceed_set_limit
-BEFORE INSERT ON data_source_asset_association
-WHEN SELECT COUNT(*) FROM data_source_asset_association >= :limit
-BEGIN
-    SELECT RAISE(ABORT, 'Hard limit on number of associated assets exceeded :limit')
-END"""
-            ),
-            set_limit,
-        )
     elif connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                """
-CREATE OR REPLACE FUNCTION assets_exceed_limit()
-RETURNS TRIGGER AS
-$$
-BEGIN
-    IF (SELECT count(*) FROM your_table) > :limit
-    THEN
-        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded :limit'
-    END IF;
-END;
-$$
-LANGUAGE plpgsql;"""
-            ),
-            set_limit,
-        )
         connection.execute(
             text(
                 """
@@ -325,6 +294,55 @@ BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NOT NULL)
 EXECUTE FUNCTION raise_if_null_parameter_exists();"""
+            )
+        )
+
+
+@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+def asset_limit_check(target, connection, **kw):
+    # Function to enforce an arbitrary limit on the number of assets
+    # associated with data sources, assists in pagination.
+    # Triggers cannot define hard limits so if there are concurrent inserts
+    # it is possible to exceed the limit slightly.
+    DEFAULT_LIMIT = int(os.getenv("TILED_ASSET_LIMIT", "100000") or "100000")
+    set_limit = {"limit": DEFAULT_LIMIT}
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER assets_exceed_set_limit
+BEFORE INSERT ON data_source_asset_association
+WHEN (SELECT COUNT(*) FROM data_source_asset_association) >= 100000
+BEGIN
+    SELECT RAISE(ABORT, 'Hard limit on number of associated assets exceeded');
+END"""
+            ),
+            set_limit,
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+CREATE OR REPLACE FUNCTION assets_exceed_limit()
+RETURNS TRIGGER AS
+$$
+BEGIN
+    IF (SELECT count(*) FROM data_source_asset_association) > :limit
+    THEN
+        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded :limit'
+    END IF;
+END;
+$$
+LANGUAGE plpgsql;"""
+            ),
+            set_limit,
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER assets_exceed_set_limit
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW EXECUTE PROCEDURE assets_exceed_limit();"""
             )
         )
 
