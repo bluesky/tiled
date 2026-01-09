@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add `properties` field to the DataSource object and table, to store additional
+  metadata about the data source (e.g. array chunking information).
+
 ## v0.2.3 (2025-12-17)
 
 ### Added
