@@ -232,14 +232,6 @@ END"""
         connection.execute(
             text(
                 """
-CREATE TRIGGER assets_exceed_set_limit
-BEFORE INSERT ON data_source_asset_association
-FOR EACH ROW EXECUTE PROCEDURE assets_exceed_limit();"""
-            )
-        )
-        connection.execute(
-            text(
-                """
 CREATE OR REPLACE FUNCTION raise_if_parameter_exists()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -327,10 +319,11 @@ CREATE OR REPLACE FUNCTION assets_exceed_limit()
 RETURNS TRIGGER AS
 $$
 BEGIN
-    IF (SELECT count(*) FROM data_source_asset_association) > :limit
+    IF (SELECT count(*) FROM data_source_asset_association) > 100000
     THEN
-        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded :limit'
+        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded';
     END IF;
+    RETURN NEW;
 END;
 $$
 LANGUAGE plpgsql;"""
