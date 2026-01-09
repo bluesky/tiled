@@ -3,6 +3,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Support for including custom FastAPI routers via a new `routers` configuration
+  field at the server level.
+
 ## v0.2.3 (2025-12-17)
 
 ### Added
