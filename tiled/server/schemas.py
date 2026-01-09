@@ -149,6 +149,7 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
     structure: Optional[StructureT]
     mimetype: Optional[str] = None
     parameters: dict = {}
+    properties: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable
 
