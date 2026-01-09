@@ -322,6 +322,8 @@ def test_tree_given_as_method():
 
 
 tree.include_routers = [APIRouter()]
+router1 = APIRouter()
+router2 = APIRouter()
 
 
 def test_include_routers():
@@ -335,7 +337,8 @@ def test_include_routers():
                 "tree": f"{__name__}:tree",
                 "path": "/b",
             },
-        ]
+        ],
+        "routers": [f"{__name__}:router1", f"{__name__}:router2"],
     }
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
