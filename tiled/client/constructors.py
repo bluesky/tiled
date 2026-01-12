@@ -1,9 +1,12 @@
 import collections
 import collections.abc
 import warnings
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+
+from tiled.client.auth import TiledAuth
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
@@ -25,6 +28,7 @@ def from_uri(
     headers=None,
     timeout=None,
     include_data_sources=False,
+    auth: Optional[httpx.Auth] = None,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -59,13 +63,15 @@ def from_uri(
         (To disable timeouts, use httpx.Timeout(None)).
     include_data_sources : bool, optional
         Default False. If True, fetch information about underlying data sources.
+    auth : httpx.Auth, optional
+        Custom authentication handler.
     """
     EXPLAIN_LOGIN = """
 
 The user will be prompted for credentials if login is required.
 Or, call login() to manually login.
 
-For non-interactive authentication, use an API key.
+For non-interactive authentication, use an API key or add custom auth
 """
     if username is not None:
         warnings.warn("Tiled no longer accepts 'username' parameter. " + EXPLAIN_LOGIN)
@@ -86,6 +92,8 @@ For non-interactive authentication, use an API key.
         timeout=timeout,
         verify=verify,
     )
+    if isinstance(auth, httpx.Auth):
+        context.http_client.auth = auth
     return from_context(
         context,
         structure_clients=structure_clients,
@@ -136,7 +144,10 @@ def from_context(
     >>> c = from_uri("...", api_key="...")
     """
             )
-        if has_providers:
+        has_external_auth = not isinstance(
+            context.http_client.auth, TiledAuth
+        ) and isinstance(context.http_client.auth, httpx.Auth)
+        if has_providers and not has_external_auth:
             found_valid_tokens = remember_me and context.use_cached_tokens()
             if (not found_valid_tokens) and auth_is_required:
                 context.authenticate(remember_me=remember_me)
