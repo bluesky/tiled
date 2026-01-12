@@ -388,7 +388,7 @@ def build_app(
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
     # Ensure that routers are only included once.
-    for custom_router in include_routers + getattr(tree, "include_routers", []):
+    for custom_router in (include_routers or []) + getattr(tree, "include_routers", []):
         app.include_router(custom_router, prefix="/custom")
         app.include_router(custom_router, prefix="/api/v1")  # Back-compat
 
