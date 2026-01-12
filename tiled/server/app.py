@@ -389,7 +389,8 @@ def build_app(
     # are processed, so we cannot just inject this configuration via Depends.
     # Ensure that routers are only included once.
     for custom_router in include_routers + getattr(tree, "include_routers", []):
-        app.include_router(custom_router, prefix="/api/v1")
+        app.include_router(custom_router, prefix="/custom")
+        app.include_router(custom_router, prefix="/api/v1")  # Back-compat
 
     app.state.access_policy = access_policy
 

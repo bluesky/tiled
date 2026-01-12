@@ -371,6 +371,9 @@ def test_include_routers(sqlite_or_postgres_uri):
 
         # Test access to the endpoints defined in the included routers
         response_by_endpoint = {
+            "/custom/tree-endpoint": "Hello from the tree router",
+            "/custom/router1-endpoint": "Hello from router 1",
+            "/custom/router2-endpoint": "Hello from router 2",
             "/api/v1/tree-endpoint": "Hello from the tree router",
             "/api/v1/router1-endpoint": "Hello from router 1",
             "/api/v1/router2-endpoint": "Hello from router 2",
