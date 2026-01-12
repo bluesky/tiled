@@ -321,12 +321,29 @@ def test_tree_given_as_method():
     Config.model_validate(config)
 
 
-tree.include_routers = [APIRouter()]
+# Define custom APIRouters for tests
+router_in_tree = APIRouter()
+tree.include_routers = [router_in_tree]
 router1 = APIRouter()
 router2 = APIRouter()
 
 
-def test_include_routers():
+@router_in_tree.get("/tree-endpoint")
+async def tree_endpoint():
+    return {"message": "Hello from the tree router"}
+
+
+@router1.get("/router1-endpoint")
+async def router1_endpoint():
+    return {"message": "Hello from router 1"}
+
+
+@router2.get("/router2-endpoint")
+async def router2_endpoint():
+    return {"message": "Hello from router 2"}
+
+
+def test_include_routers(sqlite_or_postgres_uri):
     config = {
         "trees": [
             {
@@ -337,9 +354,28 @@ def test_include_routers():
                 "tree": f"{__name__}:tree",
                 "path": "/b",
             },
+            {
+                "path": "/c",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                },
+            },
         ],
         "routers": [f"{__name__}:router1", f"{__name__}:router2"],
     }
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
-        from_context(context)
+        client = from_context(context)
+
+        # Test access to the endpoints defined in the included routers
+        response_by_endpoint = {
+            "/api/v1/tree-endpoint": "Hello from the tree router",
+            "/api/v1/router1-endpoint": "Hello from router 1",
+            "/api/v1/router2-endpoint": "Hello from router 2",
+        }
+        for endpoint, expected_message in response_by_endpoint.items():
+            response = client.context.http_client.get(endpoint)
+            assert response.status_code == 200
+            assert response.json()["message"] == expected_message

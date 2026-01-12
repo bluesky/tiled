@@ -280,11 +280,9 @@ class Config(BaseModel):
                         index[subpath] = mapping
                         index[subpath[:-1]][subpath[-1]] = MapAdapter(mapping)
                 index[segments[:-1]][segments[-1]] = tree
-                tree_routers = getattr(tree, "include_routers", [])
-                self.routers.extend(tree_routers)
-
+                self.routers.extend(getattr(tree, "include_routers", []))
             root_tree = MapAdapter(root_mapping)
-            root_tree.include_routers.extend(self.routers)
+
         return root_tree
 
     def tree_tasks(self) -> TaskMap:
@@ -365,6 +363,7 @@ def construct_build_app_kwargs(config: Config):
         validation_registry=config.validation_registry(),
         tasks=config.tree_tasks(),
         access_policy=config.access_policy,
+        include_routers=config.routers,
     )
 
 

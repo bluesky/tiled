@@ -535,7 +535,7 @@ properties:
       and the object itself it separated by a colon.
 
       Example:
-      
+
         ```yaml
         routers:
           - bluesky_tiled_plugins.routers:my_router
