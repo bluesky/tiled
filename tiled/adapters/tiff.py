@@ -15,7 +15,7 @@ from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
-from .utils import init_adapter_from_catalog
+from .utils import force_reshape, init_adapter_from_catalog
 
 
 class TiffAdapter(Adapter[ArrayStructure]):
@@ -93,6 +93,7 @@ class TiffAdapter(Adapter[ArrayStructure]):
         # single-page TIFF but I'm not sure. Certainly it *is* possible for
         # multi-page TIFFs.
         arr = self._file.asarray()
+        arr = force_reshape(arr, self._structure.shape)
         return arr[slice] if slice else arr
 
     def read_block(
@@ -104,6 +105,7 @@ class TiffAdapter(Adapter[ArrayStructure]):
             raise IndexError(block)
 
         arr = self._file.asarray()
+        arr = force_reshape(arr, self._structure.shape)
         if slice is not None:
             arr = arr[slice]
         return arr
