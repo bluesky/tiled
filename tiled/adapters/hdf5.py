@@ -258,10 +258,13 @@ class HDF5ArrayAdapter(ArrayAdapter):
             array = array.squeeze()
 
         if array.shape != tuple(structure.shape):
-            raise ValueError(
-                f"Shape mismatch between array data and structure: "
-                f"{array.shape} != {tuple(structure.shape)}"
-            )
+            if numpy.prod(array.shape) == numpy.prod(structure.shape):
+                array = array.reshape(structure.shape)
+            else:
+                raise ValueError(
+                    f"Shape mismatch between array data and structure: "
+                    f"{array.shape} != {tuple(structure.shape)}"
+                )
         if array.dtype != structure.data_type.to_numpy_dtype():
             raise ValueError(
                 f"Data type mismatch between array data and structure: "
