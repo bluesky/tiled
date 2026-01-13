@@ -1,5 +1,9 @@
+import math
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, Union
+
+import dask.array
+import numpy as np
 
 from tiled.adapters.core import A, S
 
@@ -73,3 +77,33 @@ def init_adapter_from_catalog(
     kwargs["metadata"] = node.metadata_
     kwargs["specs"] = node.specs
     return adapter_cls(structure=data_source.structure, **kwargs)
+
+
+def force_reshape(
+    arr: Union[np.array, dask.array.Array], desired_shape: Tuple[int, ...]
+) -> Union[np.array, dask.array.Array]:
+    """Reshape a numpy or dask array to match the desired shape, if possible.
+
+    Parameters
+    ----------
+
+    arr : Union[np.array, dask.array.Array]
+        The original ND array to be reshaped
+    desired_shape : Tuple[int, ...]
+        The desired shape of the resulting array
+
+    Returns
+    -------
+
+    A view of the original array
+    """
+
+    if arr.shape == tuple(desired_shape):
+        return arr  # Nothing to do here
+
+    if arr.size == math.prod(desired_shape):
+        return arr.reshape(desired_shape)
+
+    raise ValueError(
+        f"Can not reshape {arr.shape} array data to {tuple(desired_shape)}"
+    )
