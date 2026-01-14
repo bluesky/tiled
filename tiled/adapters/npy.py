@@ -15,7 +15,7 @@ from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
-from .utils import init_adapter_from_catalog
+from .utils import force_reshape, init_adapter_from_catalog
 
 
 class NPYAdapter(Adapter[ArrayStructure]):
@@ -84,6 +84,7 @@ class NPYAdapter(Adapter[ArrayStructure]):
     def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         cache_key = (numpy.load, self._filepath)
         arr = with_resource_cache(cache_key, numpy.load, self._filepath)
+        arr = force_reshape(arr, self._structure.shape)
         arr = arr[slice] if slice else arr
         return arr
 
@@ -94,6 +95,7 @@ class NPYAdapter(Adapter[ArrayStructure]):
             raise IndexError(block)
         cache_key = (numpy.load, self._filepath)
         arr = with_resource_cache(cache_key, numpy.load, self._filepath)
+        arr = force_reshape(arr, self._structure.shape)
         arr = arr[slice] if slice else arr
         if slice is not None:
             arr = arr[slice]

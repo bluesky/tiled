@@ -16,7 +16,7 @@ from ..type_aliases import JSON
 from ..utils import path_from_uri
 from .resource_cache import with_resource_cache
 from .sequence import FileSequenceAdapter
-from .utils import init_adapter_from_catalog
+from .utils import force_reshape, init_adapter_from_catalog
 
 
 class JPEGAdapter(ArrayAdapter):
@@ -85,6 +85,7 @@ class JPEGAdapter(ArrayAdapter):
 
     def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         arr = np.asarray(self._file)
+        arr = force_reshape(arr, self._structure.shape)
         arr = arr[slice] if slice else arr
         return arr
 
@@ -97,6 +98,7 @@ class JPEGAdapter(ArrayAdapter):
             raise IndexError(block)
 
         arr = np.asarray(self._file)
+        arr = force_reshape(arr, self._structure.shape)
         if slice is not None:
             arr = arr[slice]
         return arr

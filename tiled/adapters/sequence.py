@@ -1,6 +1,4 @@
 import builtins
-import math
-import warnings
 from abc import abstractmethod
 from typing import Any, Iterable, List, Optional, Tuple, Union
 
@@ -18,48 +16,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON, EllipsisType
 from ..utils import path_from_uri
-from .utils import init_adapter_from_catalog
-
-
-def force_reshape(arr: np.ndarray, desired_shape: Tuple[int, ...]) -> np.ndarray:
-    """Reshape a numpy array to match the desired shape, if possible.
-
-    Parameters
-    ----------
-
-    arr : np.array
-        The original ND array to be reshaped
-    desired_shape : Tuple[int, ...]
-        The desired shape of the resulting array
-
-    Returns
-    -------
-
-    A view of the original array
-    """
-
-    if arr.shape == desired_shape:
-        # Nothing to do here
-        return arr
-
-    if arr.size == math.prod(desired_shape):
-        if len(arr.shape) != len(desired_shape):
-            # Missing or extra singleton dimensions
-            warnings.warn(
-                f"Forcefully reshaping {arr.shape} to {desired_shape}",
-                category=RuntimeWarning,
-            )
-            return arr.reshape(desired_shape)
-        else:
-            # Some dimensions might be swapped or completely wrong
-            # TODO: needs to be treated more carefully
-            pass
-
-    warnings.warn(
-        f"Can not reshape array of {arr.shape} to match {desired_shape}; proceeding without changes",
-        category=RuntimeWarning,
-    )
-    return arr
+from .utils import force_reshape, init_adapter_from_catalog
 
 
 class FileSequenceAdapter(Adapter[ArrayStructure]):
