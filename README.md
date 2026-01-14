@@ -24,9 +24,9 @@ Tiled puts an emphasis on **structures** rather than formats, including:
 * Hierarchical structures thereof (e.g. xarrays, HDF5-compatible structures like NeXus)
 
 Tiled implements extensible **access control enforcement** based on web security
-standards, similar to JuptyerHub. Like Jupyter, Tiled can be used by a single
+standards, similar to JupyterHub. Like Jupyter, Tiled can be used by a single
 user or deployed as a shared public or private resource. Tiled can be configured
-to use third party services for login, such as Google, ORCID. or any OIDC
+to use third party services for login, such as Google, ORCID, or any OIDC
 or SAML authentication providers.
 
 Tiled facilitates **client-side caching** in a standard web browser or in
@@ -139,10 +139,10 @@ data in whole or in efficiently-chunked parts in the format of your choice:
 http://localhost:8000/api/v1/table/full/tables/long_table?format=csv
 
 # or XLSX (Excel)
-http://localhost:8000/api/v1/table/full/tables/long_table?format=xslx
+http://localhost:8000/api/v1/table/full/tables/long_table?format=xlsx
 
 # and subselect columns.
-http://localhost:8000/api/v1/table/full/tables/long_table?format=xslx&field=A&field=B
+http://localhost:8000/api/v1/table/full/tables/long_table?format=xlsx&field=A&field=B
 
 # View or download (2D) array data as PNG
 http://localhost:8000/api/v1/array/full/nested/images/medium_image?format=png
