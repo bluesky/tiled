@@ -387,7 +387,7 @@ def serve_catalog(
     if temp:
         if cache_uri is None:
             # Setup a TTLCache if nothing specified while using the --temp flag
-            cache_uri = "ttlcache"
+            cache_uri = "memory"
         if database is not None:
             typer.echo(
                 "The option --temp was set but a database was also provided. "

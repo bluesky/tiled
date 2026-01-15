@@ -244,8 +244,8 @@ class Context:
         if self.cache_config:
             if self.cache_config["uri"].startswith("redis"):
                 self.cache_config["datastore"] = "redis"
-            elif self.cache_config["uri"].startswith("ttlcache"):
-                self.cache_config["datastore"] = "ttlcache"
+            elif self.cache_config["uri"].startswith("memory"):
+                self.cache_config["datastore"] = "memory"
             self.streaming_cache = StreamingCache(self.cache_config)
 
     async def shutdown(self):

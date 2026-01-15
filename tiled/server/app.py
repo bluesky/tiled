@@ -166,12 +166,12 @@ def build_app(
 
     if scalable:
         streaming_cache = server_settings.get("streaming_cache", None)
-        if streaming_cache and streaming_cache["uri"].startswith("ttlcache"):
+        if streaming_cache and streaming_cache["uri"].startswith("memory"):
             raise UnscalableConfig(
                 dedent(
                     """
                     In a scaled (multi-process) deployment, Tiled cannot
-                    use ttlcache as its streaming datastore.
+                    use memory as its streaming datastore.
 
                     """
                 )

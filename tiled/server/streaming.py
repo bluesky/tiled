@@ -303,7 +303,7 @@ def _make_ws_handler_common(
     return handler
 
 
-@register_datastore("ttlcache")
+@register_datastore("memory")
 class TTLCacheDatastore(StreamingDatastore):
     """
     An in-memory, TTL-based streaming datastore for single-process deployments.
