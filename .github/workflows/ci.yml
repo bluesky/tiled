@@ -53,22 +53,12 @@ jobs:
     - name: Download SQLite example data.
       shell: bash -l {0}
       run: source continuous_integration/scripts/download_sqlite_data.sh
-
-    - name: Start PostgreSQL service in container.
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/start_postgres.sh
-
-    - name: Start Redis service in container.
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/start_redis.sh
-
-    - name: Start Minio service in container.
-      #TODO: This product is leaving open-source container distribution
-      # Find a new image or product to use
-      # https://github.com/minio/minio/issues/21647#issuecomment-3418675115
-      shell: bash -l {0}
-      run: source continuous_integration/scripts/start_minio.sh
-
+    
+    - name: Compose services
+      uses: hoverkraft-tech/compose-action@05da55b2bb8a5a759d1c4732095044bd9018c050 # v2.4.3
+      with:
+        compose-file: "continuous_integration/compose.yaml"
+    
     - name: Ensure example data is migrated to current catalog database schema.
       # The example data is expected to be kept up to date to the latest Tiled
       # release, but this CI run may include some unreleased schema changes,

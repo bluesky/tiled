@@ -19,12 +19,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0  # get full history for `git describe` to produce version
 
       - name: Log in to the Container registry
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3
+        uses: docker/login-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
