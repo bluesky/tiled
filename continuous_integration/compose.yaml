@@ -3,11 +3,12 @@ services:
   ldap:
     image: nfrastack/openldap:2.6-alpine
     ports:
-      - '1389:1389'
-      - '1636:1636'
+      - '389:1389'
+      - '636:1636'
     environment:
       - LDAP_ADMIN_USERNAME=admin
-      - LDAP_ADMIN_PASSWORD=adminpassword
+      - ADMIN_PASS=adminpassword
+      - ENABLE_BACKUP=False
       - LDAP_USERS=user01,user02
       - LDAP_PASSWORDS=password1,password2
 
@@ -20,7 +21,7 @@ services:
       - 9000:9000
       - 9001:9001
     # volumes:
-    #   - minio-data:/data
+    #   - ./minio-data:/data
     environment:
       MINIO_ROOT_USER: "minioadmin"
       MINIO_ROOT_PASSWORD: "minioadmin"
@@ -43,19 +44,12 @@ services:
   
   postgres:
     image: docker.io/library/postgres:16-alpine
+    shm_size: 128mb
     environment:
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: tiled-example-data
-    # volume:
-
-# #!/bin/bash
-# set -e
-
-# curl -fsSLO https://github.com/bluesky/tiled-example-database/releases/latest/download/tiled_test_db_sqlite.db
-
-
-# # Try and get the latest postgres test data from the tiled-example-database repository
-# curl -fsSLO https://github.com/bluesky/tiled-example-database/releases/latest/download/tiled_test_db_pg.sql
+    volumes:
+      - ./scripts/postgres.sh:/docker-entrypoint-initdb.d/postgres.sh
 
   redis:
     image: docker.io/redis:7-alpine
