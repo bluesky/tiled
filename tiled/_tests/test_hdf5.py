@@ -1,7 +1,10 @@
 import os
+from types import SimpleNamespace
 
 import numpy
 import pytest
+
+from tiled.structures.array import ArrayStructure, BuiltinDtype
 
 from ..adapters import hdf5 as hdf5_adapters
 from ..adapters.hdf5 import HDF5Adapter, HDF5ArrayAdapter
@@ -34,7 +37,8 @@ def example_file(tmp_path_factory):
         a = file.create_group("a")
         b = a.create_group("b")
         c = b.create_group("c")
-        c.create_dataset("d", data=numpy.ones((3, 3)))
+        c.create_dataset("d", data=numpy.arange(9, dtype="int64").reshape((3, 3)))
+        c.create_dataset("e", data=numpy.arange(12, dtype="int64").reshape((3, 4)))
 
     yield ensure_uri(file_path)
 
@@ -468,3 +472,44 @@ def test_adapter_kwargs(example_file):
     )
     assert isinstance(adapter, HDF5ArrayAdapter)
     assert adapter.read().shape == (3, 2)
+
+
+@pytest.mark.parametrize(
+    "shape, error",
+    [
+        ((3, 4), False),
+        ((4, 3), False),
+        ((2, 6), False),
+        ((2, 1, 2, 3), False),
+        ((1, 13), True),
+    ],
+)
+def test_adapter_from_catalog(example_file, shape, error):
+    # Test that HDF5Adapter can be initialized from catalog and reshaped
+    asset = Asset(
+        data_uri=example_file,
+        is_directory=False,
+        parameter="data_uris",
+        num=0,
+    )
+    data_source = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[asset],
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure(
+            shape=shape,
+            chunks=((i,) for i in shape),
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
+        ),
+        parameters={"dataset": "a/b/c/e"},
+        management=Management.external,
+    )
+
+    empty_node = SimpleNamespace(metadata_={}, specs=[])
+    adp = HDF5Adapter.from_catalog(data_source, empty_node, **data_source.parameters)
+
+    if error:
+        with pytest.raises(ValueError):
+            adp.read()
+    else:
+        assert adp.read().shape == shape
