@@ -1207,7 +1207,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     def subscribe(
         self,
         executor: Optional[concurrent.futures.Executor] = None,
-        max_size: int = 1_000_000,
     ) -> "ContainerSubscription":
         """
         Subscribe to streaming updates about this container.
@@ -1217,8 +1216,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         executor : concurrent.futures.Executor, optional
             Launches tasks asynchronously, in response to updates. By default,
             a concurrent.futures.ThreadPoolExecutor is used.
-        max_size : int, optional
-            Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
 
         Returns
         -------
@@ -1232,7 +1229,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.path_parts,
             executor,
             self.structure_clients,
-            max_size=max_size,
         )
 
 
