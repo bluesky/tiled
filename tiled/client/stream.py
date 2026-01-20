@@ -339,18 +339,14 @@ class Subscription(abc.ABC):
 
                 if close_code == 1009:  # MESSAGE_TOO_BIG
                     logger.error(
-                        f"Skipping message that exceeds max_size ({max_size} bytes). "
+                        f"Message exceeds max_size ({max_size} bytes). "
+                        f"Subscription will disconnect permanently. "
                         f"Increase max_size in start() to receive large messages."
                     )
-                    # Skip the too-large message by advancing the sequence
-                    if self._last_received_sequence is not None:
-                        self._last_received_sequence += 1
-                    elif start is not None:
-                        start += 1
-                    else:
-                        # No sequence info, set to 0 so next iteration starts at 1
-                        self._last_received_sequence = 0
-                # Connection lost, close the websocket and reconnect
+                    # Permanently disconnect - do not skip the message or reconnect
+                    break
+
+                # Connection lost (not MESSAGE_TOO_BIG), close the websocket and reconnect
                 try:
                     self._websocket.close()
                 except Exception:
