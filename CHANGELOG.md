@@ -5,6 +5,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Support for including custom FastAPI routers via a new `routers` configuration
+  field at the server level.
+
 ### Changed
 
 - Arrays accessed by `ArrayAdapter`, its subclasses, and related adapters (e.g. `HDF5ArrayAdapter`,
