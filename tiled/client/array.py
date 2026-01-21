@@ -383,12 +383,15 @@ class _DaskArrayClient(BaseClient):
         """
         Subscribe to streaming updates about this array.
 
-        Returns
-        -------
-        subscription : Subscription
+        Parameters
+        ----------
         executor : concurrent.futures.Executor, optional
             Launches tasks asynchronously, in response to updates. By default,
             a concurrent.futures.ThreadPoolExecutor is used.
+
+        Returns
+        -------
+        subscription : ArraySubscription
         """
         # Keep this import here to defer the websockets import until/unless needed.
         from .stream import ArraySubscription
