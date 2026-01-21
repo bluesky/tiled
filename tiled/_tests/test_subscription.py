@@ -60,8 +60,8 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
     subscription = streaming_node.subscribe()
     subscription.new_data.add_callback(callback)
 
-    # Start the subscription
-    with subscription.start_in_thread():
+    # Start the subscription with max_size parameter
+    with subscription.start_in_thread(max_size=10_000_000):
         # Write updates using Tiled client
         for i in range(1, 4):
             new_arr = np.arange(10) + i
@@ -243,7 +243,7 @@ def test_subscribe_to_container(
         child_metadata_updated_updates.append(update)
         received_event.set()
 
-    with client.subscribe().start_in_thread(1) as sub:
+    with client.subscribe().start_in_thread(1, max_size=10_000_000) as sub:
         sub.child_created.add_callback(child_created_cb)
         sub.child_metadata_updated.add_callback(child_metadata_updated_cb)
         uploaded_nodes = []
