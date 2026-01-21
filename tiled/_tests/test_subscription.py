@@ -232,7 +232,9 @@ def test_subscribe_to_container(
 
     def child_created_cb(update):
         try:
-            repr(update.child())
+            child = update.child()
+            repr(child)
+            assert update.uri == child.item["links"]["self"]
             streamed_nodes.append(update.child())
             if len(streamed_nodes) == 3:
                 created_3.set()
