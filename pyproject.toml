@@ -88,7 +88,7 @@ all = [
     "obstore",
     "openpyxl",
     "packaging",
-    "pandas",
+    "pandas <3",
     "pillow",
     "prometheus_client",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
