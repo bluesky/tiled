@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import io
+import zipfile
+
 import awkward
 import numpy as np
 import orjson
@@ -12,6 +15,7 @@ from tiled.media_type_registration import (
 from tiled.mimetypes import APACHE_ARROW_FILE_MIME_TYPE, PARQUET_MIMETYPE
 from tiled.serialization import awkward as awkward_serialization
 from tiled.structures.core import StructureFamily
+from tiled.structures.ragged import RaggedStructure
 from tiled.utils import modules_available, safe_json_dump
 
 
@@ -39,12 +43,20 @@ def from_json(
 
 
 def to_flattened_array(array: ragged.array) -> np.ndarray:
-    content = array._impl.layout  # noqa: SLF001
+    content = array._impl  # noqa: SLF001
+    if isinstance(content, np.ndarray):
+        return content
+    content = content.layout
+    first_offset = 0
+    last_offset = -1
+    if isinstance(content, awkward.contents.ListOffsetArray):
+        first_offset = content.offsets[0]
     while isinstance(
         content, (awkward.contents.ListOffsetArray, awkward.contents.ListArray)
     ):
         content = content.content
-    return awkward.to_numpy(content)
+    return awkward.to_numpy(content)  # [first_offset:last_offset]
+    # return awkward.to_numpy(awkward.flatten(array._impl, axis=None))  # noqa: SLF001
 
 
 @default_serialization_registry.register(
@@ -60,9 +72,9 @@ def from_flattened_array(
     array: np.ndarray,
     dtype: type,
     offsets: list[list[int]],
-    shape: tuple[int | None, ...],
+    shape: tuple[int | None, ...] | None = None,
 ) -> ragged.array:
-    if all(shape) and not any(offsets):
+    if shape and all(shape) and not any(offsets):
         # No raggedness, but need to reshape the flat array
         return ragged.array(array.reshape(shape), dtype=dtype)
         # return ragged.reshape(ragged.array(array, dtype=dtype), shape)
@@ -70,7 +82,7 @@ def from_flattened_array(
     def rebuild(offsets: list[list[int]]) -> awkward.contents.Content:
         nonlocal array
         if not offsets:
-            return awkward.contents.NumpyArray(array.tolist())
+            return awkward.contents.NumpyArray(array)
         return awkward.contents.ListOffsetArray(
             offsets=awkward.index.Index(offsets[0]), content=rebuild(offsets[1:])
         )
@@ -82,11 +94,47 @@ def from_flattened_array(
     StructureFamily.ragged, "application/octet-stream"
 )
 def from_flattened_octet_stream(
-    buffer: bytes, dtype: type, offsets: list[list[int]], shape: tuple[int | None, ...]
+    buffer: bytes,
+    dtype: type,
+    offsets: list[list[int]],
+    shape: tuple[int | None, ...] | None,
 ) -> ragged.array:
+    # *offset_bytes_list, array_bytes = buffer.split(b";;;;")
+    # offsets_list = [
+    #     np.frombuffer(base64.b64decode(offset_bytes), dtype=np.int64).tolist()
+    #     for offset_bytes in offset_bytes_list
+    # ]
     return from_flattened_array(
         np.frombuffer(buffer, dtype=dtype), dtype, offsets, shape
     )
+
+
+@default_serialization_registry.register(
+    StructureFamily.ragged, media_type="application/zip"
+)
+def to_zipped_buffers(
+    mimetype: str, array: ragged.array, metadata: dict  # noqa: ARG001
+) -> bytes:
+    file = io.BytesIO()
+    with zipfile.ZipFile(file, "w", compresslevel=zipfile.ZIP_STORED) as fzip:
+        fzip.writestr("shape", safe_json_dump(array.shape))
+        fzip.writestr(
+            "offsets", safe_json_dump(RaggedStructure.from_array(array).offsets)
+        )
+        fzip.writestr("data", to_flattened_array(array).tobytes())
+    return file.getvalue()
+
+
+@default_deserialization_registry.register(
+    StructureFamily.ragged, media_type="application/zip"
+)
+def from_zipped_buffers(buffer: bytes, dtype: type) -> ragged.array:
+    file = io.BytesIO(buffer)
+    with zipfile.ZipFile(file, "r") as fzip:
+        shape = orjson.loads(fzip.read("shape"))
+        offsets = orjson.loads(fzip.read("offsets"))
+        data = np.frombuffer(fzip.read("data"), dtype=dtype)
+    return from_flattened_array(data, dtype=dtype, offsets=offsets, shape=shape)
 
 
 if modules_available("pyarrow"):

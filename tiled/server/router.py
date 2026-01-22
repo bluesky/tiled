@@ -795,7 +795,7 @@ def get_router(
                 return await construct_data_response(
                     structure_family,
                     serialization_registry,
-                    ragged_array[slice],
+                    ragged_array,
                     entry.metadata(),
                     request,
                     format,

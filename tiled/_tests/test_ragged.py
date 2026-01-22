@@ -11,9 +11,11 @@ from tiled.serialization.ragged import (
     from_flattened_array,
     from_flattened_octet_stream,
     from_json,
+    from_zipped_buffers,
     to_flattened_array,
     to_flattened_octet_stream,
     to_json,
+    to_zipped_buffers,
 )
 from tiled.server.app import build_app
 from tiled.structures.ragged import RaggedStructure
@@ -50,27 +52,33 @@ arrays = {
     # "empty_1d": ragged.array([]),
     # "empty_nd": ragged.array([[], [], []]),
     "numpy_1d": ragged.array(RNG.random(10)),
-    "numpy_nd": ragged.array(RNG.random((2, 3, 4))),
-    "ragged_simple": ragged.array(
-        [RNG.random(3).tolist(), RNG.random(5).tolist(), RNG.random(8).tolist()],
+    "numpy_2d": ragged.array(RNG.random((3, 5))),
+    "numpy_3d": ragged.array(RNG.random((2, 3, 4))),
+    "numpy_4d": ragged.array(RNG.random((2, 3, 2, 3))),
+    "regular_1d": ragged.array(RNG.random(10).tolist()),
+    "regular_2d": ragged.array(RNG.random((3, 5)).tolist()),
+    "regular_3d": ragged.array(RNG.random((2, 3, 4)).tolist()),
+    "regular_4d": ragged.array(RNG.random((2, 3, 2, 3)).tolist()),
+    "ragged_a": ragged.array(
+        [RNG.random(3), RNG.random(5), RNG.random(8)],
     ),
-    "ragged_simple_nd": ragged.array(
-        [RNG.random((2, 3, 4)).tolist(), RNG.random((3, 4, 5)).tolist()],
+    "ragged_b": ragged.array(
+        [RNG.random((2, 3, 4)), RNG.random((3, 4, 5))],
     ),
-    "ragged_complex": ragged.array(
+    "ragged_c": ragged.array(
         [
-            [RNG.random(10).tolist()],
-            [RNG.random(8).tolist(), []],
-            [RNG.random(5).tolist(), RNG.random(2).tolist()],
-            [[], RNG.random(7).tolist()],
+            [RNG.random(10)],
+            [RNG.random(8), []],
+            [RNG.random(5), RNG.random(2)],
+            [[], RNG.random(7)],
         ],
     ),
-    "ragged_complex_nd": ragged.array(
+    "ragged_d": ragged.array(
         [
-            [RNG.random((4, 3)).tolist()],
-            [RNG.random((2, 8)).tolist(), [[]]],
-            [RNG.random((5, 2)).tolist(), RNG.random((3, 3)).tolist()],
-            [[[]], RNG.random((7, 1)).tolist()],
+            [RNG.random((4, 3))],
+            [RNG.random((2, 8)), [[]]],
+            [RNG.random((5, 2)), RNG.random((3, 3))],
+            [[[]], RNG.random((7, 1))],
         ],
     ),
 }
@@ -128,11 +136,23 @@ def test_serialization_roundtrip(name):
     )
     assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
 
+    # Test flattened octet-stream serialization.
+    octet_stream_contents = to_zipped_buffers("application/zip", array, metadata={})
+    array_from_octet_stream = from_zipped_buffers(
+        octet_stream_contents,
+        dtype=array.dtype.type,
+    )
+    assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
+
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_slicing(client, name):
+@pytest.mark.parametrize("slice", [(1,), (1, 0), (slice(0, -1), 0)])
+def test_slicing(client, name, slice):
     # Write data into catalog.
     array = arrays[name]
+    if len(slice) > array.ndim:
+        pytest.skip("Slice has too many dimensions for array")
+
     returned = client.write_ragged(array, key="test")
     # Test with client returned, and with client from lookup.
     for rac in [returned, client["test"]]:
@@ -146,13 +166,13 @@ def test_slicing(client, name):
             full_result = rac[:]
         assert ak.array_equal(full_result._impl, array._impl)  # noqa: SLF001
         assert len(h.responses) == 1  # sanity check
-        # full_response_size = len(h.responses[0].content)
-        # with record_history() as h:
-        #     sliced_result = rac[1]
-        # assert ak.array_equal(sliced_result._impl, array[1]._impl)  # noqa: SLF001
-        # assert len(h.responses) == 1  # sanity check
-        # sliced_response_size = len(h.responses[0].content)
-        # assert sliced_response_size < full_response_size
+        full_response_size = len(h.responses[0].content)
+        with record_history() as h:
+            sliced_result = rac[slice]
+        assert ak.array_equal(sliced_result._impl, array[slice]._impl)  # noqa: SLF001
+        assert len(h.responses) == 1  # sanity check
+        sliced_response_size = len(h.responses[0].content)
+        assert sliced_response_size < full_response_size
 
 
 @pytest.mark.parametrize("name", arrays.keys())

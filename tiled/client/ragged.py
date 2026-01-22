@@ -9,7 +9,7 @@ from tiled.client.base import BaseClient
 from tiled.client.utils import chunks_repr, export_util, handle_error, retry_context
 from tiled.ndslice import NDSlice
 from tiled.serialization.ragged import (
-    from_flattened_octet_stream,
+    from_zipped_buffers,
     to_flattened_octet_stream,
 )
 
@@ -56,21 +56,13 @@ class RaggedClient(BaseClient):
                 content = handle_error(
                     self.context.http_client.get(
                         url_path,
-                        headers={"Accept": "application/octet-stream"},
+                        headers={"Accept": "application/zip"},
                         params=url_params,
                     ),
                 ).read()
-        # shape = (
-        #     reshape_from_slice(structure.shape, slice)
-        #     if isinstance(slice, NDSlice)
-        #     else structure.shape
-        # )
-        shape = structure.shape
-        return from_flattened_octet_stream(
+        return from_zipped_buffers(
             buffer=content,
             dtype=structure.data_type.to_numpy_dtype(),
-            offsets=structure.offsets,
-            shape=shape,
         )
 
     def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
@@ -81,7 +73,11 @@ class RaggedClient(BaseClient):
         self, slice: NDSlice
     ) -> ragged.array:  # this is true even when slicing to return a single item
         # TODO: should we be smarter, and return the scalar rather a singular array
-        return self.read(slice=NDSlice(slice))
+        if isinstance(slice, tuple):
+            slice = NDSlice(*slice)
+        if not isinstance(slice, NDSlice):
+            slice = NDSlice(slice)
+        return self.read(slice=slice)
 
     def export(self, filepath, *, format=None):
         return export_util(
@@ -142,26 +138,3 @@ class RaggedClient(BaseClient):
             + "".join(f" {k}={v}" for k, v in attrs.items())
             + ">"
         )
-
-
-def reshape_from_slice(
-    _shape: tuple[int | None, ...],
-    _slice: NDSlice | None,
-) -> tuple[int | None, ...]:
-    if not _slice:
-        return _shape
-    new_shape = []
-    for dim_size, dim_slice in zip(_shape, _slice):
-        if isinstance(dim_slice, slice):
-            if dim_size is None:
-                new_shape.append(None)
-            else:
-                start, stop, step = dim_slice.indices(dim_size)
-                length = max(0, (stop - start + (step - 1)) // step)
-                new_shape.append(length)
-        # elif dim_slice == Ellipsis:
-        #     remaining_dims = len(_shape) - len(_slice) + 1
-        #     new_shape.extend(_shape[len(new_shape) : len(new_shape) + remaining_dims])
-        else:
-            new_shape.append(1)
-    return tuple(new_shape)

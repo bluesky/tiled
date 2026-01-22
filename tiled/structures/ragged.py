@@ -4,6 +4,8 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from tiled.ndslice import NDSlice
+
 if sys.version_info >= (3, 11):
     from typing import Self
 else:
@@ -12,6 +14,13 @@ else:
 import awkward
 import numpy as np
 import ragged
+from awkward.contents import (
+    EmptyArray,
+    ListArray,
+    ListOffsetArray,
+    NumpyArray,
+    RegularArray,
+)
 
 from tiled.structures.array import ArrayStructure, BuiltinDtype, StructDtype
 
@@ -25,6 +34,18 @@ class RaggedStructure(ArrayStructure):
     offsets: list[list[int]]
     size: int
 
+    @staticmethod
+    def make_ragged_array(array: Iterable) -> ragged.array:
+        if isinstance(array, ragged.array):
+            return array
+        if isinstance(array, np.ndarray):
+            return ragged.array(awkward.from_numpy(array))
+        if isinstance(array, awkward.Array) or hasattr(array, "__dlpack_device__"):
+            return ragged.array(array)
+        if hasattr(array, "tolist"):
+            return ragged.array(array.tolist())
+        return ragged.array(list(array))
+
     @classmethod
     def from_array(
         cls,
@@ -33,12 +54,7 @@ class RaggedStructure(ArrayStructure):
         chunks: tuple[str, ...] | None = None,
         dims: int | None = None,
     ) -> Self:
-        if not isinstance(array, ragged.array):
-            array = (
-                ragged.asarray(array.tolist())
-                if hasattr(array, "tolist")
-                else ragged.array(list(array))
-            )
+        array = cls.make_ragged_array(array)
 
         if shape is None:
             shape = array.shape
@@ -50,13 +66,14 @@ class RaggedStructure(ArrayStructure):
         else:
             data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
 
-        content = array._impl.layout  # noqa: SLF001
         offsets = []
 
-        while isinstance(
-            content, (awkward.contents.ListOffsetArray, awkward.contents.ListArray)
-        ):
-            if isinstance(content, awkward.contents.ListOffsetArray):
+        content = array._impl  # noqa: SLF001
+        if hasattr(content, "layout"):
+            content = content.layout
+
+        while isinstance(content, (ListOffsetArray, ListArray)):
+            if isinstance(content, ListOffsetArray):
                 offsets.append(np.array(content.offsets).tolist())
             content = content.content
 
@@ -113,3 +130,22 @@ class RaggedStructure(ArrayStructure):
             }
 
         return build(len(self.offsets))
+
+    def shape_from_slice(self, _slice: NDSlice) -> tuple[int | None, ...]:
+        new_shape: list[int | None] = []
+        for dim, s in enumerate(_slice):
+            if dim >= len(self.shape):
+                break
+            dim_size = self.shape[dim]
+            if isinstance(s, int):
+                continue
+            if isinstance(s, slice):
+                start, stop, step = s.indices(dim_size or sys.maxsize)
+                length = (stop - start + (step - 1)) // step
+                new_shape.append(length)
+            else:
+                raise NotImplementedError(
+                    "Only integer and slice indexing are supported for RaggedStructure"
+                )
+
+        return tuple(new_shape)
