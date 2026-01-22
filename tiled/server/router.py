@@ -1608,6 +1608,7 @@ def get_router(
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
+            created_by=principal.identities[0].id if principal else "",
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
@@ -2107,6 +2108,7 @@ def get_router(
             metadata=metadata,
             specs=specs,
             access_blob=access_blob,
+            updated_by=principal.identities[0].id if principal else "",
             drop_revision=drop_revision,
         )
 
@@ -2183,6 +2185,7 @@ def get_router(
             metadata=metadata,
             specs=specs,
             access_blob=access_blob,
+            updated_by=principal.identities[0].id if principal else "",
             drop_revision=drop_revision,
         )
 
