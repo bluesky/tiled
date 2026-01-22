@@ -75,6 +75,8 @@ class RaggedStructure(ArrayStructure):
         while isinstance(content, (ListOffsetArray, ListArray)):
             if isinstance(content, ListOffsetArray):
                 offsets.append(np.array(content.offsets).tolist())
+            if isinstance(content, ListArray):
+                offsets.append(np.array(content.to_ListOffsetArray64().offsets).tolist())
             content = content.content
 
         size = int(array.size)  # should never not be an int
