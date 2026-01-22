@@ -1269,18 +1269,24 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         """
         Subscribe to streaming updates about this container.
 
-        Returns
-        -------
-        subscription : Subscription
+        Parameters
+        ----------
         executor : concurrent.futures.Executor, optional
             Launches tasks asynchronously, in response to updates. By default,
             a concurrent.futures.ThreadPoolExecutor is used.
+
+        Returns
+        -------
+        subscription : ContainerSubscription
         """
         # Keep this import here to defer the websockets import until/unless needed.
         from .stream import ContainerSubscription
 
         return ContainerSubscription(
-            self.context, self.path_parts, executor, self.structure_clients
+            self.context,
+            self.path_parts,
+            executor,
+            self.structure_clients,
         )
 
 

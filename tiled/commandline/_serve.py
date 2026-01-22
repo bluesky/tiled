@@ -414,7 +414,6 @@ def serve_catalog(
         from ..alembic_utils import stamp_head
         from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
         from ..catalog.core import initialize_database
-        from ..config import StreamingCache
         from ..utils import ensure_specified_sql_driver
 
         database = ensure_specified_sql_driver(database)
@@ -477,6 +476,8 @@ or use an existing one:
         )
 
     if cache_uri:
+        from ..config import StreamingCache
+
         cli_cache_settings = {}
         cli_cache_settings["uri"] = cache_uri
         if cache_data_ttl:

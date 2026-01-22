@@ -3,6 +3,19 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Support for including custom FastAPI routers via a new `routers` configuration
+  field at the server level.
+
+### Changed
+
+- Arrays accessed by `ArrayAdapter`, its subclasses, and related adapters (e.g. `HDF5ArrayAdapter`,
+  `FileSequenceAdapter`) are reshaped by default to match the shape declared in the
+  associated structure, where possible.
+
 ## v0.2.3 (2025-12-17)
 
 ### Added
