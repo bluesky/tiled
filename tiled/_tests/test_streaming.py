@@ -1,5 +1,10 @@
+import asyncio
+import gc
+
 import msgpack
 import numpy as np
+import orjson
+import pytest
 
 from tiled.client import from_context
 from tiled.server import streaming
@@ -68,3 +73,63 @@ def test_websocket_replay_and_live_events(tiled_websocket_context):
         f"/api/v1/stream/close/{node_key}",
         headers={"Authorization": "Apikey secret"},
     )
+
+
+@pytest.mark.asyncio
+async def test_in_memory_cache_datastore_sequence_and_set_get():
+    datastore = streaming.TTLCacheDatastore(
+        {"maxsize": 10, "seq_ttl": 60, "data_ttl": 60}
+    )
+    node_id = "node-1"
+    seq1 = await datastore.incr_seq(node_id)
+    seq2 = await datastore.incr_seq(node_id)
+    assert (seq1, seq2) == (1, 2)
+    assert datastore._seq_cache[node_id] == 2
+
+    metadata = {"type": "array", "shape": [2], "timestamp": "now"}
+    payload = b"payload-bytes"
+    await datastore.set(node_id, seq2, metadata, payload=payload)
+    payload_bytes, metadata_bytes = await datastore.get(
+        f"data:{node_id}:{seq2}", "payload", "metadata"
+    )
+    assert payload_bytes == payload
+    assert orjson.loads(metadata_bytes) == metadata
+
+
+@pytest.mark.asyncio
+async def test_in_memory_cache_datastore_close_sets_end_of_stream():
+    datastore = streaming.TTLCacheDatastore(
+        {"maxsize": 10, "seq_ttl": 60, "data_ttl": 60}
+    )
+    node_id = "node-2"
+    await datastore.close(node_id)
+    payload_bytes, metadata_bytes = await datastore.get(
+        "data:node-2:1", "payload", "metadata"
+    )
+    assert payload_bytes is None
+    assert orjson.loads(metadata_bytes)["end_of_stream"] is True
+
+
+@pytest.mark.asyncio
+async def test_pubsub_fanout_and_cleanup():
+    pubsub = streaming.PubSub()
+    gen1 = pubsub.subscribe("topic")
+    gen2 = pubsub.subscribe("topic")
+
+    task1 = asyncio.create_task(gen1.__anext__())
+    task2 = asyncio.create_task(gen2.__anext__())
+    await pubsub.publish("topic", "hello")
+
+    assert await asyncio.wait_for(task1, timeout=1) == "hello"
+    assert await asyncio.wait_for(task2, timeout=1) == "hello"
+
+    del task1, task2
+    await gen1.aclose()
+    await gen2.aclose()
+    del gen1, gen2
+    for _ in range(5):
+        gc.collect()
+        if "topic" not in pubsub._topics:
+            break
+        await asyncio.sleep(0)
+    assert "topic" not in pubsub._topics
