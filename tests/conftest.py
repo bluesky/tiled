@@ -20,6 +20,7 @@ from tiled.config import Authentication
 from tiled.server.app import build_app
 from tiled.server.settings import get_settings
 from tiled.utils import ensure_specified_sql_driver
+
 from .utils import enter_username_password as utils_enter_uname_passwd
 from .utils import temp_postgres
 
@@ -361,7 +362,7 @@ def build_test_app(tmpdir, redis_uri, public=False):
         init_if_not_exists=True,
         # This uses shorter defaults than the production defaults. Nothing in
         # the test suite should be going on for more than ten minutes.
-        cache_settings={
+        cache_config={
             "uri": redis_uri,
             "data_ttl": 600,  # 10 minutes
             "seq_ttl": 600,  # 10 minutes
