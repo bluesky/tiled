@@ -98,7 +98,6 @@ See {doc}`../explanations/structures` for more context.
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
-   :exclude-members: maketrans
 
    tiled.structures.array.ArrayStructure
    tiled.structures.array.BuiltinDtype
