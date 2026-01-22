@@ -9,7 +9,7 @@ import pyarrow as pa
 import pytest
 import pytest_asyncio
 
-from tiled._tests.utils import temp_postgres
+from tests.utils import temp_postgres
 from tiled.adapters.sql import (
     arrow_schema_to_column_defns,
     arrow_schema_to_create_table,

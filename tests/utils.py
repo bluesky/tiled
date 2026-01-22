@@ -87,12 +87,12 @@ class URL_LIMITS(IntEnum):
 def sqlite_from_dump(filename):
     """Create a SQLite db in a temporary directory, loading a SQL script.
 
-    SQL script should be given as a filename, assumed to be in tiled/_tests/sql/
+    SQL script should be given as a filename, assumed to be in tests/sql/
     """
     with tempfile.TemporaryDirectory() as directory:
         database_path = Path(directory, "catalog.db")
         conn = sqlite3.connect(database_path)
-        ref = resources.files("tiled._tests.sql") / filename
+        ref = resources.files("tests.sql") / filename
         with resources.as_file(ref) as path:
             conn.executescript(path.read_text())
         conn.close()

@@ -4,11 +4,11 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from tiled._tests.adapters.test_sql import adapter_duckdb_many_partitions  # noqa: F401
-from tiled._tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
-from tiled._tests.adapters.test_sql import adapter_psql_many_partitions  # noqa: F401
-from tiled._tests.adapters.test_sql import adapter_psql_one_partition  # noqa: F401
-from tiled._tests.adapters.test_sql import assert_same_rows
+from tests.adapters.test_sql import adapter_duckdb_many_partitions  # noqa: F401
+from tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
+from tests.adapters.test_sql import adapter_psql_many_partitions  # noqa: F401
+from tests.adapters.test_sql import adapter_psql_one_partition  # noqa: F401
+from tests.adapters.test_sql import assert_same_rows
 from tiled.adapters.sql import SQLAdapter
 from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
