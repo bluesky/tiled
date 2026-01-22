@@ -165,6 +165,17 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
+        streaming_cache = server_settings.get("streaming_cache", None)
+        if streaming_cache and streaming_cache["uri"].startswith("memory"):
+            raise UnscalableConfig(
+                dedent(
+                    """
+                    In a scaled (multi-process) deployment, Tiled cannot
+                    use memory as its streaming datastore.
+
+                    """
+                )
+            )
         if authenticators:
             # Even if the deployment allows public, anonymous access, secret
             # keys are needed to generate JWTs for any users that do log in.

@@ -385,6 +385,9 @@ def serve_catalog(
 
     write = write or []
     if temp:
+        if cache_uri is None:
+            # Setup a TTLCache if nothing specified while using the --temp flag
+            cache_uri = "memory"
         if database is not None:
             typer.echo(
                 "The option --temp was set but a database was also provided. "
@@ -414,6 +417,7 @@ def serve_catalog(
         from ..alembic_utils import stamp_head
         from ..catalog.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
         from ..catalog.core import initialize_database
+        from ..config import StreamingCacheConfig
         from ..utils import ensure_specified_sql_driver
 
         database = ensure_specified_sql_driver(database)
@@ -476,25 +480,23 @@ or use an existing one:
         )
 
     if cache_uri:
-        from ..config import StreamingCache
-
-        cli_cache_settings = {}
-        cli_cache_settings["uri"] = cache_uri
+        cli_cache_config = {}
+        cli_cache_config["uri"] = cache_uri
         if cache_data_ttl:
-            cli_cache_settings["data_ttl"] = cache_data_ttl
+            cli_cache_config["data_ttl"] = cache_data_ttl
         if cache_seq_ttl:
-            cli_cache_settings["seq_ttl"] = cache_seq_ttl
+            cli_cache_config["seq_ttl"] = cache_seq_ttl
         # Apply defaults.
-        cache_settings = StreamingCache(**cli_cache_settings).model_dump()
+        cache_config = StreamingCacheConfig(**cli_cache_config).model_dump()
     else:
-        cache_settings = None
+        cache_config = None
 
     tree = from_uri(
         database,
         writable_storage=write,
         readable_storage=read,
         init_if_not_exists=init,
-        cache_settings=cache_settings,
+        cache_config=cache_config,
     )
     web_app = build_app(
         tree,
