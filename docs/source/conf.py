@@ -302,3 +302,8 @@ api = app.openapi()
 
 with open("reference/api.yml", "w") as file:
     yaml.dump(api, file)
+
+# Work around issue with enum str picking up str methods.
+autodoc_default_options = {
+    "exclude-members": "maketrans",
+}
