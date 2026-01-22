@@ -19,6 +19,7 @@ pydantic = ">=2,<3"
 pydantic-settings = ">=2, <2.12.0"
 pyyaml = "*"
 typer = "*"
+obstore = ">=0.8.2,<0.9"
 
 [pypi-dependencies]
 tiled = { path = ".", editable = true }
