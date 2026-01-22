@@ -30,43 +30,7 @@ from .base import Base
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
-class TimedStampedBase:
-    """
-    Base TimeStamp class that gives independent bheavior to Node and Revision classes.
-
-    Mixin for providing timestamps of creation and update time.
-
-    These are not used by application code, but they may be useful for
-    forensics.
-    """
-    time_updated = Column(
-        DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
-    )
-
-    def __repr__(self):
-        return (
-            f"{type(self).__name__}("
-            + ", ".join(
-                f"{key}={value!r}"
-                for key, value in self.__dict__.items()
-                if not key.startswith("_")
-            )
-            + ")"
-        )
-
-
-class Timestamped(TimedStampedBase):
-    """
-    Mixin for providing timestamps of creation and update time.
-
-    These are not used by application code, but they may be useful for
-    forensics.
-    """
-
-    time_created = Column(DateTime(timezone=False), server_default=func.now())
-
-
-class Node(Timestamped, Base):
+class Node(Base):
     """
     This describes a single Node and sometimes inlines descriptions of all its children.
     """
@@ -88,8 +52,10 @@ class Node(Timestamped, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
+    time_updated = Column(DateTime(timezone=False), onupdate=func.now(), server_default=func.now())
     created_by = Column("created_by", String, nullable=False)
-    updated_by = Column("updated_by", String, nullable=False)
+    updated_by = Column("updated_by", String)
 
     data_sources = relationship(
         "DataSource",
@@ -375,8 +341,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob, created_by)
+SELECT 0, '', NULL, 'container', '{}', '[]', '{}', '';
 """
         )
     )
@@ -447,7 +413,7 @@ def create_virtual_table_fits5(target, connection, **kw):
             connection.execute(text(statement))
 
 
-class DataSource(Timestamped, Base):
+class DataSource(Base):
     """
     The describes how to open one or more file/blobs to extract data for a Node.
 
@@ -477,6 +443,8 @@ class DataSource(Timestamped, Base):
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
     structure_family = Column(Enum(StructureFamily), nullable=False)
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
+    time_updated = Column(DateTime(timezone=False), onupdate=func.now(), server_default=func.now())
 
     # many-to-one relationship to Structure
     structure: Mapped["Structure"] = relationship(
@@ -518,7 +486,7 @@ class Structure(Base):
     structure = Column(JSONVariant, nullable=False)
 
 
-class Asset(Timestamped, Base):
+class Asset(Base):
     """
     This tracks individual files/blobs.
     """
@@ -533,6 +501,8 @@ class Asset(Timestamped, Base):
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
     size = Column(Integer, nullable=True)
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
+    time_updated = Column(DateTime(timezone=False), onupdate=func.now(), server_default=func.now())
 
     # # many-to-many relationship to Asset, bypassing the `Association` class
     data_sources: Mapped[List["DataSource"]] = relationship(
@@ -546,7 +516,7 @@ class Asset(Timestamped, Base):
     )
 
 
-class Revision(TimedStampedBase, Base):
+class Revision(Base):
     """
     This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
     """
@@ -565,7 +535,8 @@ class Revision(TimedStampedBase, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
-    updated_by = Column("updated_by", String, nullable=False)
+    time_updated = Column(DateTime(timezone=False), onupdate=func.now(), server_default=func.now())
+    updated_by = Column("updated_by", String, )
 
     __table_args__ = (
         UniqueConstraint(
