@@ -95,16 +95,22 @@ def from_numpy_array(
 
         if offsets:
             indices, *offsets = offsets
-            if len(indices) == 2 and isinstance(indices[0], Iterable):
+            # if the indices are a pair of arrays, we must create a ListArray.
+            # this is needed when slicing over top of a ListOffsetArray.
+            if (
+                len(indices) == 2
+                and isinstance(indices[0], Iterable)
+                and isinstance(indices[1], Iterable)
+            ):
                 return awkward.contents.ListArray(
                     starts=awkward.index.Index(indices[0]),
                     stops=awkward.index.Index(indices[1]),
                     content=rebuild(offsets),
                 )
-            else:
-                return awkward.contents.ListOffsetArray(
-                    offsets=awkward.index.Index(indices), content=rebuild(offsets)
-                )
+
+            return awkward.contents.ListOffsetArray(
+                offsets=awkward.index.Index(indices), content=rebuild(offsets)
+            )
         return awkward.contents.NumpyArray(array)
 
     return ragged.array(rebuild(offsets), dtype=dtype)
