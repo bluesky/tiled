@@ -980,7 +980,8 @@ class CatalogNodeAdapter:
                 SELECT DISTINCT
                     daa.asset_id AS id,
                     ds.management AS management,
-                    ds.parameters AS parameters
+                    ds.parameters->'table_name' AS table_name,
+                    ds.parameters->'dataset_id' AS dataset_id
                 FROM data_source_asset_association daa
                 JOIN data_sources ds ON ds.id = daa.data_source_id
                 JOIN nodes_closure nc ON nc.descendant = ds.node_id
@@ -1000,7 +1001,8 @@ class CatalogNodeAdapter:
             DELETE FROM assets
             USING deletable_assets AS da
             WHERE assets.id = da.id
-            RETURNING da.id, assets.data_uri, assets.is_directory, da.management, da.parameters;
+            RETURNING assets.id, assets.data_uri, assets.is_directory,
+                      da.management, da.table_name, da.dataset_id;
                     """
                 )
                 deleted_asset_records = (
@@ -1014,14 +1016,12 @@ class CatalogNodeAdapter:
                         orm.Asset.is_directory,
                         orm.DataSource.management,
                         # keep only table_name and dataset_id from parameters
-                        func.jsonb_strip_nulls(
-                            func.jsonb_build_object(
-                                "table_name",
-                                orm.DataSource.parameters.op("->")("table_name"),
-                                "dataset_id",
-                                orm.DataSource.parameters.op("->")("dataset_id"),
-                            )
-                        ).label("parameters"),
+                        func.json_extract(
+                            orm.DataSource.parameters, "$.table_name"
+                        ).label("table_name"),
+                        func.json_extract(
+                            orm.DataSource.parameters, "$.dataset_id"
+                        ).label("dataset_id"),
                     )
                     .join(
                         orm.DataSourceAssetAssociation,
@@ -1054,8 +1054,11 @@ class CatalogNodeAdapter:
                     )
                     .distinct()  # may be needed if multiple data_sources point to the same asset
                 )
+
+                # Gather asset records before deleting them, recombine parameters
                 deleted_asset_records = (await db.execute(deletable_assets_stmt)).all()
 
+                # Now delete the gathered assets, if any
                 if asset_ids := set(record[0] for record in deleted_asset_records):
                     await db.execute(
                         delete(orm.Asset).where(orm.Asset.id.in_(asset_ids))
@@ -1071,13 +1074,15 @@ class CatalogNodeAdapter:
                 data_uri,
                 is_directory,
                 management,
-                parameters,
+                table_name,
+                dataset_id,
             ) in deleted_asset_records:
                 if management != Management.external:
                     delete_physical_asset(
                         data_uri,
                         is_directory,
-                        parameters=parameters,
+                        table_name=table_name,
+                        dataset_id=dataset_id,
                     )
 
             return len(set(record[0] for record in deleted_asset_records))
@@ -1423,7 +1428,7 @@ class CatalogTableAdapter(CatalogNodeAdapter):
         )
 
 
-def delete_physical_asset(data_uri, is_directory, parameters=None):
+def delete_physical_asset(data_uri, is_directory, table_name=None, dataset_id=None):
     url = urlparse(data_uri)
     if url.scheme == "file":
         path = path_from_uri(data_uri)
@@ -1432,10 +1437,13 @@ def delete_physical_asset(data_uri, is_directory, parameters=None):
         else:
             Path(path).unlink()
     elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
+        if table_name is None or dataset_id is None:
+            raise ValueError(
+                "To delete a database-backed asset, both table_name and dataset_id "
+                "must be provided in the DataSource parameters."
+            )
         storage = cast(SQLStorage, get_storage(data_uri))
         with closing(storage.connect()) as conn:
-            table_name = parameters.get("table_name") if parameters else None
-            dataset_id = parameters.get("dataset_id") if parameters else None
             with conn.cursor() as cursor:
                 cursor.execute(
                     f'DELETE FROM "{table_name}" WHERE _dataset_id = {dataset_id:d};',
