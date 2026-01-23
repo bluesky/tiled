@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy
 import yaml
 
-from tiled._tests.utils import enter_username_password
+from tests.utils import enter_username_password
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
 

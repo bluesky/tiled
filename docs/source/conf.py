@@ -302,3 +302,14 @@ api = app.openapi()
 
 with open("reference/api.yml", "w") as file:
     yaml.dump(api, file)
+
+
+def skip_maketrans(app, what, name, obj, skip, options):
+    # Work around issue with enum str picking up str methods.
+    if name == "maketrans":
+        return True
+    return skip
+
+
+def setup(app):
+    app.connect("autodoc-skip-member", skip_maketrans)
