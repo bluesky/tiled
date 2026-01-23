@@ -15,9 +15,8 @@ from tiled.client import Context
 from tiled.client.auth import TiledAuth
 from tiled.client.constructors import from_context
 from tiled.client.context import prompt_for_credentials
-from tiled.server.schemas import Principal, PrincipalType
-
 from tiled.server.app import build_app_from_config
+from tiled.server.schemas import Principal, PrincipalType
 
 tree = MapAdapter({})
 

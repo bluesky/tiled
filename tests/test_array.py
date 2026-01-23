@@ -14,6 +14,7 @@ from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context
 from tiled.serialization.array import as_buffer
 from tiled.server.app import build_app
+
 from .utils import fail_with_status_code
 
 array_cases = {

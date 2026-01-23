@@ -20,6 +20,7 @@ from tiled.client.auth import CannotRefreshAuthentication
 from tiled.client.context import PasswordRejected
 from tiled.server import authentication
 from tiled.server.app import build_app_from_config
+
 from .utils import fail_with_status_code
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))

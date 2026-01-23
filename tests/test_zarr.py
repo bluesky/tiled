@@ -18,6 +18,7 @@ from tiled.adapters.mapping import MapAdapter
 from tiled.adapters.zarr import ZARR_LIB_V2
 from tiled.config import Authentication
 from tiled.server.app import build_app
+
 from .utils import Server
 
 url_prefixes = ["/zarr/v2"] if ZARR_LIB_V2 else ["/zarr/v2", "/zarr/v3"]

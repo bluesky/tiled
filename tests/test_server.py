@@ -15,6 +15,7 @@ from tiled.client import from_uri
 from tiled.config import Authentication
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.logging_config import LOGGING_CONFIG
+
 from .utils import Server
 
 router = APIRouter()

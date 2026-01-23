@@ -43,6 +43,7 @@ from tiled.structures.sparse import COOStructure
 from tiled.structures.table import TableStructure
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE, patch_mimetypes, sanitize_uri
 from tiled.validation_registration import ValidationRegistry
+
 from .utils import fail_with_status_code
 
 validation_registry = ValidationRegistry()

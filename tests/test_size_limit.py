@@ -11,6 +11,7 @@ from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
+
 from .utils import fail_with_status_code
 
 tiny_array = numpy.ones(5)

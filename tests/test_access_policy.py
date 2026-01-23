@@ -7,12 +7,11 @@ import respx
 from httpx import Response
 from pydantic import HttpUrl, SecretStr
 
+from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
 from tiled.access_control.scopes import NO_SCOPES
 from tiled.queries import AccessBlobFilter
-from tiled.type_aliases import AccessBlob, AccessTags, Scopes
-
-from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
 from tiled.server.schemas import Principal, PrincipalType
+from tiled.type_aliases import AccessBlob, AccessTags, Scopes
 
 
 @pytest.fixture

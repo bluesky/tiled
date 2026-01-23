@@ -30,6 +30,7 @@ from tiled.server.app import build_app
 from tiled.structures.array import ArrayStructure
 from tiled.structures.data_source import Asset, DataSource, Management
 from tiled.utils import ensure_uri, path_from_uri
+
 from .utils import fail_with_status_code
 
 

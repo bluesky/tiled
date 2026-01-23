@@ -10,6 +10,7 @@ from tiled.access_control.access_tags import AccessTagsCompiler
 from tiled.access_control.scopes import ALL_SCOPES
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
+
 from .utils import enter_username_password, fail_with_status_code
 
 arr = numpy.ones((5, 5))

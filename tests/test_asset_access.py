@@ -14,6 +14,7 @@ from tiled.client import Context, from_context
 from tiled.client.utils import get_asset_filepaths
 from tiled.server.app import build_app
 from tiled.utils import path_from_uri
+
 from .utils import fail_with_status_code
 
 
