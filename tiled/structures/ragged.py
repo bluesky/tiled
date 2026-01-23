@@ -4,8 +4,6 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from tiled.ndslice import NDSlice
-
 if sys.version_info >= (3, 11):
     from typing import Self
 else:
@@ -14,13 +12,7 @@ else:
 import awkward
 import numpy as np
 import ragged
-from awkward.contents import (
-    EmptyArray,
-    ListArray,
-    ListOffsetArray,
-    NumpyArray,
-    RegularArray,
-)
+from awkward.contents import ListArray, ListOffsetArray
 
 from tiled.structures.array import ArrayStructure, BuiltinDtype, StructDtype
 
