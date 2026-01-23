@@ -8,12 +8,12 @@ import ragged
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.serialization.ragged import (
-    from_flattened_array,
-    from_flattened_octet_stream,
+    from_numpy_array,
+    from_numpy_octet_stream,
     from_json,
     from_zipped_buffers,
-    to_flattened_array,
-    to_flattened_octet_stream,
+    to_numpy_array,
+    to_numpy_octet_stream,
     to_json,
     to_zipped_buffers,
 )
@@ -59,19 +59,10 @@ arrays = {
     "regular_2d": ragged.array(RNG.random((3, 5)).tolist()),
     "regular_3d": ragged.array(RNG.random((2, 3, 4)).tolist()),
     "regular_4d": ragged.array(RNG.random((2, 3, 2, 3)).tolist()),
-    "ragged_a": ragged.array(
-        [RNG.random(3), RNG.random(5), RNG.random(8)],
-    ),
-    "ragged_b": ragged.array(
-        [RNG.random((2, 3, 4)), RNG.random((3, 4, 5))],
-    ),
+    "ragged_a": ragged.array([RNG.random(3), RNG.random(5), RNG.random(8)]),
+    "ragged_b": ragged.array([RNG.random((2, 3, 4)), RNG.random((3, 4, 5))]),
     "ragged_c": ragged.array(
-        [
-            [RNG.random(10)],
-            [RNG.random(8), []],
-            [RNG.random(5), RNG.random(2)],
-            [[], RNG.random(7)],
-        ],
+        [[RNG.random(10)], [RNG.random(8), []], [RNG.random(5), RNG.random(2)], [[], RNG.random(7)]]
     ),
     "ragged_d": ragged.array(
         [
@@ -79,7 +70,7 @@ arrays = {
             [RNG.random((2, 8)), [[]]],
             [RNG.random((5, 2)), RNG.random((3, 3))],
             [[[]], RNG.random((7, 1))],
-        ],
+        ]
     ),
 }
 
@@ -88,7 +79,7 @@ arrays = {
 def test_structure(name):
     array = arrays[name]
     expected_form, expected_len, expected_nodes = ak.to_buffers(
-        array._impl,  # noqa: SLF001
+        array._impl  # noqa: SLF001
     )
 
     structure = RaggedStructure.from_array(array)
@@ -106,42 +97,26 @@ def test_serialization_roundtrip(name):
 
     # Test JSON serialization.
     json_contents = to_json("application/json", array, metadata={})
-    array_from_json = from_json(
-        json_contents,
-        dtype=array.dtype.type,
-        offsets=structure.offsets,
-        shape=structure.shape,
-    )
+    array_from_json = from_json(json_contents, dtype=array.dtype.type, offsets=structure.offsets, shape=structure.shape)
     assert ak.array_equal(array._impl, array_from_json._impl)  # noqa: SLF001
 
-    # Test flattened numpy array.
-    flattened_array = to_flattened_array(array)
-    array_from_flattened = from_flattened_array(
-        flattened_array,
-        dtype=array.dtype.type,
-        offsets=structure.offsets,
-        shape=structure.shape,
+    # Test reduced/flattened numpy array.
+    reduced_array = to_numpy_array(array)
+    array_from_flattened = from_numpy_array(
+        reduced_array, dtype=array.dtype.type, offsets=structure.offsets, shape=structure.shape
     )
     assert ak.array_equal(array._impl, array_from_flattened._impl)  # noqa: SLF001
 
     # Test flattened octet-stream serialization.
-    octet_stream_contents = to_flattened_octet_stream(
-        "application/octet-stream", array, metadata={}
-    )
-    array_from_octet_stream = from_flattened_octet_stream(
-        octet_stream_contents,
-        dtype=array.dtype.type,
-        offsets=structure.offsets,
-        shape=structure.shape,
+    octet_stream_contents = to_numpy_octet_stream("application/octet-stream", array, metadata={})
+    array_from_octet_stream = from_numpy_octet_stream(
+        octet_stream_contents, dtype=array.dtype.type, offsets=structure.offsets, shape=structure.shape
     )
     assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
 
     # Test flattened octet-stream serialization.
     octet_stream_contents = to_zipped_buffers("application/zip", array, metadata={})
-    array_from_octet_stream = from_zipped_buffers(
-        octet_stream_contents,
-        dtype=array.dtype.type,
-    )
+    array_from_octet_stream = from_zipped_buffers(octet_stream_contents, dtype=array.dtype.type)
     assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
 
 

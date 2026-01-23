@@ -9,7 +9,7 @@ import ragged
 from tiled.adapters.ragged import RaggedAdapter
 from tiled.adapters.resource_cache import with_resource_cache
 from tiled.ndslice import NDSlice
-from tiled.serialization.ragged import from_flattened_array, to_flattened_array
+from tiled.serialization.ragged import from_numpy_array, to_numpy_array
 from tiled.storage import FileStorage, Storage
 from tiled.structures.core import Spec
 from tiled.structures.data_source import Asset, DataSource
@@ -40,17 +40,6 @@ class RaggedNPYAdapter(RaggedAdapter):
         data_source: DataSource[RaggedStructure],
         path_parts: list[str],
     ) -> DataSource[RaggedStructure]:
-        """
-
-        Parameters
-        ----------
-        data_uri :
-        structure :
-
-        Returns
-        -------
-
-        """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
@@ -69,7 +58,7 @@ class RaggedNPYAdapter(RaggedAdapter):
     def read(self, slice: NDSlice = NDSlice(...)) -> ragged.array:
         cache_key = (numpy.load, self._filepath)
         data = with_resource_cache(cache_key, numpy.load, self._filepath)
-        array = from_flattened_array(
+        array = from_numpy_array(
             data,
             self._structure.data_type.to_numpy_dtype(),
             self._structure.offsets,
@@ -91,5 +80,5 @@ class RaggedNPYAdapter(RaggedAdapter):
         -------
 
         """
-        data = to_flattened_array(array)
+        data = to_numpy_array(array)
         numpy.save(self._filepath, data)

@@ -8,10 +8,8 @@ import ragged
 from tiled.client.base import BaseClient
 from tiled.client.utils import chunks_repr, export_util, handle_error, retry_context
 from tiled.ndslice import NDSlice
-from tiled.serialization.ragged import (
-    from_zipped_buffers,
-    to_flattened_octet_stream,
-)
+from tiled.serialization.ragged import from_numpy_octet_stream, from_zipped_buffers, to_numpy_octet_stream
+
 
 if TYPE_CHECKING:
     import awkward as ak
@@ -32,7 +30,7 @@ class RaggedClient(BaseClient):
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=to_flattened_octet_stream(
+                        content=to_numpy_octet_stream(
                             mimetype=mimetype,
                             array=array,
                             metadata={},
@@ -49,20 +47,32 @@ class RaggedClient(BaseClient):
         structure = cast("RaggedStructure", self.structure())
         url_path = self.item["links"]["full"]
         url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
+
         if isinstance(slice, NDSlice):
             url_params["slice"] = slice.to_numpy_str()
+            mime = "application/zip"
+        else:
+            mime = "application/octet-stream"
+
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.get(
                         url_path,
-                        headers={"Accept": "application/zip"},
+                        headers={"Accept": mime},
                         params=url_params,
                     ),
                 ).read()
-        return from_zipped_buffers(
+        if mime == "application/zip":
+            return from_zipped_buffers(
+                buffer=content,
+                dtype=structure.data_type.to_numpy_dtype(),
+            )
+        return from_numpy_octet_stream(
             buffer=content,
             dtype=structure.data_type.to_numpy_dtype(),
+            offsets=structure.offsets,
+            shape=structure.shape,
         )
 
     def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
@@ -70,14 +80,14 @@ class RaggedClient(BaseClient):
         raise NotImplementedError
 
     def __getitem__(
-        self, slice: NDSlice
+        self, _slice: NDSlice
     ) -> ragged.array:  # this is true even when slicing to return a single item
         # TODO: should we be smarter, and return the scalar rather a singular array
-        if isinstance(slice, tuple):
-            slice = NDSlice(*slice)
-        if not isinstance(slice, NDSlice):
-            slice = NDSlice(slice)
-        return self.read(slice=slice)
+        if isinstance(_slice, tuple):
+            _slice = NDSlice(*_slice)
+        if not isinstance(_slice, NDSlice):
+            _slice = NDSlice(_slice)
+        return self.read(slice=_slice)
 
     def export(self, filepath, *, format=None):
         return export_util(

@@ -27,11 +27,20 @@ from tiled.structures.array import ArrayStructure, BuiltinDtype, StructDtype
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
+OffsetArrayType = list[int]
+"""Represents a list of offsets for ``awkward.contents.ListOffsetArray`` layouts."""
+StartAndStopArraysType = tuple[list[int], list[int]]
+"""Represents a pair of lists, ``[starts, stops]``, for ``awkward.contents.ListArray`` layouts.
+
+While ``ListArray`` is convertible to ``ListOffsetArray``, we need this to retain information
+when slicing and dicing ragged arrays.
+"""
+
 
 @dataclass(kw_only=True)
 class RaggedStructure(ArrayStructure):
     shape: tuple[int | None, ...]  # type: ignore[reportIncompatibleVariableOverride]
-    offsets: list[list[int]]
+    offsets: list[OffsetArrayType | StartAndStopArraysType]
     size: int
 
     @staticmethod
@@ -66,7 +75,7 @@ class RaggedStructure(ArrayStructure):
         else:
             data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
 
-        offsets = []
+        offsets: list[OffsetArrayType | StartAndStopArraysType] = []
 
         content = array._impl  # noqa: SLF001
         if hasattr(content, "layout"):
@@ -76,7 +85,9 @@ class RaggedStructure(ArrayStructure):
             if isinstance(content, ListOffsetArray):
                 offsets.append(np.array(content.offsets).tolist())
             if isinstance(content, ListArray):
-                offsets.append(np.array(content.to_ListOffsetArray64().offsets).tolist())
+                start = np.array(content.starts).tolist()
+                stop = np.array(content.stops).tolist()
+                offsets.append([start, stop])
             content = content.content
 
         size = int(array.size)  # should never not be an int
@@ -132,22 +143,3 @@ class RaggedStructure(ArrayStructure):
             }
 
         return build(len(self.offsets))
-
-    def shape_from_slice(self, _slice: NDSlice) -> tuple[int | None, ...]:
-        new_shape: list[int | None] = []
-        for dim, s in enumerate(_slice):
-            if dim >= len(self.shape):
-                break
-            dim_size = self.shape[dim]
-            if isinstance(s, int):
-                continue
-            if isinstance(s, slice):
-                start, stop, step = s.indices(dim_size or sys.maxsize)
-                length = (stop - start + (step - 1)) // step
-                new_shape.append(length)
-            else:
-                raise NotImplementedError(
-                    "Only integer and slice indexing are supported for RaggedStructure"
-                )
-
-        return tuple(new_shape)
