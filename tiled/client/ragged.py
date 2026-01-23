@@ -8,8 +8,11 @@ import ragged
 from tiled.client.base import BaseClient
 from tiled.client.utils import chunks_repr, export_util, handle_error, retry_context
 from tiled.ndslice import NDSlice
-from tiled.serialization.ragged import from_numpy_octet_stream, from_zipped_buffers, to_numpy_octet_stream
-
+from tiled.serialization.ragged import (
+    from_numpy_octet_stream,
+    from_zipped_buffers,
+    to_numpy_octet_stream,
+)
 
 if TYPE_CHECKING:
     import awkward as ak
