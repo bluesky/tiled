@@ -55,7 +55,7 @@ class Node(Base):
     time_created = Column(DateTime(timezone=False), server_default=func.now())
     time_updated = Column(DateTime(timezone=False), onupdate=func.now(), server_default=func.now())
     created_by = Column("created_by", String, nullable=False)
-    updated_by = Column("updated_by", String)
+    updated_by = Column("updated_by", String, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -341,8 +341,8 @@ EXECUTE FUNCTION update_closure_table_when_inserting();
     connection.execute(
         text(
             """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob, created_by)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}', '';
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob, created_by, updated_by)
+SELECT 0, '', NULL, 'container', '{}', '[]', '{}', '', '';
 """
         )
     )
