@@ -2091,7 +2091,7 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
+                access_blob_modified, access_blob = await policy.modify_node(
                     entry, principal, authn_access_tags, authn_scopes, access_blob
                 )
             except ValueError as e:
@@ -2168,7 +2168,7 @@ def get_router(
             policy, "modify_node"
         ):
             try:
-                (access_blob_modified, access_blob) = await policy.modify_node(
+                access_blob_modified, access_blob = await policy.modify_node(
                     entry, principal, authn_access_tags, authn_scopes, access_blob
                 )
             except ValueError as e:

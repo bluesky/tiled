@@ -404,28 +404,18 @@ class CatalogNodeAdapter:
 
         if self.context.engine.dialect.name == "postgresql":
             async with self.context.session() as db:
-                parent_and_freqs = await db.execute(
-                    text(
-                        """
+                parent_and_freqs = await db.execute(text("""
                 SELECT unnest(most_common_vals::text::int[])::int AS parent,
                        unnest(most_common_freqs) AS freq
                 FROM pg_stats
                 WHERE schemaname = 'public' AND tablename = 'nodes' AND attname = 'parent';
-                                """
-                    )
-                )
+                                """))
                 for parent, freq in parent_and_freqs:
                     if parent == self.node.id:
-                        total = (
-                            await db.execute(
-                                text(
-                                    """
+                        total = (await db.execute(text("""
                             SELECT reltuples::bigint FROM pg_class
                             WHERE  oid = 'public.nodes'::regclass;
-                                            """
-                                )
-                            )
-                        ).scalar_one()
+                                            """))).scalar_one()
                         return int(total * freq)
                 else:
                     return None  # Statistics can not be obtained
@@ -1033,7 +1023,13 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def replace_metadata(
-        self, metadata=None, specs=None, access_blob=None, updated_by="", *, drop_revision=False
+        self,
+        metadata=None,
+        specs=None,
+        access_blob=None,
+        updated_by="",
+        *,
+        drop_revision=False,
     ):
         values = {}
         if metadata is not None:
