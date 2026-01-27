@@ -50,9 +50,9 @@ def upgrade():
     # only enforces it if the FK constraint was actually created with ON DELETE CASCADE.
     # If the constraint already existed, nothing changes in the database.
     # https://stackoverflow.com/a/10356720
+    # The following uses ALTER TABLE with NOT VALID to guarantee zero/low downtime.
 
     if connection.dialect.name == "postgresql":
-        # PostgreSQL: direct ALTER TABLE, zero/low downtime
         # 2.1. nodes.parent -> nodes.id (ON DELETE CASCADE)
         op.execute(
             """
@@ -126,11 +126,15 @@ def upgrade():
         )
 
     # 3. Drop the unique constraint on (ancestor, descendant) in nodes_closure (satisfied by PK)
-    with op.batch_alter_table("nodes_closure") as batch_op:
-        batch_op.drop_constraint(
-            "ancestor_descendant_unique_constraint", type_="unique"
+    # Skip for SQLite as these changes conflict with pre-defined triggers.
+    if connection.dialect.name == "postgresql":
+        op.execute(
+            """
+            ALTER TABLE nodes_closure
+            DROP CONSTRAINT IF EXISTS ancestor_descendant_unique_constraint
+        """
         )
-    logger.info("Dropped unique constraint on (ancestor, descendant) in nodes_closure.")
+        logger.info("Dropped unique constraint on (ancestor, descendant) in nodes_closure.")    
 
     # 4. Drop redundant indices if they exist (satisfied by PKs)
     op.drop_index("ix_data_sources_id")
