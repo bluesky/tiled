@@ -306,7 +306,11 @@ with open("reference/api.yml", "w") as file:
 
 def skip_maketrans(app, what, name, obj, skip, options):
     # Work around issue with enum str picking up str methods.
-    if name == "maketrans":
+    if (
+        name == "maketrans"
+        or (getattr(obj, "__objclass__", None) is str)
+        and (name in dir(str))
+    ):
         return True
     return skip
 
