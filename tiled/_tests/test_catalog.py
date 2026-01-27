@@ -618,6 +618,7 @@ async def test_delete_sql_assets(sql_storage_uri):
                 assert cursor.fetchone()[0] == 3
 
         # Delete all children of b1 (tables t1 and t2), but not b1 itself.
+        # breakpoint()
         client["a"]["b1"].delete_contents(
             client["a"]["b1"].keys(), recursive=True, external_only=False
         )
