@@ -6,8 +6,6 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from tiled.client.auth import TiledAuth
-
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
 from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
@@ -92,8 +90,14 @@ For non-interactive authentication, use an API key or add custom auth
         timeout=timeout,
         verify=verify,
     )
-    if isinstance(auth, httpx.Auth):
-        context.http_client.auth = auth
+    if auth is not None:
+        if isinstance(auth, httpx.Auth):
+            context.http_client.auth = auth
+            context.has_external_auth = True
+        else:
+            raise ValueError(
+                f"Tiled client auth parameter has been set with {type(auth)} httpx.Auth or None allowed"
+            )
     return from_context(
         context,
         structure_clients=structure_clients,
@@ -144,10 +148,8 @@ def from_context(
     >>> c = from_uri("...", api_key="...")
     """
             )
-        has_external_auth = not isinstance(
-            context.http_client.auth, TiledAuth
-        ) and isinstance(context.http_client.auth, httpx.Auth)
-        if has_providers and not has_external_auth:
+
+        if has_providers and not context.has_external_auth:
             found_valid_tokens = remember_me and context.use_cached_tokens()
             if (not found_valid_tokens) and auth_is_required:
                 context.authenticate(remember_me=remember_me)
