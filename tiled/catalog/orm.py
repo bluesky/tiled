@@ -63,7 +63,7 @@ class Node(Timestamped, Base):
     __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the client.
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     parent = Column(
         Integer,
         ForeignKey("nodes.id", name="fk_nodes_parent", ondelete="CASCADE"),
@@ -125,10 +125,8 @@ class NodesClosure(Base):
     )
     depth = Column(Integer, nullable=False)
 
+    # Define separate indices on ancestor and descendant for efficient lookups
     __table_args__ = (
-        UniqueConstraint(
-            "ancestor", "descendant", name="ancestor_descendant_unique_constraint"
-        ),
         Index("idx_nodes_closure_ancestor", "ancestor"),
         Index("idx_nodes_closure_descendant", "descendant"),
     )
@@ -154,10 +152,12 @@ class DataSourceAssetAssociation(Base):
     data_source_id: Mapped[int] = mapped_column(
         ForeignKey("data_sources.id", ondelete="CASCADE"),
         primary_key=True,
+        index=True,  # Critical for anti-joins, delete cascades
     )
     asset_id: Mapped[int] = mapped_column(
         ForeignKey("assets.id", ondelete="CASCADE"),
         primary_key=True,
+        index=True,  # Useful for scanning assets per datasource
     )
     parameter = Column(Unicode(255), nullable=True)
     num = Column(Integer, nullable=True)
@@ -170,6 +170,7 @@ class DataSourceAssetAssociation(Base):
     )
 
     __table_args__ = (
+        # Enforces correctness for adapter construction
         UniqueConstraint(
             "data_source_id",
             "parameter",
@@ -449,7 +450,7 @@ class DataSource(Timestamped, Base):
     __tablename__ = "data_sources"
     __mapper_args__ = {"eager_defaults": True}
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     node_id = Column(
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -486,6 +487,9 @@ class DataSource(Timestamped, Base):
         order_by=[DataSourceAssetAssociation.parameter, DataSourceAssetAssociation.num],
     )
 
+    # Index to support efficient lookups of assets per datasource
+    __table_args__ = (Index("idx_data_sources_id_node", "id", "node_id"),)
+
 
 class Structure(Base):
     """
@@ -512,7 +516,7 @@ class Asset(Timestamped, Base):
     __tablename__ = "assets"
     __mapper_args__ = {"eager_defaults": True}
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
     data_uri = Column(Unicode(1023), index=True, unique=True)
     is_directory = Column(Boolean, nullable=False)
@@ -541,7 +545,7 @@ class Revision(Timestamped, Base):
     __mapper_args__ = {"eager_defaults": True}
 
     # This id is internal, never exposed to the client.
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
     node_id = Column(
         Integer, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
