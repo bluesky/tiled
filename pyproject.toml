@@ -153,7 +153,6 @@ dev = [
     "aiohttp",
     "coverage",
     "flake8",
-    "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
     "locust",
