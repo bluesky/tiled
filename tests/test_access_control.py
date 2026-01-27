@@ -675,10 +675,10 @@ def test_deletion_access_control(access_control_test_context_factory):
 
 async def coro_test(c, keys):
     asyncio.sleep(0.5)
-    dy = await c.context.http_client.app.state.root_tree[keys[0]].lookup_adapter(
+    child_node = await c.context.http_client.app.state.root_tree[keys[0]].lookup_adapter(
         [keys[1]]
     )
-    return dy
+    return child_node
 
 
 def test_created_and_updated_info(access_control_test_context_factory):
@@ -693,13 +693,13 @@ def test_created_and_updated_info(access_control_test_context_factory):
     top = "foo"
     for data in ["data_M"]:
         # Create a new node and check created_by and updated_by
-        alice_client[top].write_array(
+        chris_client[top].write_array(
             arr,
             key=data,
             metadata={"description": "initial"},
-            access_tags=["alice_tag"],
+            access_tags=["chris_tag"],
         )
-        coro_obj = coro_test(alice_client, [top, data])
+        coro_obj = coro_test(chris_client, [top, data])
         result = asyncio.run(coro_obj)
         assert result.node.created_by == "alice"
         assert result.node.updated_by == "alice"
