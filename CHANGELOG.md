@@ -16,6 +16,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `FileSequenceAdapter`) are reshaped by default to match the shape declared in the
   associated structure, where possible.
 
+### Fixed
+
+- Slow performance when deleting nodes in large catalogs with many nodes.
+
 ## v0.2.3 (2025-12-17)
 
 ### Added
