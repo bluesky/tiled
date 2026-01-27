@@ -1,74 +1,56 @@
+---
+html_theme.sidebar_secondary.remove: true
+---
+
 ```{include} ../../README.md
+:end-before: <!-- README only content
 ```
 
+<!-- https://sphinx-design.readthedocs.io/en/latest/grids.html -->
+
+<!-- prettier-ignore-start -->
+
+::::{grid} 2
+:gutter: 4
+
+:::{grid-item-card} {material-regular}`directions_walk;2em`
 ```{toctree}
-:caption: Tutorials
-
-tutorials/installation
-tutorials/navigation
-tutorials/slicing
-tutorials/export
-tutorials/login
-tutorials/serving-files
-tutorials/search
-tutorials/writing
-tutorials/streaming
-tutorials/simple-server
-tutorials/plotly-integration
-tutorials/zarr-integration
+:maxdepth: 2
+tutorials
 ```
++++
+Tutorials for installation and typical usage.
+:::
 
+:::{grid-item-card} {material-regular}`directions;2em`
 ```{toctree}
-:caption: How To Guides
-
-how-to/authentication
-how-to/profiles
-how-to/client-logger
-how-to/docker
-how-to/helm
-how-to/configuration
-how-to/read-custom-formats
-how-to/custom-export-formats
-how-to/api-keys
-how-to/custom-clients
-how-to/metrics
-how-to/direct-client
-how-to/tiled-authn-database
-how-to/register
-how-to/retries
+:maxdepth: 2
+how-to
 ```
++++
+Practical step-by-step guides and more advanced examples.
+:::
 
+:::{grid-item-card} {material-regular}`info;2em`
 ```{toctree}
-:caption: Explanations
-
-explanations/architecture
-explanations/standards
-explanations/structures
-explanations/metadata
-explanations/security
-explanations/compression
-explanations/specialized-formats
-explanations/caching
-explanations/access-control
-explanations/catalog
-explanations/faq
-explanations/roadmap
-explanations/lineage
-explanations/storage-database
+:maxdepth: 2
+explanations
 ```
++++
+Explanations of how it works and why it works that way.
+:::
 
+:::{grid-item-card} {material-regular}`menu_book;2em`
 ```{toctree}
-:caption: Reference
-
-reference/service
-reference/http-api-overview
-reference/python-client
-reference/queries
-reference/authentication
-reference/scopes
-reference/commandline
-reference/service-configuration
-reference/client-profiles
-reference/release-history
-reference/min-versions
+:maxdepth: 2
+reference
 ```
++++
+Technical reference material including APIs and release notes.
+:::
+
+::::
+
+<!-- prettier-ignore-end -->
+
+[Tiled]: https://blueskyproject.io/tiled
