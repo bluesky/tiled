@@ -1468,7 +1468,7 @@ def delete_physical_asset(
         else:
             Path(path).unlink()
     elif url.scheme in {"duckdb", "sqlite", "postgresql"}:
-        if table_name is not None or dataset_id is not None:
+        if (table_name is not None) and (dataset_id is not None):
             storage = cast(SQLStorage, get_storage(data_uri))
             with closing(storage.connect()) as conn:
                 with conn.cursor() as cursor:
