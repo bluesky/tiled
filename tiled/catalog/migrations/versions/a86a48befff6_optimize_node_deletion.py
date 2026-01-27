@@ -134,7 +134,9 @@ def upgrade():
             DROP CONSTRAINT IF EXISTS ancestor_descendant_unique_constraint
         """
         )
-        logger.info("Dropped unique constraint on (ancestor, descendant) in nodes_closure.")    
+        logger.info(
+            "Dropped unique constraint on (ancestor, descendant) in nodes_closure."
+        )
 
     # 4. Drop redundant indices if they exist (satisfied by PKs)
     op.drop_index("ix_data_sources_id")
