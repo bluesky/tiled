@@ -168,7 +168,7 @@ def sqlite_or_postgres_uri(request):
     yield request.getfixturevalue(request.param)
 
 
-@pytest.fixture(params=["sqlite_uri"])  # , "duckdb_uri", "postgres_uri"])
+@pytest.fixture(params=["sqlite_uri", "duckdb_uri", "postgres_uri"])
 def sql_storage_uri(request):
     yield request.getfixturevalue(request.param)
 
