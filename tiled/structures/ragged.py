@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -13,6 +13,7 @@ import awkward
 import numpy as np
 import ragged
 from awkward.contents import ListArray, ListOffsetArray
+from dask.array.core import normalize_chunks
 
 from tiled.structures.array import ArrayStructure, BuiltinDtype, StructDtype
 
@@ -54,15 +55,26 @@ class RaggedStructure(ArrayStructure):
         cls,
         array: Iterable,
         shape: tuple[int | None, ...] | None = None,
-        chunks: tuple[str, ...] | None = None,
+        chunks: tuple[tuple[int, ...] | Literal["auto"], ...]
+        | Literal["auto"]
+        | None = None,
         dims: int | None = None,
     ) -> Self:
         array = cls.make_ragged_array(array)
 
         if shape is None:
             shape = array.shape
-        if chunks is None:
+        if chunks in (None, "auto"):
             chunks = ("auto",) * len(shape)
+
+        size = int(array.size)  # should never not be an int
+
+        # coerce chunk data into something reasonable from an indeterminate shape
+        # TODO: write custom function using `ak.num(array, axis=N)`
+        shape_for_chunks = tuple(s if s is not None else size for s in shape)
+        chunks = normalize_chunks(
+            chunks, shape=shape_for_chunks, limit=size, dtype=array.dtype
+        )
 
         if array.dtype.fields is not None:
             data_type = StructDtype.from_numpy_dtype(array.dtype)
@@ -83,8 +95,6 @@ class RaggedStructure(ArrayStructure):
                 stop = np.array(content.stops).tolist()
                 offsets.append([start, stop])
             content = content.content
-
-        size = int(array.size)  # should never not be an int
 
         return cls(
             data_type=data_type,

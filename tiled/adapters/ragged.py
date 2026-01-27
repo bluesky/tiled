@@ -8,7 +8,6 @@ if sys.version_info >= (3, 11):
 else:
     from typing_extensions import Self
 
-import numpy as np
 import ragged
 
 from tiled.adapters.core import Adapter
@@ -81,12 +80,7 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         -------
 
         """
-        array = (
-            ragged.array(list(array))
-            if isinstance(array, np.ndarray)
-            else ragged.asarray(array)
-        )
-
+        array = RaggedStructure.make_ragged_array(array)
         structure = RaggedStructure.from_array(array)
         return cls(
             array,

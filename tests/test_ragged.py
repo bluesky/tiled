@@ -1,10 +1,17 @@
+from collections.abc import Callable
+from typing import cast
+
 import awkward as ak
 import numpy as np
+import pyarrow as pa
 import pyarrow.feather
 import pyarrow.parquet
 import pytest
 import ragged
 
+from tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
+from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.sql import SQLAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.serialization.ragged import (
@@ -18,7 +25,11 @@ from tiled.serialization.ragged import (
     to_zipped_buffers,
 )
 from tiled.server.app import build_app
+from tiled.storage import SQLStorage, parse_storage, register_storage
+from tiled.structures.core import StructureFamily
+from tiled.structures.data_source import DataSource, Management
 from tiled.structures.ragged import RaggedStructure
+from tiled.structures.table import TableStructure
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 
 
@@ -226,3 +237,84 @@ def test_export_parquet(tmpdir, client, name):
     actual = pyarrow.parquet.read_table(filepath)
     expected = ak.to_arrow_table(array._impl)  # noqa: SLF001
     assert actual == expected
+
+
+#
+# extend existing SQLAdapter tests
+#
+
+
+# NOTE: Arrow seems to only accept 2-dimensional arrays
+
+arrow_keys = "a", "b"
+arrow_data_0 = [
+    pa.array([RNG.random(size=RNG.integers(1, 10)) for _ in range(3)]),
+    pa.array([RNG.random(size=RNG.integers(2, 22)) for _ in range(3)]),
+]
+
+arrow_data_1 = [
+    pa.array([RNG.random(size=RNG.integers(1, 10)) for _ in range(6)]),
+    pa.array([RNG.random(size=RNG.integers(2, 22)) for _ in range(6)]),
+]
+
+arrow_batch_0 = pa.record_batch(arrow_data_0, arrow_keys)
+arrow_batch_n = pa.record_batch(arrow_data_1, arrow_keys)
+
+
+@pytest.fixture
+def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStructure]]:
+    def _data_source_from_init_storage(
+        data_uri: str, num_partitions: int
+    ) -> DataSource[TableStructure]:
+        table = pa.Table.from_arrays(arrow_data_0, arrow_keys)
+        structure = TableStructure.from_arrow_table(table, npartitions=num_partitions)
+        data_source = DataSource(
+            management=Management.writable,
+            mimetype="application/x-tiled-sql-table",
+            structure_family=StructureFamily.table,
+            structure=structure,
+            assets=[],
+        )
+
+        storage = cast("SQLStorage", parse_storage(data_uri))
+        register_storage(storage)
+        return SQLAdapter.init_storage(data_source=data_source, storage=storage)
+
+    return _data_source_from_init_storage
+
+
+@pytest.fixture
+def context_from_adapter(
+    adapter_duckdb_one_partition,  # noqa: F811
+):
+    table = pa.Table.from_batches([arrow_batch_0, arrow_batch_n])
+    adapter_duckdb_one_partition.append_partition(0, table)
+    adapter = MapAdapter({"foo": adapter_duckdb_one_partition})
+    app = build_app(adapter)
+    with Context.from_app(app) as context:
+        yield context
+
+
+@pytest.fixture
+def client_from_adapter(
+    context_from_adapter,
+):
+    return from_context(context_from_adapter, include_data_sources=True)
+
+
+@pytest.mark.parametrize("name", arrow_keys)
+def test_read_ragged_array_from_sql(
+    client_from_adapter,
+    name: str,
+) -> None:
+    client = client_from_adapter[f"foo/{name}"]
+    result = client.read()
+
+    index = arrow_keys.index(name)
+    expected = ragged.array(
+        [
+            *arrow_data_0[index].tolist(),
+            *arrow_data_1[index].tolist(),
+        ]
+    )
+    assert ak.array_equal(result._impl, expected._impl)  # noqa: SLF001
