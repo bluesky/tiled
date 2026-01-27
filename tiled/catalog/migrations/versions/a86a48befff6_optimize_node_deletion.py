@@ -46,14 +46,14 @@ def upgrade():
     logger.info("Dropped triggers and functions for maintaining the closure table.")
 
     # 2. Recreate constraints with ON DELETE CASCADE
-    # Even though ondelete="CASCADE" have been declared in the ORM, Postgres (and SQLite)
+    # Even though ondelete="CASCADE" have been declared in the ORM, PostgreSQL
     # only enforces it if the FK constraint was actually created with ON DELETE CASCADE.
     # If the constraint already existed, nothing changes in the database.
     # https://stackoverflow.com/a/10356720
 
     if connection.dialect.name == "postgresql":
         # PostgreSQL: direct ALTER TABLE, zero/low downtime
-        # ---- nodes.parent -> nodes.id (ON DELETE CASCADE) ----
+        # 2.1. nodes.parent -> nodes.id (ON DELETE CASCADE)
         op.execute(
             """
             ALTER TABLE nodes
@@ -72,7 +72,7 @@ def upgrade():
         """
         )
 
-        # ---- nodes_closure FKs ----
+        # 2.2. nodes_closure FKs
         op.execute(
             """
             ALTER TABLE nodes_closure
@@ -124,42 +124,6 @@ def upgrade():
             VALIDATE CONSTRAINT nodes_closure_descendant_fkey
         """
         )
-
-    else:
-        # SQLite / others: batch mode
-        # ---- nodes.parent -> nodes.id (ON DELETE CASCADE) ----
-        with op.batch_alter_table("nodes") as batch_op:
-            batch_op.drop_constraint("fk_nodes_parent", type_="foreignkey")
-            batch_op.create_foreign_key(
-                "fk_nodes_parent",
-                referent_table="nodes",
-                local_cols=["parent"],
-                remote_cols=["id"],
-                ondelete="CASCADE",
-            )
-        logger.info("Recreated fk_nodes_parent with ON DELETE CASCADE.")
-
-        # ---- nodes_closure FKs ----
-        with op.batch_alter_table("nodes_closure") as batch_op:
-            batch_op.drop_constraint("nodes_closure_ancestor_fkey", type_="foreignkey")
-            batch_op.drop_constraint(
-                "nodes_closure_descendant_fkey", type_="foreignkey"
-            )
-            batch_op.create_foreign_key(
-                "nodes_closure_ancestor_fkey",
-                referent_table="nodes",
-                local_cols=["ancestor"],
-                remote_cols=["id"],
-                ondelete="CASCADE",
-            )
-            batch_op.create_foreign_key(
-                "nodes_closure_descendant_fkey",
-                referent_table="nodes",
-                local_cols=["descendant"],
-                remote_cols=["id"],
-                ondelete="CASCADE",
-            )
-        logger.info("Recreated nodes_closure FKs with ON DELETE CASCADE.")
 
     # 3. Drop the unique constraint on (ancestor, descendant) in nodes_closure (satisfied by PK)
     with op.batch_alter_table("nodes_closure") as batch_op:
