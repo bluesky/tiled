@@ -307,9 +307,6 @@ def test_read_ragged_array_from_sql(
     client_from_adapter,
     name: str,
 ) -> None:
-    client = client_from_adapter[f"foo/{name}"]
-    result = client.read()
-
     index = arrow_keys.index(name)
     expected = ragged.array(
         [
@@ -317,4 +314,13 @@ def test_read_ragged_array_from_sql(
             *arrow_data_1[index].tolist(),
         ]
     )
+    client = client_from_adapter[f"foo/{name}"]
+
+    result = client.read()
     assert ak.array_equal(result._impl, expected._impl)  # noqa: SLF001
+
+    result = client[1]
+    assert ak.array_equal(result._impl, expected[1]._impl)  # noqa: SLF001
+
+    result = client[2:5, 0]
+    assert ak.array_equal(result._impl, expected[2:5, 0]._impl)  # noqa: SLF001
