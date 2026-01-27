@@ -5,7 +5,7 @@ import logging
 import sys
 import threading
 import weakref
-from typing import Callable, Generic, List, Optional, TypeVar
+from typing import Any, Callable, Generic, List, Optional, TypeVar
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -667,9 +667,8 @@ class LiveChildCreated(ChildCreated):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     subscription: ContainerSubscription
 
-    def child(self) -> BaseClient:
-        "Construct a client object for the child."
-        # Construct a client object to represent the newly created node.
+    def _item(self) -> dict[str, Any]:
+        "Utility method for building the dict representation of the node"
         # This has some code in common with tiled.client.container.Container.new.
         # It is unavoidably a bit fiddly. It can be improved when we are more
         # consistent about what is a parsed object and what is a dict.
@@ -693,14 +692,26 @@ class LiveChildCreated(ChildCreated):
             structure_type = STRUCTURE_TYPES[item["attributes"]["structure_family"]]
             structure_for_links = structure_type.from_json(structure_for_item)
         item["attributes"]["structure"] = structure_for_item
-        context = self.subscription.context
-        base_url = context.server_info.links["self"]
+        base_url = self.subscription.context.server_info.links["self"]
         path_str = "/".join(self.subscription.segments + [self.key])
         item["links"] = links_for_node(
             self.structure_family, structure_for_links, base_url, path_str
         )
+        return item
 
-        return client_for_item(context, self.subscription.structure_clients, item)
+    def child(self) -> BaseClient:
+        "Construct a client object for the newly-created child."
+        return client_for_item(
+            self.subscription.context,
+            self.subscription.structure_clients,
+            self._item(),
+        )
+
+    @property
+    def uri(self) -> str:
+        "The URI to the newly-created child"
+        item = self._item()
+        return item["links"]["self"]
 
 
 class LiveChildMetadataUpdated(ChildMetadataUpdated):
