@@ -40,6 +40,8 @@ class RaggedStructure(ArrayStructure):
         if isinstance(array, ragged.array):
             return array
         if isinstance(array, np.ndarray):
+            if array.dtype.name == "object":
+                return ragged.array([row.tolist() for row in array])
             return ragged.array(awkward.from_numpy(array))
         if isinstance(array, awkward.Array) or hasattr(array, "__dlpack_device__"):
             return ragged.array(array)
