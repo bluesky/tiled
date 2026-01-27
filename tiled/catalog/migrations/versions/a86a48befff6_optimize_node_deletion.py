@@ -139,10 +139,10 @@ def upgrade():
         )
 
     # 4. Drop redundant indices if they exist (satisfied by PKs)
-    op.drop_index("ix_data_sources_id")
-    op.drop_index("ix_assets_id")
-    op.drop_index("ix_nodes_id")
-    op.drop_index("ix_revisions_id")
+    op.drop_index("ix_data_sources_id", table_name="data_sources", if_exists=True)
+    op.drop_index("ix_assets_id", table_name="assets", if_exists=True)
+    op.drop_index("ix_nodes_id", table_name="nodes", if_exists=True)
+    op.drop_index("ix_revisions_id", table_name="revisions", if_exists=True)
     logger.info(
         "Dropped redundant indices on data_sources, assets, nodes, revisions tables."
     )
