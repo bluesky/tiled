@@ -91,4 +91,4 @@ array([[1., 1., 1., ..., 1., 1., 1.],
 ```
 
 The usage `tiled serve directory ...` is mostly for demos and small-scale use.
-For more sophisticated control over this process, see {doc}`../how-to/register`.
+For more sophisticated control over this process, see {doc}`../user-guide/register`.

@@ -25,7 +25,7 @@ Tutorials for installation and typical usage.
 :::{grid-item-card} {material-regular}`directions;2em`
 ```{toctree}
 :maxdepth: 2
-how-to
+user-guide
 ```
 +++
 Practical step-by-step guides and more advanced examples.
