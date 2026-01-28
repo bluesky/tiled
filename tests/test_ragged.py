@@ -92,21 +92,6 @@ arrays = {
 
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_structure(name):
-    array = arrays[name]
-    expected_form, expected_len, expected_nodes = ak.to_buffers(
-        array._impl  # noqa: SLF001
-    )
-
-    structure = RaggedStructure.from_array(array)
-    form = ak.forms.from_dict(structure.form)
-
-    assert expected_form == form
-    assert expected_len == structure.shape[0]
-    assert len(expected_nodes) == len(structure.offsets) + 1
-
-
-@pytest.mark.parametrize("name", arrays.keys())
 def test_serialization_roundtrip(name):
     array = arrays[name]
     structure = RaggedStructure.from_array(array)
@@ -213,8 +198,6 @@ def test_export_json(tmpdir, client, name):
 
 @pytest.mark.parametrize("name", arrays.keys())
 def test_export_arrow(tmpdir, client, name):
-    # Write data into catalog. It will be stored as directory of buffers
-    # named like 'node0-offsets' and 'node2-data'.
     array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
@@ -227,13 +210,12 @@ def test_export_arrow(tmpdir, client, name):
 
 @pytest.mark.parametrize("name", arrays.keys())
 def test_export_parquet(tmpdir, client, name):
-    # Write data into catalog. It will be stored as directory of buffers
-    # named like 'node0-offsets' and 'node2-data'.
     array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
     filepath = tmpdir / "actual.parquet"
     rac.export(str(filepath), format="application/x-parquet")
+    # Test this against pyarrow
     actual = pyarrow.parquet.read_table(filepath)
     expected = ak.to_arrow_table(array._impl)  # noqa: SLF001
     assert actual == expected
@@ -248,13 +230,13 @@ def test_export_parquet(tmpdir, client, name):
 
 arrow_keys = "a", "b"
 arrow_data_0 = [
-    pa.array([RNG.random(size=RNG.integers(1, 10)) for _ in range(3)]),
-    pa.array([RNG.random(size=RNG.integers(2, 22)) for _ in range(3)]),
+    pa.array([RNG.random(size=RNG.integers(1, 50)) for _ in range(3)]),
+    pa.array([RNG.random(size=RNG.integers(1, 50)) for _ in range(3)]),
 ]
 
 arrow_data_1 = [
-    pa.array([RNG.random(size=RNG.integers(1, 10)) for _ in range(6)]),
-    pa.array([RNG.random(size=RNG.integers(2, 22)) for _ in range(6)]),
+    pa.array([RNG.random(size=RNG.integers(1, 50)) for _ in range(6)]),
+    pa.array([RNG.random(size=RNG.integers(1, 50)) for _ in range(6)]),
 ]
 
 arrow_batch_0 = pa.record_batch(arrow_data_0, arrow_keys)

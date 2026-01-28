@@ -114,11 +114,5 @@ class RaggedAdapter(Adapter[RaggedStructure]):
     ) -> None:
         raise NotImplementedError
 
-    def metadata(self) -> JSON:
-        return self._metadata
-
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"
-
-    def structure(self) -> RaggedStructure:
-        return self._structure

@@ -124,26 +124,3 @@ class RaggedStructure(ArrayStructure):
             offsets=structure.get("offsets", []),
             size=structure["size"],
         )
-
-    @property
-    def npartitions(self) -> int:
-        return 1
-
-    @property
-    def form(self) -> dict[str, Any]:
-        def build(depth: int):
-            if depth <= 0:
-                # TODO: Handle EmptyArray, e.g. ragged.array([[], []])
-                return {
-                    "class": "NumpyArray",
-                    "primitive": self.data_type.to_numpy_dtype().name,
-                    "form_key": f"node{len(self.offsets) - depth}",
-                }
-            return {
-                "class": "ListOffsetArray",
-                "offsets": "i64",
-                "content": build(depth - 1),
-                "form_key": f"node{len(self.offsets) - depth}",
-            }
-
-        return build(len(self.offsets))
