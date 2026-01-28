@@ -16,7 +16,7 @@ from tiled.catalog.orm import Node
 from tiled.ndslice import NDSlice
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import DataSource
-from tiled.structures.ragged import RaggedStructure
+from tiled.structures.ragged import RaggedStructure, make_ragged_array
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -80,7 +80,7 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         -------
 
         """
-        array = RaggedStructure.make_ragged_array(array)
+        array = make_ragged_array(array)
         structure = RaggedStructure.from_array(array)
         return cls(
             array,

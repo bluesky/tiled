@@ -36,20 +36,6 @@ class RaggedStructure(ArrayStructure):
     offsets: list[OffsetArrayType | StartAndStopArraysType]
     size: int
 
-    @staticmethod
-    def make_ragged_array(array: Iterable) -> ragged.array:
-        if isinstance(array, ragged.array):
-            return array
-        if isinstance(array, np.ndarray):
-            if array.dtype.name == "object":
-                return ragged.array([row.tolist() for row in array])
-            return ragged.array(awkward.from_numpy(array))
-        if isinstance(array, awkward.Array) or hasattr(array, "__dlpack_device__"):
-            return ragged.array(array)
-        if hasattr(array, "tolist"):
-            return ragged.array(array.tolist())
-        return ragged.array(list(array))
-
     @classmethod
     def from_array(
         cls,
@@ -60,7 +46,7 @@ class RaggedStructure(ArrayStructure):
         | None = None,
         dims: int | None = None,
     ) -> Self:
-        array = cls.make_ragged_array(array)
+        array = make_ragged_array(array)
 
         if shape is None:
             shape = array.shape
@@ -124,3 +110,18 @@ class RaggedStructure(ArrayStructure):
             offsets=structure.get("offsets", []),
             size=structure["size"],
         )
+
+
+def make_ragged_array(array: Iterable) -> ragged.array:
+    """Best-effort conversion of any numeric iterable to a ``ragged`` array."""
+    if isinstance(array, ragged.array):
+        return array
+    if isinstance(array, np.ndarray):
+        if array.dtype.name == "object":
+            return ragged.array([row.tolist() for row in array])
+        return ragged.array(awkward.from_numpy(array))
+    if isinstance(array, awkward.Array) or hasattr(array, "__dlpack_device__"):
+        return ragged.array(array)
+    if hasattr(array, "tolist"):
+        return ragged.array(array.tolist())
+    return ragged.array(list(array))
