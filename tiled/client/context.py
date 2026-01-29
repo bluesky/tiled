@@ -290,6 +290,8 @@ class Context:
             if len(self.server_info.authentication.providers) == 1
             else None
         )
+        # To determine httpx.Auth used by Tiled client is TiledAuth(internal) or external Auth
+        self.has_external_auth = False
 
     def __repr__(self):
         auth_info = []

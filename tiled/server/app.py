@@ -17,7 +17,7 @@ import anyio
 import packaging.version
 import yaml
 from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -126,6 +126,7 @@ def build_app(
     tasks: Optional[dict[str, list[AppTask]]] = None,
     scalable=False,
     access_policy: Optional[AccessPolicy] = None,
+    include_routers: Optional[list[APIRouter]] = None,
 ):
     """
     Serve a Tree
@@ -164,6 +165,17 @@ def build_app(
     tasks["shutdown"].extend(getattr(tree, "shutdown_tasks", []))
 
     if scalable:
+        streaming_cache = server_settings.get("streaming_cache", None)
+        if streaming_cache and streaming_cache["uri"].startswith("memory"):
+            raise UnscalableConfig(
+                dedent(
+                    """
+                    In a scaled (multi-process) deployment, Tiled cannot
+                    use memory as its streaming datastore.
+
+                    """
+                )
+            )
         if authenticators:
             # Even if the deployment allows public, anonymous access, secret
             # keys are needed to generate JWTs for any users that do log in.
@@ -386,8 +398,10 @@ def build_app(
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
     # hook to add a /documents route.) This has to be done before dependency_overrides
     # are processed, so we cannot just inject this configuration via Depends.
-    for custom_router in getattr(tree, "include_routers", []):
-        app.include_router(custom_router, prefix="/api/v1")
+    # Ensure that routers are only included once.
+    for custom_router in (include_routers or []) + getattr(tree, "include_routers", []):
+        app.include_router(custom_router, prefix="/custom")
+        app.include_router(custom_router, prefix="/api/v1")  # Back-compat
 
     app.state.access_policy = access_policy
 

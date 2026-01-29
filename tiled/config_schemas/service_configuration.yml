@@ -525,3 +525,18 @@ properties:
     description: |
       If true (default), enable clients to download the raw asset data that
       backs nodes that they are authorized to read.
+  routers:
+    type: array
+    items:
+      type: string
+    description: |
+      List of import paths to APIRouter instances to include in the application.
+      In an import path, packages/modules are separated by dots,
+      and the object itself it separated by a colon.
+
+      Example:
+
+        ```yaml
+        routers:
+          - bluesky_tiled_plugins.routers:my_router
+        ```

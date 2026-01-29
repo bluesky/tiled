@@ -12,6 +12,7 @@ from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON
+from .utils import force_reshape
 
 
 class ArrayAdapter(Adapter[ArrayStructure]):
@@ -96,8 +97,9 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         self,
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
+        array = force_reshape(self._array, self._structure.shape)
         # _array[...] requires an actual tuple, not just a subclass of tuple
-        array = self._array[tuple(slice)] if slice else self._array
+        array = array[tuple(slice)] if slice else array
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
@@ -108,9 +110,10 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         # Slice the whole array to get this block.
+        array = force_reshape(self._array, self._structure.shape)
         slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
         # _array[...] requires an actual tuple, not just a subclass of tuple
-        array = self._array[tuple(slice_)]
+        array = array[tuple(slice_)]
         # Slice within the block.
         array = array[slice] if slice else array
         if isinstance(self._array, dask.array.Array):

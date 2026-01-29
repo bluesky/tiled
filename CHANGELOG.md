@@ -7,8 +7,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- Add `properties` field to the DataSource object and table, to store additional
+- The `properties` field in the DataSource object and table to store additional
   metadata about the data source (e.g. array chunking information).
+- Support for including custom FastAPI routers via a new `routers` configuration
+  field at the server level.
+
+### Changed
+
+- Arrays accessed by `ArrayAdapter`, its subclasses, and related adapters (e.g. `HDF5ArrayAdapter`,
+  `FileSequenceAdapter`) are reshaped by default to match the shape declared in the
+  associated structure, where possible.
+- Removed support for Python 3.9, which reached its end of life in October 2025.
 
 ## v0.2.3 (2025-12-17)
 

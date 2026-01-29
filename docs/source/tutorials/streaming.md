@@ -176,6 +176,19 @@ dormant. These intervals are configurable via the settings `data_ttl` and
 `seq_ttl` respectively under `streaming_cach` configuration.  (In the `tiled
 serve` CLI they are `--cache-data-ttl` and `--cache-seq-ttl`.)
 
+## Handling Large Data
+
+By default, WebSocket messages are limited to 1 MB. For larger updates,
+increase the `max_size` parameter when starting the subscription:
+
+```py
+# Accept updates as large as 1 GB
+sub = client.subscribe()
+sub.start_in_thread(max_size=1_000_000_000)
+```
+
+The `max_size` parameter can be passed to either `start()` or `start_in_thread()`.
+
 ## Performance Optimization: Non-persistent Updates
 
 To rapidly stream large arrays of transitory data, it might be unnecessary

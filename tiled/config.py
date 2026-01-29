@@ -175,7 +175,7 @@ class ValidationSpec(BaseModel):
     validator: Optional[EntryPointString] = None
 
 
-class StreamingCache(BaseModel):
+class StreamingCacheConfig(BaseModel):
     uri: str
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
@@ -199,13 +199,14 @@ class Config(BaseModel):
     specs: list[ValidationSpec] = []
     reject_undeclared_specs: bool = False
     expose_raw_assets: bool = True
+    routers: list[EntryPointString] = []
 
     catalog_pool_size: int = 5
     storage_pool_size: int = 5
     catalog_max_overflow: int = 10
     storage_max_overflow: int = 10
 
-    streaming_cache: Optional[StreamingCache] = None
+    streaming_cache: Optional[StreamingCacheConfig] = None
 
     @field_validator("access_policy")
     @classmethod
@@ -249,7 +250,7 @@ class Config(BaseModel):
                     self.storage_max_overflow or defaults.storage_max_overflow
                 )
             if tree.tree_type in (from_uri, in_memory):
-                tree.args["cache_settings"] = (
+                tree.args["cache_config"] = (
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
         return self
@@ -270,7 +271,6 @@ class Config(BaseModel):
             # containing Adapters at that path.
             root_mapping = trees.pop((), {})
             index: dict[tuple[str, ...], dict] = {(): root_mapping}
-            all_routers = []
 
             # for rest of trees, build up parent nodes if required
             for segments, tree in trees.items():
@@ -280,11 +280,9 @@ class Config(BaseModel):
                         index[subpath] = mapping
                         index[subpath[:-1]][subpath[-1]] = MapAdapter(mapping)
                 index[segments[:-1]][segments[-1]] = tree
-                tree_routers = getattr(tree, "include_routers", [])
-                all_routers.extend(tree_routers)
-
+                self.routers.extend(getattr(tree, "include_routers", []))
             root_tree = MapAdapter(root_mapping)
-            root_tree.include_routers.extend(all_routers)
+
         return root_tree
 
     def tree_tasks(self) -> TaskMap:
@@ -365,6 +363,7 @@ def construct_build_app_kwargs(config: Config):
         validation_registry=config.validation_registry(),
         tasks=config.tree_tasks(),
         access_policy=config.access_policy,
+        include_routers=config.routers,
     )
 
 

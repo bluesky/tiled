@@ -5,7 +5,7 @@ import logging
 import sys
 import threading
 import weakref
-from typing import Callable, Generic, List, Optional, TypeVar
+from typing import Any, Callable, Generic, List, Optional, TypeVar
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -67,7 +67,12 @@ class _TestClientWebsocketWrapper:
         self._websocket = None
         self._connection_lock = threading.Lock()
 
-    def connect(self, api_key: Optional[str], start: Optional[int] = None):
+    def connect(
+        self,
+        api_key: Optional[str],
+        start: Optional[int] = None,
+        max_size: int = 1_000_000,
+    ):
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
@@ -75,6 +80,7 @@ class _TestClientWebsocketWrapper:
             headers["Authorization"] = f"Apikey {api_key}"
         if start is not None:
             params = params.set("start", start)
+        # Note: max_size is ignored for test client websockets
         with self._connection_lock:
             self._websocket = self._http_client.websocket_connect(
                 str(self._uri.copy_with(params=params)),
@@ -108,7 +114,12 @@ class _RegularWebsocketWrapper:
         self._uri = uri
         self._websocket = None
 
-    def connect(self, api_key: Optional[str], start: Optional[int] = None):
+    def connect(
+        self,
+        api_key: Optional[str],
+        start: Optional[int] = None,
+        max_size: int = 1_000_000,
+    ):
         """Connect to the websocket."""
         params = self._uri.params
         headers = {}
@@ -119,6 +130,7 @@ class _RegularWebsocketWrapper:
         self._websocket = connect(
             str(self._uri.copy_with(params=params)),
             additional_headers=headers,
+            max_size=max_size,
         )
 
     def recv(self, timeout=None):
@@ -304,7 +316,7 @@ class Subscription(abc.ABC):
     def segments(self) -> List[str]:
         return self._segments
 
-    def _run(self, start: Optional[int] = None) -> None:
+    def _run(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
         while not self._disconnect_event.is_set():
             try:
@@ -314,10 +326,27 @@ class Subscription(abc.ABC):
                     if self._last_received_sequence is not None
                     else start
                 )
-                self._connect(start_from)
+                self._connect(start_from, max_size=max_size)
                 self._receive()
-            except (websockets.exceptions.ConnectionClosedError, OSError):
-                # Connection lost, close the websocket and reconnect
+            except (websockets.exceptions.ConnectionClosedError, OSError) as exc:
+                # Check if it's a "message too big" error
+                # The client sends close code 1009 when received message exceeds max_size
+                close_code = None
+                if isinstance(exc, websockets.exceptions.ConnectionClosedError):
+                    close_code = (
+                        exc.sent.code if hasattr(exc, "sent") and exc.sent else None
+                    )
+
+                if close_code == 1009:  # MESSAGE_TOO_BIG
+                    logger.error(
+                        f"Message exceeds max_size ({max_size} bytes). "
+                        f"Subscription will disconnect permanently. "
+                        f"Increase max_size in start() to receive large messages."
+                    )
+                    # Permanently disconnect - do not skip the message or reconnect
+                    break
+
+                # Connection lost (not MESSAGE_TOO_BIG), close the websocket and reconnect
                 try:
                     self._websocket.close()
                 except Exception:
@@ -331,7 +360,7 @@ class Subscription(abc.ABC):
         attempts=TILED_RETRY_ATTEMPTS,
         wait_max=TILED_RETRY_TIMEOUT,
     )
-    def _connect(self, start: Optional[int] = None) -> None:
+    def _connect(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
         """Connect to websocket with retry."""
         if self._disconnect_event.is_set():
             raise RuntimeError("Cannot be restarted once stopped.")
@@ -351,7 +380,7 @@ class Subscription(abc.ABC):
             api_key = self.context.api_key
 
         # Connect using the websocket wrapper
-        self._websocket.connect(api_key, start)
+        self._websocket.connect(api_key, start, max_size=max_size)
 
         if needs_api_key:
             # The connection is made, so we no longer need the API key.
@@ -392,7 +421,7 @@ class Subscription(abc.ABC):
     def process(self, *args) -> None:
         pass
 
-    def start(self, start: Optional[int] = None) -> None:
+    def start(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
         """
         Connect to the websocket, and block while receiving and processing updates.
 
@@ -404,6 +433,9 @@ class Subscription(abc.ABC):
             the first item, 0 to start from as far back as available (which may
             be later than the first item), or any positive integer to start
             from a specific point in the sequence.
+        max_size : int, optional
+            Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
+            Increase this if you expect to receive large messages.
 
         Examples
         --------
@@ -412,13 +444,19 @@ class Subscription(abc.ABC):
 
         >>> sub.start()
 
+        Start with a larger max message size.
+
+        >>> sub.start(max_size=10_000_000)
+
         """
         try:
-            self._run(start)  # blocks
+            self._run(start, max_size=max_size)  # blocks
         finally:
             self.disconnect()
 
-    def start_in_thread(self, start: Optional[int] = None) -> Self:
+    def start_in_thread(
+        self, start: Optional[int] = None, max_size: int = 1_000_000
+    ) -> Self:
         """
         Start a thread to connect to the websocket and receive updates.
 
@@ -430,6 +468,9 @@ class Subscription(abc.ABC):
             the first item, 0 to start from as far back as available (which may
             be later than the first item), or any positive integer to start
             from a specific point in the sequence.
+        max_size : int, optional
+            Maximum size in bytes for incoming WebSocket messages. Default is 1 MB.
+            Increase this if you expect to receive large messages.
 
         Examples
         --------
@@ -437,6 +478,10 @@ class Subscription(abc.ABC):
         Starting the Subscription starts a thread that connects and receives updates.
 
         >>> sub.start_in_thread()
+
+        Start with a larger max message size.
+
+        >>> sub.start_in_thread(max_size=10_000_000)
 
         To stop the thread:
 
@@ -447,7 +492,7 @@ class Subscription(abc.ABC):
         name = f"tiled-subscription-{self._uri}"
         self._thread = threading.Thread(
             target=self._run,
-            args=(start,),
+            args=(start, max_size),
             daemon=True,
             name=name,
         )
@@ -622,9 +667,8 @@ class LiveChildCreated(ChildCreated):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     subscription: ContainerSubscription
 
-    def child(self) -> BaseClient:
-        "Construct a client object for the child."
-        # Construct a client object to represent the newly created node.
+    def _item(self) -> dict[str, Any]:
+        "Utility method for building the dict representation of the node"
         # This has some code in common with tiled.client.container.Container.new.
         # It is unavoidably a bit fiddly. It can be improved when we are more
         # consistent about what is a parsed object and what is a dict.
@@ -648,14 +692,26 @@ class LiveChildCreated(ChildCreated):
             structure_type = STRUCTURE_TYPES[item["attributes"]["structure_family"]]
             structure_for_links = structure_type.from_json(structure_for_item)
         item["attributes"]["structure"] = structure_for_item
-        context = self.subscription.context
-        base_url = context.server_info.links["self"]
+        base_url = self.subscription.context.server_info.links["self"]
         path_str = "/".join(self.subscription.segments + [self.key])
         item["links"] = links_for_node(
             self.structure_family, structure_for_links, base_url, path_str
         )
+        return item
 
-        return client_for_item(context, self.subscription.structure_clients, item)
+    def child(self) -> BaseClient:
+        "Construct a client object for the newly-created child."
+        return client_for_item(
+            self.subscription.context,
+            self.subscription.structure_clients,
+            self._item(),
+        )
+
+    @property
+    def uri(self) -> str:
+        "The URI to the newly-created child"
+        item = self._item()
+        return item["links"]["self"]
 
 
 class LiveChildMetadataUpdated(ChildMetadataUpdated):
