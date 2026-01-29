@@ -1,11 +1,11 @@
 import contextlib
 import sqlite3
-import sys
 import tempfile
 import threading
 import time
 import uuid
 from enum import IntEnum
+from importlib import resources
 from pathlib import Path
 
 import httpx
@@ -18,11 +18,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from tiled.client import context
 from tiled.client.base import BaseClient
 from tiled.utils import ensure_specified_sql_driver
-
-if sys.version_info < (3, 9):
-    import importlib_resources as resources
-else:
-    from importlib import resources  # Python >= 3.9 only
 
 
 @contextlib.contextmanager
