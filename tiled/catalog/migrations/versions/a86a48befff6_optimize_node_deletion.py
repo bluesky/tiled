@@ -153,12 +153,7 @@ def upgrade():
         "data_source_asset_association",
         ["asset_id"],
     )
-    op.create_index(
-        "ix_data_source_asset_association_data_source_id",
-        "data_source_asset_association",
-        ["data_source_id"],
-    )
-    logger.info("Created indices on data_source_asset_association table.")
+    logger.info("Created index on data_source_asset_association table.")
 
     # 6. Create composite index on data_sources (id, node_id)
     op.create_index(
@@ -172,14 +167,10 @@ def upgrade():
 def downgrade():
     # 1. Drop the indices on data_source_asset_association table
     op.drop_index(
-        "ix_data_source_asset_association_data_source_id",
-        table_name="data_source_asset_association",
-    )
-    op.drop_index(
         "ix_data_source_asset_association_asset_id",
         table_name="data_source_asset_association",
     )
-    logger.info("Dropped indices on data_source_asset_association table.")
+    logger.info("Dropped index on data_source_asset_association table.")
 
     # 2. Drop composite index on data_sources (id, node_id)
     op.drop_index("idx_data_sources_id_node", table_name="data_sources")

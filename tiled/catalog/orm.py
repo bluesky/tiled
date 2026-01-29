@@ -18,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.schema import UniqueConstraint
+from sqlalchemy.schema import PrimaryKeyConstraint, UniqueConstraint
 from sqlalchemy.sql import func
 
 from ..server.schemas import Management
@@ -151,13 +151,11 @@ class DataSourceAssetAssociation(Base):
 
     data_source_id: Mapped[int] = mapped_column(
         ForeignKey("data_sources.id", ondelete="CASCADE"),
-        primary_key=True,
-        index=True,  # Critical for anti-joins, delete cascades
+        nullable=False,
     )
     asset_id: Mapped[int] = mapped_column(
         ForeignKey("assets.id", ondelete="CASCADE"),
-        primary_key=True,
-        index=True,  # Useful for scanning assets per datasource
+        nullable=False,
     )
     parameter = Column(Unicode(255), nullable=True)
     num = Column(Integer, nullable=True)
@@ -170,6 +168,12 @@ class DataSourceAssetAssociation(Base):
     )
 
     __table_args__ = (
+        # Explicitly defined PK to ensure the order of columns
+        PrimaryKeyConstraint(
+            "data_source_id",
+            "asset_id",
+            name="data_source_asset_association_pkey",
+        ),
         # Enforces correctness for adapter construction
         UniqueConstraint(
             "data_source_id",
@@ -177,6 +181,8 @@ class DataSourceAssetAssociation(Base):
             "num",
             name="parameter_num_unique_constraint",
         ),
+        # Useful for scanning assets per datasource
+        Index("ix_data_source_asset_association_asset_id", "asset_id"),
         # Below, in unique_parameter_num_null_check, additional constraints
         # are applied, via triggers.
     )
