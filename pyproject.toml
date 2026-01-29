@@ -12,7 +12,7 @@ authors = [
 maintainers = [
   { name = "Brookhaven National Laboratory", email = "dallan@bnl.gov" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 # Dependencies common to both server and client; additional dependencies are
 # available depending on whether you are running client/server/both, and what
@@ -36,10 +36,10 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Physics",
 ]
 
@@ -65,7 +65,7 @@ all = [
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "cachetools",
     "canonicaljson",
     "dask",
@@ -153,7 +153,6 @@ dev = [
     "aiohttp",
     "coverage",
     "flake8",
-    "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
     "locust",
