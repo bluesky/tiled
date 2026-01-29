@@ -54,6 +54,8 @@ class RaggedClient(BaseClient):
         url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
 
         if isinstance(slice, NDSlice):
+            # the metadata of a sliced array isn't easy to determine mathematically,
+            # we should expect the server to respond with new structure information.
             url_params["slice"] = slice.to_numpy_str()
             mimetype = "application/zip"
         else:
@@ -84,10 +86,8 @@ class RaggedClient(BaseClient):
     #     # TODO: investigate
     #     raise NotImplementedError
 
-    def __getitem__(
-        self, _slice: NDSlice
-    ) -> ragged.array:  # this is true even when slicing to return a single item
-        # TODO: should we be smarter, and return the scalar rather a singular array
+    def __getitem__(self, _slice: NDSlice) -> ragged.array:
+        # ``ragged.array`` is always returned even when slicing to return a single item (numpy is the same)
         if isinstance(_slice, tuple):
             _slice = NDSlice(*_slice)
         if not isinstance(_slice, NDSlice):
