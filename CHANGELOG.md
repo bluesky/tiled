@@ -15,6 +15,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Arrays accessed by `ArrayAdapter`, its subclasses, and related adapters (e.g. `HDF5ArrayAdapter`,
   `FileSequenceAdapter`) are reshaped by default to match the shape declared in the
   associated structure, where possible.
+- Removed support for Python 3.9, which reached its end of life in October 2025.
 
 ## v0.2.3 (2025-12-17)
 
