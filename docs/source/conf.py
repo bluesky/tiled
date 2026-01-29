@@ -50,6 +50,7 @@ extensions = [
     "numpydoc",
     "sphinx_click",
     "sphinx_copybutton",
+    "sphinx_external_toc",
     "myst_parser",
     "sphinxcontrib.jquery",
     "sphinxcontrib.mermaid",
@@ -126,7 +127,7 @@ todo_include_todos = False
 # a list of builtin themes.
 #
 html_theme = "pydata_sphinx_theme"
-# html_logo = "_static/logo_bluesky.svg"
+html_logo = "_static/tiled-logo.svg"
 html_theme_options: dict[str, Any] = {
     "github_url": f"https://github.com/{github_user}/{project}",
     "external_links": [
@@ -164,6 +165,7 @@ myst_enable_extensions = [
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+html_css_files = ["css/tiled.css"]
 
 
 # -- Options for MyST -----------------------------------------------------

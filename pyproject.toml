@@ -290,6 +290,7 @@ docs = [
     "sphinx-click",
     "sphinx-copybutton",
     "sphinx_design",
+    "sphinx_external_toc",
     "sphinxcontrib-mermaid",
 ]
 

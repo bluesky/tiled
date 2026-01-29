@@ -88,20 +88,3 @@ pixi add tiled
 ::::
 
 <!-- prettier-ignore-end -->
-
-## Tutorials
-
-```{toctree}
-:maxdepth: 1
-tutorials/navigation
-tutorials/slicing
-tutorials/export
-tutorials/login
-tutorials/serving-files
-tutorials/search
-tutorials/writing
-tutorials/streaming
-tutorials/simple-server
-tutorials/plotly-integration
-tutorials/zarr-integration
-```

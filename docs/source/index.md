@@ -1,56 +1,87 @@
----
-html_theme.sidebar_secondary.remove: true
----
+# Tiled documentation
 
-```{include} ../../README.md
-:end-before: <!-- README only content
-```
 
-<!-- https://sphinx-design.readthedocs.io/en/latest/grids.html -->
+:::::{grid} 1 1 2 2
+:class-container: intro-grid text-center
 
-<!-- prettier-ignore-start -->
+::::{grid-item-card}
+:columns: 12
 
-::::{grid} 2
-:gutter: 4
 
-:::{grid-item-card} {material-regular}`directions_walk;2em`
-```{toctree}
-:maxdepth: 2
-tutorials
-```
-+++
-Tutorials for installation and typical usage.
+Tiled is service enabling **secure, structured** access to **scientific data**. It supports
+**search**, remote **slicing**, translating between **formats**, and live **streaming**.
+
+:::{image} https://img.shields.io/conda/vn/conda-forge/tiled?style=for-the-badge&color=brightgreen&logo=condaforge
+:alt: Conda (channel only)
+:target: https://anaconda.org/conda-forge/tiled
+:class: shield-badge
 :::
 
-:::{grid-item-card} {material-regular}`directions;2em`
-```{toctree}
-:maxdepth: 2
-user-guide
-```
-+++
-Practical step-by-step guides and more advanced examples.
+:::{image} https://img.shields.io/pypi/v/tiled?style=for-the-badge&logo=pypi
+:alt: PyPI
+:target: https://pypi.org/project/tiled
+:class: shield-badge
 :::
 
-:::{grid-item-card} {material-regular}`info;2em`
-```{toctree}
-:maxdepth: 2
-explanations
-```
-+++
-Explanations of how it works and why it works that way.
-:::
-
-:::{grid-item-card} {material-regular}`menu_book;2em`
-```{toctree}
-:maxdepth: 2
-reference
-```
-+++
-Technical reference material including APIs and release notes.
+:::{image} https://img.shields.io/badge/GitHub-bluesky%2Ftiled-lightgrey?style=for-the-badge&logo=GitHub
+:alt: GitHub
+:target: https://github.com/bluesky/tiled
+:class: shield-badge
 :::
 
 ::::
 
-<!-- prettier-ignore-end -->
+::::{grid-item-card}
+:link-type: doc
+:link: getting-started/index
 
-[Tiled]: https://blueskyproject.io/tiled
+{fas}`running`
+
+Getting started
+^^^^^^^^^^^^^^^
+New to *Tiled*? Unsure what it can be used for? Check out the getting started guides.
+
+
+::::
+
+:::{grid-item-card}
+:link-type: doc
+:link: user-guide/index
+
+{fas}`wrench`
+
+User guide
+^^^^^^^^^^
+
+The user guide provides detailed practical guides for common activites using Tiled.
+
+:::
+
+:::{grid-item-card}
+:link: explanations/index
+
+{fas}`book-open`
+
+Explanations
+^^^^^^^^^^^^
+
+This sections covers Tiled concepts in detail.
+
+:::
+
+:::{grid-item-card}
+:link-type: doc
+:link: reference/index
+
+{fas}`code`
+
+API reference
+^^^^^^^^^^^^^
+
+The reference guide contains a detailed description of the functions, modules, and objects included in Tiled. The reference describes how the methods work and which parameters can be used. It assumes that you have an understanding of the key concepts.
+
+:::
+
+::::
+
+:::::
