@@ -108,11 +108,5 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         # _array[...] requires an actual tuple, not just a subclass of tuple
         return self._array[tuple(slice)] if slice else self._array
 
-    def write(
-        self,
-        array: ragged.array,
-    ) -> None:
-        raise NotImplementedError
-
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"
