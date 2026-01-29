@@ -195,6 +195,11 @@ def test_export_json(tmpdir, client, name):
     actual = filepath.read_text(encoding="utf-8")
     assert actual == ak.to_json(array._impl)  # noqa: SLF001
 
+    # TODO: cannot export a slice that results in a scalar
+    rac.export(str(filepath), slice=(1,), format="application/json")
+    actual = filepath.read_text(encoding="utf-8")
+    assert actual == ak.to_json(array[1]._impl)  # noqa: SLF001
+
 
 @pytest.mark.parametrize("name", arrays.keys())
 def test_export_arrow(tmpdir, client, name):
@@ -205,6 +210,12 @@ def test_export_arrow(tmpdir, client, name):
     rac.export(str(filepath), format=APACHE_ARROW_FILE_MIME_TYPE)
     actual = pyarrow.feather.read_table(filepath)
     expected = ak.to_arrow_table(array._impl)  # noqa: SLF001
+    assert actual == expected
+
+    # TODO: cannot export a slice that results in a scalar
+    rac.export(str(filepath), slice=(1,), format=APACHE_ARROW_FILE_MIME_TYPE)
+    actual = pyarrow.feather.read_table(filepath)
+    expected = ak.to_arrow_table(array[1]._impl)  # noqa: SLF001
     assert actual == expected
 
 
@@ -218,6 +229,13 @@ def test_export_parquet(tmpdir, client, name):
     # Test this against pyarrow
     actual = pyarrow.parquet.read_table(filepath)
     expected = ak.to_arrow_table(array._impl)  # noqa: SLF001
+    assert actual == expected
+
+    # TODO: cannot export a slice that results in a scalar
+    rac.export(str(filepath), slice=(1,), format="application/x-parquet")
+    # Test this against pyarrow
+    actual = pyarrow.parquet.read_table(filepath)
+    expected = ak.to_arrow_table(array[1]._impl)  # noqa: SLF001
     assert actual == expected
 
 

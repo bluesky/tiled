@@ -26,6 +26,7 @@ class RaggedNPYAdapter(RaggedAdapter):
         metadata: JSON | None = None,
         specs: list[Spec] | None = None,
     ) -> None:
+        """Create an adapter for a ragged array stored as a numpy byte-stream."""
         super().__init__(None, structure, metadata, specs)
         self._filepath = path_from_uri(data_uri)
 
@@ -40,6 +41,7 @@ class RaggedNPYAdapter(RaggedAdapter):
         data_source: DataSource[RaggedStructure],
         path_parts: list[str],
     ) -> DataSource[RaggedStructure]:
+        """Initialize the storage directory for the data source."""
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
@@ -56,6 +58,7 @@ class RaggedNPYAdapter(RaggedAdapter):
         return data_source
 
     def read(self, slice: NDSlice = NDSlice(...)) -> ragged.array:
+        """Read ragged array data from storage."""
         cache_key = (numpy.load, self._filepath)
         data = with_resource_cache(cache_key, numpy.load, self._filepath)
         array = from_numpy_array(
@@ -66,19 +69,7 @@ class RaggedNPYAdapter(RaggedAdapter):
         )
         return array[slice] if slice else array
 
-    def write(
-        self,
-        array: ragged.array,
-    ) -> None:
-        """
-
-        Parameters
-        ----------
-        container :
-
-        Returns
-        -------
-
-        """
+    def write(self, array: ragged.array) -> None:
+        """Write ragged array data to storage."""
         data = to_numpy_array(array)
         numpy.save(self._filepath, data)

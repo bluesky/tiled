@@ -37,15 +37,7 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         metadata: JSON | None = None,
         specs: list[Spec] | None = None,
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        array :
-        structure :
-        metadata :
-        specs :
-        """
+        """Create an adapter for the given ragged array and structure."""
         self._array = array
         self._structure = structure
         self._metadata = metadata or {}
@@ -59,6 +51,7 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         /,
         **kwargs: Any | None,
     ) -> Self:
+        """Create a RaggedAdapter from a catalog entry."""
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
@@ -68,18 +61,7 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         metadata: JSON | None = None,
         specs: list[Spec] | None = None,
     ) -> Self:
-        """
-
-        Parameters
-        ----------
-        array :
-        metadata :
-        specs :
-
-        Returns
-        -------
-
-        """
+        """Create a RaggedAdapter wrapping a given array."""
         array = make_ragged_array(array)
         structure = RaggedStructure.from_array(array)
         return cls(
@@ -93,16 +75,7 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         self,
         slice: NDSlice = NDSlice(...),
     ) -> ragged.array:
-        """
-
-        Parameters
-        ----------
-        slice :
-
-        Returns
-        -------
-
-        """
+        """Read a slice of data from the ragged array."""
         if self._array is None:
             raise NotImplementedError
         # _array[...] requires an actual tuple, not just a subclass of tuple

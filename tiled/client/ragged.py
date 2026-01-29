@@ -1,32 +1,35 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qs, urlparse
 
+import numpy as np
 import ragged
 
 from tiled.client.base import BaseClient
-from tiled.client.utils import chunks_repr, export_util, handle_error, retry_context
+from tiled.client.utils import (
+    export_util,
+    handle_error,
+    params_from_slice,
+    retry_context,
+)
 from tiled.ndslice import NDSlice
 from tiled.serialization.ragged import (
     from_numpy_octet_stream,
     from_zipped_buffers,
     to_numpy_octet_stream,
 )
+from tiled.structures.ragged import RaggedStructure, make_ragged_array
 
 if TYPE_CHECKING:
     import awkward as ak
 
-    from tiled.structures.ragged import RaggedStructure
-
 
 class RaggedClient(BaseClient):
-    def write(self, array: ragged.array | ak.Array | list[list]):
-        array = (
-            ragged.array(array, dtype=array.dtype)
-            if hasattr(array, "dtype")
-            else ragged.array(array)
-        )
+    def write(self, array: ragged.array | ak.Array | Iterable[Iterable]):
+        array = make_ragged_array(array)
         mimetype = "application/octet-stream"
         for attempt in retry_context():
             with attempt:
@@ -42,45 +45,44 @@ class RaggedClient(BaseClient):
                     ),
                 )
 
-    def write_block(self, block: int, array: ragged.array | ak.Array | list[list]):
-        # TODO: investigate
-        raise NotImplementedError
+    # def write_block(self, block: int, array: ragged.array | ak.Array | list[list]):
+    #     # TODO: investigate
+    #     raise NotImplementedError
 
     def read(self, slice: NDSlice | None = None) -> ragged.array:
-        structure = cast("RaggedStructure", self.structure())
         url_path = self.item["links"]["full"]
         url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
 
         if isinstance(slice, NDSlice):
             url_params["slice"] = slice.to_numpy_str()
-            mime = "application/zip"
+            mimetype = "application/zip"
         else:
-            mime = "application/octet-stream"
+            mimetype = "application/octet-stream"
 
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.get(
                         url_path,
-                        headers={"Accept": mime},
+                        headers={"Accept": mimetype},
                         params=url_params,
                     ),
                 ).read()
-        if mime == "application/zip":
+        if mimetype == "application/zip":
             return from_zipped_buffers(
                 buffer=content,
-                dtype=structure.data_type.to_numpy_dtype(),
+                dtype=self.dtype,
             )
         return from_numpy_octet_stream(
             buffer=content,
-            dtype=structure.data_type.to_numpy_dtype(),
-            offsets=structure.offsets,
-            shape=structure.shape,
+            dtype=self.dtype,
+            offsets=self.offsets,
+            shape=self.shape,
         )
 
-    def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
-        # TODO: investigate
-        raise NotImplementedError
+    # def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
+    #     # TODO: investigate
+    #     raise NotImplementedError
 
     def __getitem__(
         self, _slice: NDSlice
@@ -92,17 +94,24 @@ class RaggedClient(BaseClient):
             _slice = NDSlice(_slice)
         return self.read(slice=_slice)
 
-    def export(self, filepath, *, format=None):
+    def export(
+        self,
+        filepath: str | Path,
+        *,
+        slice: NDSlice | None = None,
+        format: str | None = None,
+    ):
+        params = params_from_slice(slice)
         return export_util(
             filepath,
             format,
             self.context.http_client.get,
             self.item["links"]["full"],
-            params={},
+            params=params,
         )
 
     @property
-    def dims(self):
+    def dims(self) -> list[str] | None:
         structure = cast("RaggedStructure", self.structure())
         return structure.dims
 
@@ -112,40 +121,42 @@ class RaggedClient(BaseClient):
         return structure.shape
 
     @property
-    def size(self):
+    def offsets(self):
+        structure = cast("RaggedStructure", self.structure())
+        return structure.offsets
+
+    @property
+    def size(self) -> int:
         structure = cast("RaggedStructure", self.structure())
         return structure.size
 
     @property
-    def dtype(self):
+    def dtype(self) -> np.dtype:
         structure = cast("RaggedStructure", self.structure())
         return structure.data_type.to_numpy_dtype()
 
     @property
-    def nbytes(self):
-        structure = cast("RaggedStructure", self.structure())
-        itemsize = structure.data_type.to_numpy_dtype().itemsize
-        return structure.size * itemsize
+    def nbytes(self) -> int:
+        return self.size * self.dtype.itemsize
+
+    # @property
+    # def chunks(self):
+    # """The structure of chunks for efficient retrieval."""
+    #     structure = cast("RaggedStructure", self.structure())
+    #     return structure.chunks
 
     @property
-    def chunks(self):
-        structure = cast("RaggedStructure", self.structure())
-        return structure.chunks
-
-    @property
-    def ndim(self):
-        structure = cast("RaggedStructure", self.structure())
-        return len(structure.shape)
+    def ndim(self) -> int:
+        return len(self.shape)
 
     def __repr__(self):
-        structure = cast("RaggedStructure", self.structure())
         attrs = {
-            "shape": structure.shape,
-            "chunks": chunks_repr(structure.chunks),
-            "dtype": structure.data_type.to_numpy_dtype(),
+            "shape": self.shape,
+            "size": self.size,
+            "dtype": self.dtype,
         }
-        if structure.dims:
-            attrs["dims"] = structure.dims
+        if self.dims:
+            attrs["dims"] = self.dims
         return (
             f"<{type(self).__name__}"
             + "".join(f" {k}={v}" for k, v in attrs.items())
