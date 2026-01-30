@@ -21,7 +21,7 @@ from tiled.structures.ragged import (
     RaggedStructure,
     StartAndStopArraysType,
 )
-from tiled.utils import modules_available, safe_json_dump
+from tiled.utils import SerializationError, modules_available, safe_json_dump
 
 
 @default_serialization_registry.register(StructureFamily.ragged, "application/json")
@@ -30,6 +30,9 @@ def to_json(
     array: ragged.array,
     metadata: dict,  # noqa: ARG001
 ) -> bytes:
+    msg = "Cannot serialize scalar value to JSON."
+    if array.ndim == 0:
+        raise SerializationError(msg)
     return safe_json_dump(array.tolist())
 
 
@@ -164,10 +167,16 @@ if modules_available("pyarrow"):
         StructureFamily.ragged, APACHE_ARROW_FILE_MIME_TYPE
     )
     def to_arrow(mimetype: str, array: ragged.array, metadata: dict):
+        msg = "Cannot serialize scalar value to Arrow."
+        if array.ndim == 0:
+            raise SerializationError(msg)
         components = awkward.to_buffers(array._impl)  # noqa: SLF001
         return awkward_serialization.to_arrow(mimetype, components, metadata)
 
     @default_serialization_registry.register(StructureFamily.ragged, PARQUET_MIMETYPE)
     def to_parquet(mimetype: str, array: ragged.array, metadata: dict):
+        msg = "Cannot serialize scalar value to Parquet."
+        if array.ndim == 0:
+            raise SerializationError(msg)
         components = awkward.to_buffers(array._impl)  # noqa: SLF001
         return awkward_serialization.to_parquet(mimetype, components, metadata)

@@ -14,6 +14,7 @@ from tiled.adapters.mapping import MapAdapter
 from tiled.adapters.sql import SQLAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
+from tiled.client.utils import ClientError
 from tiled.serialization.ragged import (
     from_json,
     from_numpy_array,
@@ -195,13 +196,13 @@ def test_export_json(tmpdir, client, name):
     actual = filepath.read_text(encoding="utf-8")
     assert actual == ak.to_json(array._impl)  # noqa: SLF001
 
-    # TODO: cannot export a slice that results in a scalar
-    if rac.ndim == 1 and array[1].ndim == 0:
-        pytest.xfail("Cannot export scalars to JSON")
-
-    rac.export(str(filepath), slice=(1,), format="application/json")
-    actual = filepath.read_text(encoding="utf-8")
-    assert actual == ak.to_json(array[1]._impl)  # noqa: SLF001
+    if array[1].ndim == 0:
+        with pytest.raises(ClientError):
+            rac.export(str(filepath), slice=(1,), format="application/json")
+    else:
+        rac.export(str(filepath), slice=(1,), format="application/json")
+        actual = filepath.read_text(encoding="utf-8")
+        assert actual == ak.to_json(array[1]._impl)  # noqa: SLF001
 
 
 @pytest.mark.parametrize("name", arrays.keys())
@@ -215,14 +216,14 @@ def test_export_arrow(tmpdir, client, name):
     expected = ak.to_arrow_table(array._impl)  # noqa: SLF001
     assert actual == expected
 
-    # TODO: cannot export a slice that results in a scalar
-    if rac.ndim == 1 and array[1].ndim == 0:
-        pytest.xfail("Cannot export scalars to Arrow")
-
-    rac.export(str(filepath), slice=(1,), format=APACHE_ARROW_FILE_MIME_TYPE)
-    actual = pyarrow.feather.read_table(filepath)
-    expected = ak.to_arrow_table(array[1]._impl)  # noqa: SLF001
-    assert actual == expected
+    if array[1].ndim == 0:
+        with pytest.raises(ClientError):
+            rac.export(str(filepath), slice=(1,), format=APACHE_ARROW_FILE_MIME_TYPE)
+    else:
+        rac.export(str(filepath), slice=(1,), format=APACHE_ARROW_FILE_MIME_TYPE)
+        actual = pyarrow.feather.read_table(filepath)
+        expected = ak.to_arrow_table(array[1]._impl)  # noqa: SLF001
+        assert actual == expected
 
 
 @pytest.mark.parametrize("name", arrays.keys())
@@ -237,15 +238,15 @@ def test_export_parquet(tmpdir, client, name):
     expected = ak.to_arrow_table(array._impl)  # noqa: SLF001
     assert actual == expected
 
-    # TODO: cannot export a slice that results in a scalar
-    if rac.ndim == 1 and array[1].ndim == 0:
-        pytest.xfail("Cannot export scalars to parquet")
-
-    rac.export(str(filepath), slice=(1,), format="application/x-parquet")
-    # Test this against pyarrow
-    actual = pyarrow.parquet.read_table(filepath)
-    expected = ak.to_arrow_table(array[1]._impl)  # noqa: SLF001
-    assert actual == expected
+    if array[1].ndim == 0:
+        with pytest.raises(ClientError):
+            rac.export(str(filepath), slice=(1,), format="application/x-parquet")
+    else:
+        rac.export(str(filepath), slice=(1,), format="application/x-parquet")
+        # Test this against pyarrow
+        actual = pyarrow.parquet.read_table(filepath)
+        expected = ak.to_arrow_table(array[1]._impl)  # noqa: SLF001
+        assert actual == expected
 
 
 #
