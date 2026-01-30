@@ -6,7 +6,7 @@ from typing import Any, Literal, Mapping, Optional, Sequence
 from fastapi import Request, WebSocket
 from starlette.types import Scope
 
-from ..access_control.access_policies import NO_ACCESS
+from ..access_control.access_policies import ALL_ACCESS, NO_ACCESS
 from ..access_control.protocols import AccessPolicy
 from ..adapters.mapping import MapAdapter
 from ..server.schemas import Principal
@@ -112,6 +112,8 @@ async def filter_for_access(
             )
             if queries is NO_ACCESS:
                 entry = EMPTY_NODE
+            elif queries is ALL_ACCESS:
+                ...
             else:
                 for query in queries:
                     entry = entry.search(query)
