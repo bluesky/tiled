@@ -1009,13 +1009,14 @@ async def generate_apikey(db: AsyncSession, principal, apikey_params, request):
                 f"principal's scopes {list(principal_scopes)}."
             ),
         )
-    admin_scopes = ["admin:apikeys"]
+    scopes_no_tag_restrict = {"admin:apikeys", "inherit"}
     if (access_tags := apikey_params.access_tags) is not None:
-        if all(scope in scopes for scope in admin_scopes):
+        if any(scope in scopes for scope in scopes_no_tag_restrict):
             raise HTTPException(
                 403,
                 (
-                    f"Requested scopes {scopes} contain scopes {admin_scopes}, "
+                    f"Requested scopes {scopes} contain scopes "
+                    f"{scopes_no_tag_restrict.intersection(scopes)}, "
                     f"which cannot be combined with access tag restrictions."
                 ),
             )
