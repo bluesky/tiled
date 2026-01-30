@@ -1019,7 +1019,14 @@ def test_apikey_auth_access_control(access_control_test_context_factory):
     alice_client[top].write_array(arr, key="data_O")
 
     alice_apikey_info = alice_client.context.create_api_key(
-        access_tags=["chemists_tag"]
+        scopes=[
+            "read:data",
+            "read:metadata",
+            "write:data",
+            "write:metadata",
+            "create:node",
+        ],
+        access_tags=["chemists_tag"],
     )
     alice_client.context.api_key = alice_apikey_info["secret"]
 
