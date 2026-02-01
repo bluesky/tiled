@@ -51,7 +51,7 @@ extensions = [
     "sphinx_click",
     "sphinx_copybutton",
     "sphinx_external_toc",
-    "myst_parser",
+    "myst_nb",
     "sphinxcontrib.jquery",
     "sphinxcontrib.mermaid",
     "sphinx_design",

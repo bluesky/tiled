@@ -281,9 +281,11 @@ dev = [
   { include-group = "test" },
 ]
 docs = [
+    "ipykernel",
     "matplotlib",
     "mistune",
     "myst-parser",
+    "nbconvert",
     "numpydoc",
     "pydata-sphinx-theme",
     "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
