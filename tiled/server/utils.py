@@ -113,7 +113,7 @@ async def filter_for_access(
             if queries is NO_ACCESS:
                 entry = EMPTY_NODE
             elif queries is ALL_ACCESS:
-                ...
+                return entry
             else:
                 for query in queries:
                     entry = entry.search(query)
