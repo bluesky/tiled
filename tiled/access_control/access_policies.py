@@ -14,7 +14,7 @@ from ..utils import Sentinel, import_object
 from .protocols import AccessPolicy
 from .scopes import ALL_SCOPES, NO_SCOPES, PUBLIC_SCOPES
 
-ALL_ACCESS = Sentinel("ALL_ACCESS")
+ALL_ACCESS = []
 NO_ACCESS = Sentinel("NO_ACCESS")
 
 
