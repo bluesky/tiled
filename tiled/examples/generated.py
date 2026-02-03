@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import awkward
 import numpy
 import pandas
+import ragged
 import sparse
 import xarray
 
@@ -14,6 +15,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.awkward import AwkwardAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
+from tiled.adapters.ragged import RaggedAdapter
 from tiled.adapters.sparse import COOAdapter
 from tiled.adapters.xarray import DatasetAdapter
 
@@ -54,6 +56,9 @@ sparse_arr[sparse_arr < 0.9] = 0  # fill most of the array with zeros
 awkward_arr = awkward.Array(
     [[{"x": 1.1, "y": [1]}, {"x": 2.2, "y": [1, 2]}], [], [{"x": 3.3, "y": [1, 2, 3]}]]
 )
+ragged_arr = ragged.array(
+    [[[1.1, 2.2, 3.3], []], [[4.4]], [], [[5.5, 6.6, 7.7, 8.8], [9.9]]]
+)
 
 print("Done generating example data.", file=sys.stderr)
 
@@ -90,6 +95,7 @@ mapping = {
             "complex": ArrayAdapter.from_array(data["complex"]),
             "sparse_image": COOAdapter.from_coo(sparse.COO(sparse_arr)),
             "awkward_array": AwkwardAdapter.from_array(awkward_arr),
+            "ragged_array": RaggedAdapter.from_array(ragged_arr),
         },
         metadata={"animal": "cat", "color": "green"},
     ),
