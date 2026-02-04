@@ -244,7 +244,10 @@ $ http :8000/api/v1/metadata/nested/awkward_array | jq .data.attributes.structur
 
 ### Ragged
 
-[Ragged](https://github.com/scikit-hep/ragged) is a generalization of Awkward for representing nested arrays and lists-of-lists of a common datatype, where values must be at the same nesting depth. While the shape of an array may be complex, here it is relatively simple to represent its structure as lists of offsets.
+[Ragged](https://github.com/scikit-hep/ragged) is a specialization of Awkward for
+representing nested arrays and lists-of-lists of a common datatype, where values must
+be at the same nesting depth. While the shape of an array may be complex, here it is
+relatively simple to represent its structure as lists of offsets.
 
 ```
 $ http :8000/api/v1/metadata/nested/ragged_array | jq .data.attributes.structure
