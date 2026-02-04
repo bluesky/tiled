@@ -11,7 +11,8 @@ The structure families are:
 
 * array --- a strided array, like a [numpy](https://numpy.org) array
 * awkward --- nested, variable-sized data (as implemented by [AwkwardArray](https://awkward-array.org/))
-* container --- a of other structures, akin to a dictionary or a directory
+* container --- a collection of other structures, akin to a dictionary or directory
+* ragged --- an irregularly-shaped array of numeric data ([Ragged](https://github.com/scikit-hep/ragged))
 * sparse --- a sparse array (i.e. an array which is mostly zeros)
 * table --- tabular data, as in [Apache Arrow](https://arrow.apache.org) or
   [pandas](https://pandas.pydata.org/)
@@ -195,7 +196,7 @@ AwkwardArrays are specified by:
 The first two are included in the structure.
 
 ```
-$ http :8000/api/v1/metadata/awkward_array | jq .data.attributes.structure
+$ http :8000/api/v1/metadata/nested/awkward_array | jq .data.attributes.structure
 ```
 
 ```json
@@ -239,7 +240,80 @@ $ http :8000/api/v1/metadata/awkward_array | jq .data.attributes.structure
     "form_key": "node0"
   }
 }
+```
 
+### Ragged
+
+[Ragged](https://github.com/scikit-hep/ragged) is a generalization of Awkward for representing nested arrays and lists-of-lists of a common datatype, where values must be at the same nesting depth. While the shape of an array may be complex, here it is relatively simple to represent its structure as lists of offsets.
+
+```
+$ http :8000/api/v1/metadata/nested/ragged_array | jq .data.attributes.structure
+```
+
+```json
+{
+  "data_type": {
+    "endianness": "little",
+    "kind": "f",
+    "itemsize": 8,
+    "dt_units": null
+  },
+  "chunks": [
+    [
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  ],
+  "shape": [
+    4,
+    null,
+    null
+  ],
+  "dims": null,
+  "resizable": false,
+  "offsets": [
+    [
+      0,
+      2,
+      3,
+      3,
+      5
+    ],
+    [
+      0,
+      3,
+      3,
+      4,
+      8,
+      9
+    ]
+  ],
+  "size": 9
+}
 ```
 
 ### Sparse Array
@@ -289,7 +363,7 @@ order, but we cannot make requests like "rows 100-200". (Dask has the same
 limitation, for the same reason.)
 
 ```
-$ http :8000/api/v1/metadata/long_table | jq .data.attributes.structure
+$ http :8000/api/v1/metadata/tables/long_table | jq .data.attributes.structure
 ```
 
 ```json
