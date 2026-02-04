@@ -1,13 +1,13 @@
 import contextlib
-from typing import Any, List, Optional, Tuple
+from collections.abc import Sequence
+from typing import Any, List, Optional, Tuple, cast
 
 import dask.array
 import numpy
 import pandas
 from numpy.typing import NDArray
 
-from tiled.adapters.core import Adapter
-
+from ..adapters.core import Adapter
 from ..ndslice import NDSlice
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
@@ -67,7 +67,7 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         if is_array_of_arrays:
             with contextlib.suppress(ValueError):
                 # only uniform arrays (with same dimensions) are stackable
-                array = numpy.vstack(array)
+                array = numpy.vstack(cast("Sequence[numpy.ndarray]", array))
 
         # Convert (experimental) pandas.StringDtype to numpy's unicode string dtype
         is_likely_string_dtype = isinstance(array.dtype, pandas.StringDtype) or (
