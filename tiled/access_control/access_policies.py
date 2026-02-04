@@ -60,7 +60,7 @@ class DummyAccessPolicy(AccessPolicy):
         scopes: Scopes,
     ) -> Filters:
         "Always impose no filtering on results."
-        return []
+        return ALL_ACCESS
 
 
 class TagBasedAccessPolicy(AccessPolicy):
@@ -373,11 +373,8 @@ class TagBasedAccessPolicy(AccessPolicy):
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
-        queries = []
-        query_filter = AccessBlobFilter
-
         if not hasattr(node, "access_blob"):
-            return queries
+            return ALL_ACCESS
         if not scopes.issubset(self.scopes):
             return NO_ACCESS
 
@@ -388,7 +385,7 @@ class TagBasedAccessPolicy(AccessPolicy):
             if principal.type == "service":
                 identifier = str(principal.uuid)
             elif self._is_admin(authn_scopes):
-                return queries
+                return ALL_ACCESS
             else:
                 identifier = self._get_id(principal)
             tag_list.update(
@@ -413,8 +410,7 @@ class TagBasedAccessPolicy(AccessPolicy):
             identifier = None
             tag_list.intersection_update(authn_access_tags)
 
-        queries.append(query_filter(identifier, tag_list))
-        return queries
+        return [AccessBlobFilter(identifier, tag_list)]
 
 
 T = TypeVar("T")
