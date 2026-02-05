@@ -7,6 +7,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- The `properties` field in the DataSource object and table to store additional
+  metadata about the data source (e.g. array chunking information).
 - Support for including custom FastAPI routers via a new `routers` configuration
   field at the server level.
 
