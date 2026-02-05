@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from sqlalchemy import (
@@ -285,6 +286,54 @@ BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NOT NULL)
 EXECUTE FUNCTION raise_if_null_parameter_exists();"""
+            )
+        )
+
+
+@event.listens_for(DataSourceAssetAssociation.__table__, "after_create")
+def asset_limit_check(target, connection, **kw):
+    # Function to enforce an arbitrary limit on the number of assets
+    # associated with data sources, assists in pagination.
+    # Triggers cannot define hard limits so if there are concurrent inserts
+    # it is possible to exceed the limit slightly.
+    DEFAULT_LIMIT = int(os.getenv("TILED_ASSET_LIMIT", "100000") or "100000")
+
+    sqliteString = f"""
+CREATE TRIGGER assets_exceed_set_limit
+BEFORE INSERT ON data_source_asset_association
+WHEN (SELECT COUNT(*) FROM data_source_asset_association) >= {DEFAULT_LIMIT}
+BEGIN
+    SELECT RAISE(ABORT, 'Hard limit on number of associated assets exceeded : {DEFAULT_LIMIT}');
+END"""
+
+    postgresqlString = f"""
+CREATE OR REPLACE FUNCTION assets_exceed_limit()
+RETURNS TRIGGER AS
+$$
+BEGIN
+    IF (SELECT count(*) FROM data_source_asset_association) > {DEFAULT_LIMIT}
+    THEN
+        RAISE EXCEPTION 'Hard limit on number of associated assets exceeded : {DEFAULT_LIMIT}';
+    END IF;
+    RETURN NEW;
+END;
+$$
+LANGUAGE plpgsql;"""
+
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(
+            text(sqliteString),
+        )
+    elif connection.engine.dialect.name == "postgresql":
+        connection.execute(
+            text(postgresqlString),
+        )
+        connection.execute(
+            text(
+                """
+CREATE TRIGGER assets_exceed_set_limit
+BEFORE INSERT ON data_source_asset_association
+FOR EACH ROW EXECUTE PROCEDURE assets_exceed_limit();"""
             )
         )
 
