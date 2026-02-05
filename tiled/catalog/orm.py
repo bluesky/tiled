@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    String,
     Table,
     Unicode,
     event,
@@ -29,32 +30,7 @@ from .base import Base
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
-class Timestamped:
-    """
-    Mixin for providing timestamps of creation and update time.
-
-    These are not used by application code, but they may be useful for
-    forensics.
-    """
-
-    time_created = Column(DateTime(timezone=False), server_default=func.now())
-    time_updated = Column(
-        DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
-    )
-
-    def __repr__(self):
-        return (
-            f"{type(self).__name__}("
-            + ", ".join(
-                f"{key}={value!r}"
-                for key, value in self.__dict__.items()
-                if not key.startswith("_")
-            )
-            + ")"
-        )
-
-
-class Node(Timestamped, Base):
+class Node(Base):
     """
     This describes a single Node and sometimes inlines descriptions of all its children.
     """
@@ -76,6 +52,12 @@ class Node(Timestamped, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
+    time_updated = Column(
+        DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
+    )
+    created_by = Column("created_by", String, nullable=False)
+    updated_by = Column("updated_by", String, nullable=False)
 
     data_sources = relationship(
         "DataSource",
@@ -190,9 +172,7 @@ def unique_parameter_num_null_check(target, connection, **kw):
     # NEW.num IS NOT NULL. Thus, for a given insert, only one of these
     # triggers is run.
     if connection.engine.dialect.name == "sqlite":
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
 CREATE TRIGGER cannot_insert_num_null_if_num_exists
 BEFORE INSERT ON data_source_asset_association
 WHEN NEW.num IS NULL
@@ -205,12 +185,8 @@ BEGIN
         WHERE parameter = NEW.parameter
         AND data_source_id = NEW.data_source_id
     );
-END"""
-            )
-        )
-        connection.execute(
-            text(
-                """
+END"""))
+        connection.execute(text("""
 CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
 BEFORE INSERT ON data_source_asset_association
 WHEN NEW.num IS NOT NULL
@@ -224,13 +200,9 @@ BEGIN
         AND num IS NULL
         AND data_source_id = NEW.data_source_id
     );
-END"""
-            )
-        )
+END"""))
     elif connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
 CREATE OR REPLACE FUNCTION raise_if_parameter_exists()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -244,22 +216,14 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
-        connection.execute(
-            text(
-                """
+$$ LANGUAGE plpgsql;"""))
+        connection.execute(text("""
 CREATE TRIGGER cannot_insert_num_null_if_num_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NULL)
-EXECUTE FUNCTION raise_if_parameter_exists();"""
-            )
-        )
-        connection.execute(
-            text(
-                """
+EXECUTE FUNCTION raise_if_parameter_exists();"""))
+        connection.execute(text("""
 CREATE OR REPLACE FUNCTION raise_if_null_parameter_exists()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -274,19 +238,13 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;"""
-            )
-        )
-        connection.execute(
-            text(
-                """
+$$ LANGUAGE plpgsql;"""))
+        connection.execute(text("""
 CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NOT NULL)
-EXECUTE FUNCTION raise_if_null_parameter_exists();"""
-            )
-        )
+EXECUTE FUNCTION raise_if_null_parameter_exists();"""))
 
 
 @event.listens_for(Node.__table__, "after_create")
@@ -294,24 +252,18 @@ def create_index_metadata_tsvector_search(target, connection, **kw):
     # This creates a ts_vector based metadata search index for fulltext.
     # Postgres only feature
     if connection.engine.dialect.name == "postgresql":
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
                 CREATE INDEX metadata_tsvector_search
                 ON nodes
                 USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
-                """
-            )
-        )
+                """))
 
 
 @event.listens_for(NodesClosure.__table__, "after_create")
 def update_closure_table(target, connection, **kw):
     if connection.engine.dialect.name == "sqlite":
         # Create a trigger to update the closure table when INSERTING a new node
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
 CREATE TRIGGER update_closure_table_when_inserting
 AFTER INSERT ON nodes
 BEGIN
@@ -321,15 +273,11 @@ BEGIN
     SELECT p.ancestor, c.descendant, p.depth+c.depth+1
     FROM nodes_closure p, nodes_closure c
     WHERE p.descendant=NEW.parent and c.ancestor=NEW.id;
-END"""
-            )
-        )
+END"""))
 
     elif connection.engine.dialect.name == "postgresql":
         # Create function and trigger to update the closure table when INSERTING a new node
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
 CREATE OR REPLACE FUNCTION update_closure_table_when_inserting()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -342,30 +290,20 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-"""
-            )
-        )
+"""))
 
-        connection.execute(
-            text(
-                """
+        connection.execute(text("""
 CREATE TRIGGER update_closure_table_when_inserting
 AFTER INSERT ON nodes
 FOR EACH ROW
 EXECUTE FUNCTION update_closure_table_when_inserting();
-"""
-            )
-        )
+"""))
 
     # Create the root node (in nodes and, automatically, in nodes_closure) when initializing the database.
-    connection.execute(
-        text(
-            """
-INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob)
-SELECT 0, '', NULL, 'container', '{}', '[]', '{}';
-"""
-        )
-    )
+    connection.execute(text("""
+INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob, created_by, updated_by)
+SELECT 0, '', NULL, 'container', '{}', '[]', '{}', '', '';
+"""))
 
 
 class FTS5Table(Table):
@@ -433,7 +371,7 @@ def create_virtual_table_fits5(target, connection, **kw):
             connection.execute(text(statement))
 
 
-class DataSource(Timestamped, Base):
+class DataSource(Base):
     """
     The describes how to open one or more file/blobs to extract data for a Node.
 
@@ -463,6 +401,10 @@ class DataSource(Timestamped, Base):
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
     structure_family = Column(Enum(StructureFamily), nullable=False)
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
+    time_updated = Column(
+        DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
+    )
 
     # many-to-one relationship to Structure
     structure: Mapped["Structure"] = relationship(
@@ -504,7 +446,7 @@ class Structure(Base):
     structure = Column(JSONVariant, nullable=False)
 
 
-class Asset(Timestamped, Base):
+class Asset(Base):
     """
     This tracks individual files/blobs.
     """
@@ -519,6 +461,10 @@ class Asset(Timestamped, Base):
     hash_type = Column(Unicode(63), nullable=True)
     hash_content = Column(Unicode(1023), nullable=True)
     size = Column(Integer, nullable=True)
+    time_created = Column(DateTime(timezone=False), server_default=func.now())
+    time_updated = Column(
+        DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
+    )
 
     # # many-to-many relationship to Asset, bypassing the `Association` class
     data_sources: Mapped[List["DataSource"]] = relationship(
@@ -532,7 +478,7 @@ class Asset(Timestamped, Base):
     )
 
 
-class Revision(Timestamped, Base):
+class Revision(Base):
     """
     This tracks history of metadata, specs, and access_blob supporting 'undo' functionality.
     """
@@ -551,6 +497,13 @@ class Revision(Timestamped, Base):
     metadata_ = Column("metadata", JSONVariant, nullable=False)
     specs = Column(JSONVariant, nullable=False)
     access_blob = Column("access_blob", JSONVariant, nullable=False)
+    time_updated = Column(
+        DateTime(timezone=False), onupdate=func.now(), server_default=func.now()
+    )
+    updated_by = Column(
+        "updated_by",
+        String,
+    )
 
     __table_args__ = (
         UniqueConstraint(
