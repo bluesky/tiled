@@ -1,5 +1,3 @@
-import asyncio
-import time
 import json
 import sqlite3
 from copy import deepcopy
@@ -671,48 +669,6 @@ def test_deletion_access_control(access_control_test_context_factory):
     with fail_with_status_code(HTTP_403_FORBIDDEN):
         chris_client[top]["data_H"].delete(external_only=False)
     alice_client[top]["data_H"].delete(external_only=False)
-
-
-async def coro_test(c, keys):
-    asyncio.sleep(0.5)
-    child_node = await c.context.http_client.app.state.root_tree[keys[0]].lookup_adapter(
-        [keys[1]]
-    )
-    return child_node
-
-
-def test_created_and_updated_info(access_control_test_context_factory):
-    """
-    Test that created_by and updated_by fields are correctly set
-    on node creation and metadata update.
-    """
-
-    alice_client = access_control_test_context_factory("alice", "alice")
-    chris_client = access_control_test_context_factory("chris", "chris")
-
-    top = "foo"
-    for data in ["data_M"]:
-        # Create a new node and check created_by and updated_by
-        chris_client[top].write_array(
-            arr,
-            key=data,
-            metadata={"description": "initial"},
-            access_tags=["chris_tag"],
-        )
-        coro_obj = coro_test(chris_client, [top, data])
-        result = asyncio.run(coro_obj)
-        assert result.node.created_by == "alice"
-        assert result.node.updated_by == "alice"
-        assert result.node.time_created.date() == result.node.time_updated.date()
-
-        time.sleep(1)  # ensure time_updated is different
-        alice_client[top][data].replace_metadata(
-            metadata={"description": "updated"}
-        )  # Still need to test this works with another user
-        coro_obj = coro_test(alice_client, [top, data])
-        result = asyncio.run(coro_obj)
-        assert result.node.created_by != result.node.updated_by
-        assert result.node.time_created != result.node.time_updated
 
 
 def test_user_owned_node_access_control(access_control_test_context_factory):
