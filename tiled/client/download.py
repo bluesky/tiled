@@ -41,7 +41,8 @@ def _download_url(
         path.parent.mkdir(exist_ok=True, parents=True)
         for attempt in retry_context():
             with attempt:
-                with handle_error(client.stream("GET", url)) as response:
+                with client.stream("GET", url) as response:
+                    handle_error(response)
                     if path.name == ATTACHMENT_FILENAME_PLACEHOLDER:
                         # Use filename provided by server.
                         filename = CONTENT_DISPOSITION_PATTERN.match(
