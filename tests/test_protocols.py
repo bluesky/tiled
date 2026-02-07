@@ -371,8 +371,6 @@ def test_tableadapter_protocol(mocker: MockFixture) -> None:
 
 
 class CustomAccessPolicy(AccessPolicy):
-    ALL = ALL_ACCESS
-
     def __init__(self, scopes: Optional[Scopes] = None) -> None:
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
 
@@ -417,7 +415,7 @@ class CustomAccessPolicy(AccessPolicy):
         authn_scopes: Scopes,
         scopes: Scopes,
     ) -> Filters:
-        queries: Filters = []
+        queries: Filters = ALL_ACCESS
         somespecs = node.specs()  # noqa: 841
         return queries
 
