@@ -285,14 +285,17 @@ docs = [
     "matplotlib",
     "mistune",
     "myst-parser",
+    "myst_nb",
     "nbconvert",
     "numpydoc",
     "pydata-sphinx-theme",
     "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
+    "sphinx-autobuild",
     "sphinx-click",
     "sphinx-copybutton",
     "sphinx_design",
     "sphinx_external_toc",
+    "sphinxcontrib-jquery",
     "sphinxcontrib-mermaid",
 ]
 
