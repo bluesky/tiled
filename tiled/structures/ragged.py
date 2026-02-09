@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -121,6 +122,8 @@ def make_ragged_array(array: Iterable) -> ragged.array:
             return ragged.array([row.tolist() for row in array])
         return ragged.array(awkward.from_numpy(array))
     if isinstance(array, awkward.Array) or hasattr(array, "__dlpack_device__"):
+        with contextlib.suppress(ValueError):
+            return ragged.array(awkward.to_numpy(array))
         return ragged.array(array)
     if hasattr(array, "tolist"):
         return ragged.array(array.tolist())
