@@ -18,6 +18,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Removed support for Python 3.9, which reached its end of life in October 2025.
 - When creating an access-tag restricted API key, the `inherit` scope is no longer valid to request. Instead, the specific scopes desired for the key should be requested.
 
+### Fixed
+
+- Error handling in `tiled.client.download._download_url`.
+
 ## v0.2.3 (2025-12-17)
 
 ### Added
