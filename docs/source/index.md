@@ -44,7 +44,7 @@ New to *Tiled*? Unsure what it can be used for? Check out the getting started gu
 
 ::::
 
-:::{grid-item-card}
+::::{grid-item-card}
 :link-type: doc
 :link: user-guide/index
 
@@ -54,10 +54,9 @@ User guide
 ^^^^^^^^^^
 
 The user guide provides detailed practical guides for common activites using Tiled.
+::::
 
-:::
-
-:::{grid-item-card}
+::::{grid-item-card}
 :link: explanations/index
 
 {fas}`book-open`
@@ -66,10 +65,9 @@ Explanations
 ^^^^^^^^^^^^
 
 This sections covers Tiled concepts in detail.
+::::
 
-:::
-
-:::{grid-item-card}
+::::{grid-item-card}
 :link-type: doc
 :link: reference/index
 
@@ -79,9 +77,6 @@ API reference
 ^^^^^^^^^^^^^
 
 The reference guide contains a detailed description of the functions, modules, and objects included in Tiled. The reference describes how the methods work and which parameters can be used. It assumes that you have an understanding of the key concepts.
-
-:::
-
 ::::
 
 :::::
