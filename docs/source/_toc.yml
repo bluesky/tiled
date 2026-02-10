@@ -12,6 +12,10 @@ subtrees:
             - file: getting-started/what-is-tiled
             - file: getting-started/10-minutes-to-tiled
             - file: getting-started/integrations/index
+              subtrees:
+                - entries:
+                  - file: getting-started/integrations/plotly
+                  - file: getting-started/integrations/zarr
   - entries:
     - file: user-guide/index
       subtrees:
@@ -62,5 +66,4 @@ subtrees:
             - file: reference/commandline
             - file: reference/service-configuration
             - file: reference/client-profiles
-            - file: reference/release-history
             - file: reference/min-versions
