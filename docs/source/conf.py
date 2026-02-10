@@ -348,3 +348,8 @@ def skip_maketrans(app, what, name, obj, skip, options):
 
 def setup(app):
     app.connect("autodoc-skip-member", skip_maketrans)
+
+
+suppress_warnings = [
+    "etoc.toctree",  # Suppress warnings about unexpected toctree entries
+]
