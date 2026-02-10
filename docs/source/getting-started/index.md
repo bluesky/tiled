@@ -7,6 +7,17 @@
 ::::{tab-set}
 :sync-group: install
 
+:::{tab-item} tl;dr
+:sync: tldr
+
+With **pip** or **uv**, install `"tiled[all]"` or just `"tiled[client]"` if you only need
+to access data (not run your own Tiled server).
+
+With **conda** or **pixi**, install `tiled` or just `tiled-client`. Tiled is available
+on the `conda-forge` channel, which pixi uses by default.
+
+:::
+
 :::{tab-item} pip
 :sync: pip
 
@@ -88,3 +99,6 @@ pixi add tiled
 ::::
 
 <!-- prettier-ignore-end -->
+
+See the left side-bar (or bring it into view by clicking on the upper-left `≡`)
+for tutorials that illustrate the purpose and utility of Tiled.
