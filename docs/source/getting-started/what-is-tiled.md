@@ -1,12 +1,13 @@
 # What is Tiled?
 
-Tiled provides a structured API to multimodal scientific data. It is a
-universal translator designed to help scientists to store, find, and access
-scientific data at scale.
+Tiled helps scientists to store, find, and access scientific data at scale.
+It provides a _structured_ API to scientific data, featuring remote
+slicing and data format conversion of multimodal datasets. Tiled can run on a
+laptop as a single process, or it can be deployed at scale in a data center.
 
-It can transport data securely via (parallel) download and upload over HTTP.
-Alternatively, it can be used just as a catalog, pointing to data assets that
-are accessed directly by some other means.
+Scientists can download or upload data over HTTP, with support for
+parallel transfers. Tiled can also serve as a catalog, pointing to data assets
+that are stored and accessed through other systems.
 
 Tiled enables scientists to:
 - **Search** on metadata
@@ -14,32 +15,28 @@ Tiled enables scientists to:
 - **Transcode** between formats, letting the requester specify how they want
   the data
 - **Locate** or **download** underlying data files or blobs
-- **Stream** live or recent data (via websockets)
+- **Stream** live or recent data
 - **Upload** or **register** datasets to add them to Tiled
 
-The software package includes:
-- a **webserver**
-- a **Python-based client** for reading and writing data, which integrates well
-  with scientific Python libraries (e.g., numpy, pandas)
-- and a prototype **web app** for browser-based data access
+Tiled includes a Python client for reading and writing data, with strong
+integration with libraries like numpy and pandas. Data can also be accessed
+through a browser-based web interface or from any program that speaks HTTP,
+including command-line tools like [curl][] and [HTTPie][]. Users have built custom
+web and desktop applications on top of Tiled, as well as integrations with
+scientific tools like [Igor][].
 
-Tiled's use of web standards makes it easy to access from any program
-that speaks HTTP. Users have written custom web and desktop apps as well as
-integrations with scientific applications like [Igor][]. Tiled can
-be used from command-line HTTP tools like [curl][] or [HTTPie][].
-
-Tiled was designed from the start to be a **general-purpose** API for scientific
-data structures. It supports N-dimensional array data, tabular data, and nested
+Tiled supports N-dimensional array data, tabular data, and nested
 directory-like structures containing these. It also supports specialized array
-types, including sparse arrays and [awkward][] arrays. It integrates well with
-[Bluesky][].
+types, including sparse arrays and [awkward][] arrays. It was developed to be
+the recommended data store for raw data from [Bluesky][], but was designed from
+the start to be more general: suitable for any raw, processed, or analyzed
+scientific data.
 
-The server implements web security standards, which makes it easy to integrate
-with IT infrastructure without special arrangement or exceptions. Its security
-has been vetted by third-party penetration testers. It can integrate with
-authentication and authorization systems to implement fine-grained access
-policies. Alternatively, for simple setups, it can be deployed as a single-user
-server.
+Tiled uses web security standards, so it works with existing institutional
+infrastructure out of the box. Access can be configured with fine-grained
+policies tied to an institution's authentication and authorization systems,
+or it can be run as a simple single-user server with no setup. The server's
+security has been vetted by third-party penetration testers.
 
 [awkward]: https://awkward-array.org
 [Bluesky]: https://blueskyproject.org/bluesky
