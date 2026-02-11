@@ -17,9 +17,9 @@ This is a short, tutorial-style introduction to Tiled, for new users.
 
 ## Connect
 
-To begin, will use a public demo instance of Tiled. If you are reading
+To begin, we will use a public demo instance of Tiled. If you are reading
 this tutorial from an airplane, see the section below on running your
-own Tiled server.
+own Tiled server on your laptop.
 
 
 ```{code-cell} ipython3

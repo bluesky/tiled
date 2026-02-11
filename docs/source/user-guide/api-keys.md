@@ -22,7 +22,7 @@ This guide does not apply to single-user deployments like this.
 ## Why use API keys?
 
 Users can log in to Tiled with a simple username/password or through a third
-party like ORICD or Google. For interactive workflows in Python, this the most
+party authentication provider, like ORICD or Google. For interactive workflows in Python, this the most
 convenient way to authenticate.
 
 But in other situations, it can more convenient to generate and use an API key.

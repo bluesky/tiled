@@ -5,7 +5,7 @@ It provides a _structured_ API to scientific data, featuring remote
 slicing and data format conversion of multimodal datasets. Tiled can run on a
 laptop as a single process, or it can be deployed at scale in a data center.
 
-Scientists can download or upload data over HTTP, with support for
+Users can download or upload data over HTTP, with support for
 parallel transfers. Tiled can also serve as a catalog, pointing to data assets
 that are stored and accessed through other systems.
 
@@ -19,13 +19,13 @@ Tiled enables scientists to:
 - **Upload** or **register** datasets to add them to Tiled
 
 Tiled includes a Python client for reading and writing data, with strong
-integration with libraries like numpy and pandas. Data can also be accessed
+integration with libraries like numpy, pandas, and dask. Data can also be accessed
 through a browser-based web interface or from any program that speaks HTTP,
 including command-line tools like [curl][] and [HTTPie][]. Users have built custom
 web and desktop applications on top of Tiled, as well as integrations with
 scientific tools like [Igor][].
 
-Tiled supports N-dimensional array data, tabular data, and nested
+Data structures are first-class citizens in Tiled: it supports N-dimensional array data, tabular data, and nested
 directory-like structures containing these. It also supports specialized array
 types, including sparse arrays and [awkward][] arrays. It was developed to be
 the recommended data store for raw data from [Bluesky][], but was designed from

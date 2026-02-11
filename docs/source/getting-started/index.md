@@ -100,5 +100,4 @@ pixi add tiled
 
 <!-- prettier-ignore-end -->
 
-See the left side-bar (or bring it into view by clicking on the upper-left `≡`)
-for tutorials that illustrate the purpose and utility of Tiled.
+For tutorials that illustrate the purpose and utility of Tiled, see the left side-bar (or bring it into view by clicking on the upper-left `≡`).

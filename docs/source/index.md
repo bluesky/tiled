@@ -53,7 +53,7 @@ New to *Tiled*? Unsure what it can be used for? Check out the getting started gu
 User guide
 ^^^^^^^^^^
 
-The user guide provides detailed practical guides for common activites using Tiled.
+The user guide provides detailed practical instructions for common activities using Tiled.
 ::::
 
 ::::{grid-item-card}
@@ -64,7 +64,7 @@ The user guide provides detailed practical guides for common activites using Til
 Explanations
 ^^^^^^^^^^^^
 
-This sections covers Tiled concepts in detail.
+This section covers Tiled concepts in detail.
 ::::
 
 ::::{grid-item-card}
@@ -76,7 +76,7 @@ This sections covers Tiled concepts in detail.
 API reference
 ^^^^^^^^^^^^^
 
-The reference guide contains a detailed description of the functions, modules, and objects included in Tiled. The reference describes how the methods work and which parameters can be used. It assumes that you have an understanding of the key concepts.
+The reference guide contains a detailed description of the functions, modules, and objects included in Tiled. The reference describes how the methods work and which parameters can be used. It assumes that the reader has an understanding of the key concepts.
 ::::
 
 :::::
