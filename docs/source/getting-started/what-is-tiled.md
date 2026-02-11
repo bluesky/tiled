@@ -26,7 +26,7 @@ web and desktop applications on top of Tiled, as well as integrations with
 scientific tools like [Igor][].
 
 Data structures are first-class citizens in Tiled: it supports N-dimensional array data, tabular data, and nested
-directory-like structures containing these. It also supports specialized array
+directory-like containers thereof. Tiled also supports specialized array
 types, including sparse arrays and [awkward][] arrays. It was developed to be
 the recommended data store for raw data from [Bluesky][], but was designed from
 the start to be more general: suitable for any raw, processed, or analyzed
