@@ -8,7 +8,7 @@
 :columns: 12
 
 
-Tiled is service enabling **secure, structured** access to **scientific data**. It supports
+Tiled is a service that enables **secure, structured** access to **scientific data**. It supports
 **search**, remote **slicing**, translating between **formats**, and live **streaming**.
 
 :::{image} https://img.shields.io/conda/vn/conda-forge/tiled?style=for-the-badge&color=brightgreen&logo=condaforge
