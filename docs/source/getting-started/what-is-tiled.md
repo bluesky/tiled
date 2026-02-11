@@ -39,7 +39,7 @@ scientific tools like [Igor][].
 
 Tiled uses web security standards, so it works with existing institutional
 infrastructure. Access can be configured with fine-grained policies tied to an
-institution's authentication[^1] and authorization systems, or it can be run as a
+institution's authentication and authorization systems, or it can be run as a
 simple single-user server with no setup. The server's security is regularly
 vetted by third-party penetration testers.
 
@@ -50,4 +50,3 @@ vetted by third-party penetration testers.
 [HTTPie]: https://httpie.io/
 [Igor]: https://www.wavemetrics.com/
 [open source]: https://github.com/bluesky/tiled/blob/main/LICENSE
-[^1]: including OIDC, LDAP, PAM, and SAML
