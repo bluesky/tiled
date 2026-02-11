@@ -7,7 +7,7 @@
 ::::{tab-set}
 :sync-group: install
 
-:::{tab-item} tl;dr
+:::{tab-item} Summary
 :sync: tldr
 
 With **pip** or **uv**, install `"tiled[all]"` or just `"tiled[client]"` if you only need
