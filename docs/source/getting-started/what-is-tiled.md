@@ -37,9 +37,9 @@ including command-line tools like [curl][] and [HTTPie][]. Users have built
 custom web and desktop applications on Tiled, as well as integrations with
 scientific tools like [Igor][].
 
-Tiled uses web security standards[^1], so it works with existing institutional
+Tiled uses web security standards, so it works with existing institutional
 infrastructure. Access can be configured with fine-grained policies tied to an
-institution's authentication and authorization systems, or it can be run as a
+institution's authentication[^1] and authorization systems, or it can be run as a
 simple single-user server with no setup. The server's security is regularly
 vetted by third-party penetration testers.
 
