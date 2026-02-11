@@ -27,9 +27,9 @@ scientific tools like [Igor][].
 Data structures are first-class citizens in Tiled: it supports N-dimensional
 array data, tabular data, and nested directory-like containers of these. Tiled
 also supports specialized array types, including sparse arrays and [awkward][]
-arrays. It was built to be the recommended data store for raw data from
-[Bluesky][] _and_ to hold any raw, processed, or analyzed scientific data. It
-is used in the wild as both.
+arrays. It was built to be the recommended data store for [Bluesky][] _and_ to
+be a general-purpose store for any raw, processed, or analyzed scientific data.
+It is used in the wild as both.
 
 Tiled uses web security standards, so it works with existing institutional
 infrastructure. Access can be configured with fine-grained policies tied to an
