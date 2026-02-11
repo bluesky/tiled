@@ -1,7 +1,7 @@
 # What is Tiled?
 
 Tiled helps scientists to store, find, and access scientific data at scale. It
-provides a _structured_ API to scientific data structures of varied types so
+provides a API that understands scientific data structures of varied types so
 users can slice, convert, and retrieve just what they need. Tiled is designed
 to run on a scientist's laptop or deploy at scale in a facility's data center.
 
@@ -12,7 +12,7 @@ Tiled enables scientists to:
 - **Search** across metadata
 - **Slice** remotely into arrays and tables
 - **Transcode** data into the format they need
-- **Locate** or **download** underlying data files or blobs
+- **Locate** or **download** underlying data files or blobs (e.g. S3 buckets)
 - **Stream** live data and "replay" recent data
 - **Upload** or **register** datasets to add them to Tiled
 
