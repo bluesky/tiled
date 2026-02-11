@@ -16,12 +16,16 @@ Tiled enables scientists to:
 - **Stream** live data and "replay" recent data
 - **Upload** or **register** datasets to add them to Tiled
 
+## Tiled fits into existing systems
+
 Tiled supports parallel uploads and downloads for efficient transfers. It can
 also serve as a catalog: users can discover data through Tiled's search and
 metadata API, then access it through other systems, or register existing data
 assets without copying them into Tiled. Tiled doesn't insist on being the pipe
 through which all data flows; it coexists comfortably alongside other
 solutions.
+
+## Tiled understands your data
 
 Data structures are first-class citizens in Tiled: it supports N-dimensional
 array data, tabular data, and nested directory-like containers of these. Tiled
@@ -30,12 +34,16 @@ arrays. It was built to be the recommended data store for [Bluesky][] _and_ to
 be a general-purpose store for any raw, processed, or analyzed scientific data.
 It is used in the wild as both.
 
+## Tiled plays well with your existing tools
+
 Tiled includes a Python client for reading and writing data, with strong
 integration with libraries like numpy, pandas, and dask. Data can also be
 accessed through a browser-based web interface or from any HTTP client,
 including command-line tools like [curl][] and [HTTPie][]. Users have built
 custom web and desktop applications on Tiled, as well as integrations with
 scientific tools like [Igor][].
+
+## Tiled is secure and easy for institutions to adopt
 
 Tiled uses web security standards, so it works with existing institutional
 infrastructure. Access can be configured with fine-grained policies tied to an
