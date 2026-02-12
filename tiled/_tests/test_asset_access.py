@@ -1,5 +1,7 @@
 import hashlib
+import os
 from pathlib import Path
+from unittest import mock
 
 import pandas
 import pytest
@@ -124,3 +126,14 @@ def test_do_not_expose_raw_assets(tmpdir):
         client.write_array([1, 2, 3], key="x")
         with fail_with_status_code(HTTP_403_FORBIDDEN):
             client["x"].raw_export(tmpdir / "exported")
+
+
+@mock.patch.dict(os.environ, {"TILED_ASSET_LIMIT": "3"})
+def test_asset_limit(client):
+    # Recreate Trigger insertions
+    client.write_array([1, 2, 3])
+    client.write_array([4, 5, 6])
+    client.write_array([7, 8, 9])
+    # Failover
+    client.write_array([10, 11, 12])
+    # Clear Trigger insertions
