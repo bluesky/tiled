@@ -48,7 +48,7 @@ Also, the example Prometheus configuration in
 In real single-user deployments, the secret should be set to a secure value as described in
 [Tiled's security documentation](https://blueskyproject.io/tiled/explanations/security.html).
 In multi-user deployments, an
-[API key](https://blueskyproject.io/tiled/how-to/api-keys.html) with the
+[API key](https://blueskyproject.io/tiled/user-guide/api-keys.html) with the
 `metrics` scope should be used.
 ```
 

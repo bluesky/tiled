@@ -5,7 +5,7 @@ The following guide demonstrates more sophisticated control over this process.
 
 ## Quickstart
 
-The tutorial {doc}`../tutorials/serving-files` demonstrates the usage:
+You can use
 
 ```
 tiled serve directory [--watch] [--public] [--api-key <SECRET>] <DIRECTORY>
