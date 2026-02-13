@@ -1601,6 +1601,11 @@ def get_router(
             access_blob_modified = access_blob != {}
             access_blob = {}
 
+        created_by = ""
+        if principal is not None:
+            if len(principal.identities) > 0:
+                created_by = principal.identities[0].id
+
         node = await entry.create_node(
             metadata=body.metadata,
             structure_family=body.structure_family,
@@ -1608,9 +1613,7 @@ def get_router(
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
-            created_by=(
-                principal.identities[0].id if len(principal.identities) > 0 else ""
-            ),
+            created_by=created_by,
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
