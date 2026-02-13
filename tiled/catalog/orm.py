@@ -172,7 +172,9 @@ def unique_parameter_num_null_check(target, connection, **kw):
     # NEW.num IS NOT NULL. Thus, for a given insert, only one of these
     # triggers is run.
     if connection.engine.dialect.name == "sqlite":
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER cannot_insert_num_null_if_num_exists
 BEFORE INSERT ON data_source_asset_association
 WHEN NEW.num IS NULL
@@ -185,8 +187,12 @@ BEGIN
         WHERE parameter = NEW.parameter
         AND data_source_id = NEW.data_source_id
     );
-END"""))
-        connection.execute(text("""
+END"""
+            )
+        )
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
 BEFORE INSERT ON data_source_asset_association
 WHEN NEW.num IS NOT NULL
@@ -200,9 +206,13 @@ BEGIN
         AND num IS NULL
         AND data_source_id = NEW.data_source_id
     );
-END"""))
+END"""
+            )
+        )
     elif connection.engine.dialect.name == "postgresql":
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
 CREATE OR REPLACE FUNCTION raise_if_parameter_exists()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -216,14 +226,22 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;"""))
-        connection.execute(text("""
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER cannot_insert_num_null_if_num_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NULL)
-EXECUTE FUNCTION raise_if_parameter_exists();"""))
-        connection.execute(text("""
+EXECUTE FUNCTION raise_if_parameter_exists();"""
+            )
+        )
+        connection.execute(
+            text(
+                """
 CREATE OR REPLACE FUNCTION raise_if_null_parameter_exists()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -238,13 +256,19 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;"""))
-        connection.execute(text("""
+$$ LANGUAGE plpgsql;"""
+            )
+        )
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER cannot_insert_num_int_if_num_null_exists
 BEFORE INSERT ON data_source_asset_association
 FOR EACH ROW
 WHEN (NEW.num IS NOT NULL)
-EXECUTE FUNCTION raise_if_null_parameter_exists();"""))
+EXECUTE FUNCTION raise_if_null_parameter_exists();"""
+            )
+        )
 
 
 @event.listens_for(Node.__table__, "after_create")
@@ -252,18 +276,24 @@ def create_index_metadata_tsvector_search(target, connection, **kw):
     # This creates a ts_vector based metadata search index for fulltext.
     # Postgres only feature
     if connection.engine.dialect.name == "postgresql":
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
                 CREATE INDEX metadata_tsvector_search
                 ON nodes
                 USING gin (jsonb_to_tsvector('simple', metadata, '["string"]'))
-                """))
+                """
+            )
+        )
 
 
 @event.listens_for(NodesClosure.__table__, "after_create")
 def update_closure_table(target, connection, **kw):
     if connection.engine.dialect.name == "sqlite":
         # Create a trigger to update the closure table when INSERTING a new node
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER update_closure_table_when_inserting
 AFTER INSERT ON nodes
 BEGIN
@@ -273,11 +303,15 @@ BEGIN
     SELECT p.ancestor, c.descendant, p.depth+c.depth+1
     FROM nodes_closure p, nodes_closure c
     WHERE p.descendant=NEW.parent and c.ancestor=NEW.id;
-END"""))
+END"""
+            )
+        )
 
     elif connection.engine.dialect.name == "postgresql":
         # Create function and trigger to update the closure table when INSERTING a new node
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
 CREATE OR REPLACE FUNCTION update_closure_table_when_inserting()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -290,20 +324,30 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-"""))
+"""
+            )
+        )
 
-        connection.execute(text("""
+        connection.execute(
+            text(
+                """
 CREATE TRIGGER update_closure_table_when_inserting
 AFTER INSERT ON nodes
 FOR EACH ROW
 EXECUTE FUNCTION update_closure_table_when_inserting();
-"""))
+"""
+            )
+        )
 
     # Create the root node (in nodes and, automatically, in nodes_closure) when initializing the database.
-    connection.execute(text("""
+    connection.execute(
+        text(
+            """
 INSERT INTO nodes(id, key, parent, structure_family, metadata, specs, access_blob, created_by, updated_by)
 SELECT 0, '', NULL, 'container', '{}', '[]', '{}', '', '';
-"""))
+"""
+        )
+    )
 
 
 class FTS5Table(Table):
