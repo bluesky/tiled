@@ -226,6 +226,7 @@ async def test_write_array_external(a, tmpdir):
                 mimetype="image/tiff",
                 structure=structure,
                 parameters={},
+                properties={"chunks": structure["chunks"]},  # Optional property
                 management="external",
                 assets=[
                     Asset(
@@ -240,6 +241,7 @@ async def test_write_array_external(a, tmpdir):
     )
     x = await a.lookup_adapter(["x"])
     assert numpy.array_equal(await x.read(), arr)
+    assert x.data_sources[0].properties == {"chunks": [[5], [3]]}
 
 
 @pytest.mark.asyncio

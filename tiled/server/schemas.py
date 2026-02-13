@@ -168,6 +168,7 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
             structure=structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
+            properties=orm.properties,
             assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
         )
