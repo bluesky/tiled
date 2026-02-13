@@ -154,7 +154,6 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
 
 
 async def coro_test(c, keys):
-    asyncio.sleep(0.5)
     child_node = await c.context.http_client.app.state.root_tree[
         keys[0]
     ].lookup_adapter([keys[1]])
