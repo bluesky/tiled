@@ -1,5 +1,6 @@
-from typing import Callable, cast
+from typing import Callable, Dict, Type, Union, cast
 
+import awkward as ak
 import numpy as np
 import pyarrow as pa
 import pytest
@@ -9,6 +10,9 @@ from tests.adapters.test_sql import adapter_duckdb_one_partition  # noqa: F401
 from tests.adapters.test_sql import adapter_psql_many_partitions  # noqa: F401
 from tests.adapters.test_sql import adapter_psql_one_partition  # noqa: F401
 from tests.adapters.test_sql import assert_same_rows
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.awkward import AwkwardAdapter
+from tiled.adapters.ragged import RaggedAdapter
 from tiled.adapters.sql import SQLAdapter
 from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
@@ -17,57 +21,29 @@ from tiled.structures.table import TableStructure
 
 rng = np.random.default_rng(42)
 
-names = ["i0", "i1", "i2", "i3", "f4", "f5"]
+names_adapters: Dict[str, Type[Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]]] = {
+    "integers": ArrayAdapter,
+    "floats": ArrayAdapter,
+    "ragged_floats": RaggedAdapter,
+}
+names = list(names_adapters.keys())
 batch_size = 5
 data0 = [
-    pa.array(
-        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
-    ),
-    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
-    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
+    pa.array([rng.integers(-100, 100, size=10) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15) for _ in range(batch_size)]),
+    pa.array([rng.random(size=rng.integers(1, 10)) for _ in range(batch_size)]),
 ]
 batch_size = 8
 data1 = [
-    pa.array(
-        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
-    ),
-    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
-    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
+    pa.array([rng.integers(-100, 100, size=10) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15) for _ in range(batch_size)]),
+    pa.array([rng.random(size=rng.integers(1, 10)) for _ in range(batch_size)]),
 ]
 batch_size = 3
 data2 = [
-    pa.array(
-        [rng.integers(-100, 100, size=10, dtype=np.int8) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=11, dtype=np.int16) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=12, dtype=np.int32) for _ in range(batch_size)]
-    ),
-    pa.array(
-        [rng.integers(-100, 100, size=13, dtype=np.int64) for _ in range(batch_size)]
-    ),
-    pa.array([rng.random(size=14, dtype=np.float32) for _ in range(batch_size)]),
-    pa.array([rng.random(size=15, dtype=np.float64) for _ in range(batch_size)]),
+    pa.array([rng.integers(-100, 100, size=10) for _ in range(batch_size)]),
+    pa.array([rng.random(size=15) for _ in range(batch_size)]),
+    pa.array([rng.random(size=rng.integers(1, 10)) for _ in range(batch_size)]),
 ]
 
 batch0 = pa.record_batch(data0, names=names)
@@ -90,7 +66,7 @@ def data_source_from_init_storage() -> Callable[[str, int], DataSource[TableStru
             assets=[],
         )
 
-        storage = cast(SQLStorage, parse_storage(data_uri))
+        storage = cast("SQLStorage", parse_storage(data_uri))
         register_storage(storage)
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
@@ -240,17 +216,53 @@ def test_write_read_one_batch_many_part(
     # read a specific field
     result_read = adapter.read_partition(0, fields=[field])
     field_index = names.index(field)
-    assert np.array_equal(
+    assert ak.array_equal(
         [*data0[field_index].tolist(), *data2[field_index].tolist()],
         result_read[field].tolist(),
     )
     result_read = adapter.read_partition(1, fields=[field])
-    assert np.array_equal(
+    assert ak.array_equal(
         [*data1[field_index].tolist(), *data0[field_index].tolist()],
         result_read[field].tolist(),
     )
     result_read = adapter.read_partition(2, fields=[field])
-    assert np.array_equal(
+    assert ak.array_equal(
         [*data2[field_index].tolist(), *data1[field_index].tolist()],
         result_read[field].tolist(),
     )
+
+
+@pytest.mark.parametrize(
+    "sql_adapter_name",
+    [("adapter_duckdb_many_partitions"), ("adapter_psql_many_partitions")],
+)
+@pytest.mark.parametrize(("field", "array_adapter_type"), [*names_adapters.items()])
+def test_compare_field_data_from_array_adapter(
+    sql_adapter_name: str,
+    field: str,
+    array_adapter_type: type,
+    request: pytest.FixtureRequest,
+) -> None:
+    # get adapter from fixture
+    sql_adapter: SQLAdapter = request.getfixturevalue(sql_adapter_name)
+
+    table = pa.Table.from_batches([batch0, batch1, batch2])
+    sql_adapter.append_partition(0, table)
+
+    array_adapter = sql_adapter[field]
+    assert isinstance(array_adapter, array_adapter_type)
+
+    field_index = names.index(field)
+    if isinstance(array_adapter, AwkwardAdapter):
+        result_read = array_adapter.read()  # smoke test
+        raise NotImplementedError
+    else:
+        result_read = array_adapter.read()
+        assert ak.array_equal(
+            [
+                *data0[field_index].tolist(),
+                *data1[field_index].tolist(),
+                *data2[field_index].tolist(),
+            ],
+            result_read.tolist(),  # type: ignore[attr-defined]
+        )
