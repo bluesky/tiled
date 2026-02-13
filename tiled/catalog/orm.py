@@ -467,6 +467,8 @@ class DataSource(Timestamped, Base):
     # These are additional parameters passed to the Adapter to guide
     # it to access and arrange the data in the file correctly.
     parameters = Column(JSONVariant, nullable=True)
+    # These are additional properties describing the data source (e.g. array chunks).
+    properties = Column(JSONVariant, nullable=True)
     # This relates to the mutability of the data.
     management = Column(Enum(Management), nullable=False)
     structure_family = Column(Enum(StructureFamily), nullable=False)

@@ -149,6 +149,7 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
     structure: Optional[StructureT]
     mimetype: Optional[str] = None
     parameters: dict = {}
+    properties: dict = {}
     assets: List[Asset] = []
     management: Management = Management.writable
 
@@ -167,6 +168,7 @@ class DataSource(pydantic.BaseModel, Generic[StructureT]):
             structure=structure,
             mimetype=orm.mimetype,
             parameters=orm.parameters,
+            properties=orm.properties,
             assets=[Asset.from_assoc_orm(assoc) for assoc in orm.asset_associations],
             management=orm.management,
         )
