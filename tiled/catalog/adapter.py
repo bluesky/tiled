@@ -686,6 +686,7 @@ class CatalogNodeAdapter:
                     mimetype=data_source.mimetype,
                     management=data_source.management,
                     parameters=data_source.parameters,
+                    properties=data_source.properties,
                     structure_id=structure_id,
                 )
                 db.add(data_source_orm)
