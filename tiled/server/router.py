@@ -1602,9 +1602,8 @@ def get_router(
             access_blob = {}
 
         created_by = ""
-        if principal is not None:
-            if len(principal.identities) > 0:
-                created_by = principal.identities[0].id
+        if principal is not None and len(principal.identities) > 0:
+            created_by = principal.identities[0].id
 
         node = await entry.create_node(
             metadata=body.metadata,
