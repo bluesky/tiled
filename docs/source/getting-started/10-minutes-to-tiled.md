@@ -155,7 +155,8 @@ Once you have identified data sets of interest, Tiled can point to where the
 underlying data is stored. You can then access them by any convenient means:
 
 - Direct filesystem access
-- Data transfer via SFTP, Globus, etc.
+- File transfer via SFTP, Globus, etc.
+- File transfer via Tiled
 
 Here we'll see the file that backs the table of Carbon edges in our xraydb
 dataset.
@@ -187,6 +188,42 @@ it's a plain old file or something else if it is not.
 ds.assets[0].data_uri
 ```
 
+## Access as Scientific Python data structures
+
+Tiled can download data directly into scientific Python data structure, such as
+**numpy**, **pandas**, and **xarray**.
+_This is how we encourage Python users to use Tiled for analysis._
+It has several advantages:
+
+- No need to name or organize files.
+- No need to wait for disk: load the data straight from the network into your
+  data analsysis. (Disks are often the slowest things we deal with in
+  computing.)
+
+```{code-cell} ipython3
+c['examples/xraydb/C/edges']
+```
+
+```{code-cell} ipython3
+c['examples/xraydb/C/edges'].read()
+```
+
+```{code-cell} ipython3
+c['examples/images/binary_blobs']
+```
+
+```{code-cell} ipython3
+arr = c['examples/images/binary_blobs'].read()
+arr
+```
+
+```{code-cell} ipython3
+%matplotlib inline
+import matplotlib.pyplot as plt
+
+plt.imshow(arr)
+```
+
 ## Export to a file
 
 In this section, we tell Tiled how we want the data, and it sends it to us in
@@ -197,17 +234,34 @@ This works:
 - Even if that data isn't even stored in a file at all (e.g., in a database or
   an S3-like blob store)
 
+Let's download the table of edges for carbon from the xraydb data.
+
+```{code-cell} ipython3
+# Download as Excel spreadsheet
+c['examples/xraydb/C/edges'].export('my_table.xlsx')
+
+# Or, download as CSV file
+c['examples/xraydb/C/edges'].export('my_table.csv')
+```
+
+We can open the files here or in any other program. They are now just files on our
+local disk.
+
+```{code-cell} ipython3
+!cat my_table.csv
+```
+
 Let's download an image dataset as a PNG file.
 
 ```{code-cell} ipython3
 c['examples/images/binary_blobs'].export('my_image.png')
 ```
 
-We can open the file here or in any other program. It is now just a file on our
-local disk.
-
+Again, we can open the file here or in any other program.
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+
 from IPython.display import Image
 
 Image(filename='my_image.png')
@@ -226,28 +280,36 @@ We can review the file formats.
 c['examples/images/binary_blobs'].formats
 ```
 
+Different data structures support different formats: arrays fit into different
+formats than tables do.
+
+```{code-cell} ipython3
+c['examples/xraydb/C/edges'].formats
+```
+
 ```{tip}
 Tiled ships with support for a set of commonly-used formats, and server admins
 can add custom ones to meet their users particular requirements.
 ```
 
-Different data structures support different formats: arrays fit into different
-formats than tables do. Let's download the table of edges for carbon from the
-xraydb data.
-
-```{code-cell} ipython3
-c['examples/xraydb/C/edges'].export('my_table.csv')
-```
-
-Again, we can open the file here or in any other program.
-
-```{code-cell} ipython3
-!cat my_table.csv
-```
-
-## Access as Scientific Python data structures
-
 ## Download raw files
+
+Sometimes it is best to just download the files exactly as they were. This may
+be the most convenient thing, or it may be necessary to comply with transparency
+requirements that mandate providing a byte-for-byte copy of the raw data.
+
+As shown above, Tiled can provide the filepaths, and you can fetch the files
+by any available means. Tiled can also download the files directly. It does
+this efficiently by launching parallel downloads.
+
+
+```{code-cell} ipython3
+c['examples/images/binary_blobs'].raw_export('downloads/')
+```
+
+```{code-cell} ipython3
+c['examples/xraydb/C/edges'].raw_export('downloads/')
+```
 
 ## Run a Tiled server
 
