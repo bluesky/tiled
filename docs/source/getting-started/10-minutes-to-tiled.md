@@ -316,8 +316,10 @@ c['examples/xraydb/C/edges'].raw_export('downloads/')
 
 Up to this point, we've been reading from Tiled's public demo instance. To
 demonstrate writing data, we'll need our own server because the public demo
-doesn't allow us to write. The simplest way to get started is to launch a local
-server with embedded storage and basic security:
+doesn't allow us to write. (If you already have access to an institutional
+Tiled server that grants you write access, feel free to use that!) The simplest
+way to get started is to launch a local server with embedded storage and basic
+security:
 
 ```{code-cell} ipython3
 
@@ -349,7 +351,11 @@ We can optionally include metadata and/or give it a name, a `key`.
 
 
 ```{code-cell} ipython3
-ac = c.write_array([1, 2, 3], metadata={'color': 'blue'}, key='hello')
+ac = c.write_array(
+    [1, 2, 3],
+    metadata={'color': 'blue'},
+    key='hello'
+)
 ac.metadata
 ```
 
@@ -366,8 +372,13 @@ tc = c.write_table({'a': [1, 2, 3], 'b': [4, 5, 6]})
 tc.read()
 ```
 
-## Register data
+We can organize items in to nested containers.
 
-Show this from the CLI for now.
+```{code-cell} ipython3
+c.create_container('x')
+c['x'].write_array([1,2,3], key='a')
+c['x'].write_array([4,5,6], key='b')
+c['x']
+```
 
 ## Stream
