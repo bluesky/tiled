@@ -21,6 +21,11 @@ To begin, we will use a public demo instance of Tiled. If you are reading this
 tutorial without an Internet connection, see the section below on running your
 own Tiled server on your laptop.
 
+This tutorial focuses on accessing Tiled from Python. But you can also interact
+with Tiled from your web browser by navigating to
+[https://tiled-demo.nsls2.bnl.gov](https://tiled-demo.nsls2.bnl.gov) where
+you'll find a web-based user interface and more.
+
 
 ```{code-cell} ipython3
 from tiled.client import from_uri
@@ -309,23 +314,25 @@ c['examples/xraydb/C/edges'].raw_export('downloads/')
 
 ## Run a Tiled server
 
-We would now like show _writing_ data into Tiled. We don't have permission to
-write into the public demo instance that we have been using up to this point.
-We'll launch our own local Tiled for further experiments.
-
-We can launch a little server with embedded storage.
+Up to this point, we've been reading from Tiled's public demo instance. To
+demonstrate writing data, we'll need our own server because the public demo
+doesn't allow us to write. The simplest way to get started is to launch a local
+server with embedded storage and basic security:
 
 ```{code-cell} ipython3
-:tags: [hide-output]
 
 from tiled.client import from_catalog
 
 c = from_catalog('example')
 ```
 
+The server prints a URL when it starts. Your URL will differ: each launch
+generates a unique secret `api_key`. You can paste this URL into a browser to
+open Tiled's web interface.
+
 ```{tip}
-The above is ideal for a quick start, but not good for scale.
-For more robust and scalable deployments, see the user guide.
+This embedded setup is convenient for experimentation but isn't designed for
+production or multi-user use. For robust, scalable deployments, see the user guide.
 ```
 
 ## Upload data
@@ -336,6 +343,23 @@ We now have an empty Tiled server that we can _write_ into.
 ac = c.write_array([1, 2, 3])
 ac.read()
 ```
+
+We can optionally include metadata and/or give it a name, a `key`.
+(By default it gets a long random one.)
+
+
+```{code-cell} ipython3
+ac = c.write_array([1, 2, 3], metadata={'color': 'blue'}, key='hello')
+ac.metadata
+```
+
+We can find it via search.
+
+```{code-cell} ipython3
+c.search(Key('color') == 'blue')
+```
+
+Similarly, we can upload tabular data.
 
 ```{code-cell} ipython3
 tc = c.write_table({'a': [1, 2, 3], 'b': [4, 5, 6]})

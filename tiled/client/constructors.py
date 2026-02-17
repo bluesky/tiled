@@ -274,6 +274,7 @@ def from_catalog(
     api_key: Optional[str] = None,
     port: int = 0,
     readable_storage: Optional[Union[str, pathlib.Path]] = None,
+    quiet: bool = False,
 ):
     """
     Spawn a Tiled server on a background thread and connect to it.
@@ -293,6 +294,8 @@ def from_catalog(
     port : Optional[int]
         Port the server will listen on. By default, a random free high port
         is allocated by the operating system.
+    quiet : bool
+        Suppress printing the server URL. False by default.
     """
     from ..server.simple import SimpleTiledServer
 
@@ -301,6 +304,8 @@ def from_catalog(
     )
     # Keep a reference; otherwise the server will be garbage collected and stopped.
     SERVERS.append(server)
+    if not quiet:
+        print(server.uri)
     client = from_uri(server.uri)
     return client
 
