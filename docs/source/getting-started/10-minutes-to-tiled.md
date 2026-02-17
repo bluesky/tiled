@@ -224,7 +224,7 @@ import matplotlib.pyplot as plt
 plt.imshow(arr)
 ```
 
-## Export to a file
+## Export to a preferred format
 
 In this section, we tell Tiled how we want the data, and it sends it to us in
 that format.
@@ -304,16 +304,43 @@ this efficiently by launching parallel downloads.
 
 
 ```{code-cell} ipython3
-c['examples/images/binary_blobs'].raw_export('downloads/')
-```
-
-```{code-cell} ipython3
 c['examples/xraydb/C/edges'].raw_export('downloads/')
 ```
 
 ## Run a Tiled server
 
+We would now like show _writing_ data into Tiled. We don't have permission to
+write into the public demo instance that we have been using up to this point.
+We'll launch our own local Tiled for further experiments.
+
+We can launch a little server with embedded storage.
+
+```{code-cell} ipython3
+:tags: [hide-output]
+
+from tiled.client import from_catalog
+
+c = from_catalog('example')
+```
+
+```{tip}
+The above is ideal for a quick start, but not good for scale.
+For more robust and scalable deployments, see the user guide.
+```
+
 ## Upload data
+
+We now have an empty Tiled server that we can _write_ into.
+
+```{code-cell} ipython3
+ac = c.write_array([1, 2, 3])
+ac.read()
+```
+
+```{code-cell} ipython3
+tc = c.write_table({'a': [1, 2, 3], 'b': [4, 5, 6]})
+tc.read()
+```
 
 ## Register data
 

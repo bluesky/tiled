@@ -282,6 +282,7 @@ dev = [
 ]
 docs = [
     "ipykernel",
+    "ipywidgets",
     "matplotlib",
     "mistune",
     "myst-parser",
