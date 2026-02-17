@@ -97,7 +97,7 @@ class SimpleTiledServer:
     ):
         # Delay import to avoid circular import.
         from ..catalog import from_uri as catalog_from_uri
-        from ..config import Authentication
+        from ..config import Authentication, StreamingCacheConfig
         from .app import build_app
         from .logging_config import LOGGING_CONFIG
 
@@ -131,6 +131,7 @@ class SimpleTiledServer:
             writable_storage=[directory / "data", storage_uri],
             init_if_not_exists=True,
             readable_storage=readable_storage,
+            cache_config=StreamingCacheConfig(uri="memory").model_dump(),
         )
         self.app = build_app(
             self.catalog, authentication=Authentication(single_user_api_key=api_key)
