@@ -5,6 +5,12 @@ __pycache__/
 docs/build/
 docs/source/reference/generated/
 
+# Files exported by executed examples
+docs/source/getting-started/my_file.png
+docs/source/getting-started/my_file.tiff
+docs/source/getting-started/my_image.png
+docs/source/getting-started/my_table.csv
+
 # Builds
 /build
 /dist
