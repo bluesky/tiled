@@ -1,36 +1,74 @@
-import AppBar from "@mui/material/AppBar";
-import Button from "@mui/material/Button";
-import Container from "@mui/material/Container";
-import { Link } from "react-router-dom";
-import Toolbar from "@mui/material/Toolbar";
-import Typography from "@mui/material/Typography";
+import React from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../auth/auth-context";
+import {
+  AppBar,
+  Box,
+  Toolbar,
+  Typography,
+  Button,
+  IconButton,
+} from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
+import LogoutIcon from "@mui/icons-material/Logout";
+import LoginIcon from "@mui/icons-material/Login";
 
-const TiledAppBar = () => {
+export const TiledAppBar: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
+
   return (
-    <AppBar position="static">
-      <Container maxWidth="xl">
-        <Toolbar disableGutters>
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{ mr: 3, display: "flex" }}
+    <Box sx={{ flexGrow: 1 }}>
+      <AppBar position="static">
+        <Toolbar>
+          <IconButton
+            size="large"
+            edge="start"
+            color="inherit"
+            aria-label="menu"
+            sx={{ mr: 2 }}
           >
+            <MenuIcon />
+          </IconButton>
+
+          <Typography variant="h5" component="div">
             TILED
           </Typography>
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{ mr: 2, display: "flex" }}
-          >
-            <Button component={Link} color="inherit" to="/browse/">
+
+          {isAuthenticated && location.pathname !== "/browse" && (
+            <Button color="inherit" onClick={() => navigate("/browse")} sx={{ ml: 2, minWidth: 120 }}>
               Browse
             </Button>
-          </Typography>
+          )}
+
+          <Box sx={{ flexGrow: 12 }} />
+
+          {isAuthenticated ? (
+            <Button
+              color="inherit"
+              onClick={handleLogout}
+              startIcon={<LogoutIcon />}
+              sx={{ minWidth: 120 }}
+            >
+              Logout
+            </Button>
+          ) : (
+            <Button
+              color="inherit"
+              onClick={() => navigate("/login")}
+              startIcon={<LoginIcon />}
+            >
+              Login
+            </Button>
+          )}
         </Toolbar>
-      </Container>
-    </AppBar>
+      </AppBar>
+    </Box>
   );
 };
-export default TiledAppBar;
