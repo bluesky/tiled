@@ -8,8 +8,9 @@ These are functions for constructing a client object.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.from_uri
+   tiled.client.from_catalog
    tiled.client.from_profile
+   tiled.client.from_uri
 ```
 
 ## Client Container
