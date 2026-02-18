@@ -15,8 +15,6 @@ import uvicorn
 from ..storage import SQLStorage, get_storage
 from ..utils import ensure_uri
 
-_server_is_running = False
-
 
 class ThreadedServer(uvicorn.Server):
     def install_signal_handlers(self):
@@ -24,13 +22,6 @@ class ThreadedServer(uvicorn.Server):
 
     @contextlib.contextmanager
     def run_in_thread(self):
-        global _server_is_running
-
-        if _server_is_running:
-            raise RuntimeError(
-                "Only one server can be run at a time " "in a given Python process."
-            )
-        _server_is_running = True
         thread = threading.Thread(target=self.run)
         thread.start()
         try:
@@ -46,7 +37,6 @@ class ThreadedServer(uvicorn.Server):
         finally:
             self.should_exit = True
             thread.join()
-            _server_is_running = False
 
 
 class SimpleTiledServer:
