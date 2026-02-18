@@ -154,45 +154,6 @@ for key, value in results.items():
 
 ````
 
-## Locate data sources (e.g., files)
-
-Once you have identified data sets of interest, Tiled can point to where the
-underlying data is stored. You can then access them by any convenient means:
-
-- Direct filesystem access
-- File transfer via SFTP, Globus, etc.
-- File transfer via Tiled
-
-Here we'll see the file that backs the table of Carbon edges in our xraydb
-dataset.
-
-```{code-cell} ipython3
-from tiled.client.utils import get_asset_filepaths
-
-get_asset_filepaths(c['examples/xraydb/C/edges'])
-```
-
-Tiled knows a whole lot more than just the file path. The data dump below
-includes the format (`mimetype`) of the data, its `structure`, and other
-machine-readable information that is necesasry for applications to navigate the
-file and load the data.
-
-```{code-cell} ipython3
-ds, = c['examples/xraydb/C/edges'].data_sources()
-ds
-```
-
-Now the data may not be stored in a file at all. Tiled understands data
-stores in databases or S3-like blob stores as well, and these are become
-increasingly common for as data scales and moves into cloud environments.
-
-The data location is always given as a URL. That URL begins with `file://` if
-it's a plain old file or something else if it is not.
-
-```{code-cell} ipython3
-ds.assets[0].data_uri
-```
-
 ## Access as Scientific Python data structures
 
 Tiled can download data directly into scientific Python data structure, such as
@@ -297,6 +258,45 @@ Tiled ships with support for a set of commonly-used formats, and server admins
 can add custom ones to meet their users particular requirements.
 ```
 
+## Locate data sources (e.g., files)
+
+Once you have identified data sets of interest, Tiled can point to where the
+underlying data is stored. You can then access them by any convenient means:
+
+- Direct filesystem access
+- File transfer via SFTP, Globus, etc.
+- File transfer via Tiled
+
+Here we'll see the file that backs the table of Carbon edges in our xraydb
+dataset.
+
+```{code-cell} ipython3
+from tiled.client.utils import get_asset_filepaths
+
+get_asset_filepaths(c['examples/xraydb/C/edges'])
+```
+
+Tiled knows a whole lot more than just the file path. The data dump below
+includes the format (`mimetype`) of the data, its `structure`, and other
+machine-readable information that is necesasry for applications to navigate the
+file and load the data.
+
+```{code-cell} ipython3
+ds, = c['examples/xraydb/C/edges'].data_sources()
+ds
+```
+
+Now the data may not be stored in a file at all. Tiled understands data
+stores in databases or S3-like blob stores as well, and these are become
+increasingly common for as data scales and moves into cloud environments.
+
+The data location is always given as a URL. That URL begins with `file://` if
+it's a plain old file or something else if it is not.
+
+```{code-cell} ipython3
+ds.assets[0].data_uri
+```
+
 ## Download raw files
 
 Sometimes it is best to just download the files exactly as they were. This may
@@ -325,7 +325,7 @@ security:
 
 from tiled.client import from_catalog
 
-c = from_catalog('example')
+c = from_catalog()
 ```
 
 The server prints a URL when it starts. Your URL will differ: each launch
@@ -333,8 +333,13 @@ generates a unique secret `api_key`. You can paste this URL into a browser to
 open Tiled's web interface.
 
 ```{tip}
-This embedded setup is convenient for experimentation but isn't designed for
-production or multi-user use. For robust, scalable deployments, see the user guide.
+Just `from_catalog()` uses temporary storage, which is convenient for
+experimentation. For persistent storage, pass a directory like
+`from_catalog('data/')`.
+
+This embedded setup is convenient for personal use and small experiments but
+isn't designed for production or multi-user deployments. For robust, scalable
+options, see the user guide.
 ```
 
 ## Upload data
@@ -382,3 +387,130 @@ c['x']
 ```
 
 ## Stream
+
+We can subscribe to notifications when data is written. Uploaded data will be
+pushed to us before it is even saved to disk, minimizing the latency between a
+write and our receipt of it.
+
+```{code-cell} ipython3
+# Collect references to active subscriptions. Otherwise, Python may
+# garbage collect them, and they will never run.
+subs = []
+
+def on_child_created(update):
+    "Called when a new entry is created in the container"
+    print(f"New item named {update.key}")
+    child_sub = update.child().subscribe()
+    child_sub.new_data.add_callback(on_new_data)
+    child_sub.start_in_thread(start=0)
+    subs.append(child_sub)  # Keep a reference.
+
+def on_new_data(update):
+    "Called when new data is uploaded or registered for this entry"
+    print(f"New data: {update.data()}")
+
+sub = c.subscribe()
+sub.child_created.add_callback(on_child_created)
+sub.start_in_thread()
+```
+
+```{code-cell} ipython3
+import numpy as np
+
+ac = c.write_array(np.array([1, 2, 3]))
+# Extend the array.
+ac.patch(np.array([4, 5, 6]), offset=3, extend=True)
+ac.patch(np.array([7, 8, 9]), offset=6, extend=True)
+
+# Wait for subscriptions to process.
+import time; time.sleep(1)
+```
+
+## Register data
+
+Tiled doesn't need to be involved when data is first written. You can register
+datasets that already exist in storage — for example, files written directly by
+a detector — making them accessible through Tiled without re-uploading.
+
+For security reasons, the server administrator must designate which directories
+data can be registered from, like so.
+
+```{code-cell} ipython3
+c = from_catalog(readable_storage=['external_data'])
+```
+
+We'll make some example files to be registered with Tiled.
+
+```{code-cell} ipython3
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import tifffile
+
+# Create directory.
+dir = Path('external_data')
+dir.mkdir(exist_ok=True)
+
+# Write an image stack of TIFFs.
+for i in range(10):
+    tifffile.imwrite(f'external_data/image_stack{i:03}.tiff', np.random.random((5, 5)))
+
+# Write a table as a CSV.
+df1 = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
+df1.to_csv('external_data/table.csv')
+
+print('Contents of external_data directory:')
+print('\n'.join(sorted(p.name for p in dir.iterdir())))
+```
+
+We'll register them.
+
+```{code-cell} ipython3
+import asyncio
+from tiled.client.register import register
+
+await register(c, 'external_data')
+```
+
+```{tip}
+Note that the `register` function is asynchronous. In Jupyter or IPython,
+we must use `await register(...)`. In a Python script, call
+`asyncio.run(register(...))`.
+
+A commandline interface is also available.  See `tiled register --help` for
+more.
+```
+
+Tiled correctly consolidated the TIFFs into a single logical entry in the
+container.
+
+```{code-cell} ipython3
+from tiled.client import tree
+
+tree(c)
+```
+
+The file formats are considered a low-level detail. The file extensions are
+intentionally stripped off the names (though this is configurable). The
+user does not need to know the format to read the data!
+
+```{code-cell} ipython3
+c['table'].read()
+```
+
+```{code-cell} ipython3
+print(c['image_stack'])
+plt.imshow(c['image_stack'][3])
+```
+
+However, the storage details are available if wanted, via the `data_sources()`
+method.
+
+
+```{code-cell} ipython3
+print(c['image_stack'].data_sources()[0].mimetype)
+print(c['table'].data_sources()[0].mimetype)
+```
+
+The concludes the whirlwind tour of Tiled's core features using its Python
+client.
