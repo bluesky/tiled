@@ -171,6 +171,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   after use.
 
 
+## Unreleased
+
+### Added
+
+- A script to test data writing workflows with locust
+
+
 ## v0.1.4 (2025-09-24)
 
 ### Fixed
