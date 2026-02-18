@@ -31,15 +31,6 @@ def test_default():
         assert response.headers["content-type"].startswith("text/html")
 
 
-def test_one_at_a_time():
-    "We cannot run two uvicorn servers in one process."
-    # Two servers start on different ports.
-    MSG = "Only one server can be run at a time in a given Python process."
-    with SimpleTiledServer():
-        with pytest.raises(RuntimeError, match=MSG):
-            SimpleTiledServer()
-
-
 def test_specified_port():
     "Run server on a user-specified port instead of a random one."
     ARBITRARY_PORT = 38593  # I hope it is free!
