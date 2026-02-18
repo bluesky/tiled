@@ -793,6 +793,7 @@ tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
 
 - Add method to `TableAdapter` which accepts a Python dictionary.
 - Added an `Arrow` adapter which supports reading/writing arrow tables via `RecordBatchFileReader`/`RecordBatchFileWriter`.
+- Add an alembic catalog migration script to rename `path` parameters of HDF5 nodes to `dataset`.
 
 ### Changed
 
