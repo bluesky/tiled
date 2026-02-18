@@ -78,8 +78,9 @@ c['examples']['xraydb']
 ## Search on metadata
 
 Every entry in Tiled has metadata, which we can access via the `metadata`
-attribute. Tiled does not enforce any requirements on this general; it's
-arbitrary JSON.
+attribute. Tiled does not enforce any constraints on this by default: the
+metadata may be any key–value pairs. In technical terms, it accepts arbitrary
+JSON.
 
 Let's take a peek at the first entry to get a sense of what we might
 search for in this case.
@@ -89,9 +90,8 @@ x = c['examples/xraydb']
 x.values().first().metadata
 ```
 
-- Search filters look like `Key('my.nested.metadata') == 'my value')1.
-- Can also use `>`, `<`, `>=`, `<=`.
-- And a lot more...
+Below we'll focus queries that test that a given metadata key has a certain
+value or a value in a given range. But Tiled supports many types of queries.
 
 ```{code-cell} ipython3
 from tiled.queries import Key
@@ -148,7 +148,7 @@ results.values()[2]
 results.values()[:3]
 
 for key, value in results.items():
-    print(f"~~ {key} ~~"
+    print(f"~~ {key} ~~")
     print(value.metadata)
 ```
 
@@ -156,14 +156,14 @@ for key, value in results.items():
 
 ## Access as Scientific Python data structures
 
-Tiled can download data directly into scientific Python data structure, such as
+Tiled can download data directly into scientific Python data structures, such as
 **numpy**, **pandas**, and **xarray**.
 _This is how we encourage Python users to use Tiled for analysis._
 It has several advantages:
 
 - No need to name or organize files.
 - No need to wait for disk: load the data straight from the network into your
-  data analsysis. (Disks are often the slowest things we deal with in
+  data analysis. (Disks are often the slowest things we deal with in
   computing.)
 
 ```{code-cell} ipython3
@@ -255,7 +255,7 @@ c['examples/xraydb/C/edges'].formats
 
 ```{tip}
 Tiled ships with support for a set of commonly-used formats, and server admins
-can add custom ones to meet their users particular requirements.
+can add custom ones to meet their users' particular requirements.
 ```
 
 ## Locate data sources (e.g., files)
@@ -278,7 +278,7 @@ get_asset_filepaths(c['examples/xraydb/C/edges'])
 
 Tiled knows a whole lot more than just the file path. The data dump below
 includes the format (`mimetype`) of the data, its `structure`, and other
-machine-readable information that is necesasry for applications to navigate the
+machine-readable information that is necessary for applications to navigate the
 file and load the data.
 
 ```{code-cell} ipython3
@@ -287,8 +287,8 @@ ds
 ```
 
 Now the data may not be stored in a file at all. Tiled understands data
-stores in databases or S3-like blob stores as well, and these are become
-increasingly common for as data scales and moves into cloud environments.
+stores in databases or S3-like blob stores as well, and these are becoming
+more common as data scales and moves into cloud environments.
 
 The data location is always given as a URL. That URL begins with `file://` if
 it's a plain old file or something else if it is not.
@@ -328,9 +328,9 @@ from tiled.client import from_catalog
 c = from_catalog()
 ```
 
-The server prints a URL when it starts. Your URL will differ: each launch
-generates a unique secret `api_key`. You can paste this URL into a browser to
-open Tiled's web interface.
+The server starts in the background. You will see a URL printed when
+it starts. Your URL will differ: each launch generates a unique secret
+`api_key`. You can paste this URL into a browser to open Tiled's web interface.
 
 ```{tip}
 Just `from_catalog()` uses temporary storage, which is convenient for
@@ -377,7 +377,7 @@ tc = c.write_table({'a': [1, 2, 3], 'b': [4, 5, 6]})
 tc.read()
 ```
 
-We can organize items in to nested containers.
+We can organize items into nested containers.
 
 ```{code-cell} ipython3
 c.create_container('x')
@@ -388,9 +388,10 @@ c['x']
 
 ## Stream
 
-We can subscribe to notifications when data is written. Uploaded data will be
-pushed to us before it is even saved to disk, minimizing the latency between a
-write and our receipt of it.
+So far we've been pulling data from Tiled on demand. Streaming flips this
+around: Tiled pushes data to us as soon as it is written, which is useful when
+monitoring a live experiment or instrument. The example below sets up callbacks
+that fire when a new entry is created and when new data arrives.
 
 ```{code-cell} ipython3
 # Collect references to active subscriptions. Otherwise, Python may
@@ -424,6 +425,15 @@ ac.patch(np.array([7, 8, 9]), offset=6, extend=True)
 
 # Wait for subscriptions to process.
 import time; time.sleep(1)
+```
+
+```{tip}
+Under the hood, the pull-based methods (`read`, `search`, etc.) use HTTP REST
+requests, while subscriptions use a WebSocket connection. This is why
+subscriptions can receive data as it arrives rather than polling repeatedly.
+
+Uploaded data is streamed via the WebSocket connection before it is even saved
+to disk, which minimizes latency.
 ```
 
 ## Register data
@@ -466,7 +476,6 @@ print('\n'.join(sorted(p.name for p in dir.iterdir())))
 We'll register them.
 
 ```{code-cell} ipython3
-import asyncio
 from tiled.client.register import register
 
 await register(c, 'external_data')
@@ -512,5 +521,5 @@ print(c['image_stack'].data_sources()[0].mimetype)
 print(c['table'].data_sources()[0].mimetype)
 ```
 
-The concludes the whirlwind tour of Tiled's core features using its Python
+This concludes the whirlwind tour of Tiled's core features using its Python
 client.
