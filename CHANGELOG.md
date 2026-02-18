@@ -148,6 +148,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Use common base type for all access policy types
 
+### Changed
+
+- Our dependency on duckdb had been pinned down to `<1.4.0` because of a
+  regression. The regression was resolved in 1.4.1, so the pin has been
+  relaxed to `!=1.4.1`.
+
 
 ## v0.1.6 (2025-09-29)
 
