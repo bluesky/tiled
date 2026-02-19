@@ -116,3 +116,19 @@ async def filter_for_access(
                 for query in queries:
                     entry = entry.search(query)
     return entry
+
+
+def encode_pagination_cursor(last_ts: Optional[float], last_id: Optional[str]) -> Optional[str]:
+    if last_ts is None or last_id is None:
+        return None
+    return f"{last_ts}:{last_id}"
+
+def decode_pagination_cursor(cursor: Optional[str]) -> tuple[Optional[float], Optional[str]]:
+    if cursor is None:
+        return None, None
+    try:
+        last_ts_str, last_id = cursor.split(":", 1)
+        last_ts = float(last_ts_str)
+        return last_ts, last_id
+    except ValueError:
+        raise ValueError(f"Invalid pagination cursor: {cursor}")

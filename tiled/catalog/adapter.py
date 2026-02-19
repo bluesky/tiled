@@ -889,7 +889,7 @@ class CatalogNodeAdapter:
             # a notification about it.
             await self.context.streaming_cache.set(self.node.id, sequence, metadata)
 
-    async def revisions(self, offset, limit):
+    async def revisions(self, offset: int = 0, limit = None):
         async with self.context.session() as db:
             revision_orms = (
                 await db.execute(
@@ -1097,56 +1097,78 @@ class CatalogNodeAdapter:
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
-    async def keys_range(self, offset, limit):
-        if self.data_sources:
-            return it.islice(
-                (await self.get_adapter()).keys(),
-                offset,
-                (offset + limit) if limit is not None else None,  # noqa: E203
-            )
-        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
-        statement = self.apply_conditions(statement)
-        async with self.context.session() as db:
-            return (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
-            )
+    async def keys_range(self, last_ts: Optional[float]=None, last_id: Optional[str]=None, limit: Optional[int]=None):
+        if limit == 0:
+            return [], None, None
 
-    async def items_range(self, offset, limit):
-        if self.data_sources:
-            return it.islice(
-                (await self.get_adapter()).items(),
-                offset,
-                (offset + limit) if limit is not None else None,  # noqa: E203
-            )
-        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
-        statement = self.apply_conditions(statement)
+        statement = select(orm.Node.key, orm.Node.time_created, orm.Node.id)
+        statement = statement.filter(orm.Node.parent == self.node.id)
+        if (last_ts is not None) and (last_id is not None):
+            page_cond = tuple_(orm.Node.time_created, orm.Node.id) > (last_ts, last_id)
+            statement = statement.filter(page_cond)  # Apply pagination condition
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        if limit is not None:
+            # Get one extra row to determine if there's a next page
+            statement = statement.limit(limit + 1)
+
         async with self.context.session() as db:
-            nodes = (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
+            rows = (await db.execute(statement)).scalars().all()
+
+        next_ts, next_id = None, None
+        if (limit is not None) and (len(rows) > limit):
+            rows.pop()  # Remove the extra row used to check for next page
+            next_ts, next_id = rows[-1][1], rows[-1][2]
+
+        return [row[0] for row in rows], next_ts, next_id
+
+    async def items_range(self, last_ts: Optional[float]=None, last_id: Optional[str]=None, limit: Optional[int]=None):
+        if limit == 0:
+            return [], None, None
+
+        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
+        if (last_ts is not None) and (last_id is not None):
+            page_cond = tuple_(orm.Node.time_created, orm.Node.id) > (last_ts, last_id)
+            statement = statement.filter(page_cond)  # Apply pagination condition
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        if limit is not None:
+            # Get one extra row to determine if there's a next page
+            statement = statement.limit(limit + 1)
+
+        async with self.context.session() as db:
+            nodes = (await db.execute(statement)).scalars().all()
+
+        next_ts, next_id = None, None
+        if (limit is not None) and (len(nodes) > limit):
+            nodes.pop()  # Remove the extra row used to check for next page
+            next_ts, next_id = nodes[-1].time_created, nodes[-1].id
+
+        return [
+            (
+                node.key,
+                STRUCTURES[node.structure_family](self.context, node),
             )
-            return [
-                (
-                    node.key,
-                    STRUCTURES[node.structure_family](self.context, node),
-                )
-                for node in nodes
-            ]
+            for node in nodes
+        ], next_ts, next_id
+
+    async def cursor_for_offset(self, offset: int):
+        "Get the timestamp and ID of the node at the given offset"
+        if offset == 0:
+            return None, None
+
+        statement = (
+            select(orm.Node.time_created, orm.Node.id)
+            .filter(orm.Node.parent == self.node.id)
+        )
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        statement = statement.offset(offset).limit(1)
+
+        async with self.context.session() as db:
+            row = (await db.execute(statement)).first()
+
+        if row is None:
+            return None, None
+
+        return row[0], row[1]
 
     async def read(self, *args, **kwargs):
         if not self.data_sources:

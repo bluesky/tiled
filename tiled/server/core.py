@@ -35,10 +35,13 @@ from ..utils import (
     ensure_awaitable,
     parse_mimetype,
     safe_json_dump,
+    encode_pagination_cursor,
+    decode_pagination_cursor,
 )
 from . import schemas
 from .etag import tokenize
 from .utils import record_timing
+from .dependencies import PaginationParams
 
 del queries
 register_builtin_serializers()
@@ -123,7 +126,8 @@ async def len_or_approx(tree, exact=False, threshold=5000):
         return await anyio.to_thread.run_sync(len, tree)
 
 
-def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
+def pagination_links(base_url, route, path_parts, offset, cursor, limit, length_hint):
+    
     path_str = "/".join(path_parts)
     links = {
         "self": f"{base_url}{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
@@ -137,7 +141,7 @@ def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
         last_page = math.floor(length_hint / limit) * limit
         links.update(
             {
-                "first": f"{base_url}{route}/{path_str}?page[offset]={0}&page[limit]={limit}",
+                "first": f"{base_url}{route}/{path_str}?page[limit]={limit}",
                 "last": f"{base_url}{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
             }
         )
@@ -240,8 +244,7 @@ async def construct_entries_response(
     tree,
     route,
     path,
-    offset,
-    limit,
+    page: PaginationParams,
     fields,
     select_metadata,
     omit_links,
@@ -262,29 +265,47 @@ async def construct_entries_response(
     count = await len_or_approx(
         tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit
     )
-    links = pagination_links(base_url, route, path_parts, offset, limit, count)
-    data = []
 
     if fields == [schemas.EntryFields.none]:
         # Pull a page of just the keys, which is cheaper.
-        if hasattr(tree, "keys_range"):
-            keys = await tree.keys_range(offset, limit)
+        if hasattr(tree, "keys_range") and (not tree.data_sources):
+            # This is a node in the SQL Catalog
+            if page.cursor is None:
+                last_ts, last_id = await tree.cursor_for_offset(page.offset)
+            else:
+                last_ts, last_id = decode_pagination_cursor(page.cursor)
+            keys, next_ts, next_id = await tree.keys_range(last_ts, last_id, page.limit)
+            next_cursor = encode_pagination_cursor(next_ts, next_id)
+        elif tree.data_sources:
+            # HDF5 or Zarr group presented as a container
+            keys = (await tree.get_adapter()).keys()[page.offset : page.offset + page.limit]  # noqa: E203
         else:
-            keys = tree.keys()[offset : offset + limit]  # noqa: E203
+            # MapAdapter or similar
+            keys = tree.keys()[page.offset : page.offset + page.limit]  # noqa: E203
         items = [(key, None) for key in keys]
     elif fields == [schemas.EntryFields.count]:
         # Only count is requested, so we do not need to pull any items.
         items = []
     else:
         # Pull the entire page of full items into memory.
-        if hasattr(tree, "items_range"):
-            items = await tree.items_range(offset, limit)
+        if hasattr(tree, "items_range") and (not tree.data_sources):
+            # This is a node in the SQL Catalog
+            last_ts, last_id = decode_pagination_cursor(page.cursor)
+            items, next_ts, next_id = await tree.items_range(last_ts, last_id, page.limit)
+            next_cursor = encode_pagination_cursor(next_ts, next_id)
+        elif tree.data_sources:
+            # HDF5 or Zarr group presented as a container
+            items = (await tree.get_adapter()).items()
+            items = items[page.offset : page.offset + page.limit]  # noqa: E203
         else:
-            items = tree.items()[offset : offset + limit]  # noqa: E203
+            items = tree.items()[page.offset : page.offset + page.limit]  # noqa: E203
 
+    # Construct pagination links
+    links = pagination_links(base_url, route, path_parts, last_page_ts, last_page_id, page.limit, count)
     # This value will not leak out. It just used to seed comparisons.
     metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
+    data = []
     for key, entry in items:
         resource = await construct_resource(
             base_url,
@@ -307,6 +328,7 @@ async def construct_entries_response(
                 metadata_stale_at = None
             else:
                 metadata_stale_at = min(metadata_stale_at, entry.metadata_stale_at)
+
     return (
         schemas.Response(data=data, links=links, meta={"count": count}),
         metadata_stale_at,
@@ -328,12 +350,11 @@ async def construct_revisions_response(
     base_url,
     route,
     path,
-    offset,
-    limit,
+    page: PaginationParams,
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
-    revisions = await entry.revisions(offset, limit)
+    revisions = await entry.revisions(page.offset, page.limit)
     data = []
     for revision in revisions:
         item = {
@@ -347,7 +368,7 @@ async def construct_revisions_response(
         data.append(item)
     count = len(data)
     links = pagination_links(
-        base_url, route, path_parts, offset, limit, count
+        base_url, route, path_parts, page.offset, page.limit, count
     )  # maybe reuse or maybe make a new pagination_revision_links
     return schemas.Response(data=data, links=links, meta={"count": count})
 

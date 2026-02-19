@@ -87,6 +87,7 @@ from .dependencies import (
     get_entry,
     get_root_tree,
     offset_param,
+    pagination_params,
     patch_offset_param,
     patch_shape_param,
     shape_param,
@@ -309,10 +310,7 @@ def get_router(
         path: str,
         fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
+        page: PaginationParams = Depends(),
         sort: Optional[str] = Query(None),
         max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
@@ -349,8 +347,7 @@ def get_router(
                 entry,
                 "/search",
                 path,
-                offset,
-                limit,
+                page,
                 fields,
                 select_metadata,
                 omit_links,
@@ -2197,10 +2194,7 @@ def get_router(
     async def get_revisions(
         request: Request,
         path: str,
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
+        page: PaginationParams = Depends(),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -2232,8 +2226,7 @@ def get_router(
             base_url,
             "/revisions",
             path,
-            offset,
-            limit,
+            page,
             resolve_media_type(request),
         )
         return json_or_msgpack(request, resource.model_dump())
