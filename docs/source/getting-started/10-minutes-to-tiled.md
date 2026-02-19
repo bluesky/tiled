@@ -323,9 +323,9 @@ security:
 
 ```{code-cell} ipython3
 
-from tiled.client import from_catalog
+from tiled.client import simple
 
-c = from_catalog()
+c = simple()
 ```
 
 The server starts in the background. You will see a URL printed when
@@ -333,9 +333,9 @@ it starts. Your URL will differ: each launch generates a unique secret
 `api_key`. You can paste this URL into a browser to open Tiled's web interface.
 
 ```{tip}
-Just `from_catalog()` uses temporary storage, which is convenient for
+Just `simple()` uses temporary storage, which is convenient for
 experimentation. For persistent storage, pass a directory like
-`from_catalog('data/')`.
+`simple('data/')`.
 
 This embedded setup is convenient for personal use and small experiments but
 isn't designed for production or multi-user deployments. For robust, scalable
@@ -446,7 +446,7 @@ For security reasons, the server administrator must designate which directories
 data can be registered from, like so.
 
 ```{code-cell} ipython3
-c = from_catalog(readable_storage=['external_data'])
+c = simple(readable_storage=['external_data'])
 ```
 
 We'll make some example files to be registered with Tiled.

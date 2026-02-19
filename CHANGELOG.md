@@ -7,7 +7,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- A new function `tiled.client.from_catalog` provides a convenient method for
+- A new function `tiled.client.simple` provides a convenient method for
   obtaining a client backed by a `SimpleTiledServer`.
 
 ### Changed

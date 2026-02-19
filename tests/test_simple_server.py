@@ -5,7 +5,7 @@ import httpx
 import pyarrow
 import pytest
 
-from tiled.client import from_uri
+from tiled.client import SERVERS, from_uri, simple
 from tiled.server import SimpleTiledServer
 
 
@@ -79,3 +79,12 @@ def test_cleanup(tmp_path):
     with SimpleTiledServer(tmp_path) as server:
         pass
     assert Path(server.directory).exists()
+
+
+def test_simple():
+    # Smoke test.
+    c = simple()
+    ac = c.write_array([1, 2, 3])
+    ac[:]
+    # Cleanup.
+    SERVERS.pop().close()

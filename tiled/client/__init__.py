@@ -1,5 +1,5 @@
 from ..utils import tree
-from .constructors import from_catalog, from_context, from_profile, from_uri
+from .constructors import SERVERS, from_context, from_profile, from_uri, simple
 from .container import ASCENDING, DESCENDING
 from .context import Context
 from .logger import hide_logs, record_history, show_logs
@@ -10,12 +10,13 @@ __all__ = [
     "Context",
     "DESCENDING",
     "DELETE_KEY",
-    "from_catalog",
     "from_context",
     "from_profile",
     "from_uri",
     "hide_logs",
     "record_history",
+    "SERVERS",
     "show_logs",
+    "simple",
     "tree",
 ]

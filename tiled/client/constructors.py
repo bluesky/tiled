@@ -269,7 +269,7 @@ def from_profile(name, structure_clients=None, **kwargs):
         return from_uri(**merged)
 
 
-def from_catalog(
+def simple(
     directory: Optional[Union[str, pathlib.Path]] = None,
     api_key: Optional[str] = None,
     port: int = 0,
@@ -315,5 +315,5 @@ def _cleanup_servers():
         server.close()
 
 
-SERVERS = []  # servers spawned using from_catalog
+SERVERS = []  # servers spawned using simple
 atexit.register(_cleanup_servers)
