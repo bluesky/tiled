@@ -99,7 +99,7 @@ from tiled.queries import Key
 x.search(Key('element.category') == 'nonmetal')
 ```
 
-Queries can be chained to progressively narrow results.
+Queries can be chained to progressively narrow results. For numerical parameters, querying over a given range could also be useful.
 
 ```{code-cell} ipython3
 x.search(
@@ -111,7 +111,7 @@ x.search(
 
 What other values does `element.category` take? We could answer that question
 by downloading all the entries and tabulating them in Python, but it's faster
-to ask Tiled to do it and just send the answer.
+to ask Tiled to do this and just send the answer.
 
 ```{code-cell} ipython3
 x.distinct('element.category', counts=True)['metadata']
@@ -260,8 +260,8 @@ can add custom ones to meet their users' particular requirements.
 
 ## Locate data sources (e.g., files)
 
-Once you have identified data sets of interest, Tiled can point to where the
-underlying data is stored. You can then access them by any convenient means:
+Once you have identified data sets of interest in the Tiled catalog, it's easy to determine the physical location of the underlying data.
+You can then access them by any convenient means and download the entire original files, instead of using the export feature, if desired:
 
 - Direct filesystem access
 - File transfer via SFTP, Globus, etc.
@@ -276,7 +276,7 @@ from tiled.client.utils import get_asset_filepaths
 get_asset_filepaths(c['examples/xraydb/C/edges'])
 ```
 
-Tiled knows a whole lot more than just the file path. The data dump below
+Tiled knows a whole lot more than just the file path. The snippet below
 includes the format (`mimetype`) of the data, its `structure`, and other
 machine-readable information that is necessary for applications to navigate the
 file and load the data.
@@ -286,8 +286,8 @@ ds, = c['examples/xraydb/C/edges'].data_sources()
 ds
 ```
 
-Now the data may not be stored in a file at all. Tiled understands data
-stores in databases or S3-like blob stores as well, and these are becoming
+Now, the data may not be stored in a file at all. Tiled understands data
+stored in databases or S3-like blob stores as well, and these are becoming
 more common as data scales and moves into cloud environments.
 
 The data location is always given as a URL. That URL begins with `file://` if
@@ -328,7 +328,7 @@ from tiled.client import simple
 c = simple()
 ```
 
-The server starts in the background. You will see a URL printed when
+The server starts in the background (on a thread). You will see a URL printed when
 it starts. Your URL will differ: each launch generates a unique secret
 `api_key`. You can paste this URL into a browser to open Tiled's web interface.
 
@@ -390,8 +390,8 @@ c['x']
 
 So far we've been pulling data from Tiled on demand. Streaming flips this
 around: Tiled pushes data to us as soon as it is written, which is useful when
-monitoring a live experiment or instrument. The example below sets up callbacks
-that fire when a new entry is created and when new data arrives.
+monitoring a live experiment or an instrument. The example below sets up callbacks
+that fire when a new entry is created in the Tiled catalog and when new data arrives.
 
 ```{code-cell} ipython3
 # Collect references to active subscriptions. Otherwise, Python may
@@ -430,7 +430,7 @@ import time; time.sleep(1)
 ```{tip}
 Under the hood, the pull-based methods (`read`, `search`, etc.) use HTTP REST
 requests, while subscriptions use a WebSocket connection. This is why
-subscriptions can receive data as it arrives rather than polling repeatedly.
+subscriptions can receive data as it arrives rather than polling the server repeatedly.
 
 Uploaded data is streamed via the WebSocket connection before it is even saved
 to disk, which minimizes latency.
