@@ -53,6 +53,9 @@ and `assets`, describes the format,  structure, and location of the data.
   (This is used by Tiled to identify a suitable Adapter to read this data.)
 - `parameters` --- JSON object with additional parameters that will be passed
   to the Adapter
+- `properties` --- JSON object with additional properties of the native data format,
+  such as compression type, chunking, column names, etc. These are not passed to the Adapter,
+  but are stored for informational purposes.
 - `management` --- enum indicating whether the data is registered `"external"` data
   or `"writable"` data managed by Tiled
 - `structure_family` --- enum of structure types (`"container"`, `"array"`, `"table"`, ...)

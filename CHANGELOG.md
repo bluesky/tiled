@@ -21,6 +21,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Error handling in `tiled.client.download._download_url`.
+- Slow performance when deleting nodes in large catalogs with many nodes.
+- Add `properties` field to the DataSource object and table, to store additional
+  metadata about the data source (e.g. array chunking information).
 
 ## v0.2.3 (2025-12-17)
 
