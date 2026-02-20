@@ -5,7 +5,7 @@ import httpx
 import pyarrow
 import pytest
 
-from tiled.client import from_uri
+from tiled.client import SERVERS, from_uri, simple
 from tiled.server import SimpleTiledServer
 
 
@@ -29,15 +29,6 @@ def test_default():
         # Web UI
         response = httpx.get(server.web_ui_link).raise_for_status()
         assert response.headers["content-type"].startswith("text/html")
-
-
-def test_one_at_a_time():
-    "We cannot run two uvicorn servers in one process."
-    # Two servers start on different ports.
-    MSG = "Only one server can be run at a time in a given Python process."
-    with SimpleTiledServer():
-        with pytest.raises(RuntimeError, match=MSG):
-            SimpleTiledServer()
 
 
 def test_specified_port():
@@ -88,3 +79,12 @@ def test_cleanup(tmp_path):
     with SimpleTiledServer(tmp_path) as server:
         pass
     assert Path(server.directory).exists()
+
+
+def test_simple():
+    # Smoke test.
+    c = simple()
+    ac = c.write_array([1, 2, 3])
+    ac[:]
+    # Cleanup.
+    SERVERS.pop().close()
