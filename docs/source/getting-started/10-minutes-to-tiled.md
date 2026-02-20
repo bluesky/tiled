@@ -18,8 +18,8 @@ This is a short, tutorial-style introduction to Tiled, for new users.
 ## Connect
 
 To begin, we will use a public demo instance of Tiled. If you are reading this
-tutorial without an Internet connection, see the section below on running your
-own Tiled server on your laptop.
+tutorial without an Internet connection, see the section below on
+[running your own Tiled server](#run-a-tiled-server) on your laptop.
 
 This tutorial focuses on accessing Tiled from Python. But you can also interact
 with Tiled from your web browser by navigating to
@@ -82,16 +82,21 @@ attribute. Tiled does not enforce any constraints on this by default: the
 metadata may be any key–value pairs. In technical terms, it accepts arbitrary
 JSON.
 
+```{code-cell} ipython3
+c['examples/xraydb'].metadata
+```
+
 Let's take a peek at the first entry to get a sense of what we might
-search for in this case.
+search for in this container.
 
 ```{code-cell} ipython3
 x = c['examples/xraydb']
 x.values().first().metadata
 ```
 
-Below we'll focus queries that test that a given metadata key has a certain
-value or a value in a given range. But Tiled supports many types of queries.
+Tiled supports many types of queries; in the following simple example, we'll
+search the Tiled catalog for nodes whose metadata contains a given key–value
+pair.
 
 ```{code-cell} ipython3
 from tiled.queries import Key
@@ -99,7 +104,8 @@ from tiled.queries import Key
 x.search(Key('element.category') == 'nonmetal')
 ```
 
-Queries can be chained to progressively narrow results. For numerical parameters, querying over a given range could also be useful.
+Queries can be chained to progressively narrow results. For numerical
+parameters, querying over a given range could also be useful.
 
 ```{code-cell} ipython3
 x.search(
@@ -162,9 +168,9 @@ _This is how we encourage Python users to use Tiled for analysis._
 It has several advantages:
 
 - No need to name or organize files.
-- No need to wait for disk: load the data straight from the network into your
-  data analysis. (Disks are often the slowest things we deal with in
-  computing.)
+- No need to write a copy to your local disk and then read it into your
+  program. Instead, load the data straight from the network into your data
+  analysis. (Disks are often the slowest things we deal with in computing.)
 
 ```{code-cell} ipython3
 c['examples/xraydb/C/edges']
@@ -312,6 +318,7 @@ this efficiently by launching parallel downloads.
 c['examples/xraydb/C/edges'].raw_export('downloads/')
 ```
 
+(run-a-tiled-server)=
 ## Run a Tiled server
 
 Up to this point, we've been reading from Tiled's public demo instance. To
@@ -438,9 +445,8 @@ to disk, which minimizes latency.
 
 ## Register data
 
-Tiled doesn't need to be involved when data is first written. You can register
-datasets that already exist in storage — for example, files written directly by
-a detector — making them accessible through Tiled without re-uploading.
+Detectors or analysis programs often write files directly to disk. Tiled can
+make those files accessible without any re-uploading or reformatting.
 
 For security reasons, the server administrator must designate which directories
 data can be registered from, like so.

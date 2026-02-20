@@ -50,8 +50,8 @@ class SimpleTiledServer:
     Parameters
     ----------
     directory : Optional[Path, str]
-        Location where data and embedded databases will be stored.
-        By default, a temporary directory will be used.
+        Location where data, including files and embedded databases, will be
+        stored. By default, a temporary directory will be used.
     api_key : Optional[str]
         By default, an 8-bit random secret is generated. (Production Tiled
         servers use longer secrets.)
