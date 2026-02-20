@@ -2,7 +2,7 @@ from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
-from pydantic import BaseModel, constr
+from pydantic import constr
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
@@ -232,28 +232,24 @@ def sorting_param(
     return list(result.items())
 
 
-class PaginationParams(BaseModel):
-    offset: Optional[int] = Query(None, alias="page[offset]", ge=0)
-    cursor: Optional[str] = Query(None, alias="page[cursor]")
-    limit: Optional[int] = Query(
-        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-    )
+class PaginationParams:
+    def __init__(
+        self,
+        offset: Optional[int] = Query(None, alias="page[offset]", ge=0),
+        cursor: Optional[str] = Query(None, alias="page[cursor]"),
+        limit: int = Query(
+            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+        ),
+    ):
+        if cursor is not None and offset is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot specify both page[cursor] and page[offset]",
+            )
 
+        if cursor is None and offset is None:
+            offset = 0
 
-def get_pagination_params(
-    offset: Optional[int] = Query(None, alias="page[offset]", ge=0),
-    cursor: Optional[str] = Query(None, alias="page[cursor]"),
-    limit: Optional[int] = Query(
-        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-    ),
-) -> PaginationParams:
-    if cursor is not None and offset is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot specify both page[cursor] and page[offset]",
-        )
-
-    if cursor is None and offset is None:
-        offset = 0
-
-    return PaginationParams(offset=offset, cursor=cursor, limit=limit)
+        self.offset = offset
+        self.cursor = cursor
+        self.limit = limit
