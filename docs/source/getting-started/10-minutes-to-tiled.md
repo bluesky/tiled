@@ -196,6 +196,9 @@ import matplotlib.pyplot as plt
 plt.imshow(arr)
 ```
 
+We'll see shortly that you can also fetch just a slice of a dataset without
+downloading the whole thing.
+
 ## Export to a preferred format
 
 In this section, we tell Tiled how we want the data, and it sends it to us in
@@ -261,13 +264,58 @@ c['examples/xraydb/C/edges'].formats
 
 ```{tip}
 Tiled ships with support for a set of commonly-used formats, and server admins
-can add custom ones to meet their users' particular requirements.
+can [add custom ones](#custom-export-formats) to meet their users' particular requirements.
+```
+
+## Slice remotely
+
+A major advantage of Tiled over traditional file transfer is the ability to
+download just the slice of a dataset you need, without downloading the entire
+thing. This is handy for both sophisticated applications and simple tasks like
+previewing whether a dataset is "the good one" before waiting for a full
+download. Think of Google Maps, fetching the data of interest on demand.
+
+Standard numpy slicing syntax works, fetching only the data you request.
+
+```{code-cell} ipython3
+# Top-right corner
+arr = c['examples/images/binary_blobs'][:50,-50:]
+plt.imshow(arr)
+```
+
+This works for exporting data to a file as well.
+
+```{code-cell} ipython3
+import numpy as np
+c['examples/images/binary_blobs'].export(
+    'top_right_corner.png',
+     slice=np.s_[:50,-50:],
+)
+```
+
+Tabular data is different than array data, so it slices differently.
+For tabular data, we can filter the columns of interest.
+
+```{code-cell} ipython3
+c['examples/xraydb/C/edges']
+```
+
+```{code-cell} ipython3
+c['examples/xraydb/C/edges'].read(['edge', 'energy_eV'])
+```
+
+And this again works for exporting to a file.
+
+```{code-cell} ipython3
+c['examples/xraydb/C/edges'].export('my_table.csv', columns=['edge', 'energy_eV'])
 ```
 
 ## Locate data sources (e.g., files)
 
-Once you have identified data sets of interest in the Tiled catalog, it's easy to determine the physical location of the underlying data.
-You can then access them by any convenient means and download the entire original files, instead of using the export feature, if desired:
+Once you have identified data sets of interest in the Tiled catalog, it's easy
+to determine the physical location of the underlying data.  You can then access
+them by any convenient means and download the entire original files, instead of
+using the export feature, if desired:
 
 - Direct filesystem access
 - File transfer via SFTP, Globus, etc.
