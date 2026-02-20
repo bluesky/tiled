@@ -2,6 +2,7 @@ import collections
 import copy
 import dataclasses
 import importlib
+import itertools as it
 import logging
 import operator
 import os
@@ -1210,6 +1211,21 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         prev_id: Optional[str] = None,
         limit: Optional[int] = None,
     ):
+        # Case 1: Node has external data sources -- delegate to the associated adapter
+        if self.data_sources:
+            # Assume that prev_id corresponds to the index in the keys list
+            keys = (await self.get_adapter()).keys()
+            if self.default_sorting_direction == -1:
+                keys = reversed(keys)
+
+            # Start from the beginning or the next item after the previous ID
+            offset = (prev_id or -1) + 1
+            keys, next_offset = slice_by_offset(keys, offset=offset, limit=limit)
+            next_id = None if next_offset is None else next_offset - 1
+
+            return keys, None, next_id
+
+        # Case 2: No external data sources -- query the database directly
         if limit == 0:
             return [], None, None
 
@@ -1243,6 +1259,21 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         prev_id: Optional[str] = None,
         limit: Optional[int] = None,
     ):
+        # Case 1: Node has external data sources -- delegate to the associated adapter
+        if self.data_sources:
+            # Assume that prev_id corresponds to the index in the keys list
+            items = (await self.get_adapter()).items()
+            if self.default_sorting_direction == -1:
+                items = reversed(items)
+
+            # Start from the beginning or the next item after the previous ID
+            offset = (prev_id or -1) + 1
+            items, next_offset = slice_by_offset(items, offset=offset, limit=limit)
+            next_id = None if next_offset is None else next_offset - 1
+
+            return items, None, next_id
+
+        # Case 2: No external data sources -- query the database directly
         if limit == 0:
             return [], None, None
 
@@ -1283,6 +1314,11 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         "Get the timestamp and ID of the node at the given offset for pagination"
         if offset == 0:
             return None, None
+
+        if self.data_sources:
+            # Assume that offset corresponds to the index in the keys list
+            # Return `offset - 1` to point the cursor to the last item of the previous page
+            return None, offset - 1
 
         statement = select(orm.Node.time_created, orm.Node.id).filter(
             orm.Node.parent == self.node.id
@@ -1579,6 +1615,23 @@ def construct_order_by_clauses(sorting):
         clauses.append(clause)
 
     return clauses, default_sorting_direction
+
+
+def slice_by_offset(items, offset=0, limit=None):
+    """Slice an iterable by offset and limit
+
+    Return the items and the next offset if there are more items.
+    """
+
+    stop = None if limit is None else offset + limit + 1
+    items = list(it.islice(items, offset, stop))
+
+    next_offset = None
+    if (limit is not None) and (len(items) > limit):
+        items.pop()  # Remove the extra item used to check for next page
+        next_offset = offset + limit
+
+    return items, next_offset
 
 
 _TYPE_CONVERSION_MAP = {

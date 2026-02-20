@@ -258,8 +258,7 @@ async def construct_entries_response(
 
     if fields == [schemas.EntryFields.none]:
         # Pull a page of just the keys, which is cheaper.
-        if hasattr(tree, "keys_range") and (not tree.data_sources):
-            # This is a node in the SQL Catalog
+        if hasattr(tree, "keys_range"):
             if page.cursor is None:
                 prev_ts, prev_id = await tree.cursor_for_offset(page.offset)
                 page.cursor = encode_pagination_cursor(prev_ts, prev_id)
@@ -267,13 +266,7 @@ async def construct_entries_response(
                 prev_ts, prev_id = decode_pagination_cursor(page.cursor)
             keys, next_ts, next_id = await tree.keys_range(prev_ts, prev_id, page.limit)
             next_cursor = encode_pagination_cursor(next_ts, next_id)
-        elif tree.data_sources:
-            # HDF5 or Zarr group presented as a container
-            keys = (await tree.get_adapter()).keys()[
-                page.offset : page.offset + page.limit  # noqa: E203
-            ]
         else:
-            # MapAdapter or similar
             keys = tree.keys()[page.offset : page.offset + page.limit]  # noqa: E203
         items = [(key, None) for key in keys]
     elif fields == [schemas.EntryFields.count]:
@@ -281,8 +274,7 @@ async def construct_entries_response(
         items = []
     else:
         # Pull the entire page of full items into memory.
-        if hasattr(tree, "items_range") and (not tree.data_sources):
-            # This is a node in the SQL Catalog
+        if hasattr(tree, "items_range"):
             if page.cursor is None:
                 prev_ts, prev_id = await tree.cursor_for_offset(page.offset)
                 page.cursor = encode_pagination_cursor(prev_ts, prev_id)
@@ -292,10 +284,6 @@ async def construct_entries_response(
                 prev_ts, prev_id, page.limit
             )
             next_cursor = encode_pagination_cursor(next_ts, next_id)
-        elif tree.data_sources:
-            # HDF5 or Zarr group presented as a container
-            items = (await tree.get_adapter()).items()
-            items = items[page.offset : page.offset + page.limit]  # noqa: E203
         else:
             items = tree.items()[page.offset : page.offset + page.limit]  # noqa: E203
 

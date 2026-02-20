@@ -849,7 +849,7 @@ async def test_init_db_logging(sqlite_or_postgres_uri, tmpdir, caplog):
 
 
 @pytest.mark.parametrize(
-    "exact_count_limit, expected_lower_bound", [(None, 10)]  # , (5, 6), (-1, 10)]
+    "exact_count_limit, expected_lower_bound", [(None, 10), (5, 6), (-1, 10)]
 )
 @pytest.mark.asyncio
 async def test_container_length(

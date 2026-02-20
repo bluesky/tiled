@@ -2,7 +2,7 @@ from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
-from pydantic import BaseModel, constr, model_validator
+from pydantic import BaseModel, constr
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
     HTTP_403_FORBIDDEN,
@@ -239,18 +239,21 @@ class PaginationParams(BaseModel):
         DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
     )
 
-    @model_validator(mode="after")
-    def check_mutually_exclusive(self):
-        if (self.cursor is not None) and (self.offset is not None):
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail="Cannot specify both page[cursor] and page[offset]",
-            )
-        return self
 
-    @model_validator(mode="after")
-    def ensure_default_offset(self):
-        if (self.cursor is None) and (self.offset is None):
-            self.offset = 0
+def get_pagination_params(
+    offset: Optional[int] = Query(None, alias="page[offset]", ge=0),
+    cursor: Optional[str] = Query(None, alias="page[cursor]"),
+    limit: Optional[int] = Query(
+        DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+    ),
+) -> PaginationParams:
+    if cursor is not None and offset is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot specify both page[cursor] and page[offset]",
+        )
 
-        return self
+    if cursor is None and offset is None:
+        offset = 0
+
+    return PaginationParams(offset=offset, cursor=cursor, limit=limit)

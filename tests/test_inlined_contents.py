@@ -113,7 +113,6 @@ def test_too_wide_for_inline():
     """
     The server will not inline contents above a certain limit.
 
-
     It is fetched in pages on demand, as usual with nodes.
     """
 
