@@ -2,7 +2,6 @@ import collections
 import copy
 import dataclasses
 import importlib
-import itertools as it
 import logging
 import operator
 import os
@@ -13,7 +12,7 @@ from contextlib import closing
 from datetime import datetime
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union, cast
+from typing import Callable, Dict, List, Literal, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
@@ -29,6 +28,7 @@ from sqlalchemy import (
     select,
     text,
     true,
+    tuple_,
     type_coerce,
     update,
 )
@@ -263,13 +263,16 @@ class CatalogNodeAdapter:
         *,
         conditions=None,
         queries=None,
-        sorting=None,
+        sorting: Optional[list[tuple[str, Literal[1, -1]]]] = None,
         mount_path: Optional[list[str]] = None,
     ):
         self.context = context
         self.node = node
         self.sorting = sorting or [("", 1)]
-        self.order_by_clauses = order_by_clauses(self.sorting)
+        (
+            self.order_by_clauses,
+            self.default_sorting_direction,
+        ) = construct_order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
@@ -546,13 +549,10 @@ class CatalogNodeAdapter:
         sorting=UNCHANGED,
         conditions=UNCHANGED,
         queries=UNCHANGED,
-        # must_revalidate=UNCHANGED,
         **kwargs,
     ):
         if sorting is UNCHANGED:
             sorting = self.sorting
-        # if must_revalidate is UNCHANGED:
-        #     must_revalidate = self.must_revalidate
         if conditions is UNCHANGED:
             conditions = self.conditions
         if queries is UNCHANGED:
@@ -562,9 +562,7 @@ class CatalogNodeAdapter:
             node=self.node,
             conditions=conditions,
             sorting=sorting,
-            # entries_stale_after=self.entries_stale_after,
-            # metadata_stale_after=self.entries_stale_after,
-            # must_revalidate=must_revalidate,
+            queries=queries,
             **kwargs,
         )
 
@@ -889,7 +887,7 @@ class CatalogNodeAdapter:
             # a notification about it.
             await self.context.streaming_cache.set(self.node.id, sequence, metadata)
 
-    async def revisions(self, offset: int = 0, limit = None):
+    async def revisions(self, offset: int = 0, limit=None):
         async with self.context.session() as db:
             revision_orms = (
                 await db.execute(
@@ -1206,14 +1204,23 @@ class CatalogNodeAdapter:
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
-    async def keys_range(self, last_ts: Optional[float]=None, last_id: Optional[str]=None, limit: Optional[int]=None):
+    async def keys_range(
+        self,
+        prev_ts: Optional[datetime] = None,
+        prev_id: Optional[str] = None,
+        limit: Optional[int] = None,
+    ):
         if limit == 0:
             return [], None, None
 
         statement = select(orm.Node.key, orm.Node.time_created, orm.Node.id)
         statement = statement.filter(orm.Node.parent == self.node.id)
-        if (last_ts is not None) and (last_id is not None):
-            page_cond = tuple_(orm.Node.time_created, orm.Node.id) > (last_ts, last_id)
+        if (prev_ts is not None) and (prev_id is not None):
+            prev = (prev_ts, prev_id)
+            if self.default_sorting_direction == 1:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) > prev
+            else:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) < prev
             statement = statement.filter(page_cond)  # Apply pagination condition
         statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
         if limit is not None:
@@ -1221,7 +1228,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             statement = statement.limit(limit + 1)
 
         async with self.context.session() as db:
-            rows = (await db.execute(statement)).scalars().all()
+            rows = (await db.execute(statement)).all()
 
         next_ts, next_id = None, None
         if (limit is not None) and (len(rows) > limit):
@@ -1230,13 +1237,22 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
         return [row[0] for row in rows], next_ts, next_id
 
-    async def items_range(self, last_ts: Optional[float]=None, last_id: Optional[str]=None, limit: Optional[int]=None):
+    async def items_range(
+        self,
+        prev_ts: Optional[datetime] = None,
+        prev_id: Optional[str] = None,
+        limit: Optional[int] = None,
+    ):
         if limit == 0:
             return [], None, None
 
         statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
-        if (last_ts is not None) and (last_id is not None):
-            page_cond = tuple_(orm.Node.time_created, orm.Node.id) > (last_ts, last_id)
+        if (prev_ts is not None) and (prev_id is not None):
+            prev = (prev_ts, prev_id)
+            if self.default_sorting_direction == 1:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) > prev
+            else:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) < prev
             statement = statement.filter(page_cond)  # Apply pagination condition
         statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
         if limit is not None:
@@ -1251,22 +1267,25 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             nodes.pop()  # Remove the extra row used to check for next page
             next_ts, next_id = nodes[-1].time_created, nodes[-1].id
 
-        return [
-            (
-                node.key,
-                STRUCTURES[node.structure_family](self.context, node),
-            )
-            for node in nodes
-        ], next_ts, next_id
+        return (
+            [
+                (
+                    node.key,
+                    STRUCTURES[node.structure_family](self.context, node),
+                )
+                for node in nodes
+            ],
+            next_ts,
+            next_id,
+        )
 
     async def cursor_for_offset(self, offset: int):
-        "Get the timestamp and ID of the node at the given offset"
+        "Get the timestamp and ID of the node at the given offset for pagination"
         if offset == 0:
             return None, None
 
-        statement = (
-            select(orm.Node.time_created, orm.Node.id)
-            .filter(orm.Node.parent == self.node.id)
+        statement = select(orm.Node.time_created, orm.Node.id).filter(
+            orm.Node.parent == self.node.id
         )
         statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
         statement = statement.offset(offset).limit(1)
@@ -1530,37 +1549,36 @@ _STANDARD_SORT_KEYS = {
 }
 
 
-def order_by_clauses(sorting):
+def construct_order_by_clauses(sorting):
     clauses = []
     default_sorting_direction = 1
     for key, direction in sorting:
         if key == "":
             default_sorting_direction = direction
             continue
-            # TODO Really we should insist that if this is given, it is last,
-            # because we always apply the default sorting last.
         if key in _STANDARD_SORT_KEYS:
             clause = getattr(orm.Node, _STANDARD_SORT_KEYS[key])
         else:
-            clause = orm.Node.metadata_
             # This can be given bare like "color" or namedspaced like
             # "metadata.color" to avoid the possibility of a name collision
             # with the standard sort keys.
             if key.startswith("metadata."):
                 key = key[len("metadata.") :]  # noqa: E203
-
+            clause = orm.Node.metadata_
             for segment in key.split("."):
                 clause = clause[segment]
         if direction == -1:
             clause = clause.desc()
         clauses.append(clause)
+
     # Ensure deterministic ordering for all queries by sorting by
     # 'time_created' and then by 'id' last.
     for clause in [orm.Node.time_created, orm.Node.id]:
         if default_sorting_direction == -1:
             clause = clause.desc()
         clauses.append(clause)
-    return clauses
+
+    return clauses, default_sorting_direction
 
 
 _TYPE_CONVERSION_MAP = {

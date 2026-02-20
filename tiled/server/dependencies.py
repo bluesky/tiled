@@ -2,17 +2,30 @@ from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
-from pydantic import BaseModel, model_validator
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE, HTTP_400_BAD_REQUEST
+from pydantic import BaseModel, constr, model_validator
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_410_GONE,
+)
 
 from ..access_control.protocols import AccessPolicy
 from ..adapters.protocols import AnyAdapter
 from ..structures.core import StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink
-from .core import NoEntry, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from .core import NoEntry
 from .schemas import Principal
 from .utils import filter_for_access, record_timing
+
+# Template for the "sort" query parameters.
+# Empty sting is NOT allowed, should be at least "-" or "+"
+SortField = constr(pattern=r"^[+-]?[a-zA-Z0-9_]+$")
+
+# Limits for pagination parameters
+DEFAULT_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 300
 
 
 def get_root_tree(request: Request):
@@ -183,6 +196,40 @@ def patch_offset_param(
     if patch_offset is None:
         return None
     return tuple(map(int, patch_offset.split(",")))
+
+
+def sorting_param(
+    sort: Optional[List[SortField]] = Query(None),
+):
+    "Specify and parse a sorting parameter."
+    if sort is None:
+        return None
+
+    result = {}
+    for item in sort:
+        if item.startswith("-"):
+            key, dir = item[1:], -1
+        elif item.startswith("+"):
+            key, dir = item[1:], 1
+        else:
+            key, dir = item, 1
+
+        if key in result:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"Duplicate sorting key: {key}",
+            )
+
+        result[key] = dir
+
+    # Check that the default sorting (""), if specified, is the last item in the list
+    if ("" in result) and (list(result.keys())[-1] != ""):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Default sorting (empty string) must be the last item in the sort list",
+        )
+
+    return list(result.items())
 
 
 class PaginationParams(BaseModel):

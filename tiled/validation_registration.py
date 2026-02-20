@@ -60,7 +60,7 @@ async def validate_composite(spec, metadata, entry, structure_family, structure)
             )
 
         flat_name_space = []
-        for key, item in await entry.items_range(offset=0, limit=None):
+        for key, item in (await entry.items_range())[0]:
             flat_name_space.append(key)
 
             if item.structure_family == StructureFamily.table:

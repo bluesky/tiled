@@ -2,7 +2,6 @@ import collections.abc
 import dataclasses
 import inspect
 import itertools
-import math
 import operator
 import re
 import sys
@@ -10,7 +9,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import anyio
 import dateutil.tz
@@ -35,13 +34,10 @@ from ..utils import (
     ensure_awaitable,
     parse_mimetype,
     safe_json_dump,
-    encode_pagination_cursor,
-    decode_pagination_cursor,
 )
 from . import schemas
 from .etag import tokenize
-from .utils import record_timing
-from .dependencies import PaginationParams
+from .utils import decode_pagination_cursor, encode_pagination_cursor, record_timing
 
 del queries
 register_builtin_serializers()
@@ -64,9 +60,6 @@ INLINED_CONTENTS_LIMIT = 500
 # being crashed by badly designed or buggy Adapters. It is up to Adapters to
 # opt in to this behavior and decide on a reasonable depth.
 DEPTH_LIMIT = 5
-
-DEFAULT_PAGE_SIZE = 100
-MAX_PAGE_SIZE = 300
 
 
 async def len_or_approx(tree, exact=False, threshold=5000):
@@ -126,33 +119,42 @@ async def len_or_approx(tree, exact=False, threshold=5000):
         return await anyio.to_thread.run_sync(len, tree)
 
 
-def pagination_links(base_url, route, path_parts, offset, cursor, limit, length_hint):
-    
+def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint):
     path_str = "/".join(path_parts)
+    if page.cursor is not None:
+        offset_or_cursor = f"page[cursor]={page.cursor}&"
+    elif page.offset:  # Neither None nor 0
+        offset_or_cursor = f"page[offset]={page.offset}&"
+    else:
+        offset_or_cursor = ""  # No offset or cursor for the first page
     links = {
-        "self": f"{base_url}{route}/{path_str}?page[offset]={offset}&page[limit]={limit}",
+        "self": f"{base_url}{route}/{path_str}?{offset_or_cursor}page[limit]={page.limit}",
+        "first": f"{base_url}{route}/{path_str}?page[limit]={page.limit}",
         # These are conditionally overwritten below.
-        "first": None,
         "last": None,
         "next": None,
         "prev": None,
     }
-    if limit:
-        last_page = math.floor(length_hint / limit) * limit
-        links.update(
-            {
-                "first": f"{base_url}{route}/{path_str}?page[limit]={limit}",
-                "last": f"{base_url}{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
-            }
-        )
-    if offset + limit < length_hint:
+    # if limit:
+    #     last_page = math.floor(length_hint / limit) * limit
+    #     links.update(
+    #         {
+    #             "first": f"{base_url}{route}/{path_str}?page[limit]={page.limit}",
+    #             "last": f"{base_url}{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
+    #         }
+    #     )
+    if next_cursor is not None:
         links[
             "next"
-        ] = f"{base_url}{route}/{path_str}?page[offset]={offset + limit}&page[limit]={limit}"
-    if offset > 0:
+        ] = f"{base_url}{route}/{path_str}?page[cursor]={next_cursor}&page[limit]={page.limit}"
+    elif (page.cursor is None) and (page.offset + page.limit < length_hint):
         links[
-            "prev"
-        ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
+            "next"
+        ] = f"{base_url}{route}/{path_str}?page[offset]={page.offset + page.limit}&page[limit]={page.limit}"
+    # if offset > 0:
+    #     links[
+    #         "prev"
+    #     ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
@@ -219,38 +221,18 @@ async def apply_search(tree, filters, query_registry):
     return tree
 
 
-def apply_sort(tree, sort):
-    sorting = []
-    if sort is not None:
-        for item in sort.split(","):
-            if item:
-                if item.startswith("-"):
-                    sorting.append((item[1:], -1))
-                else:
-                    sorting.append((item, 1))
-    if sorting:
-        if not hasattr(tree, "sort"):
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail="This Tree does not support sorting.",
-            )
-        tree = tree.sort(sorting)
-
-    return tree
-
-
 async def construct_entries_response(
     query_registry,
     tree,
     route,
     path,
-    page: PaginationParams,
+    page,
     fields,
     select_metadata,
     omit_links,
     include_data_sources,
     filters,
-    sort,
+    sorting: Optional[list[tuple[str, Literal[1, -1]]]],
     base_url,
     media_type,
     max_depth,
@@ -260,7 +242,15 @@ async def construct_entries_response(
 
     path_parts = [segment for segment in path.split("/") if segment]
     tree = await apply_search(tree, filters, query_registry)
-    tree = apply_sort(tree, sort)
+    next_cursor = None  # For cursor-based pagination
+
+    if sorting:
+        if not hasattr(tree, "sort"):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail="This Tree does not support sorting.",
+            )
+        tree = tree.sort(sorting)
 
     count = await len_or_approx(
         tree, exact=(schemas.EntryFields.count in fields), threshold=exact_count_limit
@@ -271,14 +261,17 @@ async def construct_entries_response(
         if hasattr(tree, "keys_range") and (not tree.data_sources):
             # This is a node in the SQL Catalog
             if page.cursor is None:
-                last_ts, last_id = await tree.cursor_for_offset(page.offset)
+                prev_ts, prev_id = await tree.cursor_for_offset(page.offset)
+                page.cursor = encode_pagination_cursor(prev_ts, prev_id)
             else:
-                last_ts, last_id = decode_pagination_cursor(page.cursor)
-            keys, next_ts, next_id = await tree.keys_range(last_ts, last_id, page.limit)
+                prev_ts, prev_id = decode_pagination_cursor(page.cursor)
+            keys, next_ts, next_id = await tree.keys_range(prev_ts, prev_id, page.limit)
             next_cursor = encode_pagination_cursor(next_ts, next_id)
         elif tree.data_sources:
             # HDF5 or Zarr group presented as a container
-            keys = (await tree.get_adapter()).keys()[page.offset : page.offset + page.limit]  # noqa: E203
+            keys = (await tree.get_adapter()).keys()[
+                page.offset : page.offset + page.limit  # noqa: E203
+            ]
         else:
             # MapAdapter or similar
             keys = tree.keys()[page.offset : page.offset + page.limit]  # noqa: E203
@@ -290,8 +283,14 @@ async def construct_entries_response(
         # Pull the entire page of full items into memory.
         if hasattr(tree, "items_range") and (not tree.data_sources):
             # This is a node in the SQL Catalog
-            last_ts, last_id = decode_pagination_cursor(page.cursor)
-            items, next_ts, next_id = await tree.items_range(last_ts, last_id, page.limit)
+            if page.cursor is None:
+                prev_ts, prev_id = await tree.cursor_for_offset(page.offset)
+                page.cursor = encode_pagination_cursor(prev_ts, prev_id)
+            else:
+                prev_ts, prev_id = decode_pagination_cursor(page.cursor)
+            items, next_ts, next_id = await tree.items_range(
+                prev_ts, prev_id, page.limit
+            )
             next_cursor = encode_pagination_cursor(next_ts, next_id)
         elif tree.data_sources:
             # HDF5 or Zarr group presented as a container
@@ -301,7 +300,8 @@ async def construct_entries_response(
             items = tree.items()[page.offset : page.offset + page.limit]  # noqa: E203
 
     # Construct pagination links
-    links = pagination_links(base_url, route, path_parts, last_page_ts, last_page_id, page.limit, count)
+    links = pagination_links(base_url, route, path_parts, page, next_cursor, count)
+
     # This value will not leak out. It just used to seed comparisons.
     metadata_stale_at = datetime.now(timezone.utc) + timedelta(days=1_000_000)
     must_revalidate = getattr(tree, "must_revalidate", True)
@@ -350,7 +350,7 @@ async def construct_revisions_response(
     base_url,
     route,
     path,
-    page: PaginationParams,
+    page,
     media_type,
 ):
     path_parts = [segment for segment in path.split("/") if segment]
@@ -367,9 +367,7 @@ async def construct_revisions_response(
         }
         data.append(item)
     count = len(data)
-    links = pagination_links(
-        base_url, route, path_parts, page.offset, page.limit, count
-    )  # maybe reuse or maybe make a new pagination_revision_links
+    links = pagination_links(base_url, route, path_parts, page, None, count)
     return schemas.Response(data=data, links=links, meta={"count": count})
 
 

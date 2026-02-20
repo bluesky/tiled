@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import cache, partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar, Union
+from typing import Callable, List, Literal, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -66,9 +66,7 @@ from .authentication import (
     get_session_state,
 )
 from .core import (
-    DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
-    MAX_PAGE_SIZE,
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
@@ -82,15 +80,16 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
+    PaginationParams,
     block,
     expected_shape,
     get_entry,
     get_root_tree,
     offset_param,
-    pagination_params,
     patch_offset_param,
     patch_shape_param,
     shape_param,
+    sorting_param,
 )
 from .settings import Settings, get_settings
 from .utils import (
@@ -311,7 +310,7 @@ def get_router(
         fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
         page: PaginationParams = Depends(),
-        sort: Optional[str] = Query(None),
+        sort: Optional[List[tuple[str, Literal[1, -1]]]] = Depends(sorting_param),
         max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),

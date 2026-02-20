@@ -1,6 +1,7 @@
 import contextlib
 import time
 from collections.abc import Generator
+from datetime import datetime
 from typing import Any, Literal, Mapping, Optional, Sequence
 
 from fastapi import Request, WebSocket
@@ -118,17 +119,22 @@ async def filter_for_access(
     return entry
 
 
-def encode_pagination_cursor(last_ts: Optional[float], last_id: Optional[str]) -> Optional[str]:
-    if last_ts is None or last_id is None:
+def encode_pagination_cursor(
+    prev_ts: Optional[datetime], prev_id: Optional[str]
+) -> Optional[str]:
+    if prev_ts is None or prev_id is None:
         return None
-    return f"{last_ts}:{last_id}"
+    return f"{prev_ts.timestamp()}:{prev_id}"
 
-def decode_pagination_cursor(cursor: Optional[str]) -> tuple[Optional[float], Optional[str]]:
+
+def decode_pagination_cursor(
+    cursor: Optional[str],
+) -> tuple[Optional[datetime], Optional[str]]:
     if cursor is None:
         return None, None
     try:
-        last_ts_str, last_id = cursor.split(":", 1)
-        last_ts = float(last_ts_str)
-        return last_ts, last_id
+        prev_ts_str, prev_id = cursor.split(":", 1)
+        prev_ts = datetime.fromtimestamp(float(prev_ts_str))
+        return prev_ts, prev_id
     except ValueError:
         raise ValueError(f"Invalid pagination cursor: {cursor}")

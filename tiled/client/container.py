@@ -121,11 +121,15 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
             )
         }
+        if not self._sorting_params["sort"]:
+            self._sorting_params = {}
         self._reversed_sorting_params = {
             "sort": ",".join(
                 f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
             )
         }
+        if not self._reversed_sorting_params["sort"]:
+            self._reversed_sorting_params = {}
         super().__init__(
             context=context,
             item=item,
