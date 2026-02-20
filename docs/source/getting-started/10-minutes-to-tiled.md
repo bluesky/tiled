@@ -294,7 +294,7 @@ c['examples/images/binary_blobs'].export(
 ```
 
 Tabular data is different than array data, so it slices differently.
-For tabular data, we can filter the columns of interest.
+For tabular data, we can select the columns of interest.
 
 ```{code-cell} ipython3
 c['examples/xraydb/C/edges']
