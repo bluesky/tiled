@@ -6,7 +6,7 @@ orphan: true
 
 # Client Profiles Reference
 
-This is a comprehensive reference. See also {doc}`../how-to/profiles` for a
+This is a comprehensive reference. See also {doc}`../user-guide/profiles` for a
 practical guide with examples.
 
 A profiles YAML file must contain a mapping with one or more keys.

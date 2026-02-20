@@ -6,7 +6,7 @@ orphan: true
 
 # Service Configuration Reference
 
-This is a comprehensive reference. See also {doc}`../how-to/configuration` for a
+This is a comprehensive reference. See also {doc}`../user-guide/configuration` for a
 practical guide with examples.
 
 ## Configuration merging rules
