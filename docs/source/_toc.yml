@@ -1,0 +1,69 @@
+root: index
+title: "Awkward Array"
+
+defaults:
+  titlesonly: True
+
+subtrees:
+  - entries:
+      - file: getting-started/index
+        subtrees:
+          - entries:
+            - file: getting-started/what-is-tiled
+            - file: getting-started/10-minutes-to-tiled
+            - file: getting-started/integrations/index
+              subtrees:
+                - entries:
+                  - file: getting-started/integrations/plotly
+                  - file: getting-started/integrations/zarr
+  - entries:
+    - file: user-guide/index
+      subtrees:
+        - entries:
+            - file: user-guide/authentication
+            - file: user-guide/profiles
+            - file: user-guide/client-logger
+            - file: user-guide/docker
+            - file: user-guide/helm
+            - file: user-guide/configuration
+            - file: user-guide/read-custom-formats
+            - file: user-guide/custom-export-formats
+            - file: user-guide/api-keys
+            - file: user-guide/custom-clients
+            - file: user-guide/metrics
+            - file: user-guide/direct-client
+            - file: user-guide/tiled-authn-database
+            - file: user-guide/register
+            - file: user-guide/retries
+  - entries:
+      - file: explanations/index
+        subtrees:
+          - entries:
+            - file: explanations/architecture
+            - file: explanations/standards
+            - file: explanations/structures
+            - file: explanations/metadata
+            - file: explanations/security
+            - file: explanations/compression
+            - file: explanations/specialized-formats
+            - file: explanations/caching
+            - file: explanations/access-control
+            - file: explanations/catalog
+            - file: explanations/faq
+            - file: explanations/roadmap
+            - file: explanations/lineage
+            - file: explanations/storage-database
+  - entries:
+      - file: reference/index
+        subtrees:
+          - entries:
+            - file: reference/service
+            - file: reference/http-api-overview
+            - file: reference/python-client
+            - file: reference/queries
+            - file: reference/authentication
+            - file: reference/scopes
+            - file: reference/commandline
+            - file: reference/service-configuration
+            - file: reference/client-profiles
+            - file: reference/min-versions

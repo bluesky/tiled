@@ -15,8 +15,6 @@ import uvicorn
 from ..storage import SQLStorage, get_storage
 from ..utils import ensure_uri
 
-_server_is_running = False
-
 
 class ThreadedServer(uvicorn.Server):
     def install_signal_handlers(self):
@@ -24,13 +22,6 @@ class ThreadedServer(uvicorn.Server):
 
     @contextlib.contextmanager
     def run_in_thread(self):
-        global _server_is_running
-
-        if _server_is_running:
-            raise RuntimeError(
-                "Only one server can be run at a time " "in a given Python process."
-            )
-        _server_is_running = True
         thread = threading.Thread(target=self.run)
         thread.start()
         try:
@@ -46,7 +37,6 @@ class ThreadedServer(uvicorn.Server):
         finally:
             self.should_exit = True
             thread.join()
-            _server_is_running = False
 
 
 class SimpleTiledServer:
@@ -60,8 +50,8 @@ class SimpleTiledServer:
     Parameters
     ----------
     directory : Optional[Path, str]
-        Location where data and embedded databases will be stored.
-        By default, a temporary directory will be used.
+        Location where data, including files and embedded databases, will be
+        stored. By default, a temporary directory will be used.
     api_key : Optional[str]
         By default, an 8-bit random secret is generated. (Production Tiled
         servers use longer secrets.)
@@ -97,7 +87,7 @@ class SimpleTiledServer:
     ):
         # Delay import to avoid circular import.
         from ..catalog import from_uri as catalog_from_uri
-        from ..config import Authentication
+        from ..config import Authentication, StreamingCacheConfig
         from .app import build_app
         from .logging_config import LOGGING_CONFIG
 
@@ -131,6 +121,7 @@ class SimpleTiledServer:
             writable_storage=[directory / "data", storage_uri],
             init_if_not_exists=True,
             readable_storage=readable_storage,
+            cache_config=StreamingCacheConfig(uri="memory").model_dump(),
         )
         self.app = build_app(
             self.catalog, authentication=Authentication(single_user_api_key=api_key)

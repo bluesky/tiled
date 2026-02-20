@@ -7,6 +7,20 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- A new function `tiled.client.simple` provides a convenient method for
+  obtaining a client backed by a `SimpleTiledServer`.
+
+### Changed
+
+- The `SimpleTiledServer` no longer prohibits multiple servers per process.
+  This is convenient for rapidly iterating with new temporary servers.
+- The `SimpleTiledServer` supports streaming, via the in-memory TTL cache
+  introduced in v0.2.4.
+
+## v0.2.4 (2026-02-18)
+
+### Added
+
 - Support for including custom FastAPI routers via a new `routers` configuration
   field at the server level.
 

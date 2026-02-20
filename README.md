@@ -162,3 +162,7 @@ for large longitudinal analyses. Yet, it is not always practical to transcode
 the data into a chunk-friendly format or build a custom tile-based-access
 solution. (Though if you can do either of those things, you should consider
 them instead!)
+
+<!-- README only content. Anything below this line won't be included in index.md -->
+
+See https://blueskyproject.io/tiled for more detailed documentation.
