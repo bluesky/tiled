@@ -249,12 +249,12 @@ class HDF5ArrayAdapter(ArrayAdapter):
         array = cls.lazy_load_hdf5_array(
             *file_paths, dataset=dataset, swmr=swmr, libver=libver, locking=locking
         )
-
         if slice:
             if isinstance(slice, str):
                 slice = NDSlice.from_numpy_str(slice)
             array = array[slice]
         if squeeze:
+            assert isinstance(array, dask.array.Array)
             array = array.squeeze()
 
         if array.dtype != structure.data_type.to_numpy_dtype():
