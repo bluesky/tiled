@@ -196,11 +196,11 @@ def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
     ],
 )
 def test_write_read_one_batch_one_part(
-    adapter: str, request: pytest.FixtureRequest
+    adapter: SQLAdapter, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-    assert isinstance(adapter, SQLAdapter)
+
     # test appending and reading a table as a whole
     test_table = pa.Table.from_arrays(data0, names)
 
@@ -228,11 +228,11 @@ def test_write_read_one_batch_one_part(
     ],
 )
 def test_write_read_list_batch_one_part(
-    adapter: str, request: pytest.FixtureRequest
+    adapter: SQLAdapter, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-    assert isinstance(adapter, SQLAdapter)
+
     test_table = pa.Table.from_batches([batch0, batch1, batch2])
     # test appending a list of batches to a table and read as a whole
     adapter.append_partition(0, [batch0, batch1, batch2])
