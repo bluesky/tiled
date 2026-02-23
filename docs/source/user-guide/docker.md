@@ -224,7 +224,7 @@ You may need to mount additional volumes as well.
 
 ## Example: Run Tiled with a dashboard of metrics
 
-See {doc}`../how-to/metrics`.
+See {doc}`../user-guide/metrics`.
 
 ## Next Steps
 

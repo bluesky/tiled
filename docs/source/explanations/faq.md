@@ -31,7 +31,3 @@ See {doc}`lineage` for background.
 See {doc}`lineage` for background. Databroker will likely be refactored to
 extend Tiled, adding specifics related to Bluesky's Document Model and
 storage backends.
-
-**Can I upload data to Tiled?**
-
-Yes, this was recently added. See {doc}`../tutorials/writing`.

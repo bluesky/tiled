@@ -1,7 +1,9 @@
+import atexit
 import collections
 import collections.abc
+import pathlib
 import warnings
-from typing import Optional
+from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -265,3 +267,53 @@ def from_profile(name, structure_clients=None, **kwargs):
         return from_context(context, **merged)
     else:
         return from_uri(**merged)
+
+
+def simple(
+    directory: Optional[Union[str, pathlib.Path]] = None,
+    api_key: Optional[str] = None,
+    port: int = 0,
+    readable_storage: Optional[Union[str, pathlib.Path]] = None,
+    quiet: bool = False,
+):
+    """
+    Spawn a Tiled server on a background thread and connect to it.
+
+    This is intended to be used for tutorials and development. It employs only
+    basic security and should not be used to store anything important. It does
+    not scale to large number of users. By default, it uses temporary storage.
+
+    Parameters
+    ----------
+    directory : Optional[Path, str]
+        Location where data, including files and embedded databases, will be
+        stored. By default, a temporary directory will be used.
+    api_key : Optional[str]
+        By default, an 8-bit random secret is generated. (Production Tiled
+        servers use longer secrets.)
+    port : Optional[int]
+        Port the server will listen on. By default, a random free high port
+        is allocated by the operating system.
+    quiet : bool
+        Suppress printing the server URL. False by default.
+    """
+    from ..server.simple import SimpleTiledServer
+
+    server = SimpleTiledServer(
+        directory, api_key=api_key, port=port, readable_storage=readable_storage
+    )
+    # Keep a reference; otherwise the server will be garbage collected and stopped.
+    SERVERS.append(server)
+    if not quiet:
+        print(server.uri)
+    client = from_uri(server.uri)
+    return client
+
+
+def _cleanup_servers():
+    for server in SERVERS:
+        server.close()
+
+
+SERVERS = []  # servers spawned using simple
+atexit.register(_cleanup_servers)

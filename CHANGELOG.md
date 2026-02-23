@@ -3,7 +3,21 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.2.5 (2026-02-20)
+
+### Added
+
+- A new function `tiled.client.simple` provides a convenient method for
+  obtaining a client backed by a `SimpleTiledServer`.
+
+### Changed
+
+- The `SimpleTiledServer` no longer prohibits multiple servers per process.
+  This is convenient for rapidly iterating with new temporary servers.
+- The `SimpleTiledServer` supports streaming, via the in-memory TTL cache
+  introduced in v0.2.4.
+
+## v0.2.4 (2026-02-18)
 
 ### Added
 
@@ -19,6 +33,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   associated structure, where possible.
 - Removed support for Python 3.9, which reached its end of life in October 2025.
 - When creating an access-tag restricted API key, the `inherit` scope is no longer valid to request. Instead, the specific scopes desired for the key should be requested.
+
+### Fixed
+
+- Error handling in `tiled.client.download._download_url`.
+- Slow performance when deleting nodes in large catalogs with many nodes.
+- Add `properties` field to the DataSource object and table, to store additional
+  metadata about the data source (e.g. array chunking information).
 
 ## v0.2.3 (2025-12-17)
 

@@ -1,4 +1,4 @@
-See docs/source/how-to-custom-export-formats.md for details.
+See docs/source/user-guide-custom-export-formats.md for details.
 Launch via:
 
 ```
