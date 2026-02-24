@@ -564,7 +564,9 @@ class Context:
         authn_links = self.server_info.authentication.links
         if (authn_links is None) or (not authn_links.apikey):
             raise RuntimeError(
-                "Server does not support API key creation for the current user."
+                "This Tiled server is deployed as a single-user server. "
+                "Unlike multi-user servers, it has a single, static API key and does not "
+                "support generating additional API keys."
             )
 
         for attempt in retry_context():
