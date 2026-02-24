@@ -7,8 +7,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
-- Explicitly specified `"Content-Type": "application/json"` in the request headers to
-  comply with stricter payload parsing in FastAPI >= 0.132.0.
+- Explicitly specified `"Content-Type": "application/json"` in the request
+  headers to comply with stricter payload parsing in FastAPI >= 0.132.0.
+- Servers started by the new function `tiled.client.simple` did not stop
+  cleanly at interpreter shutdown, causing a hangup.
 
 ## v0.2.5 (2026-02-20)
 
