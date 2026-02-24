@@ -73,7 +73,7 @@ all = [
     "dask[dataframe]",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
-    "fastapi >=0.122.0",
+    "fastapi >=0.132.0",
     "h5netcdf",
     "h5py",
     "hdf5plugin",
@@ -174,7 +174,7 @@ minimal-server = [
     "cachetools",
     "canonicaljson",
     "dask",
-    "fastapi >=0.122.0",
+    "fastapi >=0.132.0",
     "jinja2",
     "jmespath",
     "numcodecs",
@@ -209,7 +209,7 @@ server = [
     "dask[dataframe]",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
-    "fastapi >=0.122.0",
+    "fastapi >=0.132.0",
     "h5netcdf",
     "h5py",
     "hdf5plugin",

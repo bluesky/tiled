@@ -724,7 +724,10 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 document = handle_error(
                     self.context.http_client.post(
                         endpoint,
-                        headers={"Accept": MSGPACK_MIME_TYPE},
+                        headers={
+                            "Accept": MSGPACK_MIME_TYPE,
+                            "Content-Type": "application/json",
+                        },
                         content=safe_json_dump(body),
                     )
                 ).json()
