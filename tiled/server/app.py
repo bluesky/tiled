@@ -246,7 +246,7 @@ def build_app(
     app = FastAPI(lifespan=lifespan, strict_content_type=False)
     # TODO: `strict_content_type=False` was set in v0.2.6 to work around the fact that FastAPI 0.132.0
     # introduced stricter content type parsing. This should be removed in future releases of Tiled.
-   
+
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
     @app.get("/healthz", status_code=200)
