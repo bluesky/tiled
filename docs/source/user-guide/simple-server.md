@@ -26,6 +26,18 @@ When the server starts, a URL is printed to the console. Each launch generates a
 unique secret `api_key`. You can paste this URL into a browser to open Tiled's
 web interface.
 
+## Readable storage
+
+Detectors or analysis programs often write files directly to disk. Tiled can
+make those files accessible without any re-uploading or reformatting.
+
+For security reasons, the server administrator must designate which directories
+data can be registered from, like so.
+
+```python
+c = simple(readable_storage=['path/to/some/directory/', 'another_directory/'])
+```
+
 ## Manual server management
 
 Under the hood, {py:func}`tiled.client.simple` uses
@@ -37,6 +49,14 @@ from tiled.client import from_uri
 
 server = SimpleTiledServer()
 client = from_uri(server.uri)
+```
+
+The `readable_storage` option works the same way.
+
+```python
+server = SimpleTiledServer(
+    readable_storage=['path/to/some/directory/', 'another_directory/']
+)
 ```
 
 The server can be stopped by calling `server.close()`, or used as a context
