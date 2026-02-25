@@ -21,7 +21,7 @@ from .utils import filter_for_access, record_timing
 
 # Template for the "sort" query parameters.
 # Empty sting is NOT allowed, should be at least "-" or "+"
-SortField = constr(pattern=r"^[+-]?[a-zA-Z0-9_]+$")
+SortField = constr(pattern=r"^(?:[+-][a-zA-Z0-9_]*|[a-zA-Z0-9_]+)$")
 
 # Limits for pagination parameters
 DEFAULT_PAGE_SIZE = 100

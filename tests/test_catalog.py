@@ -39,16 +39,16 @@ from .utils import sql_table_exists
 
 
 @pytest_asyncio.fixture
-async def a(adapter):
+async def a(catalog_adapter):
     "Raw adapter, not to be used within an app because it is manually started and stopped."
-    await adapter.startup()
-    yield adapter
-    await adapter.shutdown()
+    await catalog_adapter.startup()
+    yield catalog_adapter
+    await catalog_adapter.shutdown()
 
 
 @pytest_asyncio.fixture
-async def client(adapter):
-    app = build_app(adapter)
+async def client(catalog_adapter):
+    app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         yield from_context(context)
 

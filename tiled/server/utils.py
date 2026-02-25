@@ -122,9 +122,12 @@ async def filter_for_access(
 def encode_pagination_cursor(
     prev_ts: Optional[datetime], prev_id: Optional[str]
 ) -> Optional[str]:
-    if prev_ts is None or prev_id is None:
+    if prev_id is None:
         return None
-    return f"{prev_ts.timestamp()}:{prev_id}"
+    elif prev_ts is None:
+        return f"0:{prev_id}"
+    # TODO: encrypt and decrypt
+    return f"{int(prev_ts.timestamp() * 1_000_000)}:{prev_id}"
 
 
 def decode_pagination_cursor(
@@ -133,8 +136,8 @@ def decode_pagination_cursor(
     if cursor is None:
         return None, None
     try:
-        prev_ts_str, prev_id = cursor.split(":", 1)
-        prev_ts = datetime.fromtimestamp(float(prev_ts_str))
-        return prev_ts, prev_id
+        # TODO: encrypt and decrypt
+        prev_ts, prev_id = cursor.split(":", 1)
+        return datetime.fromtimestamp(int(prev_ts) / 1_000_000), int(prev_id)
     except ValueError:
         raise ValueError(f"Invalid pagination cursor: {cursor}")

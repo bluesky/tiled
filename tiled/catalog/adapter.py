@@ -1232,6 +1232,9 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         statement = select(orm.Node.key, orm.Node.time_created, orm.Node.id)
         statement = statement.filter(orm.Node.parent == self.node.id)
         if (prev_ts is not None) and (prev_id is not None):
+            # SQLite does not store microseconds, cast to string to match the format
+            if self.context.engine.url.get_dialect().name == "sqlite":
+                prev_ts = str(prev_ts.replace(microsecond=0))
             prev = (prev_ts, prev_id)
             if self.default_sorting_direction == 1:
                 page_cond = tuple_(orm.Node.time_created, orm.Node.id) > prev
@@ -1279,6 +1282,9 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
 
         statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
         if (prev_ts is not None) and (prev_id is not None):
+            # SQLite does not store microseconds, cast to string to match the format
+            if self.context.engine.url.get_dialect().name == "sqlite":
+                prev_ts = str(prev_ts.replace(microsecond=0))
             prev = (prev_ts, prev_id)
             if self.default_sorting_direction == 1:
                 page_cond = tuple_(orm.Node.time_created, orm.Node.id) > prev
@@ -1313,18 +1319,19 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
     async def cursor_for_offset(self, offset: int):
         "Get the timestamp and ID of the node at the given offset for pagination"
         if offset == 0:
+            # Will return the pointer to the last item of the previous page
+            # If offset is 0, there is no previous page, so return None
             return None, None
 
         if self.data_sources:
             # Assume that offset corresponds to the index in the keys list
-            # Return `offset - 1` to point the cursor to the last item of the previous page
             return None, offset - 1
 
         statement = select(orm.Node.time_created, orm.Node.id).filter(
             orm.Node.parent == self.node.id
         )
         statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
-        statement = statement.offset(offset).limit(1)
+        statement = statement.offset(offset - 1).limit(1)
 
         async with self.context.session() as db:
             row = (await db.execute(statement)).first()
