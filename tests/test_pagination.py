@@ -8,7 +8,6 @@ N = 10  # number of items generated in sample
 
 @pytest.fixture(scope="function")
 def client(catalog_adapter):
-    # catalog = in_memory(writable_storage=[tmpdir_module])
     app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         client = from_context(context)
