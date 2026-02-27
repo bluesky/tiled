@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 import entrypoints
 import httpx
 import orjson
+from packaging.version import Version
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import KeyLookup
@@ -699,13 +700,24 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata = metadata or {}
         access_blob = {"tags": access_tags} if access_tags is not None else {}
 
+        # Backompatibility: if the server is older than 0.2.4,
+        # it can not accept the "properties" field in the data source.
+        # This can be removed in later releases.
+        if Version(self.context.server_info.library_version) < Version("0.2.4"):
+            data_sources_as_dicts = [
+                {k: v for k, v in asdict(ds).items() if k != "properties"}
+                for ds in data_sources
+            ]
+        else:
+            data_sources_as_dicts = [asdict(ds) for ds in data_sources]
+
         item = {
             "attributes": {
                 "ancestors": self.path_parts,
                 "metadata": metadata,
                 "structure_family": StructureFamily(structure_family),
                 "specs": normalize_specs(specs or []),
-                "data_sources": [asdict(data_source) for data_source in data_sources],
+                "data_sources": data_sources_as_dicts,
                 "access_blob": access_blob,
             }
         }
