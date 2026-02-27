@@ -10,6 +10,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Raise an error with a suitable message when trying to create an API key
   on a server that does not support it.
+- Backwards compatibility with older servers that do not support the `properties`
+  field in `DataSource` objects. The client will now omit this field when
+  communicating with servers older than v0.2.4.
 
 ## v0.2.6 (2026-02-24)
 
