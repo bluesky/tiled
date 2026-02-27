@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
@@ -444,7 +445,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     metadata: JSON = {"foo": "bar"}
     container = DirectoryContainer(directory=Path("somedirectory"), form={})
     principal = Principal(
-        uuid="12345678124123412345678123456781", type=PrincipalType.user
+        uuid=uuid.UUID(int=0x12345678124123412345678123456781), type=PrincipalType.user
     )
     authn_access_tags = {"qux", "quux"}
     authn_scopes = {"abc", "baz"}

@@ -362,8 +362,8 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
 
         """
         mapping = copy.copy(self._mapping)
-        for key, direction in reversed(sorting):
-            if key == "_":
+        for item in sorting:
+            if item.key == "_":
                 # Special case to enable reversing the given/default ordering.
                 # Leave mapping as is, and possibly reserve it below.
                 pass
@@ -371,11 +371,11 @@ class MapAdapter(Generic[A], ContainerAdapter[A], IndexersMixin):
                 mapping = dict(
                     sorted(
                         mapping.items(),
-                        key=lambda item: item[1].metadata().get(key, _HIGH_SORTER),  # type: ignore
+                        key=lambda item: item[1].metadata().get(key, _HIGH_SORTER),
                     )
                 )
 
-            if direction < 0:
+            if item.direction < 0:
                 # TODO In Python 3.8 dict items should be reversible
                 # but I have seen errors in the wild that I could not
                 # quickly resolve so for now we convert to list in the middle.
