@@ -25,7 +25,7 @@ class DataSource(BaseModel, Generic[StructureT]):
     structure: StructureT
     mimetype: str
     parameters: dict
-    properties: dict
+    properties: Optional[dict]
     assets: list[Asset]
     management: Management
 
