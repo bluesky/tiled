@@ -1,16 +1,14 @@
 import pytest
 
-from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.server.app import build_app
 
 N = 10  # number of items generated in sample
 
 
-@pytest.fixture(scope="module")
-def client(tmpdir_module):
-    catalog = in_memory(writable_storage=[tmpdir_module])
-    app = build_app(catalog)
+@pytest.fixture(scope="function")
+def client(catalog_adapter):
+    app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         client = from_context(context)
         for i in range(N):

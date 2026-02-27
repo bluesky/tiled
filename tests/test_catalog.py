@@ -39,16 +39,16 @@ from .utils import sql_table_exists
 
 
 @pytest_asyncio.fixture
-async def a(adapter):
+async def a(catalog_adapter):
     "Raw adapter, not to be used within an app because it is manually started and stopped."
-    await adapter.startup()
-    yield adapter
-    await adapter.shutdown()
+    await catalog_adapter.startup()
+    yield catalog_adapter
+    await catalog_adapter.shutdown()
 
 
 @pytest_asyncio.fixture
-async def client(adapter):
-    app = build_app(adapter)
+async def client(catalog_adapter):
+    app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         yield from_context(context)
 
@@ -71,11 +71,11 @@ async def test_nested_node_creation(a):
     c = await b.lookup_adapter(["c"])
     assert await b.path_segments() == ["b"]
     assert await c.path_segments() == ["b", "c"]
-    assert (await a.keys_range(0, 1)) == ["b"]
-    assert (await b.keys_range(0, 1)) == ["c"]
+    assert (await a.keys_range(None, None, 1))[0] == ["b"]
+    assert (await b.keys_range(None, None, 1))[0] == ["c"]
     # smoke test
-    await a.items_range(0, 1)
-    await b.items_range(0, 1)
+    await a.items_range(None, None, 1)
+    await b.items_range(None, None, 1)
     await a.shutdown()
 
 
@@ -100,32 +100,40 @@ async def test_sorting(a):
         )
 
     # Default sorting is _not_ ordered.
-    default_key_order = await a.keys_range(0, 10)
+    default_key_order = (await a.keys_range(None, None, 10))[0]
     assert default_key_order != ordered_letters
+    assert set(default_key_order) == set(ordered_letters)
     # Sorting by ("", -1) gives reversed default order.
-    reversed_default_key_order = await a.sort([("", -1)]).keys_range(0, 10)
+    reversed_default_key_order = (await a.sort([("", -1)]).keys_range(None, None, 10))[
+        0
+    ]
     assert reversed_default_key_order == list(reversed(default_key_order))
 
     # Sort by key.
-    assert await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
+    assert (await a.sort([("id", 1)]).keys_range(None, None, 10))[0] == ordered_letters
     # Test again, with items_range.
     assert [
-        k for k, v in await a.sort([("id", 1)]).items_range(0, 10)
+        k for k, v in (await a.sort([("id", 1)]).items_range(None, None, 10))[0]
     ] == ordered_letters
 
     # Sort by letter metadata.
     # Use explicit 'metadata.{key}' namespace.
-    assert (await a.sort([("metadata.letter", 1)]).keys_range(0, 10)) == ordered_letters
+    assert (await a.sort([("metadata.letter", 1)]).keys_range(None, None, 10))[
+        0
+    ] == ordered_letters
 
     # Sort by letter metadata.
     # Use implicit '{key}' (more convenient, and necessary for back-compat).
-    assert (await a.sort([("letter", 1)]).keys_range(0, 10)) == ordered_letters
+    assert (await a.sort([("letter", 1)]).keys_range(None, None, 10))[
+        0
+    ] == ordered_letters
 
     # Sort by number and then by letter.
     # Use explicit 'metadata.{key}' namespace.
     items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_range(
-        0, 10
+        None, None, 10
     )
+    items = items[0]
     numbers = [v.metadata()["number"] for k, v in items]
     letters = [v.metadata()["letter"] for k, v in items]
     keys = [k for k, v in items]
@@ -145,9 +153,9 @@ async def test_search(a):
             structure_family=StructureFamily.container,
             specs=[],
         )
-    assert "c" in await a.keys_range(0, 5)
-    assert await a.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
-    assert await a.search(Eq("number", 2)).keys_range(0, 5) == ["c"]
+    assert "c" in (await a.keys_range(limit=5))[0]
+    assert (await a.search(Eq("letter", "c")).keys_range(limit=5))[0] == ["c"]
+    assert (await a.search(Eq("number", 2)).keys_range(limit=5))[0] == ["c"]
 
     # Looking up "d" inside search results should find nothing when
     # "d" is filtered out by a search query first.
@@ -156,8 +164,7 @@ async def test_search(a):
         await a.search(Eq("letter", "c")).lookup_adapter(["d"])
 
     # Search on nested key.
-    assert await a.search(Eq("x.y.z", "c")).keys_range(0, 5) == ["c"]
-
+    assert (await a.search(Eq("x.y.z", "c")).keys_range(limit=5))[0] == ["c"]
     # Created nested nodes and search on them.
     d = await a.lookup_adapter(["d"])
     for letter, number in zip(string.ascii_lowercase[:5], range(10, 15)):
@@ -167,8 +174,8 @@ async def test_search(a):
             structure_family=StructureFamily.container,
             specs=[],
         )
-    assert await d.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
-    assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
+    assert (await d.search(Eq("letter", "c")).keys_range(limit=5))[0] == ["c"]
+    assert (await d.search(Eq("number", 12)).keys_range(limit=5))[0] == ["c"]
 
 
 @pytest.mark.asyncio
@@ -180,30 +187,32 @@ async def test_metadata_index_is_used(example_data_adapter):
     # that the index of interest is mentioned.
     await a.startup()
     with record_explanations() as e:
-        results = await a.search(Key("number_as_string") == "3").keys_range(0, 5)
-        assert len(results) == 1
+        results = await a.search(Key("number_as_string") == "3").keys_range(limit=5)
+        assert len(results[0]) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("number") == 3).keys_range(0, 5)
-        assert len(results) == 1
+        results = await a.search(Key("number") == 3).keys_range(limit=5)
+        assert len(results[0]) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_range(0, 5)  # noqa: #712
-        assert len(results) == 1
+        results = await a.search(Key("bool") == False).keys_range(limit=5)  # noqa: #712
+        assert len(results[0]) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.number_as_string") == "3").keys_range(0, 5)
-        assert len(results) == 1
+        results = await a.search(Key("nested.number_as_string") == "3").keys_range(
+            limit=5
+        )
+        assert len(results[0]) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.number") == 3).keys_range(0, 5)
-        assert len(results) == 1
+        results = await a.search(Key("nested.number") == 3).keys_range(limit=5)
+        assert len(results[0]) == 1
         assert "top_level_metadata" in str(e)
     with record_explanations() as e:
         results = await a.search(Key("nested.bool") == False).keys_range(  # noqa: #712
-            0, 5
+            limit=5
         )
-        assert len(results) == 1
+        assert len(results[0]) == 1
         assert "top_level_metadata" in str(e)
     await a.shutdown()
 

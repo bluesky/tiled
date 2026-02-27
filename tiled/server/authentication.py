@@ -67,7 +67,8 @@ from ..type_aliases import AccessTags
 from ..utils import SHARE_TILED_PATH, SingleUserPrincipal
 from . import schemas
 from .connection_pool import get_database_session_factory
-from .core import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, json_or_msgpack
+from .core import json_or_msgpack
+from .dependencies import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .protocols import ExternalAuthenticator, InternalAuthenticator, UserSessionState
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, get_base_url

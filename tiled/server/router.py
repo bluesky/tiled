@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import cache, partial
 from pathlib import Path
-from typing import Callable, List, Optional, TypeVar, Union
+from typing import Callable, List, Literal, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -66,9 +66,7 @@ from .authentication import (
     get_session_state,
 )
 from .core import (
-    DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
-    MAX_PAGE_SIZE,
     NoEntry,
     UnsupportedMediaTypes,
     WrongTypeForRoute,
@@ -82,6 +80,7 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
+    PaginationParams,
     block,
     expected_shape,
     get_entry,
@@ -90,6 +89,7 @@ from .dependencies import (
     patch_offset_param,
     patch_shape_param,
     shape_param,
+    sorting_param,
 )
 from .settings import Settings, get_settings
 from .utils import (
@@ -309,11 +309,8 @@ def get_router(
         path: str,
         fields: Optional[List[schemas.EntryFields]] = Query(list(schemas.EntryFields)),
         select_metadata: Optional[str] = Query(None),
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
-        sort: Optional[str] = Query(None),
+        page: PaginationParams = Depends(),
+        sort: Optional[List[tuple[str, Literal[1, -1]]]] = Depends(sorting_param),
         max_depth: Optional[int] = Query(None, ge=0, le=DEPTH_LIMIT),
         omit_links: bool = Query(False),
         include_data_sources: bool = Query(False),
@@ -349,8 +346,7 @@ def get_router(
                 entry,
                 "/search",
                 path,
-                offset,
-                limit,
+                page,
                 fields,
                 select_metadata,
                 omit_links,
@@ -2197,10 +2193,7 @@ def get_router(
     async def get_revisions(
         request: Request,
         path: str,
-        offset: Optional[int] = Query(0, alias="page[offset]", ge=0),
-        limit: Optional[int] = Query(
-            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
-        ),
+        page: PaginationParams = Depends(),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
@@ -2232,8 +2225,7 @@ def get_router(
             base_url,
             "/revisions",
             path,
-            offset,
-            limit,
+            page,
             resolve_media_type(request),
         )
         return json_or_msgpack(request, resource.model_dump())

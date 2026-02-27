@@ -116,17 +116,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 (s["key"], int(s["direction"]))
                 for s in (item["attributes"].get("sorting") or [])
             ]
-        sorting = sorting or item["attributes"].get("sorting")
-        self._sorting_params = {
-            "sort": ",".join(
-                f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
-            )
-        }
-        self._reversed_sorting_params = {
-            "sort": ",".join(
-                f"{'-' if item[1] > 0 else ''}{item[0]}" for item in self._sorting
-            )
-        }
+        sorting_list = [
+            f"{'-' if item[1] < 0 else ''}{item[0]}" for item in self._sorting
+        ]
+        reversed_sorting_list = [
+            item[1:] if item.startswith("-") else f"-{item}" for item in sorting_list
+        ]
+        self._sorting_params = {"sort": sorting_list} if "".join(sorting_list) else {}
+        self._reversed_sorting_params = (
+            {"sort": reversed_sorting_list} if "".join(reversed_sorting_list) else {}
+        )
+
         super().__init__(
             context=context,
             item=item,

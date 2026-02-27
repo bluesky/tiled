@@ -13,7 +13,7 @@ from contextlib import closing
 from datetime import datetime
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union, cast
+from typing import Callable, Dict, List, Literal, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
@@ -29,6 +29,7 @@ from sqlalchemy import (
     select,
     text,
     true,
+    tuple_,
     type_coerce,
     update,
 )
@@ -263,13 +264,16 @@ class CatalogNodeAdapter:
         *,
         conditions=None,
         queries=None,
-        sorting=None,
+        sorting: Optional[list[tuple[str, Literal[1, -1]]]] = None,
         mount_path: Optional[list[str]] = None,
     ):
         self.context = context
         self.node = node
         self.sorting = sorting or [("", 1)]
-        self.order_by_clauses = order_by_clauses(self.sorting)
+        (
+            self.order_by_clauses,
+            self.default_sorting_direction,
+        ) = construct_order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
@@ -546,13 +550,10 @@ class CatalogNodeAdapter:
         sorting=UNCHANGED,
         conditions=UNCHANGED,
         queries=UNCHANGED,
-        # must_revalidate=UNCHANGED,
         **kwargs,
     ):
         if sorting is UNCHANGED:
             sorting = self.sorting
-        # if must_revalidate is UNCHANGED:
-        #     must_revalidate = self.must_revalidate
         if conditions is UNCHANGED:
             conditions = self.conditions
         if queries is UNCHANGED:
@@ -562,9 +563,7 @@ class CatalogNodeAdapter:
             node=self.node,
             conditions=conditions,
             sorting=sorting,
-            # entries_stale_after=self.entries_stale_after,
-            # metadata_stale_after=self.entries_stale_after,
-            # must_revalidate=must_revalidate,
+            queries=queries,
             **kwargs,
         )
 
@@ -889,7 +888,7 @@ class CatalogNodeAdapter:
             # a notification about it.
             await self.context.streaming_cache.set(self.node.id, sequence, metadata)
 
-    async def revisions(self, offset, limit):
+    async def revisions(self, offset: int = 0, limit=None):
         async with self.context.session() as db:
             revision_orms = (
                 await db.execute(
@@ -1206,56 +1205,141 @@ class CatalogNodeAdapter:
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
-    async def keys_range(self, offset, limit):
+    async def keys_range(
+        self,
+        prev_ts: Optional[datetime] = None,
+        prev_id: Optional[str] = None,
+        limit: Optional[int] = None,
+    ):
+        # Case 1: Node has external data sources -- delegate to the associated adapter
         if self.data_sources:
-            return it.islice(
-                (await self.get_adapter()).keys(),
-                offset,
-                (offset + limit) if limit is not None else None,  # noqa: E203
-            )
-        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
-        statement = self.apply_conditions(statement)
-        async with self.context.session() as db:
-            return (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
-            )
+            # Assume that prev_id corresponds to the index in the keys list
+            keys = (await self.get_adapter()).keys()
+            if self.default_sorting_direction == -1:
+                keys = reversed(keys)
 
-    async def items_range(self, offset, limit):
-        if self.data_sources:
-            return it.islice(
-                (await self.get_adapter()).items(),
-                offset,
-                (offset + limit) if limit is not None else None,  # noqa: E203
-            )
-        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
-        statement = self.apply_conditions(statement)
+            # Start from the beginning or the next item after the previous ID
+            offset = (prev_id or -1) + 1
+            keys, next_offset = slice_by_offset(keys, offset=offset, limit=limit)
+            next_id = None if next_offset is None else next_offset - 1
+
+            return keys, None, next_id
+
+        # Case 2: No external data sources -- query the database directly
+        if limit == 0:
+            return [], None, None
+
+        statement = select(orm.Node.key, orm.Node.time_created, orm.Node.id)
+        statement = statement.filter(orm.Node.parent == self.node.id)
+        if (prev_ts is not None) and (prev_id is not None):
+            # SQLite does not store microseconds, cast to string to match the format
+            if self.context.engine.url.get_dialect().name == "sqlite":
+                prev_ts = str(prev_ts.replace(microsecond=0))
+            prev = (prev_ts, prev_id)
+            if self.default_sorting_direction == 1:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) > prev
+            else:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) < prev
+            statement = statement.filter(page_cond)  # Apply pagination condition
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        if limit is not None:
+            # Get one extra row to determine if there's a next page
+            statement = statement.limit(limit + 1)
+
         async with self.context.session() as db:
-            nodes = (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            return [
+            rows = (await db.execute(statement)).all()
+
+        next_ts, next_id = None, None
+        if (limit is not None) and (len(rows) > limit):
+            rows.pop()  # Remove the extra row used to check for next page
+            next_ts, next_id = rows[-1][1], rows[-1][2]
+
+        return [row[0] for row in rows], next_ts, next_id
+
+    async def items_range(
+        self,
+        prev_ts: Optional[datetime] = None,
+        prev_id: Optional[str] = None,
+        limit: Optional[int] = None,
+    ):
+        # Case 1: Node has external data sources -- delegate to the associated adapter
+        if self.data_sources:
+            # Assume that prev_id corresponds to the index in the keys list
+            items = (await self.get_adapter()).items()
+            if self.default_sorting_direction == -1:
+                items = reversed(items)
+
+            # Start from the beginning or the next item after the previous ID
+            offset = (prev_id or -1) + 1
+            items, next_offset = slice_by_offset(items, offset=offset, limit=limit)
+            next_id = None if next_offset is None else next_offset - 1
+
+            return items, None, next_id
+
+        # Case 2: No external data sources -- query the database directly
+        if limit == 0:
+            return [], None, None
+
+        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
+        if (prev_ts is not None) and (prev_id is not None):
+            # SQLite does not store microseconds, cast to string to match the format
+            if self.context.engine.url.get_dialect().name == "sqlite":
+                prev_ts = str(prev_ts.replace(microsecond=0))
+            prev = (prev_ts, prev_id)
+            if self.default_sorting_direction == 1:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) > prev
+            else:
+                page_cond = tuple_(orm.Node.time_created, orm.Node.id) < prev
+            statement = statement.filter(page_cond)  # Apply pagination condition
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        if limit is not None:
+            # Get one extra row to determine if there's a next page
+            statement = statement.limit(limit + 1)
+
+        async with self.context.session() as db:
+            nodes = (await db.execute(statement)).scalars().all()
+
+        next_ts, next_id = None, None
+        if (limit is not None) and (len(nodes) > limit):
+            nodes.pop()  # Remove the extra row used to check for next page
+            next_ts, next_id = nodes[-1].time_created, nodes[-1].id
+
+        return (
+            [
                 (
                     node.key,
                     STRUCTURES[node.structure_family](self.context, node),
                 )
                 for node in nodes
-            ]
+            ],
+            next_ts,
+            next_id,
+        )
+
+    async def cursor_for_offset(self, offset: int):
+        "Get the timestamp and ID of the node at the given offset for pagination"
+        if offset == 0:
+            # Will return the pointer to the last item of the previous page
+            # If offset is 0, there is no previous page, so return None
+            return None, None
+
+        if self.data_sources:
+            # Assume that offset corresponds to the index in the keys list
+            return None, offset - 1
+
+        statement = select(orm.Node.time_created, orm.Node.id).filter(
+            orm.Node.parent == self.node.id
+        )
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        statement = statement.offset(offset - 1).limit(1)
+
+        async with self.context.session() as db:
+            row = (await db.execute(statement)).first()
+
+        if row is None:
+            return None, None
+
+        return row[0], row[1]
 
     async def read(self, *args, **kwargs):
         if not self.data_sources:
@@ -1508,37 +1592,53 @@ _STANDARD_SORT_KEYS = {
 }
 
 
-def order_by_clauses(sorting):
+def construct_order_by_clauses(sorting):
     clauses = []
     default_sorting_direction = 1
     for key, direction in sorting:
         if key == "":
             default_sorting_direction = direction
             continue
-            # TODO Really we should insist that if this is given, it is last,
-            # because we always apply the default sorting last.
         if key in _STANDARD_SORT_KEYS:
             clause = getattr(orm.Node, _STANDARD_SORT_KEYS[key])
         else:
-            clause = orm.Node.metadata_
             # This can be given bare like "color" or namedspaced like
             # "metadata.color" to avoid the possibility of a name collision
             # with the standard sort keys.
             if key.startswith("metadata."):
                 key = key[len("metadata.") :]  # noqa: E203
-
+            clause = orm.Node.metadata_
             for segment in key.split("."):
                 clause = clause[segment]
         if direction == -1:
             clause = clause.desc()
         clauses.append(clause)
+
     # Ensure deterministic ordering for all queries by sorting by
     # 'time_created' and then by 'id' last.
     for clause in [orm.Node.time_created, orm.Node.id]:
         if default_sorting_direction == -1:
             clause = clause.desc()
         clauses.append(clause)
-    return clauses
+
+    return clauses, default_sorting_direction
+
+
+def slice_by_offset(items, offset=0, limit=None):
+    """Slice an iterable by offset and limit
+
+    Return the items and the next offset if there are more items.
+    """
+
+    stop = None if limit is None else offset + limit + 1
+    items = list(it.islice(items, offset, stop))
+
+    next_offset = None
+    if (limit is not None) and (len(items) > limit):
+        items.pop()  # Remove the extra item used to check for next page
+        next_offset = offset + limit
+
+    return items, next_offset
 
 
 _TYPE_CONVERSION_MAP = {

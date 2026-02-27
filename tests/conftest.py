@@ -174,9 +174,9 @@ def sql_storage_uri(request):
 
 
 @pytest_asyncio.fixture
-async def postgresql_adapter(request, tmpdir):
+async def postgresql_catalog_adapter(request, tmpdir):
     """
-    Adapter instance
+    Catalog adapter instance backed by PostgreSQL
 
     Note that startup() and shutdown() are not called, and must be run
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
@@ -185,13 +185,12 @@ async def postgresql_adapter(request, tmpdir):
         raise pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
     # Create temporary database.
     async with temp_postgres(TILED_TEST_POSTGRESQL_URI) as uri_with_database_name:
-        # Build an adapter on it, and initialize the database.
-        adapter = from_uri(
+        # Build a catalog adapter on it, and initialize the database.
+        yield from_uri(
             uri_with_database_name,
             writable_storage=str(tmpdir),
             init_if_not_exists=True,
         )
-        yield adapter
 
 
 @pytest_asyncio.fixture
@@ -225,9 +224,9 @@ async def postgresql_with_example_data_adapter(request, tmpdir):
 
 
 @pytest_asyncio.fixture
-async def sqlite_adapter(request, tmpdir):
+async def sqlite_catalog_adapter(request, tmpdir):
     """
-    Adapter instance
+    Catalog adapter instance backed by SQLite (in memory)
 
     Note that startup() and shutdown() are not called, and must be run
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
@@ -253,10 +252,10 @@ async def sqlite_with_example_data_adapter(request, tmpdir):
     yield adapter
 
 
-@pytest.fixture(params=["sqlite_adapter", "postgresql_adapter"])
-def adapter(request):
+@pytest.fixture(params=["sqlite_catalog_adapter", "postgresql_catalog_adapter"])
+def catalog_adapter(request):
     """
-    Adapter instance
+    Catalog adapter instance
 
     Note that startup() and shutdown() are not called, and must be run
     either manually (as in the fixture 'a') or via the app (as in the fixture 'client').
