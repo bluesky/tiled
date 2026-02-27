@@ -70,12 +70,12 @@ nd_array = numpy.arange(9).reshape((3, 3))
 uniform_array = numpy.empty((3,), dtype=object)
 for i in range(uniform_array.shape[0]):
     uniform_array[i] = nd_array[i]
-ragged_array = numpy.array([numpy.arange(3), numpy.arange(4, 10)], dtype=object)
+irregular_array = numpy.array([numpy.arange(3), numpy.arange(4, 10)], dtype=object)
 object_array = numpy.full((10,), {"a": 1}, dtype=object)
 nested_arrays_tree = MapAdapter(
     {
         "uniform": ArrayAdapter.from_array(uniform_array),
-        "ragged": ArrayAdapter.from_array(ragged_array),
+        "irregular": ArrayAdapter.from_array(irregular_array),
         "objects": ArrayAdapter.from_array(object_array),
     }
 )
@@ -189,9 +189,9 @@ def test_uniform_nested_array_projected_to_ndarray(context):
     assert numpy.array_equal(client.read(), nd_array)
 
 
-@pytest.mark.parametrize("kind", ["ragged", "objects"])
+@pytest.mark.parametrize("kind", ["irregular", "objects"])
 def test_unparsable_nested_array_stringified(kind, context):
-    # This behavior is due to the fact that ragged Numpy arrays, and those with
+    # This behavior is due to the fact that irregular Numpy arrays, and those with
     # non-numeric types (except for strings) will likely have dtype=object,
     # which may not be parsable or reducible. As such we fallback to taking the
     # string representations of the array elements.

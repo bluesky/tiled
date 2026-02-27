@@ -11,6 +11,7 @@ PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"
 ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
+RAGGED_MIMETYPE = "application/x-ragged"
 TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
 # TODO: make type[Adapter] after #1047
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
@@ -67,6 +68,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "..adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter,
+        RAGGED_MIMETYPE: lambda: importlib.import_module(
+            "..adapters.ragged_npy_store", __name__
+        ).RaggedNPYAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.arrow", __name__
         ).ArrowAdapter,
@@ -79,8 +83,7 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
 DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE = copy.deepcopy(DEFAULT_ADAPTERS_BY_MIMETYPE)
 
 DEFAULT_REGISTRATION_ADAPTERS_BY_MIMETYPE.set(
-    "text/csv",
-    lambda: importlib.import_module("..adapters.csv", __name__).CSVAdapter,
+    "text/csv", lambda: importlib.import_module("..adapters.csv", __name__).CSVAdapter
 )
 
 
