@@ -95,3 +95,6 @@ uv.lock
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# copilot files
+copilot-instructions.md

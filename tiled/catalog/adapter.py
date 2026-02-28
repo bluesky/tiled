@@ -653,10 +653,12 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
+        created_by="",
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+        time_created = datetime.now()
 
         node = orm.Node(
             key=key,
@@ -665,6 +667,10 @@ class CatalogNodeAdapter:
             structure_family=structure_family,
             specs=specs or [],
             access_blob=access_blob,
+            time_created=time_created,
+            time_updated=time_created,
+            created_by=created_by,
+            updated_by=created_by,
         )
         async with self.context.session() as db:
             # TODO Consider using nested transitions to ensure that
@@ -1136,7 +1142,13 @@ class CatalogNodeAdapter:
             await db.commit()
 
     async def replace_metadata(
-        self, metadata=None, specs=None, access_blob=None, *, drop_revision=False
+        self,
+        metadata=None,
+        specs=None,
+        access_blob=None,
+        updated_by="",
+        *,
+        drop_revision=False,
     ):
         values = {}
         if metadata is not None:
@@ -1147,6 +1159,8 @@ class CatalogNodeAdapter:
             values["specs"] = specs
         if access_blob is not None:
             values["access_blob"] = access_blob
+        values["time_updated"] = datetime.now()
+        values["updated_by"] = updated_by
         async with self.context.session() as db:
             if not drop_revision:
                 current = (
@@ -1172,6 +1186,8 @@ class CatalogNodeAdapter:
                     access_blob=current.access_blob,
                     node_id=current.id,
                     revision_number=next_revision_number,
+                    time_updated=current.time_updated,
+                    updated_by=current.updated_by,
                 )
                 db.add(revision)
             await db.execute(
