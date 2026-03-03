@@ -1,6 +1,6 @@
 import builtins
 from abc import abstractmethod
-from typing import Any, Iterable, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Union
 
 import numpy as np
 from ndindex import ndindex
@@ -8,9 +8,8 @@ from numpy._typing import NDArray
 
 from tiled.adapters.core import Adapter
 
-from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..catalog.orm import Node
-from ..ndslice import NDSlice
+from ..ndslice import NDSlice, NDBlock
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -153,22 +152,9 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         sliced_shape = ndindex(slice).newshape(self.structure().shape)
         return force_reshape(arr, sliced_shape)
 
-    def read_block(
-        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
-    ) -> NDArray[Any]:
-        """
-
-        Parameters
-        ----------
-        block :
-        slice :
-
-        Returns
-        -------
-
-        """
+    def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         if any(block[1:]):
             raise IndexError(block)
-        slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
-        arr = self.read(slice_[0])
+        block_slice = block.slice_from_chunks(self._structure.chunks)
+        arr = self.read(block_slice[0])
         return arr[slice] if slice else arr

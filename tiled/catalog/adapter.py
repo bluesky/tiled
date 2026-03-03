@@ -1324,11 +1324,7 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
     async def write_block(
         self, block, media_type, deserializer, entry, body, persist=True
     ):
-        from tiled.adapters.array import slice_and_shape_from_block_and_chunks
-
-        _, shape = slice_and_shape_from_block_and_chunks(
-            block, entry.structure().chunks
-        )
+        shape = block.shape_from_chunks(entry.structure().chunks)
         if self.context.streaming_cache:
             await self._stream(media_type, entry, body, shape, block=block)
         if not persist:

@@ -11,7 +11,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_406_NOT_ACCEPTABLE
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
-from tiled.client import Context, from_context
+from tiled.client import Context, from_context, record_history
 from tiled.serialization.array import as_buffer
 from tiled.server.app import build_app
 
@@ -43,6 +43,8 @@ scalar_tree = MapAdapter(
 cube_cases = {
     "tiny_cube": numpy.random.random((10, 10, 10)),
     "tiny_hypercube": numpy.random.random((10, 10, 10, 10, 10)),
+    # "chunked": dask.array.from_array(numpy.arange(12).reshape((3, 4)), chunks=(1, 4)),
+    "chunked": dask.array.from_array(numpy.arange(1_200_000, dtype="uint64").reshape((10, 300, 400)), chunks=(1, 300, 200)),
 }
 cube_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in cube_cases.items()})
 inf_tree = MapAdapter(
@@ -166,7 +168,17 @@ def test_dask(context):
 def test_array_format_shape_from_cube(context):
     client = from_context(context)["cube"]
     with fail_with_status_code(HTTP_406_NOT_ACCEPTABLE):
-        hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
+        client["tiny_hypercube"].export("test.png")
+
+
+def test_request_chunking(context):
+    client = from_context(context)["cube/chunked"]
+    with record_history() as h:
+        client.read()
+    breakpoint()
+
+":8000/api/v1/array/block/test/arr?block=0,0,0&expected_shape=1,300,200"
+":8000/api/v1/array/block/test/arr?block=0:4,0,0&expected_shape=3,300,200"
 
 
 def test_array_interface(context):

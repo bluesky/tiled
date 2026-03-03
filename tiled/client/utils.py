@@ -15,6 +15,7 @@ import stamina.instrumentation
 
 from ..structures.core import Spec
 from ..utils import path_from_uri
+from ..type_aliases import Chunks
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -418,7 +419,7 @@ def get_asset_filepaths(node):
     return filepaths
 
 
-def chunks_repr(chunks: tuple[tuple[int, ...], ...]) -> str:
+def chunks_repr(chunks: Chunks) -> str:
     """A human-friendly representation of the chunks spec
 
     Avoids printing long line of repeated values when representing chunks

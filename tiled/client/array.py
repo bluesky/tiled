@@ -79,11 +79,22 @@ class _DaskArrayClient(BaseClient):
 
     def _get_block(self, block, dtype, shape, slice=None):
         """
-        Fetch the actual data for one block in a chunked (dask) array.
+        Fetch the actual data for one block/chunk in a chunked (dask) array.
 
         See read_block() for a public version of this. This private version
         enables more efficient multi-block access by requiring the caller to
         pass in the structure (dtype, shape).
+
+        Parameters
+        ----------
+        block : tuple[int, ...]
+            The block index, e.g. (0, 0), (0, 1), (0, 2) .... for a 2D array chunked into 3 blocks
+        dtype : numpy.dtype
+            The dtype of the array, needed to interpret the bytes returned from the server.
+        shape : tuple[int, ...]
+            The shape of this block, needed to reshape the 1D array returned from the server into the correct shape.
+        slice : slice or tuple of slices, optional
+            A slice within this block to return.
         """
         media_type = "application/octet-stream"
         if slice is not None:
