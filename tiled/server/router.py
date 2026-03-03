@@ -816,7 +816,7 @@ def get_router(
     async def get_ragged_block(
         request: Request,
         path: str,
-        block=Depends(block),
+        block: int,
         slice=Depends(NDSlice.from_query),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
@@ -829,7 +829,60 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["read:data"]),
     ):
-        raise NotImplementedError
+        entry = await get_entry(
+            path=path,
+            security_scopes=["read:data"],
+            principal=principal,
+            authn_access_tags=authn_access_tags,
+            authn_scopes=authn_scopes,
+            root_tree=root_tree,
+            session_state=session_state,
+            metrics=request.state.metrics,
+            structure_families={StructureFamily.ragged},
+            access_policy=getattr(request.app.state, "access_policy", None),
+        )
+
+        import ragged
+
+        try:
+            with record_timing(request.state.metrics, "read"):
+                ragged_array: ragged.array = await ensure_awaitable(
+                    entry.read_block, block, slice
+                )
+        except IndexError:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+            )
+        if (expected_shape is not None) and (expected_shape != ragged_array.shape):
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"The expected_shape {expected_shape} does not match the actual shape {ragged_array.shape}",
+            )
+
+        if ragged_array._impl.nbytes > settings.response_bytesize_limit:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Response would exceed {settings.response_bytesize_limit}. "
+                    "Use slicing ('?slice=...') to request smaller chunks."
+                ),
+            )
+        try:
+            with record_timing(request.state.metrics, "pack"):
+                return await construct_data_response(
+                    entry.structure_family,
+                    serialization_registry,
+                    ragged_array,
+                    entry.metadata(),
+                    request,
+                    format,
+                    specs=getattr(entry, "specs", []),
+                    expires=getattr(entry, "content_stale_at", None),
+                    filename=filename,
+                )
+        except UnsupportedMediaTypes as err:
+            # raise HTTPException(status_code=406, detail=", ".join(err.supported))
+            raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.put("/ragged/full/{path:path}")
     async def put_ragged_full(
@@ -875,7 +928,7 @@ def get_router(
     async def put_ragged_block(
         request: Request,
         path: str,
-        block=Depends(block),
+        block: int,
         persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
@@ -884,7 +937,6 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes),
         _=Security(check_scopes, scopes=["write:data"]),
     ):
-        raise NotImplementedError
         entry = await get_entry(
             path,
             ["write:data"],
@@ -912,68 +964,6 @@ def get_router(
             entry.write_block, block, media_type, deserializer, entry, body, persist
         )
         return json_or_msgpack(request, None)
-
-    @router.patch("/ragged/full/{path:path}")
-    async def patch_ragged_full(
-        request: Request,
-        path: str,
-        offset=Depends(offset_param),
-        shape=Depends(shape_param),
-        extend: bool = False,
-        persist: bool = Query(True, description="Persist data to storage"),
-        principal: Optional[Principal] = Depends(get_current_principal),
-        root_tree=Depends(get_root_tree),
-        session_state: dict = Depends(get_session_state),
-        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
-        authn_scopes: Scopes = Depends(get_current_scopes),
-        _=Security(check_scopes, scopes=["write:data"]),
-    ):
-        if extend and not persist:
-            bad_args_message = (
-                "Cannot PATCH an array with both parameters"
-                " extend=True and persist=False."
-                " To extend the array, you must persist the changes."
-                " To skip persisting the changes, you must not extend the array."
-            )
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=bad_args_message,
-            )
-        entry = await get_entry(
-            path,
-            ["write:data"],
-            principal,
-            authn_access_tags,
-            authn_scopes,
-            root_tree,
-            session_state,
-            request.state.metrics,
-            {StructureFamily.ragged},
-            getattr(request.app.state, "access_policy", None),
-        )
-        if not hasattr(entry, "patch"):
-            raise HTTPException(
-                status_code=HTTP_405_METHOD_NOT_ALLOWED,
-                detail="This node cannot accept array data.",
-            )
-
-        body = await request.body()
-        media_type = request.headers["content-type"]
-        deserializer = deserialization_registry.dispatch(
-            entry.structure_family, media_type
-        )
-        structure = await ensure_awaitable(
-            entry.patch,
-            shape,
-            offset,
-            extend,
-            media_type,
-            deserializer,
-            entry,
-            body,
-            persist,
-        )
-        return json_or_msgpack(request, structure)
 
     @router.get(
         "/table/partition/{path:path}",

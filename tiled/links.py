@@ -39,9 +39,10 @@ def links_for_container(structure_family, structure, base_url, path_str):
 
 def links_for_ragged(structure_family, structure, base_url, path_str):
     links = {}
-    block_template = ",".join(f"{{{index}}}" for index in range(len(structure.shape)))
     links["full"] = f"{base_url}/ragged/full/{path_str}"
-    links["block"] = f"{base_url}/ragged/block/{path_str}?block={block_template}"
+    links["block"] = f"{base_url}/ragged/block/{path_str}?block={{0}}"
+    # block_template = ",".join(f"{{{index}}}" for index in range(len(structure.shape)))
+    # links["block"] = f"{base_url}/ragged/block/{path_str}?block={block_template}"
     return links
 
 

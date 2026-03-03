@@ -69,8 +69,8 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
             "..adapters.awkward_buffers", __name__
         ).AwkwardBuffersAdapter,
         RAGGED_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.ragged_npy_store", __name__
-        ).RaggedNPYAdapter,
+            "..adapters.ragged_parquet", __name__
+        ).RaggedParquetAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.arrow", __name__
         ).ArrowAdapter,

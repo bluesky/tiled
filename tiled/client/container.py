@@ -982,39 +982,22 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         dims=None,
         specs=None,
         access_tags=None,
+        max_partition_bytes=None,
     ):
+        import awkward
         import ragged
 
-        from tiled.structures.ragged import RaggedStructure
+        from tiled.structures.ragged import (
+            RaggedStructure,
+            make_ragged_array,
+            make_ragged_partitions,
+        )
 
-        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
-            # This does not implement enough of the array-like interface.
-            # Coerce to numpy-like ragged array.
-            array = (
-                ragged.array(array, dtype=array.dtype)
-                if hasattr(array, "dtype")
-                else ragged.array(array)
-            )
-
-        # TODO
-        from dask.array.core import normalize_chunks
-
-        if hasattr(array, "chunks"):
-            chunks = normalize_chunks(
-                array.chunks,
-                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
-                dtype=array.dtype,
-                shape=None,
-            )
-        else:
-            chunks = normalize_chunks(
-                tuple("auto" for _ in array.shape),
-                limit=self._SUGGESTED_MAX_UPLOAD_SIZE,
-                dtype=array.dtype,
-                shape=tuple(d if d is not None else array.size for d in array.shape),
-            )
-
-        structure = RaggedStructure.from_array(array, chunks=chunks, dims=dims)
+        array = make_ragged_array(array)
+        partitions = make_ragged_partitions(
+            array, max_partition_bytes or self._SUGGESTED_MAX_UPLOAD_SIZE
+        )
+        structure = RaggedStructure.from_array(array, partitions=partitions, dims=dims)
 
         client = self.new(
             StructureFamily.ragged,
@@ -1028,7 +1011,14 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             specs=specs,
             access_tags=access_tags,
         )
-        client.write(array)
+        if client.npartitions == 1:
+            client.write(array)
+        else:
+            starts = structure.partitions[:-1]
+            stops = structure.partitions[1:]
+            for i, (start, stop) in enumerate(zip(starts, stops)):
+                array_part = ragged.array(awkward.to_packed(array[start:stop]._impl))
+                client.write_block(array_part, block=i)
         return client
 
     def write_sparse(

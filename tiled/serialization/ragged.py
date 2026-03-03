@@ -152,7 +152,11 @@ def to_zipped_buffers(
 @default_deserialization_registry.register(
     StructureFamily.ragged, media_type="application/zip"
 )
-def from_zipped_buffers(buffer: bytes, dtype: type) -> ragged.array:
+def from_zipped_buffers(
+    buffer: bytes,
+    dtype: type,
+    *unused,  # match interface of other deserializers; shape and offsets are known from zipped contents
+) -> ragged.array:
     file = io.BytesIO(buffer)
     with zipfile.ZipFile(file, "r") as fzip:
         shape = orjson.loads(fzip.read("shape"))

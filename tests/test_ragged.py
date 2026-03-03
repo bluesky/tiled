@@ -132,7 +132,8 @@ def test_serialization_roundtrip(name):
     # Test flattened octet-stream serialization.
     octet_stream_contents = to_zipped_buffers("application/zip", array, metadata={})
     array_from_octet_stream = from_zipped_buffers(
-        octet_stream_contents, dtype=array.dtype.type
+        octet_stream_contents,
+        dtype=array.dtype.type,
     )
     assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
 
@@ -184,6 +185,34 @@ def test_slicing(client, name):
         assert len(h.responses) == 1  # sanity check
         sliced_response_size = len(h.responses[0].content)
         assert sliced_response_size < full_response_size
+
+
+def test_read_write_partitioned(client):
+    array = ragged.array(
+        [
+            *[RNG.random(size=RNG.integers(1, 10)) for _ in range(20)],
+            RNG.random(size=30),
+        ],
+        dtype=np.float32,
+    )
+    # set partitioning to last dimension (the largest)
+    # need to add a little bit to account for Awkward metadata
+    max_partition_bytes = ak.to_packed(array[-1]._impl).nbytes + (
+        2 * np.int64(0).nbytes
+    )
+    rac = client.write_ragged(
+        array, key="test", max_partition_bytes=max_partition_bytes
+    )
+    assert rac.npartitions > 1
+
+    starts = rac.partitions[:-1]
+    stops = rac.partitions[1:]
+    for i, (start, stop) in enumerate(zip(starts, stops)):
+        part = rac.read_block(i)
+        assert ak.array_equal(part._impl, array[start:stop]._impl)  # noqa: SLF001
+
+    full = rac.read()
+    assert ak.array_equal(full._impl, array._impl)  # noqa: SLF001
 
 
 @pytest.mark.parametrize("name", arrays.keys())

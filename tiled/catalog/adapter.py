@@ -139,8 +139,8 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
             "...adapters.sql", __name__
         ).SQLAdapter,
         RAGGED_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.ragged_npy_store", __name__
-        ).RaggedNPYAdapter,
+            "...adapters.ragged_parquet", __name__
+        ).RaggedParquetAdapter,
     }
 )
 
@@ -1348,11 +1348,6 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             data = await ensure_awaitable(deserializer, body, dtype, shape)
         elif entry.structure_family == "sparse":
             data = await ensure_awaitable(deserializer, body)
-        elif entry.structure_family == "ragged":
-            dtype = entry.structure().data_type.to_numpy_dtype()
-            offsets = entry.structure().offsets
-            shape = entry.structure().shape
-            data = await ensure_awaitable(deserializer, body, dtype, offsets, shape)
         else:
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable(
@@ -1413,7 +1408,20 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
 
 
 class CatalogRaggedAdapter(CatalogArrayAdapter):
-    pass
+    async def write_block(
+        self, block, media_type, deserializer, entry, body, persist=True
+    ):
+        if entry.structure_family != "ragged":
+            return await super().write_block(
+                block, media_type, deserializer, entry, body, persist
+            )
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        offsets = entry.structure().offsets
+        shape = entry.structure().shape
+        data = await ensure_awaitable(deserializer, body, dtype, offsets, shape)
+        return await ensure_awaitable(
+            (await self.get_adapter()).write_block, data, block
+        )
 
 
 class CatalogSparseAdapter(CatalogArrayAdapter):
