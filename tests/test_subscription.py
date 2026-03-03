@@ -405,6 +405,7 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
             with fail_with_status_code(400):
                 x.context.http_client.put(
                     x.uri.replace("/metadata/", "/data_source/", 1),
+                    headers={"Content-Type": "application/json"},
                     content=safe_json_dump({"data_source": updated_data_source}),
                     params=bad_params,
                 ).raise_for_status()
@@ -412,6 +413,7 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
         # Now do a request that is valid.
         x.context.http_client.put(
             x.uri.replace("/metadata/", "/data_source/", 1),
+            headers={"Content-Type": "application/json"},
             content=safe_json_dump({"data_source": updated_data_source}),
             params=params,
         ).raise_for_status()
@@ -500,6 +502,7 @@ def test_subscribe_to_array_registered_without_patch(tiled_websocket_context, tm
         )
         x.context.http_client.put(
             x.uri.replace("/metadata/", "/data_source/", 1),
+            headers={"Content-Type": "application/json"},
             content=safe_json_dump(
                 {
                     "data_source": updated_data_source,
