@@ -30,6 +30,8 @@ jobs:
           - "3.11"
           - "3.12"
           - "3.13"
+          - "3.14.0rc2"
+          - "3.14.0rc2t"
       fail-fast: false
     steps:
 
