@@ -3,6 +3,7 @@ import itertools
 from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlparse
 from collections import defaultdict
+from bisect import bisect_right, bisect_left
 
 import dask
 import dask.array
@@ -130,7 +131,51 @@ class _DaskArrayClient(BaseClient):
         structure = self.structure()
         shape, chunks = structure.shape, structure.chunks
         dtype = structure.data_type.to_numpy_dtype()
-        expected_shape = slice.shape_after_slice(shape)
+        array_slice = slice.expand_for_shape(shape)
+        expected_shape = array_slice.shape_after_slice(shape)
+
+        # Find which chunks cover the requested slice and combine them into blocks
+        # 1. Compute the cumulative boundaries of the chunks along each axis
+        # 2. For each axis, use binary search to find the range of chunk indices
+        #    that overlap with the requested "global" slice
+        # 3. Find "local" slices within each chunk that overlap with the requested slice
+        chunk_bounds = tuple(tuple(itertools.accumulate(axis_chunks, initial=0)) for axis_chunks in self.chunks)
+        chunk_ranges = []  # Ranges-per-axis of touched chunk indices
+        for axis_bounds, axis_slice in zip(chunk_bounds, array_slice):
+            start = bisect_left(axis_bounds, axis_slice.start + 1) - 1
+            stop = bisect_right(axis_bounds, axis_slice.stop - 1)
+            chunk_ranges.append(range(start, stop))
+
+        result = {}
+
+        # Iterate only over touched chunks and find the local slices
+        for chunk_indx in itertools.product(*chunk_ranges):
+
+            local_slices = []
+
+            for axis, cidx in enumerate(chunk_indx):
+                chunk_start = chunk_bounds[axis][cidx]
+                chunk_end = chunk_bounds[axis][cidx + 1]
+                slc = array_slice[axis]
+
+                # Compute overlap
+                overlap_start = max(chunk_start, slc.start)
+                overlap_stop = min(chunk_end, slc.stop)
+                if overlap_start >= overlap_stop:
+                    break  # no overlap
+
+                # Convert to chunk-local coordinates
+                local_start = overlap_start - chunk_start
+                local_stop = overlap_stop - chunk_start
+
+                local_slices.append(slice(local_start, local_stop))
+
+            else:
+                result[chunk_indx] = tuple(local_slices)
+
+
+
+
         total_bytes = numpy.prod(expected_shape) * dtype.itemsize
         if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
             # Fetch the whole slice in one request.
@@ -239,7 +284,7 @@ class _DaskArrayClient(BaseClient):
         # the server.
 
         # Form the dask array out of the fetched blocks, assuming each block becomes a chunk.
-        indexed_blocks = self._form_blocks(slice)  # {indx: (NDBlock, NDSlice)}
+        indexed_blocks = self._form_blocks(NDSlice(slice))  # {indx: (NDBlock, NDSlice)}
         block_shapes = {indx: block_slice.shape_after_slice(block.shape_from_chunks(structure.chunks)) for indx, (block, block_slice) in indexed_blocks.items()}
         final_chunks = self.dict_to_dask_chunks(block_shapes)
         final_shape = tuple(sum(ch) for ch in final_chunks)

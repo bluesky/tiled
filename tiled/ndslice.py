@@ -201,7 +201,7 @@ class NDBlock(NDSlice):
         return tuple(sum(ch) if isinstance(ch, tuple) else ch for ch in selected)
     
     def slice_from_chunks(self, chunks: Chunks) -> NDSlice:
-        "Find the slice that selects the block in an array with the given chunks"
+        "Find the slice over entire array with given chunks that selects this block"
         expanded = self.expand_for_shape(tuple(map(len, chunks)))
         slice_ = []
         for sl, ch in zip(expanded, chunks):
