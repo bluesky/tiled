@@ -121,7 +121,7 @@ client = [
     "blosc2; python_version >= '3.10'",
     "dask[array]",
     "dask[dataframe]",
-    "dask_awkward",
+    "dask-awkward",
     "entrypoints",
     "lz4",
     "ndindex",
