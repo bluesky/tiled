@@ -72,27 +72,35 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         data_source.assets.extend(assets)
         return data_source
 
-    def read(self, slice: NDSlice = NDSlice(...)) -> ragged.array:
+    def read(self, slice: NDSlice | None = None) -> ragged.array:
         """Read ragged array data from storage."""
+        if self._structure.npartitions == 1:
+            # TODO: I can't get dask_awkward to behave with single-partition data
+            data = awkward.from_parquet(str(self._block_paths[0]))
+            sliced_data = data[tuple(slice)] if slice else data
+            return ragged.array(sliced_data)
+
         data = dask_awkward.from_parquet([str(path) for path in self._block_paths])
         if isinstance(data, tuple):
             raise RuntimeError(
                 "dask_awkward.from_parquet produced unexpected pair of arrays"
             )
+        data = data.persist()
         sliced_data = data[tuple(slice)] if slice else data
-        return ragged.array(sliced_data.compute())
+        sliced_data = sliced_data.persist()
+        return ragged.array(dask_awkward.to_packed(sliced_data).compute())
 
-    def read_block(self, block: int, slice: NDSlice = NDSlice(...)) -> ragged.array:
+    def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
         """Read a single block of the ragged array from storage."""
         data = dask_awkward.from_parquet([str(path) for path in self._block_paths])
         if isinstance(data, tuple):
             raise RuntimeError(
                 "dask_awkward.from_parquet produced unexpected pair of arrays"
             )
-        sliced_data = (
-            data.partitions[block][tuple(slice)] if slice else data.partitions[block]
-        )
-        return ragged.array(sliced_data.compute())
+        part = data.partitions[block].persist()
+        sliced_data = part[tuple(slice)] if slice else part
+        sliced_data = sliced_data.persist()
+        return ragged.array(dask_awkward.to_packed(sliced_data).compute())
 
     def write(self, array: ragged.array) -> None:
         """Write ragged array data to storage."""

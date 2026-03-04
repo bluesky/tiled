@@ -15,7 +15,6 @@ from tiled.client.utils import (
     params_from_slice,
     retry_context,
 )
-from tiled.ndslice import NDSlice
 from tiled.serialization.ragged import (
     from_numpy_octet_stream,
     from_zipped_buffers,
@@ -73,14 +72,14 @@ class RaggedClient(BaseClient):
                     )
                 )
 
-    def read(self, slice: NDSlice | None = None) -> ragged.array:
+    def read(self, slice: Any | None = None) -> ragged.array:
         url_path = self.item["links"]["full"]
         url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
 
-        if isinstance(slice, NDSlice):
+        if slice:
+            url_params.update(**params_from_slice(slice))
             # the metadata of a sliced array isn't easy to determine mathematically,
             # we should expect the server to respond with new structure information.
-            url_params["slice"] = slice.to_numpy_str()
             mimetype = "application/zip"
         else:
             mimetype = "application/octet-stream"
@@ -106,12 +105,12 @@ class RaggedClient(BaseClient):
             shape=self.shape,
         )
 
-    def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
+    def read_block(self, block: int, slice: Any | None = None) -> ragged.array:
         url_path = self.item["links"]["block"].format(block)
         url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
 
-        if isinstance(slice, NDSlice):
-            url_params["slice"] = slice.to_numpy_str()
+        if slice:
+            url_params.update(**params_from_slice(slice))
 
         for attempt in retry_context():
             with attempt:
@@ -127,19 +126,14 @@ class RaggedClient(BaseClient):
             dtype=self.dtype,
         )
 
-    def __getitem__(self, _slice: NDSlice) -> ragged.array:
-        # ``ragged.array`` is always returned even when slicing to return a single item (numpy is the same)
-        if isinstance(_slice, tuple):
-            _slice = NDSlice(*_slice)
-        if not isinstance(_slice, NDSlice):
-            _slice = NDSlice(_slice)
+    def __getitem__(self, _slice: Any) -> ragged.array:
         return self.read(slice=_slice)
 
     def export(
         self,
         filepath: str | Path,
         *,
-        slice: NDSlice | None = None,
+        slice: Any | None = None,
         format: str | None = None,
     ):
         params = params_from_slice(slice)

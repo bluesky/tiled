@@ -187,17 +187,61 @@ def test_slicing(client, name):
         assert sliced_response_size < full_response_size
 
 
-def test_read_write_partitioned(client):
-    array = ragged.array(
+partitionable_size = 30
+partitionable_arrays = [
+    ragged.array(
         [
-            *[RNG.random(size=RNG.integers(1, 10)) for _ in range(20)],
-            RNG.random(size=30),
+            RNG.random(size=partitionable_size),
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(20)],
         ],
         dtype=np.float32,
-    )
+    ),
+    ragged.array(
+        [
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(5)],
+            RNG.random(size=partitionable_size),
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(15)],
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(10)],
+            RNG.random(size=partitionable_size),
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(10)],
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(15)],
+            RNG.random(size=partitionable_size),
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(5)],
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            *[RNG.random(size=RNG.integers(0, 10)) for _ in range(20)],
+            RNG.random(size=partitionable_size),
+        ],
+        dtype=np.float32,
+    ),
+    ragged.array(
+        [
+            RNG.random(size=RNG.integers(0, partitionable_size)).tolist()
+            for _ in range(20)
+        ],
+        dtype=np.float32,
+    ),
+]
+
+
+@pytest.mark.parametrize("array", partitionable_arrays)
+def test_read_write_partitioned(client, array: ragged.array):
     # set partitioning to last dimension (the largest)
     # need to add a little bit to account for Awkward metadata
-    max_partition_bytes = ak.to_packed(array[-1]._impl).nbytes + (
+    max_partition_bytes = (partitionable_size * array.dtype.itemsize) + (
         2 * np.int64(0).nbytes
     )
     rac = client.write_ragged(
@@ -211,8 +255,16 @@ def test_read_write_partitioned(client):
         part = rac.read_block(i)
         assert ak.array_equal(part._impl, array[start:stop]._impl)  # noqa: SLF001
 
+        part = rac.read_block(i, slice=(slice(None), slice(0, 4)))
+        assert ak.array_equal(
+            part._impl, array[start:stop, slice(0, 4)]._impl
+        )  # noqa: SLF001
+
     full = rac.read()
     assert ak.array_equal(full._impl, array._impl)  # noqa: SLF001
+
+    sliced = rac[1:10, 0:5]
+    assert ak.array_equal(sliced._impl, array[1:10, 0:5]._impl)  # noqa: SLF001
 
 
 @pytest.mark.parametrize("name", arrays.keys())
