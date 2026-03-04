@@ -18,6 +18,8 @@ class NDSlice(tuple):
     """
 
     def __new__(cls, *args: Union[int, builtins.slice, EllipsisType]) -> "NDSlice":
+        if len(args) == 1 and (isinstance(args[0], (tuple, list)) or args[0] is None):
+            return cls(*(args[0] or ()))
         if any(not isinstance(s, (int, builtins.slice, EllipsisType)) for s in args):
             raise TypeError(
                 f"NDSlice expected int, slice or Ellipsis; got {args} instead. Use "
@@ -164,15 +166,15 @@ class NDSlice(tuple):
 
     def is_valid_for_shape(self, shape: tuple[int, ...]) -> bool:
         "Check if this NDSlice is valid for an array of the given shape"
-        return ndindex(self).isvalid(shape)
+        return (not self) or ndindex(self).isvalid(shape)
     
     def expand_for_shape(self, shape: tuple[int, ...]) -> "NDSlice":
         "Expand this NDSlice (remove ':' or '...') for an array of the given shape"
-        return NDSlice(*ndindex(self).expand(shape).raw)
+        return self.__class__(*ndindex(self).expand(shape).raw)
     
     def shape_after_slice(self, shape: tuple[int, ...]) -> tuple[int, ...]:
         "Calculate the shape after applying NDSlice to an array of the given shape"
-        return ndindex(self).newshape(shape)
+        return ndindex(self).newshape(shape) if self else shape
 
 class NDBlock(NDSlice):
     """A slice used to specify a block index, i.e. a slice over the chunks of an array.

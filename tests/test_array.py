@@ -7,7 +7,7 @@ import dask.array
 import httpx
 import numpy
 import pytest
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_406_NOT_ACCEPTABLE
+from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT, HTTP_406_NOT_ACCEPTABLE
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
@@ -148,12 +148,12 @@ def test_nan_infinity_handler(tmpdir, context):
 
 
 def test_block_validation(context):
-    "Verify that block must be fully specified."
+    "Verify that block is correctly specified."
     client = from_context(context, "dask")["cube"]["tiny_cube"]
     block_url = httpx.URL(client.item["links"]["block"])
-    # Malformed because it has only 2 dimensions, not 3.
-    malformed_block_url = block_url.copy_with(params={"block": "0,0"})
-    with fail_with_status_code(HTTP_400_BAD_REQUEST):
+    # Malformed because it has 4 dimensions, not 3.
+    malformed_block_url = block_url.copy_with(params={"block": "0,0,0,0"})
+    with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
         client.context.http_client.get(malformed_block_url).raise_for_status()
 
 
@@ -172,6 +172,7 @@ def test_array_format_shape_from_cube(context):
 
 
 def test_request_chunking(context):
+    # Try reading a (10, 300, 400) array with (1, 300, 200) chunks
     client = from_context(context)["cube/chunked"]
     with record_history() as h:
         client.read()
