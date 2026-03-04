@@ -43,6 +43,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Support for including custom FastAPI routers via a new `routers` configuration
   field at the server level.
+- Support for interacting with irregular-shaped numeric arrays via
+  [`ragged`](https://github.com/scikit-hep/ragged).
 
 ### Changed
 
