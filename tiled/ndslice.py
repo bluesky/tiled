@@ -5,6 +5,86 @@ from ndindex import ndindex
 
 from .type_aliases import JSON, EllipsisType, Chunks
 
+def is_ellipsis(arg) -> bool:
+    return isinstance(arg, EllipsisType) or (arg == Ellipsis)
+
+
+def merge_slices(*args: Union["NDSlice", "NDBlock"]) -> Union["NDSlice", "NDBlock"]:
+    """Merge multiple NDSlices or NDBlocks
+    
+    Creates a single NDSlice or (NDBlock if all arguemnts are NDBlocks) if they are
+    contiguous and compatible.
+    """
+    if (len(args)) == 1:
+        return args[0]
+
+    # Check that all arguments have the same dimension
+    if len(set(map(len, args))) != 1:
+        raise ValueError("All NDSlices must have the same number of dimensions")
+    
+    # Loop over dimensions and check if they can be merged
+    already_merged, result = False, []
+    for dim in zip(*args):
+        # Ellipsis at the same position can be merged
+        if all(map(is_ellipsis, dim)):
+            result.append(Ellipsis)
+            continue
+
+        # Integers must match exactly or be consecutive and have no gaps
+        if all(isinstance(d, int) for d in dim):
+            if len(vals := set(dim)) == 1:
+                # All integers are the same, keep this dimension as is
+                result.append(vals.pop())
+                continue
+            elif vals == set(range(min(vals), max(vals)+1)):
+                # Integers are consecutive, merge into a slice
+                if already_merged:
+                    raise ValueError("Can not merge more than one dimension")
+                result.append(builtins.slice(min(vals), max(vals) + 1))
+                already_merged = True
+                continue
+            else:
+                raise ValueError("Integer dimensions must match exactly "
+                                 "or be consecutive and have no gaps")
+
+        # Some dimensions could be integers and some are slices
+        if any(isinstance(d, int) for d in dim):
+            dim = tuple(builtins.slice(d, d+1) if isinstance(d, int) else d for d in dim)
+
+        # Now we have only slices and can check for contiguity and compatibility
+        if all(isinstance(d, builtins.slice) for d in dim):
+            starts = set(d.start or 0 for d in dim)
+            stops = set(d.stop for d in dim)
+
+            if len(set(d.step or 1 for d in dim)) != 1:
+                raise ValueError("Slice dimensions must have the same step")
+            
+            elif len(starts) == 1 and len(stops) == 1:
+                # All slices are the same, keep this dimension as is
+                result.append(dim[0])
+                continue
+
+            elif (len(starts) == len(stops)) and (len(first := starts-stops) == 1) and (len(last := stops-starts) == 1):
+                # Slices are consecutive, merge into a single slice
+                if already_merged:
+                    raise ValueError("Can not merge more than one dimension")
+                result.append(builtins.slice(first.pop(), last.pop(), dim[0].step))
+                already_merged = True
+                continue
+            
+            elif starts == stops:
+                # This is an empty dimension, keep it as is
+                val = starts.pop()
+                result.append(builtins.slice(val, val, dim[0].step))
+                continue
+
+        # If we got here, the slices are not compatible and can not be merged
+        raise ValueError("The slices are not compatible and can not be merged")
+    
+    _cls = NDBlock if all(isinstance(arg, NDBlock) for arg in args) else NDSlice
+
+    return _cls(*result)
+
 
 class NDSlice(tuple):
     """A representation of a slice for N-dimensional arrays.
@@ -41,9 +121,7 @@ class NDSlice(tuple):
             builtins.slice(None, None, 1),
             Ellipsis,
         )
-        return bool(super()) and not all(
-            isinstance(s, EllipsisType) or s in full_slices for s in self
-        )
+        return bool(super()) and not all(is_ellipsis(s) or s in full_slices for s in self)
 
     @classmethod
     def from_json(cls, ser: list[JSON]) -> "NDSlice":
@@ -164,6 +242,17 @@ class NDSlice(tuple):
                 raise ValueError("Unprocessable entry in NDSlice, %s", s)
         return ",".join(result)
 
+    def normalize(self) -> "NDSlice":
+        "Normalize the NDSlice by converting slices like '1:' to 'slice(1, None)'"
+        result = []
+        for s in self:
+            if isinstance(s, builtins.slice):
+                result.append(builtins.slice(s.start or 0, s.stop, s.step or 1))
+            else:
+                result.append(s)
+
+        return self.__class__(*result)
+
     def is_valid_for_shape(self, shape: tuple[int, ...]) -> bool:
         "Check if this NDSlice is valid for an array of the given shape"
         return (not self) or ndindex(self).isvalid(shape)
@@ -175,6 +264,7 @@ class NDSlice(tuple):
     def shape_after_slice(self, shape: tuple[int, ...]) -> tuple[int, ...]:
         "Calculate the shape after applying NDSlice to an array of the given shape"
         return ndindex(self).newshape(shape) if self else shape
+
 
 class NDBlock(NDSlice):
     """A slice used to specify a block index, i.e. a slice over the chunks of an array.
@@ -214,4 +304,3 @@ class NDBlock(NDSlice):
                 slice_.append(slice(start, stop))
 
         return NDSlice(*slice_)
-

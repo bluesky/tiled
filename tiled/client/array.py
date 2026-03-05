@@ -1,3 +1,4 @@
+import builtins
 import concurrent.futures
 import itertools
 from typing import TYPE_CHECKING, Optional, Union
@@ -9,6 +10,7 @@ import dask
 import dask.array
 import httpx
 import numpy
+import math
 from numpy.typing import NDArray
 
 from ..structures.core import STRUCTURE_TYPES
@@ -19,6 +21,7 @@ from .utils import (
     handle_error,
     params_from_slice,
     retry_context,
+    balanced_merge
 )
 from ..ndslice import NDSlice, NDBlock
 
@@ -33,7 +36,7 @@ class _DaskArrayClient(BaseClient):
     # This will be used to determine how to combine multiple requests when fetching
     # data in blocks. If set to None, the client will not attempt to combine
     # requests and will fetch each chunk separately as determiied by the structure.
-    RESPONSE_BYTESIZE_LIMIT = 250 * 1024 * 1024  # 250 MiB
+    RESPONSE_BYTESIZE_LIMIT = 250 * 1024 * 1024 +1 # 250 MiB
 
     def __init__(self, *args, item, **kwargs):
         super().__init__(*args, item=item, **kwargs)
@@ -128,11 +131,13 @@ class _DaskArrayClient(BaseClient):
         to construct the desired output and what slices within those blocks are needed.
         """
 
-        structure = self.structure()
-        shape, chunks = structure.shape, structure.chunks
-        dtype = structure.data_type.to_numpy_dtype()
-        array_slice = slice.expand_for_shape(shape)
-        expected_shape = array_slice.shape_after_slice(shape)
+        array_slice = slice.expand_for_shape(self.shape)
+        expected_shape = array_slice.shape_after_slice(self.shape)
+
+        # If possible, fetch the whole slice in one request
+        total_bytes = math.prod(expected_shape) * self.dtype.itemsize
+        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
+            return {(0,) * len(expected_shape): (NDBlock(...), slice)}
 
         # Find which chunks cover the requested slice and combine them into blocks
         # 1. Compute the cumulative boundaries of the chunks along each axis
@@ -140,50 +145,51 @@ class _DaskArrayClient(BaseClient):
         #    that overlap with the requested "global" slice
         # 3. Find "local" slices within each chunk that overlap with the requested slice
         chunk_bounds = tuple(tuple(itertools.accumulate(axis_chunks, initial=0)) for axis_chunks in self.chunks)
-        chunk_ranges = []  # Ranges-per-axis of touched chunk indices
+        chunk_ranges = []  # Ranges-per-axis of indices of touched chunk
         for axis_bounds, axis_slice in zip(chunk_bounds, array_slice):
             start = bisect_left(axis_bounds, axis_slice.start + 1) - 1
             stop = bisect_right(axis_bounds, axis_slice.stop - 1)
             chunk_ranges.append(range(start, stop))
 
-        result = {}
-
         # Iterate only over touched chunks and find the local slices
+        sel_chunks: dict[NDBlock, NDSlice] = {}
         for chunk_indx in itertools.product(*chunk_ranges):
-
-            local_slices = []
-
+            local_slice = []
             for axis, cidx in enumerate(chunk_indx):
                 chunk_start = chunk_bounds[axis][cidx]
                 chunk_end = chunk_bounds[axis][cidx + 1]
                 slc = array_slice[axis]
 
-                # Compute overlap
+                # Compute overlap and convert to chunk-local coordinates
                 overlap_start = max(chunk_start, slc.start)
-                overlap_stop = min(chunk_end, slc.stop)
+                slc_last = slc.start + slc.step * ((slc.stop - slc.start) // slc.step)
+                overlap_stop = min(chunk_end, slc_last+1, slc.stop)
                 if overlap_start >= overlap_stop:
                     break  # no overlap
-
-                # Convert to chunk-local coordinates
-                local_start = overlap_start - chunk_start
-                local_stop = overlap_stop - chunk_start
-
-                local_slices.append(slice(local_start, local_stop))
-
+                start = overlap_start - chunk_start
+                stop = overlap_stop - chunk_start
+                local_slice.append(builtins.slice(start, stop, slc.step) if start != stop else start)
             else:
-                result[chunk_indx] = tuple(local_slices)
+                sel_chunks[NDBlock(chunk_indx)] = NDSlice(local_slice)
 
+        # Find indices of chunks at the corners, and compute the lengths
+        # of chunks along each dimension, restricted to only selected chunks
+        tl_indx = numpy.array(list(sel_chunks.keys())).min(axis=0)
+        br_indx = numpy.array(list(sel_chunks.keys())).max(axis=0)
+        lengths = [numpy.diff(bnd[tli:bri+2]) for bnd, tli, bri in zip(chunk_bounds, tl_indx, br_indx)]
 
+        # 
+        n_entries_max = self.RESPONSE_BYTESIZE_LIMIT / self.dtype.itemsize
+        slice_to_block_indx = balanced_merge(lengths, vmax = 150000) #n_entries_max)
+        for slice_ranges_per_block in itertools.product(*slice_to_block_indx):
+            for slice_indx_range, tli in zip(slice_ranges_per_block, tl_indx):
+                print(slice_indx_range, tli, slice_indx_range+tli)
+        
+        # TODO: Merge each dimension separately
 
+        result = {tuple(((numpy.array(key) - tl_indx).tolist())): (key, slc) for key, slc in sel_chunks.items()}
 
-        total_bytes = numpy.prod(expected_shape) * dtype.itemsize
-        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
-            # Fetch the whole slice in one request.
-            return {(0,) * len(expected_shape): (NDBlock(...), slice)}
-        else:
-            raise NotImplementedError(
-                "Block-wise fetching for slices is not yet implemented."
-                )
+        return result
 
     def _get_block(self, block: NDBlock, block_slice: Optional[NDSlice]=None):
         """
