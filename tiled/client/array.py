@@ -1,12 +1,16 @@
+import builtins
 import concurrent.futures
 import itertools
 from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlparse
+from collections import defaultdict
+from bisect import bisect_right, bisect_left
 
 import dask
 import dask.array
 import httpx
 import numpy
+import math
 from numpy.typing import NDArray
 
 from ..structures.core import STRUCTURE_TYPES
@@ -17,7 +21,9 @@ from .utils import (
     handle_error,
     params_from_slice,
     retry_context,
+    balanced_merge
 )
+from ..ndslice import NDSlice, NDBlock
 
 if TYPE_CHECKING:
     from .stream import ArraySubscription
@@ -26,8 +32,49 @@ if TYPE_CHECKING:
 class _DaskArrayClient(BaseClient):
     "Client-side wrapper around an array-like that returns dask arrays"
 
+    # The limit on the expected size of the response body (before compression).
+    # This will be used to determine how to combine multiple requests when fetching
+    # data in blocks. If set to None, the client will not attempt to combine
+    # requests and will fetch each chunk separately as determiied by the structure.
+    RESPONSE_BYTESIZE_LIMIT = 250 * 1024 * 1024 +1 # 250 MiB
+
     def __init__(self, *args, item, **kwargs):
         super().__init__(*args, item=item, **kwargs)
+
+    @staticmethod
+    def dict_to_dask_chunks(chunk_dict):
+        """
+        Convert a dictionary mapping:
+            {index_tuple: chunk_size_tuple}
+        into Dask-style chunk representation:
+            tuple of tuples, one per axis.
+        """
+
+        if not chunk_dict:
+            return ()
+
+        # Get dimensionality from the first key
+        ndim = len(next(iter(chunk_dict)))
+
+        # Validate dimensions
+        for idx, chunk in chunk_dict.items():
+            if len(idx) != ndim or len(chunk) != ndim:
+                raise ValueError("Index and chunk dimensions must match")
+
+        # Collect chunk sizes per axis, keyed by axis index
+        axis_chunks = [defaultdict(int) for _ in range(ndim)]
+
+        for idx, chunk in chunk_dict.items():
+            for axis in range(ndim):
+                axis_chunks[axis][idx[axis]] = chunk[axis]
+
+        # Convert to ordered tuples (sorted by chunk index)
+        dask_chunks = tuple(
+            tuple(size for _, size in sorted(axis_dict.items()))
+            for axis_dict in axis_chunks
+        )
+
+        return dask_chunks
 
     @property
     def dims(self):
@@ -77,47 +124,127 @@ class _DaskArrayClient(BaseClient):
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
-    def _get_block(self, block, dtype, shape, slice=None):
+    def _form_blocks(self, slice: NDSlice = NDSlice(...)) -> dict[tuple[int, ...], tuple[NDBlock, NDSlice]]:
+        """Determine the most efficient way to fetch chunked data for a given slice
+        
+        Given a desired slice of the array, find which blocks (contiguous chunks) are needed
+        to construct the desired output and what slices within those blocks are needed.
         """
-        Fetch the actual data for one block in a chunked (dask) array.
+
+        array_slice = slice.expand_for_shape(self.shape)
+        expected_shape = array_slice.shape_after_slice(self.shape)
+
+        # If possible, fetch the whole slice in one request
+        total_bytes = math.prod(expected_shape) * self.dtype.itemsize
+        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
+            return {(0,) * len(expected_shape): (NDBlock(...), slice)}
+
+        # Find which chunks cover the requested slice and combine them into blocks
+        # 1. Compute the cumulative boundaries of the chunks along each axis
+        # 2. For each axis, use binary search to find the range of chunk indices
+        #    that overlap with the requested "global" slice
+        # 3. Find "local" slices within each chunk that overlap with the requested slice
+        chunk_bounds = tuple(tuple(itertools.accumulate(axis_chunks, initial=0)) for axis_chunks in self.chunks)
+        chunk_ranges = []  # Ranges-per-axis of indices of touched chunk
+        for axis_bounds, axis_slice in zip(chunk_bounds, array_slice):
+            start = bisect_left(axis_bounds, axis_slice.start + 1) - 1
+            stop = bisect_right(axis_bounds, axis_slice.stop - 1)
+            chunk_ranges.append(range(start, stop))
+
+        # Iterate only over touched chunks and find the local slices
+        sel_chunks: dict[NDBlock, NDSlice] = {}
+        for chunk_indx in itertools.product(*chunk_ranges):
+            local_slice = []
+            for axis, cidx in enumerate(chunk_indx):
+                chunk_start = chunk_bounds[axis][cidx]
+                chunk_end = chunk_bounds[axis][cidx + 1]
+                slc = array_slice[axis]
+
+                # Compute overlap and convert to chunk-local coordinates
+                overlap_start = max(chunk_start, slc.start)
+                slc_last = slc.start + slc.step * ((slc.stop - slc.start) // slc.step)
+                overlap_stop = min(chunk_end, slc_last+1, slc.stop)
+                if overlap_start >= overlap_stop:
+                    break  # no overlap
+                start = overlap_start - chunk_start
+                stop = overlap_stop - chunk_start
+                local_slice.append(builtins.slice(start, stop, slc.step) if start != stop else start)
+            else:
+                sel_chunks[NDBlock(chunk_indx)] = NDSlice(local_slice)
+
+        # Find indices of chunks at the corners, and compute the lengths
+        # of chunks along each dimension, restricted to only selected chunks
+        tl_indx = numpy.array(list(sel_chunks.keys())).min(axis=0)
+        br_indx = numpy.array(list(sel_chunks.keys())).max(axis=0)
+        lengths = [numpy.diff(bnd[tli:bri+2]) for bnd, tli, bri in zip(chunk_bounds, tl_indx, br_indx)]
+
+        # 
+        n_entries_max = self.RESPONSE_BYTESIZE_LIMIT / self.dtype.itemsize
+        slice_to_block_indx = balanced_merge(lengths, vmax = 150000) #n_entries_max)
+        for slice_ranges_per_block in itertools.product(*slice_to_block_indx):
+            for slice_indx_range, tli in zip(slice_ranges_per_block, tl_indx):
+                print(slice_indx_range, tli, slice_indx_range+tli)
+        
+        # TODO: Merge each dimension separately
+
+        result = {tuple(((numpy.array(key) - tl_indx).tolist())): (key, slc) for key, slc in sel_chunks.items()}
+
+        return result
+
+    def _get_block(self, block: NDBlock, block_slice: Optional[NDSlice]=None):
+        """
+        Fetch the actual data for one chunk (or a block of chunks) in a chunked (dask) array.
 
         See read_block() for a public version of this. This private version
         enables more efficient multi-block access by requiring the caller to
         pass in the structure (dtype, shape).
+
+        Parameters
+        ----------
+        block : NDBlock
+            The chunk index, e.g. (0, 0), (0, 1), (0, 2) .... for a 2D array chunked into 3 blocks,
+            or a slice object specifying a block of chunks, e.g. 0:2, 0:3 to get a block of the first 2 chunks
+            along the first axis and all 3 chunks along the second axis.
+        dtype : numpy.dtype
+            The dtype of the array, needed to interpret the bytes returned from the server.
+        shape : tuple[int, ...]
+            The shape of this block, needed to reshape the 1D array returned from the server into the correct shape.
+        block_slice : slice or tuple of slices, optional
+            A slice within this block to return.
         """
         media_type = "application/octet-stream"
-        if slice is not None:
-            # TODO The server accepts a slice parameter but we'll need to write
-            # careful code here to determine what the new shape will be.
-            raise NotImplementedError(
-                "Slicing less than one block is not yet supported."
-            )
-        if shape:
+        structure = self.structure()
+        dtype = structure.data_type.to_numpy_dtype()
+        
+        # Determine the expected shape of the resulting array after slicing
+        expected_shape = []
+        block = block.expand_for_shape([len(dim) for dim in structure.chunks])  # to convert for URL
+        if shape := block.shape_from_chunks(structure.chunks):
+            expected_shape = block_slice.shape_after_slice(shape) if block_slice else shape
             # Check for special case of shape with 0 in it.
-            if 0 in shape:
+            if 0 in expected_shape:
                 # This is valid, and it has come up in the wild.  An array with
                 # 0 as one of the dimensions never contains data, so we can
                 # short-circuit here without any further information from the
                 # service.
-                return numpy.array([], dtype=dtype).reshape(shape)
-            expected_shape = ",".join(map(str, shape))
-        else:
-            expected_shape = "scalar"
+                return numpy.array([], dtype=dtype).reshape(expected_shape)
+
         url_path = self.item["links"]["block"]
+        params={**parse_qs(urlparse(url_path).query),
+                "block": block.to_numpy_str(),
+                "expected_shape": ",".join(map(str, expected_shape)) or "scalar"
+            }
+        params = params | ( {"slice": block_slice.to_numpy_str()} if block_slice else {})
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.get(
                         url_path,
                         headers={"Accept": media_type},
-                        params={
-                            **parse_qs(urlparse(url_path).query),
-                            "block": ",".join(map(str, block)),
-                            "expected_shape": expected_shape,
-                        },
+                        params = params,
                     )
                 ).read()
-        return numpy.frombuffer(content, dtype=dtype).reshape(shape)
+        return numpy.frombuffer(content, dtype=dtype).reshape(expected_shape)
 
     def read_block(self, block, slice=None):
         """
@@ -125,22 +252,23 @@ class _DaskArrayClient(BaseClient):
 
         Optionally, access only a slice *within* this block.
         """
-        structure = self.structure()
-        chunks = structure.chunks
-        dtype = structure.data_type.to_numpy_dtype()
-        try:
-            shape = tuple(chunks[dim][i] for dim, i in enumerate(block))
-        except IndexError:
-            raise IndexError(f"Block index {block} out of range")
-        dask_array = dask.array.from_delayed(
-            dask.delayed(self._get_block)(block, dtype, shape), dtype=dtype, shape=shape
-        )
-        # TODO Make the request in _get_block include the slice so that we only
-        # fetch exactly the data that we want. This will require careful code
-        # to determine what the shape will be.
-        if slice is not None:
-            dask_array = dask_array[slice]
-        return dask_array
+        # structure = self.structure()
+        # chunks = structure.chunks
+        # dtype = structure.data_type.to_numpy_dtype()
+        # try:
+        #     shape = tuple(chunks[dim][i] for dim, i in enumerate(block))
+        # except IndexError:
+        #     raise IndexError(f"Block index {block} out of range")
+        # dask_array = dask.array.from_delayed(
+        #     dask.delayed(self._get_block)(block, dtype, shape), dtype=dtype, shape=shape
+        # )
+        # # TODO Make the request in _get_block include the slice so that we only
+        # # fetch exactly the data that we want. This will require careful code
+        # # to determine what the shape will be.
+        # if slice is not None:
+        #     dask_array = dask_array[slice]
+        # return dask_array
+        raise NotImplementedError("Block-wise fetching for slices is not yet implemented.")
 
     def read(self, slice=None):
         """
@@ -160,21 +288,19 @@ class _DaskArrayClient(BaseClient):
         # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---
         # and build a dask task encoding the method for fetching its data from
         # the server.
+
+        # Form the dask array out of the fetched blocks, assuming each block becomes a chunk.
+        indexed_blocks = self._form_blocks(NDSlice(slice))  # {indx: (NDBlock, NDSlice)}
+        block_shapes = {indx: block_slice.shape_after_slice(block.shape_from_chunks(structure.chunks)) for indx, (block, block_slice) in indexed_blocks.items()}
+        final_chunks = self.dict_to_dask_chunks(block_shapes)
+        final_shape = tuple(sum(ch) for ch in final_chunks)
         dask_tasks = {
-            (name,)
-            + block: (
-                self._get_block,
-                block,
-                dtype,
-                tuple(chunks[dim][i] for dim, i in enumerate(block)),
-            )
-            for block in itertools.product(*num_blocks)
+            (name,)+ indx: (self._get_block, *block_and_slice) for indx, block_and_slice in indexed_blocks.items()
         }
         dask_array = dask.array.Array(
-            dask=dask_tasks, name=name, chunks=chunks, dtype=dtype, shape=shape
+            dask=dask_tasks, name=name, dtype=dtype, chunks=final_chunks, shape=final_shape
         )
-        if slice is not None:
-            dask_array = dask_array[slice]
+
         return dask_array
 
     def write(self, array, persist=True):
@@ -417,7 +543,7 @@ class ArrayClient(DaskArrayClient):
         """
         Access the entire array or a slice.
         """
-        return super().read(slice).compute()
+        return super().read(slice or NDSlice()).compute()
 
     def read_block(self, block, slice=None):
         """

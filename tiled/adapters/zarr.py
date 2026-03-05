@@ -17,7 +17,7 @@ from tiled.structures.container import ContainerStructure
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..ndslice import NDSlice
+from ..ndslice import NDSlice, NDBlock
 from ..storage import (
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
@@ -28,9 +28,9 @@ from ..storage import (
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
-from ..type_aliases import JSON
+from ..type_aliases import JSON, Chunks
 from ..utils import Conflicts, node_repr, path_from_uri
-from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
+from .array import ArrayAdapter
 
 ZARR_LIB_V2 = Version(version("zarr")) < Version("3")
 if ZARR_LIB_V2:
@@ -111,29 +111,12 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         self,
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
-        """
-
-        Parameters
-        ----------
-        slice :
-
-        Returns
-        -------
-
-        """
         arr = cast(NDArray, self._array[self._stencil()])
         return arr[slice]
 
-    def read_block(
-        self,
-        block: Tuple[int, ...],
-        slice: NDSlice = NDSlice(...),
-    ) -> NDArray[Any]:
-        block_slice, _ = slice_and_shape_from_block_and_chunks(
-            block, self.structure().chunks
-        )
-        # Slice the block out of the whole array,
-        # and optionally a sub-slice therein.
+    def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
+        "Slice the block out of the whole array and optionally a sub-slice therein."
+        block_slice = block.slice_from_chunks(self.structure().chunks)
         return self._array[self._stencil()][block_slice][slice or ...]
 
     def write(
@@ -145,14 +128,8 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
             raise NotImplementedError
         self._array[self._stencil()] = data
 
-    def write_block(
-        self,
-        data: NDArray[Any],
-        block: Tuple[int, ...],
-    ) -> None:
-        block_slice, shape = slice_and_shape_from_block_and_chunks(
-            block, self.structure().chunks
-        )
+    def write_block(self, data: NDArray[Any], block: NDBlock) -> None:
+        block_slice = block.slice_from_chunks(self.structure().chunks)
         self._array[block_slice] = data
 
     def patch(
@@ -160,7 +137,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         data: NDArray[Any],
         offset: Tuple[int, ...],
         extend: bool = False,
-    ) -> Tuple[Tuple[int, ...], Tuple[Tuple[int, ...], ...]]:
+    ) -> Tuple[Tuple[int, ...], Chunks]:
         """
         Write data into a slice of the array, maybe extending it.
 

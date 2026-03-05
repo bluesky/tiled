@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple, Union
 
 from tiled.structures.root import Structure
+from ..type_aliases import Chunks
 
 from .array import BuiltinDtype, Endianness, Kind, StructDtype
 
@@ -16,7 +17,7 @@ class SparseLayout(str, enum.Enum):
 
 @dataclass
 class COOStructure(Structure):
-    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
+    chunks: Chunks  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     data_type: Optional[Union[BuiltinDtype, StructDtype]] = None
     coord_data_type: Optional[BuiltinDtype] = field(

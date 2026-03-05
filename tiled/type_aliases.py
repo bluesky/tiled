@@ -16,6 +16,7 @@ from typing import (
     Mapping,
     Sequence,
     Set,
+    Tuple,
     TypedDict,
     Union,
 )
@@ -32,6 +33,7 @@ Query = Any  # for now...
 Filters = List[Query]
 AccessBlob = Mapping[str, Any]
 AccessTags = Set[str]
+Chunks = Tuple[Tuple[int, ...], ...]
 
 AppTask = Callable[[], Coroutine[None, None, Any]]
 """Async function to be run as part of the app's lifecycle"""

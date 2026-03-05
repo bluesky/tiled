@@ -4,6 +4,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, ClassVar, List, Optional, Tuple, Union
+from ..type_aliases import Chunks
 
 import numpy
 
@@ -230,7 +231,7 @@ class StructDtype:
 @dataclass
 class ArrayStructure(Structure):
     data_type: Union[BuiltinDtype, StructDtype]
-    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
+    chunks: Chunks  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False

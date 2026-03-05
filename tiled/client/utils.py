@@ -1,6 +1,7 @@
 import builtins
 import os
 import uuid
+import math
 from collections.abc import Hashable
 from dataclasses import asdict
 from pathlib import Path
@@ -15,6 +16,7 @@ import stamina.instrumentation
 
 from ..structures.core import Spec
 from ..utils import path_from_uri
+from ..type_aliases import Chunks
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -418,7 +420,7 @@ def get_asset_filepaths(node):
     return filepaths
 
 
-def chunks_repr(chunks: tuple[tuple[int, ...], ...]) -> str:
+def chunks_repr(chunks: Chunks) -> str:
     """A human-friendly representation of the chunks spec
 
     Avoids printing long line of repeated values when representing chunks
@@ -455,3 +457,53 @@ def normalize_specs(
             spec = Spec(spec)
         normalized_specs.append(asdict(spec))
     return normalized_specs
+
+
+def merge_dimension(lengths, target_len, max_len):
+    "Balanced 1D merging toward target_len not exceeding max_len"
+    groups, start = [], 0
+    current = lengths[0]
+    for i in range(1, len(lengths)):
+        candidate = current + lengths[i]
+
+        cost_keep = (current - target_len) ** 2
+        cost_merge = (candidate - target_len) ** 2
+
+        if candidate <= max_len and cost_merge <= cost_keep:
+            current = candidate
+        else:
+            groups.append((start, i))
+            start = i
+            current = lengths[i]
+
+    groups.append((start, len(lengths)))
+    return groups
+
+
+def balanced_merge(lengths, vmax):
+    import numpy as np
+
+    # Ideal size of merged blocks
+    V_total = math.prod(sum(l) for l in lengths)
+    V_target = V_total / math.ceil(V_total / vmax)
+
+    # Estimate target lengths per dimension
+    avg_lengths = [np.mean(l) for l in lengths]
+
+    avg_other, ndims = [], len(lengths)
+    for d in range(ndims):
+        prod = 1
+        for k in range(ndims):
+            if k != d:
+                prod *= avg_lengths[k]
+        avg_other.append(prod)
+
+    groups = []
+    for d in range(ndims):
+        target_len = V_target / avg_other[d]
+        max_len = vmax / avg_other[d]
+
+        g = merge_dimension(lengths[d], target_len, max_len)
+        groups.append(g)
+
+    return groups

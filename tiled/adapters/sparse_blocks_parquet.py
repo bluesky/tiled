@@ -4,7 +4,6 @@ from collections.abc import Set
 from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
-import dask.base
 import dask.dataframe
 import numpy
 import pandas
@@ -13,9 +12,8 @@ from numpy._typing import NDArray
 
 from tiled.adapters.core import Adapter
 
-from ..adapters.array import slice_and_shape_from_block_and_chunks
 from ..catalog.orm import Node
-from ..ndslice import NDSlice
+from ..ndslice import NDSlice, NDBlock
 from ..storage import FileStorage, Storage
 from ..structures.core import Spec
 from ..structures.data_source import Asset, DataSource
@@ -26,16 +24,6 @@ from .utils import init_adapter_from_catalog
 
 
 def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
-    """
-
-    Parameters
-    ----------
-    uri :
-
-    Returns
-    -------
-
-    """
     # TODO This can be done without pandas.
     # Better to use a plain I/O library.
     df = pandas.read_parquet(path_from_uri(uri))
@@ -80,17 +68,6 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         data_source: DataSource[COOStructure],
         path_parts: List[str],
     ) -> DataSource[COOStructure]:
-        """
-
-        Parameters
-        ----------
-        data_uri :
-        structure :
-
-        Returns
-        -------
-
-        """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
@@ -126,32 +103,12 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         data.to_parquet(path_from_uri(uri))
 
     def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-
-        Returns
-        -------
-
-        """
         if len(self.blocks) > 1:
             raise NotImplementedError
         uri = self.blocks[(0,) * len(self.structure().shape)]
         data.to_parquet(path_from_uri(uri))
 
     def read(self, slice: NDSlice = NDSlice(...)) -> sparse.COO:
-        """
-
-        Parameters
-        ----------
-        slice :
-
-        Returns
-        -------
-
-        """
         all_coords = []
         all_data = []
         for block, uri in self.blocks.items():
@@ -171,20 +128,9 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         return arr[slice] if slice else arr
 
     def read_block(
-        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
+        self, block: NDBlock, slice: NDSlice = NDSlice(...)
     ) -> sparse.COO:
-        """
-
-        Parameters
-        ----------
-        block :
-        slice :
-
-        Returns
-        -------
-
-        """
         coords, data = load_block(self.blocks[block])
-        _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
+        shape = block.shape_from_chunks(self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
         return arr[slice] if slice else arr
