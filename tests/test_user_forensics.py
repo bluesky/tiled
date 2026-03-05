@@ -123,6 +123,15 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
                 },
                 "path": "/foo",
             },
+            {
+                "tree": "tiled.catalog:in_memory",
+                "args": {
+                    "named_memory": "catalog_qux",
+                    "writable_storage": str(tmpdir_module / "qux"),
+                    "top_level_access_blob": {"tags": ["public"]},
+                },
+                "path": "/qux",
+            },
         ],
     }
 
@@ -161,7 +170,7 @@ async def coro_test(c, keys):
     return child_node
 
 
-def test_created_and_updated_info(access_control_test_context_factory):
+def test_created_and_updated_info_with_users(access_control_test_context_factory):
     """
     Test that created_by and updated_by fields are correctly set
     on node creation and metadata update.
@@ -192,4 +201,60 @@ def test_created_and_updated_info(access_control_test_context_factory):
         result = asyncio.run(coro_obj)
         # After Bob updates the metadata, updated_by should be Bob, created_by should remain Alice
         assert result.node.created_by != result.node.updated_by
+        assert result.node.time_created != result.node.time_updated
+
+
+def test_created_and_updated_info_with_service(access_control_test_context_factory):
+    """
+    Test that created_by and updated_by fields are correctly set
+    when a service (non-user) creates or updates a node.
+    """
+
+    admin_client = access_control_test_context_factory("admin", "admin")
+
+    top = "qux"
+    # Create a new Service Principal. It is identified by its UUID.
+    # It has no "identities"; it cannot log in with a password.
+    sp_create = admin_client.context.admin.create_service_principal("admin")
+    sp_apikey_info = admin_client.context.admin.create_api_key(sp_create["uuid"])
+    # Create a client for the Service Principal using its API key
+    sp_create_client = access_control_test_context_factory(
+        sp_create["uuid"], api_key=sp_apikey_info["secret"]
+    )
+
+    # Create a new Service Principal for updating the node.
+    # It is identified by its UUID. It has no "identities"; it cannot log in with a password.
+    sp_update = admin_client.context.admin.create_service_principal("admin")
+    sp_update_apikey_info = admin_client.context.admin.create_api_key(sp_update["uuid"])
+    # Create a client for the new Service Principal using its API key
+    sp_update_client = access_control_test_context_factory(
+        sp_update["uuid"], api_key=sp_update_apikey_info["secret"]
+    )
+
+    for data in ["data_N"]:
+        # Create a new node with the service principal and check created_by and updated_by
+        sp_create_client[top].write_array(
+            arr, key=data, metadata={"description": "initial"}, access_tags=["public"]
+        )
+
+        coro_obj = coro_test(sp_create_client, [top, data])
+        result = asyncio.run(coro_obj)
+
+        # When the array is first created by the service principal,
+        # created_by and updated_by should indicate the service principal
+        assert sp_create["uuid"] in result.node.created_by
+        assert sp_create["uuid"] in result.node.updated_by
+        assert result.node.time_created.date() == result.node.time_updated.date()
+
+        time.sleep(1)  # ensure time_updated is different
+        sp_update_client[top][data].replace_metadata(
+            metadata={"description": "updated"}
+        )
+        coro_obj = coro_test(sp_update_client, [top, data])
+        result = asyncio.run(coro_obj)
+        # After the service principal updates the metadata,
+        # updated_by should indicate the second service principal,
+        # created_by should indicate the first service principal
+        assert result.node.updated_by != result.node.created_by
+        assert sp_update["uuid"] in result.node.updated_by
         assert result.node.time_created != result.node.time_updated

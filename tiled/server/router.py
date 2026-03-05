@@ -1601,9 +1601,13 @@ def get_router(
             access_blob_modified = access_blob != {}
             access_blob = {}
 
-        created_by = ""
-        if principal is not None and len(principal.identities) > 0:
-            created_by = principal.identities[0].id
+        if principal is None:
+            created_by = None
+        else:
+            if len(principal.identities) > 0:
+                created_by = principal.identities[0].id
+            else:
+                created_by = f"service:{principal.uuid}"
 
         node = await entry.create_node(
             metadata=body.metadata,
@@ -2108,11 +2112,19 @@ def get_router(
             access_blob_modified = access_blob != entry.access_blob
             access_blob = entry.access_blob
 
+        if principal is None:
+            updated_by = None
+        else:
+            if len(principal.identities) > 0:
+                updated_by = principal.identities[0].id
+            else:
+                updated_by = f"service:{principal.uuid}"
+
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
             access_blob=access_blob,
-            updated_by=principal.identities[0].id if principal else "",
+            updated_by=updated_by,
             drop_revision=drop_revision,
         )
 
@@ -2185,11 +2197,19 @@ def get_router(
             access_blob_modified = access_blob != entry.access_blob
             access_blob = entry.access_blob
 
+        if principal is None:
+            updated_by = None
+        else:
+            if len(principal.identities) > 0:
+                updated_by = principal.identities[0].id
+            else:
+                updated_by = f"service:{principal.uuid}"
+
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
             access_blob=access_blob,
-            updated_by=principal.identities[0].id if principal else "",
+            updated_by=updated_by,
             drop_revision=drop_revision,
         )
 
