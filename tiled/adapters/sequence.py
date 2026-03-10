@@ -135,17 +135,16 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
                 left_axis, *the_rest = slice
                 # Could be int or slice (i, ...) or (slice(...), ...); the_rest is converted to a list
                 if isinstance(left_axis, int):
-                    # e.g. read(slice=(0, ....))
+                    # e.g. read(slice=(0, ....)), dimensionality is reduced by 1
                     arr = np.squeeze(self._load_from_files(left_axis), 0)
                 elif left_axis is Ellipsis:
-                    # Return all images
+                    # Return all images; include any leading dimensions
                     arr = self._load_from_files()
-                    the_rest.insert(0, Ellipsis)  # Include any leading dimensions
+                    the_rest.insert(0, Ellipsis)
                 elif isinstance(left_axis, builtins.slice):
+                    # Include the first dimension when further subslicing
                     arr = self.read(slice=left_axis)
-                    the_rest.insert(
-                        0, builtins.slice(None)
-                    )  # Include the first dimension
+                    the_rest.insert(0, builtins.slice(None))
 
                 sliced_shape = ndindex(left_axis).newshape(self.structure().shape)
                 arr = force_reshape(arr, sliced_shape)

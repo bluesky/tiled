@@ -143,7 +143,7 @@ class _DaskArrayClient(BaseClient):
 
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
-    def _get_slice(self, slice: Optional[NDSlice] = None):
+    def _get_slice(self, slice: NDSlice):
         """Fetch the data for a slice of the full array
 
         This private method is used internally by the client and requires the
@@ -155,8 +155,8 @@ class _DaskArrayClient(BaseClient):
 
         Parameters
         ----------
-        slice : NDSlice, optional
-            A slice of the full array to return.
+        slice : NDSlice
+            A slice of the array to return, pass NDSlice() to return the whole array.
         """
 
         media_type = "application/octet-stream"

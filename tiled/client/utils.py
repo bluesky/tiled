@@ -462,42 +462,48 @@ def normalize_specs(
     return normalized_specs
 
 
-def split_1d(start, stop, step, max_len, pref_splits=None):
-    """Split a 1D slice into sub-slices that do not exceed the maximum length
+def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] = None):
+    """Split a 1D slice into sub-slices that do not exceed max_len steps.
 
-    Take the step size into account when choosing split points.
-    Use preferred points to split if possible.
+    Splits are chosen close to the ideal equal partition. If preferred
+    split points are provided, the closest one to the ideal point is used
+    as long as it does not violate the min/max constraints.
     """
 
     # Total number of steps and max steps per split
     step = step or 1
     total_steps = math.ceil(abs(stop - start) / abs(step))
-    num_splits = math.ceil(total_steps / max_len) or 1
-    max_steps_per_split = math.ceil(total_steps / num_splits)
 
     # Convert preferred points to index space
-    if pref_splits is not None:
-        pref_indx = sorted(
-            (x - start) // step for x in pref_splits if x in range(start, stop, step)
-        )
+    pref_indx = sorted(
+        (x - start) // step
+        for x in (pref_splits or [])
+        if x in range(start, stop, step)
+    )
 
-    result, crnt_i, pref_i = [], 0, 0
-    for i in range(1, num_splits):
-        next_i = ideal_idx = round(i * total_steps / num_splits)
-        max_idx = min(crnt_i + max_steps_per_split, total_steps)
+    result, crnt_indx, _pi = [], 0, 0
+    while crnt_indx + max_len < total_steps:
+        # Compute ideal next index for equal partitioning of the remaining steps
+        steps_remained = total_steps - crnt_indx
+        num_splits = max(1, math.ceil(steps_remained / max_len))
+        ideal_split_size = math.ceil(steps_remained / num_splits)
+        next_indx = crnt_indx + ideal_split_size
 
-        # Check if there are any preferred split points between the current index and the max allowed index
-        if pref_splits is not None:
-            while pref_i < len(pref_indx) and pref_indx[pref_i] <= max_idx:
-                if abs(pref_indx[pref_i] - ideal_idx) < abs(next_i - ideal_idx):
-                    next_i = pref_indx[pref_i]
-                pref_i += 1
+        # Check if there are preferred points between the current index and the max allowed
+        if pref_indx:
+            pref_best = None
+            while _pi < len(pref_indx) and pref_indx[_pi] <= crnt_indx + max_len:
+                if pref_indx[_pi] > crnt_indx:
+                    pref_best = pref_best or pref_indx[_pi]
+                    if abs(pref_indx[_pi] - next_indx) < abs(pref_best - next_indx):
+                        pref_best = pref_indx[_pi]
+                _pi += 1
+            next_indx = pref_best or next_indx
 
-        next_i = min(next_i, max_idx)
-        result.append((start + crnt_i * step, start + next_i * step))
-        crnt_i = next_i
+        result.append((start + crnt_indx * step, start + next_indx * step))
+        crnt_indx = next_indx
 
-    result.append((start + crnt_i * step, stop))
+    result.append((start + crnt_indx * step, stop))
 
     return result
 
@@ -505,7 +511,7 @@ def split_1d(start, stop, step, max_len, pref_splits=None):
 def split_nd_slice(
     arr_slice: NDSlice, max_size: int, pref_splits: Optional[list[list[int]]] = None
 ) -> dict[tuple[int, ...], NDSlice]:
-    # Remove singleton dimensoins and replace with slices for simplicity. Revert later
+    # Remove singleton dimensions and replace with slices for simplicity. Revert later
     is_int_dim = [isinstance(s, int) for s in arr_slice]
     arr_slice = arr_slice.unsqueeze()
     ndim = len(arr_slice)
@@ -539,14 +545,13 @@ def split_nd_slice(
         )
         slc = result[d].pop()
 
-        # Maximum length along this dimension that keeps the slice under the limit
-        max_len = max(1, int(max_size / max_other))
+        # Use maximum length along this dimension that keeps the slice under the limit
         splits = split_1d(
             slc.start,
             slc.stop,
             slc.step or 1,
-            max_len,
-            pref_splits[d] if pref_splits is not None else None,
+            max_len=max(1, int(max_size / max_other)),
+            pref_splits=pref_splits[d] if pref_splits is not None else None,
         )
         result[d].extend([builtins.slice(a, b, slc.step) for a, b in splits])
 
