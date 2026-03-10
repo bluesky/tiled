@@ -20,16 +20,17 @@ tunneling requests to Tiled:
 
 ## Step by Step Guide
 
-Create a tunnel at [https://app.globus.org/streams/create](https://app.globus.org/streams/create).
+Create a tunnel at
+[https://app.globus.org/streams/create](https://app.globus.org/streams/create).
 The _Initiator Access Point_ should be on the Tiled client side, and the
 _Listener Access Point_ should be on the Tiled server side.
 (The _Label_ is arbitrary.)
 
-![Create Globus Stream](_static/create-globus-stream.png)
+![Create Globus Stream](../../_static/create-globus-stream.png)
 
 The new tunnel is displayed with a unique "tunnel ID" that we will need later.
 
-![Globus Tunnel](_static/globus-tunnel.png)
+![Globus Tunnel](../../_static/globus-tunnel.png)
 
 Identify an IP address for the Tiled server of interest. As an example, we can
 use a public IP of the public demo Tiled server, `192.203.218.28`.
