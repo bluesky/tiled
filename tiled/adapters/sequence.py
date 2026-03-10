@@ -9,7 +9,7 @@ from numpy._typing import NDArray
 from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
-from ..ndslice import NDSlice, NDBlock
+from ..ndslice import NDBlock, NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
@@ -143,6 +143,9 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
                     the_rest.insert(0, Ellipsis)  # Include any leading dimensions
                 elif isinstance(left_axis, builtins.slice):
                     arr = self.read(slice=left_axis)
+                    the_rest.insert(
+                        0, builtins.slice(None)
+                    )  # Include the first dimension
 
                 sliced_shape = ndindex(left_axis).newshape(self.structure().shape)
                 arr = force_reshape(arr, sliced_shape)

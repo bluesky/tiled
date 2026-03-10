@@ -2,14 +2,19 @@ from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE, HTTP_400_BAD_REQUEST
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_410_GONE,
+)
 
 from ..access_control.protocols import AccessPolicy
 from ..adapters.protocols import AnyAdapter
+from ..ndslice import NDBlock, NDSlice
 from ..structures.core import StructureFamily
 from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink
-from ..ndslice import NDSlice, NDBlock
 from .core import NoEntry
 from .schemas import Principal
 from .utils import filter_for_access, record_timing
@@ -17,9 +22,9 @@ from .utils import filter_for_access, record_timing
 # NOTE: The regex below is used by fastapi to parse the string representation of a slice
 # and raise a 422 error if the string is not valid.
 # It does not capture certain erroneous cases, such as ",,", for example.
+# It does not support Ellipsis ("...").
 DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
 SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
-# SLICE_REGEX = rf"^(?:!,){DIM_REGEX}(?:,(?:=[^,]){DIM_REGEX})*$"
 
 
 def get_root_tree(request: Request):
@@ -133,9 +138,11 @@ async def get_entry(
     )
 
 
-def parse_block_param(block: str = Query(..., pattern=SLICE_REGEX)) -> NDBlock:
+def parse_block_param(block: str = Query(..., pattern="^[0-9]*(,[0-9]+)*$")) -> NDBlock:
     "Specify and parse a block index parameter"
     try:
+        # Even though NDBlock can contain slices, we currently only support indexing
+        # with integers, and the server wouldn't accept slices in the query
         return NDBlock.from_numpy_str(block)
     except ValueError as e:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(e))

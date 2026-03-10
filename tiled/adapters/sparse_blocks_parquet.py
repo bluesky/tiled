@@ -13,7 +13,7 @@ from numpy._typing import NDArray
 from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
-from ..ndslice import NDSlice, NDBlock
+from ..ndslice import NDBlock, NDSlice
 from ..storage import FileStorage, Storage
 from ..structures.core import Spec
 from ..structures.data_source import Asset, DataSource
@@ -127,9 +127,7 @@ class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
         )
         return arr[slice] if slice else arr
 
-    def read_block(
-        self, block: NDBlock, slice: NDSlice = NDSlice(...)
-    ) -> sparse.COO:
+    def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> sparse.COO:
         coords, data = load_block(self.blocks[block])
         shape = block.shape_from_chunks(self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)

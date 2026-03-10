@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Tuple, Union
 
 from tiled.structures.root import Structure
-from ..type_aliases import Chunks
 
+from ..type_aliases import Chunks
 from .array import BuiltinDtype, Endianness, Kind, StructDtype
 
 

@@ -1,4 +1,3 @@
-import itertools
 import pathlib
 
 import pytest
@@ -7,7 +6,7 @@ from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
 
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.ndslice import NDSlice, NDBlock, merge_slices
+from tiled.ndslice import NDSlice
 from tiled.server.app import build_app
 
 
@@ -117,7 +116,7 @@ def test_slicer(slice: str):
     """
     Test the slicer function
     """
-    assert NDSlice.from_query(slice) == reference_slice_(slice)
+    assert NDSlice.from_numpy_str(slice) == reference_slice_(slice)
 
 
 @pytest.mark.parametrize("slice", slice_typo_data + slice_missing_data)
@@ -126,7 +125,7 @@ def test_slicer_typo_data(slice: str):
     Test the slicer function with invalid input
     """
     with pytest.raises(ValueError):
-        _ = NDSlice.from_query(slice)
+        _ = NDSlice.from_numpy_str(slice)
 
 
 @pytest.mark.parametrize("slice", slice_malicious_data)
@@ -135,7 +134,7 @@ def test_slicer_malicious_exec(slice: str):
     Test the slicer function with 'malicious' input
     """
     with pytest.raises(ValueError):
-        _ = NDSlice.from_query(slice)
+        _ = NDSlice.from_numpy_str(slice)
 
 
 @pytest.mark.parametrize("slice_", slice_typo_data + slice_malicious_data)
@@ -226,60 +225,3 @@ def test_errors_in_slices():
         NDSlice(slice(1), slice(2), slice(3)).to_json(ndim=2)
     with pytest.raises(ValueError):
         NDSlice(slice(1), slice(2), Ellipsis).to_json(ndim=1)
-
-
-@pytest.mark.parametrize(
-    "inputs, expected",
-    [
-        ([NDSlice(1, 2)], NDSlice(1, 2)),   # single slice
-        ([NDSlice(1, 2), NDSlice(1, 2)],NDSlice(1, 2)),  # identical integers
-([NDSlice(0), NDSlice(1), NDSlice(2)], NDSlice(slice(0, 3))),  # consecutive integers
-        ([NDSlice(2), NDSlice(0), NDSlice(1)],NDSlice(slice(0, 3))),  # unordered
-([NDSlice(0), NDSlice(2)],None),  # non-consecutive integers
-([NDSlice(slice(0, 5)), NDSlice(slice(0, 5))],NDSlice(slice(0, 5))),  # identical slices
-([NDSlice(slice(0, 3)), NDSlice(slice(3, 6))],NDSlice(slice(0, 6))),  # adjacent slices
-([NDSlice(slice(3, 6)), NDSlice(slice(0, 3))], NDSlice(slice(0, 6))),  # unordered adjacent slices
-([NDSlice(slice(0, 3)), NDSlice(slice(4, 6))], None),  # non-adjacent slices
-([NDSlice(slice(0, 4, 1)), NDSlice(slice(4, 8, 2))], None),  # slice step mismatch
-        ([NDSlice(2), NDSlice(slice(3, 4))],NDSlice(slice(2, 4))),  # mixed integer and slice
-([NDSlice(slice(5, 5)), NDSlice(slice(5, 5))], NDSlice(slice(5, 5))),  # empty slice dimension
-([NDSlice(Ellipsis, 1), NDSlice(Ellipsis, 1)], NDSlice(Ellipsis, 1)),
-        ([NDSlice(Ellipsis, 0), NDSlice(Ellipsis, 1)], NDSlice(Ellipsis, slice(0, 2))),
-        ([NDSlice(Ellipsis, slice(None, 3)), NDSlice(Ellipsis, slice(3, 6))], NDSlice(Ellipsis, slice(0, 6))),
-        ([NDSlice(0, slice(0, 3)), NDSlice(0, slice(3, 6))],NDSlice(0, slice(0, 6))),
-        ([NDSlice(slice(0, 3), 0),NDSlice(slice(3, 6), 0)],NDSlice(slice(0, 6), 0)),
-        ([NDSlice(0, 0), NDSlice(1, 1)],None),  # too many differing dimensions
-        ([NDSlice(0),NDSlice(0, 1)],None),
-        ([NDSlice(slice(0, 2)), NDSlice(5)], None),
-        ([NDBlock(0), NDBlock(1)], NDBlock(slice(0, 2))),
-        ([NDSlice(0), NDBlock(1)], NDSlice(slice(0, 2))),
-([NDSlice(slice(None, 5)), NDSlice(slice(0, 5))], NDSlice(slice(None, 5))),
-([NDSlice(slice(None, 3)), NDSlice(slice(3, 6))], NDSlice(slice(0, 6))),
-([NDSlice(slice(3, None)), NDSlice(slice(3, None))], NDSlice(slice(3, None))),
-([NDSlice(slice(None, None)), NDSlice(slice(None, None))], NDSlice(slice(None, None))),
-([NDSlice(slice(None, None)), NDSlice(0)], None),  # open slice cannot merge with integer
-([NDSlice(-2), NDSlice(-1)], NDSlice(slice(-2, 0))),  # negative integrs
-([NDSlice(slice(-5, -3)), NDSlice(slice(-3, -1))], NDSlice(slice(-5, -1))),
-([NDSlice(slice(-5, -3)), NDSlice(slice(-2, 0))], None),
-([NDSlice(slice(5, 0, -1)), NDSlice(slice(5, 0, -1))], NDSlice(slice(5, 0, -1))),  # identical reverse slices allowed
-([NDSlice(slice(5, 0, -1)), NDSlice(slice(5, 0, -2))], None),  # reverse slices with different step rejected
-([NDSlice(slice(5, 3, -1)), NDSlice(slice(3, 1, -1))], NDSlice(slice(5, 1, -1))),  # adjacent reverse slices
-([NDSlice(slice(None, None)), NDSlice(slice(0, 0))], None),  # open slice incompatible with explicit empty slice
-([NDSlice(slice(None, 3), 0), NDSlice(slice(3, 6), 0)], NDSlice(slice(0, 6), 0))
-    ],
-)
-def test_merge_slices(inputs, expected):
-
-    if expected is None:
-        with pytest.raises(ValueError):
-            merge_slices(*inputs)
-    else:
-        result = merge_slices(*inputs)
-
-        assert type(result) is type(expected)
-        assert tuple(result) == tuple(expected)
-
-        # Test that the result is the same regardless of the order of the inputs
-        if len(inputs) > 2:
-            for permuted_inputs in itertools.permutations(inputs):
-                assert merge_slices(*permuted_inputs) == expected

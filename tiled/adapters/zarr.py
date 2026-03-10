@@ -17,7 +17,7 @@ from tiled.structures.container import ContainerStructure
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..ndslice import NDSlice, NDBlock
+from ..ndslice import NDBlock, NDSlice
 from ..storage import (
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,

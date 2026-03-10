@@ -1,7 +1,9 @@
 import builtins
+import itertools
+import math
 import os
 import uuid
-import math
+from collections import defaultdict
 from collections.abc import Hashable
 from dataclasses import asdict
 from pathlib import Path
@@ -14,9 +16,10 @@ import httpx
 import msgpack
 import stamina.instrumentation
 
+from ..ndslice import NDSlice
 from ..structures.core import Spec
-from ..utils import path_from_uri
 from ..type_aliases import Chunks
+from ..utils import path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
@@ -459,51 +462,131 @@ def normalize_specs(
     return normalized_specs
 
 
-def merge_dimension(lengths, target_len, max_len):
-    "Balanced 1D merging toward target_len not exceeding max_len"
-    groups, start = [], 0
-    current = lengths[0]
-    for i in range(1, len(lengths)):
-        candidate = current + lengths[i]
+def split_1d(start, stop, step, max_len, pref_splits=None):
+    """Split a 1D slice into sub-slices that do not exceed the maximum length
 
-        cost_keep = (current - target_len) ** 2
-        cost_merge = (candidate - target_len) ** 2
+    Take the step size into account when choosing split points.
+    Use preferred points to split if possible.
+    """
 
-        if candidate <= max_len and cost_merge <= cost_keep:
-            current = candidate
-        else:
-            groups.append((start, i))
-            start = i
-            current = lengths[i]
+    # Total number of steps and max steps per split
+    step = step or 1
+    total_steps = math.ceil(abs(stop - start) / abs(step))
+    num_splits = math.ceil(total_steps / max_len) or 1
+    max_steps_per_split = math.ceil(total_steps / num_splits)
 
-    groups.append((start, len(lengths)))
-    return groups
+    # Convert preferred points to index space
+    if pref_splits is not None:
+        pref_indx = sorted(
+            (x - start) // step for x in pref_splits if x in range(start, stop, step)
+        )
+
+    result, crnt_i, pref_i = [], 0, 0
+    for i in range(1, num_splits):
+        next_i = ideal_idx = round(i * total_steps / num_splits)
+        max_idx = min(crnt_i + max_steps_per_split, total_steps)
+
+        # Check if there are any preferred split points between the current index and the max allowed index
+        if pref_splits is not None:
+            while pref_i < len(pref_indx) and pref_indx[pref_i] <= max_idx:
+                if abs(pref_indx[pref_i] - ideal_idx) < abs(next_i - ideal_idx):
+                    next_i = pref_indx[pref_i]
+                pref_i += 1
+
+        next_i = min(next_i, max_idx)
+        result.append((start + crnt_i * step, start + next_i * step))
+        crnt_i = next_i
+
+    result.append((start + crnt_i * step, stop))
+
+    return result
 
 
-def balanced_merge(lengths, vmax):
-    import numpy as np
+def split_nd_slice(
+    arr_slice: NDSlice, max_size: int, pref_splits: Optional[list[list[int]]] = None
+) -> dict[tuple[int, ...], NDSlice]:
+    # Remove singleton dimensoins and replace with slices for simplicity. Revert later
+    is_int_dim = [isinstance(s, int) for s in arr_slice]
+    arr_slice = arr_slice.unsqueeze()
+    ndim = len(arr_slice)
 
-    # Ideal size of merged blocks
-    V_total = math.prod(sum(l) for l in lengths)
-    V_target = V_total / math.ceil(V_total / vmax)
+    # Make sure preferred split points align with the step grid and within the bounds
+    if pref_splits is not None:
+        pref_splits = [
+            [
+                x
+                for x in bnd
+                if x in range(slc.start, slc.stop, slc.step or 1) and x != slc.start
+            ]
+            for bnd, slc in zip(pref_splits, arr_slice)
+        ]
 
-    # Estimate target lengths per dimension
-    avg_lengths = [np.mean(l) for l in lengths]
+    # Start with the most chunked or longest dimension and subslice it
+    sorting_order = (
+        [len(ps) for ps in pref_splits]
+        if pref_splits is not None
+        else [len(range(s.start, s.stop, s.step or 1)) for s in arr_slice]
+    )
+    result = [[s] for s in arr_slice]
+    for d in sorted(range(ndim), key=lambda i: sorting_order[i], reverse=True):
+        # Find the size of largest block along all other dimensions, excluding d
+        max_other = math.prod(
+            [
+                max(len(range(s.start, s.stop, s.step or 1)) for s in result[_d])
+                for _d in range(ndim)
+                if _d != d
+            ]
+        )
+        slc = result[d].pop()
 
-    avg_other, ndims = [], len(lengths)
-    for d in range(ndims):
-        prod = 1
-        for k in range(ndims):
-            if k != d:
-                prod *= avg_lengths[k]
-        avg_other.append(prod)
+        # Maximum length along this dimension that keeps the slice under the limit
+        max_len = max(1, int(max_size / max_other))
+        splits = split_1d(
+            slc.start,
+            slc.stop,
+            slc.step or 1,
+            max_len,
+            pref_splits[d] if pref_splits is not None else None,
+        )
+        result[d].extend([builtins.slice(a, b, slc.step) for a, b in splits])
 
-    groups = []
-    for d in range(ndims):
-        target_len = V_target / avg_other[d]
-        max_len = vmax / avg_other[d]
+        # Check if we need further subslicing along other dimensions
+        max_crnt = max(len(range(s.start, s.stop, s.step or 1)) for s in result[d])
+        if max_crnt * max_other <= max_size:
+            break
 
-        g = merge_dimension(lengths[d], target_len, max_len)
-        groups.append(g)
+    # Replace (squeeze) any singleton slices if they were integers originally
+    result = [[res[0].start] if flag else res for res, flag in zip(result, is_int_dim)]
 
-    return groups
+    # Form the dict of Cartesian products
+    keys = itertools.product(
+        *(range(len(x)) for x in result if not isinstance(x[0], int))
+    )
+    vals = itertools.product(*result)
+
+    return {k: NDSlice(v) for k, v in zip(keys, vals)}
+
+
+def slices_to_dask_chunks(slice_dict, shape):
+    """
+    Convert a dictionary mapping:
+        {index_tuple: list[NDSlice]}
+    into Dask-style chunk representation:
+        tuple of tuples, one per axis.
+    """
+
+    # Collect chunk sizes per axis, keyed by axis index
+    ndim = len(next(iter(slice_dict.keys())))
+    axis_chunks = [defaultdict(int) for _ in range(ndim)]
+    for idx, slc in slice_dict.items():
+        shp = slc.shape_after_slice(shape)
+        for ax in range(ndim):
+            axis_chunks[ax][idx[ax]] = shp[ax]
+
+    # Convert to ordered tuples (sorted by chunk index)
+    dask_chunks = tuple(
+        tuple(size for _, size in sorted(axis_dict.items()))
+        for axis_dict in axis_chunks
+    )
+
+    return dask_chunks

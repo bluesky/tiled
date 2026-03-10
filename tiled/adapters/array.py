@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 
 from tiled.adapters.core import Adapter
 
-from ..ndslice import NDSlice, NDBlock
+from ..ndslice import NDBlock, NDSlice
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import JSON, Chunks
@@ -106,7 +106,7 @@ class ArrayAdapter(Adapter[ArrayStructure]):
 
     def read_block(
         self,
-        block: Tuple[int, ...],
+        block: NDBlock,
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         # Slice the whole array to get this block.

@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import cache, partial
 from pathlib import Path
-from typing import Annotated, Callable, List, Optional, TypeVar, Union
+from typing import Callable, List, Optional, TypeVar, Union
 
 import anyio
 import packaging
@@ -49,7 +49,7 @@ from tiled.server.schemas import Principal
 
 from .. import __version__
 from ..links import links_for_node
-from ..ndslice import NDSlice, NDBlock
+from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
@@ -543,14 +543,30 @@ def get_router(
             getattr(request.app.state, "access_policy", None),
         )
         shape, chunks = entry.structure().shape, entry.structure().chunks
+        ndim = len(shape)
 
         # Check that request block matches the chunks dimensionality
+        if block == () and ndim > 0:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Requested scalar but shape is {shape}",
+            )
+        if len(block) != ndim:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"Block parameter must have {ndim} comma-separated parameters, "
+                    f"corresponding to the dimensions of this {ndim}-dimensional array."
+                ),
+            )
         if not block.is_valid_for_shape(tuple(map(len, chunks))):
             raise HTTPException(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=("Block parameter does not match the chunks dimensionality. "
-                        f"Expected {len(chunks)} comma-separated integers or slices, "
-                        f"that index {chunks}, got {block}."),
+                detail=(
+                    "Block parameter does not match the chunks dimensionality. "
+                    f"Expected {ndim} comma-separated integers, "
+                    f"that index {chunks}, got {block}."
+                ),
             )
 
         block_shape = block.shape_from_chunks(chunks)
@@ -562,37 +578,19 @@ def get_router(
                     "that would result from the requested block."
                 ),
             )
+
+        # Check if resulting shape matches expected and raise before even loading the data
         resulting_shape = slice.shape_after_slice(block_shape)
         if (expected_shape is not None) and (expected_shape != resulting_shape):
             raise HTTPException(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
-                    f"The expected_shape {expected_shape} does not match the actual shape "
+                    f"The expected shape {expected_shape} does not match the actual shape "
                     f"{resulting_shape} that would result from the requested block and slice."
                 ),
             )
 
-        # TODO !!!! Check that all works with scalars
-
-        #     # if shape != ():
-        #     #     raise HTTPException(
-        #     #         status_code=HTTP_400_BAD_REQUEST,
-        #     #         detail=f"Requested scalar but shape is {entry.structure().shape}",
-        #     #     )
-
-        # ndim = len(shape)
-        # breakpoint()
-        # if len(block) != ndim:
-        #     raise HTTPException(
-        #         status_code=HTTP_400_BAD_REQUEST,
-        #         detail=(
-        #             f"Block parameter must have {ndim} comma-separated parameters, "
-        #             f"corresponding to the dimensions of this {ndim}-dimensional array."
-        #         ),
-        #     )
-
-
-        if shape == ():
+        if ndim == 0:
             # Handle special case of numpy scalar.
             with record_timing(request.state.metrics, "read"):
                 array = await ensure_awaitable(entry.read)
@@ -602,14 +600,15 @@ def get_router(
                     array = await ensure_awaitable(entry.read_block, block, slice)
             except IndexError:
                 raise HTTPException(
-                    status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail="Block index out of range"
+                    status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Block index out of range",
                 )
-            # Something is wrong with the shape of the actual data vs the value in the structure
+            # Something is wrong with the shape of the data vs the value in the structure
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
                     status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"The shape expected from the structure {expected_shape} "
-                           f"does not match the actual data shape {array.shape}",
+                    f"does not match the actual data shape {array.shape}",
                 )
         if array.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
@@ -633,7 +632,6 @@ def get_router(
                     filename=filename,
                 )
         except UnsupportedMediaTypes as err:
-            # raise HTTPException(status_code=406, detail=", ".join(err.supported))
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.get(
@@ -678,7 +676,10 @@ def get_router(
             with record_timing(request.state.metrics, "read"):
                 array = await ensure_awaitable(entry.read, slice)
             if structure_family == StructureFamily.array:
-                array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
+                # Force dask or PIMS or ... to do I/O. Ensure dtype is preserved.
+                array = numpy.asarray(
+                    array, dtype=entry.structure().data_type.to_numpy_dtype()
+                )
         except IndexError:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
@@ -687,7 +688,7 @@ def get_router(
             raise HTTPException(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"The shape expected from the structure {expected_shape} "
-                        f"does not match the actual data shape {array.shape}",
+                f"does not match the actual data shape {array.shape}",
             )
         if array.nbytes > settings.response_bytesize_limit:
             raise HTTPException(

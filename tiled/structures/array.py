@@ -4,11 +4,12 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, ClassVar, List, Optional, Tuple, Union
-from ..type_aliases import Chunks
 
 import numpy
 
 from tiled.structures.root import Structure
+
+from ..type_aliases import Chunks
 
 # from dtype.descr
 FieldDescr = Union[Tuple[str, str], Tuple[str, str, Tuple[int, ...]]]

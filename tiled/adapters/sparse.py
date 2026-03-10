@@ -8,7 +8,7 @@ from numpy._typing import NDArray
 
 from tiled.adapters.core import Adapter
 
-from ..ndslice import NDSlice, NDBlock
+from ..ndslice import NDBlock, NDSlice
 from ..structures.array import BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import COOStructure, SparseStructure
@@ -108,7 +108,7 @@ class COOAdapter(SparseAdapter):
     ) -> "COOAdapter":
         """
         Construct from blocks with coords given in global reference frame.
-        
+
         Parameters
         ----------
         blocks :
