@@ -155,6 +155,10 @@ def test_block_validation(context):
     "Verify that block is correctly specified."
     client = from_context(context, "dask")["cube"]["tiny_cube"]
     block_url = httpx.URL(client.item["links"]["block"])
+    # Malformed because it has only 2 dimensions, not 3.
+    malformed_block_url = block_url.copy_with(params={"block": "0,0"})
+    with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+        client.context.http_client.get(malformed_block_url).raise_for_status()
     # Malformed because it has 4 dimensions, not 3.
     malformed_block_url = block_url.copy_with(params={"block": "0,0,0,0"})
     with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
