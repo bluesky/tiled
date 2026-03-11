@@ -131,8 +131,6 @@ def test_from_file(example_file, buffer):
 @pytest.mark.parametrize("key", ["d", "e", "f", "g", "h", "i"])
 def test_from_file_with_empty_data(example_file_with_empty_data, buffer, key):
     """Serve a single HDF5 file at top level."""
-    if key == "h":
-        pytest.xfail("WIP: account for empty string datasets.")
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file_with_empty_data)
     with Context.from_app(build_app(tree)) as context:
@@ -166,7 +164,6 @@ def test_from_file_with_scalars(example_file_with_scalars, buffer, key: str, num
 @pytest.mark.filterwarnings("ignore: The dataset")
 def test_from_file_with_vlen_str_dataset(example_file_with_vlen_str_in_dataset, buffer):
     """Serve a single HDF5 file at top level."""
-    pytest.xfail("WIP: account for vlen str datasets.")
     h5py = pytest.importorskip("h5py")
     tree = HDF5Adapter.from_uris(example_file_with_vlen_str_in_dataset)
     with pytest.warns(UserWarning):

@@ -260,7 +260,8 @@ def test_unparsable_nested_array_stringified(kind, context):
     client = from_context(context)["nested_arrays"][kind]
     assert "<U" in client.dtype.str
     assert "<U" in client.read().dtype.str
-    assert isinstance(client[0], str)
+    assert client[0].dtype.kind == "U"
+    assert isinstance(client[0].item(), str)
 
 
 @pytest.mark.parametrize("kind", list(array_cases))

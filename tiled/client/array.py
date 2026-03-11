@@ -499,8 +499,7 @@ class DaskArrayClient(_DaskArrayClient):
 
     def compute(self):
         "Alias to client.read().compute()"
-        arr = self.read().compute()
-        return arr.item() if arr.shape == () else arr
+        return self.read().compute()
 
 
 class ArrayClient(DaskArrayClient):
@@ -510,8 +509,7 @@ class ArrayClient(DaskArrayClient):
         """
         Access the entire array or a slice.
         """
-        arr = super().read(slice).compute()
-        return arr.item() if arr.shape == () else arr
+        return super().read(slice).compute()
 
     def read_block(self, block, slice=None):
         """
@@ -519,5 +517,4 @@ class ArrayClient(DaskArrayClient):
 
         Optionally, access only a slice *within* this block.
         """
-        arr = super().read_block(block, slice).compute()
-        return arr.item() if arr.shape == () else arr
+        return super().read_block(block, slice).compute()
