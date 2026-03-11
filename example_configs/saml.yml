@@ -26,5 +26,5 @@ authentication:
             binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
           x509cert: ""
 trees:
-  - path: /
-    tree: tiled.examples.nexus:tree
+  - tree: tiled.examples.generated_minimal:tree
+    path: /
