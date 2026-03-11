@@ -1,13 +1,21 @@
 import asyncio
+import os
 import time
+import uuid
+from urllib.parse import urljoin, urlparse
 
 import numpy
 import pytest
+from minio import Minio
+from minio.error import S3Error
 
 from tiled.access_control.access_tags import AccessTagsCompiler
 from tiled.access_control.scopes import ALL_SCOPES
+from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.server.app import build_app_from_config
+from tiled.server.app import build_app, build_app_from_config
+from tiled.utils import sanitize_uri
+from tiled.validation_registration import ValidationRegistry
 
 from .utils import enter_username_password
 
@@ -43,7 +51,6 @@ server_config = {
         ],
     },
 }
-
 
 access_tag_config = {
     "roles": {
@@ -87,6 +94,9 @@ access_tag_config = {
         },
     },
 }
+
+validation_registry = ValidationRegistry()
+validation_registry.register("SomeSpec", lambda *args, **kwargs: None)
 
 
 def group_parser(groupname):
@@ -163,6 +173,62 @@ def access_control_test_context_factory(tmpdir_module, compile_access_tags_db):
         context.close()
 
 
+@pytest.fixture
+def tmp_minio_bucket():
+    """Create a temporary MinIO bucket and clean it up after tests."""
+    if uri := os.getenv("TILED_TEST_BUCKET"):
+        clean_uri, username, password = sanitize_uri(uri)
+        minio_client = Minio(
+            endpoint=urlparse(clean_uri).netloc,  # e.g. only "localhost:9000"
+            access_key=username or "minioadmin",
+            secret_key=password or "minioadmin",
+            secure=False,
+        )
+
+        bucket_name = f"test-{uuid.uuid4().hex}"
+        minio_client.make_bucket(bucket_name=bucket_name)
+
+        try:
+            yield urljoin(uri, "/" + bucket_name)  # full URI with credentials
+        finally:
+            # Cleanup: remove all objects and delete the bucket
+            try:
+                objects = minio_client.list_objects(
+                    bucket_name=bucket_name, recursive=True
+                )
+                for obj in objects:
+                    minio_client.remove_object(
+                        bucket_name=bucket_name, object_name=obj.object_name
+                    )
+                minio_client.remove_bucket(bucket_name=bucket_name)
+            except S3Error as e:
+                print(f"Warning: failed to delete test bucket {bucket_name}: {e}")
+
+    else:
+        yield None
+
+
+@pytest.fixture
+def tree(tmpdir, tmp_minio_bucket):
+    writable_storage = [f"duckdb:///{tmpdir / 'data.duckdb'}"]
+
+    if tmp_minio_bucket:
+        writable_storage.append(
+            {
+                "provider": "s3",
+                "uri": tmp_minio_bucket,
+                "config": {
+                    "virtual_hosted_style_request": False,
+                    "client_options": {"allow_http": True},
+                },
+            }
+        )
+
+    writable_storage.append(f"file://localhost{str(tmpdir / 'data')}")
+
+    return in_memory(writable_storage=writable_storage)
+
+
 async def coro_test(c, keys):
     child_node = await c.context.http_client.app.state.root_tree[
         keys[0]
@@ -193,7 +259,7 @@ def test_created_and_updated_info_with_users(access_control_test_context_factory
         # When the array is first created, created_by and updated_by should be the same
         assert result.node.created_by == "alice"
         assert result.node.updated_by == "alice"
-        assert result.node.time_created.date() == result.node.time_updated.date()
+        assert result.node.time_created == result.node.time_updated
 
         time.sleep(1)  # ensure time_updated is different
         bob_client[top][data].replace_metadata(metadata={"description": "updated"})
@@ -244,7 +310,7 @@ def test_created_and_updated_info_with_service(access_control_test_context_facto
         # created_by and updated_by should indicate the service principal
         assert sp_create["uuid"] in result.node.created_by
         assert sp_create["uuid"] in result.node.updated_by
-        assert result.node.time_created.date() == result.node.time_updated.date()
+        assert result.node.time_created == result.node.time_updated
 
         time.sleep(1)  # ensure time_updated is different
         sp_update_client[top][data].replace_metadata(
@@ -258,3 +324,48 @@ def test_created_and_updated_info_with_service(access_control_test_context_facto
         assert result.node.updated_by != result.node.created_by
         assert sp_update["uuid"] in result.node.updated_by
         assert result.node.time_created != result.node.time_updated
+
+
+async def coro_test_anonymous(c, keys):
+    child_node = await c.context.http_client.app.state.root_tree.lookup_adapter(
+        [keys[0]]
+    )
+    return child_node
+
+
+def test_created_and_updated_info_with_anonymous(tree):
+    """
+    Test that created_by and updated_by fields are correctly set
+    when an anonymous user creates or updates a node.
+    """
+
+    with Context.from_app(
+        build_app(tree, validation_registry=validation_registry)
+    ) as context:
+        client = from_context(context)
+        # client.create_container(top)
+
+        for data in ["data_O"]:
+            client.write_array(arr, key=data, metadata={"description": "initial"})
+
+            coro_obj = coro_test_anonymous(client, [data])
+            result = asyncio.run(coro_obj)
+
+            # When the array is first created by the anonymous user,
+            # created_by and updated_by should be None
+            assert result.node.created_by is None
+            assert result.node.updated_by is None
+            assert result.node.time_created == result.node.time_updated
+
+            time.sleep(1)  # ensure time_updated is different
+            client[data].replace_metadata(metadata={"description": "updated"})
+
+            coro_obj = coro_test_anonymous(client, [data])
+            result = asyncio.run(coro_obj)
+
+            # After the anonymous user updates the metadata,
+            # created_by and updated_by should still be None
+            # and time_created should be different from time_updated
+            assert result.node.created_by is None
+            assert result.node.updated_by is None
+            assert result.node.time_created != result.node.time_updated
