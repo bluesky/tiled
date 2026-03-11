@@ -1,3 +1,4 @@
+import itertools
 import math
 from pathlib import Path
 
@@ -7,8 +8,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tiled.client.utils import slices_to_dask_chunks, split_1d, split_nd_slice
-from tiled.ndslice import NDSlice
+from tiled.client.utils import slices_to_dask_chunks
+from tiled.ndslice import NDBlock, NDSlice, merge_slices, split_1d, split_slice
 from tiled.utils import (
     CachingMap,
     DictView,
@@ -494,7 +495,7 @@ def pref_split_strategy(draw, slices):
 
 @given(data=st.data(), max_size=st.sampled_from([1, 2, 3, 5, 50, 100, 200]))
 @settings(deadline=None)
-def test_split_nd_slice(data, max_size):
+def test_split_slice(data, max_size):
     arr_slice, shape = data.draw(nd_slice_strategy(), label="nd_slice")
 
     if math.prod(arr_slice.shape_after_slice(shape)) == 0:
@@ -503,7 +504,7 @@ def test_split_nd_slice(data, max_size):
 
     pref_splits = data.draw(pref_split_strategy(arr_slice), label="pref_splits")
     arr = np.arange(math.prod(shape)).reshape(shape)
-    slices = split_nd_slice(arr_slice, max_size, pref_splits)
+    slices = split_slice(arr_slice, max_size, pref_splits)
 
     # 1. Check reconstruction of the original slice from the pieces
     darr = da.Array(
@@ -521,6 +522,107 @@ def test_split_nd_slice(data, max_size):
     for slc in slices.values():
         slc_shape = slc.shape_after_slice(shape)
         assert math.prod(slc_shape) <= max_size
+
+
+@pytest.mark.parametrize(
+    "inputs, expected",
+    [
+        ([NDSlice(1, 2)], NDSlice(1, 2)),  # single slice
+        ([NDSlice(1, 2), NDSlice(1, 2)], NDSlice(1, 2)),  # identical integers
+        (
+            [NDSlice(0), NDSlice(1), NDSlice(2)],
+            NDSlice(slice(0, 3)),
+        ),  # consecutive integers
+        ([NDSlice(2), NDSlice(0), NDSlice(1)], NDSlice(slice(0, 3))),  # unordered
+        ([NDSlice(0), NDSlice(2)], None),  # non-consecutive integers
+        (
+            [NDSlice(slice(0, 5)), NDSlice(slice(0, 5))],
+            NDSlice(slice(0, 5)),
+        ),  # identical slices
+        (
+            [NDSlice(slice(0, 3)), NDSlice(slice(3, 6))],
+            NDSlice(slice(0, 6)),
+        ),  # adjacent slices
+        (
+            [NDSlice(slice(3, 6)), NDSlice(slice(0, 3))],
+            NDSlice(slice(0, 6)),
+        ),  # unordered adjacent slices
+        ([NDSlice(slice(0, 3)), NDSlice(slice(4, 6))], None),  # non-adjacent slices
+        (
+            [NDSlice(slice(0, 4, 1)), NDSlice(slice(4, 8, 2))],
+            None,
+        ),  # slice step mismatch
+        (
+            [NDSlice(2), NDSlice(slice(3, 4))],
+            NDSlice(slice(2, 4)),
+        ),  # mixed integer and slice
+        (
+            [NDSlice(slice(5, 5)), NDSlice(slice(5, 5))],
+            NDSlice(slice(5, 5)),
+        ),  # empty slice dimension
+        ([NDSlice(Ellipsis, 1), NDSlice(Ellipsis, 1)], NDSlice(Ellipsis, 1)),
+        ([NDSlice(Ellipsis, 0), NDSlice(Ellipsis, 1)], NDSlice(Ellipsis, slice(0, 2))),
+        (
+            [NDSlice(Ellipsis, slice(None, 3)), NDSlice(Ellipsis, slice(3, 6))],
+            NDSlice(Ellipsis, slice(0, 6)),
+        ),
+        ([NDSlice(0, slice(0, 3)), NDSlice(0, slice(3, 6))], NDSlice(0, slice(0, 6))),
+        ([NDSlice(slice(0, 3), 0), NDSlice(slice(3, 6), 0)], NDSlice(slice(0, 6), 0)),
+        ([NDSlice(0, 0), NDSlice(1, 1)], None),  # too many differing dimensions
+        ([NDSlice(0), NDSlice(0, 1)], None),
+        ([NDSlice(slice(0, 2)), NDSlice(5)], None),
+        ([NDBlock(0), NDBlock(1)], NDBlock(slice(0, 2))),
+        ([NDSlice(0), NDBlock(1)], NDSlice(slice(0, 2))),
+        ([NDSlice(slice(None, 5)), NDSlice(slice(0, 5))], NDSlice(slice(None, 5))),
+        ([NDSlice(slice(None, 3)), NDSlice(slice(3, 6))], NDSlice(slice(0, 6))),
+        ([NDSlice(slice(3, None)), NDSlice(slice(3, None))], NDSlice(slice(3, None))),
+        (
+            [NDSlice(slice(None, None)), NDSlice(slice(None, None))],
+            NDSlice(slice(None, None)),
+        ),
+        (
+            [NDSlice(slice(None, None)), NDSlice(0)],
+            None,
+        ),  # open slice cannot merge with integer
+        ([NDSlice(-2), NDSlice(-1)], NDSlice(slice(-2, 0))),  # negative integrs
+        ([NDSlice(slice(-5, -3)), NDSlice(slice(-3, -1))], NDSlice(slice(-5, -1))),
+        ([NDSlice(slice(-5, -3)), NDSlice(slice(-2, 0))], None),
+        (
+            [NDSlice(slice(5, 0, -1)), NDSlice(slice(5, 0, -1))],
+            NDSlice(slice(5, 0, -1)),
+        ),  # identical reverse slices allowed
+        (
+            [NDSlice(slice(5, 0, -1)), NDSlice(slice(5, 0, -2))],
+            None,
+        ),  # reverse slices with different step rejected
+        (
+            [NDSlice(slice(5, 3, -1)), NDSlice(slice(3, 1, -1))],
+            NDSlice(slice(5, 1, -1)),
+        ),  # adjacent reverse slices
+        (
+            [NDSlice(slice(None, None)), NDSlice(slice(0, 0))],
+            None,
+        ),  # open slice incompatible with explicit empty slice
+        (
+            [NDSlice(slice(None, 3), 0), NDSlice(slice(3, 6), 0)],
+            NDSlice(slice(0, 6), 0),
+        ),
+    ],
+)
+def test_merge_slices(inputs, expected):
+    if expected is None:
+        with pytest.raises(ValueError):
+            merge_slices(*inputs)
+    else:
+        result = merge_slices(*inputs)
+
+        assert type(result) is type(expected)
+        assert tuple(result) == tuple(expected)
+
+        # Test that the result is the same regardless of the order of the inputs
+        if len(inputs) > 2:
+            for permuted_inputs in itertools.permutations(inputs):
+                assert merge_slices(*permuted_inputs) == expected
 
 
 @pytest.mark.parametrize(

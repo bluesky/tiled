@@ -10,7 +10,7 @@ import httpx
 import numpy
 from numpy.typing import NDArray
 
-from ..ndslice import NDBlock, NDSlice
+from ..ndslice import NDBlock, NDSlice, split_slice
 from ..structures.core import STRUCTURE_TYPES
 from .base import BaseClient
 from .utils import (
@@ -20,7 +20,6 @@ from .utils import (
     params_from_slice,
     retry_context,
     slices_to_dask_chunks,
-    split_nd_slice,
 )
 
 if TYPE_CHECKING:
@@ -248,7 +247,7 @@ class _DaskArrayClient(BaseClient):
             tuple(itertools.accumulate(axis_chunks, initial=0))
             for axis_chunks in self.chunks
         )
-        indexed_slices = split_nd_slice(
+        indexed_slices = split_slice(
             arr_slice.expand_for_shape(self.shape),
             max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
             pref_splits=chunk_bounds,

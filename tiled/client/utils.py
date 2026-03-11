@@ -1,6 +1,4 @@
 import builtins
-import itertools
-import math
 import os
 import uuid
 from collections import defaultdict
@@ -16,7 +14,6 @@ import httpx
 import msgpack
 import stamina.instrumentation
 
-from ..ndslice import NDSlice
 from ..structures.core import Spec
 from ..type_aliases import Chunks
 from ..utils import path_from_uri
@@ -460,138 +457,6 @@ def normalize_specs(
             spec = Spec(spec)
         normalized_specs.append(asdict(spec))
     return normalized_specs
-
-
-def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] = None):
-    """Split a 1D slice into sub-slices that do not exceed max_len steps.
-
-    Splits are chosen close to the ideal equal partition. If preferred
-    split points are provided, the closest one to the ideal point is used
-    as long as it does not violate the min/max constraints.
-    """
-
-    # Total number of steps and max steps per split
-    step = step or 1
-    total_steps = math.ceil(abs(stop - start) / abs(step))
-
-    # Convert preferred points to index space
-    pref_indx = sorted(
-        (x - start) // step
-        for x in (pref_splits or [])
-        if x in range(start, stop, step)
-    )
-
-    result, crnt_indx, _pi = [], 0, 0
-    while crnt_indx + max_len < total_steps:
-        # Compute ideal next index for equal partitioning of the remaining steps
-        steps_remained = total_steps - crnt_indx
-        num_splits = max(1, math.ceil(steps_remained / max_len))
-        ideal_split_size = math.ceil(steps_remained / num_splits)
-        next_indx = crnt_indx + ideal_split_size
-
-        # Check if there are preferred points between the current index and the max allowed
-        if pref_indx:
-            pref_best = None
-            while _pi < len(pref_indx) and pref_indx[_pi] <= crnt_indx + max_len:
-                if pref_indx[_pi] > crnt_indx:
-                    pref_best = pref_best or pref_indx[_pi]
-                    if abs(pref_indx[_pi] - next_indx) < abs(pref_best - next_indx):
-                        pref_best = pref_indx[_pi]
-                _pi += 1
-            next_indx = pref_best or next_indx
-
-        result.append((start + crnt_indx * step, start + next_indx * step))
-        crnt_indx = next_indx
-
-    result.append((start + crnt_indx * step, stop))
-
-    return result
-
-
-def split_nd_slice(
-    arr_slice: NDSlice, max_size: int, pref_splits: Optional[list[list[int]]] = None
-) -> dict[tuple[int, ...], NDSlice]:
-    """Split an N-dimensional slice into smaller slices that do not exceed max_size
-
-    Splits are chosen by iteratively subslicing along the most chunked or longest
-    dimension until the resulting slices are all under the max_size limit.
-
-    Parameters
-    ----------
-    arr_slice : NDSlice
-        The N-dimensional slice to split. The slice must be expanded to account for
-        the specific shape (i.e. not contain any ":" or "..."). Integer dimensions
-        are allowed.
-    max_size : int
-        The maximum allowed size (number of elements) for each resulting slice.
-    pref_splits : list of list of int, optional
-        Preferred split points for each dimension.
-
-    Returns
-    -------
-    dict[tuple[int, ...], NDSlice]
-        A dictionary mapping from index tuples to the corresponding NDSlice objects.
-    """
-
-    # Remove singleton dimensions and replace with slices for simplicity. Revert later
-    is_int_dim = [isinstance(s, int) for s in arr_slice]
-    arr_slice = arr_slice.unsqueeze()
-    ndim = len(arr_slice)
-
-    # Make sure preferred split points align with the step grid and within the bounds
-    if pref_splits is not None:
-        pref_splits = [
-            [
-                x
-                for x in bnd
-                if x in range(slc.start, slc.stop, slc.step or 1) and x != slc.start
-            ]
-            for bnd, slc in zip(pref_splits, arr_slice)
-        ]
-
-    # Start with the most chunked or longest dimension and subslice it
-    sorting_order = (
-        [len(ps) for ps in pref_splits]
-        if pref_splits is not None
-        else [len(range(s.start, s.stop, s.step or 1)) for s in arr_slice]
-    )
-    result = [[s] for s in arr_slice]
-    for d in sorted(range(ndim), key=lambda i: sorting_order[i], reverse=True):
-        # Find the size of largest block along all other dimensions, excluding d
-        max_other = math.prod(
-            [
-                max(len(range(s.start, s.stop, s.step or 1)) for s in result[_d])
-                for _d in range(ndim)
-                if _d != d
-            ]
-        )
-        slc = result[d].pop()
-
-        # Use maximum length along this dimension that keeps the slice under the limit
-        splits = split_1d(
-            slc.start,
-            slc.stop,
-            slc.step or 1,
-            max_len=max(1, int(max_size / max_other)),
-            pref_splits=pref_splits[d] if pref_splits is not None else None,
-        )
-        result[d].extend([builtins.slice(a, b, slc.step) for a, b in splits])
-
-        # Check if we need further subslicing along other dimensions
-        max_crnt = max(len(range(s.start, s.stop, s.step or 1)) for s in result[d])
-        if max_crnt * max_other <= max_size:
-            break
-
-    # Replace (squeeze) any singleton slices if they were integers originally
-    result = [[res[0].start] if flag else res for res, flag in zip(result, is_int_dim)]
-
-    # Form the dict of Cartesian products
-    keys = itertools.product(
-        *(range(len(x)) for x in result if not isinstance(x[0], int))
-    )
-    vals = itertools.product(*result)
-
-    return {k: NDSlice(v) for k, v in zip(keys, vals)}
 
 
 def slices_to_dask_chunks(slice_dict, shape):
