@@ -10,7 +10,8 @@ def _walk_readables(node, nodes=None):
     else:
         value = node[nodes[-1]]
         if value.structure_family == StructureFamily.container:
-            value = value.base
+            if any(spec.name == "composite" for spec in value.specs):
+                value = value.base
             yield nodes
             for k, v in value.items():
                 yield from _walk_readables(value, nodes + [k])
