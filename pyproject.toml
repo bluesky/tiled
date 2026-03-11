@@ -77,7 +77,6 @@ all = [
     "h5netcdf",
     "h5py",
     "hdf5plugin",
-    "hypothesis",
     "jinja2",
     "jmespath",
     "lz4",
