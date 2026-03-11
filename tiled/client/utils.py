@@ -511,6 +511,28 @@ def split_1d(start, stop, step, max_len: int, pref_splits: Optional[list[int]] =
 def split_nd_slice(
     arr_slice: NDSlice, max_size: int, pref_splits: Optional[list[list[int]]] = None
 ) -> dict[tuple[int, ...], NDSlice]:
+    """Split an N-dimensional slice into smaller slices that do not exceed max_size
+
+    Splits are chosen by iteratively subslicing along the most chunked or longest
+    dimension until the resulting slices are all under the max_size limit.
+
+    Parameters
+    ----------
+    arr_slice : NDSlice
+        The N-dimensional slice to split. The slice must be expanded to account for
+        the specific shape (i.e. not contain any ":" or "..."). Integer dimensions
+        are allowed.
+    max_size : int
+        The maximum allowed size (number of elements) for each resulting slice.
+    pref_splits : list of list of int, optional
+        Preferred split points for each dimension.
+
+    Returns
+    -------
+    dict[tuple[int, ...], NDSlice]
+        A dictionary mapping from index tuples to the corresponding NDSlice objects.
+    """
+
     # Remove singleton dimensions and replace with slices for simplicity. Revert later
     is_int_dim = [isinstance(s, int) for s in arr_slice]
     arr_slice = arr_slice.unsqueeze()
@@ -573,11 +595,10 @@ def split_nd_slice(
 
 
 def slices_to_dask_chunks(slice_dict, shape):
-    """
-    Convert a dictionary mapping:
-        {index_tuple: list[NDSlice]}
-    into Dask-style chunk representation:
-        tuple of tuples, one per axis.
+    """Convert a dictionary mapping into Dask-style chunk representation
+
+    For example, a dictionary in the form {index_tuple: list[NDSlice]} is
+    converted into a tuple of tuples, one per axis.
     """
 
     # Collect chunk sizes per axis, keyed by axis index
