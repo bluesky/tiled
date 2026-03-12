@@ -225,17 +225,17 @@ def simulated_nexus(file_handle):
 
 
 def build_tree(url=None):
-    if not url:
+    if url:
+        # Download a Nexus file into a memory buffer.
+        buffer = io.BytesIO(httpx.get(url, follow_redirects=True).content)
+        # Access the buffer with h5py, which can treat it like a "file".
+        file_handle = h5py.File(buffer, "r")
+    else:
         # Create an in-memory Nexus file with the same structure as the example file.
         buffer = io.BytesIO()
         with h5py.File(buffer, "w") as f:
             simulated_nexus(f)
         buffer.seek(0)  # Reset buffer position to the beginning
-        file_handle = h5py.File(buffer, "r")
-    else:
-        # Download a Nexus file into a memory buffer.
-        buffer = io.BytesIO(httpx.get(url, follow_redirects=True).content)
-        # Access the buffer with h5py, which can treat it like a "file".
         file_handle = h5py.File(buffer, "r")
 
     # Wrap the h5py.File in a MapAdapter to serve it with Tiled.
