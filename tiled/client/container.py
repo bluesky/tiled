@@ -1140,6 +1140,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
         access_tags=None,
+        appendable: bool = True,
     ):
         """Write tabular data.
 

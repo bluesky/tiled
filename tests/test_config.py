@@ -177,7 +177,8 @@ def test_invalid_config_file_path(tmpdir: Path, path: str, error: type[Exception
     ],
 )
 def test_example_configs(path):
-    parse_configs(path)
+    config = parse_configs(path)
+    build_app_from_config(config)
 
 
 def test_pydantic_config():

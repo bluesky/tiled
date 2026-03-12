@@ -6,7 +6,7 @@ trees:
   - path: /
     tree: catalog
     args:
-      uri: "sqlite:////storage/catalog.db"
+      uri: "sqlite:///:memory:"  # in-memory catalog, for testing (see note below)
       writable_storage: "/storage/data"
       # This creates the database if it does not exist. This is convenient, but in
       # a horizontally-scaled deployment, this can be a race condition and multiple
@@ -16,4 +16,7 @@ trees:
       # tiled catalog init URI
       #
       # separately.
+      #
+      # The above config creates the database in memory; to make it persistent,
+      # use a file-based URI, e.g.: `uri: "sqlite:////storage/catalog.db"`
       init_if_not_exists: true

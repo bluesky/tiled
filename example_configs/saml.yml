@@ -26,5 +26,7 @@ authentication:
             binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
           x509cert: ""
 trees:
-  - tree: tiled.examples.generated_minimal:tree
-    path: /
+  - path: /
+    tree: tiled.examples.nexus:build_tree
+    args:
+      url: null  # Use simulated structure instead of downloading the file
