@@ -1069,7 +1069,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(coords, data)
         return client
 
-    def create_appendable_table(
+    def create__table(
         self,
         schema: "pyarrow.Schema",
         npartitions: int = 1,
@@ -1140,7 +1140,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
         access_tags=None,
-        appendable: bool = True,
     ):
         """Write tabular data.
 
