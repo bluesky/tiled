@@ -253,7 +253,8 @@ class CompositeClient(Container):
     def write_table(
         self, data, *, key=None, metadata=None, specs=None, access_tags=None
     ):
-        if set(self.keys()).intersection(data.columns):
+        columns = set(data.keys()) if isinstance(data, dict) else data.columns
+        if set(self.keys()).intersection(columns):
             raise ValueError(
                 "DataFrame columns must not overlap with existing keys in the composite node."
             )
