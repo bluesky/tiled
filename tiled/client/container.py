@@ -1182,7 +1182,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 "Please convert it to dask.dataframe.DataFrame first."
             )
 
-        if Version(self.context.server_info.library_version) < Version("0.2.9"):
+        if Version(self.context.server_info.library_version) <= Version("0.2.8"):
             if appendable:
                 warnings.warn(
                     "You are trying to create an appendable table, but the `write_table` "
