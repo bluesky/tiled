@@ -35,11 +35,13 @@ from tiled.adapters.hdf5 import HDF5Adapter
 
 EXAMPLE_URL = "https://github.com/nexusformat/exampledata/blob/master/APS/EPICSareaDetector/hdf5/AgBehenate_228.hdf5?raw=true"  # noqa
 
+rng = np.random.default_rng(42)
+
 
 def rand_bytes(length):
     """Generate random fixed-length byte string."""
     letters = np.frombuffer(
-        np.random.choice(list(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"), length).tobytes(),
+        rng.choice(list(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"), length).tobytes(),
         dtype=f"|S{length}",
     )
     return letters
@@ -49,9 +51,9 @@ def scalar_dataset(group, name, dtype):
     """Create a dataset with shape (1,) and given dtype."""
     dtype = np.dtype(dtype)  # Ensure dtype is a numpy dtype object
     if dtype.kind in {"i", "u"}:
-        data = np.random.randint(0, 10, size=(1,), dtype=dtype)
+        data = rng.integers(0, 10, size=(1,), dtype=dtype)
     elif dtype.kind in "f":
-        data = np.random.random(size=(1,)).astype(dtype)
+        data = rng.random(size=(1,)).astype(dtype)
     elif dtype.kind == "S":
         data = np.array([rand_bytes(dtype.itemsize)], dtype=dtype)
     else:
@@ -88,7 +90,7 @@ def simulated_nexus(file_handle):
     data_grp = entry.create_group("data")
     data_grp.create_dataset(
         "data",
-        data=np.random.randint(0, 1000, size=(195, 487), dtype=np.int32),
+        data=rng.integers(0, 1000, size=(195, 487), dtype=np.int32),
     )
     scalar_dataset(data_grp, "description", np.dtype("|S8"))
     scalar_dataset(data_grp, "local_name", np.dtype("|S12"))
