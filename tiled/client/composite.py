@@ -1,6 +1,6 @@
 import itertools as it
 import time
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
@@ -8,6 +8,7 @@ from .container import LENGTH_CACHE_TTL, Container
 from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
 
 if TYPE_CHECKING:
+    import pandas
     import pyarrow
 
 
@@ -251,7 +252,14 @@ class CompositeClient(Container):
         )
 
     def write_table(
-        self, data, *, key=None, metadata=None, specs=None, access_tags=None
+        self,
+        data: Union["pandas.DataFrame", dict[str, Any]],
+        *,
+        key=None,
+        metadata=None,
+        specs=None,
+        access_tags=None,
+        appendable=True,
     ):
         columns = set(data.keys()) if isinstance(data, dict) else data.columns
         if set(self.keys()).intersection(columns):
@@ -259,7 +267,12 @@ class CompositeClient(Container):
                 "DataFrame columns must not overlap with existing keys in the composite node."
             )
         return super().write_table(
-            data, key=key, metadata=metadata, specs=specs, access_tags=access_tags
+            data,
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+            appendable=appendable,
         )
 
     def create_appendable_table(

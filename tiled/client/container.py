@@ -1161,6 +1161,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             conform to some named standard specification.
         access_tags: List[str], optional
             Server-specific authZ tags in list form, used to confer access to the node.
+        appendable: bool, optional
+            If True, attempt to create an appendable table. If the server does not support this,
+            a regular non-appendable table will be created instead and a warning will be issued.
 
         See Also
         --------
@@ -1178,6 +1181,19 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
                 f"The `write_table` method does not support {type(data)} with partitions. "
                 "Please convert it to dask.dataframe.DataFrame first."
             )
+
+        if Version(self.context.server_info.library_version) < Version("0.2.9"):
+            if appendable:
+                warnings.warn(
+                    "You are trying to create an appendable table, but the `write_table` "
+                    "method can not be used for this with the current server version (<0.2.9)."
+                    "If SQL-backed storage is configured on the server, use the explicit "
+                    "`create_appendable_table` method instead and then `append_partition` "
+                    "to add data to it. "
+                    "Otherwise, to silence this warning and use a fixed-size storage format, "
+                    "set `appendable=False` when calling `write_table`."
+                )
+            appendable = False
 
         if isinstance(data, dask.dataframe.DataFrame):
             structure = TableStructure.from_dask_dataframe(data)

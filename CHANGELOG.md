@@ -6,6 +6,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- The `write_table` method now attempts to write the data as an appendable table if
+  the `appendable` argument is set to True (default). If the server does not support
+  this, it will fall back to writing a regular non-appendable table and issue a warning.
+
+## v0.2.7 (2026-02-27)
+
 ### Fixed
 
 - Raise an error with a suitable message when trying to create an API key
