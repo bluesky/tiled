@@ -1,6 +1,7 @@
 import builtins
 import os
 import uuid
+from collections import defaultdict
 from collections.abc import Hashable
 from dataclasses import asdict
 from pathlib import Path
@@ -14,6 +15,7 @@ import msgpack
 import stamina.instrumentation
 
 from ..structures.core import Spec
+from ..type_aliases import Chunks
 from ..utils import path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
@@ -418,7 +420,7 @@ def get_asset_filepaths(node):
     return filepaths
 
 
-def chunks_repr(chunks: tuple[tuple[int, ...], ...]) -> str:
+def chunks_repr(chunks: Chunks) -> str:
     """A human-friendly representation of the chunks spec
 
     Avoids printing long line of repeated values when representing chunks
@@ -455,3 +457,27 @@ def normalize_specs(
             spec = Spec(spec)
         normalized_specs.append(asdict(spec))
     return normalized_specs
+
+
+def slices_to_dask_chunks(slice_dict, shape):
+    """Convert a dictionary mapping into Dask-style chunk representation
+
+    For example, a dictionary in the form {index_tuple: list[NDSlice]} is
+    converted into a tuple of tuples, one per axis.
+    """
+
+    # Collect chunk sizes per axis, keyed by axis index
+    ndim = len(next(iter(slice_dict.keys())))
+    axis_chunks = [defaultdict(int) for _ in range(ndim)]
+    for idx, slc in slice_dict.items():
+        shp = slc.shape_after_slice(shape)
+        for ax in range(ndim):
+            axis_chunks[ax][idx[ax]] = shp[ax]
+
+    # Convert to ordered tuples (sorted by chunk index)
+    dask_chunks = tuple(
+        tuple(size for _, size in sorted(axis_dict.items()))
+        for axis_dict in axis_chunks
+    )
+
+    return dask_chunks
