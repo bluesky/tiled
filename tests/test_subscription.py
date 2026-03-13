@@ -266,10 +266,10 @@ def test_subscribe_after_first_update_from_middle(tiled_websocket_context):
         for i, msg in enumerate(received):
             assert msg.shape == (10,)
 
-            # Verify payload contains the expected array data
-            payload_array = msg.data()
-            expected_array = arr + (i + 2)  # i+2 because we skipped the first 2 updates
-            np.testing.assert_array_equal(payload_array, expected_array)
+        # Verify payload contains the expected array data
+        payload_array = np.array([msg.data() for msg in received])
+        expected_array = arr + np.arange(2, 7).reshape(-1, 1)  # skipped first 2
+        np.testing.assert_array_equal(payload_array, expected_array)
 
 
 def test_subscribe_to_container(
