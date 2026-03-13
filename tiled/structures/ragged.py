@@ -14,7 +14,6 @@ import awkward
 import dask_awkward
 import numpy as np
 import ragged
-from awkward.contents import ListArray, ListOffsetArray
 from dask_awkward.lib.core import calculate_known_divisions
 
 from tiled.structures.array import BuiltinDtype, StructDtype
@@ -23,21 +22,11 @@ from tiled.structures.root import Structure
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-OffsetArrayType = list[int]
-"""Represents a list of offsets for ``awkward.contents.ListOffsetArray`` layouts."""
-StartAndStopArraysType = tuple[list[int], list[int]]
-"""Represents a pair of lists, ``[starts, stops]``, for ``awkward.contents.ListArray`` layouts.
-
-While ``ListArray`` is convertible to ``ListOffsetArray``, we need this to retain information
-when slicing and dicing ragged arrays.
-"""
-
 
 @dataclass(kw_only=True)
 class RaggedStructure(Structure):
     data_type: BuiltinDtype | StructDtype
     shape: tuple[int | None, ...]
-    offsets: list[OffsetArrayType | StartAndStopArraysType]
     size: int
     partitions: tuple[int, ...]
     dims: tuple[str, ...] | None = None  # None or tuple of names like ("x", "y")
@@ -72,27 +61,11 @@ class RaggedStructure(Structure):
         else:
             data_type = BuiltinDtype.from_numpy_dtype(array.dtype)
 
-        offsets: list[OffsetArrayType | StartAndStopArraysType] = []
-
-        content = array._impl  # noqa: SLF001
-        if hasattr(content, "layout"):
-            content = content.layout
-
-        while isinstance(content, (ListOffsetArray, ListArray)):
-            if isinstance(content, ListOffsetArray):
-                offsets.append(np.array(content.offsets).tolist())
-            if isinstance(content, ListArray):
-                start = np.array(content.starts).tolist()
-                stop = np.array(content.stops).tolist()
-                offsets.append([start, stop])
-            content = content.content
-
         return cls(
             data_type=data_type,
             shape=shape,
             dims=dims,
             resizable=False,
-            offsets=offsets,
             size=size,
             partitions=partitions,
         )
@@ -111,7 +84,6 @@ class RaggedStructure(Structure):
             shape=tuple(structure["shape"]),
             dims=dims,
             resizable=structure.get("resizable", False),
-            offsets=structure.get("offsets", []),
             size=structure["size"],
             partitions=tuple(structure.get("partitions", (0, structure["size"]))),
         )

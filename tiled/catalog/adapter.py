@@ -1324,9 +1324,8 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             data = await ensure_awaitable(deserializer, body)
         elif entry.structure_family == "ragged":
             dtype = entry.structure().data_type.to_numpy_dtype()
-            offsets = entry.structure().offsets
             shape = entry.structure().shape
-            data = await ensure_awaitable(deserializer, body, dtype, offsets, shape)
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
         else:
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable((await self.get_adapter()).write, data)
@@ -1416,9 +1415,8 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
                 block, media_type, deserializer, entry, body, persist
             )
         dtype = entry.structure().data_type.to_numpy_dtype()
-        offsets = entry.structure().offsets
         shape = entry.structure().shape
-        data = await ensure_awaitable(deserializer, body, dtype, offsets, shape)
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
         return await ensure_awaitable(
             (await self.get_adapter()).write_block, data, block
         )

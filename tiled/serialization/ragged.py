@@ -16,12 +16,16 @@ from tiled.media_type_registration import (
 from tiled.mimetypes import APACHE_ARROW_FILE_MIME_TYPE, PARQUET_MIMETYPE
 from tiled.serialization import awkward as awkward_serialization
 from tiled.structures.core import StructureFamily
-from tiled.structures.ragged import (
-    OffsetArrayType,
-    RaggedStructure,
-    StartAndStopArraysType,
-)
 from tiled.utils import SerializationError, modules_available, safe_json_dump
+
+OffsetArrayType = list[int]
+"""Represents a list of offsets for ``awkward.contents.ListOffsetArray`` layouts."""
+StartAndStopArraysType = tuple[list[int], list[int]]
+"""Represents a pair of lists, ``[starts, stops]``, for ``awkward.contents.ListArray`` layouts.
+
+While ``ListArray`` is convertible to ``ListOffsetArray``, we need this to retain information
+when slicing and dicing ragged arrays.
+"""
 
 
 @default_serialization_registry.register(StructureFamily.ragged, "application/json")
@@ -52,36 +56,33 @@ def from_json(
     return ragged.array(lists_of_lists, dtype=dtype)
 
 
-def to_numpy_array(array: ragged.array) -> np.ndarray:
+def _deconstruct_ragged(
+    array: ragged.array,
+) -> tuple[
+    np.ndarray, list[OffsetArrayType | StartAndStopArraysType], tuple[int | None, ...]
+]:
+    offsets: list[OffsetArrayType | StartAndStopArraysType] = []
     content = array._impl  # noqa: SLF001
-    # if content is already a numpy array, return it directly
-    if isinstance(content, np.ndarray):
-        return content
+    if hasattr(content, "layout"):
+        content = content.layout
 
-    # strip off layers to get to underlying flat or rectilinear array
-    content = content.layout
     while isinstance(
         content, (awkward.contents.ListOffsetArray, awkward.contents.ListArray)
     ):
+        if isinstance(content, awkward.contents.ListOffsetArray):
+            offsets.append(np.array(content.offsets).tolist())
+        else:
+            start = np.array(content.starts).tolist()
+            stop = np.array(content.stops).tolist()
+            offsets.append([start, stop])
         content = content.content
 
-    return awkward.to_numpy(content)
+    return awkward.to_numpy(content), offsets, array.shape
     # NOTE: using awkward.flatten(...) here won't work, as it would flatten
     # any regular-shaped NumpyArray content.
 
 
-@default_serialization_registry.register(
-    StructureFamily.ragged, "application/octet-stream"
-)
-def to_numpy_octet_stream(
-    mimetype: str,
-    array: ragged.array,
-    metadata: dict,  # noqa: ARG001
-) -> bytes:
-    return np.asarray(to_numpy_array(array)).tobytes()
-
-
-def from_numpy_array(
+def _construct_ragged(
     array: np.ndarray,
     dtype: type,
     offsets: list[OffsetArrayType | StartAndStopArraysType],
@@ -119,18 +120,6 @@ def from_numpy_array(
     return ragged.array(rebuild(offsets), dtype=dtype)
 
 
-@default_deserialization_registry.register(
-    StructureFamily.ragged, "application/octet-stream"
-)
-def from_numpy_octet_stream(
-    buffer: bytes,
-    dtype: type,
-    offsets: list[OffsetArrayType | StartAndStopArraysType],
-    shape: tuple[int | None, ...] | None,
-) -> ragged.array:
-    return from_numpy_array(np.frombuffer(buffer, dtype=dtype), dtype, offsets, shape)
-
-
 @default_serialization_registry.register(
     StructureFamily.ragged, media_type="application/zip"
 )
@@ -139,13 +128,12 @@ def to_zipped_buffers(
     array: ragged.array,
     metadata: dict,  # noqa: ARG001
 ) -> bytes:
+    data, offsets, shape = _deconstruct_ragged(array)
     file = io.BytesIO()
     with zipfile.ZipFile(file, "w", compresslevel=zipfile.ZIP_STORED) as fzip:
-        fzip.writestr("shape", safe_json_dump(array.shape))
-        fzip.writestr(
-            "offsets", safe_json_dump(RaggedStructure.from_array(array).offsets)
-        )
-        fzip.writestr("data", to_numpy_array(array).tobytes())
+        fzip.writestr("data", data.tobytes())
+        fzip.writestr("offsets", safe_json_dump(offsets))
+        fzip.writestr("shape", safe_json_dump(shape))
     return file.getvalue()
 
 
@@ -159,10 +147,10 @@ def from_zipped_buffers(
 ) -> ragged.array:
     file = io.BytesIO(buffer)
     with zipfile.ZipFile(file, "r") as fzip:
-        shape = orjson.loads(fzip.read("shape"))
-        offsets = orjson.loads(fzip.read("offsets"))
         data = np.frombuffer(fzip.read("data"), dtype=dtype)
-    return from_numpy_array(data, dtype=dtype, offsets=offsets, shape=shape)
+        offsets = orjson.loads(fzip.read("offsets"))
+        shape = orjson.loads(fzip.read("shape"))
+    return _construct_ragged(data, dtype=dtype, offsets=offsets, shape=shape)
 
 
 if modules_available("pyarrow"):

@@ -15,12 +15,7 @@ from tiled.client.utils import (
     params_from_slice,
     retry_context,
 )
-from tiled.serialization.ragged import (
-    from_numpy_octet_stream,
-    from_zipped_buffers,
-    to_numpy_octet_stream,
-    to_zipped_buffers,
-)
+from tiled.serialization.ragged import from_zipped_buffers, to_zipped_buffers
 from tiled.structures.ragged import RaggedStructure, make_ragged_array
 
 if TYPE_CHECKING:
@@ -30,16 +25,17 @@ if TYPE_CHECKING:
 class RaggedClient(BaseClient):
     def write(self, array: ragged.array | ak.Array | Iterable[Iterable]):
         array = make_ragged_array(array)
-        mimetype = "application/octet-stream"
         for attempt in retry_context():
             with attempt:
                 handle_error(
                     self.context.http_client.put(
                         self.item["links"]["full"],
-                        content=to_numpy_octet_stream(
-                            mimetype=mimetype, array=array, metadata={}
+                        content=to_zipped_buffers(
+                            mimetype="application/zip",
+                            array=array,
+                            metadata={},
                         ),
-                        headers={"Content-Type": mimetype},
+                        headers={"Content-Type": "application/zip"},
                     )
                 )
 
@@ -80,9 +76,6 @@ class RaggedClient(BaseClient):
             url_params.update(**params_from_slice(slice))
             # the metadata of a sliced array isn't easy to determine mathematically,
             # we should expect the server to respond with new structure information.
-            mimetype = "application/zip"
-        else:
-            mimetype = "application/octet-stream"
 
         for attempt in retry_context():
             with attempt:
@@ -90,22 +83,16 @@ class RaggedClient(BaseClient):
                     self.context.http_client.get(
                         url_path,
                         headers={
-                            "Accept": mimetype,
+                            "Accept": "application/zip",
                             "Accept-Encoding": "zstd, lz4, gzip",  # omitting blosc2
                         },
                         params=url_params,
                     ),
                 ).read()
-        if mimetype == "application/zip":
-            return from_zipped_buffers(
-                buffer=content,
-                dtype=self.dtype,
-            )
-        return from_numpy_octet_stream(
+
+        return from_zipped_buffers(
             buffer=content,
             dtype=self.dtype,
-            offsets=self.offsets,
-            shape=self.shape,
         )
 
     def read_block(self, block: int, slice: Any | None = None) -> ragged.array:
@@ -124,6 +111,7 @@ class RaggedClient(BaseClient):
                         params=url_params,
                     ),
                 ).read()
+
         return from_zipped_buffers(
             buffer=content,
             dtype=self.dtype,
@@ -157,11 +145,6 @@ class RaggedClient(BaseClient):
     def shape(self):
         structure = cast("RaggedStructure", self.structure())
         return structure.shape
-
-    @property
-    def offsets(self):
-        structure = cast("RaggedStructure", self.structure())
-        return structure.offsets
 
     @property
     def size(self) -> int:

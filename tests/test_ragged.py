@@ -16,20 +16,17 @@ from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.client.utils import ClientError
 from tiled.serialization.ragged import (
+    _construct_ragged,
+    _deconstruct_ragged,
     from_json,
-    from_numpy_array,
-    from_numpy_octet_stream,
     from_zipped_buffers,
     to_json,
-    to_numpy_array,
-    to_numpy_octet_stream,
     to_zipped_buffers,
 )
 from tiled.server.app import build_app
 from tiled.storage import SQLStorage, parse_storage, register_storage
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
-from tiled.structures.ragged import RaggedStructure
 from tiled.structures.table import TableStructure
 from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 
@@ -95,39 +92,26 @@ arrays = {
 @pytest.mark.parametrize("name", arrays.keys())
 def test_serialization_roundtrip(name):
     array = arrays[name]
-    structure = RaggedStructure.from_array(array)
+
+    # Test reduced/flattened numpy array.
+    _array, _offsets, _shape = _deconstruct_ragged(array)
+    array_from_flattened = _construct_ragged(
+        _array,
+        dtype=_array.dtype.type,
+        offsets=_offsets,
+        shape=_shape,
+    )
+    assert ak.array_equal(array._impl, array_from_flattened._impl)  # noqa: SLF001
 
     # Test JSON serialization.
     json_contents = to_json("application/json", array, metadata={})
     array_from_json = from_json(
         json_contents,
         dtype=array.dtype.type,
-        offsets=structure.offsets,
-        shape=structure.shape,
+        offsets=_offsets,
+        shape=_shape,
     )
     assert ak.array_equal(array._impl, array_from_json._impl)  # noqa: SLF001
-
-    # Test reduced/flattened numpy array.
-    reduced_array = to_numpy_array(array)
-    array_from_flattened = from_numpy_array(
-        reduced_array,
-        dtype=array.dtype.type,
-        offsets=structure.offsets,
-        shape=structure.shape,
-    )
-    assert ak.array_equal(array._impl, array_from_flattened._impl)  # noqa: SLF001
-
-    # Test flattened octet-stream serialization.
-    octet_stream_contents = to_numpy_octet_stream(
-        "application/octet-stream", array, metadata={}
-    )
-    array_from_octet_stream = from_numpy_octet_stream(
-        octet_stream_contents,
-        dtype=array.dtype.type,
-        offsets=structure.offsets,
-        shape=structure.shape,
-    )
-    assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
 
     # Test flattened octet-stream serialization.
     octet_stream_contents = to_zipped_buffers("application/zip", array, metadata={})
