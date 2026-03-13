@@ -10,6 +10,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - A potential race condition when subscribing to an already started stream
   and receiving replayed messages before the subscription is fully set up.
+- Tests and examples that use example config files; specifically an external
+  NeXus file used as an example of the structure is generated dynamically at
+  test time now.
 
 ## v0.2.7 (2026-02-27)
 
