@@ -284,6 +284,7 @@ class Subscription(abc.ABC):
             params=params,
         )
         self._schema = None
+        self._connected_event = threading.Event()
         self._disconnect_lock = threading.Lock()
         self._disconnect_event = threading.Event()
         self._thread = None
@@ -381,6 +382,7 @@ class Subscription(abc.ABC):
 
         # Connect using the websocket wrapper
         self._websocket.connect(api_key, start, max_size=max_size)
+        self._connected_event.set()
 
         if needs_api_key:
             # The connection is made, so we no longer need the API key.
@@ -458,7 +460,8 @@ class Subscription(abc.ABC):
         self, start: Optional[int] = None, max_size: int = 1_000_000
     ) -> Self:
         """
-        Start a thread to connect to the websocket and receive updates.
+        Start a thread to connect to the websocket and receive updates. Blocks until the
+        Websocket client is connected.
 
         Parameters
         ----------
@@ -497,6 +500,7 @@ class Subscription(abc.ABC):
             name=name,
         )
         self._thread.start()
+        self._connected_event.wait()  # Wait until the connection is established
         return self
 
     def _disconnect(self, wait=True) -> None:

@@ -329,7 +329,7 @@ def test_subscribe_to_stream_closed(
     client = from_context(context)
     unique_key = f"test_subscribe_to_stream_closed_{uuid.uuid4().hex[:8]}"
     x = client.create_container(unique_key)
-    with x.subscribe().start_in_thread(start=0) as sub:
+    with x.subscribe().start_in_thread() as sub:
         event = threading.Event()
 
         def callback(sub):
@@ -351,7 +351,7 @@ def test_subscribe_to_disconnected(
     x = client.create_container(unique_key)
 
     # Disconnect before the stream is closed.
-    with x.subscribe().start_in_thread(start=0) as sub:
+    with x.subscribe().start_in_thread() as sub:
         event = threading.Event()
 
         def callback(sub):
@@ -363,7 +363,7 @@ def test_subscribe_to_disconnected(
         assert event.wait(timeout=10.0), "Timeout waiting for messages"
 
     # If the writer closes the stream, the client is disconnected.
-    with x.subscribe().start_in_thread(start=0) as sub:
+    with x.subscribe().start_in_thread() as sub:
         event = threading.Event()
 
         def callback(sub):
