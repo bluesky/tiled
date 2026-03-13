@@ -501,14 +501,17 @@ class RedisStreamingDatastore(StreamingDatastore):
             await pubsub.subscribe(f"notify:{node_id}")
 
             async def live_iter():
+                print(f"Live iterator started for node {node_id}")
                 async for message in pubsub.listen():
                     if message.get("type") == "message":
+                        print(f"Received live message for node {node_id}: {message}")
                         try:
                             yield int(message["data"])
                         except Exception as e:
                             logger.exception(f"Error parsing live message: {e}")
 
             async def cleanup():
+                print(f"Unsubscribing from Redis channel for node {node_id}")
                 await pubsub.unsubscribe(f"notify:{node_id}")
                 await pubsub.aclose()
 

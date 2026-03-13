@@ -319,6 +319,9 @@ class Subscription(abc.ABC):
 
     def _run(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
         """Outer loop - runs for the lifecycle of the Subscription."""
+        if self._disconnect_event.is_set():
+            raise RuntimeError("Cannot be restarted once stopped.")
+
         while not self._disconnect_event.is_set():
             try:
                 # Resume from last received sequence if reconnecting
@@ -363,8 +366,6 @@ class Subscription(abc.ABC):
     )
     def _connect(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
         """Connect to websocket with retry."""
-        if self._disconnect_event.is_set():
-            raise RuntimeError("Cannot be restarted once stopped.")
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
