@@ -2,7 +2,13 @@ from typing import List, Optional
 
 import pydantic_settings
 from fastapi import HTTPException, Query, Request
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
+from pydantic import constr
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_410_GONE,
+)
 
 from ..access_control.protocols import AccessPolicy
 from ..adapters.protocols import AnyAdapter
@@ -12,6 +18,14 @@ from ..utils import BrokenLink
 from .core import NoEntry
 from .schemas import Principal
 from .utils import filter_for_access, record_timing
+
+# Template for the "sort" query parameters.
+# Empty sting is NOT allowed, should be at least "-" or "+"
+SortField = constr(pattern=r"^(?:[+-][a-zA-Z0-9_]*|[a-zA-Z0-9_]+)$")
+
+# Limits for pagination parameters
+DEFAULT_PAGE_SIZE = 100
+MAX_PAGE_SIZE = 300
 
 
 def get_root_tree(request: Request):
@@ -182,3 +196,60 @@ def patch_offset_param(
     if patch_offset is None:
         return None
     return tuple(map(int, patch_offset.split(",")))
+
+
+def sorting_param(
+    sort: Optional[List[SortField]] = Query(None),
+):
+    "Specify and parse a sorting parameter."
+    if sort is None:
+        return None
+
+    result = {}
+    for item in sort:
+        if item.startswith("-"):
+            key, dir = item[1:], -1
+        elif item.startswith("+"):
+            key, dir = item[1:], 1
+        else:
+            key, dir = item, 1
+
+        if key in result:
+            raise HTTPException(
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"Duplicate sorting key: {key}",
+            )
+
+        result[key] = dir
+
+    # Check that the default sorting (""), if specified, is the last item in the list
+    if ("" in result) and (list(result.keys())[-1] != ""):
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="Default sorting (empty string) must be the last item in the sort list",
+        )
+
+    return list(result.items())
+
+
+class PaginationParams:
+    def __init__(
+        self,
+        offset: Optional[int] = Query(None, alias="page[offset]", ge=0),
+        cursor: Optional[str] = Query(None, alias="page[cursor]"),
+        limit: int = Query(
+            DEFAULT_PAGE_SIZE, alias="page[limit]", ge=0, le=MAX_PAGE_SIZE
+        ),
+    ):
+        if cursor is not None and offset is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot specify both page[cursor] and page[offset]",
+            )
+
+        if cursor is None and offset is None:
+            offset = 0
+
+        self.offset = offset
+        self.cursor = cursor
+        self.limit = limit
