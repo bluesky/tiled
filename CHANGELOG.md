@@ -14,6 +14,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
   NeXus file used as an example of the structure is generated dynamically at
   test time now.
 
+### Changed
+
+- The `start_in_thread` method of `Subscription` now waits until the WebSocket
+  connection is established before returning.
+
 ## v0.2.7 (2026-02-27)
 
 ### Fixed
