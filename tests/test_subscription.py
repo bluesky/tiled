@@ -45,7 +45,9 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
 
     # Create streaming array node using Tiled client
     arr = np.arange(10)
-    streaming_node = client.write_array(arr, key="test_stream_immediate")
+    streaming_node = client.write_array(
+        arr, key=f"test_stream_immediate_{uuid.uuid4().hex[:8]}"
+    )
 
     # Set up subscription using the Subscription class
     received = []
@@ -113,7 +115,9 @@ def test_subscribe_after_first_update_subscription(tiled_websocket_context):
 
     # Create streaming array node using Tiled client
     arr = np.arange(10)
-    streaming_node = client.write_array(arr, key="test_stream_after_update")
+    streaming_node = client.write_array(
+        arr, key=f"test_stream_after_update_{uuid.uuid4().hex[:8]}"
+    )
 
     # Write first update before subscribing
     first_update = np.arange(10) + 1
@@ -217,6 +221,54 @@ def test_subscribe_after_first_update_from_beginning_subscription(
             # Verify payload contains the expected array data
             payload_array = msg.data()
             expected_array = np.arange(10) + i
+            np.testing.assert_array_equal(payload_array, expected_array)
+
+
+def test_subscribe_after_first_update_from_middle(tiled_websocket_context):
+    """Test subscribing to a custom update after the stream has started."""
+    client = from_context(tiled_websocket_context)
+
+    # Create streaming array node using Tiled client
+    arr = np.arange(10)
+    unique_key = f"test_stream_from_middle_{uuid.uuid4().hex[:8]}"
+    streaming_node = client.write_array(arr, key=unique_key)
+
+    # Write first few updates before subscribing
+    for i in range(1, 5):
+        streaming_node.write(arr + i)
+
+    # Set up subscription using the Subscription class
+    received = []
+    received_event = threading.Event()
+
+    def callback(update):
+        """Callback to collect received messages."""
+        received.append(update)
+        if len(received) >= 5:
+            received_event.set()
+
+    # Create subscription for the streaming node
+    subscription = streaming_node.subscribe()
+    # Add callback and start the subscription from the third update (start=3)
+    subscription.new_data.add_callback(callback)
+    with subscription.start_in_thread(start=3):
+        # Write more updates
+        for i in range(5, 7):
+            streaming_node.write(arr + i)
+
+        # Wait for messages to be received
+        assert received_event.wait(timeout=10.0), "Timeout waiting for messages"
+
+        # Should 3 old and 2 new updates (total 5)
+        assert len(received) == 5
+
+        # Check that we received messages with the expected data
+        for i, msg in enumerate(received):
+            assert msg.shape == (10,)
+
+            # Verify payload contains the expected array data
+            payload_array = msg.data()
+            expected_array = arr + (i + 2)  # i+2 because we skipped the first 2 updates
             np.testing.assert_array_equal(payload_array, expected_array)
 
 
@@ -376,7 +428,7 @@ def test_subscribe_to_array_registered_with_patch(tiled_websocket_context, tmp_p
             data_sources=[data_source],
             metadata={},
             specs=[],
-            key="test_subscribe_to_array_registered_with_patch",
+            key=f"test_subscribe_to_array_registered_with_patch_{uuid.uuid4().hex[:8]}",
         )
         actual = x.read()  # smoke test
         np.testing.assert_array_equal(actual, arr[:2])
@@ -476,6 +528,9 @@ def test_subscribe_to_array_registered_without_patch(tiled_websocket_context, tm
             ),
         ],
     )
+    unique_key = (
+        f"test_subscribe_to_array_registered_without_patch_{uuid.uuid4().hex[:8]}"
+    )
 
     with container_sub.start_in_thread(1):
         x = client.new(
@@ -483,7 +538,7 @@ def test_subscribe_to_array_registered_without_patch(tiled_websocket_context, tm
             data_sources=[data_source],
             metadata={},
             specs=[],
-            key="test_subscribe_to_array_registered_without_patch",
+            key=unique_key,
         )
         actual = x.read()  # smoke test
         np.testing.assert_array_equal(actual, arr[:2])
@@ -526,7 +581,7 @@ def test_streaming_table_write(tiled_websocket_context):
     client = from_context(context)
     updates = []
     event = threading.Event()
-    key = "test_streaming_table_write"
+    key = f"test_streaming_table_write_{uuid.uuid4().hex[:8]}"
 
     def collect(update):
         updates.append(update)
@@ -555,7 +610,7 @@ def test_streaming_table_append(tiled_websocket_context):
     client = from_context(context)
     updates = []
     event = threading.Event()
-    key = "test_streaming_table_append"
+    key = f"test_streaming_table_append_{uuid.uuid4().hex[:8]}"
 
     def collect(update):
         updates.append(update)
@@ -599,7 +654,9 @@ def test_subscription_auto_reconnect_on_network_failure(
 
     # Create streaming array node
     arr = np.arange(10)
-    streaming_node = client.write_array(arr, key="test_reconnect")
+    streaming_node = client.write_array(
+        arr, key=f"test_reconnect_{uuid.uuid4().hex[:8]}"
+    )
 
     # Track received updates
     received = []
@@ -655,7 +712,9 @@ def test_subscribe_no_api_key_rejected(tiled_websocket_context):
     client = from_context(context)
 
     arr = np.arange(10)
-    streaming_node = client.write_array(arr, key="test_stream_immediate")
+    streaming_node = client.write_array(
+        arr, key=f"test_stream_immediate_{uuid.uuid4().hex[:8]}"
+    )
 
     received_event = threading.Event()
 
@@ -679,7 +738,9 @@ def test_subscribe_no_api_key_public(tiled_websocket_context_public):
     client = from_context(context)
 
     arr = np.arange(10)
-    streaming_node = client.write_array(arr, key="test_stream_immediate")
+    streaming_node = client.write_array(
+        arr, key=f"test_stream_immediate_{uuid.uuid4().hex[:8]}"
+    )
 
     received_event = threading.Event()
 
