@@ -988,6 +988,54 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(container)
         return client
 
+    def write_ragged(
+        self,
+        array,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        access_tags=None,
+        max_partition_bytes=None,
+    ):
+        import awkward
+        import ragged
+
+        from tiled.structures.ragged import (
+            RaggedStructure,
+            make_ragged_array,
+            make_ragged_partitions,
+        )
+
+        array = make_ragged_array(array)
+        partitions = make_ragged_partitions(
+            array, max_partition_bytes or self._SUGGESTED_MAX_UPLOAD_SIZE
+        )
+        structure = RaggedStructure.from_array(array, partitions=partitions, dims=dims)
+
+        client = self.new(
+            StructureFamily.ragged,
+            [
+                DataSource(
+                    structure=structure, structure_family=StructureFamily.ragged
+                ),
+            ],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+        )
+        if client.npartitions == 1:
+            client.write(array)
+        else:
+            starts = structure.partitions[:-1]
+            stops = structure.partitions[1:]
+            for i, (start, stop) in enumerate(zip(starts, stops)):
+                array_part = ragged.array(awkward.to_packed(array[start:stop]._impl))
+                client.write_block(array_part, block=i)
+        return client
+
     def write_sparse(
         self,
         coords,
@@ -1319,6 +1367,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "dataframe": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
+            "ragged": _LazyLoad(("..ragged", Container.__module__), "RaggedClient"),
             "sparse": _LazyLoad(("..sparse", Container.__module__), "SparseClient"),
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"

@@ -71,6 +71,7 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
+    "dask-awkward",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.132.0",
@@ -95,6 +96,7 @@ all = [
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
+    "ragged",
     "redis",
     "rich",
     "sparse >=0.15.5",
@@ -119,6 +121,7 @@ client = [
     "blosc2; python_version >= '3.10'",
     "dask[array]",
     "dask[dataframe]",
+    "dask-awkward",
     "entrypoints",
     "lz4",
     "ndindex",
@@ -126,6 +129,7 @@ client = [
     "numpy",
     "pandas",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
+    "ragged",
     "rich",
     "sparse >=0.15.5",
     "stamina",
@@ -207,6 +211,7 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
+    "dask-awkward",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.132.0",
@@ -231,6 +236,7 @@ server = [
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
+    "ragged",
     "sparse >=0.15.5",
     "stamina",
     "redis",
