@@ -225,6 +225,7 @@ def _make_ws_handler_common(
     """
 
     async def handler(sequence: Optional[int] = None):
+        print(f"WS HANDLER: Client connected to node {node_id} with start sequence {sequence}")
         await websocket.accept()
         end_stream = asyncio.Event()
 
@@ -261,11 +262,11 @@ def _make_ws_handler_common(
         # Setup buffer
         stream_buffer = asyncio.Queue()
 
+        live_iter, live_cleanup = await live_sequence_source()
+
         async def buffer_live_events():
             """Function that adds currently streaming data to an asyncio.Queue"""
-            live_cleanup = None
             try:
-                live_iter, live_cleanup = await live_sequence_source()
                 async for live_seq in live_iter:
                     await stream_buffer.put(live_seq)
             except asyncio.CancelledError:
@@ -281,17 +282,29 @@ def _make_ws_handler_common(
 
         live_task = asyncio.create_task(buffer_live_events())
 
+        last_sent = 0
         if sequence is not None:
             # If a sequence number is passed, replay old data
-            current_seq = int(await current_sequence_getter())
+            current_seq = last_sent = int(await current_sequence_getter())
             logger.debug("Replaying old data...")
+            print(f"WS HANDLER: Replaying old data for node {node_id} starting from sequence {sequence} up to {current_seq}")
             for s in range(sequence, current_seq + 1):
                 await stream_data(s)
         # Finally stream all buffered data into the websocket
+        print(f"WS HANDLER: Finished replaying old data for node {node_id}, starting live stream from sequence {last_sent + 1}")
         try:
             while not end_stream.is_set():
                 live_seq = await stream_buffer.get()
+
+                print(f"WS HANDLER: Received live sequence {live_seq} for node {node_id}")
+
+                # Skip duplicates or already replayed messages
+                if live_seq <= last_sent:
+                    continue
+
+                print(f"WS HANDLER: Streaming live sequence {live_seq} for node {node_id}")
                 await stream_data(live_seq)
+                last_sent = live_seq
 
             await websocket.close(code=1000, reason="Producer ended stream")
         except WebSocketDisconnect:

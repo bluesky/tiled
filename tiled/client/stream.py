@@ -81,9 +81,11 @@ class _TestClientWebsocketWrapper:
         if start is not None:
             params = params.set("start", start)
         # Note: max_size is ignored for test client websockets
+        uri = str(self._uri.copy_with(params=params))
+        # print(f"Connecting to WS uri {uri}")
         with self._connection_lock:
             self._websocket = self._http_client.websocket_connect(
-                str(self._uri.copy_with(params=params)),
+                uri,
                 headers=headers,
             )
             self._websocket.__enter__()
@@ -127,6 +129,7 @@ class _RegularWebsocketWrapper:
             headers["Authorization"] = f"Apikey {api_key}"
         if start is not None:
             params = params.set("start", start)
+        # print(f"Connecting to WS uri {str(self._uri.copy_with(params=params))}")
         self._websocket = connect(
             str(self._uri.copy_with(params=params)),
             additional_headers=headers,
@@ -509,7 +512,8 @@ class Subscription(abc.ABC):
             self._disconnect_event.set()
         try:
             self._websocket.close()
-        except Exception:
+        except Exception as exc:
+            print(f"Error closing websocket connection: {exc}. It may have already been closed.")  # noqa: T201
             # Websocket may not have been fully connected
             pass
         self.disconnected.process(self)
@@ -523,6 +527,7 @@ class Subscription(abc.ABC):
             self._thread.join()
 
     def __enter__(self):
+        print("Starting subscription...")
         return self
 
     def __exit__(self, *args):
