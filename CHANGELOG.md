@@ -8,6 +8,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- A potential race condition when subscribing to an already started stream
+  and receiving replayed messages before the subscription is fully set up.
+
+## v0.2.7 (2026-02-27)
+
+### Fixed
+
 - Raise an error with a suitable message when trying to create an API key
   on a server that does not support it.
 - Backwards compatibility with older servers that do not support the `properties`
