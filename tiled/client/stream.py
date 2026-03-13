@@ -366,6 +366,8 @@ class Subscription(abc.ABC):
     )
     def _connect(self, start: Optional[int] = None, max_size: int = 1_000_000) -> None:
         """Connect to websocket with retry."""
+        if self._disconnect_event.is_set():
+            raise RuntimeError("Cannot be restarted once stopped.")
 
         # Reset schema so first message on new connection is parsed as schema
         self._schema = None
