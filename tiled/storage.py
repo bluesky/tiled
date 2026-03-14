@@ -29,6 +29,11 @@ __all__ = [
 SUPPORTED_OBJECT_URI_SCHEMES = {"http", "https"}  # TODO: Add "s3", "gs", "azure", "az"
 
 
+class UnsupportedStorageError(ValueError):
+    "Raised when the Tiled server does not have a suitable storage for a given adapter."
+    pass
+
+
 @dataclasses.dataclass(frozen=True)
 class Storage:
     "Base class for representing storage location"

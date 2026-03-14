@@ -81,6 +81,7 @@ from ..storage import (
     FileStorage,
     ObjectStorage,
     SQLStorage,
+    UnsupportedStorageError,
     get_storage,
     parse_storage,
     register_storage,
@@ -657,7 +658,55 @@ class CatalogNodeAdapter:
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
         data_sources = data_sources or []
+        storage_for_mimetype = {}
 
+        # Check that data sources have valid mimetypes and that we have adapters/storage for them
+        for data_source in data_sources:
+            if data_source.management != Management.external:
+                if structure_family == StructureFamily.container:
+                    raise NotImplementedError(structure_family)
+                if data_source.mimetype is None:
+                    data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
+                        data_source.structure_family
+                    ]
+                if data_source.mimetype not in STORAGE_ADAPTERS_BY_MIMETYPE:
+                    raise HTTPException(
+                        status_code=415,
+                        detail=(
+                            f"The given data source mimetype, {data_source.mimetype}, "
+                            "is not one that the Tiled server knows how to write."
+                        ),
+                    )
+                adapter_cls = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
+                # Choose writable storage. Use the first writable storage item
+                # with a scheme that is supported by this adapter.
+                # For back-compat, if an adapter does not declare `supported_storage`
+                # assume it supports file-based storage only.
+                supported_storage = getattr(
+                    adapter_cls, "supported_storage", lambda: {FileStorage}
+                )()
+                for storage in self.context.writable_storage.values():
+                    if isinstance(storage, tuple(supported_storage)):
+                        storage_for_mimetype[data_source.mimetype] = storage
+                        break
+                else:
+                    raise UnsupportedStorageError(
+                        f"Attempted to use {adapter_cls.__name__}, which supports storage types "
+                        f"{[cls.__name__ for cls in supported_storage]}, "
+                        "but the only available storage types "
+                        f"are {[val.__class__.__name__ for val in self.context.writable_storage.values()]}."  # noqa
+                    )
+            else:
+                if data_source.mimetype not in self.context.adapters_by_mimetype:
+                    raise HTTPException(
+                        status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                        detail=(
+                            f"The given data source mimetype, {data_source.mimetype}, "
+                            "is not one that the Tiled server knows how to read."
+                        ),
+                    )
+
+        # If all the checks pass, create the node in the database and the storage for the data sources
         node = orm.Node(
             key=key,
             parent=self.node.id,
@@ -682,54 +731,13 @@ class CatalogNodeAdapter:
             await db.refresh(node)
             for data_source in data_sources:
                 if data_source.management != Management.external:
-                    if structure_family == StructureFamily.container:
-                        raise NotImplementedError(structure_family)
-                    if data_source.mimetype is None:
-                        data_source.mimetype = DEFAULT_CREATION_MIMETYPE[
-                            data_source.structure_family
-                        ]
-                    if data_source.mimetype not in STORAGE_ADAPTERS_BY_MIMETYPE:
-                        raise HTTPException(
-                            status_code=415,
-                            detail=(
-                                f"The given data source mimetype, {data_source.mimetype}, "
-                                "is not one that the Tiled server knows how to write."
-                            ),
-                        )
                     adapter_cls = STORAGE_ADAPTERS_BY_MIMETYPE[data_source.mimetype]
-                    # Choose writable storage. Use the first writable storage item
-                    # with a scheme that is supported by this adapter.
-                    # For back-compat, if an adapter does not declare `supported_storage`
-                    # assume it supports file-based storage only.
-                    supported_storage = getattr(
-                        adapter_cls, "supported_storage", lambda: {FileStorage}
-                    )()
-                    for storage in self.context.writable_storage.values():
-                        if isinstance(storage, tuple(supported_storage)):
-                            break
-                    else:
-                        raise RuntimeError(
-                            f"The adapter {adapter_cls} supports storage types "
-                            f"{[cls.__name__ for cls in supported_storage]} "
-                            "but the only available storage types "
-                            f"are {self.context.writable_storage.values()}."
-                        )
                     data_source = await ensure_awaitable(
                         adapter_cls.init_storage,
-                        storage,
+                        storage_for_mimetype[data_source.mimetype],
                         data_source,
                         await self.path_segments() + [key],
                     )
-                else:
-                    if data_source.mimetype not in self.context.adapters_by_mimetype:
-                        raise HTTPException(
-                            status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                            detail=(
-                                f"The given data source mimetype, {data_source.mimetype}, "
-                                "is not one that the Tiled server knows how to read."
-                            ),
-                        )
-
                 if data_source.structure is None:
                     structure_id = None
                 else:
