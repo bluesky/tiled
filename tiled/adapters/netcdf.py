@@ -11,7 +11,7 @@ from ..utils import path_from_uri
 from .xarray import DatasetAdapter
 
 
-def read_netcdf(filepath: Union[str, List[str], Path]) -> DatasetAdapter:
+def read_netcdf(filepath: Union[str, Path]) -> DatasetAdapter:
     """
 
     Parameters

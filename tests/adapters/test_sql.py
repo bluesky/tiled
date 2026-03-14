@@ -284,12 +284,10 @@ def assert_same_rows(table1: pa.Table, table2: pa.Table) -> None:
         ("adapter_psql_many_partitions"),
     ],
 )
-def test_append_single_partition(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
-) -> None:
+def test_append_single_partition(adapter: str, request: pytest.FixtureRequest) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-
+    assert isinstance(adapter, SQLAdapter)
     # test writing an entire pyarrow table to a single partition
     table = pa.Table.from_batches([batch0, batch1, batch2])
     adapter.append_partition(0, table)
@@ -312,11 +310,11 @@ def test_append_single_partition(
     ],
 )
 def test_write_read_one_batch_many_part(
-    adapter: SQLAdapter, request: pytest.FixtureRequest
+    adapter: str, request: pytest.FixtureRequest
 ) -> None:
     # get adapter from fixture
     adapter = request.getfixturevalue(adapter)
-
+    assert isinstance(adapter, SQLAdapter)
     # test writing to many partitions and reading it whole
     adapter.append_partition(0, batch0)
     adapter.append_partition(1, batch1)
