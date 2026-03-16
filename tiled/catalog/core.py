@@ -23,6 +23,7 @@ ALL_REVISIONS = [
     "0b033e7fbe30",
     "83889e049ddc",
     "6825c778aa3c",
+    "8fd6ac88f2ec",
 ]
 REQUIRED_REVISION = ALL_REVISIONS[0]
 
