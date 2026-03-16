@@ -87,8 +87,7 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
             )
         data = []
         for path in self._block_paths:
-            for row in self._read_from_cache_or_file(path):
-                data.append(awkward.to_packed(row))
+            data.extend(self._read_from_cache_or_file(path))
         data = awkward.from_iter(data)
         sliced_data = data[tuple(slice)] if slice else data
         return ragged.array(
