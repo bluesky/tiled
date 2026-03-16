@@ -82,10 +82,7 @@ class RaggedClient(BaseClient):
                 content = handle_error(
                     self.context.http_client.get(
                         url_path,
-                        headers={
-                            "Accept": "application/zip",
-                            "Accept-Encoding": "zstd, lz4, gzip",  # omitting blosc2
-                        },
+                        headers={"Accept": "application/zip"},
                         params=url_params,
                     ),
                 ).read()
