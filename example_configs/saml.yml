@@ -27,4 +27,6 @@ authentication:
           x509cert: ""
 trees:
   - path: /
-    tree: tiled.examples.nexus:tree
+    tree: tiled.examples.nexus:build_tree
+    args:
+      url: null  # Use simulated structure instead of downloading the file
