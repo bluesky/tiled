@@ -1,5 +1,6 @@
 import concurrent.futures
 import itertools
+import math
 from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
@@ -9,6 +10,7 @@ import httpx
 import numpy
 from numpy.typing import NDArray
 
+from ..ndslice import NDBlock, NDSlice, split_slice
 from ..structures.core import STRUCTURE_TYPES
 from .base import BaseClient
 from .utils import (
@@ -17,6 +19,7 @@ from .utils import (
     handle_error,
     params_from_slice,
     retry_context,
+    slices_to_dask_chunks,
 )
 
 if TYPE_CHECKING:
@@ -25,6 +28,12 @@ if TYPE_CHECKING:
 
 class _DaskArrayClient(BaseClient):
     "Client-side wrapper around an array-like that returns dask arrays"
+
+    # The limit on the expected size of the response body (before compression).
+    # This will be used to determine how to combine multiple requests when fetching
+    # data in blocks. If set to None, the client will not attempt to combine
+    # requests and will fetch each chunk separately as determiied by the structure.
+    RESPONSE_BYTESIZE_LIMIT = 250 * 1024 * 1024  # 250 MiB
 
     def __init__(self, *args, item, **kwargs):
         super().__init__(*args, item=item, **kwargs)
@@ -60,14 +69,13 @@ class _DaskArrayClient(BaseClient):
         return len(self.structure().shape)
 
     def __repr__(self):
-        structure = self.structure()
         attrs = {
-            "shape": structure.shape,
-            "chunks": chunks_repr(structure.chunks),
-            "dtype": structure.data_type.to_numpy_dtype(),
+            "shape": self.shape,
+            "chunks": chunks_repr(self.chunks),
+            "dtype": self.dtype,
         }
-        if structure.dims:
-            attrs["dims"] = structure.dims
+        if dims := self.structure().dims:
+            attrs["dims"] = dims
         return (
             f"<{type(self).__name__}"
             + "".join(f" {k}={v}" for k, v in attrs.items())
@@ -77,104 +85,187 @@ class _DaskArrayClient(BaseClient):
     def __array__(self, *args, **kwargs):
         return self.read().__array__(*args, **kwargs)
 
-    def _get_block(self, block, dtype, shape, slice=None):
-        """
-        Fetch the actual data for one block in a chunked (dask) array.
+    def _get_block(self, block: NDBlock, block_slice: Optional[NDSlice] = None):
+        """Fetch the data for one chunk (block) in a chunked array.
 
-        See read_block() for a public version of this. This private version
-        enables more efficient multi-block access by requiring the caller to
-        pass in the structure (dtype, shape).
+        This private method is used internally by the client and requires the
+        `block` and `block_slice` arguments to be pre-cast as NDBlock and NDSlice
+        types, respectively.
+
+        This method uses the `/array/block` endpoint to fetch one block of the array,
+        at a time. The block boundaries are determined by the structure of the array,
+        and usually correspond to the chunking of the array on the server side.
+
+        See read_block() for a public version of this.
+
+        Parameters
+        ----------
+        block : NDBlock
+            The chunk index, e.g. (0, 0), (0, 1), (0, 2) .... for a 2D array
+            chunked into 3 blocks.
+        block_slice : NDSlice, optional
+            A slice within this block to return.
         """
+
         media_type = "application/octet-stream"
-        if slice is not None:
-            # TODO The server accepts a slice parameter but we'll need to write
-            # careful code here to determine what the new shape will be.
-            raise NotImplementedError(
-                "Slicing less than one block is not yet supported."
-            )
-        if shape:
+
+        # Determine the expected shape of the resulting array after slicing
+        exp_shape = []
+        # Expand the block to convert for URL
+        block = block.expand_for_shape([len(dim) for dim in self.chunks])
+        if shape := block.shape_from_chunks(self.chunks):
+            exp_shape = block_slice.shape_after_slice(shape) if block_slice else shape
             # Check for special case of shape with 0 in it.
-            if 0 in shape:
+            if 0 in exp_shape:
                 # This is valid, and it has come up in the wild.  An array with
                 # 0 as one of the dimensions never contains data, so we can
                 # short-circuit here without any further information from the
                 # service.
-                return numpy.array([], dtype=dtype).reshape(shape)
-            expected_shape = ",".join(map(str, shape))
-        else:
-            expected_shape = "scalar"
+                return numpy.array([], dtype=self.dtype).reshape(exp_shape)
+
         url_path = self.item["links"]["block"]
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            "block": block.to_numpy_str(),
+            "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
+        }
+        params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
         for attempt in retry_context():
             with attempt:
                 content = handle_error(
                     self.context.http_client.get(
                         url_path,
                         headers={"Accept": media_type},
-                        params={
-                            **parse_qs(urlparse(url_path).query),
-                            "block": ",".join(map(str, block)),
-                            "expected_shape": expected_shape,
-                        },
+                        params=params,
                     )
                 ).read()
-        return numpy.frombuffer(content, dtype=dtype).reshape(shape)
+
+        return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
+
+    def _get_slice(self, slice: NDSlice):
+        """Fetch the data for a slice of the full array
+
+        This private method is used internally by the client and requires the
+        `slice` argument to be pre-cast as an NDSlice type.
+
+        The request is made to the `/array/full` endpoint.
+
+        See read() for a public version of this.
+
+        Parameters
+        ----------
+        slice : NDSlice
+            A slice of the array to return, pass NDSlice() to return the whole array.
+        """
+
+        media_type = "application/octet-stream"
+
+        # Determine the expected shape of the resulting array after slicing
+        exp_shape = slice.shape_after_slice(self.shape) if slice else self.shape
+
+        # Check for special case of shape with 0 in it.
+        if 0 in exp_shape:
+            # This is valid, and it has come up in the wild.  An array with
+            # 0 as one of the dimensions never contains data, so we can
+            # short-circuit here without any further information from the service.
+            return numpy.array([], dtype=self.dtype).reshape(exp_shape)
+
+        url_path = self.item["links"]["full"]
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
+        }
+        params = params | ({"slice": slice.to_numpy_str()} if slice else {})
+        for attempt in retry_context():
+            with attempt:
+                content = handle_error(
+                    self.context.http_client.get(
+                        url_path,
+                        headers={"Accept": media_type},
+                        params=params,
+                    )
+                ).read()
+
+        return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def read_block(self, block, slice=None):
-        """
-        Access the data for one block of this chunked (dask) array.
+        """Access the data for one block of this chunked (dask) array.
+
+        This method uses the `/array/block` endpoint to fetch one block of the array,
+        at a time. The block boundaries are determined by the structure of the array,
+        and usually correspond to the chunking of the array on the server side.
 
         Optionally, access only a slice *within* this block.
         """
-        structure = self.structure()
-        chunks = structure.chunks
-        dtype = structure.data_type.to_numpy_dtype()
+
+        block, block_slice = NDBlock(block), NDSlice(slice)
+
         try:
-            shape = tuple(chunks[dim][i] for dim, i in enumerate(block))
+            shape = block.shape_from_chunks(self.chunks)
         except IndexError:
             raise IndexError(f"Block index {block} out of range")
+
+        exp_shape = block_slice.shape_after_slice(shape) if block_slice else shape
         dask_array = dask.array.from_delayed(
-            dask.delayed(self._get_block)(block, dtype, shape), dtype=dtype, shape=shape
+            dask.delayed(self._get_block)(block, block_slice),
+            dtype=self.dtype,
+            shape=exp_shape,
         )
-        # TODO Make the request in _get_block include the slice so that we only
-        # fetch exactly the data that we want. This will require careful code
-        # to determine what the shape will be.
-        if slice is not None:
-            dask_array = dask_array[slice]
         return dask_array
 
     def read(self, slice=None):
-        """
-        Access the entire array or a slice.
+        """Access the entire array or its slice
 
         The array will be internally chunked with dask.
         """
-        structure = self.structure()
-        shape = structure.shape
-        dtype = structure.data_type.to_numpy_dtype()
-        # Build a client-side dask array whose chunks pull from a server-side
-        # dask array.
-        name = "remote-dask-array-" f"{self.uri}"
-        chunks = structure.chunks
-        # Count the number of blocks along each axis.
-        num_blocks = (range(len(n)) for n in chunks)
-        # Loop over each block index --- e.g. (0, 0), (0, 1), (0, 2) .... ---
-        # and build a dask task encoding the method for fetching its data from
-        # the server.
-        dask_tasks = {
-            (name,)
-            + block: (
-                self._get_block,
-                block,
-                dtype,
-                tuple(chunks[dim][i] for dim, i in enumerate(block)),
+
+        # Determine the expected shape of the resulting array after slicing
+        if arr_slice := NDSlice(slice):
+            arr_slice = arr_slice.expand_for_shape(self.shape)  # Remove "..."
+        exp_shape = arr_slice.shape_after_slice(self.shape)
+        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
+
+        # Check for special case of shape with 0 in it.
+        if 0 in exp_shape:
+            # This is valid, and it has come up in the wild.  An array with
+            # 0 as one of the dimensions never contains data, so we can
+            # short-circuit here without any further information from the service.
+            return dask.array.array([], dtype=self.dtype).reshape(exp_shape)
+
+        # If the expected response is small, fetch it in one go.
+        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
+            dask_array = dask.array.from_delayed(
+                dask.delayed(self._get_slice)(arr_slice),
+                dtype=self.dtype,
+                shape=exp_shape,
             )
-            for block in itertools.product(*num_blocks)
+            return dask_array
+
+        # The response is expected to be large, subslice it and recombine with dask
+        # Build chunk boundaries along each axis to find best candidate split points
+        chunk_bounds = tuple(
+            tuple(itertools.accumulate(axis_chunks, initial=0))
+            for axis_chunks in self.chunks
+        )
+        indexed_slices = split_slice(
+            arr_slice.expand_for_shape(self.shape),
+            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
+            pref_splits=chunk_bounds,
+        )
+
+        # Build a client-side dask array whose chunks correspond to subsplits of the slice
+        name = "remote-dask-array-" f"{self.uri}"
+        dask_tasks = {
+            (name,) + indx: (self._get_slice, slc)
+            for indx, (slc) in indexed_slices.items()
         }
         dask_array = dask.array.Array(
-            dask=dask_tasks, name=name, chunks=chunks, dtype=dtype, shape=shape
+            name=name,
+            dask=dask_tasks,
+            dtype=self.dtype,
+            chunks=slices_to_dask_chunks(indexed_slices, self.shape),
+            shape=exp_shape,
         )
-        if slice is not None:
-            dask_array = dask_array[slice]
         return dask_array
 
     def write(self, array, persist=True):

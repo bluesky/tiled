@@ -36,6 +36,9 @@ nosetests.xml
 coverage.xml
 cover/*
 
+# hypothesis
+.hypothesis/
+
 # PyBuilder
 target/
 
