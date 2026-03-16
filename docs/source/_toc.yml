@@ -14,6 +14,7 @@ subtrees:
             - file: getting-started/integrations/index
               subtrees:
                 - entries:
+                  - file: getting-started/integrations/globus-streams
                   - file: getting-started/integrations/plotly
                   - file: getting-started/integrations/zarr
   - entries:
