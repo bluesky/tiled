@@ -11,10 +11,8 @@ else:
     from typing_extensions import Self
 
 import awkward
-import dask_awkward
 import numpy as np
 import ragged
-from dask_awkward.lib.core import calculate_known_divisions
 
 from tiled.structures.array import BuiltinDtype, StructDtype
 from tiled.structures.root import Structure
@@ -115,24 +113,19 @@ def make_ragged_partitions(array: ragged.array, limit_bytes: int) -> tuple[int, 
     if ak_array.nbytes <= limit_bytes:
         return (0, len(ak_array))
 
-    dak_array = dask_awkward.from_awkward(source=ak_array, npartitions=1)
+    partitions = [0, array.shape[0]]
     partition_index = 0
 
-    while partition_index < dak_array.npartitions:
-        part = dask_awkward.to_packed(dak_array.partitions[partition_index]).compute()
-        part_rows = len(part)
+    while partition_index < len(partitions) - 1:
+        start, end = partitions[partition_index], partitions[partition_index + 1]
+        part = awkward.to_packed(ak_array[start:end])
         if part.nbytes > limit_bytes:
-            if part_rows == 1:
+            if end - start == 1:
                 # We can't partition more finely than this
                 msg = f"cannot partition individual rows to fit within {limit_bytes} bytes"
                 raise ValueError(msg)
-            divisions = list(dak_array.divisions)
-            next_division = divisions[partition_index] + int(part_rows / 2)
-            divisions.insert(partition_index + 1, next_division)
-            dak_array = dak_array.repartition(divisions=tuple(divisions))
+            next_partition = start + (end - start) // 2
+            partitions.insert(partition_index + 1, next_partition)
         else:
             partition_index += 1
-
-    if not dak_array.known_divisions:
-        return calculate_known_divisions(dak_array)
-    return dak_array.defined_divisions
+    return tuple(partitions)

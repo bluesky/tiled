@@ -71,7 +71,6 @@ all = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "dask-awkward",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.132.0",
@@ -121,7 +120,6 @@ client = [
     "blosc2; python_version >= '3.10'",
     "dask[array]",
     "dask[dataframe]",
-    "dask-awkward",
     "entrypoints",
     "lz4",
     "ndindex",
@@ -211,7 +209,6 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "dask-awkward",
     "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
     "fastapi >=0.132.0",

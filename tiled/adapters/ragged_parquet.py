@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
 
 import awkward
-import dask_awkward
 import ragged
 
 from tiled.adapters.core import Adapter
+from tiled.adapters.resource_cache import with_resource_cache
 from tiled.adapters.utils import init_adapter_from_catalog
 from tiled.ndslice import NDSlice
 from tiled.storage import FileStorage, Storage
@@ -72,44 +73,38 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         data_source.assets.extend(assets)
         return data_source
 
+    def _read_from_cache_or_file(self, path: Path) -> awkward.Array:
+        cache_key = (awkward.from_parquet, path)
+        return with_resource_cache(cache_key, awkward.from_parquet, path)
+
     def read(self, slice: NDSlice | None = None) -> ragged.array:
         """Read ragged array data from storage."""
         if self._structure.npartitions == 1:
-            # TODO: I can't get dask_awkward to behave with single-partition data
-            data = awkward.from_parquet(str(self._block_paths[0]))
+            data = self._read_from_cache_or_file(self._block_paths[0])
             sliced_data = data[tuple(slice)] if slice else data
-            return ragged.array(sliced_data)
-
-        data = dask_awkward.from_parquet([str(path) for path in self._block_paths])
-        if isinstance(data, tuple):
-            raise RuntimeError(
-                "dask_awkward.from_parquet produced unexpected pair of arrays"
-            )
-        data = data.persist()
+            return ragged.array(awkward.to_packed(sliced_data))
+        data = []
+        for path in self._block_paths:
+            for row in self._read_from_cache_or_file(path):
+                data.append(awkward.to_packed(row))
+        data = awkward.from_iter(data)
         sliced_data = data[tuple(slice)] if slice else data
-        sliced_data = sliced_data.persist()
-        return ragged.array(dask_awkward.to_packed(sliced_data).compute())
+        return ragged.array(awkward.to_packed(sliced_data))
 
     def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
         """Read a single block of the ragged array from storage."""
-        data = dask_awkward.from_parquet([str(path) for path in self._block_paths])
-        if isinstance(data, tuple):
-            raise RuntimeError(
-                "dask_awkward.from_parquet produced unexpected pair of arrays"
-            )
-        part = data.partitions[block].persist()
-        sliced_data = part[tuple(slice)] if slice else part
-        sliced_data = sliced_data.persist()
-        return ragged.array(dask_awkward.to_packed(sliced_data).compute())
+        data: awkward.Array = self._read_from_cache_or_file(self._block_paths[block])
+        sliced_data = data[tuple(slice)] if slice else data
+        return ragged.array(awkward.to_packed(sliced_data))
 
     def write(self, array: ragged.array) -> None:
         """Write ragged array data to storage."""
         if self._structure.npartitions != 1:
             raise NotImplementedError
         uri = self._block_paths[0]
-        _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001
+        _ = awkward.to_parquet(array._impl, uri, extensionarray=False)  # noqa: SLF001
 
     def write_block(self, array: ragged.array, block: int) -> None:
         """Write a single block of the ragged array to storage."""
         uri = self._block_paths[block]
-        _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001
+        _ = awkward.to_parquet(array._impl, uri, extensionarray=False)  # noqa: SLF001

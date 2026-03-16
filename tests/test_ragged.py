@@ -96,28 +96,21 @@ def test_serialization_roundtrip(name):
     # Test reduced/flattened numpy array.
     _array, _offsets, _shape = _deconstruct_ragged(array)
     array_from_flattened = _construct_ragged(
-        _array,
-        dtype=_array.dtype.type,
-        offsets=_offsets,
-        shape=_shape,
+        _array, dtype=_array.dtype.type, offsets=_offsets, shape=_shape
     )
     assert ak.array_equal(array._impl, array_from_flattened._impl)  # noqa: SLF001
 
     # Test JSON serialization.
     json_contents = to_json("application/json", array, metadata={})
     array_from_json = from_json(
-        json_contents,
-        dtype=array.dtype.type,
-        offsets=_offsets,
-        shape=_shape,
+        json_contents, dtype=array.dtype.type, offsets=_offsets, shape=_shape
     )
     assert ak.array_equal(array._impl, array_from_json._impl)  # noqa: SLF001
 
     # Test flattened octet-stream serialization.
     octet_stream_contents = to_zipped_buffers("application/zip", array, metadata={})
     array_from_octet_stream = from_zipped_buffers(
-        octet_stream_contents,
-        dtype=array.dtype.type,
+        octet_stream_contents, dtype=array.dtype.type
     )
     assert ak.array_equal(array._impl, array_from_octet_stream._impl)  # noqa: SLF001
 
@@ -223,7 +216,6 @@ partitionable_arrays = [
 
 @pytest.mark.parametrize("array", partitionable_arrays)
 def test_read_write_partitioned(client, array: ragged.array):
-    # set partitioning to last dimension (the largest)
     # need to add a little bit to account for Awkward metadata
     max_partition_bytes = (partitionable_size * array.dtype.itemsize) + (
         2 * np.int64(0).nbytes
@@ -371,23 +363,15 @@ def context_from_adapter(
 
 
 @pytest.fixture
-def client_from_adapter(
-    context_from_adapter,
-):
+def client_from_adapter(context_from_adapter):
     return from_context(context_from_adapter, include_data_sources=True)
 
 
 @pytest.mark.parametrize("name", arrow_keys)
-def test_read_ragged_array_from_sql(
-    client_from_adapter,
-    name: str,
-) -> None:
+def test_read_ragged_array_from_sql(client_from_adapter, name: str) -> None:
     index = arrow_keys.index(name)
     expected = ragged.array(
-        [
-            *arrow_data_0[index].tolist(),
-            *arrow_data_1[index].tolist(),
-        ]
+        [*arrow_data_0[index].tolist(), *arrow_data_1[index].tolist()]
     )
     client = client_from_adapter[f"foo/{name}"]
 
