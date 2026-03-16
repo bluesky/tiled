@@ -84,7 +84,8 @@ arrays = {
             [RNG.random((2, 8)), [[]]],
             [RNG.random((5, 2)), RNG.random((3, 3))],
             [[[]], RNG.random((7, 1))],
-        ]
+        ],
+        dtype=np.float32,
     ),
 }
 

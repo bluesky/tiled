@@ -82,29 +82,35 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         if self._structure.npartitions == 1:
             data = self._read_from_cache_or_file(self._block_paths[0])
             sliced_data = data[tuple(slice)] if slice else data
-            return ragged.array(awkward.to_packed(sliced_data))
+            return ragged.array(
+                sliced_data, dtype=self._structure.data_type.to_numpy_dtype()
+            )
         data = []
         for path in self._block_paths:
             for row in self._read_from_cache_or_file(path):
                 data.append(awkward.to_packed(row))
         data = awkward.from_iter(data)
         sliced_data = data[tuple(slice)] if slice else data
-        return ragged.array(awkward.to_packed(sliced_data))
+        return ragged.array(
+            sliced_data, dtype=self._structure.data_type.to_numpy_dtype()
+        )
 
     def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
         """Read a single block of the ragged array from storage."""
         data: awkward.Array = self._read_from_cache_or_file(self._block_paths[block])
         sliced_data = data[tuple(slice)] if slice else data
-        return ragged.array(awkward.to_packed(sliced_data))
+        return ragged.array(
+            sliced_data, dtype=self._structure.data_type.to_numpy_dtype()
+        )
 
     def write(self, array: ragged.array) -> None:
         """Write ragged array data to storage."""
         if self._structure.npartitions != 1:
             raise NotImplementedError
         uri = self._block_paths[0]
-        _ = awkward.to_parquet(array._impl, uri, extensionarray=False)  # noqa: SLF001
+        _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001
 
     def write_block(self, array: ragged.array, block: int) -> None:
         """Write a single block of the ragged array to storage."""
         uri = self._block_paths[block]
-        _ = awkward.to_parquet(array._impl, uri, extensionarray=False)  # noqa: SLF001
+        _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001
