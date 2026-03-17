@@ -114,9 +114,10 @@ s = c.create_container('stuff')
 s.write_array([1, 2, 3], key='nested stuff')
 ```
 
-More advanced features not shown:
-- More niche structures, including sparse arrays and Awkward Arrays.
+More features not shown:
+- Downloading raw files in parallel
 - Registering data (e.g. files) without uploading a copy
 - Streaming data live
+- Specialized array structures, including sparse arrays and Awkward Arrays
 
 See [10 minutes to Tiled](#10-minutes-to-tiled) for an expanded version.
