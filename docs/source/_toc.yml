@@ -11,6 +11,8 @@ subtrees:
           - entries:
             - file: getting-started/what-is-tiled
             - file: getting-started/10-minutes-to-tiled
+            - file: getting-started/cheat-sheet
+              title: Cheat Sheet
             - file: getting-started/integrations/index
               subtrees:
                 - entries:
