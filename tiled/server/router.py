@@ -96,6 +96,7 @@ from .utils import (
     filter_for_access,
     get_base_url,
     get_base_url_websocket,
+    get_current_user,
     record_timing,
 )
 
@@ -1601,14 +1602,6 @@ def get_router(
             access_blob_modified = access_blob != {}
             access_blob = {}
 
-        if principal is None:
-            created_by = None
-        else:
-            if len(principal.identities) > 0:
-                created_by = principal.identities[0].id
-            else:
-                created_by = f"service:{principal.uuid}"
-
         node = await entry.create_node(
             metadata=body.metadata,
             structure_family=body.structure_family,
@@ -1616,7 +1609,7 @@ def get_router(
             specs=body.specs,
             data_sources=body.data_sources,
             access_blob=access_blob,
-            created_by=created_by,
+            created_by=get_current_user(principal),
         )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
@@ -2112,19 +2105,11 @@ def get_router(
             access_blob_modified = access_blob != entry.access_blob
             access_blob = entry.access_blob
 
-        if principal is None:
-            updated_by = None
-        else:
-            if len(principal.identities) > 0:
-                updated_by = principal.identities[0].id
-            else:
-                updated_by = f"service:{principal.uuid}"
-
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
             access_blob=access_blob,
-            updated_by=updated_by,
+            updated_by=get_current_user(principal),
             drop_revision=drop_revision,
         )
 
@@ -2197,19 +2182,11 @@ def get_router(
             access_blob_modified = access_blob != entry.access_blob
             access_blob = entry.access_blob
 
-        if principal is None:
-            updated_by = None
-        else:
-            if len(principal.identities) > 0:
-                updated_by = principal.identities[0].id
-            else:
-                updated_by = f"service:{principal.uuid}"
-
         await entry.replace_metadata(
             metadata=metadata,
             specs=specs,
             access_blob=access_blob,
-            updated_by=updated_by,
+            updated_by=get_current_user(principal),
             drop_revision=drop_revision,
         )
 

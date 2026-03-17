@@ -654,7 +654,7 @@ class CatalogNodeAdapter:
         specs=None,
         data_sources=None,
         access_blob=None,
-        created_by="",
+        created_by=None,
     ):
         access_blob = access_blob or {}
         key = key or self.context.key_maker()
@@ -1037,7 +1037,7 @@ class CatalogNodeAdapter:
         metadata=None,
         specs=None,
         access_blob=None,
-        updated_by="",
+        updated_by=None,
         *,
         drop_revision=False,
     ):
