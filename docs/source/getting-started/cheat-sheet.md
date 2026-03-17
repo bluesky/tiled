@@ -103,3 +103,19 @@ get_asset_filepaths(c['examples/xraydb/C/edges'])
 (as applicable), URIs, etc.
 c['examples/xraydb/C/edges'].data_sources()
 ```
+
+**Upload data**
+
+_This requires a server that you are authorized to write to._
+
+```python
+c.write_array([1, 2, 3], metadata={'color': 'blue'})
+c.write_table({'a': [1, 2], 'b': [3, 4]}, metadata={'color': 'blue'})
+s = c.create_container('stuff')
+s.write_array([1, 2, 3], key='nested stuff')
+```
+
+More advanced features not shown:
+- More niche structures, including sparse arrays and Awkward Arrays.
+- Registering data (e.g. files) without uploading a copy
+- Streaming data live
