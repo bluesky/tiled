@@ -8,12 +8,10 @@ See
 [10 minutes to Tiled](#10-minutes-to-tiled) for an expanded version.
 
 
-| Install | |
-| --|-- |
-| pip | `pip install "tiled[client]"` |
-| uv | `uv add "tiled[client]"` |
-| conda | `conda install -c conda-forge tiled-client` |
-| pixi | `pixi add tiled-client` |
+**Install Python Tiled client**
+
+With pip or uv, install `"tiled[client]"`. With conda or pixi, install
+`tiled-client` available on the `conda-forge` channel.
 
 **Connect**
 
