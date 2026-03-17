@@ -1,12 +1,11 @@
 # Tiled Cheat Sheet
 
-```{note}
 The audience for this cheat sheet is a scientist reading and writing data in
-Tiled from within a Python program.
+Tiled from within a Python program. Not included: Running a Tiled server, or
+using Tiled's HTTP REST and WebSocket APIs from other programming languages.
 
-Not included: Running a Tiled server, or using Tiled's HTTP REST and WebSocket
-APIs from other languages.
-```
+See
+[10 minutes to Tiled](#10-minutes-to-tiled) for an expanded version.
 
 
 | Install | |
@@ -119,3 +118,5 @@ More advanced features not shown:
 - More niche structures, including sparse arrays and Awkward Arrays.
 - Registering data (e.g. files) without uploading a copy
 - Streaming data live
+
+See [10 minutes to Tiled](#10-minutes-to-tiled) for an expanded version.
