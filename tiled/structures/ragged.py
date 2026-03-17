@@ -3,7 +3,8 @@ from __future__ import annotations
 import contextlib
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -52,7 +53,7 @@ class RaggedStructure(Structure):
 
         if partitions is None:
             # default to a single partition containing the whole array
-            partitions = (0, size)
+            partitions = (0, cast("int", shape[0]))
 
         if array.dtype.fields is not None:
             data_type = StructDtype.from_numpy_dtype(array.dtype)
