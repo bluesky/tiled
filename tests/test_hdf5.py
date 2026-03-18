@@ -456,6 +456,46 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
         list(client["ds_from_extr"].keys())
 
 
+def test_datasource_with_properties(context, example_file):
+    # Register a forcefully reshaped dataset and keep the true chunks in properties
+    client = from_context(context)
+
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path_from_uri(example_file), "r") as file:
+        true_arr = file["a/b/c/e"][:]
+
+    asset = Asset(
+        data_uri=example_file,
+        is_directory=False,
+        parameter="data_uris",
+        num=0,
+    )
+    data_source = DataSource(
+        mimetype="application/x-hdf5",
+        assets=[asset],
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure(
+            shape=(12, 1),
+            chunks=((3, 3, 3, 3), (1,)),
+            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
+        ),
+        parameters={"dataset": "a/b/c/e"},
+        properties={"chunks": ((3,), (4,))},  # True chunks of the dataset
+        management=Management.external,
+    )
+
+    arr = client.new(
+        structure_family=StructureFamily.array,
+        data_sources=[data_source],
+        key="ds_with_properties",
+    )
+
+    assert arr.read().shape == (12, 1)
+    assert arr.chunks == ((3, 3, 3, 3), (1,))
+    assert arr.data_sources()[0].properties["chunks"] == [[3], [4]]
+    numpy.testing.assert_array_equal(arr.read().ravel(), true_arr.ravel())
+
+
 def test_adapter_kwargs(example_file):
     # Test that extra kwargs are passed to HDF5ArrayAdapter via HDF5Adapter
     # when initialized from URIs with `dataset` and `slice` parameters
