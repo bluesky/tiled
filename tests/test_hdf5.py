@@ -476,6 +476,7 @@ def test_update_datasource_with_properties(context, example_file):
         structure_family=StructureFamily.array,
         structure=ArrayStructure.from_array(true_arr),
         parameters={"dataset": "a/b/c/e"},
+        properties={"chunks": None, "other": 42},
         management=Management.external,
     )
 
@@ -487,7 +488,7 @@ def test_update_datasource_with_properties(context, example_file):
 
     assert arr.read().shape == (3, 4)
     assert arr.chunks == ((3,), (4,))
-    assert arr.data_sources()[0].properties == {}
+    assert arr.data_sources()[0].properties == {"chunks": None, "other": 42}
     numpy.testing.assert_array_equal(arr.read(), true_arr)
 
     # Update the DataSource forcefully reshaping the data to (12, 1)
@@ -510,6 +511,7 @@ def test_update_datasource_with_properties(context, example_file):
     assert arr.read().shape == (12, 1)
     assert arr.chunks == ((3, 3, 3, 3), (1,))
     assert arr.data_sources()[0].properties["chunks"] == [[3], [4]]
+    assert arr.data_sources()[0].properties["other"] == 42
     numpy.testing.assert_array_equal(arr.read().ravel(), true_arr.ravel())
 
 
