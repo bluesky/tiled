@@ -13,7 +13,7 @@ from tiled.server.app import build_app
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import Asset, DataSource, Management
-from tiled.utils import BrokenLink, ensure_uri, path_from_uri
+from tiled.utils import BrokenLink, ensure_uri, path_from_uri, safe_json_dump
 from tiled.utils import tree as tree_util
 
 
@@ -456,7 +456,7 @@ def test_register_broken_hdf5_file(context, example_file_with_links):
         list(client["ds_from_extr"].keys())
 
 
-def test_datasource_with_properties(context, example_file):
+def test_update_datasource_with_properties(context, example_file):
     # Register a forcefully reshaped dataset and keep the true chunks in properties
     client = from_context(context)
 
@@ -474,13 +474,8 @@ def test_datasource_with_properties(context, example_file):
         mimetype="application/x-hdf5",
         assets=[asset],
         structure_family=StructureFamily.array,
-        structure=ArrayStructure(
-            shape=(12, 1),
-            chunks=((3, 3, 3, 3), (1,)),
-            data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("int64")),
-        ),
+        structure=ArrayStructure.from_array(true_arr),
         parameters={"dataset": "a/b/c/e"},
-        properties={"chunks": ((3,), (4,))},  # True chunks of the dataset
         management=Management.external,
     )
 
@@ -489,6 +484,28 @@ def test_datasource_with_properties(context, example_file):
         data_sources=[data_source],
         key="ds_with_properties",
     )
+
+    assert arr.read().shape == (3, 4)
+    assert arr.chunks == ((3,), (4,))
+    assert arr.data_sources()[0].properties == {}
+    numpy.testing.assert_array_equal(arr.read(), true_arr)
+
+    # Update the DataSource forcefully reshaping the data to (12, 1)
+    upd_ds = arr.data_sources()[0]
+    upd_ds.structure = ArrayStructure(
+        shape=(12, 1),
+        chunks=((3, 3, 3, 3), (1,)),
+        data_type=upd_ds.structure["data_type"],
+    )
+    upd_ds.properties.update({"chunks": ((3,), (4,))})  # True chunks of the dataset
+
+    context.http_client.put(
+        arr.uri.replace("/metadata/", "/data_source/", 1),
+        headers={"Content-Type": "application/json"},
+        content=safe_json_dump({"data_source": upd_ds}),
+    ).raise_for_status()
+
+    arr = client["ds_with_properties"]
 
     assert arr.read().shape == (12, 1)
     assert arr.chunks == ((3, 3, 3, 3), (1,))
