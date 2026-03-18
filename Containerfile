@@ -106,7 +106,7 @@ rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN mkdir -p /deploy/config
 RUN mkdir -p /storage && chown -R app:app /storage
-COPY ./example_configs/single_catalog_single_user.yml /deploy/config
+COPY ./example_configs/config_for_containerfile.yml /deploy/config
 ENV TILED_CONFIG=/deploy/config
 
 # Copy the pre-built `/app` directory to the runtime container
