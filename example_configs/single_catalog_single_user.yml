@@ -1,22 +1,26 @@
+---
 authentication:
   # The default is false. Set to true to enable any HTTP client that can
   # connect to _read_. An API key is still required to write.
   allow_anonymous_access: false
-trees:
-  - path: /
-    tree: catalog
-    args:
-      uri: "sqlite:///:memory:"  # in-memory catalog, for testing (see note below)
-      writable_storage: "/storage/data"
-      # This creates the database if it does not exist. This is convenient, but in
-      # a horizontally-scaled deployment, this can be a race condition and multiple
-      # containers may simultaneously attempt to create the database.
-      # If that is a problem, set this to false, and run:
-      #
-      # tiled catalog init URI
-      #
-      # separately.
-      #
-      # The above config creates the database in memory; to make it persistent,
-      # use a file-based URI, e.g.: `uri: "sqlite:////storage/catalog.db"`
-      init_if_not_exists: true
+catalog:
+  # This database stores metadata and URIs pointing to data.
+  uri: "./catalog.db"
+
+  writable_storage:
+
+    # File-based data storage
+    - "./data"
+
+    # Embedded tabular data storage
+    - "duckdb:///./data"
+
+  # This creates the database if it does not exist. This is convenient, but in
+  # a horizontally-scaled deployment, this can be a race condition and multiple
+  # containers may simultaneously attempt to create the database.
+  # If that is a problem, set this to false, and run:
+  #
+  # tiled catalog init URI
+  #
+  # separately.
+  init_if_not_exists: true

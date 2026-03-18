@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Annotated, Any, Iterator, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
@@ -37,6 +42,37 @@ TREE_ALIASES = {"catalog": "tiled.catalog:from_uri"}
 def sub_paths(segments: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
     for i in range(len(segments)):
         yield segments[:i]
+
+
+class CatalogConfig(BaseSettings):
+    uri: str
+    metadata: Optional[dict] = None
+    specs: Optional[list[Spec]] = None
+    writable_storage: Optional[list[str]] = None
+    readable_storage: Optional[list[str]] = None
+    init_if_not_exists: bool = False
+    adapters_by_mimetype: Optional[list[EntryPointString]] = None
+    top_level_access_blob: Optional[dict] = None
+    mount_node: Optional[Union[str, list[str]]] = None
+    catalog_pool_size: int = 5
+    storage_pool_size: int = 5
+    catalog_max_overflow: int = 10
+    storage_max_overflow: int = 10
+
+    model_config = SettingsConfigDict(env_prefix="TILED_CATALOG_")
+
+    @classmethod
+    def settings_customise_sources(
+        # Give env vars priority over config file.
+        # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#changing-priority
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return env_settings, init_settings, file_secret_settings
 
 
 class TreeSpec(BaseModel):
@@ -184,7 +220,8 @@ class StreamingCacheConfig(BaseModel):
 
 
 class Config(BaseModel):
-    trees: list[TreeSpec]
+    catalog: CatalogConfig  # recommended
+    trees: Optional[list[TreeSpec]] = None  # legacy / flexible alternative
     media_types: dict[str, dict[str, EntryPointString]] = {}
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
@@ -200,13 +237,15 @@ class Config(BaseModel):
     reject_undeclared_specs: bool = False
     expose_raw_assets: bool = True
     routers: list[EntryPointString] = []
+    streaming_cache: Optional[StreamingCacheConfig] = None
 
+    # If recommended 'catalog' config is used, these parameters are
+    # not used; they are set inside the CatalogConfig.
+    # If legacy / flexible 'trees' config is used, these are used.
     catalog_pool_size: int = 5
     storage_pool_size: int = 5
     catalog_max_overflow: int = 10
     storage_max_overflow: int = 10
-
-    streaming_cache: Optional[StreamingCacheConfig] = None
 
     @field_validator("access_policy")
     @classmethod
@@ -228,6 +267,30 @@ class Config(BaseModel):
                     )
             paths.add(path)
         return trees
+
+    @model_validator(mode="after")
+    def reconcile_catalog_and_trees(self):
+        """
+        The 'catalog' and 'trees' config are mutually exclusive.
+
+        The 'catalog' (recommended) specifies one catalog; 'trees' (advanced)
+        can specify multiple catalogs, mounted at different prefixes.
+        """
+        if self.catalog is not None:
+            if self.trees:
+                raise ValueError(
+                    "The configuration 'catalog' specifies a single catalog, "
+                    "whereas 'trees' can specify multiple catalogs. "
+                    "It is not allowed to use both 'catalog' and 'trees'."
+                )
+            # Build a TreeSpec out of the catalog.
+            tree = TreeSpec(
+                tree="catalog",
+                path="/",
+                args=self.catalog.model_dump(),
+            )
+            self.trees = [tree]
+        return self
 
     @model_validator(mode="after")
     def fudge_tree_args(self):
