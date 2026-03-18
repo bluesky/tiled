@@ -49,7 +49,6 @@ docker run \
 **The data and database are inside the container and will not persist outside
 it.** Read on to persist it.
 
-
 ### Using Persistent Storage
 
 ```sh
@@ -59,6 +58,23 @@ docker run \
   -p 8000:8000 \
   -e TILED_SINGLE_USER_API_KEY=$TILED_SINGLE_USER_API_KEY \
   -v ./storage:/storage ghcr.io/bluesky/tiled:latest
+```
+
+### Using Scalable Persistent Storage
+
+The default configuration of the Tiled container image does not require any
+externally-managed services. It runs on "embedded" databases (SQLite, DuckDB)
+and file-based data storage. It caches recent metadata and (small) data for
+live-streaming in the memory of the server process.
+
+To scale Tiled horizontally, you must upgrade from this simple single-process
+configuration to one that employs externally-managed services:
+
+- PostgreSQL for metadata and tabular data
+- Redis (optional, needed for streaming)
+
+```sh
+podman-compose -f compose.yml up -d
 ```
 
 ## Without a Container

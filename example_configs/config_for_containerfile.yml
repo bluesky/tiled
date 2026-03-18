@@ -24,3 +24,7 @@ catalog:
   #
   # separately.
   init_if_not_exists: true
+
+streaming_cache:
+  # Store recent metadata and uploaded data in memory for streaming.
+  uri: memory

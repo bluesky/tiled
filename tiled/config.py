@@ -10,7 +10,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -44,6 +44,19 @@ def sub_paths(segments: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
         yield segments[:i]
 
 
+def settings_customise_sources(
+    # Give env vars priority over config file.
+    # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#changing-priority
+    cls,
+    settings_cls: type[BaseSettings],
+    init_settings: PydanticBaseSettingsSource,
+    env_settings: PydanticBaseSettingsSource,
+    dotenv_settings: PydanticBaseSettingsSource,
+    file_secret_settings: PydanticBaseSettingsSource,
+) -> tuple[PydanticBaseSettingsSource, ...]:
+    return env_settings, init_settings, file_secret_settings
+
+
 class CatalogConfig(BaseSettings):
     uri: str
     metadata: Optional[dict] = None
@@ -60,19 +73,7 @@ class CatalogConfig(BaseSettings):
     storage_max_overflow: int = 10
 
     model_config = SettingsConfigDict(env_prefix="TILED_CATALOG_")
-
-    @classmethod
-    def settings_customise_sources(
-        # Give env vars priority over config file.
-        # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#changing-priority
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return env_settings, init_settings, file_secret_settings
+    settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class TreeSpec(BaseModel):
@@ -211,12 +212,15 @@ class ValidationSpec(BaseModel):
     validator: Optional[EntryPointString] = None
 
 
-class StreamingCacheConfig(BaseModel):
+class StreamingCacheConfig(BaseSettings):
     uri: str
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day
     socket_connect_timeout: int = 10
+
+    model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class Config(BaseModel):
@@ -376,6 +380,15 @@ class Config(BaseModel):
         for spec in self.specs:
             base.register(Spec(spec.spec), spec.validator or _no_op_validator)
         return base
+
+    @model_validator(mode="after")
+    def populate_streaming_cache_from_env(self) -> "Config":
+        if self.streaming_cache is None:
+            try:
+                self.streaming_cache = StreamingCacheConfig()
+            except ValidationError:
+                pass  # uri not set, leave as None
+        return self
 
 
 def parse_configs(src_file: Union[str, Path]) -> Config:
