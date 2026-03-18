@@ -45,10 +45,6 @@ if TYPE_CHECKING:
 
     from .stream import ContainerSubscription
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
     # This maps the structure_family sent by the server to a client-side object that
@@ -707,14 +703,6 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         # Backompatibility: if the server is older than 0.2.4,
         # it can not accept the "properties" field in the data source.
         # This can be removed in later releases.
-        logger.warning(
-            "The server version is: %s",
-            self.context.server_info.library_version,
-        )
-        logger.warning(
-            "Parsed version is: %s",
-            Version(self.context.server_info.library_version),
-        )
         if Version(self.context.server_info.library_version) < Version("0.2.4"):
             data_sources_as_dicts = [
                 {k: v for k, v in asdict(ds).items() if k != "properties"}
