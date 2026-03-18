@@ -700,16 +700,16 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata = metadata or {}
         access_blob = {"tags": access_tags} if access_tags is not None else {}
 
-        # Backompatibility: if the server is older than 0.2.4,
-        # it can not accept the "properties" field in the data source.
-        # This can be removed in later releases.
-        if Version(self.context.server_info.library_version) < Version("0.2.4"):
-            data_sources_as_dicts = [
-                {k: v for k, v in asdict(ds).items() if k != "properties"}
-                for ds in data_sources
-            ]
-        else:
-            data_sources_as_dicts = [asdict(ds) for ds in data_sources]
+        # # Backompatibility: if the server is older than 0.2.4,
+        # # it can not accept the "properties" field in the data source.
+        # # This can be removed in later releases.
+        # if Version(self.context.server_info.library_version) < Version("0.2.4"):
+        #     data_sources_as_dicts = [
+        #         {k: v for k, v in asdict(ds).items() if k != "properties"}
+        #         for ds in data_sources
+        #     ]
+        # else:
+        data_sources_as_dicts = [asdict(ds) for ds in data_sources]
 
         item = {
             "attributes": {
