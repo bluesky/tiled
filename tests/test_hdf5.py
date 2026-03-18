@@ -480,11 +480,12 @@ def test_update_datasource_with_properties(context, example_file):
         management=Management.external,
     )
 
-    arr = client.new(
+    client.new(
         structure_family=StructureFamily.array,
         data_sources=[data_source],
         key="ds_with_properties",
     )
+    arr = client["ds_with_properties"]
 
     assert arr.read().shape == (3, 4)
     assert arr.chunks == ((3,), (4,))
