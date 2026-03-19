@@ -51,14 +51,15 @@ Tiled ships with a compose file to do this:
 :caption: compose.yml
 ```
 
-First, create a `.env` file formatted like so.
+Place the above `compose.yml` in a directory, and create
+create a `.env` file next to it, formatted like so.
 
 ```{literalinclude} ../../../.env.example
 :language: yaml
 :caption: .env
 ```
 
-This snippet can create secure secrets for you:
+This snippet can populate the file with secure secrets for you:
 
 ```sh
 echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
