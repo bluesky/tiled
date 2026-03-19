@@ -224,8 +224,8 @@ class StreamingCacheConfig(BaseSettings):
 
 
 class Config(BaseSettings):
-    catalog: CatalogConfig  # recommended
-    trees: Optional[list[TreeSpec]] = None  # legacy / flexible alternative
+    catalog: Optional[CatalogConfig] = None  # recommended
+    trees: Optional[list[TreeSpec]] = None  # advanced alternative
     media_types: dict[str, dict[str, EntryPointString]] = {}
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
@@ -295,6 +295,10 @@ class Config(BaseSettings):
             # self-consistent state.
             # (The model cannot have *both* catalog and trees.)
             self.catalog = None
+        elif not self.trees:
+            raise ValueError(
+                "Configuration must specific 'catalog' or 'trees' (multiple catalogs)."
+            )
         return self
 
     @field_validator("trees")
@@ -314,7 +318,7 @@ class Config(BaseSettings):
     @model_validator(mode="after")
     def fudge_tree_args(self):
         # Needing to fudge the args of tree specs is awful
-        for tree in self.trees:
+        for tree in self.trees or []:
             tree.args = tree.args or {}
             if tree.tree_type is from_uri:
                 defaults = get_settings()
