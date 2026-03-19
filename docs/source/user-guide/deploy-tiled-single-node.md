@@ -52,9 +52,28 @@ Tiled ships with a compose file to do this:
 :caption: compose.yml
 ```
 
-```sh
-podman-compose up -d
+First, create a `.env` file formatted like so.
+
+```{literalinclude} ../../../.env.example
+:language: yaml
+:caption: .env
 ```
+
+This snippet can create secure secrets for you:
+
+```sh
+echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 32)" >> .env
+echo "REDIS_PASSWORD=$(openssl rand -hex 32)" >> .env
+```
+
+Start the services like so. (It looks for a `.env` file automatically.)
+
+```sh
+docker-compose up -d
+```
+
+As usual, `docker-compose down` stops the services.
 
 ## Without a Container
 
