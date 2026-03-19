@@ -10,7 +10,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Optional, Union
 
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -76,7 +76,7 @@ class CatalogConfig(BaseSettings):
     settings_customise_sources = classmethod(settings_customise_sources)
 
 
-class TreeSpec(BaseModel):
+class TreeSpec(BaseSettings):
     tree_type: Annotated[EntryPointString, Field(alias="tree")]
     path: str
     args: Optional[dict[str, Any]] = None
@@ -121,7 +121,7 @@ class TreeSpec(BaseModel):
         return TREE_ALIASES.get(value, value)
 
 
-class AuthenticationProviderSpec(BaseModel):
+class AuthenticationProviderSpec(BaseSettings):
     provider: str
     authenticator: EntryPointString
     args: Optional[dict[str, Any]] = None
@@ -135,12 +135,12 @@ class AuthenticationProviderSpec(BaseModel):
         return (self.provider, auth)
 
 
-class TiledAdmin(BaseModel):
+class TiledAdmin(BaseSettings):
     provider: str
     id: str
 
 
-class Authentication(BaseModel):
+class Authentication(BaseSettings):
     # Defaults are all left as None to differentiate between unset and set to the default
     providers: Optional[list[AuthenticationProviderSpec]] = None
     tiled_admins: Optional[list[TiledAdmin]] = None
@@ -187,7 +187,7 @@ class Authentication(BaseModel):
         return self
 
 
-class Database(BaseModel):
+class Database(BaseSettings):
     uri: Optional[str] = None
     init_if_not_exists: Optional[bool] = None
     pool_pre_ping: Optional[bool] = None
@@ -195,7 +195,7 @@ class Database(BaseModel):
     max_overflow: Optional[int] = 10
 
 
-class AccessControl(BaseModel):
+class AccessControl(BaseSettings):
     access_policy: EntryPointString
     args: Optional[dict[str, Any]]
 
@@ -203,11 +203,11 @@ class AccessControl(BaseModel):
         return self.access_policy(**(self.args or {}))
 
 
-class MetricsConfig(BaseModel):
+class MetricsConfig(BaseSettings):
     prometheus: bool = True
 
 
-class ValidationSpec(BaseModel):
+class ValidationSpec(BaseSettings):
     spec: str
     validator: Optional[EntryPointString] = None
 
@@ -223,7 +223,7 @@ class StreamingCacheConfig(BaseSettings):
     settings_customise_sources = classmethod(settings_customise_sources)
 
 
-class Config(BaseModel):
+class Config(BaseSettings):
     catalog: CatalogConfig  # recommended
     trees: Optional[list[TreeSpec]] = None  # legacy / flexible alternative
     media_types: dict[str, dict[str, EntryPointString]] = {}
