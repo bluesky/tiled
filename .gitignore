@@ -95,3 +95,7 @@ uv.lock
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# Do not commit overrides; these are for local changes.
+compose.override.yaml
+compose.override.yml
