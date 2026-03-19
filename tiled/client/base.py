@@ -753,6 +753,7 @@ class BaseClient:
                 content = handle_error(
                     self.context.http_client.patch(
                         self.item["links"]["self"],
+                        headers={"Content-Type": "application/json"},
                         content=safe_json_dump(data),
                         params=params,
                     )
@@ -832,6 +833,7 @@ class BaseClient:
                 content = handle_error(
                     self.context.http_client.put(
                         self.item["links"]["self"],
+                        headers={"Content-Type": "application/json"},
                         content=safe_json_dump(data),
                         params=params,
                     )
