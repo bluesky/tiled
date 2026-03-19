@@ -273,6 +273,15 @@ class Config(BaseModel):
         return trees
 
     @model_validator(mode="after")
+    def populate_streaming_cache_from_env(self) -> "Config":
+        if self.streaming_cache is None:
+            try:
+                self.streaming_cache = StreamingCacheConfig()
+            except ValidationError:
+                pass  # uri not set, leave as None
+        return self
+
+    @model_validator(mode="after")
     def reconcile_catalog_and_trees(self):
         """
         The 'catalog' and 'trees' config are mutually exclusive.
@@ -380,15 +389,6 @@ class Config(BaseModel):
         for spec in self.specs:
             base.register(Spec(spec.spec), spec.validator or _no_op_validator)
         return base
-
-    @model_validator(mode="after")
-    def populate_streaming_cache_from_env(self) -> "Config":
-        if self.streaming_cache is None:
-            try:
-                self.streaming_cache = StreamingCacheConfig()
-            except ValidationError:
-                pass  # uri not set, leave as None
-        return self
 
 
 def parse_configs(src_file: Union[str, Path]) -> Config:
