@@ -4,8 +4,11 @@ services:
     image: ghcr.io/bluesky/tiled:0.2.8
     environment:
       - TILED_SINGLE_USER_API_KEY=${TILED_SINGLE_USER_API_KEY}
-      - TILED_CATALOG_URI=postgresql+asyncpg://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled
+      - TILED_CATALOG_URI=postgresql://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled_catalog
+      - TILED_CATALOG_WRITABLE_STORAGE=["file:///storage", "postgresql://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled_storage"]
       - TILED_STREAMING_CACHE_URI=redis://:${REDIS_PASSWORD}@redis:6379
+    volumes:
+      - tiled_data:/storage
     ports:
       - 8000:8000
     restart: unless-stopped
@@ -28,14 +31,15 @@ services:
     environment:
       - POSTGRES_USER=tiled
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=tiled
+      - POSTGRES_DB=postgres  # a default DB is required, use postgres as neutral default
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
     restart: unless-stopped
     networks:
       - backend
     healthcheck:
-      test: pg_isready -U tiled -d tiled
+      test: pg_isready -U tiled -d postgres
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,6 +61,7 @@ services:
       start_period: 5s
 
 volumes:
+  tiled_data:
   postgres_data:
   redis_data:
 

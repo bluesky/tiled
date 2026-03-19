@@ -67,7 +67,16 @@ echo "POSTGRES_PASSWORD=$(openssl rand -hex 32)" >> .env
 echo "REDIS_PASSWORD=$(openssl rand -hex 32)" >> .env
 ```
 
-Start the services like so. (It looks for a `.env` file automatically.)
+Create a directory `initdb` and place this file within it.
+This creates a Tiled "catalog" database for metadata and a Tiled
+"storage" database for appendable tabular data.
+
+```{literalinclude} ../../../initdb/01-create-databases.sh
+:language: sh
+:caption: 01-create-databases.sh
+```
+
+Finally, start the services like so. (It looks for a `.env` file automatically.)
 
 ```sh
 docker-compose up -d
