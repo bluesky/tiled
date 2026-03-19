@@ -27,7 +27,6 @@ into the container so that it persist after the container stops.
 ```sh
 mkdir storage/
 
-```sh
 echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
 docker run --env-file .env -v ./storage:/storage ghcr.io/bluesky/tiled:latest
 ```
