@@ -269,7 +269,7 @@ $ http :8000/api/v1/metadata/nested/ragged_array | jq .data.attributes.structure
   "size": 9,
   "partitions": [
     0,
-    9
+    4
   ],
   "dims": null,
   "resizable": false

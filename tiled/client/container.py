@@ -999,6 +999,27 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         access_tags=None,
         max_partition_bytes=None,
     ):
+        """
+        Write a ragged array.
+
+        Parameters
+        ----------
+        array: ragged.array | awkward.Array | list[list]
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        dims : List[str], optional
+            A label for each dimension of the array.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+        max_partition_bytes: int, optional
+            Maximum number of bytes per partition.
+        """
         import awkward
         import ragged
 
@@ -1031,9 +1052,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             starts = structure.partitions[:-1]
             stops = structure.partitions[1:]
-            for i, (start, stop) in enumerate(zip(starts, stops)):
-                array_part = ragged.array(awkward.to_packed(array[start:stop]._impl))
-                client.write_block(array_part, block=i)
+            for block_id, (start, stop) in enumerate(zip(starts, stops, strict=True)):
+                block = awkward.to_packed(array[start:stop]._impl)  # noqa: SLF001
+                client.write_block(ragged.array(block), block=block_id)
         return client
 
     def write_sparse(
