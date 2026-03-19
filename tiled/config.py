@@ -255,22 +255,10 @@ class Config(BaseSettings):
     @classmethod
     def check_access_policy(cls, value: Any) -> Any:
         """Convert the access policy spec into the construct instance"""
+        if value is None:
+            return None
         access = AccessControl.model_validate(value)
         return access.build()
-
-    @field_validator("trees")
-    @classmethod
-    def non_overlapping_trees(cls, trees: list[TreeSpec]) -> list[TreeSpec]:
-        """Ensure that paths to trees do not collide"""
-        paths = set()
-        for path in sorted((t.segments for t in trees), key=len):
-            for sub in (*sub_paths(path), path):
-                if sub in paths:
-                    raise ValueError(
-                        f"Tree paths cannot be subpaths of each other: '/{'/'.join(sub)}' and '/{'/'.join(path)}'"
-                    )
-            paths.add(path)
-        return trees
 
     @model_validator(mode="after")
     def populate_streaming_cache_from_env(self) -> "Config":
@@ -303,7 +291,25 @@ class Config(BaseSettings):
                 args=self.catalog.model_dump(),
             )
             self.trees = [tree]
+            # Having parsed the catalog into a tree, put the model in a
+            # self-consistent state.
+            # (The model cannot have *both* catalog and trees.)
+            self.catalog = None
         return self
+
+    @field_validator("trees")
+    @classmethod
+    def non_overlapping_trees(cls, trees: list[TreeSpec]) -> list[TreeSpec]:
+        """Ensure that paths to trees do not collide"""
+        paths = set()
+        for path in sorted((t.segments for t in (trees or [])), key=len):
+            for sub in (*sub_paths(path), path):
+                if sub in paths:
+                    raise ValueError(
+                        f"Tree paths cannot be subpaths of each other: '/{'/'.join(sub)}' and '/{'/'.join(path)}'"
+                    )
+            paths.add(path)
+        return trees
 
     @model_validator(mode="after")
     def fudge_tree_args(self):

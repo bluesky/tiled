@@ -73,7 +73,7 @@ This creates a Tiled "catalog" database for metadata and a Tiled
 
 ```{literalinclude} ../../../initdb/01-create-databases.sh
 :language: sh
-:caption: 01-create-databases.sh
+:caption: initdb/01-create-databases.sh
 ```
 
 Finally, start the services like so. (It looks for a `.env` file automatically.)
