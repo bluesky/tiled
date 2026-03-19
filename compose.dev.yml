@@ -33,7 +33,10 @@ services:
     environment:
       - POSTGRES_USER=tiled
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=postgres  # a default DB is required, use postgres as neutral default
+      # We create two databases, 'tiled_catalog' (metadata) and
+      # 'tiled_storage' (tabular data) below. But it is required to
+      # specify one here, so we use 'postgres' as a neutral default.
+      - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./initdb:/docker-entrypoint-initdb.d
