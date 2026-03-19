@@ -3,6 +3,7 @@ import time
 from collections.abc import Generator
 from typing import Any, Literal, Mapping, Optional, Sequence
 
+import packaging.version
 from fastapi import Request, WebSocket
 from starlette.types import Scope
 
