@@ -7,43 +7,13 @@ two sections, illustrating how to deploy Tiled with or without a container.
 
 ## With a Container
 
-A [Tiled container image][] is published in the GitHub container registry.
-
-```sh
-docker pull ghcr.io/bluesky/tiled:latest
-```
-
-### Configure a single-user API key
-
-```{note}
-In these examples we run a server that is secured with a single secret key.
-But Tiled can also be configured for **multi-user** deployments, integrating
-with external identity providers (e.g., ORCID, Google, ....).
-
-See {doc}`../explanations/security` and {doc}`../explanations/access-control`.
-```
-
-Generate a secret in one of these two ways.
-
-With ``openssl``:
-
-```sh
-export TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)
-```
-
-With ``python``:
-
-```sh
-export TILED_SINGLE_USER_API_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
-```
-
 ### Using Temporary Storage
 
+Generate a secure secret and start a Tiled server from the [container image][].
+
 ```sh
-docker run \
-  -p 8000:8000 \
-  -e TILED_SINGLE_USER_API_KEY=$TILED_SINGLE_USER_API_KEY \
-  ghcr.io/bluesky/tiled:latest
+echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
+docker run --env-file .env ghcr.io/bluesky/tiled:latest
 ```
 
 **The data and database are inside the container and will not persist outside
@@ -51,30 +21,39 @@ it.** Read on to persist it.
 
 ### Using Persistent Storage
 
+Create a local directory for data and metadata storage, and we mount it
+into the container so that it persist after the container stops.
+
 ```sh
 mkdir storage/
 
-docker run \
-  -p 8000:8000 \
-  -e TILED_SINGLE_USER_API_KEY=$TILED_SINGLE_USER_API_KEY \
-  -v ./storage:/storage ghcr.io/bluesky/tiled:latest
+```sh
+echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
+docker run --env-file .env -v ./storage:/storage ghcr.io/bluesky/tiled:latest
 ```
 
 ### Using Scalable Persistent Storage
 
-The default configuration of the Tiled container image does not require any
+The default configuration of the Tiled container image above does not require any
 externally-managed services. It runs on "embedded" databases (SQLite, DuckDB)
 and file-based data storage. It caches recent metadata and (small) data for
 live-streaming in the memory of the server process.
 
-To scale Tiled horizontally, you must upgrade from this simple single-process
-configuration to one that employs externally-managed services:
+To scale Tiled for larger workloads, you must upgrade from this simple
+single-process configuration to one that employs externally-managed services:
 
 - PostgreSQL for metadata and tabular data
 - Redis (optional, needed for streaming)
 
+Tiled ships with a compose file to do this:
+
+```{literalinclude} ../../../compose.yml
+:language: yaml
+:caption: compose.yml
+```
+
 ```sh
-podman-compose -f compose.yml up -d
+podman-compose up -d
 ```
 
 ## Without a Container
