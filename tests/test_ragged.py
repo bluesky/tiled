@@ -63,13 +63,19 @@ arrays = {
     "numpy_1d": ragged.array(RNG.random(10)),
     "numpy_2d": ragged.array(RNG.random((3, 5))),
     "numpy_3d": ragged.array(RNG.random((2, 3, 4))),
-    "numpy_4d": ragged.array(RNG.random((2, 3, 2, 3))),
+    "numpy_4d": RNG.random((2, 3, 2, 3)),  # testing numpy conversion path
     "regular_1d": ragged.array(RNG.random(10).tolist()),
     "regular_2d": ragged.array(RNG.random((3, 5)).tolist()),
     "regular_3d": ragged.array(RNG.random((2, 3, 4)).tolist()),
     "regular_4d": ragged.array(RNG.random((2, 3, 2, 3)).tolist()),
-    "ragged_a": ragged.array([RNG.random(3), RNG.random(5), RNG.random(8)]),
-    "ragged_b": ragged.array([RNG.random((2, 3, 4)), RNG.random((3, 4, 5))]),
+    "ragged_a": [
+        RNG.random(3),
+        RNG.random(5),
+        RNG.random(8),
+    ],  # testing list-of-lists conversion path
+    "ragged_b": ak.Array(
+        [RNG.random((2, 3, 4)), RNG.random((3, 4, 5))]
+    ),  # testing awkward conversion path
     "ragged_c": ragged.array(
         [
             [RNG.random(10)],
@@ -92,7 +98,7 @@ arrays = {
 
 @pytest.mark.parametrize("name", arrays.keys())
 def test_serialization_roundtrip(name):
-    array = arrays[name]
+    array = ragged.array(arrays[name])
 
     # Test reduced/flattened numpy array.
     _array, _offsets, _shape = _deconstruct_ragged(array)
@@ -122,6 +128,7 @@ def test_slicing(client, name):
     array = arrays[name]
 
     returned = client.write_ragged(array, key="test")
+    array = ragged.array(array)  # ensure this is a ragged.array, for testing below
     # Test with client returned, and with client from lookup.
     for rac in [returned, client["test"]]:
         # Read the data back out from the RaggedClient, progressively sliced.
@@ -226,6 +233,8 @@ def test_read_write_partitioned(client, array: ragged.array):
     )
     assert rac.npartitions > 1
 
+    array = ragged.array(array)  # ensure this is a ragged.array, for testing below
+
     starts = rac.partitions[:-1]
     stops = rac.partitions[1:]
     for i, (start, stop) in enumerate(zip(starts, stops)):
@@ -249,6 +258,8 @@ def test_export_json(tmpdir, client, name):
     array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
+    array = ragged.array(array)  # ensure this is a ragged.array, for testing below
+
     filepath = tmpdir / "actual.json"
     rac.export(str(filepath), format="application/json")
     actual = filepath.read_text(encoding="utf-8")
@@ -268,6 +279,7 @@ def test_export_arrow(tmpdir, client, name):
     array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
+    array = ragged.array(array)  # ensure this is a ragged.array, for testing below
     filepath = tmpdir / "actual.arrow"
     rac.export(str(filepath), format=APACHE_ARROW_FILE_MIME_TYPE)
     actual = pyarrow.feather.read_table(filepath)
@@ -289,6 +301,7 @@ def test_export_parquet(tmpdir, client, name):
     array = arrays[name]
     rac = client.write_ragged(array, key="test")
 
+    array = ragged.array(array)  # ensure this is a ragged.array, for testing below
     filepath = tmpdir / "actual.parquet"
     rac.export(str(filepath), format="application/x-parquet")
     # Test this against pyarrow
