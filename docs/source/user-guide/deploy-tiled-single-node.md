@@ -16,12 +16,12 @@ echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
 docker run --env-file .env ghcr.io/bluesky/tiled:latest
 ```
 
-**The data and database are inside the container and will not persist outside
-it.** Read on to persist it.
+**The data and (embedded) databases are inside the container and will not
+persist outside it.** Read on to persist it.
 
 ### Using Persistent Storage
 
-Create a local directory for data and metadata storage, and we mount it
+Create a local directory for data and metadata storage, and mount it
 into the container so that it persist after the container stops.
 
 ```sh
@@ -102,9 +102,9 @@ tiled serve catalog --temp --api-key secret
 mkdir storage
 mkdir storage/data
 
-tiled serve catalog storage/catalog.db -w storage/data -w duckdb://storage/data
+tiled serve catalog ./storage/catalog.db -w ./storage/data -w duckdb://./storage/data.db
 ```
 
 [Docker]: https://www.docker.com/
-[Tiled container image]: https://github.com/bluesky/tiled/pkgs/container/tiled
+[container image]: https://github.com/bluesky/tiled/pkgs/container/tiled
 [podman]: https://podman.io/
