@@ -10,7 +10,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Optional, Union
 
-from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -76,7 +76,7 @@ class CatalogConfig(BaseSettings):
     settings_customise_sources = classmethod(settings_customise_sources)
 
 
-class TreeSpec(BaseSettings):
+class TreeSpec(BaseModel):
     tree_type: Annotated[EntryPointString, Field(alias="tree")]
     path: str
     args: Optional[dict[str, Any]] = None
@@ -121,7 +121,7 @@ class TreeSpec(BaseSettings):
         return TREE_ALIASES.get(value, value)
 
 
-class AuthenticationProviderSpec(BaseSettings):
+class AuthenticationProviderSpec(BaseModel):
     provider: str
     authenticator: EntryPointString
     args: Optional[dict[str, Any]] = None
@@ -135,7 +135,7 @@ class AuthenticationProviderSpec(BaseSettings):
         return (self.provider, auth)
 
 
-class TiledAdmin(BaseSettings):
+class TiledAdmin(BaseModel):
     provider: str
     id: str
 
@@ -186,6 +186,9 @@ class Authentication(BaseSettings):
 
         return self
 
+    model_config = SettingsConfigDict(env_prefix="TILED_AUTHN")
+    settings_customise_sources = classmethod(settings_customise_sources)
+
 
 class Database(BaseSettings):
     uri: Optional[str] = None
@@ -193,6 +196,9 @@ class Database(BaseSettings):
     pool_pre_ping: Optional[bool] = None
     pool_size: Annotated[Optional[int], Field(ge=2)] = 5
     max_overflow: Optional[int] = 10
+
+    model_config = SettingsConfigDict(env_prefix="TILED_AUTHN_DATABASSE")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class AccessControl(BaseSettings):
@@ -202,14 +208,23 @@ class AccessControl(BaseSettings):
     def build(self):
         return self.access_policy(**(self.args or {}))
 
+    model_config = SettingsConfigDict(env_prefix="TILED_ACCESS_CONTROL")
+    settings_customise_sources = classmethod(settings_customise_sources)
+
 
 class MetricsConfig(BaseSettings):
     prometheus: bool = True
+
+    model_config = SettingsConfigDict(env_prefix="TILED_METRICS")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class ValidationSpec(BaseSettings):
     spec: str
     validator: Optional[EntryPointString] = None
+
+    model_config = SettingsConfigDict(env_prefix="TILED_VALIDATORS")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class StreamingCacheConfig(BaseSettings):
@@ -250,6 +265,9 @@ class Config(BaseSettings):
     storage_pool_size: int = 5
     catalog_max_overflow: int = 10
     storage_max_overflow: int = 10
+
+    model_config = SettingsConfigDict(env_prefix="TILED_")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
     @field_validator("access_policy")
     @classmethod
