@@ -225,7 +225,7 @@ The secrets `POSTGRES_PASSWORD` (the password for the `tiled` user) and
 secrets directly in configuration files. Tiled will "template" these in
 from the environment when it loads the configuration.
 
-```{literalinclude} ../../../example_configs/scalable_server_single_user.yml
+```{literalinclude} ../../../example_configs/scalable_catalog_single_user.yml
 :language: yaml
 :caption: config.yml
 ```

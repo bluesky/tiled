@@ -25,6 +25,7 @@ subtrees:
                 - entries:
                   - file: user-guide/simple-server
                   - file: user-guide/deploy-tiled-single-node
+                  - file: user-guide/deploy-tiled-multi-node
             - file: user-guide/authentication
             - file: user-guide/profiles
             - file: user-guide/client-logger
