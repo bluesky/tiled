@@ -5,6 +5,9 @@ As a matter of preference, you may decide to run the Tiled server using a
 container (e.g. [Docker][], [Podman][]). This documentation is organized into
 two sections, illustrating how to deploy Tiled with or without a container.
 
+When you have a server running, see [Test the server](#test-the-server) and
+[Next steps](#next-steps) at the end of this page.
+
 ## With a Container
 
 ### Using Temporary Storage
@@ -231,6 +234,7 @@ from the environment when it loads the configuration.
 tiled serve config path/to/config.yml
 ```
 
+(test-the-server)=
 ## Test the Server
 
 The server is ready to accept requests. You can test it with `curl`,
@@ -252,6 +256,7 @@ curl -H "Authorization: Apikey ${TILED_SINGLE_USER_API_KEY}" 'http://localhost:8
 To test from a web browser, provide the API key in the URL:
 `https://localhost:8000?api_key=...`.
 
+(next-steps)=
 ## Next steps
 
 - Notice that the URL uses `http` not `https`. Tiled should be placed behind
