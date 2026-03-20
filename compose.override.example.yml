@@ -4,4 +4,4 @@ services:
     environment:
       - TILED_CONFIG=/deploy/config
     volumes:
-      - ./my-config:/deploy/config:ro
+      - ./my-custom-config-dir:/deploy/config:ro
