@@ -9,7 +9,7 @@ authentication:
   allow_anonymous_access: false
 catalog:
   # This database stores metadata and URIs pointing to data.
-  uri: "/storage/catalog.db"
+  uri: "sqlite:////storage/catalog.db"
 
   writable_storage:
 

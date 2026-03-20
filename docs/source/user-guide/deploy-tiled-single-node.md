@@ -46,7 +46,7 @@ formats---it is time to use a configuration file.
 
 The default configuration used by the container is:
 
-```{literalinclude} ../../../example_configs/config_for_container_file.yml
+```{literalinclude} ../../../example_configs/config_for_containerfile.yml
 :language: yaml
 :caption: /deploy/config/config.yml
 ```
