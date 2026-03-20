@@ -13,7 +13,7 @@ Generate a secure secret and start a Tiled server from the [container image][].
 
 ```sh
 echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
-docker run --env-file .env ghcr.io/bluesky/tiled:latest
+docker run -p 8000:8000 --env-file .env ghcr.io/bluesky/tiled:latest
 ```
 
 For development, it can be convenient to use a short memorable secret like
@@ -32,7 +32,7 @@ into the container so that it persists after the container stops.
 mkdir storage/
 
 echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
-docker run --env-file .env -v ./storage:/storage ghcr.io/bluesky/tiled:latest
+docker run -p 8000:8000 --env-file .env -v ./storage:/storage ghcr.io/bluesky/tiled:latest
 ```
 
 ### Customizing Configuration
@@ -56,6 +56,7 @@ For example, combining persistent storage with a custom configuration:
 
 ```sh
 docker run --env-file .env \
+  -p 8000:8000 \
   -v ./storage:/storage \
   -v ./your/config/directory:/deploy/config \
   ghcr.io/bluesky/tiled:latest
