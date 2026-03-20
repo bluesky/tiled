@@ -39,7 +39,7 @@ docker run --env-file .env -v ./storage:/storage ghcr.io/bluesky/tiled:latest
 
 When you need to introduce custom configurations---such as multi-user
 authentication (e.g., OIDC) and access policies or support for custom file
-formats---you will need to provide a custom configuration file.
+formats---it is time to use a configuration file.
 
 The default configuration used by the container is:
 
@@ -161,11 +161,73 @@ tiled serve catalog --temp --api-key secret
 
 ### Using Persistent Storage
 
+The "temporary storage" above allocates a _temporary_ directory with:
+
+- A SQLite database for metadata (the "catalog")
+- A directory for file-based data storage
+- A DuckDB database for appendable tabular data storage
+
+This command specifies a _persistent_ location for all three.
+
 ```sh
 mkdir storage
 mkdir storage/data
 
 tiled serve catalog --init ./storage/catalog.db -w ./storage/data -w duckdb://./storage/data.db
+```
+
+### Customizing Configuration
+
+When you need to introduce custom configurations---such as multi-user
+authentication (e.g., OIDC) and access policies or support for custom file
+formats---configuration via CLI command arguments becomes unwieldy, and it is
+usually best to use a configuration file.
+
+Here is an example configuration file that specifies the same configuration
+we used in the above long CLI command, but given as a config file instead.
+
+```{literalinclude} ../../../example_configs/single_catalog_single_user.yml
+:language: yaml
+:caption: config.yml
+```
+
+You can use it like:
+
+```sh
+tiled serve config path/to/config.yml
+```
+
+The command accepts a single file or a directory of configuration files, which
+can be combined. (Using multiple files can be convenient for complex
+deployments.)
+
+### Using Scalable Persistent Storage
+
+For larger workloads, you need:
+
+- **PostgreSQL** - two databases, for metadata and tabular data respectively,
+  that may reside in one PostgreSQL instance
+- **Redis** - for live data streaming (optional)
+
+This configuration presumes:
+
+- There is a PostgreSQL server listening at `localhost:5432` with databases named
+  `tiled_catalog` and `tiled_storage` and a PostgreSQL user named `tiled` with
+  access to each.
+- There is a Redis server listening at `localhost:6379` with a password set.
+
+The secrets `POSTGRES_PASSWORD` (the password for the `tiled` user) and
+`REDIS_PASSWORD` should be set as environment variables; we avoid storing
+secrets directly in configuration files. Tiled will "template" these in
+from the environment when it loads the configuration.
+
+```{literalinclude} ../../../example_configs/scalable_server_single_user.yml
+:language: yaml
+:caption: config.yml
+```
+
+```sh
+tiled serve config path/to/config.yml
 ```
 
 ## Test the Server
@@ -183,7 +245,7 @@ Requests that give access to data must be authenticated using
 the key configured in the `.env` file.
 
 ```sh
-curl -H "Authorization:Apikey ${TILED_SINGLE_USER_API_KEY}" 'http://localhost:8000/api/v1/metadata/'
+curl -H "Authorization: Apikey ${TILED_SINGLE_USER_API_KEY}" 'http://localhost:8000/api/v1/metadata/'
 ```
 
 To test from a web browser, provide the API key in the URL:
