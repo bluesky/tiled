@@ -55,6 +55,9 @@ You can override it by mounting a configuration directory on the host
 to override the configuration directory in the container, by adding
 `-v ./my-custom-config-dir:/deploy/config`.
 
+See the [example server configuration](#example-server-configuration)
+for a comprehensive server configuration file with comments.
+
 For example, combining persistent storage with a custom configuration:
 
 ```sh
@@ -204,6 +207,9 @@ tiled serve config path/to/config.yml
 The command accepts a single file or a directory of configuration files, which
 can be combined. (Using multiple files can be convenient for complex
 deployments.)
+
+See the [example server configuration](#example-server-configuration)
+for a comprehensive server configuration file with comments.
 
 ### Using Scalable Persistent Storage
 
