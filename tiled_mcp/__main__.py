@@ -51,6 +51,126 @@ def _build_params(**kwargs) -> dict:
     return {k: v for k, v in kwargs.items() if v is not None}
 
 
+# Keys from BlueskyRun start document worth surfacing in compact summaries
+_INTERESTING_START_KEYS = {
+    "uid",
+    "scan_id",
+    "plan_name",
+    "plan_type",
+    "note",
+    "sample",
+    "detectors",
+    "motors",
+    "XEng",
+    "num_eng",
+    "operator",
+    "exposure_time",
+    "num_bkg_images",
+    "num_dark_images",
+    "chunk_size",
+    "data_session",
+}
+
+_INTERESTING_STOP_KEYS = {"exit_status", "num_events", "time"}
+
+
+def _compact_structure(structure: dict | None) -> dict | None:
+    """Return a compact version of a structure dict -- shape/dims/data_type only."""
+    if not structure:
+        return None
+    compact: dict[str, Any] = {}
+    if "shape" in structure:
+        compact["shape"] = structure["shape"]
+    if "dims" in structure:
+        compact["dims"] = structure["dims"]
+    if "data_type" in structure:
+        dt = structure["data_type"]
+        compact["data_type"] = f"{dt.get('kind', '')}{dt.get('itemsize', '')}"
+    if "columns" in structure:
+        cols = structure["columns"]
+        compact["num_columns"] = len(cols)
+        # Show first few column names as a preview
+        if len(cols) <= 10:
+            compact["columns"] = cols
+        else:
+            compact["columns_preview"] = cols[:8] + ["..."]
+    if "count" in structure:
+        compact["count"] = structure["count"]
+    if "resizable" in structure:
+        compact["resizable"] = structure["resizable"]
+    return compact
+
+
+def _compact_metadata(metadata: dict | None) -> dict | None:
+    """Extract only the interesting metadata from a BlueskyRun."""
+    if not metadata:
+        return None
+    compact: dict[str, Any] = {}
+    # Handle BlueskyRun-style metadata with start/stop docs
+    if "start" in metadata:
+        start = metadata["start"]
+        compact["start"] = {
+            k: v for k, v in start.items() if k in _INTERESTING_START_KEYS
+        }
+    if "stop" in metadata:
+        stop = metadata["stop"]
+        compact["stop"] = {k: v for k, v in stop.items() if k in _INTERESTING_STOP_KEYS}
+    # If it's not a BlueskyRun (no start/stop), return keys summary
+    if "start" not in metadata and "stop" not in metadata:
+        # For event stream metadata (data_keys), just list the key names
+        if any(isinstance(v, dict) and "dtype" in v for v in metadata.values()):
+            compact["data_keys"] = list(metadata.keys())
+        else:
+            # For other metadata, return as-is but truncate if large
+            if len(json.dumps(metadata, default=str)) < 2000:
+                return metadata
+            compact["keys"] = list(metadata.keys())
+    return compact
+
+
+def _compact_entry(entry: dict) -> dict:
+    """Build a compact summary of a single catalog entry."""
+    attrs = entry.get("attributes", {})
+    summary: dict[str, Any] = {"id": entry.get("id")}
+
+    sf = attrs.get("structure_family")
+    if sf:
+        summary["structure_family"] = sf
+
+    specs = attrs.get("specs")
+    if specs:
+        summary["specs"] = [s.get("name") for s in specs]
+
+    structure = attrs.get("structure")
+    compact_struct = _compact_structure(structure)
+    if compact_struct:
+        summary["structure"] = compact_struct
+
+    metadata = attrs.get("metadata")
+    compact_meta = _compact_metadata(metadata)
+    if compact_meta:
+        summary["metadata"] = compact_meta
+
+    return summary
+
+
+def _compact_search_response(data: dict) -> str:
+    """Format a search response compactly."""
+    entries = data.get("data", [])
+    meta = data.get("meta", {})
+    result: dict[str, Any] = {
+        "count": meta.get("count", len(entries)),
+        "entries": [_compact_entry(e) for e in entries],
+    }
+    return json.dumps(result, indent=2, default=str)
+
+
+def _compact_metadata_response(data: dict) -> str:
+    """Format a metadata response compactly."""
+    entry = data.get("data", data)
+    return json.dumps(_compact_entry(entry), indent=2, default=str)
+
+
 # =============================================================================
 # Discovery & Navigation Tools
 # =============================================================================
@@ -76,6 +196,7 @@ def tiled_search(
     sort: str | None = None,
     select_metadata: str | None = None,
     include_data_sources: bool = False,
+    verbose: bool = False,
 ) -> str:
     """
     Search and browse the Tiled data catalog.
@@ -87,6 +208,7 @@ def tiled_search(
         sort: Sort order (e.g., "metadata.time" or "-metadata.time" for descending)
         select_metadata: JMESPath expression to filter metadata fields
         include_data_sources: Include data source information in results
+        verbose: If True, return the full raw response. Default False returns a compact summary.
 
     Returns:
         List of entries at the given path with their metadata and structure info.
@@ -101,7 +223,11 @@ def tiled_search(
         }
     )
     response = client.get(f"/api/v1/search/{path}", params=params)
-    return _format_response(response)
+    if response.status_code >= 400:
+        return f"Error {response.status_code}: {response.text}"
+    if verbose:
+        return _format_response(response)
+    return _compact_search_response(response.json())
 
 
 @mcp.tool()
@@ -109,6 +235,7 @@ def tiled_metadata(
     path: str,
     select_metadata: str | None = None,
     include_data_sources: bool = False,
+    verbose: bool = False,
 ) -> str:
     """
     Get metadata and structure information for a specific entry.
@@ -117,6 +244,7 @@ def tiled_metadata(
         path: Path to the entry in the catalog
         select_metadata: JMESPath expression to filter metadata fields
         include_data_sources: Include data source information
+        verbose: If True, return the full raw response. Default False returns a compact summary.
 
     Returns:
         Entry metadata, structure, and links.
@@ -126,7 +254,11 @@ def tiled_metadata(
         include_data_sources=include_data_sources,
     )
     response = client.get(f"/api/v1/metadata/{path}", params=params)
-    return _format_response(response)
+    if response.status_code >= 400:
+        return f"Error {response.status_code}: {response.text}"
+    if verbose:
+        return _format_response(response)
+    return _compact_metadata_response(response.json())
 
 
 @mcp.tool()
