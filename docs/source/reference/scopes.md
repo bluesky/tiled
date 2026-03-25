@@ -1,7 +1,7 @@
 # Scopes
 
 Tiled uses OAuth2 scopes to restrict the actions that users, services, and API keys can perform.
-See the guide {doc}`../how-to/api-keys` for instructions on generating API keys
+See the guide {doc}`../user-guide/api-keys` for instructions on generating API keys
 with restricted scopes.
 
 ## List of Scopes

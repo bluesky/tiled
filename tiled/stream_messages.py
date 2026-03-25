@@ -25,6 +25,8 @@ class DataSource(BaseModel, Generic[StructureT]):
     structure: StructureT
     mimetype: str
     parameters: dict
+    # TODO: make `properties` required in a future release. See Issue #1300
+    properties: dict = Field(default_factory=dict)
     assets: list[Asset]
     management: Management
 

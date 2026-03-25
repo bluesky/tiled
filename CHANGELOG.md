@@ -3,7 +3,56 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
+
 ## Unreleased
+
+### Fixed
+
+- A potential race condition when subscribing to an already started stream
+  and receiving replayed messages before the subscription is fully set up.
+- Tests and examples that use example config files; specifically an external
+  NeXus file used as an example of the structure is generated dynamically at
+  test time now.
+
+### Changed
+
+- The `start_in_thread` method of `Subscription` now waits until the WebSocket
+  connection is established before returning.
+
+## v0.2.7 (2026-02-27)
+
+### Fixed
+
+- Raise an error with a suitable message when trying to create an API key
+  on a server that does not support it.
+- Backwards compatibility with older servers that do not support the `properties`
+  field in `DataSource` objects. The client will now omit this field when
+  communicating with servers older than v0.2.4.
+
+## v0.2.6 (2026-02-24)
+
+### Fixed
+
+- Explicitly specified `"Content-Type": "application/json"` in the request
+  headers to comply with stricter payload parsing in FastAPI >= 0.132.0.
+- Servers started by the new function `tiled.client.simple` did not stop
+  cleanly at interpreter shutdown, causing a hangup.
+
+## v0.2.5 (2026-02-20)
+
+### Added
+
+- A new function `tiled.client.simple` provides a convenient method for
+  obtaining a client backed by a `SimpleTiledServer`.
+
+### Changed
+
+- The `SimpleTiledServer` no longer prohibits multiple servers per process.
+  This is convenient for rapidly iterating with new temporary servers.
+- The `SimpleTiledServer` supports streaming, via the in-memory TTL cache
+  introduced in v0.2.4.
+
+## v0.2.4 (2026-02-18)
 
 ### Added
 
@@ -17,6 +66,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
   associated structure, where possible.
 - Removed support for Python 3.9, which reached its end of life in October 2025.
 - When creating an access-tag restricted API key, the `inherit` scope is no longer valid to request. Instead, the specific scopes desired for the key should be requested.
+
+### Fixed
+
+- Error handling in `tiled.client.download._download_url`.
+- Slow performance when deleting nodes in large catalogs with many nodes.
+- Add `properties` field to the DataSource object and table, to store additional
+  metadata about the data source (e.g. array chunking information).
 
 ## v0.2.3 (2025-12-17)
 

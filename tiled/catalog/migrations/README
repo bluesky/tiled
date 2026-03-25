@@ -1,1 +1,7 @@
 Generic single-database configuration.
+
+To generate a new revision file, run:
+
+```
+python -m tiled.catalog revision -m "description..."
+```
