@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from starlette.status import HTTP_400_BAD_REQUEST
 
 from tiled.adapters.mapping import MapAdapter
-from tiled.client import Context, from_context, from_profile, record_history
+from tiled.client import Context, from_context, from_profile, from_provider, record_history
 from tiled.profiles import load_profiles, paths
 from tiled.queries import Key
 from tiled.server.app import build_app
