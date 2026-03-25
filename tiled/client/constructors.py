@@ -146,11 +146,13 @@ def from_context(
         auth_is_required = context.server_info.authentication.required
         has_providers = len(context.server_info.authentication.providers) > 0
         if auth_is_required and not has_providers:
-            raise RuntimeError("""This server requires API key authentication.
+            raise RuntimeError(
+                """This server requires API key authentication.
     Set an api_key as in:
 
     >>> c = from_uri("...", api_key="...")
-    """)
+    """
+            )
 
         if has_providers and not context.has_external_auth:
             found_valid_tokens = remember_me and context.use_cached_tokens()
