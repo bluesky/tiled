@@ -1,6 +1,6 @@
 # Tiled MCP Server
 
-An MCP (Model Context Protocol) server that exposes the Tiled API to Claude Code, enabling AI-assisted data exploration and analysis.
+An MCP (Model Context Protocol) server that exposes the Tiled API to AI coding agents, enabling AI-assisted data exploration and analysis.
 
 ## Installation
 
@@ -21,7 +21,7 @@ The server is configured via environment variables:
 
 ## Creating a Read-Only API Key
 
-For use with Claude Code, it's recommended to create a read-only API key:
+It's recommended to create a read-only API key:
 
 1. **Create a profile** for the Tiled server:
    ```bash
@@ -65,19 +65,43 @@ tiled api_key list
 tiled api_key revoke <first-8-chars>
 ```
 
-## Adding to Claude Code
+## Adding to an MCP Client
 
-Add the MCP server to Claude Code:
+### OpenCode
+
+Add the following to your `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "tiled": {
+      "type": "local",
+      "command": [
+        "pixi", "run", "-e", "mcp", "python", "-m", "tiled_mcp"
+      ],
+      "enabled": true,
+      "environment": {
+        "TILED_URL": "https://your-tiled-server.example.com",
+        "TILED_API_KEY": "<your-api-key>"
+      }
+    }
+  }
+}
+```
+
+Omit `TILED_API_KEY` for servers with anonymous access.
+
+### Other MCP Clients
+
+The server uses stdio transport. Run it with:
 
 ```bash
-# Without authentication (for servers with anonymous access)
-claude mcp add tiled -- pixi run -e mcp python -m tiled_mcp
+# Without authentication
+pixi run -e mcp python -m tiled_mcp
 
 # With authentication
-claude mcp add tiled \
-  -e TILED_URL=http://localhost:8000 \
-  -e TILED_API_KEY=<your-api-key> \
-  -- pixi run -e mcp python -m tiled_mcp
+TILED_URL=http://localhost:8000 TILED_API_KEY=<your-api-key> \
+  pixi run -e mcp python -m tiled_mcp
 ```
 
 ## Available Tools
@@ -125,9 +149,9 @@ claude mcp add tiled \
 | `tiled_health` | Check server health status |
 | `tiled_metrics` | Get Prometheus metrics |
 
-## Example Usage in Claude Code
+## Example Usage
 
-Once configured, you can ask Claude Code questions like:
+Once configured, you can ask your AI coding agent questions like:
 
 - "What datasets are available on the Tiled server?"
 - "Show me the metadata for the dataset at path/to/data"

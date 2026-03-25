@@ -1,7 +1,7 @@
 """
 Tiled MCP Server
 
-A simple MCP server that exposes the Tiled API to Claude Code.
+A simple MCP server that exposes the Tiled API to AI coding agents.
 Uses FastMCP with stdio transport.
 
 Configuration via environment variables:
