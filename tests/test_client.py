@@ -10,7 +10,13 @@ from pydantic import ValidationError
 from starlette.status import HTTP_400_BAD_REQUEST
 
 from tiled.adapters.mapping import MapAdapter
-from tiled.client import Context, from_context, from_profile, from_provider, record_history
+from tiled.client import (
+    Context,
+    from_context,
+    from_profile,
+    from_provider,
+    record_history,
+)
 from tiled.profiles import load_profiles, paths
 from tiled.queries import Key
 from tiled.server.app import build_app
@@ -291,7 +297,9 @@ class TestFromProvider:
             patch(_PASSWORD_GRANT, return_value={"access_token": "tok"}),
             patch(_FROM_CONTEXT, return_value=mock_client) as mock_fc,
         ):
-            result = from_provider("http://localhost:8020", "my_authenticator", "user", "pass")
+            result = from_provider(
+                "http://localhost:8020", "my_authenticator", "user", "pass"
+            )
 
             mock_fc.assert_called_once_with(
                 mock_context,
@@ -350,7 +358,9 @@ class TestFromProvider:
             return_value=(mock_context, []),
         ):
             with pytest.raises(ValueError, match="no-such-provider") as exc_info:
-                from_provider("http://localhost:8020", "no-such-provider", "user", "pass")
+                from_provider(
+                    "http://localhost:8020", "no-such-provider", "user", "pass"
+                )
 
             # Error message should list available providers.
             msg = str(exc_info.value)
@@ -366,7 +376,9 @@ class TestFromProvider:
             return_value=(mock_context, []),
         ):
             with pytest.raises(ValueError, match="not found"):
-                from_provider("http://localhost:8020", "my_authenticator", "user", "pass")
+                from_provider(
+                    "http://localhost:8020", "my_authenticator", "user", "pass"
+                )
 
     def test_external_provider_raises_valueerror(self):
         """Should raise ValueError for external (non-password) providers."""
@@ -403,7 +415,9 @@ class TestFromProvider:
             side_effect=ConnectionError("refused"),
         ):
             with pytest.raises(ConnectionError, match="refused"):
-                from_provider("http://localhost:8020", "my_authenticator", "user", "pass")
+                from_provider(
+                    "http://localhost:8020", "my_authenticator", "user", "pass"
+                )
 
     def test_auth_error_propagates(self):
         """Authentication errors from password_grant should propagate."""
@@ -421,7 +435,9 @@ class TestFromProvider:
             ),
         ):
             with pytest.raises(Exception, match="invalid credentials"):
-                from_provider("http://localhost:8020", "my_authenticator", "user", "pass")
+                from_provider(
+                    "http://localhost:8020", "my_authenticator", "user", "pass"
+                )
 
     def test_first_matching_provider_is_used(self):
         """When multiple providers match, the first one should be used."""
