@@ -8,6 +8,7 @@ Create Date: 2026-03-11 14:36:52.488573
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import String
+from sqlalchemy.sql import func
 
 # revision identifiers, used by Alembic.
 revision = "8fd6ac88f2ec"
@@ -29,9 +30,14 @@ def upgrade():
         "revisions",
         sa.Column("updated_by", String, nullable=True, server_default="NULL"),
     )
+    op.drop_column("revisions", "time_created")
 
 
 def downgrade():
     op.drop_column("nodes", "created_by")
     op.drop_column("nodes", "updated_by")
     op.drop_column("revisions", "updated_by")
+    op.add_column(
+        "revisions",
+        sa.Column("time_created", String, nullable=False, server_default=func.now()),
+    )
