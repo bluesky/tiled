@@ -13,8 +13,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Tests and examples that use example config files; specifically an external
   NeXus file used as an example of the structure is generated dynamically at
   test time now.
-- Type hint for `readable_storage` parameter for `SimpleTiledServer` indicated it 
-  should be a string or `Path`, but it actually was required to be a list of strings 
+- Type hint for `readable_storage` parameter for `SimpleTiledServer` indicated it
+  should be a string or `Path`, but it actually was required to be a list of strings
   or list of `Paths`. This has been fixed.
 - Missing docstring for `readable_storage` parameter added.
 
