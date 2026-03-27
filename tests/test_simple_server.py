@@ -12,7 +12,7 @@ from tiled.client.register import register
 from tiled.server import SimpleTiledServer
 
 
-def test_default(simple_server_factory):
+def test_default():
     "Smoke test a server with defaults (no parameters)"
     with SimpleTiledServer() as server:
         client = from_uri(server.uri)
