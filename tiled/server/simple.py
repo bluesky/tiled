@@ -58,6 +58,9 @@ class SimpleTiledServer:
     port : Optional[int]
         Port the server will listen on. By default, a random free high port
         is allocated by the operating system.
+    readable_storage : Optional[Union[str, pathlib.Path, list[str], list[pathlib.Path]]]
+        If provided, the server will be able to read from these storage locations, in addition
+        to the default storage location defined by `directory`.
 
     Examples
     --------
@@ -83,7 +86,9 @@ class SimpleTiledServer:
         directory: Optional[Union[str, pathlib.Path]] = None,
         api_key: Optional[str] = None,
         port: int = 0,
-        readable_storage: Optional[Union[str, pathlib.Path]] = None,
+        readable_storage: Optional[
+            Union[str, pathlib.Path, list[str], list[pathlib.Path]]
+        ] = None,
     ):
         # Delay import to avoid circular import.
         from ..catalog import from_uri as catalog_from_uri
@@ -115,6 +120,11 @@ class SimpleTiledServer:
         log_config["handlers"]["default"]["class"] = "logging.FileHandler"
         del log_config["handlers"]["default"]["stream"]
         log_config["handlers"]["default"]["filename"] = str(directory / "error.log")
+
+        # Catalog from uri wants readable storage to be a list,
+        # but we want to allow users to pass in a single path for convenience.
+        if readable_storage is not None and not isinstance(readable_storage, list):
+            readable_storage = [readable_storage]
 
         self.catalog = catalog_from_uri(
             directory / "catalog.db",
