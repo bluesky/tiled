@@ -18,6 +18,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - The `start_in_thread` method of `Subscription` now waits until the WebSocket
   connection is established before returning.
+- Cancel previous CI runs on a PR when further commits are pushed to reduce
+  CI processing time.
 
 ## v0.2.7 (2026-02-27)
 
