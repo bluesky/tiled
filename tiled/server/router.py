@@ -49,6 +49,7 @@ from tiled.server.schemas import Principal
 from .. import __version__
 from ..links import links_for_node
 from ..ndslice import NDSlice
+from ..storage import UnsupportedStorageError
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
@@ -1607,14 +1608,20 @@ def get_router(
             access_blob_modified = access_blob != {}
             access_blob = {}
 
-        node = await entry.create_node(
-            metadata=body.metadata,
-            structure_family=body.structure_family,
-            key=key,
-            specs=body.specs,
-            data_sources=body.data_sources,
-            access_blob=access_blob,
-        )
+        try:
+            node = await entry.create_node(
+                metadata=body.metadata,
+                structure_family=body.structure_family,
+                key=key,
+                specs=body.specs,
+                data_sources=body.data_sources,
+                access_blob=access_blob,
+            )
+        except UnsupportedStorageError as err:
+            raise HTTPException(
+                status_code=HTTP_406_NOT_ACCEPTABLE,
+                detail=f"Requested storage type is not supported: {err.args[0]}",
+            )
         links = links_for_node(
             structure_family, structure, get_base_url(request), path + f"/{node.key}"
         )

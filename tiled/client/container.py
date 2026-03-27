@@ -1140,6 +1140,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         metadata=None,
         specs=None,
         access_tags=None,
+        appendable: bool = True,
     ):
         """Write tabular data.
 
@@ -1160,6 +1161,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             conform to some named standard specification.
         access_tags: List[str], optional
             Server-specific authZ tags in list form, used to confer access to the node.
+        appendable: bool, optional
+            If True, attempt to create an appendable table. If the server does not support this,
+            a regular non-appendable table will be created instead and a warning will be issued.
 
         See Also
         --------
@@ -1170,6 +1174,27 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
 
         from ..structures.table import TableStructure
 
+        if hasattr(data, "partitions") and not isinstance(
+            data, dask.dataframe.DataFrame
+        ):
+            raise NotImplementedError(
+                f"The `write_table` method does not support {type(data)} with partitions. "
+                "Please convert it to dask.dataframe.DataFrame first."
+            )
+
+        if Version(self.context.server_info.library_version) <= Version("0.2.8"):
+            if appendable:
+                warnings.warn(
+                    "You are trying to create an appendable table, but the `write_table` "
+                    "method can not be used for this with the current server version (<0.2.9)."
+                    "If SQL-backed storage is configured on the server, use the explicit "
+                    "`create_appendable_table` method instead and then `append_partition` "
+                    "to add data to it. "
+                    "Otherwise, to silence this warning and use a fixed-size storage format, "
+                    "set `appendable=False` when calling `write_table`."
+                )
+            appendable = False
+
         if isinstance(data, dask.dataframe.DataFrame):
             structure = TableStructure.from_dask_dataframe(data)
         elif isinstance(data, dict):
@@ -1178,6 +1203,58 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         else:
             structure = TableStructure.from_pandas(data)
 
+        # First attempt to create an appendable table if requested.
+        # If the server does not support it, fall back to creating a regular table.
+        if appendable:
+            import pyarrow
+
+            try:
+                client = self.create_appendable_table(
+                    schema=structure.arrow_schema_decoded,
+                    npartitions=structure.npartitions,
+                    key=key,
+                    metadata=metadata,
+                    specs=specs,
+                    access_tags=access_tags,
+                )
+            except ClientError as err:
+                if (
+                    err.response.status_code == httpx.codes.NOT_ACCEPTABLE
+                    and "Requested storage type is not supported" in err.response.text
+                ):
+                    warnings.warn(
+                        "You are trying to create an appendable table, but the server does not "
+                        "support this; the table will be saved in a fixed-size format instead. "
+                        "We recommend configuring the Tiled server with an SQL-backed storage, "
+                        "which would enable this capability. Otherwise, to silence this warning, "
+                        "set `appendable=False` when calling `write_table`."
+                    )
+                    appendable = False
+                else:
+                    raise
+
+        # If we created an appendable table, write to it and return it.
+        if appendable:
+            if hasattr(data, "partitions"):
+
+                def _append_partition(x, partition_info, client):
+                    table = pyarrow.Table.from_pandas(x)
+                    client.append_partition(partition_info["number"], table)
+                    return x
+
+                data.map_partitions(
+                    functools.partial(_append_partition, client=client), meta=data._meta
+                ).compute()
+            else:
+                table = (
+                    pyarrow.Table.from_pydict(data)
+                    if isinstance(data, dict)
+                    else pyarrow.Table.from_pandas(data)
+                )
+                client.append_partition(0, table)
+            return client
+
+        # If we didn't create an appendable table, create a regular table instead.
         client = self.new(
             StructureFamily.table,
             [
@@ -1193,12 +1270,12 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
 
         if hasattr(data, "partitions"):
-            if isinstance(data, dask.dataframe.DataFrame):
-                ddf = data
-            else:
-                raise NotImplementedError(f"Unsure how to handle type {type(data)}")
 
-            ddf.map_partitions(
+            def _write_partition(x, partition_info, client):
+                client.write_partition(partition_info["number"], x)
+                return x
+
+            data.map_partitions(
                 functools.partial(_write_partition, client=client), meta=data._meta
             ).compute()
         else:
@@ -1300,11 +1377,6 @@ class _Wrap:
 
     def __call__(self):
         return self.obj
-
-
-def _write_partition(x, partition_info, client):
-    client.write_partition(partition_info["number"], x)
-    return x
 
 
 DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
