@@ -17,6 +17,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   should be a string or `Path`, but it actually was required to be a list of strings
   or list of `Paths`. This has been fixed.
 - Missing docstring for `readable_storage` parameter added.
+- Missing `properties` field in the `put_data_source` method on the adapter.
 
 ### Changed
 
