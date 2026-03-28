@@ -87,7 +87,7 @@ class SimpleTiledServer:
         api_key: Optional[str] = None,
         port: int = 0,
         readable_storage: Optional[
-            Union[str, pathlib.Path, list[str], list[pathlib.Path]]
+            Union[str, pathlib.Path, list[Union[str, pathlib.Path]]]
         ] = None,
     ):
         # Delay import to avoid circular import.
