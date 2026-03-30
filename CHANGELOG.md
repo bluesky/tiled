@@ -14,6 +14,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   NeXus file used as an example of the structure is generated dynamically at
   test time now.
 - Missing `properties` field in the `put_data_source` method on the adapter.
+- Web frontend image retrieval for 2D arrays with downsampling.
 
 ### Changed
 
