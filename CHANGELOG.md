@@ -6,6 +6,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Changed
+
+- Array client fully supports slicing when communicating with the server
+  and only fetches the data needed to satisfy the slice.
+
+## v0.2.7 (2026-02-27)
+
 ### Fixed
 
 - A potential race condition when subscribing to an already started stream
