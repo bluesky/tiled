@@ -130,19 +130,8 @@ def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint
     links = {
         "self": f"{base_url}{route}/{path_str}?{offset_or_cursor}page[limit]={page.limit}",
         "first": f"{base_url}{route}/{path_str}?page[limit]={page.limit}",
-        # These are conditionally overwritten below.
-        "last": None,
         "next": None,
-        "prev": None,
     }
-    # if limit:
-    #     last_page = math.floor(length_hint / limit) * limit
-    #     links.update(
-    #         {
-    #             "first": f"{base_url}{route}/{path_str}?page[limit]={page.limit}",
-    #             "last": f"{base_url}{route}/{path_str}?page[offset]={last_page}&page[limit]={limit}",
-    #         }
-    #     )
     if next_cursor is not None:
         links[
             "next"
@@ -151,10 +140,6 @@ def pagination_links(base_url, route, path_parts, page, next_cursor, length_hint
         links[
             "next"
         ] = f"{base_url}{route}/{path_str}?page[offset]={page.offset + page.limit}&page[limit]={page.limit}"
-    # if offset > 0:
-    #     links[
-    #         "prev"
-    #     ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
