@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, cast
 
 import tifffile
 from numpy._typing import NDArray
@@ -113,6 +113,11 @@ class TiffAdapter(Adapter[ArrayStructure]):
 
 class TiffSequenceAdapter(FileSequenceAdapter):
     def _load_from_files(
-        self, slice: Union[builtins.slice, int] = slice(None)
+        self, slice: Union[builtins.slice, int, Iterable[int]] = slice(None)
     ) -> NDArray[Any]:
-        return tifffile.TiffSequence(self.filepaths[slice]).asarray()
+        selected = (
+            [self.filepaths[i] for i in slice]
+            if isinstance(slice, Iterable)
+            else self.filepaths[slice]
+        )
+        return tifffile.TiffSequence(selected).asarray()
