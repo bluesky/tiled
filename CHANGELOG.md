@@ -6,6 +6,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Support for slicing arrays backed by multipart adapters with modified shapes
+
 ### Changed
 
 - Array client fully supports slicing when communicating with the server
