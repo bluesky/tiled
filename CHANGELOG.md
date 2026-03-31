@@ -13,6 +13,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Tests and examples that use example config files; specifically an external
   NeXus file used as an example of the structure is generated dynamically at
   test time now.
+- Type hint for `readable_storage` parameter for `SimpleTiledServer` indicated it
+  should be a string or `Path`, but it actually was required to be a list of strings
+  or list of `Paths`. This has been fixed.
+- Missing docstring for `readable_storage` parameter added.
 - Missing `properties` field in the `put_data_source` method on the adapter.
 - Web frontend image retrieval for 2D arrays with downsampling.
 
@@ -20,6 +24,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - The `start_in_thread` method of `Subscription` now waits until the WebSocket
   connection is established before returning.
+- Allow for passing a single string or `Path` to `SimpleTiledServer`'s `readable_storage`
+  parameter. Generally, when using `SimpleTiledServer` one usually just passes `/tmp` or
+  `tmp_path` in unit tests.
+- Unit test that confirms that the `readable_storage` setting works as expected, with
+  it being passed as a string, `Path`, list of strings, or list of `Path`s.
 - Cancel previous CI runs on a PR when further commits are pushed to reduce
   CI processing time.
 
