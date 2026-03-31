@@ -97,12 +97,13 @@ interface ImageDisplayProps {
 }
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
-  let url: string;
-  url = `${props.link}?format=image/png&slice=${props.cuts.join(",")}`;
+  const sliceParts = props.cuts.map(c => c.toString());
   if (props.stride !== 1) {
-    // Downsample the image dimensions.
-    url = url.concat(`,::${props.stride},::${props.stride}`);
+    sliceParts.push(`::${props.stride}`, `::${props.stride}`);
   }
+  const url = sliceParts.length > 0
+    ? `${props.link}?format=image/png&slice=${sliceParts.join(",")}`
+    : `${props.link}?format=image/png`;
   return (
     <Box
       component="img"

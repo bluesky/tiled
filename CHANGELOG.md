@@ -18,6 +18,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   or list of `Paths`. This has been fixed.
 - Missing docstring for `readable_storage` parameter added.
 - Missing `properties` field in the `put_data_source` method on the adapter.
+- Web frontend image retrieval for 2D arrays with downsampling.
 
 ### Changed
 
@@ -28,6 +29,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   `tmp_path` in unit tests.
 - Unit test that confirms that the `readable_storage` setting works as expected, with
   it being passed as a string, `Path`, list of strings, or list of `Path`s.
+- Cancel previous CI runs on a PR when further commits are pushed to reduce
+  CI processing time.
 
 ## v0.2.7 (2026-02-27)
 
