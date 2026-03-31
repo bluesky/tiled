@@ -71,7 +71,6 @@ def test_tiff_sequence(client, slice_input, correct_shape):
     assert arr.shape == correct_shape
 
 
-@pytest.mark.filterwarnings("ignore: Forcefully reshaping ")
 @pytest.mark.parametrize(
     "slice_input, correct_shape",
     [

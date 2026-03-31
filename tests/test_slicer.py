@@ -116,7 +116,7 @@ def test_slicer(slice: str):
     """
     Test the slicer function
     """
-    assert NDSlice.from_query(slice) == reference_slice_(slice)
+    assert NDSlice.from_numpy_str(slice) == reference_slice_(slice)
 
 
 @pytest.mark.parametrize("slice", slice_typo_data + slice_missing_data)
@@ -125,7 +125,7 @@ def test_slicer_typo_data(slice: str):
     Test the slicer function with invalid input
     """
     with pytest.raises(ValueError):
-        _ = NDSlice.from_query(slice)
+        _ = NDSlice.from_numpy_str(slice)
 
 
 @pytest.mark.parametrize("slice", slice_malicious_data)
@@ -134,7 +134,7 @@ def test_slicer_malicious_exec(slice: str):
     Test the slicer function with 'malicious' input
     """
     with pytest.raises(ValueError):
-        _ = NDSlice.from_query(slice)
+        _ = NDSlice.from_numpy_str(slice)
 
 
 @pytest.mark.parametrize("slice_", slice_typo_data + slice_malicious_data)

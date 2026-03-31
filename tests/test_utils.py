@@ -1,7 +1,15 @@
+import itertools
+import math
 from pathlib import Path
 
+import dask.array as da
+import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
+from tiled.client.utils import slices_to_dask_chunks
+from tiled.ndslice import NDBlock, NDSlice, merge_slices, split_1d, split_slice
 from tiled.utils import (
     CachingMap,
     DictView,
@@ -365,3 +373,291 @@ def test_parse_invalid_mimetype():
     with pytest.raises(ValueError):
         # Parameter does not have form 'key=value'
         assert parse_mimetype("text/csv;oops")
+
+
+@given(data=st.data(), max_len=st.integers(1, 50))
+def test_split_1d(data, max_len):
+    # Generate start and stop values
+    start = data.draw(st.integers(0, 100), label="start")
+    stop = data.draw(st.integers(0, 100), label="stop")
+
+    # Check degenerate slice
+    if start == stop:
+        result = split_1d(start, stop, step=1, max_len=max_len, pref_splits=[])
+        assert result == [(start, stop)]
+        return
+
+    # Step must match slice direction
+    if stop > start:
+        step = data.draw(st.integers(1, 10), label="step")
+    elif stop < start:
+        step = data.draw(st.integers(-10, -1), label="step")
+
+    # Preferred splits strictly inside slice and unique
+    preferred_splits = data.draw(
+        st.lists(
+            st.integers(min(start, stop), max(start, stop) - 1),
+            unique=True,
+            max_size=10,
+        ),
+        label="preferred_splits",
+    )
+
+    result = split_1d(start, stop, step, max_len, preferred_splits)
+
+    # 1. Check that first and last boundaries match
+    assert result[0][0] == start
+    assert result[-1][1] == stop
+
+    # 2. Check contiguous intervals
+    for (_, a_stop), (b_start, _) in zip(result, result[1:]):
+        assert a_stop == b_start
+
+    # 3. Check grid alignment
+    for a, b in result:
+        assert (a - start) % step == 0
+        if b != stop:
+            assert (b - start) % step == 0
+
+    # 4. Check max length constraint
+    for a, b in result:
+        assert len(range(a, b, step)) <= max_len
+
+    # 5. Check step direction consistency
+    for a, b in result:
+        if step > 0:
+            assert b >= a
+        else:
+            assert b <= a
+
+    # 6. Check no degenerate intervals
+    for a, b in result:
+        assert a != b
+        assert len(range(a, b, step)) > 0
+
+
+@st.composite
+def nd_slice_strategy(draw):
+    ndim = draw(st.integers(1, 4))
+
+    starts = draw(st.lists(st.integers(0, 20), min_size=ndim, max_size=ndim))
+    lengths = draw(st.lists(st.integers(0, 20), min_size=ndim, max_size=ndim))
+    steps = draw(st.lists(st.integers(1, 5), min_size=ndim, max_size=ndim))
+    reversed = draw(st.lists(st.booleans(), min_size=ndim, max_size=ndim))
+
+    slices, shape = [], []
+
+    for start, length, step, rev in zip(starts, lengths, steps, reversed):
+        if length == 0:
+            # Singleton dimension, use an integer index
+            slices.append(start)
+            shape.append(start + 1)
+        else:
+            stop = start + length * step
+            if rev:
+                slices.append(slice(stop, start, -step))
+            else:
+                slices.append(slice(start, stop, step))
+            shape.append(stop)
+
+    shape = tuple(shape)
+
+    return NDSlice(*slices).expand_for_shape(shape), shape
+
+
+@st.composite
+def pref_split_strategy(draw, slices):
+    pref = []
+
+    for sl in slices:
+        if isinstance(sl, int):
+            pref.append([])  # No splits for singleton dimensions
+            continue
+
+        start, stop, step = sl.start, sl.stop, sl.step or 1
+        grid = list(range(start + step, stop, step))
+
+        if grid:
+            splits = draw(
+                st.lists(
+                    st.sampled_from(grid),
+                    unique=True,
+                    max_size=min(len(grid), 5),
+                )
+            )
+        else:
+            splits = []
+
+        pref.append(sorted(splits))
+
+    return pref
+
+
+@given(data=st.data(), max_size=st.sampled_from([1, 2, 3, 5, 50, 100, 200]))
+@settings(deadline=None)
+def test_split_slice(data, max_size):
+    arr_slice, shape = data.draw(nd_slice_strategy(), label="nd_slice")
+
+    if math.prod(arr_slice.shape_after_slice(shape)) == 0:
+        # Skip degenerate case where slice results in empty array
+        return
+
+    pref_splits = data.draw(pref_split_strategy(arr_slice), label="pref_splits")
+    arr = np.arange(math.prod(shape)).reshape(shape)
+    slices = split_slice(arr_slice, max_size, pref_splits)
+
+    # 1. Check reconstruction of the original slice from the pieces
+    darr = da.Array(
+        name="test",
+        dask={
+            ("test",) + indx: (lambda x: arr[x], slc) for indx, slc in slices.items()
+        },
+        dtype=arr.dtype,
+        chunks=slices_to_dask_chunks(slices, shape),
+        shape=arr_slice.shape_after_slice(shape),
+    )
+    np.testing.assert_array_equal(darr.compute(), arr[arr_slice])
+
+    # 2. Check that each slice respects the max_size constraint
+    for slc in slices.values():
+        slc_shape = slc.shape_after_slice(shape)
+        assert math.prod(slc_shape) <= max_size
+
+
+@pytest.mark.parametrize(
+    "inputs, expected",
+    [
+        ([NDSlice(1, 2)], NDSlice(1, 2)),  # single slice
+        ([NDSlice(1, 2), NDSlice(1, 2)], NDSlice(1, 2)),  # identical integers
+        (
+            [NDSlice(0), NDSlice(1), NDSlice(2)],
+            NDSlice(slice(0, 3)),
+        ),  # consecutive integers
+        ([NDSlice(2), NDSlice(0), NDSlice(1)], NDSlice(slice(0, 3))),  # unordered
+        ([NDSlice(0), NDSlice(2)], None),  # non-consecutive integers
+        (
+            [NDSlice(slice(0, 5)), NDSlice(slice(0, 5))],
+            NDSlice(slice(0, 5)),
+        ),  # identical slices
+        (
+            [NDSlice(slice(0, 3)), NDSlice(slice(3, 6))],
+            NDSlice(slice(0, 6)),
+        ),  # adjacent slices
+        (
+            [NDSlice(slice(3, 6)), NDSlice(slice(0, 3))],
+            NDSlice(slice(0, 6)),
+        ),  # unordered adjacent slices
+        ([NDSlice(slice(0, 3)), NDSlice(slice(4, 6))], None),  # non-adjacent slices
+        (
+            [NDSlice(slice(0, 4, 1)), NDSlice(slice(4, 8, 2))],
+            None,
+        ),  # slice step mismatch
+        (
+            [NDSlice(2), NDSlice(slice(3, 4))],
+            NDSlice(slice(2, 4)),
+        ),  # mixed integer and slice
+        (
+            [NDSlice(slice(5, 5)), NDSlice(slice(5, 5))],
+            NDSlice(slice(5, 5)),
+        ),  # empty slice dimension
+        ([NDSlice(Ellipsis, 1), NDSlice(Ellipsis, 1)], NDSlice(Ellipsis, 1)),
+        ([NDSlice(Ellipsis, 0), NDSlice(Ellipsis, 1)], NDSlice(Ellipsis, slice(0, 2))),
+        (
+            [NDSlice(Ellipsis, slice(None, 3)), NDSlice(Ellipsis, slice(3, 6))],
+            NDSlice(Ellipsis, slice(0, 6)),
+        ),
+        ([NDSlice(0, slice(0, 3)), NDSlice(0, slice(3, 6))], NDSlice(0, slice(0, 6))),
+        ([NDSlice(slice(0, 3), 0), NDSlice(slice(3, 6), 0)], NDSlice(slice(0, 6), 0)),
+        ([NDSlice(0, 0), NDSlice(1, 1)], None),  # too many differing dimensions
+        ([NDSlice(0), NDSlice(0, 1)], None),
+        ([NDSlice(slice(0, 2)), NDSlice(5)], None),
+        ([NDBlock(0), NDBlock(1)], NDBlock(slice(0, 2))),
+        ([NDSlice(0), NDBlock(1)], NDSlice(slice(0, 2))),
+        ([NDSlice(slice(None, 5)), NDSlice(slice(0, 5))], NDSlice(slice(None, 5))),
+        ([NDSlice(slice(None, 3)), NDSlice(slice(3, 6))], NDSlice(slice(0, 6))),
+        ([NDSlice(slice(3, None)), NDSlice(slice(3, None))], NDSlice(slice(3, None))),
+        (
+            [NDSlice(slice(None, None)), NDSlice(slice(None, None))],
+            NDSlice(slice(None, None)),
+        ),
+        (
+            [NDSlice(slice(None, None)), NDSlice(0)],
+            None,
+        ),  # open slice cannot merge with integer
+        ([NDSlice(-2), NDSlice(-1)], NDSlice(slice(-2, 0))),  # negative integrs
+        ([NDSlice(slice(-5, -3)), NDSlice(slice(-3, -1))], NDSlice(slice(-5, -1))),
+        ([NDSlice(slice(-5, -3)), NDSlice(slice(-2, 0))], None),
+        (
+            [NDSlice(slice(5, 0, -1)), NDSlice(slice(5, 0, -1))],
+            NDSlice(slice(5, 0, -1)),
+        ),  # identical reverse slices allowed
+        (
+            [NDSlice(slice(5, 0, -1)), NDSlice(slice(5, 0, -2))],
+            None,
+        ),  # reverse slices with different step rejected
+        (
+            [NDSlice(slice(5, 3, -1)), NDSlice(slice(3, 1, -1))],
+            NDSlice(slice(5, 1, -1)),
+        ),  # adjacent reverse slices
+        (
+            [NDSlice(slice(None, None)), NDSlice(slice(0, 0))],
+            None,
+        ),  # open slice incompatible with explicit empty slice
+        (
+            [NDSlice(slice(None, 3), 0), NDSlice(slice(3, 6), 0)],
+            NDSlice(slice(0, 6), 0),
+        ),
+    ],
+)
+def test_merge_slices(inputs, expected):
+    if expected is None:
+        with pytest.raises(ValueError):
+            merge_slices(*inputs)
+    else:
+        result = merge_slices(*inputs)
+
+        assert type(result) is type(expected)
+        assert tuple(result) == tuple(expected)
+
+        # Test that the result is the same regardless of the order of the inputs
+        if len(inputs) > 2:
+            for permuted_inputs in itertools.permutations(inputs):
+                assert merge_slices(*permuted_inputs) == expected
+
+
+@pytest.mark.parametrize(
+    "slice_dict,shape,expected",
+    [
+        ({(0, 0): NDSlice.from_numpy_str(":10, :5")}, (10, 5), ((10,), (5,))),
+        (
+            {
+                (0,): NDSlice.from_numpy_str(":10"),
+                (1,): NDSlice.from_numpy_str("10:30"),
+            },
+            (30,),
+            ((10, 20),),
+        ),
+        (
+            {
+                (0, 0): NDSlice.from_numpy_str(":10, :5"),
+                (0, 1): NDSlice.from_numpy_str(":10, 5:12"),
+                (1, 0): NDSlice.from_numpy_str("10:18, :5"),
+                (1, 1): NDSlice.from_numpy_str("10:18, 5:12"),
+            },
+            (18, 12),
+            ((10, 8), (5, 7)),
+        ),
+        (
+            {
+                (0, 0, 0): NDSlice.from_numpy_str(":2, :3, :4"),
+                (0, 0, 1): NDSlice.from_numpy_str(":2, :3, 4:9"),
+                (1, 0, 0): NDSlice.from_numpy_str("2:8, :3, :4"),
+                (1, 0, 1): NDSlice.from_numpy_str("2:8, :3, 4:9"),
+            },
+            (8, 3, 9),
+            ((2, 6), (3,), (4, 5)),
+        ),
+    ],
+)
+def test_dask_slices(slice_dict, shape, expected):
+    assert slices_to_dask_chunks(slice_dict, shape) == expected
