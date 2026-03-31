@@ -58,7 +58,7 @@ class SimpleTiledServer:
     port : Optional[int]
         Port the server will listen on. By default, a random free high port
         is allocated by the operating system.
-    readable_storage : Optional[Union[str, pathlib.Path, list[str], list[pathlib.Path]]]
+    readable_storage : Optional[Union[str, pathlib.Path, list[Union[str, pathlib.Path]]]
         If provided, the server will be able to read from these storage locations, in addition
         to the default storage location defined by `directory`.
 
