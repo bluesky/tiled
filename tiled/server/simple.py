@@ -122,8 +122,12 @@ class SimpleTiledServer:
         log_config["handlers"]["default"]["filename"] = str(directory / "error.log")
 
         # Catalog from uri wants readable storage to be a list,
-        # but we want to allow users to pass in a single path for convenience.
-        if readable_storage is not None and not isinstance(readable_storage, list):
+        # but we want to allow users to pass in a single path (as a str or pathlib.Path)
+        # for convenience.
+        if readable_storage is not None and (
+            isinstance(readable_storage, str)
+            or isinstance(readable_storage, pathlib.Path)
+        ):
             readable_storage = [readable_storage]
 
         self.catalog = catalog_from_uri(
