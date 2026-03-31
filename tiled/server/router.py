@@ -343,7 +343,7 @@ def get_router(
         request.state.endpoint = "search"
         try:
             (
-                resource,
+                response,
                 metadata_stale_at,
                 must_revalidate,
             ) = await construct_entries_response(
@@ -364,6 +364,9 @@ def get_router(
                 max_depth=max_depth,
                 exact_count_limit=settings.exact_count_limit,
             )
+            # NOTE: Back-compatibility for clients older than v0.2.4
+            response_model_dump = _model_dump_backcompat(request, response)
+
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
             # cite the earliest one.
@@ -377,7 +380,7 @@ def get_router(
                 headers["Cache-Control"] = "must-revalidate"
             return json_or_msgpack(
                 request,
-                resource.model_dump(),
+                response_model_dump,
                 expires=expires,
                 headers=headers,
             )
@@ -501,10 +504,13 @@ def get_router(
                 detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
             )
         meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
+        response = schemas.Response(data=resource, meta=meta)
 
+        # NOTE: Back-compatibility for clients older than v0.2.4
+        response_model_dump = _model_dump_backcompat(request, response)
         return json_or_msgpack(
             request,
-            schemas.Response(data=resource, meta=meta).model_dump(),
+            response_model_dump,
             expires=getattr(entry, "metadata_stale_at", None),
         )
 
@@ -2549,3 +2555,28 @@ def get_metrics_router() -> APIRouter:
         return Response(data, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
     return router
+
+
+def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict:
+    """Backwards compatibility for clients older than v0.2.4
+
+    Older clients expect "data_sources" in the response to not include "properties".
+    To be removed in a future major release.
+    Issue: https://github.com/bluesky/tiled/issues/1300
+    """
+    response_dict = response.model_dump()
+    user_agent = request.headers.get("user-agent", "")
+    if user_agent.startswith("python-tiled/"):
+        agent, _, raw_version = user_agent.partition("/")
+        try:
+            parsed_version = packaging.version.parse(raw_version)
+            if parsed_version < packaging.version.parse("0.2.4"):
+                for ds in response_dict["data"]["attributes"]["data_sources"]:
+                    ds.pop("properties", None)
+
+                return response_dict
+
+        except Exception:
+            pass
+
+    return response_dict

@@ -79,4 +79,24 @@ describe("ArrayND", () => {
     expect(screen.getByRole("img")).toBeInTheDocument();
     expect(screen.getByText(/4-dimensional array/i)).toBeInTheDocument();
   });
+
+  it("renders 2D array with no stride without slice parameter", () => {
+    const props = {
+      ...baseProps,
+      structure: { shape: [512, 512] }, // 2D array
+    };
+    render(<ArrayND {...props} />);
+    const img = screen.getByRole("img", { name: /Data rendered/i });
+    expect(img).toHaveAttribute("src", "/api/array?format=image/png");
+  });
+
+  it("renders 2D array with stride using slice parameter", () => {
+    const props = {
+      ...baseProps,
+      structure: { shape: [3000, 3000] }, // 2D array, stride=3
+    };
+    render(<ArrayND {...props} />);
+    const img = screen.getByRole("img", { name: /Data rendered/i });
+    expect(img).toHaveAttribute("src", "/api/array?format=image/png&slice=::3,::3");
+  });
 });
