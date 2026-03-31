@@ -33,7 +33,7 @@ class _DaskArrayClient(BaseClient):
     # This will be used to determine how to combine multiple requests when fetching
     # data in blocks. If set to None, the client will not attempt to combine
     # requests and will fetch each chunk separately as determiied by the structure.
-    RESPONSE_BYTESIZE_LIMIT = 250 * 1024 * 1024  # 250 MiB
+    RESPONSE_BYTESIZE_LIMIT = 100 * 1024 * 1024  # 100 MiB
 
     def __init__(self, *args, item, **kwargs):
         super().__init__(*args, item=item, **kwargs)
