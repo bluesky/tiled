@@ -40,6 +40,7 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
+        chunks: Optional[tuple[tuple[int]]] = None,
     ) -> None:
         self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         # Keep track of chunks derived from the files themselves, before any reshaping
@@ -57,6 +58,11 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
             )
             self.true_chunks = structure.chunks
         super().__init__(structure, metadata=metadata, specs=specs)
+        # If chunks are provided (e.g., from data source parameters) they take
+        # precedence over the chunks derived from the files. This allows for
+        # reshaping.
+        if chunks is not None:
+            self.true_chunks = chunks
 
     @classmethod
     def from_uris(cls, *data_uris: str) -> "FileSequenceAdapter":
@@ -71,8 +77,6 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
         adp = init_adapter_from_catalog(cls, data_source, node, **kwargs)
-        adp.true_chunks = data_source.parameters.get("chunks")
-
         return adp
 
     @abstractmethod
