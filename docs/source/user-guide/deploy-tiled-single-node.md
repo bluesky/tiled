@@ -131,7 +131,7 @@ steps below in order.
    :caption: compose.override.yml
    ```
 
-   The name `compose.override.yml` matters: below, `docker-compose` will
+   The name `compose.override.yml` matters: below, `docker compose` will
    automatically apply this override if it detects one is present.
 
 2. Create a `.env` file with secure secrets.
@@ -166,14 +166,14 @@ steps below in order.
    4. Start the services.
 
    ```sh
-   docker-compose up -d
+   docker compose up -d
    ```
 
-   `docker-compose` will automatically read your `.env` file. To stop all
-   services, run `docker-compose down`.
+   `docker compose` will automatically read your `.env` file. To stop all
+   services, run `docker compose down`.
 
    ```{warning}
-   Adding `-v` to `docker-compose down` will permanently delete all
+   Adding `-v` to `docker compose down` will permanently delete all
    persisted storage. Do not use it unless you intend to wipe your data.
    ```
 
