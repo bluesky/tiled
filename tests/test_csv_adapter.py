@@ -6,7 +6,7 @@ import numpy
 import pandas
 import pytest
 
-from tiled.adapters.csv import CSVArrayAdapter
+from tiled.adapters.csv import CSVAdapter, CSVArrayAdapter
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
 from tiled.server.app import build_app
@@ -124,6 +124,16 @@ def test_csv_table(context, csv_table_uri):
     read_df = client["x"]["table"].read()
     assert set(read_df.columns) == set(df1.columns)
     assert (read_df == df1).all().all()
+
+
+@pytest.mark.parametrize("nullable", [True, False])
+def test_csv_table_from_uris(context, csv_table_uri, nullable):
+    adp = CSVAdapter.from_uris(csv_table_uri, assume_missing=nullable)
+    read_df = adp.read()
+
+    assert set(read_df.columns) == set(df1.columns)
+    assert (read_df == df1).all().all()
+    assert read_df["C"].dtype == numpy.dtype("float64") if nullable else df1["C"].dtype
 
 
 def test_csv_struct_dtype_array(context, csv_table_uri):
@@ -244,14 +254,26 @@ def test_csv_arrays_selected_columns(context, csv_array3_uri, key, columns):
         assert numpy.array_equal(read_arr, orig_arr)
 
 
-def test_csv_arrays_from_uris(csv_array1_uri, csv_array2_uri):
-    array_adapter = CSVArrayAdapter.from_uris(csv_array1_uri)
+@pytest.mark.parametrize("nullable", [True, False])
+def test_csv_arrays_from_uris(csv_array1_uri, csv_array2_uri, csv_array3_uri, nullable):
+    array_adapter = CSVArrayAdapter.from_uris(csv_array1_uri, assume_missing=nullable)
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr1).all()
+    assert read_arr.dtype == numpy.dtype('float64') if nullable else arr1.dtype
 
-    array_adapter = CSVArrayAdapter.from_uris(csv_array2_uri)
+    array_adapter = CSVArrayAdapter.from_uris(csv_array2_uri, assume_missing=nullable)
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr2).all()
+    assert read_arr.dtype == numpy.dtype('float64') if nullable else arr2.dtype
+
+    # breakpoint()
+
+    array_adapter = CSVArrayAdapter.from_uris(
+        csv_array3_uri, header=0, usecols=["A", "G", "B"]
+    )
+    # array_adapter = CSVArrayAdapter.from_uris(csv_array3_uri, skiprows=1)
+    read_arr = array_adapter.read()
+    # assert numpy.isclose(read_arr, arr2).all()
 
 
 @pytest.mark.parametrize(
