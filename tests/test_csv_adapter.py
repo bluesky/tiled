@@ -259,23 +259,15 @@ def test_csv_arrays_from_uris(csv_array1_uri, csv_array2_uri, csv_array3_uri, nu
     array_adapter = CSVArrayAdapter.from_uris(csv_array1_uri, assume_missing=nullable)
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr1).all()
-    assert read_arr.dtype == numpy.dtype('float64') if nullable else arr1.dtype
+    assert read_arr.dtype == numpy.dtype("float64") if nullable else arr1.dtype
 
     array_adapter = CSVArrayAdapter.from_uris(csv_array2_uri, assume_missing=nullable)
     read_arr = array_adapter.read()
     assert numpy.isclose(read_arr, arr2).all()
-    assert read_arr.dtype == numpy.dtype('float64') if nullable else arr2.dtype
-
-    # breakpoint()
-
-    array_adapter = CSVArrayAdapter.from_uris(
-        csv_array3_uri, header=0, usecols=["A", "G", "B"]
-    )
-    # array_adapter = CSVArrayAdapter.from_uris(csv_array3_uri, skiprows=1)
-    read_arr = array_adapter.read()
-    # assert numpy.isclose(read_arr, arr2).all()
+    assert read_arr.dtype == numpy.dtype("float64") if nullable else arr2.dtype
 
 
+@pytest.mark.parametrize("allow_object_arrays", [True, False])
 @pytest.mark.parametrize(
     "key, columns",
     [
@@ -283,24 +275,45 @@ def test_csv_arrays_from_uris(csv_array1_uri, csv_array2_uri, csv_array3_uri, nu
         ("arr_all_float", ["D", "E", "F"]),
         ("arr_all_str", ["G", "H", "I"]),
         ("arr_all_bool", ["J", "K", "L"]),
+        ("numerical_struct", ["A", "D"]),
+        ("numerical_and_bool_struct", ["A", "D", "J"]),
+        ("selected_struct", ["A", "D", "G", "J"]),
+        ("all_struct", None),
     ],
 )
 def test_csv_arrays_from_uris_selected_columns(
-    csv_array3_uri, key, columns, monkeypatch
+    csv_array3_uri, key, columns, monkeypatch, allow_object_arrays
 ):
-    orig_arr = df_arr3[columns].to_numpy()  # The original array
+    orig_arr = df_arr3[columns or df_arr3.columns]
+    orig_arr = (
+        orig_arr.to_records(index=False).reshape(-1, 1)
+        if "struct" in key
+        else orig_arr.to_numpy()
+    )
 
-    if "str" in key:
-        # Allow object dtype to be used for string columns
-        # This is equivalent to setting TILED_ALLOW_OBJECT_ARRAYS=1
-        kinds = {"object": "O", **{e.name: e.value for e in Kind}}
-        NewKind = enum.Enum("Kind", kinds)
-        monkeypatch.setattr("tiled.structures.array.Kind", NewKind)
+    if allow_object_arrays:
+        if "str" in key:
+            # Allow object dtype to be used for string columns
+            # This is equivalent to setting TILED_ALLOW_OBJECT_ARRAYS=1
+            kinds = {"object": "O", **{e.name: e.value for e in Kind}}
+            NewKind = enum.Enum("Kind", kinds)
+            monkeypatch.setattr("tiled.structures.array.Kind", NewKind)
+        else:
+            pytest.skip("Object arrays are only relevant for string columns")
 
     array_adapter = CSVArrayAdapter.from_uris(csv_array3_uri, header=0, usecols=columns)
     read_arr = array_adapter.read()
 
-    if "float" in key:
-        assert numpy.isclose(read_arr, orig_arr).all()
+    if "struct" in key:
+        for name in read_arr.dtype.names:
+            a = read_arr[name]
+            b = orig_arr[name]
+
+            if numpy.issubdtype(a.dtype, numpy.floating):
+                numpy.testing.assert_allclose(a, b)
+            else:
+                numpy.testing.assert_array_equal(a, b)
+    elif ("float" in key) or ("numerical" in key):
+        numpy.testing.assert_allclose(read_arr, orig_arr)
     else:
-        assert numpy.array_equal(read_arr, orig_arr)
+        numpy.testing.assert_array_equal(read_arr, orig_arr)

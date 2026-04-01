@@ -174,7 +174,7 @@ class CSVAdapter(Adapter[TableStructure]):
         return pandas.concat(dfs, axis=0)
 
     def read_partition(
-        self, indx: int, fields: Optional[List[Union[str, int]]] = None
+        self, indx: int, fields: Optional[Union[List[str], List[int]]] = None
     ) -> pandas.DataFrame:
         """Read a single partition (a single csv file)
 
@@ -207,22 +207,14 @@ class CSVAdapter(Adapter[TableStructure]):
         else:
             df = pandas.read_csv(self._file_paths[indx], **kwargs)
 
-        if usecols := self._read_csv_kwargs.get("usecols"):
-            df = df[usecols]  # Ensure the order of columns is preserved
+        # Ensure the order of columns is preserved if identified by names rather than indices
+        if usecols := kwargs.get("usecols"):
+            if all(isinstance(col, str) for col in usecols):
+                df = df[usecols]
 
         return df
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
-        """
-
-        Parameters
-        ----------
-        key :
-
-        Returns
-        -------
-
-        """
         if key not in self.structure().columns:
             return None
         return ArrayAdapter.from_array(self.read([key])[key].values)
@@ -234,19 +226,6 @@ class CSVAdapter(Adapter[TableStructure]):
         item: Union[str, Path],
         is_directory: bool,
     ) -> List[DataSource[TableStructure]]:
-        """
-
-        Parameters
-        ----------
-        mimetype :
-        dict_or_none :
-        item :
-        is_directory :
-
-        Returns
-        -------
-
-        """
         return [
             DataSource(
                 structure_family=StructureFamily.table,
@@ -266,17 +245,6 @@ class CSVAdapter(Adapter[TableStructure]):
         ]
 
     def __getitem__(self, key: str) -> ArrayAdapter:
-        """Get an ArrayAdapter for a single column
-
-        Parameters
-        ----------
-        key : str
-            column name to get
-
-        Returns
-        -------
-        An array adapter corresponding to a single column in the table.
-        """
         # Must compute to determine shape.
         return ArrayAdapter.from_array(self.read([key])[key].values)
 
