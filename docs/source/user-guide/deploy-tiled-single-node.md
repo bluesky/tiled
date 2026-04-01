@@ -33,10 +33,42 @@ into the container so that it persists after the container stops.
 
 ```sh
 mkdir storage/
+```
 
+We would like to make storage writable by the application in the container,
+while continuing to be able to direct access the files in it from the host,
+outside of Tiled.
+
+This is one of those times when Docker and Podman differ.
+
+#### Docker
+
+With Docker, it is straightforward because Docker runs with high privileges by
+default.
+
+```sh
 echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
 docker run -p 8000:8000 --env-file .env -v ./storage:/storage ghcr.io/bluesky/tiled:latest
 ```
+
+#### Podman
+
+With Podman, there are various options. Here is one that is relatively
+simple to set up.
+
+1. Make the storage directory group writable.
+
+   ```sh
+   chmod g+w storage
+   ```
+2. Run the container with the options `--userns=keep-id`
+   and `--group-add $(id -g)` to allow the container to write to the storage
+   directory.
+
+   ```sh
+   echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
+   podman run -p 8000:8000 --env-file .env -v ./storage:/storage --userns=keep-id --group-add $(id -g) ghcr.io/bluesky/tiled:latest
+   ```
 
 ### Customizing Configuration
 
@@ -82,68 +114,68 @@ steps below in order.
 
 1. Create a project directory and add the compose file.
 
-Create a directory for your deployment and place the following `compose.yml`
-inside it:
+   Create a directory for your deployment and place the following `compose.yml`
+   inside it:
 
-```{literalinclude} ../../../compose.yml
-:language: yaml
-:caption: compose.yml
-```
+   ```{literalinclude} ../../../compose.yml
+   :language: yaml
+   :caption: compose.yml
+   ```
 
-By default, this uses the configuration file shown above.
-When you need to introduce a custom configuration file, place a file named
-`compose.override.yml` next to `compose.yml`.
+   By default, this uses the configuration file shown above.
+   When you need to introduce a custom configuration file, place a file named
+   `compose.override.yml` next to `compose.yml`.
 
-```{literalinclude} ../../../compose.override.example.yml
-:language: yaml
-:caption: compose.override.yml
-```
+   ```{literalinclude} ../../../compose.override.example.yml
+   :language: yaml
+   :caption: compose.override.yml
+   ```
 
-The name `compose.override.yml` matters: below, `docker-compose` will
-automatically apply this override if it detects one is present.
+   The name `compose.override.yml` matters: below, `docker-compose` will
+   automatically apply this override if it detects one is present.
 
 2. Create a `.env` file with secure secrets.
 
-In the same directory, create a `.env` file using the format below as a
-template:
+   In the same directory, create a `.env` file using the format below as a
+   template:
 
-```{literalinclude} ../../../.env.example
-:language: yaml
-:caption: .env
-```
+   ```{literalinclude} ../../../.env.example
+   :language: yaml
+   :caption: .env
+   ```
 
-Then populate it with generated secrets:
+   Then populate it with generated secrets:
 
-```sh
-echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 32)" >> .env
-echo "REDIS_PASSWORD=$(openssl rand -hex 32)" >> .env
-```
+   ```sh
+   echo "TILED_SINGLE_USER_API_KEY=$(openssl rand -hex 32)" >> .env
+   echo "POSTGRES_PASSWORD=$(openssl rand -hex 32)" >> .env
+   echo "REDIS_PASSWORD=$(openssl rand -hex 32)" >> .env
+   ```
 
 3. Create the database initialization script.
 
-Create an `initdb/` subdirectory and place the following script inside it. This
-script initializes the Tiled catalog database (for metadata) and the storage
-database (for appendable tabular data) when PostgreSQL first starts.
+   Create an `initdb/` subdirectory and place the following script inside it. This
+   script initializes the Tiled catalog database (for metadata) and the storage
+   database (for appendable tabular data) when PostgreSQL first starts.
 
-```{literalinclude} ../../../initdb/01-create-databases.sh
-:language: sh
-:caption: initdb/01-create-databases.sh
-```
+   ```{literalinclude} ../../../initdb/01-create-databases.sh
+   :language: sh
+   :caption: initdb/01-create-databases.sh
+   ```
 
-4. Start the services.
+   4. Start the services.
 
-```sh
-docker-compose up -d
-```
+   ```sh
+   docker-compose up -d
+   ```
 
-`docker-compose` will automatically read your `.env` file. To stop all
-services, run `docker-compose down`.
+   `docker-compose` will automatically read your `.env` file. To stop all
+   services, run `docker-compose down`.
 
-```{warning}
-Adding `-v` to `docker-compose down` will permanently delete all
-persisted storage. Do not use it unless you intend to wipe your data.
-```
+   ```{warning}
+   Adding `-v` to `docker-compose down` will permanently delete all
+   persisted storage. Do not use it unless you intend to wipe your data.
+   ```
 
 ## Without a Container
 
