@@ -1,3 +1,5 @@
+import asyncio
+import itertools
 import platform
 from pathlib import Path
 
@@ -6,6 +8,7 @@ import pyarrow
 import pytest
 
 from tiled.client import SERVERS, from_uri, simple
+from tiled.client.register import register
 from tiled.server import SimpleTiledServer
 
 
@@ -62,6 +65,32 @@ def test_persistent_data(tmp_path):
         assert client2["x"].read() is not None
         assert client2["y"].read() is not None
     assert server1.directory == server2.directory == tmp_path
+
+
+@pytest.mark.parametrize(
+    ("as_list", "as_path"), list(itertools.product([True, False], [True, False]))
+)
+def test_readable_storage(tmp_path, as_list, as_path):
+    "Run server with a user-specified readable storage location."
+    readable_storage = [tmp_path / "readable"] if as_list else tmp_path / "readable"
+    if as_path:
+        readable_storage = (
+            [Path(p) for p in readable_storage]
+            if isinstance(readable_storage, list)
+            else Path(readable_storage)
+        )
+    with SimpleTiledServer(
+        directory=tmp_path / "default", readable_storage=readable_storage
+    ) as server:
+        client = from_uri(server.uri)
+        (tmp_path / "readable").mkdir(parents=True, exist_ok=True)
+        import h5py
+        import numpy
+
+        with h5py.File(tmp_path / "readable" / "data.h5", "w") as f:
+            f["x"] = numpy.array([1, 2, 3])
+        asyncio.run(register(client, tmp_path / "readable"))
+        assert (client["data"]["x"].read() == [1, 2, 3]).all()
 
 
 def test_cleanup(tmp_path):

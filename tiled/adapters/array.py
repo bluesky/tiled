@@ -7,11 +7,12 @@ import numpy
 import pandas
 from numpy.typing import NDArray
 
-from ..adapters.core import Adapter
-from ..ndslice import NDSlice
+from tiled.adapters.core import Adapter
+
+from ..ndslice import NDBlock, NDSlice
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
-from ..type_aliases import JSON
+from ..type_aliases import JSON, Chunks
 from .utils import force_reshape
 
 
@@ -49,7 +50,7 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         array: NDArray[Any],
         *,
         shape: Optional[Tuple[int, ...]] = None,
-        chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
+        chunks: Optional[Chunks] = None,
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
@@ -106,12 +107,12 @@ class ArrayAdapter(Adapter[ArrayStructure]):
 
     def read_block(
         self,
-        block: Tuple[int, ...],
+        block: NDBlock,
         slice: NDSlice = NDSlice(...),
     ) -> NDArray[Any]:
         # Slice the whole array to get this block.
         array = force_reshape(self._array, self._structure.shape)
-        slice_, _ = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
+        slice_ = block.slice_from_chunks(self._structure.chunks)
         # _array[...] requires an actual tuple, not just a subclass of tuple
         array = array[tuple(slice_)]
         # Slice within the block.
@@ -119,19 +120,3 @@ class ArrayAdapter(Adapter[ArrayStructure]):
         if isinstance(self._array, dask.array.Array):
             return array.compute()
         return array
-
-
-def slice_and_shape_from_block_and_chunks(
-    block: Tuple[int, ...], chunks: Tuple[Tuple[int, ...], ...]
-) -> tuple[NDSlice, NDSlice]:
-    """
-    Given dask-like chunks and block id, return slice and shape of the block.
-    """
-    slice_ = []
-    shape = []
-    for b, c in zip(block, chunks):
-        start = sum(c[:b])
-        dim = c[b]
-        slice_.append(slice(start, start + dim))
-        shape.append(dim)
-    return NDSlice(*slice_), NDSlice(*shape)

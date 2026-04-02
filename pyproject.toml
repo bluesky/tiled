@@ -266,6 +266,7 @@ test = [
     "aiohttp",
     "coverage",
     "flake8",
+    "hypothesis",
     "importlib_resources;python_version < \"3.9\"",
     "ipython",
     "ldap3",
