@@ -797,7 +797,7 @@ def get_router(
     async def get_ragged_full(
         request: Request,
         path: str,
-        slice=Depends(NDSlice.from_query),
+        slice: NDSlice = Depends(parse_slice_param),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -862,8 +862,8 @@ def get_router(
     async def get_ragged_block(
         request: Request,
         path: str,
-        block: int,
-        slice=Depends(NDSlice.from_query),
+        block: NDBlock = Depends(parse_block_param),
+        slice: NDSlice = Depends(parse_slice_param),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -888,8 +888,27 @@ def get_router(
             access_policy=getattr(request.app.state, "access_policy", None),
         )
 
+        structure = entry.structure()
+
         import ragged
 
+        if block == () and len(structure.shape) > 0:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Requested scalar but shape is {structure.shape}",
+            )
+        if len(block) > 1:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=("Block parameter is only supported in the first dimension."),
+            )
+        if not block.is_valid_for_shape((structure.npartitions,)):
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"Block parameter is not valid for {structure.npartitions} partitions."
+                ),
+            )
         try:
             with record_timing(request.state.metrics, "read"):
                 ragged_array: ragged.array = await ensure_awaitable(
@@ -897,17 +916,18 @@ def get_router(
                 )
         except IndexError:
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Block index out of range",
             )
         if (expected_shape is not None) and (expected_shape != ragged_array.shape):
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"The expected_shape {expected_shape} does not match the actual shape {ragged_array.shape}",
             )
 
         if ragged_array._impl.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=(
                     f"Response would exceed {settings.response_bytesize_limit}. "
                     "Use slicing ('?slice=...') to request smaller chunks."
@@ -927,7 +947,6 @@ def get_router(
                     filename=filename,
                 )
         except UnsupportedMediaTypes as err:
-            # raise HTTPException(status_code=406, detail=", ".join(err.supported))
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.put("/ragged/full/{path:path}")
@@ -974,7 +993,7 @@ def get_router(
     async def put_ragged_block(
         request: Request,
         path: str,
-        block: int,
+        block: NDBlock = Depends(parse_block_param),
         persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),

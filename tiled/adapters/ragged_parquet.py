@@ -11,7 +11,7 @@ import ragged
 from tiled.adapters.core import Adapter
 from tiled.adapters.resource_cache import with_resource_cache
 from tiled.adapters.utils import init_adapter_from_catalog
-from tiled.ndslice import NDSlice
+from tiled.ndslice import NDBlock, NDSlice
 from tiled.storage import FileStorage, Storage
 from tiled.structures.data_source import Asset, DataSource
 from tiled.structures.ragged import RaggedStructure
@@ -77,26 +77,29 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         cache_key = (awkward.from_parquet, path)
         return with_resource_cache(cache_key, awkward.from_parquet, path)
 
+    def _read_multiple_from_cache_or_files(self, paths: list[Path]) -> awkward.Array:
+        data_rows = []
+        for path in paths:
+            data_rows.extend(self._read_from_cache_or_file(path))
+        return awkward.from_iter(data_rows)
+
     def read(self, slice: NDSlice | None = None) -> ragged.array:
         """Read ragged array data from storage."""
         if self._structure.npartitions == 1:
             data = self._read_from_cache_or_file(self._block_paths[0])
-            sliced_data = data[tuple(slice)] if slice else data
-            return ragged.array(
-                sliced_data, dtype=self._structure.data_type.to_numpy_dtype()
-            )
-        data = []
-        for path in self._block_paths:
-            data.extend(self._read_from_cache_or_file(path))
-        data = awkward.from_iter(data)
+        else:
+            data = self._read_multiple_from_cache_or_files(self._block_paths)
         sliced_data = data[tuple(slice)] if slice else data
         return ragged.array(
             sliced_data, dtype=self._structure.data_type.to_numpy_dtype()
         )
 
-    def read_block(self, block: int, slice: NDSlice | None = None) -> ragged.array:
+    def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
         """Read a single block of the ragged array from storage."""
-        data: awkward.Array = self._read_from_cache_or_file(self._block_paths[block])
+        paths = self._block_paths[block[0]]
+        if isinstance(paths, Path):
+            paths = [paths]
+        data = self._read_multiple_from_cache_or_files(paths)
         sliced_data = data[tuple(slice)] if slice else data
         return ragged.array(
             sliced_data, dtype=self._structure.data_type.to_numpy_dtype()
@@ -109,7 +112,7 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         uri = self._block_paths[0]
         _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001
 
-    def write_block(self, array: ragged.array, block: int) -> None:
+    def write_block(self, array: ragged.array, block: NDBlock) -> None:
         """Write a single block of the ragged array to storage."""
-        uri = self._block_paths[block]
+        uri = self._block_paths[block[0]]
         _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001

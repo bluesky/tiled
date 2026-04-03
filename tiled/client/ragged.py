@@ -15,6 +15,7 @@ from tiled.client.utils import (
     params_from_slice,
     retry_context,
 )
+from tiled.ndslice import NDBlock
 from tiled.serialization.ragged import from_zipped_buffers, to_zipped_buffers
 from tiled.structures.ragged import RaggedStructure, make_ragged_array
 
@@ -51,7 +52,7 @@ class RaggedClient(BaseClient):
     def write_block(
         self,
         array_part: ragged.array | ak.Array | list[list] | np.ndarray,
-        block: int,
+        block: Any,
         persist: bool = True,
     ):
         """
@@ -62,14 +63,19 @@ class RaggedClient(BaseClient):
         array_part: ragged.array | ak.Array | Iterable[Iterable]
             The array to write. Can be a ragged.array or compatible awkward.Array,
             or any list-of-lists structure with consistent dimensions.
-        block: int
-            The block index to write to. Must be a non-negative integer less than the number of partitions.
+        block: NDBlock
+            The block to write to. Must be a non-negative integer less than the number of partitions.
         persist: bool, optional
             Whether to persist the changes. Default is True.
         """
-        url_path = self.item["links"]["block"].format(block)
+        if not isinstance(block, NDBlock):
+            block = NDBlock(block)
+        block_str = block.expand_for_shape((self.npartitions,)).to_numpy_str()
+
+        url_path = self.item["links"]["block"]
         params: dict[str, Any] = {
-            **parse_qs(urlparse(url_path).query)
+            **parse_qs(urlparse(url_path).query),
+            "block": block_str,
         }  # , **params_from_slice(slice)}
         if persist is False:
             # Extend the query only for non-default behavior.
@@ -121,7 +127,7 @@ class RaggedClient(BaseClient):
             dtype=self.dtype,
         )
 
-    def read_block(self, block: int, slice: Any | None = None) -> ragged.array:
+    def read_block(self, block: Any, slice: Any | None = None) -> ragged.array:
         """
         Access data for one block of the partitioned array.
 
@@ -129,13 +135,20 @@ class RaggedClient(BaseClient):
 
         Parameters
         ----------
-        block: int
-            The block index to read.
+        block: NDBlock | int
+            The block(s) to read.
         slice: Any, optional
             A tuple of slice objects.
         """
-        url_path = self.item["links"]["block"].format(block)
-        url_params: dict[str, Any] = {**parse_qs(urlparse(url_path).query)}
+        if not isinstance(block, NDBlock):
+            block = NDBlock(block)
+        block_str = block.expand_for_shape((self.npartitions,)).to_numpy_str()
+
+        url_path = self.item["links"]["block"]
+        url_params: dict[str, Any] = {
+            **parse_qs(urlparse(url_path).query),
+            "block": block_str,
+        }
 
         if slice:
             url_params.update(**params_from_slice(slice))

@@ -71,15 +71,11 @@ class RaggedAdapter(Adapter[RaggedStructure]):
             specs=specs,
         )
 
-    def read(
-        self,
-        slice: NDSlice = NDSlice(...),
-    ) -> ragged.array:
+    def read(self, slice: NDSlice | None = None) -> ragged.array:
         """Read a slice of data from the ragged array."""
         if self._array is None:
             raise NotImplementedError
-        # _array[...] requires an actual tuple, not just a subclass of tuple
-        return self._array[tuple(slice)] if slice else self._array
+        return self._array[slice] if slice else self._array
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"

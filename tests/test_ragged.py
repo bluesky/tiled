@@ -223,7 +223,7 @@ partitionable_arrays = [
 
 
 @pytest.mark.parametrize("array", partitionable_arrays)
-def test_read_write_partitioned(client, array: ragged.array):
+def test_partitioning(client, array: ragged.array):
     # need to add a little bit to account for Awkward metadata
     max_partition_bytes = (partitionable_size * array.dtype.itemsize) + (
         2 * np.int64(0).nbytes
@@ -237,14 +237,14 @@ def test_read_write_partitioned(client, array: ragged.array):
 
     starts = rac.partitions[:-1]
     stops = rac.partitions[1:]
-    for i, (start, stop) in enumerate(zip(starts, stops)):
+    for i, (start, stop) in enumerate(zip(starts, stops, strict=True)):
         part = rac.read_block(i)
         assert ak.array_equal(part._impl, array[start:stop]._impl)  # noqa: SLF001
 
         part = rac.read_block(i, slice=(slice(None), slice(0, 4)))
         assert ak.array_equal(
-            part._impl, array[start:stop, slice(0, 4)]._impl
-        )  # noqa: SLF001
+            part._impl, array[start:stop, slice(0, 4)]._impl  # noqa: SLF001
+        )
 
     full = rac.read()
     assert ak.array_equal(full._impl, array._impl)  # noqa: SLF001
@@ -382,7 +382,7 @@ def client_from_adapter(context_from_adapter):
 
 
 @pytest.mark.parametrize("name", arrow_keys)
-def test_read_ragged_array_from_sql(client_from_adapter, name: str) -> None:
+def test_read_from_sql(client_from_adapter, name: str) -> None:
     index = arrow_keys.index(name)
     expected = ragged.array(
         [*arrow_data_0[index].tolist(), *arrow_data_1[index].tolist()]
