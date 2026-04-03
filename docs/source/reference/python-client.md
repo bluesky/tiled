@@ -213,6 +213,18 @@ Tiled currently includes two clients for each structure family:
    tiled.client.array.DaskArrayClient.export
 ```
 
+### Ragged
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.client.ragged.RaggedClient
+   tiled.client.ragged.RaggedClient.read
+   tiled.client.ragged.RaggedClient.write
+   tiled.client.ragged.RaggedClient.export
+```
+
 ### Sparse Array
 
 ```{eval-rst}
