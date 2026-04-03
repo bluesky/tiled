@@ -2,7 +2,7 @@ import builtins
 import itertools
 import math
 import re
-from typing import Optional, Union
+from typing import Iterable, Optional, Union
 
 from ndindex import ndindex
 
@@ -240,7 +240,9 @@ class NDSlice(tuple):
     {"step": 0}, which is not a valid builtin.slice.
     """
 
-    def __new__(cls, *args: Union[int, builtins.slice, EllipsisType]) -> "NDSlice":
+    def __new__(
+        cls, *args: Union[int, builtins.slice, EllipsisType, Iterable, None]
+    ) -> "NDSlice":
         if len(args) == 1 and (isinstance(args[0], (tuple, list)) or args[0] is None):
             return cls(*(args[0] or ()))
         if any(not isinstance(s, (int, builtins.slice, EllipsisType)) for s in args):
