@@ -198,7 +198,7 @@ def get_zarr_router_v2() -> APIRouter:
         if entry.structure_family == StructureFamily.container:
             # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
             if hasattr(entry, "keys_range"):
-                keys = await entry.keys_range(offset=0, limit=None)
+                keys = (await entry.keys_range())[0]
             else:
                 keys = entry.keys()
             url = str(request.url).rstrip("/")
@@ -484,7 +484,7 @@ def get_zarr_router_v3() -> APIRouter:
         if entry.structure_family == StructureFamily.container:
             # List the contents of a "simulated" zarr directory (excluding .zarray and .zgroup files)
             if hasattr(entry, "keys_range"):
-                keys = await entry.keys_range(offset=0, limit=None)
+                keys = (await entry.keys_range())[0]
             else:
                 keys = entry.keys()
             body = json.dumps([url + "/" + key for key in keys])
