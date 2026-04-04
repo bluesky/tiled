@@ -714,9 +714,12 @@ def test_chunked_arrays_from_catalog(
     numpy.testing.assert_array_equal(adp.read(), arr_true)
 
 
-def test_files_opened_and_closed(example_files_with_chunked_arrays):
+@pytest.mark.parametrize("swmr", [True, False])
+def test_files_opened_and_closed(example_files_with_chunked_arrays, swmr):
     "Test that only the necessary files are opened and that they are closed after reading"
     import tiled
+
+    h5py = pytest.importorskip("h5py")
 
     # Use the example with two files chunked along a single dimension;
     # total chunks across the two files: ((3, 3, 3, 1)*2, )
@@ -728,7 +731,7 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays):
         mock_h5open.assert_not_called()  # No files should be opened yet
 
         # Tree initialized from the entire file, no dataset provided
-        tree = HDF5Adapter.from_uris(*file_uris)
+        tree = HDF5Adapter.from_uris(*file_uris, swmr=swmr)
         mock_h5open.assert_called()
         assert mock_h5open.call_count == 1
 
@@ -736,7 +739,7 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays):
         # Each file is read once to get the structure, and the first one
         # is also read once again to get the metadata
         mock_h5open.reset_mock()
-        HDF5ArrayAdapter.from_uris(*file_uris, dataset="a/d")
+        HDF5ArrayAdapter.from_uris(*file_uris, dataset="a/d", swmr=swmr)
         assert mock_h5open.call_count == 3
         files_opened = [call.args[0].name for call in mock_h5open.call_args_list]
         assert files_opened.count(file_paths[0].name) == 2
@@ -795,3 +798,10 @@ def test_files_opened_and_closed(example_files_with_chunked_arrays):
         # First file: # 1 for specs, 1 for chunk, 1 for metadata
         assert files_opened.count(file_paths[0].name) == 3
         assert files_opened.count(file_paths[1].name) == 2  # 1 for specs, 1 for chunk
+
+    # Try opening the files directly to check that they are closed after reading
+    h5py.File(file_paths[0], "r", swmr=swmr).close()
+    h5py.File(file_paths[1], "r", swmr=swmr).close()
+
+    h5py.File(file_paths[0], "r", swmr=not swmr).close()
+    h5py.File(file_paths[1], "r", swmr=not swmr).close()
