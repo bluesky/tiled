@@ -118,11 +118,14 @@ generates links with the correct scheme. The backend configuration uses
 round-robin load balancing and includes health checks to ensure that traffic is
 only sent to healthy nodes.
 
-<!-- TODO: Add why we should scale tiled with multiople processes on a single node -->
-
 When scaling Tiled horizontally, it can often be beneficial to run multiple
-tiled processes on a single node. While this is not strictly necessary,
-it can help to improve performance and utilize resources more efficiently.
+tiled processes on a single node. We run multiple Tiled processes on a single
+node because the Tiled server is implemented in Python, and Python web
+applications generally use a single core because of Python’s Global Interpreter
+Lock (GIL). This may change in the future: recent versions of Python can
+optionally run without the GIL, and the ecosystem of Python libraries is
+evolving to leverage this to utilize multiple cores. But at present, we need to
+run multiple server processes to utilize multiple cores effectively.
 
 For example, if 4 tiled processes run on each node, listening on ports
 5000-5003, the HAProxy configuration would be updated as follows:
@@ -461,8 +464,11 @@ traffic. This provides high availability for the load balancer layer of the
 Tiled deployment.
 
 So HAProxy can use the VIPs, the HAProxy configuration on both load
-balancers would be updated to bind to the VIPs instead of `*`. For example on
-`tiled1.mysite.org`:
+balancers would be updated to bind to the VIPs instead of `*` and add the
+`transparent` option to allow binding to the VIP even if it is not on the
+local interface when haproxy starts up.
+
+For example on `tiled1.mysite.org`:
 
 ```text
 frontends tiled_frontend
