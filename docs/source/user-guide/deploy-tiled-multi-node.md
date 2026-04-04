@@ -34,7 +34,7 @@ balancers as well.
 For a simple deployment, you can set up a single _HAProxy_ load balancer that
 distributes incoming requests to multiple Tiled nodes.  For example:
 
-```{mermaid}
+```mermaid
 flowchart LR
     Client([Client]) --> LB[tiled.mysite.org]
     LB --> T1[node1.mysite.org]
@@ -268,7 +268,7 @@ tiled.mysite.org has address 192,168.0.2
 
 The following shows this configuration diagrammatically:
 
-```{mermaid}
+```mermaid
 flowchart LR
     Client([Client]) --> LB1["
 tiled1.mysite.org
@@ -298,7 +298,7 @@ In the event that one of the load balancers fails, the VIPs will failover to
 the remaining active load balancer, and it will continue to serve traffic to the.
 Tiled nodes. For example:
 
-```{mermaid}
+```mermaid
 flowchart LR
     Client([Client]) --> LB1["
 tiled1.mysite.org"]
@@ -329,7 +329,16 @@ traffic to the Tiled nodes without interruption. This configuration provides
 high availability for the load balancer.
 
 To configure the VIPs, it is nesseasry to install and configure Keepalived on
-both load balancer nodes. On tiled1.mysite.org, the Keepalived configuration
+both load balancer nodes.
+
+```{note}
+For an introduction to Keepalived and how to set it up, see the following
+[introduction from RedHat](https://www.redhat.com/en/blog/keepalived-basics)
+ and the official
+[Keepalived documentation](https://www.keepalived.org/documentation.html)
+```
+
+On tiled1.mysite.org, the Keepalived configuration
 would look like this:
 
 ```text
