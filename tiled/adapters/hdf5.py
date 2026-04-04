@@ -216,10 +216,8 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 return arr
             return dask.array.empty(shape=())
 
-        if not any(
-            shp and all(dim for dim in shp) for shp, _, _ in shapes_chunks_dtypes
-        ):
-            # All shapes are empty -> all arrays are zero-dimensional (scalars)
+        if all((not shp) or (0 in shp) for shp, _, _ in shapes_chunks_dtypes):
+            # Treat empty arrays and scalars separately: all shapes are empty or has 0
             array = dask.array.stack([_read_hdf5_array(fp, ()) for fp in file_paths])
 
         else:
