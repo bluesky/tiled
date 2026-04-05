@@ -76,7 +76,7 @@ defaults
     timeout client 10s
     timeout server 10s
 
-frontends tiled_frontend
+frontend tiled_frontend
     bind *:80
     bind *:443 ssl crt /etc/haproxy/certs/tiled.mysite.org.pem alpn h2,http/1.1
     default_backend tiled_backend
@@ -159,7 +159,7 @@ resolvers default_dns
   hold timeout  180s
   hold obsolete 180s
 
-frontends tiled_frontend
+frontend tiled_frontend
     bind *:80
     bind *:443 ssl crt /etc/haproxy/certs/tiled.mysite.org.pem alpn h2,http/1.1
     default_backend tiled_backend
@@ -471,7 +471,7 @@ local interface when haproxy starts up.
 For example on `tiled1.mysite.org`:
 
 ```text
-frontends tiled_frontend
+frontend tiled_frontend
     bind 192.168.0.1:80 transparent
     bind 192.168.0.1:443 transparent ssl crt /etc/haproxy/certs/tiled.mysite.org.pem alpn h2,http/1.1
 ```
@@ -479,7 +479,7 @@ frontends tiled_frontend
 and likewise on `tiled2.mysite.org`:
 
 ```text
-frontends tiled_frontend
+frontend tiled_frontend
     bind 192.168.0.2:80 transparent
     bind 192.168.0.2:443 transparent ssl crt /etc/haproxy/certs/tiled.mysite.org.pem alpn h2,http/1.1
 ```
@@ -491,4 +491,176 @@ to `/etc/sysctl.conf`:
 
 ```text
 net.ipv4.ip_nonlocal_bind=1
+```
+
+## Using use specifc backend clusters
+
+In some cases, you may want to route traffic to specific backend clusters based
+on the use. For example, you may have a cluster of nodes that are dedicated to
+handling writing (ingesting) data from data collection and another which is
+dedicated to serving clients reading data. There are two ways of configuring
+this:
+
+Option 1 is to configure separate DNS names for the different use cases (e.g.
+`write.tiled.mysite.org` and `read.tiled.mysite.org`) and configure the load
+balancer to route traffic to the appropriate backend cluster based on the
+hostname in the request. This can be done by configuring multiple backends with
+ACLs in the HAProxy configuration to route traffic based on the `Host` header
+in the request. For example:
+
+```text
+frontend tiled_frontend
+    bind *:80
+    bind *:443 ssl crt /etc/haproxy/certs/tiled.mysite.org.pem alpn h2,http/1.1
+    default_backend tiled_read_backend
+    option httplog
+
+    # Redirect non https traffic to https
+    redirect scheme https code 301 if !{ ssl_fc }
+
+    # This ensures that the links constructed by the Tiled application
+    # in its JSON responses use with https, not http.
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+
+    # HSTS (63072000 seconds)
+    http-response set-header Strict-Transport-Security max-age=63072000
+
+    acl is_write hdr(host) -i write.tiled.mysite.org
+    use_backend tiled_write_backend if is_write
+
+    acl is_read hdr(host) -i read.tiled.mysite.org
+    use_backend tiled_read_backend if is_read
+
+backend tiled_read_backend
+    balance roundrobin
+
+    # Add health check to ensure that the load balancer only sends traffic
+    # to healthy nodes
+    option httpchk
+    httpcheck connect
+    httpcheck sent meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.mysite.org
+    http-check expect status 200
+
+    server node1 node1.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node2 node2.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node3 node3.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node4 node4.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+
+backend tiled_write_backend
+    balance roundrobin
+
+    # Add health check to ensure that the load balancer only sends traffic
+    # to healthy nodes
+    option httpchk
+    httpcheck connect
+    httpcheck sent meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.mysite.org
+    http-check expect status 200
+
+    server node5 node5.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node6 node6.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node7 node7.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node8 node8.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+```
+
+Here nodes 1-4 are dedicated to handling read traffic and nodes 5-8 are
+dedicated to handling write traffic. The load balancer routes traffic to the
+appropriate backend based on the hostname in the request. To use a single IP
+address (or multiple VIPs in a highly available load balancer configuration) for
+both hostnames, you can configure DNS to resolve both `write.tiled.mysite.org`
+and `read.tiled.mysite.org` to the same IP address (or VIPs). This can be done
+with either multiple A records or a CNAME record. For example to use A records:
+
+```shell
+$ host write.tiled.mysite.org
+write.tiled.mysite.org has address 192.168.0.1
+
+$ host read.tiled.mysite.org
+read.tiled.mysite.org has address 192.168.0.1
+```
+
+or to use CNAMEs:
+
+```shell
+$ host tiled.mysite.org
+tiled.mysite.org has address 192.168.0.1
+
+$ host write.tiled.mysite.org
+write.tiled.mysite.org is an alias for tiled.mysite.org.
+
+$ host read.tiled.mysite.org
+read.tiled.mysite.org is an alias for tiled.mysite.org.
+```
+
+The second method (employed at the NSLS-II to ensure data written from beamline
+data collection is routed to the write cluster and data read by users is routed
+to the read cluster) is to use a single hostname (e.g. `tiled.mysite.org`) and
+add an optional header `tiled-use` with a known passphrase to route to the
+appropriate cluster. This allows for clients to configure at request time which
+cluster to use from a single http client pool.
+
+The configuration for this would look like the following:
+
+```text
+frontend tiled_frontend
+    bind *:80
+    bind *:443 ssl crt /etc/haproxy/certs/tiled.mysite.org.pem alpn h2,http/1.1
+    option httplog
+
+    # Redirect non https traffic to https
+    redirect scheme https code 301 if !{ ssl_fc }
+
+    # This ensures that the links constructed by the Tiled application
+    # in its JSON responses use with https, not http.
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+
+    # HSTS (63072000 seconds)
+    http-response set-header Strict-Transport-Security max-age=63072000
+
+    default_backend tiled_read_backend
+    acl is_write hdr(tiled-use) -i MY_WRITE_PASSPHRASE
+    use_backend tiled_write_backend if is_write
+
+backend tiled_read_backend
+    balance roundrobin
+
+    # Add health check to ensure that the load balancer only sends traffic
+    # to healthy nodes
+    option httpchk
+    httpcheck connect
+    httpcheck sent meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.mysite.org
+    http-check expect status 200
+
+    server node1 node1.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node2 node2.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node3 node3.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node4 node4.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+
+backend tiled_write_backend
+    balance roundrobin
+
+    # Add health check to ensure that the load balancer only sends traffic
+    # to healthy nodes
+    option httpchk
+    httpcheck connect
+    httpcheck sent meth GET uri /healthz ver HTTP/1.1 hdr Host tiled.mysite.org
+    http-check expect status 200
+
+    server node5 node5.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node6 node6.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node7 node7.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+    server node8 node8.mysite.org:5000 resolvers default_dns check init-addr none resolve-opts allow-dup-ip
+```
+
+Here, requests using the `tiled-use` header with the value `MY_WRITE_PASSPHRASE`
+will be routed to the write backend. For example, using curl:
+
+```shell
+$ curl -H "tiled-use: MY_WRITE_PASSPHRASE" https://tiled.mysite.org/some/endpoint
+```
+
+would route to the write backend, while a request without the header or with a
+different value would route to the read backend:
+
+```shell
+$ curl https://tiled.mysite.org/some/endpoint
 ```
