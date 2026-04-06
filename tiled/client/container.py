@@ -913,7 +913,9 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         )
         chunked = any(len(dim) > 1 for dim in chunks)
         if not chunked:
-            client.write(array)
+            client.write(
+                array.compute() if isinstance(array, dask.array.Array) else array
+            )
         else:
             # Fan out client.write_block over each chunk using dask.
             if isinstance(array, dask.array.Array):
