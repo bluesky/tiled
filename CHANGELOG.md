@@ -6,6 +6,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Fixed
+
+- Writing chunked (dask) arrays with single chunk along all dimensions
+
 ### Changed
 
 - Array client fully supports slicing when communicating with the server
