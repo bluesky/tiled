@@ -268,6 +268,99 @@ class NDSlice(tuple):
             is_ellipsis(s) or s in full_slices for s in self
         )
 
+    def __getitem__(self, key):
+        "Composition of slices: arr[slc1][slc2] is equivalent to arr[slc1[slc2]]"
+
+        if isinstance(key, NDSlice):
+
+            # Expand Ellipsis by padding with full slices
+            def expand(slc, ndim):
+                result = []
+                has_ellipsis = Ellipsis in slc
+
+                if has_ellipsis:
+                    idx = slc.index(Ellipsis)
+                    n_missing = ndim - (len(slc) - 1)
+                    result = (
+                        list(slc[:idx])
+                        + [builtins.slice(None)] * n_missing
+                        + list(slc[idx + 1 :])
+                    )
+                else:
+                    result = list(slc) + [builtins.slice(None)] * (ndim - len(slc))
+
+                return result
+
+            # Determine dimensionality (upper bound)
+            ndim = max(
+                len([x for x in self if x is not Ellipsis]),
+                len([x for x in key if x is not Ellipsis]),
+            )
+
+            slc1 = expand(self, ndim)
+            slc2 = expand(key, ndim)
+
+            result = []
+            i2 = 0  # index in slc2
+
+            for s1 in slc1:
+                if isinstance(s1, int):
+                    # dimension removed → cannot be indexed further
+                    continue
+
+                if i2 >= len(slc2):
+                    result.append(s1)
+                    continue
+
+                s2 = slc2[i2]
+                i2 += 1
+
+                if isinstance(s2, int):
+                    # indexing into slice → produces integer
+                    if isinstance(s1, builtins.slice):
+                        start = s1.start or 0
+                        step = s1.step or 1
+                        result.append(start + step * s2)
+                    else:
+                        result.append(s2)
+
+                elif isinstance(s2, builtins.slice):
+                    if isinstance(s1, builtins.slice):
+                        # compose slices
+                        start1 = s1.start or 0
+                        step1 = s1.step or 1
+
+                        start2 = s2.start or 0
+                        step2 = s2.step or 1
+
+                        new_start = start1 + step1 * start2
+                        new_step = step1 * step2
+
+                        if s2.stop is None:
+                            new_stop = s1.stop
+                        else:
+                            new_stop = start1 + step1 * s2.stop
+
+                        result.append(builtins.slice(new_start, new_stop, new_step))
+                    else:
+                        result.append(s2)
+
+                else:
+                    raise TypeError(f"Unsupported slice component: {s2}")
+
+            return self.__class__(*result)
+
+        return super().__getitem__(key)
+
+    def __getitem__(self, key):
+        "Composition of slices: arr[slc1][slc2] is equivalent to arr[slc1[slc2]]"
+
+        if isinstance(key, NDSlice):
+            #TODO: add composition code here
+            pass
+
+        return super().__getitem__(key)
+
     @classmethod
     def from_json(cls, ser: list[JSON]) -> "NDSlice":
         "Deserialize a json representation of an NDSlice"
