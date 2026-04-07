@@ -206,13 +206,14 @@ properties:
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
-    def decode_token(self, token: str) -> dict[str, Any]:
+    def decode_token(self, id_token: str, access_token: str) -> dict[str, Any]:
         return jwt.decode(
-            token,
+            id_token,
             key=self.keys(),
             algorithms=self.id_token_signing_alg_values_supported,
             audience=self._audience,
             issuer=self.issuer,
+            access_token=access_token,
         )
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
@@ -241,7 +242,7 @@ properties:
         id_token = response_body["id_token"]
         access_token = response_body["access_token"]
         try:
-            verified_body = self.decode_token(access_token)
+            verified_body = self.decode_token(id_token, access_token)
         except JWTError:
             logger.exception(
                 "Authentication error. Unverified token: %r",
