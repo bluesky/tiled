@@ -304,6 +304,14 @@ def get_router(
             schemas.PaginationLinks,
             dict,
         ],
+        summary="Search for nodes in the container based on their metadata.",
+        description=(
+            "Find and list nodes (subcontainers, arrays, tables) in a given container at path "
+            "filtered according to their metadata. Use 'path' to scope the search to a subtree. "
+            "Use '/' as the path to search from the root of the Tiled catalog. "
+            "Supports pagination and sorting. Filter parameters follow the pattern "
+            "`filter[<type>][condition][<field>]=<value>`."
+        ),
     )
     @_patch_route_signature(query_registry)
     async def search(
@@ -449,6 +457,14 @@ def get_router(
         response_model=schemas.Response[
             schemas.Resource[schemas.NodeAttributes, dict, dict], dict, dict
         ],
+        summary="Fetch metadata and structure information for a single node.",
+        description=(
+            "Fetch metadata and structural information for a single node identified by "
+            "its path. Returns metadata dict, structure family (array, table, container, etc.), "
+            "data shape, dtype, column names (for tables), and navigation links. "
+            "Always call this before fetching data to determine the structure family "
+            "and available data access routes."
+        ),
     )
     async def metadata(
         request: Request,
@@ -641,7 +657,14 @@ def get_router(
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.get(
-        "/array/full/{path:path}", response_model=schemas.Response, name="full array"
+        "/array/full/{path:path}",
+        response_model=schemas.Response,
+        name="full array",
+        summary="Fetch entire array-like data or a slice of the array.",
+        description=(
+            "Fetch the full contents of an array node, optionally with a slice. "
+            "Supports numpy-style slice notation."
+        ),
     )
     async def array_full(
         path: str,
@@ -956,6 +979,11 @@ def get_router(
         "/table/full/{path:path}",
         response_model=schemas.Response,
         name="full 'table' data",
+        summary="Fetch the full contents of a table-like node or a subset of its columns.",
+        description=(
+            "Fetch the full contents of a table-like node. Use the 'column' query parameter "
+            "to select a subset of columns."
+        ),
     )
     async def get_table_full(
         request: Request,
@@ -1449,6 +1477,11 @@ def get_router(
         "/awkward/full/{path:path}",
         response_model=schemas.Response,
         name="Full AwkwardArray",
+        summary="Fetch the full contents of an AwkwardArray-like node or a slice of it.",
+        description=(
+            "Fetch the full contents of an AwkwardArray-like node, or a slice of it. "
+            "Supports numpy-style slice notation via the 'slice' query parameter."
+        ),
     )
     async def awkward_full(
         request: Request,
