@@ -116,11 +116,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         block_slice = block.slice_from_chunks(self.structure().chunks)
         return self._array[self._stencil[block_slice][slice or ...]]
 
-    def write(
-        self,
-        data: NDArray[Any],
-        slice: NDSlice = NDSlice(...),
-    ) -> None:
+    def write(self, data: NDArray[Any], slice: NDSlice = NDSlice(...)) -> None:
         if slice:
             raise NotImplementedError
         self._array[self._stencil] = data
