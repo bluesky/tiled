@@ -60,6 +60,7 @@ from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
+from .openapi_agent import build_agent_openapi
 from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
@@ -250,6 +251,11 @@ def build_app(
     @app.get("/healthz", status_code=200)
     async def healthz():
         return {"status": "ready"}
+
+    @app.get("/openapi_agent.json", include_in_schema=False)
+    async def openapi_agent():
+        """Serve a simplified OpenAPI spec designed for LLM agent tool use."""
+        return JSONResponse(build_agent_openapi(app))
 
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
