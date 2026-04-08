@@ -394,6 +394,9 @@ class NDSlice(tuple):
     def __getitem__(self, key):
         "An element of this NDSlice or the composition with another NDSlice"
 
+        if is_ellipsis(key):
+            return self
+
         if isinstance(key, NDSlice):
             # Composition of slices: arr[slc1][slc2] is equivalent to arr[slc1[slc2]]
             return compose_slices(self, key)
