@@ -229,6 +229,129 @@ def split_slice(
     return {k: NDSlice(v) for k, v in zip(keys, vals)}
 
 
+def compose_slices(slc1: "NDSlice", slc2: "NDSlice") -> "NDSlice":
+    """Compose two NDSlices
+
+    Creates a single NDSlice that is the composition of the input slices, i.e. equivalent
+    to applying them sequentially. For example, if arr is an array, then
+    arr[slc1][slc2] is equivalent to arr[compose_slices(slc1, slc2)].
+
+    Note that Ellipsis in any of the slices may break the composition rule for
+    arrays of certain shapes, so it is recommended to expand the slices for the specific
+    shape before composing them.
+    """
+
+    def _slc_and_int(slc: builtins.slice, idx: int) -> int:
+        if slc.start is None or slc.stop is None:
+            raise ValueError("Composition with relative indexing is not supported.")
+
+        start, stop, step = slc.start, slc.stop, slc.step or 1
+
+        # Estimate maximum length of the resulting shape after slice
+        if step > 0:
+            length = max(0, (stop - start + step - 1) // step)
+        else:
+            length = max(0, (start - stop - step - 1) // (-step))
+
+        # Normalize negative index
+        if idx < 0:
+            idx += length
+
+        if idx < 0 or idx >= length:
+            raise ValueError("Composition with out-of-bounds index")
+
+        return start + step * idx
+
+    def _slc_and_slc(slc1: builtins.slice, slc2: builtins.slice) -> builtins.slice:
+        # Normalize first slice
+        if slc1.start is None or slc1.stop is None:
+            raise ValueError("Composition with relative indexing is not supported.")
+        start1, stop1, step1 = slc1.start, slc1.stop, slc1.step or 1
+
+        # Estimate maximum length of the resulting shape after first slice
+        if step1 > 0:
+            length = max(0, (stop1 - start1 + step1 - 1) // step1)
+        else:
+            length = max(0, (start1 - stop1 - step1 - 1) // (-step1))
+
+        # Normalize second slice relative to the length of the first slice
+        start2, stop2, step2 = slc2.indices(length)
+
+        # Compose the two normalized slices
+        new_start = start1 + step1 * start2
+        new_step = step1 * step2
+        new_stop = start1 + step1 * stop2
+
+        return builtins.slice(new_start, new_stop, new_step)
+
+    if (not slc1) or (not slc2):
+        # If either slice is empty, the result is the other slice (which may also be empty)
+        return slc1 or slc2
+
+    if not slc1.is_expanded():
+        # The left slice contains Ellipsis or the resulting shape is ambiguous
+        raise ValueError(
+            "Composition of slices with undetermined shape is not supported."
+        )
+
+    res_rgt, i1l = [], len(slc1)
+    res_lft, i2r = [], 0
+    if any(is_ellipsis(s) for s in slc2) and not is_ellipsis(slc2[-1]):
+        # The right slice contains Ellipsis in other than the last position
+        dim1 = sum(1 for s in slc1 if not isinstance(s, int))
+        if dim1 < len(slc2) - 1:
+            raise ValueError(
+                "Composition with Ellipsis in the right slice is only supported if it is "
+                "the last element, or the left slice has enough dimensions to cover all "
+                "non-Ellipsis elements of the right slice."
+            )
+
+        # Start assembling the result from the right
+        for s2 in reversed(slc2):
+            if is_ellipsis(s2):
+                break
+
+            # Chose the next right-most (non-integer) item from the left slice
+            i1l -= 1
+            s1 = slc1[i1l]
+            while isinstance(s1, int) and i1l > 0:
+                # Repeat: add the item, move the left counter until we find a non-integer item
+                res_rgt.append(s1)
+                i1l -= 1
+                s1 = slc1[i1l]
+
+            # Now compose s1 and s2 and add to the result from the right
+            if isinstance(s2, int):
+                res_rgt.append(_slc_and_int(s1, s2))
+            elif isinstance(s2, builtins.slice):
+                res_rgt.append(_slc_and_slc(s1, s2))
+
+    # All the right slice until Ellipsis is processed; and the remaining items from the left
+    for s1 in slc1[:i1l]:
+        # Left item is an integer, add it to the result and move on
+        if isinstance(s1, int) or i2r >= len(slc2):
+            res_lft.append(s1)
+            continue
+
+        # Left item is a slice, compose it with the next right item if there are any remaining
+        s2 = slc2[i2r]
+        if isinstance(s2, int):
+            res_lft.append(_slc_and_int(s1, s2))
+        elif isinstance(s2, builtins.slice):
+            res_lft.append(_slc_and_slc(s1, s2))
+        elif is_ellipsis(s2) or (len(slc2) == i2r + 1):
+            res_lft.append(s1)
+            continue
+
+        i2r += 1
+
+    _cls = (
+        NDBlock if isinstance(slc1, NDBlock) and isinstance(slc2, NDBlock) else NDSlice
+    )
+
+    return _cls(*res_lft, *reversed(res_rgt))
+
+
 class NDSlice(tuple):
     """A representation of a slice for N-dimensional arrays.
 
@@ -269,96 +392,13 @@ class NDSlice(tuple):
         )
 
     def __getitem__(self, key):
-        "Composition of slices: arr[slc1][slc2] is equivalent to arr[slc1[slc2]]"
+        "An element of this NDSlice or the composition with another NDSlice"
 
         if isinstance(key, NDSlice):
+            # Composition of slices: arr[slc1][slc2] is equivalent to arr[slc1[slc2]]
+            return compose_slices(self, key)
 
-            # Expand Ellipsis by padding with full slices
-            def expand(slc, ndim):
-                result = []
-                has_ellipsis = Ellipsis in slc
-
-                if has_ellipsis:
-                    idx = slc.index(Ellipsis)
-                    n_missing = ndim - (len(slc) - 1)
-                    result = (
-                        list(slc[:idx])
-                        + [builtins.slice(None)] * n_missing
-                        + list(slc[idx + 1 :])
-                    )
-                else:
-                    result = list(slc) + [builtins.slice(None)] * (ndim - len(slc))
-
-                return result
-
-            # Determine dimensionality (upper bound)
-            ndim = max(
-                len([x for x in self if x is not Ellipsis]),
-                len([x for x in key if x is not Ellipsis]),
-            )
-
-            slc1 = expand(self, ndim)
-            slc2 = expand(key, ndim)
-
-            result = []
-            i2 = 0  # index in slc2
-
-            for s1 in slc1:
-                if isinstance(s1, int):
-                    # dimension removed → cannot be indexed further
-                    continue
-
-                if i2 >= len(slc2):
-                    result.append(s1)
-                    continue
-
-                s2 = slc2[i2]
-                i2 += 1
-
-                if isinstance(s2, int):
-                    # indexing into slice → produces integer
-                    if isinstance(s1, builtins.slice):
-                        start = s1.start or 0
-                        step = s1.step or 1
-                        result.append(start + step * s2)
-                    else:
-                        result.append(s2)
-
-                elif isinstance(s2, builtins.slice):
-                    if isinstance(s1, builtins.slice):
-                        # compose slices
-                        start1 = s1.start or 0
-                        step1 = s1.step or 1
-
-                        start2 = s2.start or 0
-                        step2 = s2.step or 1
-
-                        new_start = start1 + step1 * start2
-                        new_step = step1 * step2
-
-                        if s2.stop is None:
-                            new_stop = s1.stop
-                        else:
-                            new_stop = start1 + step1 * s2.stop
-
-                        result.append(builtins.slice(new_start, new_stop, new_step))
-                    else:
-                        result.append(s2)
-
-                else:
-                    raise TypeError(f"Unsupported slice component: {s2}")
-
-            return self.__class__(*result)
-
-        return super().__getitem__(key)
-
-    def __getitem__(self, key):
-        "Composition of slices: arr[slc1][slc2] is equivalent to arr[slc1[slc2]]"
-
-        if isinstance(key, NDSlice):
-            #TODO: add composition code here
-            pass
-
+        # Just return the element if it's not a slice composition
         return super().__getitem__(key)
 
     @classmethod
@@ -408,6 +448,25 @@ class NDSlice(tuple):
             bwd.append(convert_dimension(s))
 
         return fwd + [{} for _ in range(ndim - len(fwd) - len(bwd))] + [*reversed(bwd)]
+
+    def is_expanded(self) -> bool:
+        """Check the _necessary_ conditions to determine the resulting shape from the slice alone
+
+        If True, the resulting shape can be determined without knowing the shape of the array
+        this slice is applied to, i.e. it does not contain any ':', '...', or relative indexing.
+
+        NOTE: This is a necessary but not sufficient condition; e.g. `slice(0, 5)` applied to an
+        array of shape (3,) will still result in a shape of (3,), not (5,).
+        """
+
+        def _is_absolute(s: builtins.slice) -> bool:
+            return (s.start or 0) >= 0 and (s.stop is not None and s.stop >= 0)
+
+        return all(
+            (not is_ellipsis(s))
+            and (_is_absolute(s) if isinstance(s, builtins.slice) else True)
+            for s in self
+        )
 
     @classmethod
     def from_numpy_str(cls, arg: str) -> "NDSlice":
