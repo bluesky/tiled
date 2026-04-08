@@ -103,7 +103,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
     @property
     def _stencil(self) -> NDSlice:
         """Trim overflow because Zarr always has equal-sized chunks."""
-        return NDSlice(builtins.slice(0, dim) for dim in self.structure().shape)
+        return NDSlice(tuple(builtins.slice(0, dim) for dim in self.structure().shape))
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         return None
