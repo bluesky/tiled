@@ -258,7 +258,16 @@ def build_app(
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
-    @app.get("/healthz", status_code=200)
+    @app.get(
+        "/healthz",
+        status_code=200,
+        summary="Check server health",
+        description=(
+            "Check whether the Tiled server is running and ready to accept "
+            "requests. Call this first to verify connectivity before making "
+            "data requests."
+        ),
+    )
     async def healthz():
         return {"status": "ready"}
 

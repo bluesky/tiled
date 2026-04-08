@@ -304,13 +304,17 @@ def get_router(
             schemas.PaginationLinks,
             dict,
         ],
-        summary="Search for nodes in the container based on their metadata.",
+        summary="List and search nodes in the data catalog.",
         description=(
-            "Find and list nodes (subcontainers, arrays, tables) in a given container at path "
-            "filtered according to their metadata. Use 'path' to scope the search to a subtree. "
-            "Use '/' as the path to search from the root of the Tiled catalog. "
-            "Supports pagination and sorting. Filter parameters follow the pattern "
-            "`filter[<type>][condition][<field>]=<value>`."
+            "List and search nodes in the data catalog. The catalog is a tree: "
+            "containers hold other containers, arrays, and tables. Use the path "
+            "parameter to navigate into the tree (use `/` for root). "
+            "Use filter parameters to search by metadata values, full-text, or "
+            "structure type. Filter parameters follow the pattern "
+            "`filter[<type>][condition][<field>]=<value>`. "
+            "Results are paginated; use page[offset] and page[limit] to iterate. "
+            "Each result includes an id, structure_family "
+            "(container/array/table/etc.), metadata dict, and structure info."
         ),
     )
     @_patch_route_signature(query_registry)
@@ -407,7 +411,7 @@ def get_router(
     @router.get(
         "/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
-        include_in_schema=False
+        include_in_schema=False,
     )
     @_patch_route_signature(query_registry)
     async def distinct(
@@ -458,13 +462,15 @@ def get_router(
         response_model=schemas.Response[
             schemas.Resource[schemas.NodeAttributes, dict, dict], dict, dict
         ],
-        summary="Fetch metadata and structure information for a single node.",
+        summary="Get metadata and structure info for a single node.",
         description=(
-            "Fetch metadata and structural information for a single node identified by "
-            "its path. Returns metadata dict, structure family (array, table, container, etc.), "
-            "data shape, dtype, column names (for tables), and navigation links. "
-            "Always call this before fetching data to determine the structure family "
-            "and available data access routes."
+            "Get full metadata and structure information for a single node "
+            "identified by its path. Returns the node's id, structure_family, "
+            "metadata dict, specs, and structure (shape/dtype for arrays, "
+            "columns for tables, child count for containers). Use "
+            "select_metadata to extract specific metadata fields with a "
+            "JMESPath expression. Call this before fetching data to determine "
+            "the structure family and choose the right data access endpoint."
         ),
     )
     async def metadata(
@@ -532,7 +538,10 @@ def get_router(
         )
 
     @router.get(
-        "/array/block/{path:path}", response_model=schemas.Response, name="array block", include_in_schema=False
+        "/array/block/{path:path}",
+        response_model=schemas.Response,
+        name="array block",
+        include_in_schema=False,
     )
     async def array_block(
         request: Request,
@@ -661,10 +670,16 @@ def get_router(
         "/array/full/{path:path}",
         response_model=schemas.Response,
         name="full array",
-        summary="Fetch entire array-like data or a slice of the array.",
+        summary="Read array data.",
         description=(
-            "Fetch the full contents of an array node, optionally with a slice. "
-            "Supports numpy-style slice notation."
+            "Fetch the full contents of an array node, or optionally only a slice "
+            "to avoid downloading everything if an array is large."
+            "The slicing uses numpy-style notation, like `?slice=5` or `?slice=:5,-5:,::2`. "
+            "Valid slice values depend on the shape of the array, which can be "
+            "discovered via the /metadata route. The returned data format can be specified via "
+            "an `Accept` header (as a MIME type) or a `format` query parameter as a "
+            "a MIME type or a file extension, e.g. format=application/json for JSON output. "
+            "Only works on nodes with structure_family='array'"
         ),
     )
     async def array_full(
@@ -819,7 +834,7 @@ def get_router(
         "/table/partition/{path:path}",
         response_model=schemas.Response,
         name="table partition",
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def get_table_partition(
         path: str,
@@ -885,7 +900,7 @@ def get_router(
         "/table/partition/{path:path}",
         response_model=schemas.Response,
         name="table partition",
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def post_table_partition(
         path: str,
@@ -982,10 +997,12 @@ def get_router(
         "/table/full/{path:path}",
         response_model=schemas.Response,
         name="full 'table' data",
-        summary="Fetch the full contents of a table-like node or a subset of its columns.",
+        summary="Read tabular data.",
         description=(
-            "Fetch the full contents of a table-like node. Use the 'column' query parameter "
-            "to select a subset of columns."
+            "Read tabular data. Returns all rows and columns, or a subset "
+            "of columns. Use format=application/json for JSON output. Use "
+            "the column parameter to select specific columns. "
+            "Only works on nodes with structure_family='table'."
         ),
     )
     async def get_table_full(
@@ -1030,7 +1047,7 @@ def get_router(
         "/table/full/{path:path}",
         response_model=schemas.Response,
         name="full 'table' data",
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def post_table_full(
         request: Request,
@@ -1119,7 +1136,7 @@ def get_router(
         "/container/full/{path:path}",
         response_model=schemas.Response,
         name="full 'container' metadata and data",
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def get_container_full(
         request: Request,
@@ -1164,7 +1181,7 @@ def get_router(
         "/container/full/{path:path}",
         response_model=schemas.Response,
         name="full 'container' metadata and data",
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def post_container_full(
         request: Request,
@@ -1258,7 +1275,7 @@ def get_router(
         response_model=schemas.Response,
         name="full 'container' or 'table'",
         deprecated=True,
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def node_full(
         request: Request,
@@ -1342,7 +1359,7 @@ def get_router(
         "/awkward/buffers/{path:path}",
         response_model=schemas.Response,
         name="AwkwardArray buffers",
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def get_awkward_buffers(
         request: Request,
@@ -1393,7 +1410,7 @@ def get_router(
         "/awkward/buffers/{path:path}",
         response_model=schemas.Response,
         name="AwkwardArray buffers",
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def post_awkward_buffers(
         request: Request,
@@ -1486,12 +1503,12 @@ def get_router(
         "/awkward/full/{path:path}",
         response_model=schemas.Response,
         name="Full AwkwardArray",
-        summary="Fetch the full contents of an AwkwardArray-like node or a slice of it.",
+        summary="Read awkward (variable-length/nested) array data.",
         description=(
-            "Fetch the full contents of an AwkwardArray-like node, or a slice of it. "
-            "Supports numpy-style slice notation via the 'slice' query parameter."
+            "Read awkward (variable-length/nested) array data. "
+            "Only works on nodes with structure_family='awkward'."
         ),
-        include_in_schema=False
+        include_in_schema=False,
     )
     async def awkward_full(
         request: Request,
@@ -1555,7 +1572,11 @@ def get_router(
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
-    @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse, include_in_schema=False)
+    @router.post(
+        "/metadata/{path:path}",
+        response_model=schemas.PostMetadataResponse,
+        include_in_schema=False,
+    )
     async def post_metadata(
         request: Request,
         path: str,
@@ -1602,7 +1623,11 @@ def get_router(
             authn_scopes=authn_scopes,
         )
 
-    @router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse, include_in_schema=False)
+    @router.post(
+        "/register/{path:path}",
+        response_model=schemas.PostMetadataResponse,
+        include_in_schema=False,
+    )
     async def post_register(
         request: Request,
         path: str,
@@ -2098,7 +2123,11 @@ def get_router(
         await ensure_awaitable(entry.write, data)
         return json_or_msgpack(request, None)
 
-    @router.patch("/metadata/{path:path}", response_model=schemas.PatchMetadataResponse, include_in_schema=False)
+    @router.patch(
+        "/metadata/{path:path}",
+        response_model=schemas.PatchMetadataResponse,
+        include_in_schema=False,
+    )
     async def patch_metadata(
         request: Request,
         path: str,
@@ -2206,7 +2235,11 @@ def get_router(
             response_data["access_blob"] = access_blob
         return json_or_msgpack(request, response_data)
 
-    @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse, include_in_schema=False)
+    @router.put(
+        "/metadata/{path:path}",
+        response_model=schemas.PutMetadataResponse,
+        include_in_schema=False,
+    )
     async def put_metadata(
         request: Request,
         path: str,
@@ -2452,11 +2485,14 @@ def get_router(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    @router.get("/asset/manifest/{path:path}", summary="Get a list of assets for a node",
-                description=(
-            "List the assets (files) associated with a node, including their IDs, "
-            "paths, and sizes."
-        ))
+    @router.get(
+        "/asset/manifest/{path:path}",
+        summary="List the raw files backing a dataset.",
+        description=(
+            "List the raw files backing a dataset. Returns file paths in "
+            "the asset directory. Requires the asset id (integer)."
+        ),
+    )
     async def get_asset_manifest(
         request: Request,
         path: str,
