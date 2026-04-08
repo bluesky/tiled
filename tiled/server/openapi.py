@@ -90,10 +90,6 @@ OPERATION_ENRICHMENTS: dict[str, dict] = {
         ),
     },
     "GetAssetManifest": {
-        "description": (
-            "List the assets (files) associated with a node, including their IDs, "
-            "paths, and sizes."
-        ),
         "x-usage-example": "GET /api/v1/asset/manifest/path/to/node?id=1",
     },
 }

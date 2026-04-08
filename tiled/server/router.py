@@ -407,6 +407,7 @@ def get_router(
     @router.get(
         "/distinct/{path:path}",
         response_model=schemas.GetDistinctResponse,
+        include_in_schema=False
     )
     @_patch_route_signature(query_registry)
     async def distinct(
@@ -531,7 +532,7 @@ def get_router(
         )
 
     @router.get(
-        "/array/block/{path:path}", response_model=schemas.Response, name="array block"
+        "/array/block/{path:path}", response_model=schemas.Response, name="array block", include_in_schema=False
     )
     async def array_block(
         request: Request,
@@ -743,7 +744,7 @@ def get_router(
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
-    @router.delete("/stream/close/{path:path}")
+    @router.delete("/stream/close/{path:path}", include_in_schema=False)
     async def close_stream(
         request: Request,
         path: str,
@@ -818,6 +819,7 @@ def get_router(
         "/table/partition/{path:path}",
         response_model=schemas.Response,
         name="table partition",
+        include_in_schema=False
     )
     async def get_table_partition(
         path: str,
@@ -883,6 +885,7 @@ def get_router(
         "/table/partition/{path:path}",
         response_model=schemas.Response,
         name="table partition",
+        include_in_schema=False
     )
     async def post_table_partition(
         path: str,
@@ -1027,6 +1030,7 @@ def get_router(
         "/table/full/{path:path}",
         response_model=schemas.Response,
         name="full 'table' data",
+        include_in_schema=False
     )
     async def post_table_full(
         request: Request,
@@ -1115,6 +1119,7 @@ def get_router(
         "/container/full/{path:path}",
         response_model=schemas.Response,
         name="full 'container' metadata and data",
+        include_in_schema=False
     )
     async def get_container_full(
         request: Request,
@@ -1159,6 +1164,7 @@ def get_router(
         "/container/full/{path:path}",
         response_model=schemas.Response,
         name="full 'container' metadata and data",
+        include_in_schema=False
     )
     async def post_container_full(
         request: Request,
@@ -1252,6 +1258,7 @@ def get_router(
         response_model=schemas.Response,
         name="full 'container' or 'table'",
         deprecated=True,
+        include_in_schema=False
     )
     async def node_full(
         request: Request,
@@ -1335,6 +1342,7 @@ def get_router(
         "/awkward/buffers/{path:path}",
         response_model=schemas.Response,
         name="AwkwardArray buffers",
+        include_in_schema=False
     )
     async def get_awkward_buffers(
         request: Request,
@@ -1385,6 +1393,7 @@ def get_router(
         "/awkward/buffers/{path:path}",
         response_model=schemas.Response,
         name="AwkwardArray buffers",
+        include_in_schema=False
     )
     async def post_awkward_buffers(
         request: Request,
@@ -1482,6 +1491,7 @@ def get_router(
             "Fetch the full contents of an AwkwardArray-like node, or a slice of it. "
             "Supports numpy-style slice notation via the 'slice' query parameter."
         ),
+        include_in_schema=False
     )
     async def awkward_full(
         request: Request,
@@ -1545,7 +1555,7 @@ def get_router(
         except UnsupportedMediaTypes as err:
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
-    @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse)
+    @router.post("/metadata/{path:path}", response_model=schemas.PostMetadataResponse, include_in_schema=False)
     async def post_metadata(
         request: Request,
         path: str,
@@ -1592,7 +1602,7 @@ def get_router(
             authn_scopes=authn_scopes,
         )
 
-    @router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse)
+    @router.post("/register/{path:path}", response_model=schemas.PostMetadataResponse, include_in_schema=False)
     async def post_register(
         request: Request,
         path: str,
@@ -1703,7 +1713,7 @@ def get_router(
 
         return json_or_msgpack(request, response_data)
 
-    @router.put("/data_source/{path:path}")
+    @router.put("/data_source/{path:path}", include_in_schema=False)
     async def put_data_source(
         request: Request,
         path: str,
@@ -1748,7 +1758,7 @@ def get_router(
             )
         await entry.put_data_source(data_source=body.data_source, patch=patch)
 
-    @router.delete("/metadata/{path:path}")
+    @router.delete("/metadata/{path:path}", include_in_schema=False)
     async def delete(
         request: Request,
         path: str,
@@ -1790,7 +1800,7 @@ def get_router(
             )
         return json_or_msgpack(request, None)
 
-    @router.put("/array/full/{path:path}")
+    @router.put("/array/full/{path:path}", include_in_schema=False)
     async def put_array_full(
         request: Request,
         path: str,
@@ -1832,7 +1842,7 @@ def get_router(
         )
         return json_or_msgpack(request, None)
 
-    @router.put("/array/block/{path:path}")
+    @router.put("/array/block/{path:path}", include_in_schema=False)
     async def put_array_block(
         request: Request,
         path: str,
@@ -1873,7 +1883,7 @@ def get_router(
         )
         return json_or_msgpack(request, None)
 
-    @router.patch("/array/full/{path:path}")
+    @router.patch("/array/full/{path:path}", include_in_schema=False)
     async def patch_array_full(
         request: Request,
         path: str,
@@ -1933,7 +1943,7 @@ def get_router(
         )
         return json_or_msgpack(request, structure)
 
-    @router.put("/table/full/{path:path}")
+    @router.put("/table/full/{path:path}", include_in_schema=False)
     @router.put("/node/full/{path:path}", deprecated=True)
     async def put_node_full(
         request: Request,
@@ -1970,7 +1980,7 @@ def get_router(
         await ensure_awaitable(entry.write, media_type, deserializer, entry, body)
         return json_or_msgpack(request, None)
 
-    @router.put("/table/partition/{path:path}")
+    @router.put("/table/partition/{path:path}", include_in_schema=False)
     async def put_table_partition(
         partition: int,
         path: str,
@@ -2009,7 +2019,7 @@ def get_router(
         )
         return json_or_msgpack(request, None)
 
-    @router.patch("/table/partition/{path:path}")
+    @router.patch("/table/partition/{path:path}", include_in_schema=False)
     async def patch_table_partition(
         partition: int,
         path: str,
@@ -2048,7 +2058,7 @@ def get_router(
         )
         return json_or_msgpack(request, None)
 
-    @router.put("/awkward/full/{path:path}")
+    @router.put("/awkward/full/{path:path}", include_in_schema=False)
     async def put_awkward_full(
         request: Request,
         path: str,
@@ -2088,7 +2098,7 @@ def get_router(
         await ensure_awaitable(entry.write, data)
         return json_or_msgpack(request, None)
 
-    @router.patch("/metadata/{path:path}", response_model=schemas.PatchMetadataResponse)
+    @router.patch("/metadata/{path:path}", response_model=schemas.PatchMetadataResponse, include_in_schema=False)
     async def patch_metadata(
         request: Request,
         path: str,
@@ -2196,7 +2206,7 @@ def get_router(
             response_data["access_blob"] = access_blob
         return json_or_msgpack(request, response_data)
 
-    @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse)
+    @router.put("/metadata/{path:path}", response_model=schemas.PutMetadataResponse, include_in_schema=False)
     async def put_metadata(
         request: Request,
         path: str,
@@ -2272,7 +2282,7 @@ def get_router(
             response_data["access_blob"] = access_blob
         return json_or_msgpack(request, response_data)
 
-    @router.get("/revisions/{path:path}")
+    @router.get("/revisions/{path:path}", include_in_schema=False)
     async def get_revisions(
         request: Request,
         path: str,
@@ -2317,7 +2327,7 @@ def get_router(
         )
         return json_or_msgpack(request, resource.model_dump())
 
-    @router.delete("/revisions/{path:path}")
+    @router.delete("/revisions/{path:path}", include_in_schema=False)
     async def delete_revision(
         request: Request,
         path: str,
@@ -2350,7 +2360,7 @@ def get_router(
         await entry.delete_revision(number)
         return json_or_msgpack(request, None)
 
-    @router.get("/asset/bytes/{path:path}")
+    @router.get("/asset/bytes/{path:path}", include_in_schema=False)
     async def get_asset(
         request: Request,
         path: str,
@@ -2442,7 +2452,11 @@ def get_router(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    @router.get("/asset/manifest/{path:path}")
+    @router.get("/asset/manifest/{path:path}", summary="Get a list of assets for a node",
+                description=(
+            "List the assets (files) associated with a node, including their IDs, "
+            "paths, and sizes."
+        ))
     async def get_asset_manifest(
         request: Request,
         path: str,

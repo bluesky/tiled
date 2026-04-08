@@ -20,6 +20,7 @@ from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -60,7 +61,7 @@ from ..utils import SHARE_TILED_PATH, Conflicts, UnsupportedQueryType
 from ..validation_registration import ValidationRegistry, default_validation_registry
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
-from .openapi_agent import build_agent_openapi
+from .openapi import build_agent_openapi
 from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
@@ -100,6 +101,7 @@ def custom_openapi(app):
 
     if app.openapi_schema:
         return app.openapi_schema
+
     # Customize heading.
     openapi_schema = get_openapi(
         title="Tiled",
@@ -244,7 +246,15 @@ def build_app(
         yield
         await shutdown_event()
 
-    app = FastAPI(lifespan=lifespan, strict_content_type=False)
+    # Disable FastAPI's built-in /openapi.json route so our custom one
+    # (which supports ?agent) takes precedence.
+    app = FastAPI(
+        lifespan=lifespan,
+        strict_content_type=False,
+        openapi_url=None,
+        docs_url=None,
+        redoc_url=None,
+    )
 
     # Healthcheck for deployment to containerized systems, needs to preempt other responses.
     # Standardized for Kubernetes, but also used by other systems.
@@ -252,10 +262,30 @@ def build_app(
     async def healthz():
         return {"status": "ready"}
 
-    @app.get("/openapi_agent.json", include_in_schema=False)
-    async def openapi_agent():
-        """Serve a simplified OpenAPI spec designed for LLM agent tool use."""
-        return JSONResponse(build_agent_openapi(app))
+    # Override FastAPI's built-in /openapi.json route so that appending
+    # `?agent` returns the simplified, fully-dereferenced agent spec.
+    # Without the query parameter it falls back to the default schema.
+    @app.get("/openapi.json", include_in_schema=False)
+    async def openapi(agent: Optional[str] = None):
+        if agent is not None:
+            return JSONResponse(build_agent_openapi(app))
+        return JSONResponse(custom_openapi(app))
+
+    # Re-add /docs and /redoc since we disabled the built-in ones
+    # (openapi_url=None also disables these).
+    @app.get("/docs", include_in_schema=False)
+    async def swagger_ui():
+        return get_swagger_ui_html(
+            openapi_url="/openapi.json",
+            title=f"{app.title} - Swagger UI",
+        )
+
+    @app.get("/redoc", include_in_schema=False)
+    async def redoc():
+        return get_redoc_html(
+            openapi_url="/openapi.json",
+            title=f"{app.title} - ReDoc",
+        )
 
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
