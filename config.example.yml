@@ -1,0 +1,451 @@
+# =============================================================================
+# Tiled Server Configuration
+# config.yml
+# =============================================================================
+# Start the server with:
+#   tiled serve config config.yml
+#
+# For secrets, prefer environment variables over hardcoding values here.
+# Generate a secure random key with:
+#   openssl rand -hex 32
+#   python -c "import secrets; print(secrets.token_hex(32))"
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Catalog
+# -----------------------------------------------------------------------------
+# The catalog is the primary data store for a Tiled server. It consists of:
+#   - A SQL database that stores metadata and URIs pointing to data assets
+#   - Writable storage locations where data assets are written
+#   - Readable storage locations where externally-managed data can be read
+#
+# It is possible for a Tiled server to serve data from *multiple* catalogs.
+# This approach is not generally recommended; a single catalog database
+# is recommended even for large-scale deployments. See the section
+# on Trees, at the end of this file, for more on this advanced topic.
+# Every configuration must include either catalog: or trees:, but not both.
+#
+# catalog:
+#   # SQLAlchemy connection URL for the metadata database.
+#   # PostgreSQL: postgresql://user:password@host:5432/tiled_catalog
+#   # SQLite:     sqlite:////absolute/path/to/catalog.db
+#   uri: ${TILED_CATALOG_URI}
+#
+#   # Locations where Tiled will write data assets.
+#   # Each entry is either a directory path (for file-based storage), a URI,
+#   # or an object describing S3-style storage.
+#   # When an Adapter for a given format supports multiple storage
+#   # types (e.g., files or blobs) the first in this list gets priority.
+#   writable_storage:
+#     - "/storage/data"                  # file-based storage
+#     - "duckdb:///storage/data.db"      # embedded tabular storage
+#     # S3-style blob a.k.a. bucket storage
+#     - provider: s3
+#       uri: "http://localhost:9000"
+#       config:
+#         access_key_id: ${BUCKET_ACCESS_KEY_ID}
+#         secret_access_key: ${BUCKET_SECRET_ACCESS_KEY}
+#         bucket: "my_bucket"
+#         virtual_hosted_style_request: false
+#         client_options: {"allow_http": true}
+#
+#   # Read-only storage for externally-managed data that Tiled serves but
+#   # does not write. Accepts the same storage types as writable_storage above.
+#   # Note: writable_storage is automatically readable; no need to repeat it here.
+#   readable_storage:
+#     - "/storage/data"                  # file-based storage
+#     - "duckdb:///storage/data.db"      # embedded tabular storage
+#     # S3-style blob a.k.a. bucket storage
+#     - provider: s3
+#       uri: "http://localhost:9000"
+#       config:
+#         access_key_id: ${BUCKET_ACCESS_KEY_ID}
+#         secret_access_key: ${BUCKET_SECRET_ACCESS_KEY}
+#         bucket: "my_bucket"
+#         virtual_hosted_style_request: false
+#         client_options: {"allow_http": true}
+#
+#   # Create the metadata database automatically on first startup if it does
+#   # not already exist. Convenient for single-instance deployments.
+#   #
+#   # WARNING: In a horizontally-scaled deployment (multiple containers or
+#   # workers starting simultaneously), this can cause a race condition where
+#   # multiple processes attempt to initialize the database at the same time.
+#   # If that is a concern, set this to false and initialize the database once
+#   # manually before starting the server:
+#   #
+#   #   tiled catalog init URI
+#   #
+#   init_if_not_exists: true
+#
+#   # Metadata the root node of the catalog
+#   metadata: {}
+#   specs: []
+#   top_level_access_blob: null
+#
+#   # Database connection pool tuning
+#   catalog_pool_size: 5
+#   storage_pool_size: 5
+#   catalog_max_overflow: 10
+#   storage_max_overflow: 10
+
+
+# -----------------------------------------------------------------------------
+# Streaming Cache
+# -----------------------------------------------------------------------------
+# Required only if you are serving live-updating / streaming data sources.
+# For static data repositories this section can be omitted entirely.
+#
+# Two backend options:
+#
+#   memory — caches recent updates in process memory. Fine for demos and
+#            single-process deployments; not horizontally scalable.
+#
+#   Redis  — recommended for production and multi-worker deployments.
+#            Install Redis and provide a connection URI.
+#
+# streaming_cache:
+
+#   # In-memory backend (single process only):
+#   uri: memory
+
+#   # Redis backend:
+#   uri: ${TILED_REDIS_URI}        # e.g. redis://:password@localhost:6379
+#   data_ttl: 86400                # seconds — retain streamed data chunks
+#   seq_ttl: 86400                 # seconds — retain per-stream sequence counter
+#   socket_timeout: 86400          # seconds — timeout on established connection
+#   socket_connect_timeout: 10     # seconds — timeout on initial connect
+
+
+# -----------------------------------------------------------------------------
+# Authentication
+# -----------------------------------------------------------------------------
+authentication:
+
+  # ---------------------------------------------------------------------------
+  # Identity Providers
+  # ---------------------------------------------------------------------------
+  # Uncomment exactly one of the following blocks.
+  # If no provider is configured, Tiled runs in single-user mode (see
+  # single_user_api_key below).
+
+  # OPTION 1 — Local system accounts (PAM)
+  # Users log in with their OS username and password (Linux/macOS).
+  # Requires:  pip install pamela
+  #
+  # providers:
+  #   - provider: local
+  #     authenticator: tiled.authenticators:PAMAuthenticator
+  #     args:
+  #       service: login         # PAM service name. Default is "login".
+
+
+  # OPTION 2 — OpenID Connect (ORCID, Google, Azure, …)
+  # Tiled never touches users' passwords; the OIDC provider handles that.
+  # Requires:  pip install httpx
+  #
+  # Setup steps:
+  #   1. Deploy Tiled behind HTTPS.
+  #   2. Register a new OAuth2 application with your chosen OIDC provider.
+  #      Add these redirect URIs (replace <BASE_URL> with your public URL):
+  #        https://<BASE_URL>/api/v1/auth/provider/<PROVIDER_NAME>/code
+  #        https://<BASE_URL>/api/v1/auth/provider/<PROVIDER_NAME>/device_code
+  #   3. Copy the Client ID and Client Secret from the provider dashboard.
+  #      Store the secret in an environment variable (see client_secret below).
+  #   4. Find your provider's well-known endpoint, for example:
+  #        Google : https://accounts.google.com/.well-known/openid-configuration
+  #        ORCID  : https://orcid.org/.well-known/openid-configuration
+  #        Azure  : https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration
+  #
+  # providers:
+  #   - provider: google          # Must match the label used in the redirect URIs above
+  #     authenticator: tiled.authenticators:OIDCAuthenticator
+  #     args:
+  #       audience: tiled         # Checked against the "aud" claim in the token
+  #       client_id: YOUR_CLIENT_ID_HERE
+  #       client_secret: ${OIDC_CLIENT_SECRET}
+  #       well_known_uri: https://accounts.google.com/.well-known/openid-configuration
+
+
+  # OPTION 3 — Development / demo only: dictionary of hardcoded passwords
+  # Not suitable for production. Passwords should still be set via environment
+  # variables rather than written directly into this file.
+  #
+  # Start the server with:
+  #   ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 tiled serve config config.yml
+  #
+  # providers:
+  #   - provider: toy
+  #     authenticator: tiled.authenticators:DictionaryAuthenticator
+  #     args:
+  #       users_to_passwords:
+  #         alice: ${ALICE_PASSWORD}
+  #         bob:   ${BOB_PASSWORD}
+
+
+  # OPTION 4 — Development only: accept any username + password (no validation)
+  # Useful for smoke-testing access-control policies without real users.
+  # Never expose this to a network.
+  #
+  # providers:
+  #   - provider: toy
+  #     authenticator: tiled.authenticators:DummyAuthenticator
+
+
+  # ---------------------------------------------------------------------------
+  # Anonymous / Public Access
+  # ---------------------------------------------------------------------------
+  # This setting is independent of which provider is configured above.
+  #
+  # false (default) — unauthenticated users cannot see any data, only the
+  #                   HTML landing page and related non-sensitive entry points
+  # true            — unauthenticated users can see any entries not explicitly
+  #                   restricted by an access policy
+  #
+  # This can be combined with any provider above to create a service that has
+  # both public and private content — e.g. a PAM or OIDC server where some
+  # datasets are openly readable and others require login.
+  # It can also be used with no provider at all, for a fully open public server.
+  #
+  # allow_anonymous_access: false
+
+
+  # ---------------------------------------------------------------------------
+  # Single-user API key
+  # ---------------------------------------------------------------------------
+  # Used only when no providers are configured (single-user mode).
+  # If unset, a random key is generated and printed to the terminal at startup.
+  # Set it explicitly when multiple server instances must share the same secret
+  # (e.g. behind a load balancer).
+  #
+  # single_user_api_key: ${TILED_SINGLE_USER_API_KEY}
+
+
+  # ---------------------------------------------------------------------------
+  # Token Signing Keys
+  # ---------------------------------------------------------------------------
+  # REQUIRED for any multi-user setup (i.e. whenever providers: is configured).
+  # These secrets are used to sign and verify session tokens.
+  #
+  # Tiled accepts tokens signed with *any* key in the list, but always signs
+  # new tokens with the first one. This allows zero-downtime key rotation:
+  # add your new key at the top, redeploy, then remove the old key and redeploy
+  # again once all old tokens have expired.
+  #
+  # Generate a key: openssl rand -hex 32
+  # Never hardcode secrets here — always use environment variables.
+  #
+  # secret_keys:
+  #   - ${TILED_SECRET_KEY}
+
+
+  # ---------------------------------------------------------------------------
+  # Admin Users
+  # ---------------------------------------------------------------------------
+  # Grant admin role to specific identities. The provider string must match
+  # a provider label defined above. Admins can manage users and sessions via
+  # the /api/v1/admin/* endpoints.
+  #
+  # tiled_admins:
+  #   - provider: local
+  #     id: alice
+  #   - provider: google
+  #     id: bob@example.com
+
+
+  # ---------------------------------------------------------------------------
+  # Session Lifetime
+  # ---------------------------------------------------------------------------
+  # How long an *inactive* session stays alive before the user must re-authenticate.
+  # Measured from the last token refresh. Default: 604800 (7 days).
+  #
+  # refresh_token_max_age: 604800     # seconds (7 days)
+
+  # Hard ceiling on any session, active or not. Useful for compliance requirements
+  # e.g. "all users must re-authenticate every 30 days". Default: unlimited.
+  #
+  # session_max_age: 2592000          # seconds (30 days)
+
+  # Lifetime of the short-lived internal access token. Transparent to users;
+  # controls how often the client silently refreshes in the background.
+  # Cannot be revoked mid-life, so keep it short. Default: 900.
+  #
+  # access_token_max_age: 900         # seconds (15 minutes)
+
+
+# -----------------------------------------------------------------------------
+# Authentication Database
+# -----------------------------------------------------------------------------
+# When authentication providers are configured above, Tiled persists identities,
+# sessions, and API keys in a SQL database. This is separate from any catalog
+# database used to store scientific data.
+#
+# If omitted, Tiled falls back to an in-process SQLite database in memory —
+# fine for development, not for production.
+#
+# Tiled officially supports PostgreSQL and SQLite.
+# Any SQLAlchemy-compatible engine may work but is not guaranteed.
+#
+# database:
+#   # SQLAlchemy connection URL.
+#   # PostgreSQL: postgresql://user:password@host:5432/tiled_auth
+#   # SQLite:     sqlite:////absolute/path/to/auth.db
+#   uri: ${TILED_DATABASE_URI}
+#
+#   # Create tables automatically on first startup if the database is empty.
+#   # Safe to leave on; it is a no-op once tables exist.
+#   init_if_not_exists: true
+#
+#   # Test connections before use to catch stale sockets early. Recommended.
+#   pool_pre_ping: true
+#
+#   # Number of persistent database connections to keep open. Minimum 2.
+#   pool_size: 5
+#
+#   # Extra connections allowed when the pool is exhausted.
+#   max_overflow: 5
+
+
+# -----------------------------------------------------------------------------
+# Access Control
+# -----------------------------------------------------------------------------
+# Fine-grained, per-entry access control. Requires authentication providers
+# to also be configured above.
+# If omitted, all authenticated users can read all entries (and anonymous users
+# can read all entries when allow_anonymous_access is true).
+#
+# access_control:
+#   access_policy: tiled.access_policies:SimpleAccessPolicy
+#   args:
+#     provider: local           # Must match a provider label defined above
+#     access_lists:
+#       alice: "read:data"
+#       bob:   "read:metadata"
+#     # Allow unauthenticated users to read entries covered by this policy.
+#     # Also requires allow_anonymous_access: true under authentication: above.
+#     public: false
+
+
+# -----------------------------------------------------------------------------
+# Server / Uvicorn
+# -----------------------------------------------------------------------------
+# Low-level HTTP server settings. Most deployments behind a reverse proxy
+# (nginx, Traefik, …) only need host and port.
+#
+# uvicorn:
+#   host: 127.0.0.1         # Use 0.0.0.0 to accept connections from any interface
+#   port: 8000
+#   workers: 1              # Number of worker processes. Defaults to $WEB_CONCURRENCY or 1.
+#   root_path: ""           # Set if Tiled is mounted at a sub-path behind a reverse proxy
+#   proxy_headers: true     # Trust X-Forwarded-* headers from the proxy
+#   forwarded_allow_ips: "127.0.0.1"   # or "*" to trust all proxies
+#
+#   # TLS — only if Tiled itself terminates TLS.
+#   # Leave commented out when a reverse proxy handles TLS.
+#   ssl_keyfile:  /path/to/key.pem
+#   ssl_certfile: /path/to/cert.pem
+
+
+# -----------------------------------------------------------------------------
+# CORS — Cross-Origin Resource Sharing
+# -----------------------------------------------------------------------------
+# List domains of browser-based apps that need to call this server directly.
+# Omit if no cross-origin browser access is needed (CLI / Jupyter-only usage).
+#
+# allow_origins:
+#   - https://my-dashboard.example.com
+#   - https://chart-studio.plotly.com
+
+
+# -----------------------------------------------------------------------------
+# Response Limits
+# -----------------------------------------------------------------------------
+# Cap the maximum size of a single response. The default (300 MB) is
+# intentionally conservative — clients should request data in chunks.
+#
+# response_bytesize_limit: 314572800   # bytes (300 MB)
+#
+# For containers with many items, computing an exact count is expensive.
+# Above this threshold Tiled returns an estimate instead. Default: 100.
+#
+# exact_count_limit: 100
+
+
+# -----------------------------------------------------------------------------
+# Metrics
+# -----------------------------------------------------------------------------
+# Prometheus metrics are exposed at /metrics by default.
+# Set to false to disable.
+#
+# metrics:
+#   prometheus: true
+
+
+# -----------------------------------------------------------------------------
+# Custom Media Types / Exporters
+# -----------------------------------------------------------------------------
+# Register additional export formats beyond Tiled's built-ins.
+# Map a MIME type to an importable serializer function for each structure type.
+#
+# media_types:
+#   array:
+#     application/x-my-format: my_package.exporters:array_exporter
+#   dataframe:
+#     application/x-my-format: my_package.exporters:dataframe_exporter
+#   dataset:
+#     application/x-my-format: my_package.exporters:dataset_exporter
+#
+# Convenience aliases so clients can request ?format=myext
+#
+# file_extensions:
+#   myext: application/x-my-format
+
+
+# -----------------------------------------------------------------------------
+# Trees
+# -----------------------------------------------------------------------------
+# Every configuration must include either catalog: or trees:, but not both.
+# The 'catalog:' section is recommended for most setups, including large
+# deployments.
+#
+# The 'trees:' section is an advanced feature that can be used for:
+#
+# - Managing the legacy of Tiled's precursor, databroker
+# - Experimentation with alternative catalog implementations
+# - Advanced routing that uses PostgreSQL read-only replicas for
+#   certain requests (experimental, undocumented)
+#
+# This section:
+#
+# trees:
+#   - path: /
+#     tree: catalog
+#     args:
+#       uri: ${TILED_CATALOG_URI}
+#
+# is equivalent to:
+#
+# catalog:
+#   uri: ${TILED_CATALOG_URI}
+#
+# but the 'trees' form enables serving multiple catalogs, mounted
+# at different URL path prefixes.
+#
+# trees:
+#   - path: /a
+#     tree: catalog
+#     args:
+#       uri: ${TILED_CATALOG_A_URI}
+#   - path: /b
+#     tree: catalog
+#     args:
+#       uri: ${TILED_CATALOG_B_URI}
+#
+# It also supports custom alternatives to Tiled's catalog:
+#
+# trees:
+#   - path: /
+#     tree: databroker.mongo_normalized:MongoAdapter
+#     args:
+#       uri: ${MONGO_URI}

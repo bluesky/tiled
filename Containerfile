@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.9
 ARG PYTHON_VERSION=3.12
-FROM docker.io/node:22-alpine AS web_frontend_build
+FROM --platform=linux/amd64 docker.io/node:22-alpine AS web_frontend_build
 WORKDIR /src
 COPY web-frontend .
 RUN set -ex && npm install && npm run build
@@ -81,6 +81,7 @@ RUN set -ex && \
 
 FROM docker.io/python:${PYTHON_VERSION}-slim AS app_runtime
 ARG PYTHON_VERSION=3.12
+ARG APP_UID=999
 
 # Add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH
@@ -88,7 +89,7 @@ ENV PATH=/app/bin:$PATH
 # Don't run your app as root.
 RUN set -ex && \
 groupadd -r app && \
-useradd -r -d /app -g app -N app
+useradd -r -u ${APP_UID} -d /app -g app -N app
 
 # See <https://hynek.me/articles/docker-signals/>.
 STOPSIGNAL SIGINT
@@ -106,7 +107,7 @@ rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN mkdir -p /deploy/config
 RUN mkdir -p /storage && chown -R app:app /storage
-COPY ./example_configs/single_catalog_single_user.yml /deploy/config
+COPY ./example_configs/config_for_containerfile.yml /deploy/config
 ENV TILED_CONFIG=/deploy/config
 
 # Copy the pre-built `/app` directory to the runtime container

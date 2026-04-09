@@ -5,15 +5,12 @@ authentication:
   allow_anonymous_access: false
 catalog:
   # This database stores metadata and URIs pointing to data.
-  uri: "./catalog.db"
-
+  uri: "postgresql://tiled:${POSTGRES_PASSWORD}@localhost:5432/tiled_catalog"
   writable_storage:
-
     # File-based data storage
-    - "./data"
-
-    # Embedded tabular data storage
-    - "duckdb:///./data"
+    - "./storage"
+    # Tabular data storage
+    - "postgresql://tiled:${POSTGRES_PASSWORD}@localhost:5432/tiled_storage"
 
   # This creates the database if it does not exist. This is convenient, but in
   # a horizontally-scaled deployment, this can be a race condition and multiple
@@ -26,6 +23,4 @@ catalog:
   init_if_not_exists: true
 
 streaming_cache:
-  # For small, simple deployments, we can use process memory to cache recent
-  # data for streaming.
-  uri: memory
+  uri: redis://:${REDIS_PASSWORD}@localhost:6379

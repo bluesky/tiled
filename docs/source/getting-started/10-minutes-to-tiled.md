@@ -13,7 +13,8 @@ kernelspec:
 
 # 10 minutes to Tiled
 
-This is a short, tutorial-style introduction to Tiled, for new users.
+This is a short, tutorial-style introduction to Tiled, for new users. See the
+[cheat sheet](#cheat-sheet) for a condensed and abridged version.
 
 ## Connect
 

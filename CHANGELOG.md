@@ -10,10 +10,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Support for slicing arrays backed by multipart adapters with modified shapes
 
+### Fixed
+
+- Writing chunked (dask) arrays with single chunk along all dimensions
+- OIDC authenticator was not quite compliant and was incompatible with
+  at least some providers including Azure and ORCID.
+
 ### Changed
 
 - Array client fully supports slicing when communicating with the server
   and only fetches the data needed to satisfy the slice.
+- CSVArrayAdapter supports reading heterogenous tables as structured arrays
 
 ## v0.2.7 (2026-02-27)
 

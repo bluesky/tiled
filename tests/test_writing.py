@@ -5,6 +5,7 @@ Persistent stores are being developed externally to the tiled package.
 """
 
 import base64
+import math
 import os
 import threading
 import uuid
@@ -160,13 +161,17 @@ def test_write_large_array_full(tree):
             client._SUGGESTED_MAX_UPLOAD_SIZE = original
 
 
-def test_write_array_chunked(tree):
+@pytest.mark.parametrize(
+    "shape, chunks",
+    [((50, 30), (20, 15)), ((10, 1), (3, 1)), ((10, 1), (10, 1)), ((10,), (3,))],
+)
+def test_write_array_chunked(tree, shape, chunks):
     with Context.from_app(
         build_app(tree, validation_registry=validation_registry)
     ) as context:
         client = from_context(context)
 
-        a = dask.array.arange(1500).reshape((50, 30)).rechunk((20, 15))
+        a = dask.array.arange(math.prod(shape)).reshape(shape).rechunk(chunks)
 
         metadata = {"scan_id": 1, "method": "A"}
         specs = [Spec("SomeSpec")]
