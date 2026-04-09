@@ -38,15 +38,6 @@ class TiffAdapter(Adapter[ArrayStructure]):
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        data_uri :
-        structure :
-        metadata :
-        specs :
-        """
         filepath = path_from_uri(data_uri)
         cache_key = (tifffile.TiffFile, filepath)
         self._file = with_resource_cache(cache_key, tifffile.TiffFile, filepath)
