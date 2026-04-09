@@ -229,6 +229,55 @@ def split_slice(
     return {k: NDSlice(v) for k, v in zip(keys, vals)}
 
 
+def _slc_with_int(slc: builtins.slice, idx: int) -> int:
+    "Compose a (1D) slice with an integer index"
+
+    if slc.start is None or slc.stop is None:
+        raise ValueError("Composition with relative indexing is not supported.")
+
+    start, stop, step = slc.start, slc.stop, slc.step or 1
+
+    # Estimate maximum length of the resulting shape after slice
+    if step > 0:
+        length = max(0, (stop - start + step - 1) // step)
+    else:
+        length = max(0, (start - stop - step - 1) // (-step))
+
+    # Normalize negative index
+    if idx < 0:
+        idx += length
+
+    if idx < 0 or idx >= length:
+        raise ValueError("Composition with out-of-bounds index")
+
+    return start + step * idx
+
+
+def _slc_with_slc(slc1: builtins.slice, slc2: builtins.slice) -> builtins.slice:
+    "Compose a (1D) slice with another slice"
+
+    # Normalize first slice
+    if slc1.start is None or slc1.stop is None:
+        raise ValueError("Composition with relative indexing is not supported.")
+    start1, stop1, step1 = slc1.start, slc1.stop, slc1.step or 1
+
+    # Estimate maximum length of the resulting shape after first slice
+    if step1 > 0:
+        length = max(0, (stop1 - start1 + step1 - 1) // step1)
+    else:
+        length = max(0, (start1 - stop1 - step1 - 1) // (-step1))
+
+    # Normalize second slice relative to the length of the first slice
+    start2, stop2, step2 = slc2.indices(length)
+
+    # Compose the two normalized slices
+    new_start = start1 + step1 * start2
+    new_step = step1 * step2
+    new_stop = start1 + step1 * stop2
+
+    return builtins.slice(new_start, new_stop, new_step)
+
+
 def compose_slices(slc1: "NDSlice", slc2: "NDSlice") -> "NDSlice":
     """Compose two NDSlices
 
@@ -240,49 +289,6 @@ def compose_slices(slc1: "NDSlice", slc2: "NDSlice") -> "NDSlice":
     arrays of certain shapes, so it is recommended to expand the slices for the specific
     shape before composing them.
     """
-
-    def _slc_and_int(slc: builtins.slice, idx: int) -> int:
-        if slc.start is None or slc.stop is None:
-            raise ValueError("Composition with relative indexing is not supported.")
-
-        start, stop, step = slc.start, slc.stop, slc.step or 1
-
-        # Estimate maximum length of the resulting shape after slice
-        if step > 0:
-            length = max(0, (stop - start + step - 1) // step)
-        else:
-            length = max(0, (start - stop - step - 1) // (-step))
-
-        # Normalize negative index
-        if idx < 0:
-            idx += length
-
-        if idx < 0 or idx >= length:
-            raise ValueError("Composition with out-of-bounds index")
-
-        return start + step * idx
-
-    def _slc_and_slc(slc1: builtins.slice, slc2: builtins.slice) -> builtins.slice:
-        # Normalize first slice
-        if slc1.start is None or slc1.stop is None:
-            raise ValueError("Composition with relative indexing is not supported.")
-        start1, stop1, step1 = slc1.start, slc1.stop, slc1.step or 1
-
-        # Estimate maximum length of the resulting shape after first slice
-        if step1 > 0:
-            length = max(0, (stop1 - start1 + step1 - 1) // step1)
-        else:
-            length = max(0, (start1 - stop1 - step1 - 1) // (-step1))
-
-        # Normalize second slice relative to the length of the first slice
-        start2, stop2, step2 = slc2.indices(length)
-
-        # Compose the two normalized slices
-        new_start = start1 + step1 * start2
-        new_step = step1 * step2
-        new_stop = start1 + step1 * stop2
-
-        return builtins.slice(new_start, new_stop, new_step)
 
     if (not slc1) or (not slc2):
         # If either slice is empty, the result is the other slice (which may also be empty)
@@ -322,9 +328,9 @@ def compose_slices(slc1: "NDSlice", slc2: "NDSlice") -> "NDSlice":
 
             # Now compose s1 and s2 and add to the result from the right
             if isinstance(s2, int):
-                res_rgt.append(_slc_and_int(s1, s2))
+                res_rgt.append(_slc_with_int(s1, s2))
             elif isinstance(s2, builtins.slice):
-                res_rgt.append(_slc_and_slc(s1, s2))
+                res_rgt.append(_slc_with_slc(s1, s2))
 
     # All the right slice until Ellipsis is processed; and the remaining items from the left
     for s1 in slc1[:i1l]:
@@ -336,9 +342,9 @@ def compose_slices(slc1: "NDSlice", slc2: "NDSlice") -> "NDSlice":
         # Left item is a slice, compose it with the next right item if there are any remaining
         s2 = slc2[i2r]
         if isinstance(s2, int):
-            res_lft.append(_slc_and_int(s1, s2))
+            res_lft.append(_slc_with_int(s1, s2))
         elif isinstance(s2, builtins.slice):
-            res_lft.append(_slc_and_slc(s1, s2))
+            res_lft.append(_slc_with_slc(s1, s2))
         elif is_ellipsis(s2) or (len(slc2) == i2r + 1):
             res_lft.append(s1)
             continue
