@@ -217,45 +217,69 @@ _PARAM_DESCRIPTIONS: dict[str, str] = {
         "For nested nodes use e.g. 'experiment/run_001' (no leading slash)."
     ),
     "select_metadata": (
-        "JMESPath expression to extract specific metadata fields. "
-        "Example: 'sample_name' or '{name: sample_name, temp: temperature}'."
+        "Return only this metadata key instead of the full metadata dict. "
+        "Pass a single key name, e.g. `select_metadata=sample_name`."
     ),
     "page[offset]": "Number of results to skip (for pagination). Default 0.",
     "page[limit]": "Maximum number of results to return (max 300). Default 100.",
     "sort": (
         "Sort results by a metadata field. Prefix with '-' for descending. "
-        "Example: 'metadata.time' or '-metadata.time'."
+        "Example: `sort=metadata.time` or `sort=-metadata.time`."
     ),
     "filter[fulltext][condition][text]": (
         "Full-text search across all metadata values. "
-        "Example: 'temperature' finds entries with that word in any metadata field."
+        "Example: `filter[fulltext][condition][text]=temperature`."
     ),
-    "filter[eq][condition][key]": "Metadata field name for equality filter.",
-    "filter[eq][condition][value]": "Value to match for equality filter.",
+    "filter[eq][condition][key]": (
+        "Metadata key for equality filter. "
+        "**Must be paired** with `filter[eq][condition][value]`."
+    ),
+    "filter[eq][condition][value]": (
+        "Value to match. "
+        "**Must be paired** with `filter[eq][condition][key]`. "
+        "Example: `...key=element&...value=Cr`."
+    ),
     "filter[comparison][condition][operator]": (
-        "Comparison operator: lt (less than), gt (greater than), le, ge."
+        "Comparison operator: `lt`, `gt`, `le`, or `ge`. "
+        "**Must be paired** with the comparison `key` and `value` params."
     ),
-    "filter[comparison][condition][key]": "Metadata field name for comparison filter.",
-    "filter[comparison][condition][value]": "Value to compare against.",
+    "filter[comparison][condition][key]": (
+        "Metadata key for comparison filter. "
+        "**Must be paired** with comparison `operator` and `value`."
+    ),
+    "filter[comparison][condition][value]": (
+        "Value to compare against. "
+        "**Must be paired** with comparison `operator` and `key`."
+    ),
     "filter[contains][condition][key]": (
-        "Metadata field name (must be a list/array) for contains filter."
+        "Metadata key (must be a list) for contains filter. "
+        "**Must be paired** with `filter[contains][condition][value]`."
     ),
-    "filter[contains][condition][value]": "Value that must be contained in the list.",
-    "filter[in][condition][key]": "Metadata field name for in-list filter.",
-    "filter[in][condition][value]": "List of acceptable values.",
+    "filter[contains][condition][value]": (
+        "Value that must be in the list. "
+        "**Must be paired** with `filter[contains][condition][key]`."
+    ),
+    "filter[in][condition][key]": (
+        "Metadata key for in-list filter. "
+        "**Must be paired** with `filter[in][condition][value]`."
+    ),
+    "filter[in][condition][value]": (
+        "One of the acceptable values (repeat param for multiple values). "
+        "**Must be paired** with `filter[in][condition][key]`."
+    ),
     "filter[structure_family][condition][value]": (
-        "Filter by structure type: array, table, container, awkward, or sparse."
+        "Filter by structure type: `array`, `table`, `container`, `awkward`, or `sparse`."
     ),
-    "format": (
-        "Output format media type. Use 'application/json' for JSON. "
-        "Other options depend on the data type (e.g. 'text/csv' for tables)."
-    ),
+    "format": ("Output format media type. Use `application/json` for JSON output."),
     "slice": (
-        "NumPy-style slice to select a subset of the array. "
-        "Examples: '0:10' (first 10 elements), '0:5,0:3' (2D slice), ':,0' (first column)."
+        "NumPy-style slice to select a subset. "
+        "Examples: `0:10` (first 10 elements), `0:5,0:3` (2D slice), `:,0` (first column)."
     ),
-    "column": "List of column names to include (omit for all columns).",
-    "id": "Asset ID (integer) for the manifest to retrieve.",
+    "column": (
+        "Column name to include. Repeat for multiple columns: "
+        "`column=time&column=value`. Omit for all columns."
+    ),
+    "id": "Asset ID (integer).",
 }
 
 
@@ -601,14 +625,17 @@ def build_agent_openapi(app) -> dict:
         title="Tiled",
         version=getattr(app, "version", ""),
         description=(
-            "Tiled is a structured data access server. Data is organized as a "
-            "tree of nodes. Each node is one of: container (has children), "
-            "array (N-dimensional numeric data), table (columnar data), or "
-            "awkward (variable-length nested data). Use SearchNodes to browse "
-            "and filter the tree, GetMetadata to inspect a node (different nodes "
-            "may have different metadata structure), and "
-            "GetArrayFull/GetTableFull to read actual data values. "
-            "All endpoints are read-only. Responses are JSON."
+            "Tiled is a read-only structured data access server. "
+            "Data is organized as a **tree of nodes**. Each node is one of:\n"
+            "- **container** — holds child nodes (like a folder)\n"
+            "- **array** — N-dimensional numeric data\n"
+            "- **table** — columnar/tabular data\n"
+            "- **awkward** — variable-length nested data\n\n"
+            "**Typical workflow:**\n"
+            "1. `SearchNodes` — browse the tree starting from root path `/`\n"
+            "2. `GetMetadata` — inspect a node's metadata and structure\n"
+            "3. `GetArrayFull` or `GetTableFull` — read the actual data\n\n"
+            "All responses are JSON. Use `format=application/json` for data endpoints."
         ),
         routes=filtered_routes,
     )

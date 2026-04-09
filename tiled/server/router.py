@@ -306,15 +306,35 @@ def get_router(
         ],
         summary="List and search nodes in the data catalog.",
         description=(
-            "List and search nodes in the data catalog. The catalog is a tree: "
-            "containers hold other containers, arrays, and tables. Use the path "
-            "parameter to navigate into the tree (use `/` for root). "
-            "Use filter parameters to search by metadata values, full-text, or "
-            "structure type. Filter parameters follow the pattern "
-            "`filter[<type>][condition][<field>]=<value>`. "
-            "Results are paginated; use page[offset] and page[limit] to iterate. "
-            "Each result includes an id, structure_family "
-            "(container/array/table/etc.), metadata dict, and structure info."
+            "Browse and search the data catalog tree.\n\n"
+            "The catalog is a tree of **nodes**. Each node is one of:\n"
+            "- **container** — holds child nodes (like a folder)\n"
+            "- **array** — N-dimensional numeric data\n"
+            "- **table** — columnar/tabular data\n\n"
+            "## Path\n\n"
+            "Use the `path` parameter to navigate the tree. "
+            "Use `/` for root, or a node path like `experiment/run_001`.\n\n"
+            "## Filtering\n\n"
+            "Filters use **paired query parameters**: one for the metadata key, "
+            "one for the value. Always provide both together.\n\n"
+            "**Equality filter** — find entries where a metadata field equals a value:\n"
+            "```\n"
+            "?filter[eq][condition][key]=element&filter[eq][condition][value]=Cr\n"
+            "```\n\n"
+            "**Full-text search** — search across all metadata values:\n"
+            "```\n"
+            "?filter[fulltext][condition][text]=temperature\n"
+            "```\n\n"
+            "**Structure family filter** — only return nodes of a specific type:\n"
+            "```\n"
+            "?filter[structure_family][condition][value]=table\n"
+            "```\n\n"
+            "## Pagination\n\n"
+            "Results are paginated. Use `page[offset]` and `page[limit]` to iterate. "
+            "Default: offset=0, limit=100.\n\n"
+            "## Scope\n\n"
+            "Only searches the **immediate children** of the node at the given path. "
+            "To search deeper, navigate into child containers by changing the path."
         ),
     )
     @_patch_route_signature(query_registry)
@@ -464,13 +484,19 @@ def get_router(
         ],
         summary="Get metadata and structure info for a single node.",
         description=(
-            "Get full metadata and structure information for a single node "
-            "identified by its path. Returns the node's id, structure_family, "
-            "metadata dict, specs, and structure (shape/dtype for arrays, "
-            "columns for tables, child count for containers). Use "
-            "select_metadata to extract specific metadata fields with a "
-            "JMESPath expression. Call this before fetching data to determine "
-            "the structure family and choose the right data access endpoint."
+            "Get detailed information about a single node by its path.\n\n"
+            "Returns:\n"
+            "- **id** — the node's identifier\n"
+            "- **metadata** — arbitrary key-value metadata dict "
+            "(different nodes may have different keys)\n"
+            "- **structure** — shape and type info (array shape/dtype, "
+            "table columns, container child count)\n\n"
+            "Use `select_metadata` to request only specific metadata keys "
+            "(reduces response size). Pass a single key name like "
+            "`select_metadata=sample_name`.\n\n"
+            "**Tip:** Call this before fetching data to learn the node's "
+            "type and choose the right data endpoint "
+            "(GetArrayFull, GetTableFull, etc.)."
         ),
     )
     async def metadata(
@@ -672,14 +698,13 @@ def get_router(
         name="full array",
         summary="Read array data.",
         description=(
-            "Fetch the full contents of an array node, or optionally only a slice "
-            "to avoid downloading everything if an array is large."
-            "The slicing uses numpy-style notation, like `?slice=5` or `?slice=:5,-5:,::2`. "
-            "Valid slice values depend on the shape of the array, which can be "
-            "discovered via the /metadata route. The returned data format can be specified via "
-            "an `Accept` header (as a MIME type) or a `format` query parameter as a "
-            "a MIME type or a file extension, e.g. format=application/json for JSON output. "
-            "Only works on nodes with structure_family='array'"
+            "Read the full contents of an array node, or a slice of it.\n\n"
+            "**Required:** `format=application/json` for JSON output.\n\n"
+            "Use `slice` for large arrays to avoid downloading everything. "
+            "Numpy-style notation: `0:10` (first 10), `:,0` (first column), "
+            "`0:5,0:3` (2D sub-block). Check the array's shape via "
+            "GetMetadata first.\n\n"
+            "Only works on nodes whose structure is an array."
         ),
     )
     async def array_full(
@@ -999,10 +1024,12 @@ def get_router(
         name="full 'table' data",
         summary="Read tabular data.",
         description=(
-            "Read tabular data. Returns all rows and columns, or a subset "
-            "of columns. Use format=application/json for JSON output. Use "
-            "the column parameter to select specific columns. "
-            "Only works on nodes with structure_family='table'."
+            "Read tabular data from a table node.\n\n"
+            "**Required:** `format=application/json` for JSON output.\n\n"
+            "Use `column` to select specific columns (repeat the parameter "
+            "for multiple: `column=time&column=value`). "
+            "Omit to get all columns.\n\n"
+            "Only works on nodes whose structure is a table."
         ),
     )
     async def get_table_full(
