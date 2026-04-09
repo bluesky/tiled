@@ -29,6 +29,22 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
     in the data source properties will reflect the original shape of the stacked array.
 
     When subclassing, define the `_load_from_files` method specific for a particular file type.
+
+    Parameters
+    ----------
+    data_uris : Iterable[str]
+        A sequence of URIs pointing to the files to be stacked along the left-most dimension.
+    structure : Optional[ArrayStructure], optional
+        The structure of the resulting array. If not provided, it is inferred from the shape and
+        dtype of the first file and the number of files.
+    metadata : Optional[JSON], optional
+        Additional metadata to be associated with the adapter.
+    specs : Optional[List[Spec]], optional
+        Additional specs to be associated with the adapter.
+    chunks : Optional[tuple[tuple[int, ...], ...]], optional
+        A tuple specifying the (true) chunk sizes for each dimension. This is used to determine
+        which files to load if additional reshaping is applied. If `chunks` are provided (e.g.
+        from data source parameters) they take precedence over the chunks derived from the files.
     """
 
     structure_family = StructureFamily.array
@@ -40,29 +56,23 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
-        chunks: Optional[tuple[tuple[int]]] = None,
+        chunks: Optional[tuple[tuple[int, ...], ...]] = None,
     ) -> None:
         self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
-        # Keep track of chunks derived from the files themselves, before any reshaping
-        self.true_chunks = None
-        # TODO Check shape, chunks against reality.
+        self._chunks = chunks  # "True" chunks in the files before reshaping
         if structure is None:
             dat0 = self._load_from_files(0)
             shape = (len(self.filepaths), *dat0.shape[1:])
             structure = ArrayStructure(
                 shape=shape,
-                # one chunk per underlying image file
+                # Each file is a single chunk along the left-most dimension;
+                # the remaining dimensions are chunked as in the files
                 chunks=((1,) * shape[0], *[(i,) for i in shape[1:]]),
                 # Assume all files have the same data type
                 data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
-            self.true_chunks = structure.chunks
+            self._chunks = structure.chunks
         super().__init__(structure, metadata=metadata, specs=specs)
-        # If chunks are provided (e.g., from data source parameters) they take
-        # precedence over the chunks derived from the files. This allows for
-        # reshaping.
-        if chunks is not None:
-            self.true_chunks = chunks
 
     @classmethod
     def from_uris(cls, *data_uris: str) -> "FileSequenceAdapter":
@@ -76,8 +86,9 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         /,
         **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
-        adp = init_adapter_from_catalog(cls, data_source, node, **kwargs)
-        return adp
+        kwargs["chunks"] = data_source.properties.get("chunks")
+
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @abstractmethod
     def _load_from_files(
@@ -132,8 +143,8 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         # files are stacking dimensions, and they define which files need to be read.
         # Finally, the resulting array is reshaped to match the desired structure shape and slice.
         struct_shape = self.structure().shape
-        if self.true_chunks:
-            true_shape = tuple(map(sum, self.true_chunks))
+        if self._chunks:
+            true_shape = tuple(map(sum, self._chunks))
             if true_shape != struct_shape:
                 # The trailing dimensions must match (can be generalized in the future)
                 if (math.prod(true_shape) != math.prod(struct_shape)) or (
