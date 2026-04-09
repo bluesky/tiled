@@ -82,6 +82,9 @@ The `parent` column is introduced to represent the parent-child relationships be
 The `ancestors` column is removed, as it is no longer needed with the closure table structure.
 
 """
+
+import logging
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -93,19 +96,27 @@ down_revision = "7809873ea2c7"
 branch_labels = None
 depends_on = None
 
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
+handler = logging.StreamHandler()
+handler.setLevel("DEBUG")
+handler.setFormatter(logging.Formatter("%(message)s"))
+logger.addHandler(handler)
+
 
 def upgrade():
     connection = op.get_bind()
 
+    logger.info("Starting migration to add closure table...")
+
     # 1. Add the 'parent' column and the foreign key to the 'nodes' table. Use batch mode, so it works for SQLite.
     with op.batch_alter_table("nodes", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("parent", sa.Integer(), nullable=True))
+        batch_op.add_column(
+            sa.Column("parent", sa.Integer(), nullable=True, index=True)
+        )
         batch_op.create_foreign_key("fk_nodes_parent", "nodes", ["parent"], ["id"])
         batch_op.drop_constraint("key_ancestors_unique_constraint", type_="unique")
-        batch_op.create_unique_constraint(
-            "key_parent_unique_constraint", ["key", "parent"]
-        )
-        batch_op.create_index("idx_nodes_parent", ["parent"])
+    logger.info("Added 'parent' column and foreign key to 'nodes' table.")
 
     # 2. Create the 'nodes_closure' table and create the uniqueness constraint
     op.create_table(
@@ -124,6 +135,7 @@ def upgrade():
         )
     op.create_index("idx_nodes_closure_ancestor", "nodes_closure", ["ancestor"])
     op.create_index("idx_nodes_closure_descendant", "nodes_closure", ["descendant"])
+    logger.info("Created 'nodes_closure' table with uniqueness constraint.")
 
     # 3. Insert the explicit root node (id=0, key='') with no parent
     connection.execute(
@@ -134,6 +146,7 @@ def upgrade():
         """
         )
     )
+    logger.info("Inserted root node with id=0.")
 
     # 4. Insert self-referential records into nodes_closure for each node, including the "root" node
     connection.execute(
@@ -144,6 +157,7 @@ def upgrade():
         """
         )
     )
+    logger.info("Inserted self-referential records into 'nodes_closure' for each node.")
 
     # 5. Populate the 'parent' column of the 'nodes' table based on the 'ancestors' column
     json_len_func = (
@@ -151,11 +165,15 @@ def upgrade():
         if connection.engine.dialect.name == "postgresql"
         else "json_array_length"
     )
-    max_depth = connection.execute(
-        sa.text(
-            f"SELECT MAX({json_len_func}(ancestors)) FROM nodes WHERE ancestors IS NOT NULL;"
-        )
-    ).scalar()
+    max_depth = (
+        connection.execute(
+            sa.text(
+                f"SELECT MAX({json_len_func}(ancestors)) FROM nodes WHERE ancestors IS NOT NULL;"
+            )
+        ).scalar()
+        or 0
+    )
+    logger.info(f"Maximum depth of ancestors found: {max_depth}")
 
     # 6. Initialize the parent of each node as 0 (the 'root' node) and set 'depth' in the closure table
     connection.execute(
@@ -168,6 +186,9 @@ def upgrade():
         SELECT 0, id, {json_len_func}(ancestors) + 1 FROM nodes WHERE ancestors IS NOT NULL;
         """
         )
+    )
+    logger.info(
+        "Initialized parent of each node as 0 and set depth in 'nodes_closure'."
     )
 
     # 7. Update the 'parent' column recursively
@@ -186,11 +207,12 @@ def upgrade():
             WHERE {json_len_func}(child.ancestors) >= {depth + 1}
             AND {condition_statement}
             AND parent.parent = child.parent
+            AND child.id != parent.id;
         """
             )
         )
 
-        # Populate the 'nodes_closure' table   (possibly use ON CONFLIST DO NOTHING ?)
+        # Populate the 'nodes_closure' table   (possibly use ON CONFLICT DO NOTHING ?)
         connection.execute(
             sa.text(
                 f"""
@@ -202,6 +224,10 @@ def upgrade():
         """
             )
         )
+        logger.info(
+            f"Updated 'parent' column and 'nodes_closure' for depth {depth + 1}."
+        )
+    logger.info("Completed updating 'parent' column recursively.")
 
     # 8. Update index in the 'nodes' table: drop old, add new
     op.drop_index("top_level_metadata", table_name="nodes")
@@ -211,11 +237,20 @@ def upgrade():
         ["parent", "time_created", "id", "metadata", "access_blob"],
         postgresql_using="gin",
     )
+    logger.info("Updated index in the 'nodes' table.")
 
-    # 9. Drop the 'ancestors' column from the 'nodes' table
+    # 9. Create constraint to ensure uniqueness of (key, parent) pairs
+    with op.batch_alter_table("nodes", schema=None) as batch_op:
+        batch_op.create_unique_constraint(
+            "key_parent_unique_constraint", ["key", "parent"]
+        )
+    logger.info("Created unique constraint on (key, parent) pairs in 'nodes' table.")
+
+    # 10. Drop the 'ancestors' column from the 'nodes' table
     op.drop_column("nodes", "ancestors")
+    logger.info("Dropped 'ancestors' column from the 'nodes' table.")
 
-    # 10. Add triggers to maintain the closure table
+    # 11. Add triggers to maintain the closure table
     if connection.engine.dialect.name == "sqlite":
         # Create a trigger to update the closure table when INSERTING a new node
         connection.execute(
@@ -313,10 +348,14 @@ EXECUTE FUNCTION update_closure_table_when_deleting();
 """
             )
         )
+    logger.info("Added triggers to maintain the closure table.")
+    logger.info("Migration to add closure table completed successfully.")
 
 
 def downgrade():
     connection = op.get_bind()
+
+    logger.info("Starting downgrade to remove closure table...")
 
     # 1. Drop triggers and functions for maintaining the closure table
     if connection.engine.dialect.name == "sqlite":
@@ -343,6 +382,7 @@ def downgrade():
         connection.execute(
             sa.text("DROP FUNCTION IF EXISTS update_closure_table_when_deleting")
         )
+    logger.info("Dropped triggers and functions for maintaining the closure table.")
 
     # 2. Re-add the 'ancestors' column to the 'nodes' table
     op.add_column("nodes", sa.Column("ancestors", JSONVariant, nullable=True))
@@ -370,9 +410,11 @@ def downgrade():
             """
         )
     )
+    logger.info("Reconstructed 'ancestors' for each node from 'parent'.")
 
     # 4. Drop the closure table
     op.drop_table("nodes_closure")
+    logger.info("Dropped 'nodes_closure' table.")
 
     # 5. Restore the old index, drop the new one
     op.drop_index("top_level_metadata", table_name="nodes")
@@ -382,6 +424,7 @@ def downgrade():
         ["time_created", "id", "ancestors", "metadata", "access_blob"],
         postgresql_using="gin",
     )
+    logger.info("Restored old index in the 'nodes' table.")
 
     # 6. Drop the 'parent' column and related foreign key/unique constraint
     with op.batch_alter_table("nodes", schema=None) as batch_op:
@@ -392,6 +435,11 @@ def downgrade():
             "key_ancestors_unique_constraint", ["key", "ancestors"]
         )
         batch_op.drop_column("parent")
+    logger.info(
+        "Dropped 'parent' column and restored 'key_ancestors_unique_constraint'."
+    )
 
     # 7. Remove the explicit root node from the 'nodes' table
     connection.execute(sa.text("DELETE FROM nodes WHERE id = 0"))
+    logger.info("Removed the root node from the 'nodes' table.")
+    logger.info("Downgrade to remove closure table completed successfully.")

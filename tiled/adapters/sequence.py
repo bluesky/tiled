@@ -1,65 +1,24 @@
 import builtins
-import math
-import warnings
 from abc import abstractmethod
-from typing import Any, Iterable, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Union
 
 import numpy as np
 from ndindex import ndindex
 from numpy._typing import NDArray
 
+from tiled.adapters.core import Adapter
+
 from ..catalog.orm import Node
-from ..ndslice import NDSlice
+from ..ndslice import NDBlock, NDSlice
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import DataSource
 from ..type_aliases import JSON, EllipsisType
 from ..utils import path_from_uri
-from .utils import init_adapter_from_catalog
+from .utils import force_reshape, init_adapter_from_catalog
 
 
-def force_reshape(arr: np.array, desired_shape: Tuple[int, ...]) -> np.array:
-    """Reshape a numpy array to match the desired shape, if possible.
-
-    Parameters
-    ----------
-
-    arr : np.array
-        The original ND array to be reshaped
-    desired_shape : Tuple[int, ...]
-        The desired shape of the resulting array
-
-    Returns
-    -------
-
-    A view of the original array
-    """
-
-    if arr.shape == desired_shape:
-        # Nothing to do here
-        return arr
-
-    if arr.size == math.prod(desired_shape):
-        if len(arr.shape) != len(desired_shape):
-            # Missing or extra singleton dimensions
-            warnings.warn(
-                f"Forcefully reshaping {arr.shape} to {desired_shape}",
-                category=RuntimeWarning,
-            )
-            return arr.reshape(desired_shape)
-        else:
-            # Some dimensions might be swapped or completely wrong
-            # TODO: needs to be treated more carefully
-            pass
-
-    warnings.warn(
-        f"Can not reshape array of {arr.shape} to match {desired_shape}; proceeding without changes",
-        category=RuntimeWarning,
-    )
-    return arr
-
-
-class FileSequenceAdapter:
+class FileSequenceAdapter(Adapter[ArrayStructure]):
     """Base adapter class for image (and other file) sequences
 
     Assumes that each file contains an array of the same shape and dtype, and the sequence of files defines the
@@ -73,8 +32,8 @@ class FileSequenceAdapter:
     def __init__(
         self,
         data_uris: Iterable[str],
-        *,
         structure: Optional[ArrayStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -89,8 +48,6 @@ class FileSequenceAdapter:
         """
         self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
         # TODO Check shape, chunks against reality.
-        self.specs = specs or []
-        self._provided_metadata = metadata or {}
         if structure is None:
             dat0 = self._load_from_files(0)
             shape = (len(self.filepaths), *dat0.shape[1:])
@@ -101,7 +58,7 @@ class FileSequenceAdapter:
                 # Assume all files have the same data type
                 data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
-        self._structure = structure
+        super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_uris(cls, *data_uris: str) -> "FileSequenceAdapter":
@@ -115,7 +72,7 @@ class FileSequenceAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @abstractmethod
     def _load_from_files(
@@ -137,14 +94,8 @@ class FileSequenceAdapter:
         pass
 
     def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
         # TODO How to deal with the many headers?
-        return self._provided_metadata
+        return super().metadata()
 
     def read(
         self, slice: Union[NDSlice, EllipsisType, builtins.slice] = ...
@@ -184,14 +135,16 @@ class FileSequenceAdapter:
                 left_axis, *the_rest = slice
                 # Could be int or slice (i, ...) or (slice(...), ...); the_rest is converted to a list
                 if isinstance(left_axis, int):
-                    # e.g. read(slice=(0, ....))
+                    # e.g. read(slice=(0, ....)), dimensionality is reduced by 1
                     arr = np.squeeze(self._load_from_files(left_axis), 0)
                 elif left_axis is Ellipsis:
-                    # Return all images
+                    # Return all images; include any leading dimensions
                     arr = self._load_from_files()
-                    the_rest.insert(0, Ellipsis)  # Include any leading dimensions
+                    the_rest.insert(0, Ellipsis)
                 elif isinstance(left_axis, builtins.slice):
+                    # Include the first dimension when further subslicing
                     arr = self.read(slice=left_axis)
+                    the_rest.insert(0, builtins.slice(None))
 
                 sliced_shape = ndindex(left_axis).newshape(self.structure().shape)
                 arr = force_reshape(arr, sliced_shape)
@@ -201,30 +154,9 @@ class FileSequenceAdapter:
         sliced_shape = ndindex(slice).newshape(self.structure().shape)
         return force_reshape(arr, sliced_shape)
 
-    def read_block(
-        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
-    ) -> NDArray[Any]:
-        """
-
-        Parameters
-        ----------
-        block :
-        slice :
-
-        Returns
-        -------
-
-        """
+    def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         if any(block[1:]):
             raise IndexError(block)
-        arr = self.read(builtins.slice(block[0], block[0] + 1))
+        block_slice = block.slice_from_chunks(self._structure.chunks)
+        arr = self.read(block_slice[0])
         return arr[slice] if slice else arr
-
-    def structure(self) -> ArrayStructure:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._structure

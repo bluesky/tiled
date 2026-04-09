@@ -32,6 +32,24 @@ vi.mock("@mui/x-data-grid", () => ({
         Next
       </button>
 
+      {/* sorting buttons for testing */}
+      <button
+        data-testid="sort-name-asc"
+        onClick={() =>
+          props.onSortModelChange?.([{ field: "name", sort: "asc" }])
+        }
+      >
+        Sort Name Asc
+      </button>
+      <button
+        data-testid="sort-name-desc"
+        onClick={() =>
+          props.onSortModelChange?.([{ field: "name", sort: "desc" }])
+        }
+      >
+        Sort Name Desc
+      </button>
+
       {/* Render rows for testing */}
       {props.rows?.map((row: any) => (
         <div
@@ -167,6 +185,7 @@ describe("NodeLazyContents", () => {
         "{name:title,type:data_type}",
         0, // page offset
         10, // page size
+        null, // sort
       );
     });
   });
@@ -197,6 +216,7 @@ describe("NodeLazyContents", () => {
         "{name:title,type:data_type}",
         10, // page 1 * pageSize 10 = offset 10
         10,
+        null, // sort remains null if no sort applied
       );
     });
   });
@@ -238,6 +258,7 @@ describe("NodeLazyContents", () => {
         null,
         0,
         10,
+        null,
       );
     });
   });
@@ -258,5 +279,39 @@ describe("NodeLazyContents", () => {
       expect(screen.getByText("Total: 0")).toBeInTheDocument();
       expect(screen.queryByTestId("row-dataset-1")).not.toBeInTheDocument();
     });
+  });
+
+  it("passes correct sort parameter to search when sort model changes", async () => {
+    render(
+      <SettingsContext.Provider value={testSettings}>
+        <NodeLazyContents {...defaultProps} />
+      </SettingsContext.Provider>,
+    );
+
+    // Wait for initial load
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenCalled();
+    });
+
+    mockSearch.mockClear();
+
+    // Trigger ascending sort on 'name'
+    fireEvent.click(screen.getByTestId("sort-name-asc"));
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenCalled();
+    });
+    // Check last call 8th argument (index 7) is 'name'
+    const lastAsc = mockSearch.mock.calls.at(-1)!;
+    expect(lastAsc[7]).toBe("name");
+
+    mockSearch.mockClear();
+
+    // Trigger descending sort on 'name'
+    fireEvent.click(screen.getByTestId("sort-name-desc"));
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenCalled();
+    });
+    const lastDesc = mockSearch.mock.calls.at(-1)!;
+    expect(lastDesc[7]).toBe("-name");
   });
 });

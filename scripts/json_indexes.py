@@ -1,6 +1,6 @@
 import asyncio
 
-from tiled._tests.test_catalog import temp_postgres
+from tests.utils import temp_postgres
 from tiled.catalog.adapter import Adapter
 from tiled.catalog.explain import record_explanations
 from tiled.queries import Key

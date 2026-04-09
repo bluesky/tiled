@@ -35,95 +35,43 @@ Rephrasing these two items now using the jargon of entities in Tiled:
    children (if any).
 
 This determination can be backed by a call to an external service or by a
-static configuration file. We demonstrate both here.
+static configuration file. We demonstrate the static file case here.
 
-First, the static configuration file. Consider this simple tree of data:
+Consider this simple tree of data:
+
+```
+/
+├── A  -> array=(10 * numpy.ones((10, 10))), access_tags=["data_A"]
+├── B  -> array=(10 * numpy.ones((10, 10))), access_tags=["data_B"]
+├── C  -> array=(10 * numpy.ones((10, 10))), access_tags=["data_C"]
+└── D  -> array=(10 * numpy.ones((10, 10))), access_tags=["data_D"]
+```
+
+which will be protected by Tiled's "Tag Based" Access Control Policy. Note the
+"access tags" associated with each node. The tag-based access policy uses ACLs,
+which are compiled from provided access-tag definitions (example below), to make
+decisions based on these access tags.
 
 ```{eval-rst}
-.. literalinclude:: ../../../tiled/examples/toy_authentication.py
-   :caption: tiled/examples/toy_authentication.py
+.. literalinclude:: ../../../example_configs/access_tags/tag_definitions.yml
+   :caption: example_configs/access_tags/tag_definitions.yml
 ```
 
-protected by this simple Access Control Policy:
+Under `tags`, usernames and groupnames are mapped to either a role or list of scopes.
+Roles are pre-defined lists of scopes, and are also defined in this file. This mapping
+confers these scopes to these users for data which is tagged with the corresponding tagname.
 
-```{eval-rst}
-.. literalinclude:: ../../../example_configs/toy_authentication.yml
-   :caption: example_configs/toy_authentication.yml
+Tags can also inherit the ACLs of other tags, using the `auto_tags` field. There is also a
+`public` tag which is a special tag used to mark data as public (all users can read).
+
+Lastly, only "owners" of a tag can apply that tag to a node. Tag owners are defined in
+this same tag definitions file, under the `tag_owners` key.
+
+To try out this access control configuration, an example server can be prepped and launched:
 ```
-
-Under `access_lists:` usernames are mapped to the keys of the entries the user may access.
-The section `public:` designates entries that an
-unauthenticated (anonymous) user may access *if* the server is configured to
-allow anonymous access. (See {doc}`security`.) The special value
-``tiled.adapters.mapping:SimpleAccessPolicy.ALL`` designates that the user may access any entry
-in the Tree.
-
-```
-ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/config.yml
-```
-
-For large-scale deployment, Tiled typically integrates with an existing access management
-system. This is sketch of the Access Control Policy used by NSLS-II to
-integrate with our proposal system.
-
-```py
-import cachetools
-import httpx
-from tiled.queries import In
-from tiled.scopes import PUBLIC_SCOPES
-
-
-# To reduce load on the external service and to expedite repeated lookups, use a
-# process-global cache with a timeout.
-response_cache = cachetools.TTLCache(maxsize=10_000, ttl=60)
-
-
-class PASSAccessPolicy:
-    """
-    access_control:
-      access_policy: pass_access_policy:PASSAccessPolicy
-      args:
-        url: ...
-        beamline: ...
-    """
-
-    def __init__(self, url, beamline, provider):
-        self._client = httpx.Client(base_url=url)
-        self._beamline = beamline
-        self.provider = provider
-
-    def _get_id(self, principal):
-        for identity in principal.identities:
-            if identity.provider == self.provider:
-                return identity.id
-        else:
-            raise ValueError(
-                f"Principcal {principal} has no identity from provider {self.provider}. "
-                f"Its identities are: {principal.identities}"
-            )
-
-    def allowed_scopes(self, node, principal, authn_scopes):
-        return PUBLIC_SCOPES
-
-    def filters(self, node, principal, authn_scopes, scopes):
-        queries = []
-        id = self._get_id(principal)
-        if not scopes.issubset(PUBLIC_SCOPES):
-            return NO_ACCESS
-        try:
-            response = response_cache[id]
-        except KeyError:
-            response = self._client.get(f"/data_session/{id}")
-            response_cache[id] = response
-        if response.is_error:
-            response.raise_for_status()
-        data = response.json()
-        if ("nsls2" in (data["facility_all_access"] or [])) or (
-            self._beamline in (data["beamline_all_access"] or [])
-        ):
-            return queries
-        queries.append(
-            In("data_session", data["data_sessions"] or [])
-        )
-        return queries
+# prep the access tags and catalog databases
+python example_configs/access_tags/compile_tags.py
+python example_configs/catalog/create_catalog.py
+# launch the example server, which loads these databases
+ALICE_PASSWORD=secret1 BOB_PASSWORD=secret2 CARA_PASSWORD=secret3 tiled serve config example_configs/toy_authentication.yml
 ```

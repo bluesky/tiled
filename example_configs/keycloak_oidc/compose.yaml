@@ -1,0 +1,47 @@
+services:
+
+  keycloak:
+    image: keycloak/keycloak:26.4
+    environment:
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+    command: ["start-dev"]
+    volumes:
+      - ./keycloak_config/:/mnt
+    post_start:
+      - command: bash /mnt/startup.sh
+    ports:
+      - 8080:8080
+    healthcheck:
+      test: /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password admin
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  oauth2-proxy:
+    network_mode: host
+    image: "quay.io/oauth2-proxy/oauth2-proxy:v7.13.0"
+    volumes:
+      - ./oauth2-proxy.cfg:/opt/oauth2-proxy.cfg
+      - ./oauth2-alpha.yaml:/opt/oauth2-alpha.yaml
+    command: ["--alpha-config=/opt/oauth2-alpha.yaml","--config=/opt/oauth2-proxy.cfg"]
+    ports:
+      - 4180:4180
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  opa:
+    network_mode: host
+    image: openpolicyagent/opa
+    ports:
+      - 8181:8181
+    volumes:
+      - "./policy:/policy"
+    environment:
+      - ISSUER=http://localhost:8080/realms/master
+    command: ["run","--server","--addr",":8181","-b","/policy"]
+    depends_on:
+      keycloak:
+        condition: service_healthy

@@ -1,6 +1,9 @@
 import collections
 import collections.abc
+import pathlib
+import threading
 import warnings
+from typing import Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -25,6 +28,7 @@ def from_uri(
     headers=None,
     timeout=None,
     include_data_sources=False,
+    auth: Optional[httpx.Auth] = None,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -59,13 +63,15 @@ def from_uri(
         (To disable timeouts, use httpx.Timeout(None)).
     include_data_sources : bool, optional
         Default False. If True, fetch information about underlying data sources.
+    auth : httpx.Auth, optional
+        Custom authentication handler.
     """
     EXPLAIN_LOGIN = """
 
 The user will be prompted for credentials if login is required.
 Or, call login() to manually login.
 
-For non-interactive authentication, use an API key.
+For non-interactive authentication, use an API key or add custom auth
 """
     if username is not None:
         warnings.warn("Tiled no longer accepts 'username' parameter. " + EXPLAIN_LOGIN)
@@ -86,6 +92,14 @@ For non-interactive authentication, use an API key.
         timeout=timeout,
         verify=verify,
     )
+    if auth is not None:
+        if isinstance(auth, httpx.Auth):
+            context.http_client.auth = auth
+            context.has_external_auth = True
+        else:
+            raise ValueError(
+                f"Tiled client auth parameter has been set with {type(auth)} httpx.Auth or None allowed"
+            )
     return from_context(
         context,
         structure_clients=structure_clients,
@@ -136,7 +150,8 @@ def from_context(
     >>> c = from_uri("...", api_key="...")
     """
             )
-        if has_providers:
+
+        if has_providers and not context.has_external_auth:
             found_valid_tokens = remember_me and context.use_cached_tokens()
             if (not found_valid_tokens) and auth_is_required:
                 context.authenticate(remember_me=remember_me)
@@ -242,22 +257,68 @@ def from_profile(name, structure_clients=None, **kwargs):
     if "direct" in merged:
         # The profile specifies the server in-line.
         # Create an app and use it directly via ASGI.
-        import jsonschema
 
-        from ..config import ConfigError, schema
         from ..server.app import build_app_from_config
 
         config = merged.pop("direct", None)
-        try:
-            jsonschema.validate(instance=config, schema=schema())
-        except jsonschema.ValidationError as err:
-            msg = err.args[0]
-            raise ConfigError(
-                f"ValidationError while parsing configuration file {filepath}: {msg}"
-            ) from err
-        context = Context.from_app(
-            build_app_from_config(config, source_filepath=filepath),
-        )
+        with prepend_to_sys_path(filepath.parent):
+            app = build_app_from_config(config)
+        context = Context.from_app(app)
         return from_context(context, **merged)
     else:
         return from_uri(**merged)
+
+
+def simple(
+    directory: Optional[Union[str, pathlib.Path]] = None,
+    api_key: Optional[str] = None,
+    port: int = 0,
+    readable_storage: Optional[Union[str, pathlib.Path]] = None,
+    quiet: bool = False,
+):
+    """
+    Spawn a Tiled server on a background thread and connect to it.
+
+    This is intended to be used for tutorials and development. It employs only
+    basic security and should not be used to store anything important. It does
+    not scale to large number of users. By default, it uses temporary storage.
+
+    Parameters
+    ----------
+    directory : Optional[Path, str]
+        Location where data, including files and embedded databases, will be
+        stored. By default, a temporary directory will be used.
+    api_key : Optional[str]
+        By default, an 8-bit random secret is generated. (Production Tiled
+        servers use longer secrets.)
+    port : Optional[int]
+        Port the server will listen on. By default, a random free high port
+        is allocated by the operating system.
+    quiet : bool
+        Suppress printing the server URL. False by default.
+    """
+    from ..server.simple import SimpleTiledServer
+
+    server = SimpleTiledServer(
+        directory, api_key=api_key, port=port, readable_storage=readable_storage
+    )
+    # Keep a reference; otherwise the server will be garbage collected and stopped.
+    SERVERS.append(server)
+    if not quiet:
+        print(server.uri)
+    client = from_uri(server.uri)
+    return client
+
+
+def _cleanup_servers():
+    for server in SERVERS:
+        server.close()
+
+
+SERVERS = []  # servers spawned using simple
+# The threading module has its own (internal) atexit
+# mechanism that runs at thread shutdown, prior to the atexit
+# mechanism that runs at interpreter shutdown.
+# We need to intervene at that layer to close the portal, or else
+# we will wait forever for a thread run by the portal to join().
+threading._register_atexit(_cleanup_servers)

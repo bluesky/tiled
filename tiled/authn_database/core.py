@@ -13,6 +13,9 @@ from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
 # This is list of all valid alembic revisions (from current to oldest).
 ALL_REVISIONS = [
+    "d829476bc173",
+    "27e069ba3bf5",
+    "a806cc635ab2",
     "0c705a02954c",
     "d88e91ea03f9",
     "13024b8a6b74",
@@ -26,51 +29,62 @@ ALL_REVISIONS = [
 REQUIRED_REVISION = ALL_REVISIONS[0]
 
 
-async def create_default_roles(db: AsyncSession) -> None:
-    db.add_all(
-        [
-            Role(
-                name="user",
-                description="Default Role for users.",
-                scopes=[
-                    "read:metadata",
-                    "read:data",
-                    "create",
-                    "write:metadata",
-                    "write:data",
-                    "apikeys",
-                ],
-            ),
-            Role(
-                name="admin",
-                description="Role with elevated privileges.",
-                scopes=[
-                    "read:metadata",
-                    "read:data",
-                    "create",
-                    "register",
-                    "write:metadata",
-                    "write:data",
-                    "admin:apikeys",
-                    "read:principals",
-                    "write:principals",
-                    "metrics",
-                ],
-            ),
-        ]
-    )
-    await db.commit()
+async def create_default_roles(db):
+    default_roles = [
+        Role(
+            name="user",
+            description="Default Role for users.",
+            scopes=[
+                "read:metadata",
+                "read:data",
+                "create:node",
+                "write:metadata",
+                "write:data",
+                "delete:revision",
+                "delete:node",
+                "create:apikeys",
+                "revoke:apikeys",
+            ],
+        ),
+        Role(
+            name="admin",
+            description="Role with elevated privileges.",
+            scopes=[
+                "read:metadata",
+                "read:data",
+                "create:node",
+                "register",
+                "write:metadata",
+                "write:data",
+                "delete:revision",
+                "delete:node",
+                "admin:apikeys",
+                "read:principals",
+                "write:principals",
+                "metrics",
+            ],
+        ),
+    ]
+
+    roles_result = await db.execute(select(Role.name))
+    existing_role_names = set(roles_result.scalars().all())
+    roles_to_add = [
+        role for role in default_roles if role.name not in existing_role_names
+    ]
+
+    if roles_to_add:
+        db.add_all(roles_to_add)
+        await db.commit()
 
 
 async def initialize_database(engine: AsyncEngine) -> None:
-    async with engine.connect() as conn:
+    async with engine.begin() as conn:
         # Create all tables.
         await conn.run_sync(Base.metadata.create_all)
-        await conn.commit()
 
-        # Initialize Roles table.
-        async with AsyncSession(engine) as db:
-            await create_default_roles(db)
+    # Initialize Roles table.
+    async with AsyncSession(engine) as db:
+        await create_default_roles(db)
 
 
 async def purge_expired(db: AsyncSession, cls) -> int:

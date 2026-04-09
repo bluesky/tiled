@@ -3,7 +3,7 @@
     "configurations": [
       {
         "name": "Debug Tiled Server",
-        "type": "python",
+        "type": "debugpy",
         "request": "launch",
         "module": "tiled",
         "args": [
@@ -22,7 +22,34 @@
         "console": "integratedTerminal",
         "justMyCode": false,
         "jinja": true,
-        "subProcess": true
+        "subProcess": true,
+      },
+      {
+        "name": "Debug Tiled Server (Custom Config)",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "tiled",
+        "args": [
+          "serve",
+          "config","${input:config_path}",
+          "--host", "127.0.0.1",
+          "--port", "8000",
+          "--scalable"
+        ],
+        "env": {
+          "TILED_SINGLE_USER_API_KEY": "secret",
+        },
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "jinja": true,
+        "subProcess": true,
+      }
+    ],
+    "inputs": [
+      {
+        "id": "config_path",
+        "type": "promptString",
+        "description": "Path to configuration YAML file",
       }
     ]
   }

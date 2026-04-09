@@ -1,0 +1,36 @@
+authentication:
+  providers:
+  - provider: keycloak_oidc
+    authenticator: tiled.authenticators:ProxiedOIDCAuthenticator
+    args:
+      audience: tiled_aud
+      client_id: tiled
+      device_flow_client_id: tiled-cli
+      well_known_uri: "http://localhost:8080/realms/master/.well-known/openid-configuration"
+      confirmation_message: "You have logged in with Proxied OIDC as {id}."
+
+access_control:
+  access_policy: "tiled_policy.example_pdp:ExampleAuthorizationPolicy"
+  args:
+    authorization_provider: http://localhost:8181/v1/data/rbac/
+    token_audience: tiled_aud
+    create_node_endpoint: "allow"
+    allowed_tags_endpoint: "tags"
+    scopes_endpoint: "scopes"
+
+trees:
+  - path: /
+    tree: catalog
+    args:
+      uri: "sqlite:///./catalog.db"
+      writable_storage: "./data"
+      # This creates the database if it does not exist. This is convenient, but in
+      # a horizontally-scaled deployment, this can be a race condition and multiple
+      # containers may simultaneously attempt to create the database.
+      # If that is a problem, set this to false, and run:
+      #
+      # tiled catalog init URI
+      #
+      # separately.
+      init_if_not_exists: true
+      top_level_access_blob: {"tags": ["public"]}

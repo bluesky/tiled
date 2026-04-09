@@ -13,11 +13,10 @@ from typing import Any, Optional
 import dask.dataframe
 import pandas as pd
 
-from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.table import TableAdapter
 from tiled.adapters.utils import init_adapter_from_catalog
 from tiled.catalog.orm import Node
-from tiled.structures.core import Spec, StructureFamily
+from tiled.structures.core import Spec
 from tiled.structures.data_source import DataSource
 from tiled.structures.table import TableStructure
 from tiled.type_aliases import JSON
@@ -25,21 +24,19 @@ from tiled.utils import path_from_uri
 
 
 class XDIAdapter(TableAdapter):
-    structure_family = StructureFamily.table
-
     def __init__(
         self,
         data_uri: str,
         structure: Optional[TableStructure] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[list[Spec]] = None,
-        **kwargs: Optional[Any],
     ) -> None:
         """Adapter for XDI data"""
 
         filepath = path_from_uri(data_uri)
         with open(filepath, "r") as file:
-            metadata = {}
+            metadata = metadata or {}
             fields = collections.defaultdict(dict)
 
             # if isinstance(f, pathlib.PosixPath):
@@ -196,14 +193,14 @@ def read_xdi(data_uri, structure=None, metadata=None, specs=None, access_policy=
 
         df = pd.read_table(file, sep=r"\s+", names=col_labels)
 
-    return DataFrameAdapter.from_pandas(
+    return TableAdapter.from_pandas(
         df,
         metadata=metadata,
         specs=(specs or []) + [Spec("xdi", version="1.0")],
     )
 
 
-def write_xdi(df, metadata):
+def write_xdi(mimetype, df, metadata):
     output = io.StringIO()
 
     xdi_version = metadata.get("xdi_version")

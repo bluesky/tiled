@@ -28,6 +28,13 @@ def create_api_key(
             "By default, it will inherit the scopes of its owner."
         ),
     ),
+    access_tags: Optional[List[str]] = typer.Option(
+        None,
+        help=(
+            "Restrict the access available to the API key by listing specific tags. "
+            "By default, it will have no limits on access tags."
+        ),
+    ),
     note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
     no_verify: bool = typer.Option(False, "--no-verify", help="Skip SSL verification."),
 ):
@@ -38,7 +45,9 @@ def create_api_key(
         scopes = None
     if expires_in and expires_in.isdigit():
         expires_in = int(expires_in)
-    info = context.create_api_key(scopes=scopes, expires_in=expires_in, note=note)
+    info = context.create_api_key(
+        scopes=scopes, access_tags=access_tags, expires_in=expires_in, note=note
+    )
     # TODO Print other info to the stderr?
     typer.echo(info["secret"])
 
@@ -55,10 +64,32 @@ def list_api_keys(
         typer.echo("No API keys found", err=True)
         return
     max_note_len = max(len(api_key["note"] or "") for api_key in info["api_keys"])
-    COLUMNS = f"First 8   Expires at (UTC)     Latest activity      Note{' ' * (max_note_len - 4)}  Scopes"
+    if (starting_notes_pad := max_note_len) < len("Note"):
+        starting_notes_pad += 4 - max_note_len
+    max_scopes_len = max(
+        sum(len(scope) for scope in api_key["scopes"]) + len(api_key["scopes"]) - 1
+        for api_key in info["api_keys"]
+    )
+    if (starting_scopes_pad := max_scopes_len) < len("Scopes"):
+        starting_scopes_pad += 6 - max_scopes_len
+    COLUMNS = (
+        f"First 8   Expires at (UTC)     "
+        f"Latest activity      Note{' ' * (max_note_len - 4)}    "
+        f"Scopes{' ' * (max_scopes_len - 6)}    Access tags"
+    )
     typer.echo(COLUMNS)
     for api_key in info["api_keys"]:
-        note_padding = 2 + max_note_len - len(api_key["note"] or "")
+        note_padding = 4 + starting_notes_pad - len(api_key["note"] or "")
+        # the '1' subtraction works in all cases because the amount of spaces
+        #   in a sentence is count(words) - 1, and also because we otherwise
+        #   print a single 'dash' for an empty list
+        scopes_padding = (
+            4
+            + starting_scopes_pad
+            - sum(len(scope) for scope in api_key["scopes"])
+            + len(api_key["scopes"])
+            - 1
+        )
         if api_key["expiration_time"] is None:
             expiration_time = "-"
         else:
@@ -75,13 +106,19 @@ def list_api_keys(
                 .replace(microsecond=0, tzinfo=None)
                 .isoformat()
             )
+        access_tags = (
+            " ".join([tag.replace(" ", "\\ ") for tag in api_key["access_tags"]])
+            if api_key["access_tags"] is not None
+            else "-"
+        )
         typer.echo(
             (
                 f"{api_key['first_eight']:10}"
                 f"{expiration_time:21}"
                 f"{latest_activity:21}"
                 f"{(api_key['note'] or '')}{' ' * note_padding}"
-                f"{' '.join(api_key['scopes']) or '-'}"
+                f"{' '.join(api_key['scopes']) or '-'}{' ' * scopes_padding}"
+                f"{access_tags}"
             )
         )
 

@@ -1,20 +1,21 @@
 import copy
 import itertools
+from collections.abc import Set
 from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
-import dask.base
 import dask.dataframe
 import numpy
 import pandas
 import sparse
 from numpy._typing import NDArray
 
-from ..adapters.array import slice_and_shape_from_block_and_chunks
+from tiled.adapters.core import Adapter
+
 from ..catalog.orm import Node
-from ..ndslice import NDSlice
+from ..ndslice import NDBlock, NDSlice
 from ..storage import FileStorage, Storage
-from ..structures.core import Spec, StructureFamily
+from ..structures.core import Spec
 from ..structures.data_source import Asset, DataSource
 from ..structures.sparse import COOStructure, SparseStructure
 from ..type_aliases import JSON
@@ -23,16 +24,6 @@ from .utils import init_adapter_from_catalog
 
 
 def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
-    """
-
-    Parameters
-    ----------
-    uri :
-
-    Returns
-    -------
-
-    """
     # TODO This can be done without pandas.
     # Better to use a plain I/O library.
     df = pandas.read_parquet(path_from_uri(uri))
@@ -41,35 +32,24 @@ def load_block(uri: str) -> Tuple[List[int], Tuple[NDArray[Any], Any]]:
     return coords, data
 
 
-class SparseBlocksParquetAdapter:
-    """ """
-
-    structure_family = StructureFamily.sparse
-    supported_storage = {FileStorage}
-
+class SparseBlocksParquetAdapter(Adapter[SparseStructure]):
     def __init__(
         self,
         data_uris: List[str],
         structure: COOStructure,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        data_uris :
-        structure :
-        metadata :
-        specs :
-        """
         num_blocks = (range(len(n)) for n in structure.chunks)
         self.blocks = {}
         for block, uri in zip(itertools.product(*num_blocks), data_uris):
             self.blocks[block] = uri
-        self._structure = structure
-        self._metadata = metadata or {}
-        self.specs = list(specs or [])
+        super().__init__(structure, metadata=metadata, specs=specs)
+
+    @classmethod
+    def supported_storage(cls) -> Set[type[Storage]]:
+        return {FileStorage}
 
     @classmethod
     def from_catalog(
@@ -79,7 +59,7 @@ class SparseBlocksParquetAdapter:
         /,
         **kwargs: Optional[Any],
     ) -> "SparseBlocksParquetAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)  # type: ignore
+        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @classmethod
     def init_storage(
@@ -88,17 +68,6 @@ class SparseBlocksParquetAdapter:
         data_source: DataSource[COOStructure],
         path_parts: List[str],
     ) -> DataSource[COOStructure]:
-        """
-
-        Parameters
-        ----------
-        data_uri :
-        structure :
-
-        Returns
-        -------
-
-        """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
         data_uri = storage.uri + "".join(
             f"/{quote_plus(segment)}" for segment in path_parts
@@ -119,15 +88,6 @@ class SparseBlocksParquetAdapter:
         data_source.assets.extend(assets)
         return data_source
 
-    def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._metadata
-
     def write_block(
         self,
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
@@ -143,32 +103,12 @@ class SparseBlocksParquetAdapter:
         data.to_parquet(path_from_uri(uri))
 
     def write(self, data: Union[dask.dataframe.DataFrame, pandas.DataFrame]) -> None:
-        """
-
-        Parameters
-        ----------
-        data :
-
-        Returns
-        -------
-
-        """
         if len(self.blocks) > 1:
             raise NotImplementedError
-        uri = self.blocks[(0,) * len(self._structure.shape)]
+        uri = self.blocks[(0,) * len(self.structure().shape)]
         data.to_parquet(path_from_uri(uri))
 
     def read(self, slice: NDSlice = NDSlice(...)) -> sparse.COO:
-        """
-
-        Parameters
-        ----------
-        slice :
-
-        Returns
-        -------
-
-        """
         all_coords = []
         all_data = []
         for block, uri in self.blocks.items():
@@ -187,30 +127,8 @@ class SparseBlocksParquetAdapter:
         )
         return arr[slice] if slice else arr
 
-    def read_block(
-        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
-    ) -> sparse.COO:
-        """
-
-        Parameters
-        ----------
-        block :
-        slice :
-
-        Returns
-        -------
-
-        """
+    def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> sparse.COO:
         coords, data = load_block(self.blocks[block])
-        _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
+        shape = block.shape_from_chunks(self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
         return arr[slice] if slice else arr
-
-    def structure(self) -> COOStructure:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._structure

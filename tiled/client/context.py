@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import warnings
 from pathlib import Path
-from typing import List
+from typing import List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -24,6 +24,7 @@ from .utils import (
     DEFAULT_TIMEOUT_PARAMS,
     MSGPACK_MIME_TYPE,
     handle_error,
+    polling_retry_context,
     retry_context,
 )
 
@@ -103,6 +104,9 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
         spec = identity_provider_input(providers)
     auth_endpoint = spec.links["auth_endpoint"]
     provider = spec.provider
+    client_id = spec.links.get("client_id")
+    token_endpoint = spec.links.get("token_endpoint")
+    oauth2_spec = True if client_id and token_endpoint else False
     mode = spec.mode
     # Note: "password" is included here for back-compat with older servers;
     # the new name for this mode is "internal".
@@ -134,12 +138,14 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
-        tokens = device_code_grant(http_client, auth_endpoint)
+        tokens = device_code_grant(
+            http_client, auth_endpoint, client_id, token_endpoint
+        )
     else:
         raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
     confirmation_message = spec.confirmation_message
     if confirmation_message:
-        username = tokens["identity"]["id"]
+        username = "external user" if oauth2_spec else tokens["identity"]["id"]
         print(confirmation_message.format(id=username))
     return tokens
 
@@ -226,10 +232,12 @@ class Context:
             # starlette is available.
             from starlette.testclient import TestClient
 
+            base_uri = f"{uri.scheme}://{uri.netloc}"
             # verify parameter is dropped, as there is no SSL in ASGI mode
             client = TestClient(
                 app=app,
                 raise_server_exceptions=raise_server_exceptions,
+                base_url=base_uri,
             )
             client.timeout = timeout
             client.headers = headers
@@ -275,6 +283,15 @@ class Context:
         self.server_info: About = TypeAdapter(About).validate_python(server_info)
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
+
+        # Check if the using Oauth2 type of device_flow
+        self.client_id = (
+            self.server_info.authentication.providers[0].links.get("client_id")
+            if len(self.server_info.authentication.providers) == 1
+            else None
+        )
+        # To determine httpx.Auth used by Tiled client is TiledAuth(internal) or external Auth
+        self.has_external_auth = False
 
     def __repr__(self):
         auth_info = []
@@ -444,12 +461,13 @@ class Context:
         timeout=None,
         api_key=UNSET,
         raise_server_exceptions=True,
+        uri=None,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
         """
         context = cls(
-            uri="http://local-tiled-app/api/v1",
+            uri="http://local-tiled-app/api/v1" if not uri else uri,
             headers=headers,
             api_key=None,
             cache=cache,
@@ -473,7 +491,7 @@ class Context:
         return context
 
     @property
-    def tokens(self):
+    def tokens(self) -> DictView[Literal["access_token", "refresh_token"], str]:
         "A view of the current access and refresh tokens."
         return DictView(self.http_client.auth.tokens)
 
@@ -517,7 +535,7 @@ class Context:
                     )
                 ).json()
 
-    def create_api_key(self, scopes=None, expires_in=None, note=None):
+    def create_api_key(self, scopes=None, expires_in=None, note=None, access_tags=None):
         """
         Generate a new API key.
 
@@ -536,16 +554,33 @@ class Context:
             have the maximum lifetime allowed by the server.
         note : Optional[str]
             Description (for humans).
+        access_tags : Optional[List[str]]
+            Restrict the access available to the API key by listing specific tags.
+            By default, this will have no limits on access tags.
         """
         if isinstance(expires_in, str):
             expires_in = parse_time_string(expires_in)
+
+        authn_links = self.server_info.authentication.links
+        if (authn_links is None) or (not authn_links.apikey):
+            raise RuntimeError(
+                "This Tiled server is deployed as a single-user server. "
+                "Unlike multi-user servers, it has a single, static API key and does not "
+                "support generating additional API keys."
+            )
+
         for attempt in retry_context():
             with attempt:
                 return handle_error(
                     self.http_client.post(
-                        self.server_info.authentication.links.apikey,
+                        authn_links.apikey,
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                        json={
+                            "scopes": scopes,
+                            "access_tags": access_tags,
+                            "expires_in": expires_in,
+                            "note": note,
+                        },
                     )
                 ).json()
 
@@ -662,18 +697,20 @@ class Context:
         # will manage refreshing the tokens as needed.
         refresh_url = self.server_info.authentication.links.refresh_session
         csrf_token = self.http_client.cookies["tiled_csrf"]
+
         if remember_me:
             token_directory = self._token_directory()
         else:
             # Clear any existing tokens.
-            temp_auth = TiledAuth(refresh_url, csrf_token, self._token_directory())
+            temp_auth = TiledAuth(
+                refresh_url, csrf_token, self._token_directory(), self.client_id
+            )
             temp_auth.sync_clear_token("access_token")
             temp_auth.sync_clear_token("refresh_token")
             # Store tokens in memory only, with no syncing to disk.
             token_directory = None
         auth = TiledAuth(refresh_url, csrf_token, token_directory)
-        auth.sync_set_token("access_token", tokens["access_token"])
-        auth.sync_set_token("refresh_token", tokens["refresh_token"])
+        auth.sync_tokens(tokens)
         self.http_client.auth = auth
 
     @property
@@ -732,7 +769,9 @@ class Context:
         token_directory = self._token_directory()
         # We have to make an HTTP request to let the server validate whether we
         # have a valid session.
-        self.http_client.auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        self.http_client.auth = TiledAuth(
+            refresh_url, csrf_token, token_directory, self.client_id
+        )
         # This will either:
         # * Use an access_token and succeed.
         # * Use a refresh_token to attempt refresh flow and succeed.
@@ -755,7 +794,7 @@ class Context:
         automatically executed by tiled.client.auth.TiledAuth when the current
         access_token expires.
         """
-        if self.http_client.auth is None:
+        if not isinstance(self.http_client.auth, TiledAuth):
             raise RuntimeError(
                 "No authentication has been set up. Cannot reauthenticate."
             )
@@ -769,6 +808,7 @@ class Context:
             self.http_client.auth.refresh_url,
             refresh_token,
             csrf_token,
+            self.http_client.auth.client_id,
         )
         for attempt in retry_context():
             with attempt:
@@ -779,8 +819,7 @@ class Context:
                     )
                 handle_error(token_response)
         tokens = token_response.json()
-        self.http_client.auth.sync_set_token("access_token", tokens["access_token"])
-        self.http_client.auth.sync_set_token("refresh_token", tokens["refresh_token"])
+        self.http_client.auth.sync_tokens(tokens)
         return tokens
 
     def whoami(self):
@@ -807,20 +846,33 @@ class Context:
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
         for attempt in retry_context():
             with attempt:
-                handle_error(
-                    self.http_client.post(
-                        f"{self.api_uri}auth/session/revoke",
-                        json={"refresh_token": refresh_token},
-                        # Circumvent auth because this request is not authenticated.
-                        # The refresh_token in the body is the relevant proof, not the
-                        # 'Authentication' header.
-                        auth=None,
+                if self.client_id:
+                    id_token = self.http_client.auth.sync_get_token("id_token")
+                    handle_error(
+                        self.http_client.get(
+                            self.server_info.authentication.links.logout,
+                            params={
+                                "id_token_hint": id_token,
+                                "client_id": self.client_id,
+                            },
+                        )
                     )
-                )
+                else:
+                    handle_error(
+                        self.http_client.post(
+                            f"{self.api_uri}auth/session/revoke",
+                            json={"refresh_token": refresh_token},
+                            # Circumvent auth because this request is not authenticated.
+                            # The refresh_token in the body is the relevant proof, not the
+                            # 'Authentication' header.
+                            auth=None,
+                        )
+                    )
 
         # Clear on-disk state.
         self.http_client.auth.sync_clear_token("access_token")
         self.http_client.auth.sync_clear_token("refresh_token")
+        self.http_client.auth.sync_clear_token("id_token")
 
         # Clear in-memory state.
         self.http_client.headers.pop("Authorization", None)
@@ -875,7 +927,9 @@ class Admin:
                     )
                 ).json()
 
-    def create_api_key(self, uuid, scopes=None, expires_in=None, note=None):
+    def create_api_key(
+        self, uuid, scopes=None, expires_in=None, note=None, access_tags=None
+    ):
         """
         Generate a new API key for another user or service.
 
@@ -892,6 +946,9 @@ class Admin:
             allowed by the server.
         note : Optional[str]
             Description (for humans).
+        access_tags : Optional[List[str]]
+            Restrict the access available to the API key by listing specific tags.
+            By default, this will have no limits on access tags.
         """
         for attempt in retry_context():
             with attempt:
@@ -899,7 +956,12 @@ class Admin:
                     self.context.http_client.post(
                         f"{self.base_url}/auth/principal/{uuid}/apikey",
                         headers={"Accept": MSGPACK_MIME_TYPE},
-                        json={"scopes": scopes, "expires_in": expires_in, "note": note},
+                        json={
+                            "scopes": scopes,
+                            "access_tags": access_tags,
+                            "expires_in": expires_in,
+                            "note": note,
+                        },
                     )
                 ).json()
 
@@ -989,13 +1051,30 @@ def password_grant(http_client, auth_endpoint, provider, username, password):
     return token_response.json()
 
 
-def device_code_grant(http_client, auth_endpoint):
+def device_code_grant(
+    http_client,
+    auth_endpoint: str,
+    client_id: Optional[str],
+    token_endpoint: Optional[str],
+    scopes: str = "openid offline_access",
+):
     for attempt in retry_context():
         with attempt:
-            verification_response = http_client.post(auth_endpoint, json={}, auth=None)
+            if client_id and token_endpoint:
+                oauth2_spec = True
+                uri = "verification_uri_complete"
+                verification_response = http_client.post(
+                    auth_endpoint,
+                    data={"client_id": client_id, "scope": scopes},
+                )
+
+            else:
+                oauth2_spec = False
+                uri = "authorization_uri"
+                verification_response = http_client.post(auth_endpoint)
             handle_error(verification_response)
     verification = verification_response.json()
-    authorization_uri = verification["authorization_uri"]
+    authorization_uri = verification[uri]
     print(
         f"""
 You have {int(verification['expires_in']) // 60} minutes to visit this URL
@@ -1017,23 +1096,38 @@ and enter the code:
         time.sleep(verification["interval"])
         if time.monotonic() > deadline:
             raise Exception("Deadline expired.")
-        for attempt in retry_context():
+        for attempt in polling_retry_context(timeout=verification["expires_in"]):
             with attempt:
                 # Intentionally do not wrap this in handle_error(...).
                 # Check status codes manually below.
-                access_response = http_client.post(
-                    verification["verification_uri"],
-                    json={
-                        "device_code": verification["device_code"],
-                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    },
-                    auth=None,
-                )
-                if (access_response.status_code == httpx.codes.BAD_REQUEST) and (
-                    access_response.json()["detail"]["error"] == "authorization_pending"
-                ):
-                    print(".", end="", flush=True)
-                    continue
+                if oauth2_spec:
+                    access_response = http_client.post(
+                        token_endpoint,
+                        data={
+                            "device_code": verification["device_code"],
+                            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                            "client_id": client_id,
+                        },
+                    )
+                else:
+                    access_response = http_client.post(
+                        verification["verification_uri"],
+                        json={
+                            "device_code": verification["device_code"],
+                            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                        },
+                        auth=None,
+                    )
+                if access_response.status_code == httpx.codes.BAD_REQUEST:
+                    access_response_error = (
+                        access_response.json()["error"]
+                        if oauth2_spec
+                        else access_response.json()["detail"]["error"]
+                    )
+                    if access_response_error == "authorization_pending":
+                        print(".", end="", flush=True)
+                        time.sleep(verification["interval"])
+                        access_response.raise_for_status()
                 handle_error(access_response)
         print("")
         break

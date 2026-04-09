@@ -23,4 +23,6 @@ authentication:
         cara: ${CARA_PASSWORD}
 trees:
   - path: /
-    tree: tiled.examples.toy_authentication:tree
+    tree: tiled.examples.nexus:build_tree
+    args:
+      url: null  # Use simulated structure instead of downloading the file

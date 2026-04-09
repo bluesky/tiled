@@ -3,24 +3,458 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## v0.1.0-b32 (Unreleased)
+
+## Unreleased
+
+### Fixed
+
+- Writing chunked (dask) arrays with single chunk along all dimensions
+- OIDC authenticator was not quite compliant and was incompatible with
+  at least some providers including Azure and ORCID.
+
+### Changed
+
+- Array client fully supports slicing when communicating with the server
+  and only fetches the data needed to satisfy the slice.
+- CSVArrayAdapter supports reading heterogenous tables as structured arrays
+
+## v0.2.7 (2026-02-27)
+
+### Fixed
+
+- A potential race condition when subscribing to an already started stream
+  and receiving replayed messages before the subscription is fully set up.
+- Tests and examples that use example config files; specifically an external
+  NeXus file used as an example of the structure is generated dynamically at
+  test time now.
+- Type hint for `readable_storage` parameter for `SimpleTiledServer` indicated it
+  should be a string or `Path`, but it actually was required to be a list of strings
+  or list of `Paths`. This has been fixed.
+- Missing docstring for `readable_storage` parameter added.
+- Missing `properties` field in the `put_data_source` method on the adapter.
+- Web frontend image retrieval for 2D arrays with downsampling.
+
+### Changed
+
+- The `start_in_thread` method of `Subscription` now waits until the WebSocket
+  connection is established before returning.
+- Allow for passing a single string or `Path` to `SimpleTiledServer`'s `readable_storage`
+  parameter. Generally, when using `SimpleTiledServer` one usually just passes `/tmp` or
+  `tmp_path` in unit tests.
+- Unit test that confirms that the `readable_storage` setting works as expected, with
+  it being passed as a string, `Path`, list of strings, or list of `Path`s.
+- Cancel previous CI runs on a PR when further commits are pushed to reduce
+  CI processing time.
+
+## v0.2.7 (2026-02-27)
+
+### Fixed
+
+- Raise an error with a suitable message when trying to create an API key
+  on a server that does not support it.
+- Backwards compatibility with older servers that do not support the `properties`
+  field in `DataSource` objects. The client will now omit this field when
+  communicating with servers older than v0.2.4.
+
+## v0.2.6 (2026-02-24)
+
+### Fixed
+
+- Explicitly specified `"Content-Type": "application/json"` in the request
+  headers to comply with stricter payload parsing in FastAPI >= 0.132.0.
+- Servers started by the new function `tiled.client.simple` did not stop
+  cleanly at interpreter shutdown, causing a hangup.
+
+## v0.2.5 (2026-02-20)
+
+### Added
+
+- A new function `tiled.client.simple` provides a convenient method for
+  obtaining a client backed by a `SimpleTiledServer`.
+
+### Changed
+
+- The `SimpleTiledServer` no longer prohibits multiple servers per process.
+  This is convenient for rapidly iterating with new temporary servers.
+- The `SimpleTiledServer` supports streaming, via the in-memory TTL cache
+  introduced in v0.2.4.
+
+## v0.2.4 (2026-02-18)
+
+### Added
+
+- Support for including custom FastAPI routers via a new `routers` configuration
+  field at the server level.
+
+### Changed
+
+- Arrays accessed by `ArrayAdapter`, its subclasses, and related adapters (e.g. `HDF5ArrayAdapter`,
+  `FileSequenceAdapter`) are reshaped by default to match the shape declared in the
+  associated structure, where possible.
+- Removed support for Python 3.9, which reached its end of life in October 2025.
+- When creating an access-tag restricted API key, the `inherit` scope is no longer valid to request. Instead, the specific scopes desired for the key should be requested.
+
+### Fixed
+
+- Error handling in `tiled.client.download._download_url`.
+- Slow performance when deleting nodes in large catalogs with many nodes.
+- Add `properties` field to the DataSource object and table, to store additional
+  metadata about the data source (e.g. array chunking information).
+
+## v0.2.3 (2025-12-17)
+
+### Added
+
+- Add ExternalPolicyDecisionPoint for authorization and an example with Open Policy Agent
+- Subscriptions retry connecting if the websocket connection is interrupted.
+- React UI supports server-side sorting.
+
+### Changed
+
+- Rename "create" scope to the more explicit "create:node"
+- Split "apikeys" scope into "create:apikeys" and "revoke:apikeys" scopes
+
+### Fixed
+
+- Slicing on a CompositeClient previous always returned the full results.
+  Now it slices as expected.
+- Made provision for forks of the repository to publish Helm charts.
+- Allow clients to register standalone data directories as single nodes
+  (e.g. Zarr stores) directly rather than discovering them by walking their
+  parent directory.
+- Fix regression that broke registering files at a prefix.
+- Servers that allow anonymous access (i.e. `--public`) allow streaming
+  subscribers to connect without authentication.
+
+## v0.2.2 (2025-11-25)
+
+### Changed
+
+- Deletion of nodes or metadata revisions now requires deletion scopes.
+
+### Fixed
+
+- In-memory SQLite databases are connection pooled / cached.
+- Addressed backward-incompatible changes in dependencies `fastapi` and `minio`.
+  rather than writing scopes.
+- Pinned down pydantic-settings until breaking changes can be addressed.
+- Writing I/O calls in the Zarr adapter were blocking the server event loop;
+  they are now properly on a thread.
+
+## Fixed
+
+- Fixed a couple of bugs in the example config, to restore it to working order
+
+
+## v0.2.1 (2025-11-12)
+
+### Added
+
+- Optional `persist` query parameter to PUT and PATCH /array/... routes, and
+  the corresponding DaskArrayClient methods: `write`, `write_block`, `patch`.
+- Added new delete:node and delete:revision scopes
+
+### Changed
+
+- The public demo hosted by NSLS2 has moved from `tiled-demo.blueskyproject.io`
+  to `tiled-demo.nsls2.bnl.gov`, for purely practical reasons. (It is easier to
+  manage the deployment and associated certificates.) **The demo remains
+  world-public, with no login required.** This change affects some
+  documentation and one test.
+
+## v0.2.0 (2025-10-29)
+
+### Added
+
+- Tests to ensure that CSVAdapter can be used with a subset of columns.
+- `locking` key-word argument in HDFAdapter and HDF5Adapter.
+- Support for streaming uploaded tabular data.
+
+### Changed
+
+- Enable Tiled server to accept bearer access tokens for authentication.
+- Modernize implementation of Device Code Flow.
+- The websocket messages contain a `"type"` field and are not formally
+  specified and validated using pydantic models in `tiled.stream_messages`.
+- In previous releases, the method `Subscription.start` launched a background
+  thread. This was renamed to `Subscription.start_in_thread`. Now
+  `Subscription.start` blocks the current thread, leaving any thread management
+  up to the caller.
+- Encapsulated redis code in adapter.py into a StreamingCache object
+- Renamed `Subscription.stop` to `Subscription.disconnect`.
+- In `Subscription`, use a configurable `concurrent.futures.Executor` to
+  execute callbacks.
+- Removed `Subscription.add_callback`, replaced by separate callback registries
+  connected to specific types of updates:
+
+  ```python
+  Subscription.stream_closed  # writer-initiated
+  Subscription.disconnected  # subscriber-initiated
+  ContainerSubscription.child_created
+  ContainerSubscription.child_metadata_updated
+  ArraySubscription.new_data
+  TableSubscription.new_data
+  ```
+
+- The signature of subscription callbacks has been changed. The
+  connection-related callbacks `stream_closed` and `disconnected`
+  receive `f(subscription: Subscription)`. The other callbacks
+  receive an instance of `tiled.client.stream.LiveUpdate`,
+  which provide a reference to the subscription
+  `update.subscription`, all the data from the websocket message,
+  and update-specific convenience methods such as
+  `LiveContainerUpdate.child()` when a new child is created in a
+  container and `ArraySubscription.new_data()` or
+  `TableSubscription.new_data()` to conveniently access an array
+  or table respectively.
+
+### Fixed
+
+- Prevent exception when serving asset from a node if stat_result already found
+- Column names in `TableStructure` are explicitly converted to strings.
+- Ensure that structural dtype arrays read with `CSVAdapter` have two dimensions, `(n, 1)`.
+- Updated minimum version of starlette, which implements new (standard) names
+  for HTTP status codes
+- Allow extra kwargs to be passed to `HDF5ArrayAdapter` when intialized via `HDF5Adapter`
+  with an explicit `dataset` parameter.
+- Prevent exception when serving asset from a node if stat_result already found
+- Fix bug in reading dask-backed `CompositeClient`.
+
+### Refactored
+
+- Use common base type for all access policy types
+
+
+## v0.1.6 (2025-09-29)
+
+### Fixed
+
+- Resolved circular dependency in `tiled.storage`.
+
+
+## v0.1.5 (2025-09-26)
+
+### Added
+
+- Monitoring of pool overflow and max-out events.
+
+### Fixed
+
+- Additional kwargs (`include_data_sources`, `queries`, `sorting`) propagated to
+  the instantiated container when calling `CompositeClient.base`.
+- Fix AuthN database connection lifecycle management. Connections were being
+  held for the duration of the request cycle; now they are released immediately
+  after use.
+
+
+## v0.1.4 (2025-09-24)
+
+### Fixed
+
+- A regression in v0.1.1 broke the ability of adapters to add custom endpoints
+  on the server, which is used by legacy databroker to add a `/documents`
+  endpoint.
+
+
+## v0.1.3 (2025-09-24)
+
+### Added
+
+- Monitoring of the number of connections in the database pools.
+
+### Changed
+
+- Implemented a process-global connection pool for catalog databases, similarly
+  to the connections to authN database.
+
+### Fixed
+
+- A regression in v0.1.1 disallowed specifying `allow_origins`, `specs`, and `trees`
+  across multiple files. (This can be useful for config.d-style configuration
+  where different config files are managed by different stages of configuration
+  management.)
+- A regression in v0.1.1 disallowed specifying
+  `tree: databroker.mongo_normalized:MongoAdapter.from_uri` or in fact
+  specifying any method (e.g. classmethod constructor) as a tree.
+
+
+## Unreleased
+
+### Changed
+
+- `Subscription.add_callback` and `Subscription.remove_callback` now
+  return the `Subscription` instance, enabling this:
+
+  ```py
+  sub.add_callback(f)
+  sub.add_callback(g)
+  sub.start()
+  ```
+
+  to be written as:
+
+  ```py
+  sub.add_callback(f).add_callback(g).start()
+  ```
+
+
+## v0.1.2 (2025-09-17)
+
+This release temporarily pins backs the version of the depedency DuckDB to
+avoid breakage (seemingly unintended) to documented behavior.
+
+
+## v0.1.1 (2025-09-10)
+
+### Fixed
+
+- In the Tiled container image, the React UI was misplaced and thus
+  did not function.
+- The Tiled container image was missing some client-side dependencies needed to
+  run the `tiled serve directory ...` command.
+
+### Changed
+
+- Internally, pydantic is used to parse configuration.
+
+
+## v0.1.0 (2025-09-04)
+
+
+### Added
+
+- Convenience method `subscribe` on client `Container` and `ArrayClient`
+  returns an experimental `Subscription`. See the new Streaming tutorial
+  for usage.
+
+### Changed
+
+- Client method for writing tabular data into external files, `write_dataframe`,
+  is deprecated and renamed `write_table`.
+- The order of arguments in the `write_partition` and `append_partition` methods.
+- The experiment `Subscription` object now takes where to start as an argument
+  to `Subscription.start` instead of at initialization time.
+
+### Fixed
+
+- Handling for certain catalog edge cases when building the nodes_closure table.
+- Enforce validity checks when adding appendable tables to "composite"-spec'ed containers.
+
+## v0.1.0-b39 (2025-08-28)
+
+### Fixed
+
+- Default paraneter (`None`) for the `patch` parameter in `PUT /data_source` endpoint.
+
+
+## v0.1.0-b38 (2025-08-28)
+
+### Fixed
+
+- Critical bug in new `tiled.access_control` code, missing `__init__.py`.
+
+
+## v0.1.0-b37 (2025-08-28)
+
+### Added
+
+- The access tags compiler and db schema have been upstreamed into Tiled
+- API keys can now be restricted to specific access tags
+- New unit tests covering the new access policy and access control features
+- Experimental support for streaming array data over a websocket endpoint.
+  Documentation to follow.
+
+### Changed
+
+- Remove `SpecialUsers` principals for single-user and anonymous-access cases
+- Access control code is now in the `access_control` subdirectory
+- `SimpleAccessPolicy` has been removed
+- AuthN database can now be in-memory SQLite
+- Catalog database can now be shared when using in-memory SQLite
+- `TagBasedAccessPolicy` now supports anonymous access
+- `AccessTagsParser` is now async
+- `toy_authentication` example config now uses `TagBasedAccessPolicy`
+- Added helpers for setting up the access tag and catalog databases for `toy_authentication`
+
+### Fixed
+
+- Access control on container export was partially broken, now access works as expected.
+
+
+## v0.1.0-b36 (2025-08-26)
+
+### Changed
+
+- Demoted the `Composite` structure family to `composite` spec.
+- Typehint utils collection implementations
+
+
+## v0.1.0-b35 (2025-08-20)
+
+### Changed
+
+- Optimized the calculation of an approximate length of containers.
+
+### Added
+
+- The project ships with a pixi manifest (`pixi.toml`).
+- Connection pool settings for catalog and storage databases.
+
+## v0.1.0-b34 (2025-08-14)
+
+### Fixed
+
+- In the previous release, v0.1.0-b32, a catalog database migration script (for
+  closure tables) ran successfully on some databases but on others it could
+  fail. As designed, the failure mode was a clean rollback, leaving the
+  database correct but unchanged. This release repairs the migration script; it
+  should be re-run on any databases that could not be upgraded with the previous
+  release.
+
+## v0.1.0-b33 (2025-08-13)
+
+_This release requires a database migration of the catalog database._
+
+```none
+tiled catalog upgrade-database [postgresql://.. | sqlite:///...]
+```
+
+### Added
+
+- Endpoints for (read) data access with zarr v2 and v3 protocols.
+- `data_type` and `coord_data_type` properties for sparse arrays in `COOAdapter`
+  and `COOStructure`.
+
+### Changed
+
+- Refactored internal server function ``get_root_tree()`` to not use FastAPI
+  dependencies injection
+- The logic of hierarchical organization of the Nodes table in Catalog: use the concept
+  of Closure Table to track ancestors and descendands of the nodes.
+- Shorter string representation of chunks in `ArrayClient`.
+- Refactored internal Zarr version detection
+- For compatibility with older clients, do not require metadata updates to include
+  an `access_blob` in the body of the request.
 
 ### Fixed
 
 - Uniform array columns read from Postgres/DuckDB are now aggregated to an
   NDArray (e.g. scanned `waveform` PVs)
+- Support for deleting separate nodes and contents of containers in client API.
+- The database migration in v0.1.0-b27 was incomplete, and missed an update to
+  the `revisions` table necessary to make metadata updates work correctly.
+  This is resolved by an additional database migration.
+- Correct indentation of authenticator args field in the service config schema
+  and ensure it correctly validates configurations.
+
 
 ## v0.1.0-b32 (2025-08-04)
 
 This release is identical to the previous one; it was made to fix our
 continuous deployment processes.
 
+
 ## v0.1.0-b31 (2025-08-01)
-
-### Changed
-
-- The logic of hierarchical organization of the Nodes table in Catalog: use the concept
-  of Closure Table to track ancestors and descendands of the nodes.
 
 ### Added
 
@@ -44,8 +478,6 @@ continuous deployment processes.
   dependencies injection
 - Updated front-end dependencies, and updated node version used for building
   front-end.
-- The logic of hierarchical organization of the Nodes table in Catalog: use the
-  concept of Closure Table to track ancestors and descendants of the nodes.
 
 ### Fixed
 

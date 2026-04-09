@@ -12,7 +12,7 @@ authors = [
 maintainers = [
   { name = "Brookhaven National Laboratory", email = "dallan@bnl.gov" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 # Dependencies common to both server and client; additional dependencies are
 # available depending on whether you are running client/server/both, and what
@@ -27,7 +27,7 @@ dependencies = [
     "orjson",
     "platformdirs",
     "pydantic >=2, <3",
-    "pydantic-settings >=2, <3",
+    "pydantic-settings >=2, <2.12.0",
     "pyyaml",
     "typer",
 ]
@@ -36,10 +36,10 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Physics",
 ]
 
@@ -65,38 +65,42 @@ all = [
     "asgi-correlation-id",
     "asyncpg",
     "awkward >=2.4.3",
-    "blosc2; python_version >= '3.10'",
+    "blosc2",
     "cachetools",
     "canonicaljson",
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb",
+    "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
     "entrypoints",
-    "fastapi >=0.115.8",
+    "fastapi >=0.132.0",
     "h5netcdf",
     "h5py",
     "hdf5plugin",
     "jinja2",
     "jmespath",
     "lz4",
+    "minio",
     "ndindex",
     "numcodecs",
     "numpy",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
+    "obstore",
     "openpyxl",
     "packaging",
-    "pandas",
+    "pandas <3",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
+    "redis",
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "sqlalchemy[asyncio] >=2",
     "stamina",
-    "starlette >=0.38.0",
+    "starlette >=0.48.0",
     "tifffile",
     "uvicorn[standard]",
     "watchfiles",
@@ -118,12 +122,14 @@ client = [
     "entrypoints",
     "lz4",
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numpy",
     "pandas",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "rich",
-    "sparse",
+    "sparse >=0.15.5",
     "stamina",
+    "websockets",
     "watchfiles",
     "xarray",
     "zstandard",
@@ -139,30 +145,7 @@ compression = [
 dataframe = [
     "dask[dataframe]",
     "pandas",
-    "pyarrow",
-]
-# These are required for developing the package (running the tests, building
-# the documentation) but not necessarily required for _using_ it.
-dev = [
-    "coverage",
-    "flake8",
-    "importlib_resources;python_version < \"3.9\"",
-    "ipython",
-    "ldap3",
-    "matplotlib",
-    "mistune",
-    "myst-parser",
-    "numpydoc",
-    "pre-commit",
-    "pytest <8",  # TMP pin while plugins catch up
-    "pytest-asyncio",
-    "pytest-mock",
-    "pytest-rerunfailures",
-    "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
-    "sphinx-click",
-    "sphinx-copybutton",
-    "sphinx_rtd_theme",
-    "sphinxcontrib-mermaid",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
 ]
 # These are used by the server to read files in the respective formats.
 formats = [
@@ -179,6 +162,7 @@ minimal-client = [
     "rich",
     "stamina",
     "watchfiles",
+    "websockets",
 ]
 # These are the requirements needed for basic server functionality.
 minimal-server = [
@@ -190,7 +174,7 @@ minimal-server = [
     "cachetools",
     "canonicaljson",
     "dask",
-    "fastapi >=0.115.8",
+    "fastapi >=0.132.0",
     "jinja2",
     "jmespath",
     "numcodecs",
@@ -199,8 +183,9 @@ minimal-server = [
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
+    "redis",
     "sqlalchemy[asyncio] >=2",
-    "starlette >=0.38.0",
+    "starlette >=0.48.0",
     "uvicorn[standard]",
     "zarr",
 ]
@@ -222,31 +207,38 @@ server = [
     "dask",
     "dask[array]",
     "dask[dataframe]",
-    "duckdb",
-    "fastapi >=0.115.8",
+    "duckdb <1.4.0",  # https://github.com/bluesky/tiled/issues/1144
+    "entrypoints",
+    "fastapi >=0.132.0",
     "h5netcdf",
     "h5py",
     "hdf5plugin",
     "jinja2",
     "jmespath",
     "lz4",
+    "minio",
     "ndindex",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
     "numcodecs",
     "numpy",
+    "obstore",
     "openpyxl",
     "packaging",
     "pandas",
     "pillow",
     "prometheus_client",
-    "pyarrow",
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
-    "sparse",
+    "sparse >=0.15.5",
+    "stamina",
+    "redis",
     "sqlalchemy[asyncio] >=2",
-    "starlette >=0.38.0",
+    "starlette >=0.48.0",
     "tifffile",
     "uvicorn[standard]",
+    "websockets",
     "xarray",
     "zarr",
     "zstandard",
@@ -254,8 +246,9 @@ server = [
 # These are needed by the client and server to transmit/receive sparse arrays.
 sparse = [
     "ndindex",
-    "pyarrow",
-    "sparse",
+    "numba >=0.59.0",  # indirect, pinned to assist uv solve
+    "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
+    "sparse >=0.15.5",
 ]
 # These are needed by the client and server to transmit/receive xarrays.
 xarray = [
@@ -264,6 +257,50 @@ xarray = [
     "pyarrow",
     "xarray",
 ]
+
+[dependency-groups]
+test = [
+    "aiohttp",
+    "coverage",
+    "flake8",
+    "hypothesis",
+    "importlib_resources;python_version < \"3.9\"",
+    "ipython",
+    "ldap3",
+    "locust",
+    "minio",
+    "pre-commit",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-mock",
+    "pytest-rerunfailures",
+    "respx", # Mocking library for httpx
+    "python3-saml",
+    "types-cachetools",
+]
+dev = [
+  { include-group = "test" },
+]
+docs = [
+    "ipykernel",
+    "ipywidgets",
+    "matplotlib",
+    "mistune",
+    "myst-parser",
+    "myst_nb",
+    "nbconvert",
+    "numpydoc",
+    "pydata-sphinx-theme",
+    "sphinx !=4.1.0, !=4.1.1, !=4.1.2, !=4.2.0",
+    "sphinx-autobuild",
+    "sphinx-click",
+    "sphinx-copybutton",
+    "sphinx_design",
+    "sphinx_external_toc",
+    "sphinxcontrib-jquery",
+    "sphinxcontrib-mermaid",
+]
+
 
 [project.urls]
 Homepage = "https://github.com/bluesky/tiled"
@@ -318,32 +355,3 @@ exclude_lines = ["if __name__ == '__main__':"]
 
 [tool.coverage.paths]
 source = ["."]
-
-[tool.pixi.workspace]
-channels = ["conda-forge"]
-platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
-
-[tool.pixi.pypi-dependencies]
-tiled = { path = ".", editable = true }
-
-[tool.pixi.feature.sparse.dependencies]
-# sparse setuptools-based build is not working, so override with conda
-# packages.
-ndindex = "*"
-pyarrow = "*"
-sparse = "*"
-
-[tool.pixi.environments]
-default = { solve-group = "default" }
-all = { features = ["all"], solve-group = "default" }
-array = { features = ["array"], solve-group = "default" }
-client = { features = ["client"], solve-group = "default" }
-compression = { features = ["compression"], solve-group = "default" }
-dataframe = { features = ["dataframe"], solve-group = "default" }
-dev = { features = ["dev"], solve-group = "default" }
-formats = { features = ["formats"], solve-group = "default" }
-minimal-client = { features = ["minimal-client"], solve-group = "default" }
-minimal-server = { features = ["minimal-server"], solve-group = "default" }
-server = { features = ["server"], solve-group = "default" }
-sparse = { features = ["sparse"], solve-group = "default" }
-xarray = { features = ["xarray"], solve-group = "default" }

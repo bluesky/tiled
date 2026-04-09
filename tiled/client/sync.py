@@ -80,7 +80,7 @@ def _copy_sparse(source, dest, on_conflict):
 def _copy_table(source, dest, on_conflict):
     for partition in range(source.structure().npartitions):
         df = source.read_partition(partition)
-        dest.write_partition(df, partition)
+        dest.write_partition(partition, df)
 
 
 def _copy_container(source, dest, on_conflict):
@@ -90,10 +90,7 @@ def _copy_container(source, dest, on_conflict):
         if num_data_sources == 0:
             # A container with no data sources is just an organizational
             # entity in the database.
-            if child_node.structure_family in {
-                StructureFamily.container,
-                StructureFamily.composite,
-            }:
+            if child_node.structure_family == StructureFamily.container:
                 data_sources = []
             else:
                 raise ValueError(
@@ -105,10 +102,7 @@ def _copy_container(source, dest, on_conflict):
             if original_data_source.management == Management.external:
                 data_sources = [original_data_source]
             else:
-                if child_node.structure_family in {
-                    StructureFamily.container,
-                    StructureFamily.composite,
-                }:
+                if child_node.structure_family == StructureFamily.container:
                     data_sources = []
                 else:
                     data_sources = [
@@ -146,8 +140,7 @@ def _copy_container(source, dest, on_conflict):
             original_data_sources
             and (original_data_sources[0].management != Management.external)
         ) or (
-            child_node.structure_family
-            in [StructureFamily.container, StructureFamily.composite]
+            (child_node.structure_family == StructureFamily.container)
             and (not original_data_sources)
         ):
             _DISPATCH[child_node.structure_family](
@@ -159,7 +152,6 @@ _DISPATCH = {
     StructureFamily.array: _copy_array,
     StructureFamily.awkward: _copy_awkward,
     StructureFamily.container: _copy_container,
-    StructureFamily.composite: _copy_container,
     StructureFamily.sparse: _copy_sparse,
     StructureFamily.table: _copy_table,
 }

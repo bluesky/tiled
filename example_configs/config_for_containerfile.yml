@@ -1,0 +1,34 @@
+---
+# This configuration is meant to run inside the container specified by the
+# Containerfile in the tiled repository.  It presumes that the container has a
+# writable directory at the path /storage.
+
+authentication:
+  # The default is false. Set to true to enable any HTTP client that can
+  # connect to _read_. An API key is still required to write.
+  allow_anonymous_access: false
+catalog:
+  # This database stores metadata and URIs pointing to data.
+  uri: "sqlite:////storage/catalog.db"
+
+  writable_storage:
+
+    # File-based data storage
+    - "/storage/data"
+
+    # Embedded tabular data storage
+    - "duckdb:///storage/data.db"
+
+  # This creates the database if it does not exist. This is convenient, but in
+  # a horizontally-scaled deployment, this can be a race condition and multiple
+  # containers may simultaneously attempt to create the database.
+  # If that is a problem, set this to false, and run:
+  #
+  # tiled catalog init URI
+  #
+  # separately.
+  init_if_not_exists: true
+
+streaming_cache:
+  # Store recent metadata and uploaded data in memory for streaming.
+  uri: memory

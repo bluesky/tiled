@@ -1,37 +1,47 @@
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import pydantic_settings
-from fastapi import HTTPException, Query
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_410_GONE
+from fastapi import HTTPException, Query, Request
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+    HTTP_410_GONE,
+)
 
-from tiled.adapters.protocols import AnyAdapter
-from tiled.server.schemas import Principal
-from tiled.structures.core import StructureFamily
-from tiled.utils import SpecialUsers
-
-from ..type_aliases import Scopes
+from ..access_control.protocols import AccessPolicy
+from ..adapters.protocols import AnyAdapter
+from ..ndslice import NDBlock, NDSlice
+from ..structures.core import StructureFamily
+from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink
 from .core import NoEntry
+from .schemas import Principal
 from .utils import filter_for_access, record_timing
 
+# NOTE: The regex below is used by fastapi to parse the string representation of a slice
+# and raise a 422 error if the string is not valid.
+# It does not capture certain erroneous cases, such as ",,", for example.
+# It does not support Ellipsis ("...").
+DIM_REGEX = r"(?:(?:-?\d+)?:){0,2}(?:-?\d+)?"
+SLICE_REGEX = rf"^{DIM_REGEX}(?:,{DIM_REGEX})*$"
 
-def get_root_tree():
-    raise NotImplementedError(
-        "This should be overridden via dependency_overrides. "
-        "See tiled.server.app.build_app()."
-    )
+
+def get_root_tree(request: Request):
+    return request.app.state.root_tree
 
 
 async def get_entry(
     path: str,
     security_scopes: List[str],
-    principal: Union[Principal, SpecialUsers],
+    principal: Optional[Principal],
+    authn_access_tags: Optional[AccessTags],
     authn_scopes: Scopes,
     root_tree: pydantic_settings.BaseSettings,
     session_state: dict,
     metrics: dict,
     structure_families: Optional[set[StructureFamily]] = None,
-    access_policy=None,
+    access_policy: Optional[AccessPolicy] = None,
 ) -> AnyAdapter:
     """
     Obtain a node in the tree from its path.
@@ -43,7 +53,6 @@ async def get_entry(
     """
     path_parts = [segment for segment in path.split("/") if segment]
     entry = root_tree
-    # access_policy = getattr(request.app.state, "access_policy", None)
     # If the entry/adapter can take a session state, pass it in.
     # The entry/adapter may return itself or a different object.
     if hasattr(entry, "with_session_state") and session_state:
@@ -54,10 +63,10 @@ async def get_entry(
         entry,
         access_policy,
         principal,
+        authn_access_tags,
         authn_scopes,
         ["read:metadata"],
         metrics,
-        # request.state.metrics,
     )
     try:
         for i, segment in enumerate(path_parts):
@@ -80,6 +89,7 @@ async def get_entry(
                 entry,
                 access_policy,
                 principal,
+                authn_access_tags,
                 authn_scopes,
                 ["read:metadata"],
                 metrics,
@@ -91,6 +101,7 @@ async def get_entry(
                 allowed_scopes = await access_policy.allowed_scopes(
                     entry,
                     principal,
+                    authn_access_tags,
                     authn_scopes,
                 )
                 if not set(security_scopes).issubset(allowed_scopes):
@@ -127,14 +138,22 @@ async def get_entry(
     )
 
 
-def block(
-    # Ellipsis as the "default" tells FastAPI to make this parameter required.
-    block: str = Query(..., pattern="^[0-9]*(,[0-9]+)*$"),
-):
-    "Specify and parse a block index parameter."
-    if not block:
-        return ()
-    return tuple(map(int, block.split(",")))
+def parse_block_param(block: str = Query(..., pattern="^[0-9]*(,[0-9]+)*$")) -> NDBlock:
+    "Specify and parse a block index parameter"
+    try:
+        # Even though NDBlock can contain slices, we currently only support indexing
+        # with integers, and the server wouldn't accept slices in the query
+        return NDBlock.from_numpy_str(block)
+    except ValueError as e:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+def parse_slice_param(slice: str = Query("", pattern=SLICE_REGEX)):
+    "Specify and parse a slice parameter"
+    try:
+        return NDSlice.from_numpy_str(slice)
+    except ValueError as e:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 def expected_shape(
@@ -162,3 +181,25 @@ def offset_param(
 ):
     "Specify and parse an offset parameter."
     return tuple(map(int, offset.split(",")))
+
+
+def patch_shape_param(
+    patch_shape: Optional[str] = Query(
+        None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$|^scalar$"
+    ),
+):
+    "Specify and parse an array patch shape parameter."
+    if patch_shape is None:
+        return None
+    return tuple(map(int, patch_shape.split(",")))
+
+
+def patch_offset_param(
+    patch_offset: Optional[str] = Query(
+        None, min_length=1, pattern="^[0-9]+(,[0-9]+)*$"
+    ),
+):
+    "Specify and parse an array patch offset parameter."
+    if patch_offset is None:
+        return None
+    return tuple(map(int, patch_offset.split(",")))

@@ -1,7 +1,8 @@
 import os
-from typing import Any, Callable, Optional
+from pathlib import Path
+from typing import Any, Callable, Optional, Tuple
 
-import cachetools  # type: ignore
+import cachetools
 
 # When items are evicted from the cache, a hard reference is dropped, freeing
 # the resource to be closed by the garbage collector if there are no other
@@ -16,13 +17,15 @@ import cachetools  # type: ignore
 DEFAULT_MAX_SIZE = int(os.getenv("TILED_RESOURCE_CACHE_MAX_SIZE", "1024"))
 DEFAULT_TIME_TO_USE_SECONDS = float(os.getenv("TILED_RESOURCE_CACHE_TTU", "60."))
 
+AnyCache = cachetools.Cache[Tuple[Any, Path], Any]
 
-def get_resource_cache() -> cachetools.Cache:
+
+def get_resource_cache() -> AnyCache:
     "Return resource cache, a process-global Cache."
     return _cache
 
 
-def set_resource_cache(cache: cachetools.Cache) -> None:
+def set_resource_cache(cache: AnyCache) -> None:
     """
     Set the resource cache, a process-global Cache.
     Parameters
@@ -54,16 +57,16 @@ def default_ttu(_key: str, value: Any, now: float) -> float:
     return DEFAULT_TIME_TO_USE_SECONDS + now
 
 
-def default_resource_cache() -> cachetools.TLRUCache:
+def default_resource_cache() -> cachetools.TLRUCache[Any, Any]:
     "Create a new instance of the default resource cache."
     return cachetools.TLRUCache(DEFAULT_MAX_SIZE, default_ttu)
 
 
 def with_resource_cache(
-    cache_key: Any,
+    cache_key: Tuple[Any, Path],
     factory: Callable[..., Any],
     *args: Any,
-    _resource_cache: Optional[cachetools.Cache] = None,
+    _resource_cache: Optional[AnyCache] = None,
     **kwargs: Any,
 ) -> Any:
     """
@@ -99,4 +102,4 @@ def with_resource_cache(
     return value
 
 
-_cache: cachetools.Cache = default_resource_cache()
+_cache: AnyCache = default_resource_cache()

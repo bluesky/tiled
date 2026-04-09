@@ -1,47 +1,23 @@
-import warnings
+import math
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional, Tuple, Union
+
+import dask.array
+import numpy as np
+
+from tiled.adapters.core import A, S
 
 from ..structures.data_source import DataSource
 
-if TYPE_CHECKING:
-    from ..type_aliases import AnyStructure
-
 # for back-compat
+from ..utils import IndexersMixin  # noqa: F401
 from ..utils import node_repr as tree_repr  # noqa: F401
 
-_MESSAGE = (
-    "Instead of {name}_indexer[...] use {name}()[...]. "
-    "The {name}_indexer accessor is deprecated."
-)
-
-
-class IndexersMixin:
-    """
-    Provides sliceable attributes keys_indexer, items_indexer, values_indexer.
-
-    This is just for back-ward compatibility.
-    """
-
-    keys: Any
-    values: Any
-    items: Any
-    fn: Any
-
-    @property
-    def keys_indexer(self) -> Any:
-        warnings.warn(_MESSAGE.format(name="keys"), DeprecationWarning)
-        return self.keys()
-
-    @property
-    def values_indexer(self) -> Any:
-        warnings.warn(_MESSAGE.format(name="values"), DeprecationWarning)
-        return self.values()
-
-    @property
-    def items_indexer(self) -> Any:
-        warnings.warn(_MESSAGE.format(name="items"), DeprecationWarning)
-        return self.items()
+__all__ = [
+    "IndexersMixin",
+    "asset_parameters_to_adapter_kwargs",
+    "init_adapter_from_catalog",
+]
 
 
 class IndexCallable:
@@ -70,7 +46,7 @@ class IndexCallable:
 
 
 def asset_parameters_to_adapter_kwargs(
-    data_source: DataSource["AnyStructure"],
+    data_source: DataSource[Any],
 ) -> dict[str, Any]:
     """Transform database representation of Adapter parameters to Python representation."""
     parameters: dict[str, Any] = defaultdict(list)
@@ -88,12 +64,12 @@ def asset_parameters_to_adapter_kwargs(
 
 
 def init_adapter_from_catalog(
-    adapter_cls: type[Any],
-    data_source: DataSource["AnyStructure"],
+    adapter_cls: type[A],
+    data_source: DataSource[S],
     node: Any,  # tiled.catalog.orm.Node ?
     /,
     **kwargs: Optional[Any],
-) -> Any:
+) -> A:
     # TODO: Sort out typing for Adapters
     """Factory function to produce Adapter instances given their parameters encoded in data sources"""
     parameters = asset_parameters_to_adapter_kwargs(data_source)
@@ -101,3 +77,39 @@ def init_adapter_from_catalog(
     kwargs["metadata"] = node.metadata_
     kwargs["specs"] = node.specs
     return adapter_cls(structure=data_source.structure, **kwargs)
+
+
+def force_reshape(
+    arr: Union[np.array, dask.array.Array], desired_shape: Tuple[int, ...]
+) -> Union[np.array, dask.array.Array]:
+    """Reshape a numpy or dask array to match the desired shape, if possible.
+
+    Parameters
+    ----------
+
+    arr : Union[np.array, dask.array.Array]
+        The original ND array to be reshaped
+    desired_shape : Tuple[int, ...]
+        The desired shape of the resulting array
+
+    Returns
+    -------
+
+    A view of the original array
+    """
+
+    if arr.shape == tuple(desired_shape):
+        return arr  # Nothing to do here
+
+    if arr.size == math.prod(desired_shape):
+        return arr.reshape(desired_shape)
+
+    raise ValueError(
+        f"Can not reshape {arr.shape} array data to {tuple(desired_shape)}"
+    )
+
+
+def split_chunks(total: int, chunk: int) -> tuple[int, ...]:
+    "Split total into repeated chunks of size `chunk`, with a remainder at the end."
+    num_full_chunks, remainder = divmod(total, chunk)
+    return tuple([chunk] * num_full_chunks + ([remainder] if remainder else []))

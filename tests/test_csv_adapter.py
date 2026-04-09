@@ -1,0 +1,319 @@
+import enum
+import string
+from pathlib import Path
+
+import numpy
+import pandas
+import pytest
+
+from tiled.adapters.csv import CSVAdapter, CSVArrayAdapter
+from tiled.catalog import in_memory
+from tiled.client import Context, from_context
+from tiled.server.app import build_app
+from tiled.structures.array import ArrayStructure, Kind, StructDtype
+from tiled.structures.core import StructureFamily
+from tiled.structures.data_source import Asset, DataSource, Management
+from tiled.structures.table import TableStructure
+from tiled.utils import ensure_uri
+
+rng = numpy.random.default_rng(12345)
+
+df1 = pandas.DataFrame(
+    {
+        "A": ["red", "green", "blue", "white"],
+        "B": [10.0, 20.0, 30.0, 40.0],
+        "C": [0, 1, 2, 3],
+    }
+)
+
+arr1 = rng.integers(0, 255, size=(13, 17), dtype="uint8")
+arr2 = rng.random(size=(15, 19), dtype="float64")
+arr3 = rng.random(size=(15, 19), dtype="float32")
+df_arr1 = pandas.DataFrame(arr1)
+df_arr2 = pandas.DataFrame(arr2)
+df_arr3 = pandas.concat(
+    [
+        pandas.DataFrame(
+            rng.integers(0, 255, size=(10, 3), dtype="uint8"), columns=["A", "B", "C"]
+        ),
+        pandas.DataFrame(
+            rng.random(size=(10, 3), dtype="float64"), columns=["D", "E", "F"]
+        ),
+        pandas.DataFrame(
+            numpy.random.choice(list(string.ascii_letters), size=(10, 3)),
+            columns=["G", "H", "I"],
+        ),
+        pandas.DataFrame(
+            numpy.random.choice([True, False], size=(10, 3)), columns=["J", "K", "L"]
+        ),
+    ],
+    axis=1,
+)
+
+
+@pytest.fixture(scope="module")
+def tree(tmp_path_factory):
+    return in_memory(writable_storage=tmp_path_factory.getbasetemp())
+
+
+@pytest.fixture(scope="module")
+def context(tree):
+    with Context.from_app(build_app(tree)) as context:
+        client = from_context(context)
+        client.create_container(key="x")
+        yield context
+
+
+@pytest.fixture
+def csv_table_uri(tmpdir):
+    fpath = Path(tmpdir, "table.csv")
+    df1.to_csv(fpath, index=False)
+
+    yield ensure_uri(fpath)
+
+
+@pytest.fixture
+def csv_array1_uri(tmpdir):
+    fpath = Path(tmpdir, "array_1.csv")
+    df_arr1.to_csv(fpath, index=False, header=False)
+
+    yield ensure_uri(fpath)
+
+
+@pytest.fixture
+def csv_array2_uri(tmpdir):
+    fpath = Path(tmpdir, "array_2.csv")
+    df_arr2.to_csv(fpath, index=False, header=False)
+
+    yield ensure_uri(fpath)
+
+
+@pytest.fixture
+def csv_array3_uri(tmpdir):
+    fpath = Path(tmpdir, "array_3.csv")
+    df_arr3.to_csv(fpath, index=False, header=True)
+
+    yield ensure_uri(fpath)
+
+
+def test_csv_table(context, csv_table_uri):
+    client = from_context(context)
+
+    csv_assets = [
+        Asset(
+            data_uri=csv_table_uri,
+            is_directory=False,
+            parameter="data_uris",
+            num=0,
+        )
+    ]
+    csv_data_source = DataSource(
+        mimetype="text/csv;header=present",
+        assets=csv_assets,
+        structure_family=StructureFamily.table,
+        structure=TableStructure.from_pandas(df1),
+        management=Management.external,
+    )
+
+    client["x"].new(
+        structure_family=StructureFamily.table,
+        data_sources=[csv_data_source],
+        key="table",
+    )
+
+    read_df = client["x"]["table"].read()
+    assert set(read_df.columns) == set(df1.columns)
+    assert (read_df == df1).all().all()
+
+
+@pytest.mark.parametrize("nullable", [True, False])
+def test_csv_table_from_uris(context, csv_table_uri, nullable):
+    adp = CSVAdapter.from_uris(csv_table_uri, assume_missing=nullable)
+    read_df = adp.read()
+
+    assert set(read_df.columns) == set(df1.columns)
+    assert (read_df == df1).all().all()
+    assert read_df["C"].dtype == numpy.dtype("float64") if nullable else df1["C"].dtype
+
+
+def test_csv_struct_dtype_array(context, csv_table_uri):
+    # Test reading a CSV table as a struct-dtyped array
+    client = from_context(context)
+
+    numpy_data_type = numpy.dtype([("A", "<U8"), ("B", "<f8"), ("C", "<i8")])
+    arr = df1.to_records(index=False).astype(numpy_data_type)
+    structure = ArrayStructure(
+        data_type=StructDtype.from_numpy_dtype(numpy_data_type),
+        shape=(len(arr), 1),  # the adapter should force the shape to be 2D
+        chunks=((len(arr),), (1,)),
+    )
+    csv_assets = [
+        Asset(
+            data_uri=csv_table_uri,
+            is_directory=False,
+            parameter="data_uris",
+            num=0,
+        )
+    ]
+    csv_data_source = DataSource(
+        mimetype="text/csv;header=absent",  # ignore the header -- it is an "array"
+        assets=csv_assets,
+        parameters={"skiprows": 1, "header": None},  # skip the header row
+        structure_family=StructureFamily.array,
+        structure=structure,
+        management=Management.external,
+    )
+
+    client["x"].new(
+        structure_family=StructureFamily.array,
+        data_sources=[csv_data_source],
+        key="struct_array",
+    )
+
+    read_arr = client["x"]["struct_array"].read()
+
+    assert read_arr.shape == (4, 1)
+    assert (read_arr.ravel() == arr.ravel()).all()
+
+
+def test_csv_arrays(context, csv_array1_uri, csv_array2_uri):
+    client = from_context(context)
+
+    for key, data_uri, arr in zip(
+        ("array1", "array2"), (csv_array1_uri, csv_array2_uri), (arr1, arr2)
+    ):
+        csv_assets = [
+            Asset(
+                data_uri=data_uri,
+                is_directory=False,
+                parameter="data_uris",
+                num=0,
+            )
+        ]
+        csv_data_source = DataSource(
+            mimetype="text/csv;header=absent",
+            assets=csv_assets,
+            structure_family=StructureFamily.array,
+            structure=ArrayStructure.from_array(arr),
+            management=Management.external,
+        )
+
+        client["x"].new(
+            structure_family=StructureFamily.array,
+            data_sources=[csv_data_source],
+            key=key,
+        )
+
+    read_arr1 = client["x"]["array1"].read()
+    assert numpy.array_equal(read_arr1, arr1)
+
+    read_arr2 = client["x"]["array2"].read()
+    assert numpy.isclose(read_arr2, arr2).all()
+
+
+@pytest.mark.parametrize(
+    "key, columns",
+    [
+        ("arr_all_int", ["A", "B", "C"]),
+        ("arr_all_float", ["D", "E", "F"]),
+        ("arr_all_str", ["G", "H", "I"]),
+        ("arr_all_bool", ["J", "K", "L"]),
+    ],
+)
+def test_csv_arrays_selected_columns(context, csv_array3_uri, key, columns):
+    client = from_context(context)
+    orig_arr = df_arr3[columns].to_numpy()  # The original array
+    if "str" in key:
+        orig_arr = orig_arr.astype("str")  # Convert to string type explicitly
+
+    csv_assets = [
+        Asset(
+            data_uri=csv_array3_uri,
+            is_directory=False,
+            parameter="data_uris",
+            num=0,
+        )
+    ]
+    csv_data_source = DataSource(
+        mimetype="text/csv;header=absent",
+        assets=csv_assets,
+        structure_family=StructureFamily.array,
+        structure=ArrayStructure.from_array(orig_arr),
+        management=Management.external,
+        parameters={"header": 0, "usecols": columns},
+    )
+
+    client["x"].new(
+        structure_family=StructureFamily.array, data_sources=[csv_data_source], key=key
+    )
+
+    read_arr = client["x"][key].read()
+    if "float" in key:
+        assert numpy.isclose(read_arr, orig_arr).all()
+    else:
+        assert numpy.array_equal(read_arr, orig_arr)
+
+
+@pytest.mark.parametrize("nullable", [True, False])
+def test_csv_arrays_from_uris(csv_array1_uri, csv_array2_uri, csv_array3_uri, nullable):
+    array_adapter = CSVArrayAdapter.from_uris(csv_array1_uri, assume_missing=nullable)
+    read_arr = array_adapter.read()
+    assert numpy.isclose(read_arr, arr1).all()
+    assert read_arr.dtype == numpy.dtype("float64") if nullable else arr1.dtype
+
+    array_adapter = CSVArrayAdapter.from_uris(csv_array2_uri, assume_missing=nullable)
+    read_arr = array_adapter.read()
+    assert numpy.isclose(read_arr, arr2).all()
+    assert read_arr.dtype == numpy.dtype("float64") if nullable else arr2.dtype
+
+
+@pytest.mark.parametrize("allow_object_arrays", [True, False])
+@pytest.mark.parametrize(
+    "key, columns",
+    [
+        ("arr_all_int", ["A", "B", "C"]),
+        ("arr_all_float", ["D", "E", "F"]),
+        ("arr_all_str", ["G", "H", "I"]),
+        ("arr_all_bool", ["J", "K", "L"]),
+        ("numerical_struct", ["A", "D"]),
+        ("numerical_and_bool_struct", ["A", "D", "J"]),
+        ("selected_struct", ["A", "D", "G", "J"]),
+        ("all_struct", None),
+    ],
+)
+def test_csv_arrays_from_uris_selected_columns(
+    csv_array3_uri, key, columns, monkeypatch, allow_object_arrays
+):
+    orig_arr = df_arr3[columns or df_arr3.columns]
+    orig_arr = (
+        orig_arr.to_records(index=False).reshape(-1, 1)
+        if "struct" in key
+        else orig_arr.to_numpy()
+    )
+
+    if allow_object_arrays:
+        if "str" in key:
+            # Allow object dtype to be used for string columns
+            # This is equivalent to setting TILED_ALLOW_OBJECT_ARRAYS=1
+            kinds = {"object": "O", **{e.name: e.value for e in Kind}}
+            NewKind = enum.Enum("Kind", kinds)
+            monkeypatch.setattr("tiled.structures.array.Kind", NewKind)
+        else:
+            pytest.skip("Object arrays are only relevant for string columns")
+
+    array_adapter = CSVArrayAdapter.from_uris(csv_array3_uri, header=0, usecols=columns)
+    read_arr = array_adapter.read()
+
+    if "struct" in key:
+        for name in read_arr.dtype.names:
+            a = read_arr[name]
+            b = orig_arr[name]
+
+            if numpy.issubdtype(a.dtype, numpy.floating):
+                numpy.testing.assert_allclose(a, b)
+            else:
+                numpy.testing.assert_array_equal(a, b)
+    elif ("float" in key) or ("numerical" in key):
+        numpy.testing.assert_allclose(read_arr, orig_arr)
+    else:
+        numpy.testing.assert_array_equal(read_arr, orig_arr)

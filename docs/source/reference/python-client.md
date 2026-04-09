@@ -8,8 +8,9 @@ These are functions for constructing a client object.
 .. autosummary::
    :toctree: generated
 
-   tiled.client.from_uri
    tiled.client.from_profile
+   tiled.client.from_uri
+   tiled.client.simple
 ```
 
 ## Client Container
@@ -109,7 +110,7 @@ And, finally, there are convenience methods for writing:
    tiled.client.container.Container.create_container
    tiled.client.container.Container.write_array
    tiled.client.container.Container.write_awkward
-   tiled.client.container.Container.write_dataframe
+   tiled.client.container.Container.write_table
    tiled.client.container.Container.write_sparse
 ```
 

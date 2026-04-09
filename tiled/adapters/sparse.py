@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import dask.dataframe
 import numpy
@@ -6,18 +6,21 @@ import pandas
 import sparse
 from numpy._typing import NDArray
 
-from ..ndslice import NDSlice
-from ..storage import Storage
+from tiled.adapters.core import Adapter
+
+from ..ndslice import NDBlock, NDSlice
+from ..structures.array import BuiltinDtype
 from ..structures.core import Spec, StructureFamily
-from ..structures.sparse import COOStructure
-from ..type_aliases import JSON
-from .array import slice_and_shape_from_block_and_chunks
+from ..structures.sparse import COOStructure, SparseStructure
+from ..type_aliases import JSON, Chunks
 
 
-class COOAdapter:
+class SparseAdapter(Adapter[SparseStructure]):
+    structure_family: StructureFamily = StructureFamily.sparse
+
+
+class COOAdapter(SparseAdapter):
     "Wrap sparse Coordinate List (COO) arrays."
-    structure_family = StructureFamily.sparse
-    supported_storage: Set[type[Storage]] = set()
 
     @classmethod
     def from_arrays(
@@ -26,6 +29,7 @@ class COOAdapter:
         data: Union[dask.dataframe.DataFrame, pandas.DataFrame],
         shape: Tuple[int, ...],
         dims: Optional[Tuple[str, ...]] = None,
+        *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> "COOAdapter":
@@ -49,6 +53,8 @@ class COOAdapter:
             dims=dims,
             shape=shape,
             chunks=tuple((dim,) for dim in shape),
+            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
             resizable=False,
         )
         return cls(
@@ -94,7 +100,7 @@ class COOAdapter:
         cls,
         blocks: Dict[Tuple[int, ...], Tuple[NDArray[Any], Any]],
         shape: Tuple[int, ...],
-        chunks: Tuple[Tuple[int, ...], ...],
+        chunks: Chunks,
         *,
         dims: Optional[Tuple[str, ...]] = None,
         metadata: Optional[JSON] = None,
@@ -102,6 +108,7 @@ class COOAdapter:
     ) -> "COOAdapter":
         """
         Construct from blocks with coords given in global reference frame.
+
         Parameters
         ----------
         blocks :
@@ -127,6 +134,8 @@ class COOAdapter:
             dims=dims,
             shape=shape,
             chunks=chunks,
+            data_type=BuiltinDtype.from_numpy_dtype(data.dtype),
+            coord_data_type=BuiltinDtype.from_numpy_dtype(coords.dtype),
             resizable=False,
         )
         return cls(
@@ -146,6 +155,7 @@ class COOAdapter:
     ) -> None:
         """
         Construct from blocks with coords given in block-local reference frame.
+
         Parameters
         ----------
         blocks :
@@ -154,58 +164,15 @@ class COOAdapter:
         specs :
         """
         self.blocks = blocks
-        self._metadata = metadata or {}
-        self._structure = structure
-        self.specs = specs or []
+        super().__init__(structure, metadata=metadata, specs=specs)
 
-    def metadata(self) -> JSON:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._metadata
-
-    def structure(self) -> COOStructure:
-        """
-
-        Returns
-        -------
-
-        """
-        return self._structure
-
-    def read_block(
-        self, block: Tuple[int, ...], slice: NDSlice = NDSlice(...)
-    ) -> sparse.COO:
-        """
-
-        Parameters
-        ----------
-        block :
-        slice :
-
-        Returns
-        -------
-
-        """
+    def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> sparse.COO:
         coords, data = self.blocks[block]
-        _, shape = slice_and_shape_from_block_and_chunks(block, self._structure.chunks)
+        shape = block.shape_from_chunks(self._structure.chunks)
         arr = sparse.COO(data=data[:], coords=coords[:], shape=shape)
         return arr[slice] if slice else arr
 
     def read(self, slice: NDSlice = NDSlice(...)) -> sparse.COO:
-        """
-
-        Parameters
-        ----------
-        slice :
-
-        Returns
-        -------
-
-        """
         all_coords = []
         all_data = []
         for block, (coords, data) in self.blocks.items():

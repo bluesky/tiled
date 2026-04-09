@@ -50,9 +50,9 @@ validate API keys.
 
 Further Reading:
 * [Security](#security)
-* [Login Tutorial](#login-tutorial)
 * [Authentication Details](#auth-details)
 * [Tiled Authentication Database](#tiled-authn-database)
+* [Tiled Storage Database](#storage-database)
 
 (accessing-data-and-metadata-arch)=
 ### Accessing Data and Metadata
