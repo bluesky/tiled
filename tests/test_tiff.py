@@ -65,10 +65,10 @@ def client(tmpdir_module):
             ),
         }
     )
-    # `true_chunks` would be provided in data_source.properties if initialized from a catalog
-    tree["5d_sequence"].true_chunks = ((1, 1, 1), (5,), (7,), (4,))
-    tree["5d_sequence_second_dim"].true_chunks = ((1, 1, 1), (5,), (7,), (4,))
-    tree["5d_sequence_first_and_second_dim"].true_chunks = ((1,) * 12, (5,), (7,), (4,))
+    # `_chunks` would be provided in data_source.properties if initialized from a catalog
+    tree["5d_sequence"]._chunks = ((1, 1, 1), (5,), (7,), (4,))
+    tree["5d_sequence_second_dim"]._chunks = ((1, 1, 1), (5,), (7,), (4,))
+    tree["5d_sequence_first_and_second_dim"]._chunks = ((1,) * 12, (5,), (7,), (4,))
     app = build_app(tree)
     with Context.from_app(app) as context:
         client = from_context(context)
