@@ -6,10 +6,17 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+
 ### Added
 
 - Support for interacting with irregular-shaped numeric arrays via
   [`ragged`](https://github.com/scikit-hep/ragged).
+
+### Fixed
+
+- Writing chunked (dask) arrays with single chunk along all dimensions
+- OIDC authenticator was not quite compliant and was incompatible with
+  at least some providers including Azure and ORCID.
 
 ### Changed
 
