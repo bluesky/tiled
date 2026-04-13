@@ -777,6 +777,7 @@ def get_websocket_envelope_formatter(
                     payload_decoded = payload_bytes
                 else:
                     # Transcode the payload to JSON.
+                    metadata["content-type"] = "application/json"
                     msg_type = metadata.get("type", "")
                     if msg_type == "table-data":
                         deserializer = deserialization_registry.dispatch(
@@ -794,7 +795,6 @@ def get_websocket_envelope_formatter(
                             structure.data_type.to_numpy_dtype(),
                             metadata.get("shape"),
                         )
-                metadata["content-type"] = "application/json"
                 metadata["payload"] = payload_decoded
             # Convert non-serializable schema objects (e.g. pyarrow.Schema)
             # to their string representation for JSON transport.
