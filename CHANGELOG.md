@@ -11,6 +11,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Writing chunked (dask) arrays with single chunk along all dimensions
 - OIDC authenticator was not quite compliant and was incompatible with
   at least some providers including Azure and ORCID.
+- Ensure that JSON payloads in streaming endpoints is properly decoded.
 
 ### Changed
 
