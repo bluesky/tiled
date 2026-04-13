@@ -2,12 +2,18 @@ import Container from "@mui/material/Container";
 import ErrorBoundary from "./components/error-boundary/error-boundary";
 import { Outlet } from "react-router-dom";
 import TiledAppBar from "./components/tiled-app-bar/tiled-app-bar";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import * as ReactDOM from "react-dom";
 import { fetchSettings } from "./settings";
 import { SettingsContext, emptySettings } from "./context/settings";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
+
+// Expose React globals so external spec_view plugins (IIFE bundles)
+// can use React without bundling their own copy.
+(window as any).React = React;
+(window as any).ReactDOM = ReactDOM;
 
 const Browse = lazy(() => import("./routes/browse"));
 
