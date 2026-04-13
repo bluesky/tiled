@@ -142,13 +142,13 @@ def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
             }
         )
     if offset + limit < length_hint:
-        links["next"] = (
-            f"{base_url}{route}/{path_str}?page[offset]={offset + limit}&page[limit]={limit}"
-        )
+        links[
+            "next"
+        ] = f"{base_url}{route}/{path_str}?page[offset]={offset + limit}&page[limit]={limit}"
     if offset > 0:
-        links["prev"] = (
-            f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
-        )
+        links[
+            "prev"
+        ] = f"{base_url}{route}/{path_str}?page[offset]={max(0, offset - limit)}&page[limit]={limit}"
     return links
 
 
@@ -773,8 +773,10 @@ def get_websocket_envelope_formatter(
                     "content-type", "application/octet-stream"
                 )
                 if media_type == "application/json":
+                    # Nothing to do, the payload is already JSON
                     payload_decoded = payload_bytes
                 else:
+                    # Transcode the payload to JSON.
                     metadata["content-type"] = "application/json"
                     msg_type = metadata.get("type", "")
                     if msg_type == "table-data":
