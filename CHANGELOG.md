@@ -13,6 +13,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
   at least some providers including Azure and ORCID.
 - A bug in `TiledAuth` when `token_directory` is `None` caused an
   error during token refresh.
+- Resolve syntax error caused by a return statement in a finally block
+  on Python 3.14+.
 
 ### Changed
 
