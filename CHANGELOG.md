@@ -12,6 +12,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - OIDC authenticator was not quite compliant and was incompatible with
   at least some providers including Azure and ORCID.
 - Ensure that JSON payloads in streaming endpoints is properly decoded.
+- A bug in `TiledAuth` when `token_directory` is `None` caused an
+  error during token refresh.
 
 ### Changed
 
