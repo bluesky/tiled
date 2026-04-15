@@ -1,4 +1,5 @@
 import sys
+import urllib.parse
 
 import dask.array
 import msgpack
@@ -46,10 +47,16 @@ def append_array(client, new_arr, seq_num, persist=None):
 def receive_ws_updates(websocket, count=1):
     """Helper to receive updates in websocket tests."""
     # Receive all updates
+    envelope_format = urllib.parse.parse_qs(websocket.scope["query_string"].decode())[
+        "envelope_format"
+    ][0]
     received = []
     for _ in range(count + 1):  # +1 for schema
-        msg_bytes = websocket.receive_bytes()
-        msg = msgpack.unpackb(msg_bytes)
+        if envelope_format == "json":
+            msg = websocket.receive_json()
+        else:  # default to msgpack
+            msg_bytes = websocket.receive_bytes()
+            msg = msgpack.unpackb(msg_bytes)
         received.append(msg)
 
     # Verify all messages received (schema + n updates)
@@ -74,12 +81,20 @@ def verify_ws_updates(received, start=1, chunked=False):
                 assert msg["shape"] == [10]
 
             # Verify payload contains the expected array data
-            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
-            expected_array = np.arange(10) + (start - 1) + i
-            np.testing.assert_array_equal(payload_array, expected_array)
+            if isinstance(msg["payload"], bytes):
+                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+            else:
+                payload_array = np.array(msg["payload"], dtype=np.int64)
+            expected_array = (np.arange(10) + (start - 1) + i).reshape(msg["shape"])
+            np.testing.assert_array_equal(
+                payload_array.reshape(msg["shape"]), expected_array
+            )
 
 
-def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context):
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_subscribe_immediately_after_creation_websockets(
+    tiled_websocket_context, envelope_format
+):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -88,9 +103,9 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
     arr = np.arange(10)
     streaming_node = client.write_array(arr, key="test_stream_immediate")
 
-    # Connect WebSocket using TestClient with msgpack format and authorization
+    # Connect WebSocket using TestClient with specified envelope format and authorization
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
+        f"/api/v1/stream/single/test_stream_immediate?envelope_format={envelope_format}",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that overwrite the array
@@ -101,7 +116,10 @@ def test_subscribe_immediately_after_creation_websockets(tiled_websocket_context
         verify_ws_updates(received)
 
 
-def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_connection_to_non_existent_node(
+    tiled_websocket_context, envelope_format
+):
     """Test websocket connection to non-existent node returns 404."""
     context = tiled_websocket_context
     test_client = context.http_client
@@ -111,13 +129,16 @@ def test_websocket_connection_to_non_existent_node(tiled_websocket_context):
     # Try to connect to websocket for non-existent node
     # This should result in an HTTP 404 response during the handshake
     response = test_client.get(
-        f"/api/v1/stream/single/{non_existent_node_id}",
+        f"/api/v1/stream/single/{non_existent_node_id}?envelope_format={envelope_format}",
         headers={"Authorization": "Apikey secret"},
     )
     assert response.status_code == 404
 
 
-def test_subscribe_after_first_update_websockets(tiled_websocket_context):
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_subscribe_after_first_update_websockets(
+    tiled_websocket_context, envelope_format
+):
     """Client that subscribes after first update sees only subsequent updates."""
     context = tiled_websocket_context
     client = from_context(context)
@@ -133,7 +154,7 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
 
     # Connect WebSocket after first update
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_stream_after_update?envelope_format=msgpack",
+        f"/api/v1/stream/single/test_stream_after_update?envelope_format={envelope_format}",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 2 more updates that overwrite the array
@@ -145,8 +166,9 @@ def test_subscribe_after_first_update_websockets(tiled_websocket_context):
         verify_ws_updates(received, start=2)
 
 
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 def test_subscribe_after_first_update_from_beginning_websockets(
-    tiled_websocket_context,
+    tiled_websocket_context, envelope_format
 ):
     """Client that subscribes after first update but requests from seq_num=0 sees all updates.
 
@@ -167,33 +189,48 @@ def test_subscribe_after_first_update_from_beginning_websockets(
 
     # Connect WebSocket requesting from beginning
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_stream_from_beginning?envelope_format=msgpack&start=0",
+        f"/api/v1/stream/single/test_stream_from_beginning?envelope_format={envelope_format}&start=0",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Schema
-        schema_msg_bytes = websocket.receive_bytes()
-        schema_msg = msgpack.unpackb(schema_msg_bytes)
+        if envelope_format == "json":
+            schema_msg = websocket.receive_json()
+        else:
+            schema_msg_bytes = websocket.receive_bytes()
+            schema_msg = msgpack.unpackb(schema_msg_bytes)
         assert "type" in schema_msg
         assert "version" in schema_msg
 
         # First, should receive the initial array creation
-        historical_msg_bytes = websocket.receive_bytes()
-        historical_msg = msgpack.unpackb(historical_msg_bytes)
+        if envelope_format == "json":
+            historical_msg = websocket.receive_json()
+        else:
+            historical_msg_bytes = websocket.receive_bytes()
+            historical_msg = msgpack.unpackb(historical_msg_bytes)
         assert "timestamp" in historical_msg
         assert "payload" in historical_msg
         assert historical_msg["shape"] == [10]
 
         # Verify historical payload (initial array creation - sequence 0)
-        historical_payload = np.frombuffer(historical_msg["payload"], dtype=np.int64)
+        if envelope_format == "json":
+            historical_payload = np.array(historical_msg["payload"], dtype=np.int64)
+        else:
+            historical_payload = np.frombuffer(
+                historical_msg["payload"], dtype=np.int64
+            )
         expected_historical = np.arange(10)  # Initial array
         np.testing.assert_array_equal(historical_payload, expected_historical)
 
         # Next, should receive the first update (sequence 1)
-        first_update_bytes = websocket.receive_bytes()
-        first_update_msg = msgpack.unpackb(first_update_bytes)
-        first_update_payload = np.frombuffer(
-            first_update_msg["payload"], dtype=np.int64
-        )
+        if envelope_format == "json":
+            first_update_msg = websocket.receive_json()
+            first_update_payload = np.array(first_update_msg["payload"], dtype=np.int64)
+        else:
+            first_update_bytes = websocket.receive_bytes()
+            first_update_msg = msgpack.unpackb(first_update_bytes)
+            first_update_payload = np.frombuffer(
+                first_update_msg["payload"], dtype=np.int64
+            )
         expected_first_update = np.arange(10) + 1
         np.testing.assert_array_equal(first_update_payload, expected_first_update)
 
@@ -204,21 +241,30 @@ def test_subscribe_after_first_update_from_beginning_websockets(
 
         # Receive the new updates
         for i in range(2, 4):
-            msg_bytes = websocket.receive_bytes()
-            msg = msgpack.unpackb(msg_bytes)
+            if envelope_format == "json":
+                msg = websocket.receive_json()
+            else:
+                msg_bytes = websocket.receive_bytes()
+                msg = msgpack.unpackb(msg_bytes)
             assert "timestamp" in msg
             assert "payload" in msg
             assert msg["shape"] == [10]
 
             # Verify payload contains the expected array data
-            payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
+            if envelope_format == "json":
+                payload_array = np.array(msg["payload"], dtype=np.int64)
+            else:
+                payload_array = np.frombuffer(msg["payload"], dtype=np.int64)
             expected_array = np.arange(10) + i
             np.testing.assert_array_equal(payload_array, expected_array)
 
 
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 @pytest.mark.parametrize("write_op", (overwrite_array, patch_array))
 @pytest.mark.parametrize("persist", (None, True, False))
-def test_updates_persist_write(tiled_websocket_context, write_op, persist):
+def test_updates_persist_write(
+    tiled_websocket_context, envelope_format, write_op, persist
+):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -229,7 +275,7 @@ def test_updates_persist_write(tiled_websocket_context, write_op, persist):
 
     # Connect WebSocket using TestClient with msgpack format and authorization
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
+        f"/api/v1/stream/single/test_stream_immediate?envelope_format={envelope_format}",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that write values into the array
@@ -248,8 +294,9 @@ def test_updates_persist_write(tiled_websocket_context, write_op, persist):
     np.testing.assert_array_equal(persisted_data, expected_persisted)
 
 
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 @pytest.mark.parametrize("persist", (None, True, False))
-def test_updates_persist_write_block(tiled_websocket_context, persist):
+def test_updates_persist_write_block(tiled_websocket_context, envelope_format, persist):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -261,7 +308,7 @@ def test_updates_persist_write_block(tiled_websocket_context, persist):
 
     # Connect WebSocket using TestClient with msgpack format and authorization
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
+        f"/api/v1/stream/single/test_stream_immediate?envelope_format={envelope_format}",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that write values into the array
@@ -283,8 +330,9 @@ def test_updates_persist_write_block(tiled_websocket_context, persist):
 
 
 # Extending an array with persist=False is not yet supported
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 @pytest.mark.parametrize("persist", (None, True))
-def test_updates_persist_append(tiled_websocket_context, persist):
+def test_updates_persist_append(tiled_websocket_context, envelope_format, persist):
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
@@ -295,7 +343,7 @@ def test_updates_persist_append(tiled_websocket_context, persist):
 
     # Connect WebSocket using TestClient with msgpack format and authorization
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_stream_immediate?envelope_format=msgpack",
+        f"/api/v1/stream/single/test_stream_immediate?envelope_format={envelope_format}",
         headers={"Authorization": "Apikey secret"},
     ) as websocket:
         # Send 3 updates using Tiled client that append to the array
@@ -380,7 +428,8 @@ def test_close_stream_not_found(tiled_websocket_context):
     assert response.status_code == 404
 
 
-def test_websocket_connection_wrong_api_key(tiled_websocket_context):
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_connection_wrong_api_key(tiled_websocket_context, envelope_format):
     """Test websocket connection with wrong API key fails with 401."""
 
     context = tiled_websocket_context
@@ -394,7 +443,7 @@ def test_websocket_connection_wrong_api_key(tiled_websocket_context):
     # Try to connect to websocket with wrong API key
     with pytest.raises(WebSocketDenialResponse) as exc_info:
         with test_client.websocket_connect(
-            "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
+            f"/api/v1/stream/single/test_auth_websocket?envelope_format={envelope_format}",
             headers={"Authorization": "Apikey wrong_key"},
         ):
             pass
@@ -402,7 +451,8 @@ def test_websocket_connection_wrong_api_key(tiled_websocket_context):
     assert exc_info.value.status_code == 401
 
 
-def test_websocket_connection_no_api_key(tiled_websocket_context):
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_connection_no_api_key(tiled_websocket_context, envelope_format):
     """Test websocket connection with no API key fails with 401."""
 
     context = tiled_websocket_context
@@ -419,14 +469,17 @@ def test_websocket_connection_no_api_key(tiled_websocket_context):
     # Try to connect to websocket with no API key
     with pytest.raises(WebSocketDenialResponse) as exc_info:
         with test_client.websocket_connect(
-            "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
+            f"/api/v1/stream/single/test_auth_websocket?envelope_format={envelope_format}",
         ):
             pass
 
     assert exc_info.value.status_code == 401
 
 
-def test_websocket_connection_public_no_api_key(tiled_websocket_context_public):
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_connection_public_no_api_key(
+    tiled_websocket_context_public, envelope_format
+):
     """Test websocket connection to a public server with no API key works."""
     context = tiled_websocket_context_public
     client = from_context(context)
@@ -441,7 +494,7 @@ def test_websocket_connection_public_no_api_key(tiled_websocket_context_public):
 
     # Try to connect to (public) websocket with no API key
     with test_client.websocket_connect(
-        "/api/v1/stream/single/test_auth_websocket?envelope_format=msgpack",
+        f"/api/v1/stream/single/test_auth_websocket?envelope_format={envelope_format}",
     ):
         pass
 
