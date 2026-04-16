@@ -145,6 +145,30 @@ class SimpleTiledServer:
         ).run_in_thread()
         base_url = self._cm.__enter__()
 
+        # Wait for the FastAPI lifespan startup to complete.
+        # ThreadedServer.started is True as soon as uvicorn opens the
+        # socket, but the app's startup_event() may still be running.
+        # Poll the metadata endpoint until it returns 200.
+        import httpx
+
+        for _ in range(200):
+            try:
+                r = httpx.get(
+                    f"{base_url}/api/v1/?api_key={quote_plus(api_key)}",
+                    timeout=1.0,
+                    follow_redirects=True,
+                )
+                if r.status_code == 200:
+                    break
+            except (httpx.ConnectError, httpx.ReadTimeout):
+                pass
+            time.sleep(0.1)
+        else:
+            raise TimeoutError(
+                "Tiled server started listening but the application "
+                "did not become ready within 20 seconds."
+            )
+
         # Extract port from base_url.
         actual_port = urlparse(base_url).port
 
