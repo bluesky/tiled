@@ -10,6 +10,7 @@ import time
 from typing import Optional, Union, cast
 from urllib.parse import quote_plus, urlparse
 
+import httpx
 import uvicorn
 
 from ..storage import SQLStorage, get_storage
@@ -145,19 +146,12 @@ class SimpleTiledServer:
         ).run_in_thread()
         base_url = self._cm.__enter__()
 
-        # Wait for the FastAPI lifespan startup to complete.
         # ThreadedServer.started is True as soon as uvicorn opens the
-        # socket, but the app's startup_event() may still be running.
-        # Poll the metadata endpoint until it returns 200.
-        import httpx
-
+        # socket, but FastAPI does not serve requests until the lifespan
+        # startup_event() completes. Poll /healthz to wait for that.
         for _ in range(200):
             try:
-                r = httpx.get(
-                    f"{base_url}/api/v1/?api_key={quote_plus(api_key)}",
-                    timeout=1.0,
-                    follow_redirects=True,
-                )
+                r = httpx.get(f"{base_url}/healthz", timeout=1.0)
                 if r.status_code == 200:
                     break
             except (httpx.ConnectError, httpx.ReadTimeout):
