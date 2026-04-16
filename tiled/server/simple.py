@@ -149,19 +149,31 @@ class SimpleTiledServer:
         # ThreadedServer.started is True as soon as uvicorn opens the
         # socket, but FastAPI does not serve requests until the lifespan
         # startup_event() completes. Poll /healthz to wait for that.
-        for _ in range(200):
-            try:
-                r = httpx.get(f"{base_url}/healthz", timeout=1.0)
-                if r.status_code == 200:
-                    break
-            except (httpx.ConnectError, httpx.ReadTimeout):
-                pass
-            time.sleep(0.1)
-        else:
-            raise TimeoutError(
-                "Tiled server started listening but the application "
-                "did not become ready within 20 seconds."
-            )
+        # Ensure the background server thread is shut down if anything
+        # in the readiness probe fails; otherwise it would leak.
+        try:
+            deadline = time.monotonic() + 20.0
+            with httpx.Client() as client:
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(
+                            "Tiled server started listening but the application "
+                            "did not become ready within 20 seconds."
+                        )
+                    try:
+                        r = client.get(
+                            f"{base_url}/healthz",
+                            timeout=min(1.0, remaining),
+                        )
+                        if r.status_code == 200:
+                            break
+                    except httpx.RequestError:
+                        pass
+                    time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+        except BaseException:
+            self._cm.__exit__(None, None, None)
+            raise
 
         # Extract port from base_url.
         actual_port = urlparse(base_url).port
