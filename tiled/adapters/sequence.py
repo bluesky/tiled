@@ -1,4 +1,5 @@
 import builtins
+import math
 from abc import abstractmethod
 from typing import Any, Iterable, List, Optional, Union
 
@@ -21,10 +22,29 @@ from .utils import force_reshape, init_adapter_from_catalog
 class FileSequenceAdapter(Adapter[ArrayStructure]):
     """Base adapter class for image (and other file) sequences
 
-    Assumes that each file contains an array of the same shape and dtype, and the sequence of files defines the
-    left-most dimension in the resulting compound (stacked) array.
+    Assumes that each file contains an array of the same shape and dtype, and the sequence
+    of files defines the left-most dimension in the resulting compound (stacked) array.
+
+    If additional reshaping is applied, the `true_shape` derived from the `chunks` attribute
+    in the data source properties will reflect the original shape of the stacked array.
 
     When subclassing, define the `_load_from_files` method specific for a particular file type.
+
+    Parameters
+    ----------
+    data_uris : Iterable[str]
+        A sequence of URIs pointing to the files to be stacked along the left-most dimension.
+    structure : Optional[ArrayStructure], optional
+        The structure of the resulting array. If not provided, it is inferred from the shape and
+        dtype of the first file and the number of files.
+    metadata : Optional[JSON], optional
+        Additional metadata to be associated with the adapter.
+    specs : Optional[List[Spec]], optional
+        Additional specs to be associated with the adapter.
+    chunks : Optional[tuple[tuple[int, ...], ...]], optional
+        A tuple specifying the (true) chunk sizes for each dimension. This is used to determine
+        which files to load if additional reshaping is applied. If `chunks` are provided (e.g.
+        from data source parameters) they take precedence over the chunks derived from the files.
     """
 
     structure_family = StructureFamily.array
@@ -36,28 +56,22 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
+        chunks: Optional[tuple[tuple[int, ...], ...]] = None,
     ) -> None:
-        """
-
-        Parameters
-        ----------
-        seq :
-        structure :
-        metadata :
-        specs :
-        """
         self.filepaths = [path_from_uri(data_uri) for data_uri in data_uris]
-        # TODO Check shape, chunks against reality.
+        self._chunks = chunks  # "True" chunks in the files before reshaping
         if structure is None:
             dat0 = self._load_from_files(0)
             shape = (len(self.filepaths), *dat0.shape[1:])
             structure = ArrayStructure(
                 shape=shape,
-                # one chunk per underlying image file
+                # Each file is a single chunk along the left-most dimension;
+                # the remaining dimensions are chunked as in the files
                 chunks=((1,) * shape[0], *[(i,) for i in shape[1:]]),
                 # Assume all files have the same data type
                 data_type=BuiltinDtype.from_numpy_dtype(dat0.dtype),
             )
+            self._chunks = structure.chunks
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
@@ -72,23 +86,26 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         /,
         **kwargs: Optional[Any],
     ) -> "FileSequenceAdapter":
+        kwargs["chunks"] = data_source.properties.get("chunks")
+
         return init_adapter_from_catalog(cls, data_source, node, **kwargs)
 
     @abstractmethod
     def _load_from_files(
-        self, slice: Union[builtins.slice, int] = slice(None)
+        self, slice: Union[builtins.slice, int, Iterable[int]] = slice(None)
     ) -> NDArray[Any]:
         """Load the array data from files
 
         Parameters
         ----------
         slice : slice
-            an optional slice along the left-most dimension in the resulting array; effectively selects a subset of
-            files to be loaded
+            an optional slice along the left-most dimension in the resulting array;
+            effectively selects a subset of files to be loaded
 
         Returns
         -------
-            A numpy or dask ND array with data from each file stacked along an additional (left-most) dimension.
+            A numpy or dask ND array with data from each file stacked along an additional
+            (left-most) dimension.
         """
 
         pass
@@ -118,6 +135,53 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
         -------
             Return a numpy array
         """
+
+        # Check if stacked shape and structure shape are compatible; reshape slice if necessary.
+        # The shape of the array defined in the structure may not match the actual shape of the
+        # stacked files, e.g. if some files are logically grouped along additional dimensions.
+        # We assume that all left-most dimensions in the structure beyond the shape of individual
+        # files are stacking dimensions, and they define which files need to be read.
+        # Finally, the resulting array is reshaped to match the desired structure shape and slice.
+        struct_shape = self.structure().shape
+        if self._chunks:
+            true_shape = tuple(map(sum, self._chunks))
+            if true_shape != struct_shape:
+                # The trailing dimensions must match (can be generalized in the future)
+                if (math.prod(true_shape) != math.prod(struct_shape)) or (
+                    struct_shape[-len(true_shape[1:]) :] != true_shape[1:]  # noqa: E203
+                ):
+                    raise RuntimeError(
+                        f"True shape {true_shape} derived from storage does not "
+                        f"match the shape {struct_shape} derived from the structure."
+                    )
+
+                # The leading dimensions define stacking and the indices of files we need to read
+                stack_shape = struct_shape[: -len(true_shape[1:])]
+                slice = NDSlice(slice).expand_for_shape(struct_shape)  # typing: ignore
+                file_indx_slice = slice[: len(stack_shape)]
+                file_indx_list = (
+                    np.arange(true_shape[0])
+                    .reshape(stack_shape)[file_indx_slice]
+                    .ravel()
+                )
+
+                # The remaining slice to be applied after loading the data from files and stacking;
+                # expand to include any non-degenerate leading dimensions along the file axis
+                tail_dims_slice = slice[len(stack_shape) :]  # noqa: E203
+                for slc in file_indx_slice:
+                    if not isinstance(slc, int):
+                        tail_dims_slice = NDSlice(
+                            builtins.slice(None), *tail_dims_slice
+                        )
+
+                arr = self._load_from_files(slice=file_indx_list)
+                stacked_shape = ndindex(file_indx_slice).newshape(struct_shape)
+                arr = force_reshape(arr, stacked_shape)
+                arr = np.atleast_1d(arr[tail_dims_slice])
+
+                return force_reshape(arr, ndindex(slice).newshape(struct_shape))
+
+        # Load the data from files, applying the slice along the left-most dimension if possible
         if slice is Ellipsis:
             arr = self._load_from_files()
         elif isinstance(slice, int):
@@ -146,12 +210,13 @@ class FileSequenceAdapter(Adapter[ArrayStructure]):
                     arr = self.read(slice=left_axis)
                     the_rest.insert(0, builtins.slice(None))
 
-                sliced_shape = ndindex(left_axis).newshape(self.structure().shape)
+                sliced_shape = ndindex(left_axis).newshape(struct_shape)
                 arr = force_reshape(arr, sliced_shape)
                 arr = np.atleast_1d(arr[tuple(the_rest)])
         else:
             raise RuntimeError(f"Unsupported slice type, {type(slice)} in {slice}")
-        sliced_shape = ndindex(slice).newshape(self.structure().shape)
+
+        sliced_shape = ndindex(slice).newshape(struct_shape)
         return force_reshape(arr, sliced_shape)
 
     def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
