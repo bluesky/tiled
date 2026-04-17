@@ -25,6 +25,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   and only fetches the data needed to satisfy the slice.
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
 
+### Added
+
+- Tests for the WebSocket endpoints that stream tabukar data.
+
 ## v0.2.7 (2026-02-27)
 
 ### Fixed
