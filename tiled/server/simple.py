@@ -16,6 +16,8 @@ import uvicorn
 from ..storage import SQLStorage, get_storage
 from ..utils import ensure_uri
 
+_STARTUP_TIMEOUT = 20  # seconds; used for both socket listen and readiness checks
+
 
 class ThreadedServer(uvicorn.Server):
     def install_signal_handlers(self):
@@ -23,21 +25,23 @@ class ThreadedServer(uvicorn.Server):
 
     @contextlib.contextmanager
     def run_in_thread(self):
-        thread = threading.Thread(target=self.run)
-        thread.start()
+        self._thread = threading.Thread(target=self.run)
+        self._thread.start()
         try:
             # Wait for server to start up, or raise TimeoutError.
-            for _ in range(200):
+            for _ in range(int(_STARTUP_TIMEOUT / 0.1)):
                 time.sleep(0.1)
                 if self.started:
                     break
             else:
-                raise TimeoutError("Server did not start in 20 seconds.")
+                raise TimeoutError(
+                    f"Server did not start in {_STARTUP_TIMEOUT} seconds."
+                )
             host, port = self.servers[0].sockets[0].getsockname()
             yield f"http://{host}:{port}"
         finally:
             self.should_exit = True
-            thread.join()
+            self._thread.join()
 
 
 class SimpleTiledServer:
@@ -141,9 +145,10 @@ class SimpleTiledServer:
         self.app = build_app(
             self.catalog, authentication=Authentication(single_user_api_key=api_key)
         )
-        self._cm = ThreadedServer(
+        self._server = ThreadedServer(
             uvicorn.Config(self.app, port=port, loop="asyncio", log_config=log_config)
-        ).run_in_thread()
+        )
+        self._cm = self._server.run_in_thread()
         base_url = self._cm.__enter__()
 
         # ThreadedServer.started is True as soon as uvicorn opens the
@@ -152,14 +157,20 @@ class SimpleTiledServer:
         # Ensure the background server thread is shut down if anything
         # in the readiness probe fails; otherwise it would leak.
         try:
-            deadline = time.monotonic() + 20.0
-            with httpx.Client() as client:
+            deadline = time.monotonic() + _STARTUP_TIMEOUT
+            with httpx.Client(trust_env=False) as client:
                 while True:
+                    if not self._server._thread.is_alive():
+                        raise RuntimeError(
+                            "Tiled server thread exited before the application "
+                            "became ready. Check the log files in the server's "
+                            f"directory for details: {directory}"
+                        )
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise TimeoutError(
                             "Tiled server started listening but the application "
-                            "did not become ready within 20 seconds."
+                            f"did not become ready within {_STARTUP_TIMEOUT} seconds."
                         )
                     try:
                         r = client.get(
