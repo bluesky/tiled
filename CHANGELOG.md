@@ -11,7 +11,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Writing chunked (dask) arrays with single chunk along all dimensions
 - OIDC authenticator was not quite compfixedliant and was incompatible with
   at least some providers including Azure and ORCID.
-- Ensure that JSON payloads in streaming endpoints is properly decoded.
 - Improved performance of reading zarr arrays when slicing by avoiding reading
   the full arrays into memory, but using slice composition instead.
 - Ensure that JSON payloads in streaming endpoints is properly decoded.
