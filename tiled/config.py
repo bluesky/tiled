@@ -359,9 +359,9 @@ class Config(BaseSettings):
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
             if tree.tree_type is from_uri:
-                tree.args["create_mount_nodes_if_not_exist"] = (
-                    self.create_mount_nodes_if_not_exist
-                )
+                tree.args[
+                    "create_mount_nodes_if_not_exist"
+                ] = self.create_mount_nodes_if_not_exist
         return self
 
     @property

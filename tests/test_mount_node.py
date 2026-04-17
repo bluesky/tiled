@@ -2,6 +2,7 @@ import numpy
 
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
+from tiled.structures.core import Spec
 
 
 def test_mount_node(sqlite_or_postgres_uri, tmpdir):
@@ -181,6 +182,7 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
 
     # Mount a tree at a nonexistent path with create_mount_nodes_if_not_exist=True.
     # This should auto-create intermediate container nodes /X/Y/Z.
+    # The leaf node should receive the configured specs and access_tags.
     mount_config = {
         "create_mount_nodes_if_not_exist": True,
         "trees": [
@@ -191,6 +193,8 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
                     "uri": sqlite_or_postgres_uri,
                     "writable_storage": [tmpdir / "data"],
                     "mount_node": "/X/Y/Z",
+                    "specs": [{"name": "MyCustomSpec", "version": "3.0"}],
+                    "top_level_access_blob": {"tags": ["_ROOT_NODE"]},
                 },
             },
         ],
@@ -222,3 +226,8 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
         assert "Y" in list(client["X"])
         assert "Z" in list(client["X"]["Y"])
         assert "child" in list(client["X"]["Y"]["Z"])
+        # Intermediate nodes should have empty specs.
+        assert client["X"].specs == []
+        assert client["X"]["Y"].specs == []
+        # The leaf (mount node) should carry the configured specs.
+        assert client["X"]["Y"]["Z"].specs == [Spec(name="MyCustomSpec", version="3.0")]

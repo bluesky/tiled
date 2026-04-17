@@ -1132,9 +1132,9 @@ class CatalogNodeAdapter:
                     status_code=HTTP_404_NOT_FOUND,
                     detail=f"No revision {number} for node {self.node.id}",
                 )
-            assert result.rowcount == 1, (
-                f"Deletion would affect {result.rowcount} rows; rolling back"
-            )
+            assert (
+                result.rowcount == 1
+            ), f"Deletion would affect {result.rowcount} rows; rolling back"
             await db.commit()
 
     async def replace_metadata(
@@ -1745,7 +1745,8 @@ def key_present(query, tree):
     else:
         keys = query.key.split(".")
         condition = (
-            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT))) != None  # noqa: E711
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
+            != None  # noqa: E711
         )
     condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -1806,17 +1807,22 @@ def in_memory(
     )
 
 
-def _create_mount_node_segments(sync_engine, mount_path):
+def _create_mount_node_segments(sync_engine, mount_path, specs=None, access_blob=None):
     """Create missing intermediate container nodes for a mount path.
 
     Walks the path segments, creating any that don't exist yet.
     DB triggers automatically maintain the nodes_closure table.
+    The leaf node (last segment) receives the given specs and access_blob;
+    intermediate nodes get empty defaults.
     """
     from sqlalchemy import insert
 
+    specs = specs or []
+    access_blob = access_blob or {}
     with sync_engine.begin() as conn:
         parent_id = 0  # root node id
-        for segment in mount_path:
+        for i, segment in enumerate(mount_path):
+            is_leaf = i == len(mount_path) - 1
             # Check if this segment exists under parent_id
             statement = (
                 select(orm.Node.id)
@@ -1832,8 +1838,8 @@ def _create_mount_node_segments(sync_engine, mount_path):
                         parent=parent_id,
                         structure_family=StructureFamily.container,
                         metadata_={},
-                        specs=[],
-                        access_blob={},
+                        specs=specs if is_leaf else [],
+                        access_blob=access_blob if is_leaf else {},
                     )
                 )
                 node_id = result.inserted_primary_key[0]
@@ -1926,7 +1932,12 @@ def from_uri(
                         "Creating intermediate container nodes.",
                         path_str,
                     )
-                    _create_mount_node_segments(sync_engine, mount_path)
+                    _create_mount_node_segments(
+                        sync_engine,
+                        mount_path,
+                        specs=specs,
+                        access_blob=top_level_access_blob,
+                    )
                 else:
                     logger.warning(
                         "mount_node %r was not found in the database. "
