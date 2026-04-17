@@ -4,6 +4,8 @@ import urllib.parse
 import dask.array
 import msgpack
 import numpy as np
+import pandas as pd
+import pyarrow as pa
 import pytest
 from starlette.testclient import WebSocketDenialResponse
 
@@ -517,6 +519,186 @@ def test_close_stream_wrong_api_key(tiled_websocket_context):
     assert response.status_code == 401
 
 
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_table_write_websocket(tiled_websocket_context, envelope_format):
+    """Test that writing a full table triggers a WS event with the correct payload."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    df = pd.DataFrame({"label": ["a", "b"], "value": [1.0, 2.0]})
+    table_node = client.write_table(df, key="test_table_write")
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_table_write?envelope_format={envelope_format}",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Overwrite with new data
+        df2 = pd.DataFrame({"label": ["c", "d"], "value": [3.0, 4.0]})
+        table_node.write_partition(0, df2)
+
+        # Receive schema + 1 data message
+        if envelope_format == "json":
+            schema_msg = websocket.receive_json()
+        else:
+            schema_msg = msgpack.unpackb(websocket.receive_bytes())
+
+        assert schema_msg["type"] == "table-schema"
+        assert "version" in schema_msg
+        # For JSON format, arrow_schema should have been converted to str
+        if envelope_format == "json":
+            assert isinstance(schema_msg["arrow_schema"], str)
+
+        if envelope_format == "json":
+            data_msg = websocket.receive_json()
+        else:
+            data_msg = msgpack.unpackb(websocket.receive_bytes())
+
+        assert data_msg["type"] == "table-data"
+        assert "timestamp" in data_msg
+        assert data_msg["append"] is False
+
+        if envelope_format == "json":
+            # stream_json transcodes Arrow IPC to dict-of-lists
+            payload = data_msg["payload"]
+            assert isinstance(payload, dict)
+            assert payload["label"] == ["c", "d"]
+            assert payload["value"] == [3.0, 4.0]
+        else:
+            # msgpack keeps the raw Arrow IPC bytes
+            assert isinstance(data_msg["payload"], bytes)
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_table_append_websocket(tiled_websocket_context, envelope_format):
+    """Test that appending rows to a table triggers a WS event."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    schema = pa.schema([("path", pa.string()), ("label", pa.string())])
+    table_node = client.create_appendable_table(schema, key="test_table_append")
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_table_append?envelope_format={envelope_format}",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Append some rows (reset_index=False avoids __index_level_0__ mismatch)
+        df1 = pa.table({"path": ["/a/b"], "label": ["cat"]})
+        table_node.append_partition(0, df1)
+
+        df2 = pa.table({"path": ["/c/d", "/e/f"], "label": ["dog", "bird"]})
+        table_node.append_partition(0, df2)
+
+        # Receive schema + 2 data messages
+        if envelope_format == "json":
+            schema_msg = websocket.receive_json()
+        else:
+            schema_msg = msgpack.unpackb(websocket.receive_bytes())
+        assert schema_msg["type"] == "table-schema"
+
+        for expected_tbl in [df1, df2]:
+            if envelope_format == "json":
+                msg = websocket.receive_json()
+            else:
+                msg = msgpack.unpackb(websocket.receive_bytes())
+
+            assert msg["type"] == "table-data"
+            assert msg["append"] is True
+
+            if envelope_format == "json":
+                payload = msg["payload"]
+                assert payload["path"] == expected_tbl.column("path").to_pylist()
+                assert payload["label"] == expected_tbl.column("label").to_pylist()
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_table_multiple_appends_with_late_subscriber(
+    tiled_websocket_context, envelope_format
+):
+    """Late subscriber sees only new appends, not historical ones."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    schema = pa.schema([("x", pa.float64())])
+    table_node = client.create_appendable_table(schema, key="test_table_late_sub")
+
+    # Append before subscribing
+    table_node.append_partition(0, pa.table({"x": [1.0, 2.0]}))
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_table_late_sub?envelope_format={envelope_format}",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Append after subscribing
+        table_node.append_partition(0, pa.table({"x": [3.0, 4.0]}))
+
+        # Receive schema
+        if envelope_format == "json":
+            schema_msg = websocket.receive_json()
+        else:
+            schema_msg = msgpack.unpackb(websocket.receive_bytes())
+        assert schema_msg["type"] == "table-schema"
+
+        # Receive the one new append
+        if envelope_format == "json":
+            msg = websocket.receive_json()
+        else:
+            msg = msgpack.unpackb(websocket.receive_bytes())
+        assert msg["type"] == "table-data"
+        assert msg["append"] is True
+
+        if envelope_format == "json":
+            assert msg["payload"]["x"] == [3.0, 4.0]
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_table_append_from_beginning(tiled_websocket_context, envelope_format):
+    """Subscriber with start=0 replays historical table appends."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    schema = pa.schema([("val", pa.int64())])
+    table_node = client.create_appendable_table(schema, key="test_table_from_beginning")
+
+    # Append before subscribing
+    table_node.append_partition(0, pa.table({"val": [10, 20]}))
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_table_from_beginning?envelope_format={envelope_format}&start=0",
+        headers={"Authorization": "Apikey secret"},
+    ) as websocket:
+        # Schema
+        if envelope_format == "json":
+            schema_msg = websocket.receive_json()
+        else:
+            schema_msg = msgpack.unpackb(websocket.receive_bytes())
+        assert schema_msg["type"] == "table-schema"
+
+        # Should receive the historical append
+        if envelope_format == "json":
+            msg = websocket.receive_json()
+        else:
+            msg = msgpack.unpackb(websocket.receive_bytes())
+        assert msg["type"] == "table-data"
+
+        if envelope_format == "json":
+            assert msg["payload"]["val"] == [10, 20]
+
+        # Now append more and receive it
+        table_node.append_partition(0, pa.table({"val": [30]}))
+
+        if envelope_format == "json":
+            msg2 = websocket.receive_json()
+        else:
+            msg2 = msgpack.unpackb(websocket.receive_bytes())
+        assert msg2["type"] == "table-data"
+        if envelope_format == "json":
+            assert msg2["payload"]["val"] == [30]
+
+
 def test_streaming_cache_config(tmp_path, redis_uri):
     "Test streaming_cache config parsing"
     config_path = tmp_path / "config.yml"
@@ -529,8 +711,8 @@ trees:
    args:
      uri: "sqlite:///:memory:"
      writable_storage:
-        - "file://localhost{str(tmp_path / 'data')}"
-        - "duckdb:///{tmp_path / 'data.duckdb'}"
+        - "file://localhost{str(tmp_path / "data")}"
+        - "duckdb:///{tmp_path / "data.duckdb"}"
      init_if_not_exists: true
 streaming_cache:
   uri: "{redis_uri}"

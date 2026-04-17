@@ -34,6 +34,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   that auto-creates missing intermediate container nodes when a `mount_node`
   path does not exist in the database. Also settable via the
   `TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST` environment variable.
+- Tests for the WebSocket endpoints that stream tabukar data.
 
 ## v0.2.7 (2026-02-27)
 
