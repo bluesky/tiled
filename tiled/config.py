@@ -365,7 +365,11 @@ class Config(BaseSettings):
 
     @cached_property
     def merged_trees(self) -> Any:  # TODO: update when # 1047 is merged
-        trees = dict(tree.tree_entry for tree in self.trees)
+        trees = {
+            segments: tree
+            for segments, tree in (tree_spec.tree_entry for tree_spec in self.trees)
+            if tree is not None
+        }
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = trees[()]
@@ -394,6 +398,8 @@ class Config(BaseSettings):
         shutdown = []
         background = []
         for tree in self.trees:
+            if tree.tree is None:
+                continue
             startup.extend(tree.startup_tasks)
             shutdown.extend(tree.shutdown_tasks)
             background.extend(tree.background_tasks)

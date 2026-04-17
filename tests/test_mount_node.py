@@ -107,3 +107,52 @@ def test_mount_node(sqlite_or_postgres_uri, tmpdir):
     with Context.from_app(build_app_from_config(multi_tree_config)) as context:
         client = from_context(context)
         assert list(client["some"]["nested"]["path"]) == ["i"]
+
+
+def test_mount_node_nonexistent(sqlite_or_postgres_uri, tmpdir):
+    "A tree whose mount_node does not exist in the database should be silently excluded."
+    # Initialize the catalog database with a single container "A".
+    init_config = {
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                    "writable_storage": [tmpdir / "data"],
+                },
+            },
+        ]
+    }
+    with Context.from_app(build_app_from_config(init_config)) as context:
+        client = from_context(context)
+        client.create_container("A")
+
+    # Mount two trees: one pointing at an existing node, one at a nonexistent node.
+    multi_tree_config = {
+        "trees": [
+            {
+                "path": "/a",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": [tmpdir / "data"],
+                    "mount_node": "/A",
+                },
+            },
+            {
+                "path": "/b",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": [tmpdir / "data"],
+                    "mount_node": "/does_not_exist",
+                },
+            },
+        ]
+    }
+    with Context.from_app(build_app_from_config(multi_tree_config)) as context:
+        client = from_context(context)
+        # Only the tree with the existing mount_node should be served.
+        assert list(client) == ["a"]

@@ -6,6 +6,7 @@ import itertools as it
 import logging
 import operator
 import os
+import re
 import shutil
 import sys
 import uuid
@@ -1866,6 +1867,28 @@ def from_uri(
         if isinstance(mount_node, str)
         else mount_node
     )
+    if mount_path:
+        # Verify that mount_node exists in the database before proceeding.
+        # Use a temporary sync engine to run the check at config-parsing time.
+        sync_uri = re.sub(r"\+[^:]+", "", uri)  # strip async driver
+        from sqlalchemy import create_engine
+
+        sync_engine = create_engine(sync_uri)
+        try:
+            statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
+            with sync_engine.connect() as conn:
+                node_id = conn.execute(statement).scalar()
+            if node_id is None:
+                path_str = "/" + "/".join(mount_path)
+                logger.warning(
+                    "mount_node %r was not found in the database. "
+                    "This catalog tree will not be served. Create the node "
+                    "first (e.g. via the admin API or tiled CLI) and restart the server.",
+                    path_str,
+                )
+                return None
+        finally:
+            sync_engine.dispose()
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
 
     return adapter
@@ -1877,7 +1900,7 @@ def format_distinct_result(results, counts):
             {"value": value, "count": count} for value, count in results
         ]
     else:
-        formatted_result = [{"value": value} for value, in results]
+        formatted_result = [{"value": value} for (value,) in results]
     return formatted_result
 
 
