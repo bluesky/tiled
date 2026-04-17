@@ -9,15 +9,26 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - Writing chunked (dask) arrays with single chunk along all dimensions
-- OIDC authenticator was not quite compliant and was incompatible with
+- OIDC authenticator was not quite compfixedliant and was incompatible with
   at least some providers including Azure and ORCID.
 - Ensure that JSON payloads in streaming endpoints is properly decoded.
+- Improved performance of reading zarr arrays when slicing by avoiding reading
+  the full arrays into memory, but using slice composition instead.
+- Ensure that JSON payloads in streaming endpoints is properly decoded.
+- A bug in `TiledAuth` when `token_directory` is `None` caused an
+  error during token refresh.
+- Resolve syntax error caused by a return statement in a finally block
+  on Python 3.14+.
 
 ### Changed
 
 - Array client fully supports slicing when communicating with the server
   and only fetches the data needed to satisfy the slice.
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
+
+### Added
+
+- Tests for the WebSocket endpoints that stream tabukar data.
 
 ## v0.2.7 (2026-02-27)
 

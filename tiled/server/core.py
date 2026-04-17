@@ -119,8 +119,8 @@ async def len_or_approx(tree, exact=False, threshold=5000):
             return await anyio.to_thread.run_sync(operator.length_hint, tree)
     except TypeError:
         pass
-    finally:
-        return await anyio.to_thread.run_sync(len, tree)
+
+    return await anyio.to_thread.run_sync(len, tree)
 
 
 def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
