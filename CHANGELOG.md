@@ -8,6 +8,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- A `mount_node` referencing a nonexistent path in the database no longer causes
+  silent data corruption. Trees with missing mount nodes are excluded from the
+  served tree with a warning logged at startup.
 - Writing chunked (dask) arrays with single chunk along all dimensions
 - OIDC authenticator was not quite compfixedliant and was incompatible with
   at least some providers including Azure and ORCID.
@@ -24,6 +27,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Array client fully supports slicing when communicating with the server
   and only fetches the data needed to satisfy the slice.
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
+
+### Added
+
+- New server config option `create_mount_nodes_if_not_exist` (default `false`)
+  that auto-creates missing intermediate container nodes when a `mount_node`
+  path does not exist in the database. Also settable via the
+  `TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST` environment variable.
 
 ## v0.2.7 (2026-02-27)
 

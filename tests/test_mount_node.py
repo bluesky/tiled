@@ -158,8 +158,8 @@ def test_mount_node_nonexistent(sqlite_or_postgres_uri, tmpdir):
         assert list(client) == ["a"]
 
 
-def test_create_mount_node_if_not_exists(sqlite_or_postgres_uri, tmpdir):
-    "Test that create_mount_node_if_not_exists auto-creates missing mount node paths."
+def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
+    "Test that create_mount_nodes_if_not_exist auto-creates missing mount node paths."
     # Initialize the catalog database (empty, no containers).
     init_config = {
         "trees": [
@@ -179,10 +179,10 @@ def test_create_mount_node_if_not_exists(sqlite_or_postgres_uri, tmpdir):
         # Database is empty, no containers exist.
         assert list(client) == []
 
-    # Mount a tree at a nonexistent path with create_mount_node_if_not_exists=True.
+    # Mount a tree at a nonexistent path with create_mount_nodes_if_not_exist=True.
     # This should auto-create intermediate container nodes /X/Y/Z.
     mount_config = {
-        "create_mount_node_if_not_exists": True,
+        "create_mount_nodes_if_not_exist": True,
         "trees": [
             {
                 "path": "/",

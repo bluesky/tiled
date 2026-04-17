@@ -89,6 +89,14 @@
 #   storage_pool_size: 5
 #   catalog_max_overflow: 10
 #   storage_max_overflow: 10
+#
+#   # Mount a sub-tree of the catalog as if it were the root. Useful for
+#   # exposing different sections of a single catalog database at different
+#   # URL path prefixes (see the 'trees' section below). The value is a
+#   # slash-separated path (e.g. "/experiment/2024") or a list of segments
+#   # (e.g. ["experiment", "2024"]).
+#   #
+#   # mount_node: /experiment/2024
 
 
 # -----------------------------------------------------------------------------
@@ -373,6 +381,22 @@ authentication:
 
 
 # -----------------------------------------------------------------------------
+# Mount Node Auto-Creation
+# -----------------------------------------------------------------------------
+# When using 'mount_node' in a catalog/tree config, the referenced path must
+# exist in the database. By default, if the path does not exist, the tree is
+# silently excluded from the server and a warning is logged.
+#
+# Set this to true to automatically create any missing intermediate container
+# nodes at server startup. This is a global setting that applies to all
+# catalogs/trees.
+#
+# Also settable via the TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST environment variable.
+#
+# create_mount_nodes_if_not_exist: false
+
+
+# -----------------------------------------------------------------------------
 # Metrics
 # -----------------------------------------------------------------------------
 # Prometheus metrics are exposed at /metrics by default.
@@ -441,6 +465,21 @@ authentication:
 #     tree: catalog
 #     args:
 #       uri: ${TILED_CATALOG_B_URI}
+#
+# Trees also support 'mount_node' to serve a sub-tree of a catalog.
+# This lets you house multiple logical catalogs in a single database:
+#
+# trees:
+#   - path: /raw
+#     tree: catalog
+#     args:
+#       uri: ${TILED_CATALOG_URI}
+#       mount_node: /experiment/raw
+#   - path: /processed
+#     tree: catalog
+#     args:
+#       uri: ${TILED_CATALOG_URI}
+#       mount_node: /experiment/processed
 #
 # It also supports custom alternatives to Tiled's catalog:
 #

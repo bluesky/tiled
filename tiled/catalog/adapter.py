@@ -1132,9 +1132,9 @@ class CatalogNodeAdapter:
                     status_code=HTTP_404_NOT_FOUND,
                     detail=f"No revision {number} for node {self.node.id}",
                 )
-            assert (
-                result.rowcount == 1
-            ), f"Deletion would affect {result.rowcount} rows; rolling back"
+            assert result.rowcount == 1, (
+                f"Deletion would affect {result.rowcount} rows; rolling back"
+            )
             await db.commit()
 
     async def replace_metadata(
@@ -1745,8 +1745,7 @@ def key_present(query, tree):
     else:
         keys = query.key.split(".")
         condition = (
-            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT)))
-            != None  # noqa: E711
+            orm.Node.metadata_.op("#>")(sql_cast(keys, ARRAY(TEXT))) != None  # noqa: E711
         )
     condition = condition if getattr(query, "exists", True) else not_(condition)
     return tree.new_variation(conditions=tree.conditions + [condition])
@@ -1858,7 +1857,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
-    create_mount_node_if_not_exists=False,
+    create_mount_nodes_if_not_exist=False,
     cache_config=None,
     catalog_pool_size=5,
     storage_pool_size=5,
@@ -1921,7 +1920,7 @@ def from_uri(
                 node_id = conn.execute(statement).scalar()
             if node_id is None:
                 path_str = "/" + "/".join(mount_path)
-                if create_mount_node_if_not_exists:
+                if create_mount_nodes_if_not_exist:
                     logger.info(
                         "mount_node %r does not exist in the database. "
                         "Creating intermediate container nodes.",
