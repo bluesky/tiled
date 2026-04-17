@@ -1,4 +1,5 @@
 import numpy
+import pytest
 
 from tiled.client import Context, from_context
 from tiled.server.app import build_app_from_config
@@ -111,7 +112,7 @@ def test_mount_node(sqlite_or_postgres_uri, tmpdir):
 
 
 def test_mount_node_nonexistent(sqlite_or_postgres_uri, tmpdir):
-    "A tree whose mount_node does not exist in the database should be silently excluded."
+    "A tree whose mount_node does not exist should raise an error at startup."
     # Initialize the catalog database with a single container "A".
     init_config = {
         "trees": [
@@ -130,18 +131,9 @@ def test_mount_node_nonexistent(sqlite_or_postgres_uri, tmpdir):
         client = from_context(context)
         client.create_container("A")
 
-    # Mount two trees: one pointing at an existing node, one at a nonexistent node.
-    multi_tree_config = {
+    # Mount a tree pointing at a nonexistent node.
+    bad_config = {
         "trees": [
-            {
-                "path": "/a",
-                "tree": "catalog",
-                "args": {
-                    "uri": sqlite_or_postgres_uri,
-                    "writable_storage": [tmpdir / "data"],
-                    "mount_node": "/A",
-                },
-            },
             {
                 "path": "/b",
                 "tree": "catalog",
@@ -153,10 +145,9 @@ def test_mount_node_nonexistent(sqlite_or_postgres_uri, tmpdir):
             },
         ]
     }
-    with Context.from_app(build_app_from_config(multi_tree_config)) as context:
-        client = from_context(context)
-        # Only the tree with the existing mount_node should be served.
-        assert list(client) == ["a"]
+    with pytest.raises(ValueError, match="was not found in the database"):
+        with Context.from_app(build_app_from_config(bad_config)) as context:
+            from_context(context)
 
 
 def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
@@ -226,8 +217,11 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
         assert "Y" in list(client["X"])
         assert "Z" in list(client["X"]["Y"])
         assert "child" in list(client["X"]["Y"]["Z"])
-        # Intermediate nodes should have empty specs.
+        # Intermediate nodes should have empty specs and access_blob.
         assert client["X"].specs == []
         assert client["X"]["Y"].specs == []
+        assert not client["X"].access_blob
+        assert not client["X"]["Y"].access_blob
         # The leaf (mount node) should carry the configured specs.
         assert client["X"]["Y"]["Z"].specs == [Spec(name="MyCustomSpec", version="3.0")]
+        assert client["X"]["Y"]["Z"].access_blob.get("tags") == ["_ROOT_NODE"]

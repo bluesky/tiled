@@ -6,7 +6,6 @@ import itertools as it
 import logging
 import operator
 import os
-import re
 import shutil
 import sys
 import uuid
@@ -266,6 +265,7 @@ class CatalogNodeAdapter:
         queries=None,
         sorting=None,
         mount_path: Optional[list[str]] = None,
+        create_mount_nodes_if_not_exist: bool = False,
     ):
         self.context = context
         self.node = node
@@ -277,7 +277,15 @@ class CatalogNodeAdapter:
         self.specs = [Spec(**spec) for spec in node.specs]
         self.startup_tasks = [self.startup]
         if mount_path:
-            self.startup_tasks.append(partial(self.create_mount, mount_path))
+            self.startup_tasks.append(
+                partial(
+                    self.create_mount,
+                    mount_path,
+                    create_if_not_exist=create_mount_nodes_if_not_exist,
+                    specs=node.specs,
+                    access_blob=node.access_blob,
+                )
+            )
         self.shutdown_tasks = [self.shutdown]
 
     async def path_segments(self):
@@ -302,10 +310,41 @@ class CatalogNodeAdapter:
     async def startup(self):
         await self.context.startup()
 
-    async def create_mount(self, mount_path: list[str]):
+    async def create_mount(
+        self,
+        mount_path: list[str],
+        *,
+        create_if_not_exist=False,
+        specs=None,
+        access_blob=None,
+    ):
         statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
         async with self.context.engine.connect() as conn:
             self.node.id = (await conn.execute(statement)).scalar()
+        if self.node.id is None:
+            path_str = "/" + "/".join(mount_path)
+            if create_if_not_exist:
+                logger.info(
+                    "mount_node %r does not exist in the database. "
+                    "Creating intermediate container nodes.",
+                    path_str,
+                )
+                await _create_mount_node_segments(
+                    self.context.engine,
+                    mount_path,
+                    specs=specs,
+                    access_blob=access_blob,
+                )
+                # Re-query to get the id of the newly created node.
+                async with self.context.engine.connect() as conn:
+                    self.node.id = (await conn.execute(statement)).scalar()
+            else:
+                raise ValueError(
+                    f"mount_node {path_str!r} was not found in the database. "
+                    "Create the node first (e.g. via the admin API or tiled CLI) "
+                    "and restart the server, or set "
+                    "create_mount_nodes_if_not_exist: true in the config."
+                )
         self.node.key = mount_path[-1]
 
     async def shutdown(self):
@@ -1807,7 +1846,7 @@ def in_memory(
     )
 
 
-def _create_mount_node_segments(sync_engine, mount_path, specs=None, access_blob=None):
+async def _create_mount_node_segments(engine, mount_path, specs=None, access_blob=None):
     """Create missing intermediate container nodes for a mount path.
 
     Walks the path segments, creating any that don't exist yet.
@@ -1819,7 +1858,7 @@ def _create_mount_node_segments(sync_engine, mount_path, specs=None, access_blob
 
     specs = specs or []
     access_blob = access_blob or {}
-    with sync_engine.begin() as conn:
+    async with engine.begin() as conn:
         parent_id = 0  # root node id
         for i, segment in enumerate(mount_path):
             is_leaf = i == len(mount_path) - 1
@@ -1829,10 +1868,10 @@ def _create_mount_node_segments(sync_engine, mount_path, specs=None, access_blob
                 .where(orm.Node.parent == parent_id)
                 .where(orm.Node.key == segment)
             )
-            node_id = conn.execute(statement).scalar()
+            node_id = (await conn.execute(statement)).scalar()
             if node_id is None:
                 # Create the container node
-                result = conn.execute(
+                result = await conn.execute(
                     insert(orm.Node).values(
                         key=segment,
                         parent=parent_id,
@@ -1913,42 +1952,12 @@ def from_uri(
         if isinstance(mount_node, str)
         else mount_node
     )
-    if mount_path:
-        # Verify that mount_node exists in the database before proceeding.
-        # Use a temporary sync engine to run the check at config-parsing time.
-        sync_uri = re.sub(r"\+[^:]+", "", uri)  # strip async driver
-        from sqlalchemy import create_engine
-
-        sync_engine = create_engine(sync_uri)
-        try:
-            statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
-            with sync_engine.connect() as conn:
-                node_id = conn.execute(statement).scalar()
-            if node_id is None:
-                path_str = "/" + "/".join(mount_path)
-                if create_mount_nodes_if_not_exist:
-                    logger.info(
-                        "mount_node %r does not exist in the database. "
-                        "Creating intermediate container nodes.",
-                        path_str,
-                    )
-                    _create_mount_node_segments(
-                        sync_engine,
-                        mount_path,
-                        specs=specs,
-                        access_blob=top_level_access_blob,
-                    )
-                else:
-                    logger.warning(
-                        "mount_node %r was not found in the database. "
-                        "This catalog tree will not be served. Create the node "
-                        "first (e.g. via the admin API or tiled CLI) and restart the server.",
-                        path_str,
-                    )
-                    return None
-        finally:
-            sync_engine.dispose()
-    adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
+    adapter = CatalogContainerAdapter(
+        context,
+        node,
+        mount_path=mount_path,
+        create_mount_nodes_if_not_exist=create_mount_nodes_if_not_exist,
+    )
 
     return adapter
 

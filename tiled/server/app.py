@@ -239,9 +239,11 @@ def build_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         "Manage lifespan events for each event loop that the app runs in"
-        await startup_event()
-        yield
-        await shutdown_event()
+        try:
+            await startup_event()
+            yield
+        finally:
+            await shutdown_event()
 
     app = FastAPI(lifespan=lifespan, strict_content_type=False)
 
@@ -699,7 +701,7 @@ def build_app(
             from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
-        for task in app.state.tasks:
+        for task in getattr(app.state, "tasks", []):
             task.cancel()
 
     app.add_middleware(

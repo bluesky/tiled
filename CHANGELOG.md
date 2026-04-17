@@ -9,8 +9,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Fixed
 
 - A `mount_node` referencing a nonexistent path in the database no longer causes
-  silent data corruption. Trees with missing mount nodes are excluded from the
-  served tree with a warning logged at startup.
+  silent data corruption. The server now raises a clear error at startup if the
+  mount node does not exist.
 - Writing chunked (dask) arrays with single chunk along all dimensions
 - OIDC authenticator was not quite compfixedliant and was incompatible with
   at least some providers including Azure and ORCID.

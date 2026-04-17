@@ -384,8 +384,8 @@ authentication:
 # Mount Node Auto-Creation
 # -----------------------------------------------------------------------------
 # When using 'mount_node' in a catalog/tree config, the referenced path must
-# exist in the database. By default, if the path does not exist, the tree is
-# silently excluded from the server and a warning is logged.
+# exist in the database. By default, if the path does not exist, the server
+# raises an error at startup.
 #
 # Set this to true to automatically create any missing intermediate container
 # nodes at server startup. This is a global setting that applies to all
