@@ -257,6 +257,7 @@ class Config(BaseSettings):
     expose_raw_assets: bool = True
     routers: list[EntryPointString] = []
     streaming_cache: Optional[StreamingCacheConfig] = None
+    create_mount_nodes_if_not_exist: bool = False
 
     # If recommended 'catalog' config is used, these parameters are
     # not used; they are set inside the CatalogConfig.
@@ -357,6 +358,10 @@ class Config(BaseSettings):
                 tree.args["cache_config"] = (
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
+            if tree.tree_type is from_uri:
+                tree.args[
+                    "create_mount_nodes_if_not_exist"
+                ] = self.create_mount_nodes_if_not_exist
         return self
 
     @property
@@ -365,7 +370,10 @@ class Config(BaseSettings):
 
     @cached_property
     def merged_trees(self) -> Any:  # TODO: update when # 1047 is merged
-        trees = dict(tree.tree_entry for tree in self.trees)
+        trees = {
+            segments: tree
+            for segments, tree in (tree_spec.tree_entry for tree_spec in self.trees)
+        }
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = trees[()]

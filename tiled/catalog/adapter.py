@@ -265,6 +265,7 @@ class CatalogNodeAdapter:
         queries=None,
         sorting=None,
         mount_path: Optional[list[str]] = None,
+        create_mount_nodes_if_not_exist: bool = False,
     ):
         self.context = context
         self.node = node
@@ -276,7 +277,15 @@ class CatalogNodeAdapter:
         self.specs = [Spec(**spec) for spec in node.specs]
         self.startup_tasks = [self.startup]
         if mount_path:
-            self.startup_tasks.append(partial(self.create_mount, mount_path))
+            self.startup_tasks.append(
+                partial(
+                    self.create_mount,
+                    mount_path,
+                    create_if_not_exist=create_mount_nodes_if_not_exist,
+                    specs=node.specs,
+                    access_blob=node.access_blob,
+                )
+            )
         self.shutdown_tasks = [self.shutdown]
 
     async def path_segments(self):
@@ -301,10 +310,41 @@ class CatalogNodeAdapter:
     async def startup(self):
         await self.context.startup()
 
-    async def create_mount(self, mount_path: list[str]):
+    async def create_mount(
+        self,
+        mount_path: list[str],
+        *,
+        create_if_not_exist=False,
+        specs=None,
+        access_blob=None,
+    ):
         statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
         async with self.context.engine.connect() as conn:
             self.node.id = (await conn.execute(statement)).scalar()
+        if self.node.id is None:
+            path_str = "/" + "/".join(mount_path)
+            if create_if_not_exist:
+                logger.info(
+                    "mount_node %r does not exist in the database. "
+                    "Creating intermediate container nodes.",
+                    path_str,
+                )
+                await _create_mount_node_segments(
+                    self.context.engine,
+                    mount_path,
+                    specs=specs,
+                    access_blob=access_blob,
+                )
+                # Re-query to get the id of the newly created node.
+                async with self.context.engine.connect() as conn:
+                    self.node.id = (await conn.execute(statement)).scalar()
+            else:
+                raise ValueError(
+                    f"mount_node {path_str!r} was not found in the database. "
+                    "Create the node first (e.g. via the admin API or tiled CLI) "
+                    "and restart the server, or set "
+                    "create_mount_nodes_if_not_exist: true in the config."
+                )
         self.node.key = mount_path[-1]
 
     async def shutdown(self):
@@ -1806,6 +1846,51 @@ def in_memory(
     )
 
 
+async def _create_mount_node_segments(engine, mount_path, specs=None, access_blob=None):
+    """Create missing intermediate container nodes for a mount path.
+
+    Walks the path segments, creating any that don't exist yet.
+    DB triggers automatically maintain the nodes_closure table.
+    The leaf node (last segment) receives the given specs and access_blob;
+    intermediate nodes get empty defaults.
+    """
+    from sqlalchemy import insert
+
+    specs = specs or []
+    access_blob = access_blob or {}
+    async with engine.begin() as conn:
+        parent_id = 0  # root node id
+        for i, segment in enumerate(mount_path):
+            is_leaf = i == len(mount_path) - 1
+            # Check if this segment exists under parent_id
+            statement = (
+                select(orm.Node.id)
+                .where(orm.Node.parent == parent_id)
+                .where(orm.Node.key == segment)
+            )
+            node_id = (await conn.execute(statement)).scalar()
+            if node_id is None:
+                # Create the container node
+                result = await conn.execute(
+                    insert(orm.Node).values(
+                        key=segment,
+                        parent=parent_id,
+                        structure_family=StructureFamily.container,
+                        metadata_={},
+                        specs=specs if is_leaf else [],
+                        access_blob=access_blob if is_leaf else {},
+                    )
+                )
+                node_id = result.inserted_primary_key[0]
+                logger.info(
+                    "Created container node %r (id=%d) under parent_id=%d.",
+                    segment,
+                    node_id,
+                    parent_id,
+                )
+            parent_id = node_id
+
+
 def from_uri(
     uri,
     *,
@@ -1817,6 +1902,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    create_mount_nodes_if_not_exist=False,
     cache_config=None,
     catalog_pool_size=5,
     storage_pool_size=5,
@@ -1866,7 +1952,12 @@ def from_uri(
         if isinstance(mount_node, str)
         else mount_node
     )
-    adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
+    adapter = CatalogContainerAdapter(
+        context,
+        node,
+        mount_path=mount_path,
+        create_mount_nodes_if_not_exist=create_mount_nodes_if_not_exist,
+    )
 
     return adapter
 
@@ -1877,7 +1968,7 @@ def format_distinct_result(results, counts):
             {"value": value, "count": count} for value, count in results
         ]
     else:
-        formatted_result = [{"value": value} for value, in results]
+        formatted_result = [{"value": value} for (value,) in results]
     return formatted_result
 
 
