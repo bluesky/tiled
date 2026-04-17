@@ -257,6 +257,7 @@ class Config(BaseSettings):
     expose_raw_assets: bool = True
     routers: list[EntryPointString] = []
     streaming_cache: Optional[StreamingCacheConfig] = None
+    create_mount_node_if_not_exists: bool = False
 
     # If recommended 'catalog' config is used, these parameters are
     # not used; they are set inside the CatalogConfig.
@@ -357,6 +358,10 @@ class Config(BaseSettings):
                 tree.args["cache_config"] = (
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
+            if tree.tree_type is from_uri:
+                tree.args[
+                    "create_mount_node_if_not_exists"
+                ] = self.create_mount_node_if_not_exists
         return self
 
     @property

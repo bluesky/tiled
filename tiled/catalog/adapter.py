@@ -1807,6 +1807,46 @@ def in_memory(
     )
 
 
+def _create_mount_node_segments(sync_engine, mount_path):
+    """Create missing intermediate container nodes for a mount path.
+
+    Walks the path segments, creating any that don't exist yet.
+    DB triggers automatically maintain the nodes_closure table.
+    """
+    from sqlalchemy import insert
+
+    with sync_engine.begin() as conn:
+        parent_id = 0  # root node id
+        for segment in mount_path:
+            # Check if this segment exists under parent_id
+            statement = (
+                select(orm.Node.id)
+                .where(orm.Node.parent == parent_id)
+                .where(orm.Node.key == segment)
+            )
+            node_id = conn.execute(statement).scalar()
+            if node_id is None:
+                # Create the container node
+                result = conn.execute(
+                    insert(orm.Node).values(
+                        key=segment,
+                        parent=parent_id,
+                        structure_family=StructureFamily.container,
+                        metadata_={},
+                        specs=[],
+                        access_blob={},
+                    )
+                )
+                node_id = result.inserted_primary_key[0]
+                logger.info(
+                    "Created container node %r (id=%d) under parent_id=%d.",
+                    segment,
+                    node_id,
+                    parent_id,
+                )
+            parent_id = node_id
+
+
 def from_uri(
     uri,
     *,
@@ -1818,6 +1858,7 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    create_mount_node_if_not_exists=False,
     cache_config=None,
     catalog_pool_size=5,
     storage_pool_size=5,
@@ -1880,13 +1921,21 @@ def from_uri(
                 node_id = conn.execute(statement).scalar()
             if node_id is None:
                 path_str = "/" + "/".join(mount_path)
-                logger.warning(
-                    "mount_node %r was not found in the database. "
-                    "This catalog tree will not be served. Create the node "
-                    "first (e.g. via the admin API or tiled CLI) and restart the server.",
-                    path_str,
-                )
-                return None
+                if create_mount_node_if_not_exists:
+                    logger.info(
+                        "mount_node %r does not exist in the database. "
+                        "Creating intermediate container nodes.",
+                        path_str,
+                    )
+                    _create_mount_node_segments(sync_engine, mount_path)
+                else:
+                    logger.warning(
+                        "mount_node %r was not found in the database. "
+                        "This catalog tree will not be served. Create the node "
+                        "first (e.g. via the admin API or tiled CLI) and restart the server.",
+                        path_str,
+                    )
+                    return None
         finally:
             sync_engine.dispose()
     adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
