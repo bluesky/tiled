@@ -95,6 +95,7 @@ all = [
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
+    "ragged",
     "redis",
     "rich",
     "sparse >=0.15.5",
@@ -126,6 +127,7 @@ client = [
     "numpy",
     "pandas",
     "pyarrow >=14.0.1",  # includes fix to CVE 2023-47248
+    "ragged",
     "rich",
     "sparse >=0.15.5",
     "stamina",
@@ -231,6 +233,7 @@ server = [
     "python-dateutil",
     "python-jose[cryptography]",
     "python-multipart",
+    "ragged",
     "sparse >=0.15.5",
     "stamina",
     "redis",
