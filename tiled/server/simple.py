@@ -25,8 +25,8 @@ class ThreadedServer(uvicorn.Server):
 
     @contextlib.contextmanager
     def run_in_thread(self):
-        self._thread = threading.Thread(target=self.run)
-        self._thread.start()
+        self.thread = threading.Thread(target=self.run)
+        self.thread.start()
         try:
             # Wait for server to start up, or raise TimeoutError.
             for _ in range(int(_STARTUP_TIMEOUT / 0.1)):
@@ -41,7 +41,7 @@ class ThreadedServer(uvicorn.Server):
             yield f"http://{host}:{port}"
         finally:
             self.should_exit = True
-            self._thread.join()
+            self.thread.join()
 
 
 class SimpleTiledServer:
@@ -160,7 +160,7 @@ class SimpleTiledServer:
             deadline = time.monotonic() + _STARTUP_TIMEOUT
             with httpx.Client(trust_env=False) as client:
                 while True:
-                    if not self._server._thread.is_alive():
+                    if not self._server.thread.is_alive():
                         raise RuntimeError(
                             "Tiled server thread exited before the application "
                             "became ready. Check the log files in the server's "
