@@ -56,7 +56,6 @@ from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
-from .connection_pool import get_database_session_factory
 from .authentication import (
     authenticate_websocket_first_message,
     check_scopes,
@@ -68,6 +67,7 @@ from .authentication import (
     get_current_scopes_websocket,
     get_session_state,
 )
+from .connection_pool import get_database_session_factory
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
