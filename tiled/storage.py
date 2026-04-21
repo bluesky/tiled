@@ -248,8 +248,12 @@ class SQLStorage(Storage):
         if (self.dialect == "duckdb") or (":memory:" in self.uri):
             pool = sqlalchemy.pool.StaticPool(creator)
         else:
-            pool = sqlalchemy.pool.QueuePool(
-                creator, pool_size=self.pool_size, max_overflow=self.max_overflow
+            return sqlalchemy.pool.QueuePool(
+                creator,
+                pool_size=self.pool_size,
+                max_overflow=self.max_overflow,
+                recycle=1800,  # Recycle connections after 30 minutes
+                pre_ping=False,  # Default -- don't test connections before using them
             )
             monitor_db_pool(pool, self.uri)
 
