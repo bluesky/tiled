@@ -27,6 +27,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Authentication support in the web UI: login page with password and OIDC
+  provider support, token persistence with automatic refresh, authenticated
+  image loading and file downloads, and user menu with logout.
+- `TagBasedAccessPolicy` now accepts a list of providers in addition to a
+  single provider string.
 - Tests for the WebSocket endpoints that stream tabukar data.
 
 ## v0.2.7 (2026-02-27)
