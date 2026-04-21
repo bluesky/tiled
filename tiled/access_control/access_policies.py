@@ -473,7 +473,8 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         authn_access_tags: Optional[AccessTags],
         authn_scopes: Scopes,
         access_blob: Optional[AccessBlob] = None,
-    ) -> str: ...
+    ) -> str:
+        ...
 
     async def _get_external_decision(
         self,

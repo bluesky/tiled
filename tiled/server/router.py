@@ -57,6 +57,7 @@ from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import (
+    authenticate_websocket_first_message,
     check_scopes,
     get_current_access_tags,
     get_current_access_tags_websocket,
@@ -758,11 +759,56 @@ def get_router(
             get_current_access_tags_websocket
         ),
         authn_scopes: Scopes = Depends(get_current_scopes_websocket),
+        settings: Settings = Depends(get_settings),
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
             lambda: collections.defaultdict(lambda: 0)
         )
+
+        # If no auth was provided via headers or query params on a server that
+        # requires authentication, accept the connection and wait for a "first
+        # message" carrying credentials.
+        # See https://github.com/bluesky/tiled/issues/1138
+        needs_first_message_auth = (
+            principal is None
+            and not settings.allow_anonymous_access
+            and websocket.app.state.authenticated
+        )
+        if needs_first_message_auth:
+            await websocket.accept()
+            try:
+                message = await websocket.receive_json()
+            except Exception:
+                await websocket.close(code=4001, reason="Expected JSON auth message")
+                return
+            if not isinstance(message, dict) or message.get("type") != "auth":
+                await websocket.close(
+                    code=4001, reason='Expected {"type": "auth", ...}'
+                )
+                return
+            (
+                principal,
+                authn_access_tags,
+                authn_scopes,
+            ) = await authenticate_websocket_first_message(websocket, message)
+            if principal is None:
+                await websocket.close(code=4003, reason="Authentication failed")
+                return
+            if not isinstance(message, dict) or message.get("type") != "auth":
+                await websocket.close(
+                    code=4001, reason='Expected {"type": "auth", ...}'
+                )
+                return
+            (
+                principal,
+                authn_access_tags,
+                authn_scopes,
+            ) = await authenticate_websocket_first_message(websocket, message)
+            if principal is None:
+                await websocket.close(code=4003, reason="Authentication failed")
+                return
+
         entry = await get_entry(
             path,
             ["read:data", "read:metadata"],
@@ -789,7 +835,7 @@ def get_router(
         path_str = "/".join(path_parts)
         uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
         handler = entry.make_ws_handler(websocket, formatter, uri)
-        await handler(start)
+        await handler(start, already_accepted=needs_first_message_auth)
 
     @router.get(
         "/table/partition/{path:path}",

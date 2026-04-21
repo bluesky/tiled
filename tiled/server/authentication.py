@@ -429,6 +429,69 @@ async def get_current_scopes_websocket(
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
 
+async def authenticate_websocket_first_message(
+    websocket: WebSocket,
+    message: dict,
+) -> tuple[Optional[schemas.Principal], Optional[set], set]:
+    """Authenticate a WebSocket connection from a 'first message' payload.
+
+    Supports two credential types:
+      {"type": "auth", "access_token": "..."}
+      {"type": "auth", "api_key": "..."}
+
+    Returns (principal, access_tags, scopes), same as the dependency-based
+    WebSocket auth functions produce.
+    """
+    settings = get_settings()
+    db_factory = get_database_session_factory()
+    api_key = message.get("api_key")
+    access_token = message.get("access_token")
+
+    if api_key is not None:
+        async with db_factory() as db:
+            principal = await get_current_principal_from_api_key(
+                api_key, websocket.app.state.authenticated, db, settings
+            )
+        if (principal is None) and websocket.app.state.authenticated:
+            return None, None, NO_SCOPES
+        async with db_factory() as db:
+            access_tags = await get_access_tags_from_api_key(
+                api_key, websocket.app.state.authenticated, db
+            )
+        async with db_factory() as db:
+            scopes = await get_scopes_from_api_key(
+                api_key, settings, websocket.app.state.authenticated, db
+            )
+        return principal, access_tags, scopes
+    elif access_token is not None:
+        try:
+            decoded = decode_token(
+                access_token, settings.secret_keys, settings.authenticator
+            )
+        except Exception:
+            return None, None, NO_SCOPES
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            principal = schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded["sub"]),
+                type=schemas.PrincipalType.external,
+                identities=[],
+            )
+            scopes = set(decoded["scope"].split(" "))
+        else:
+            principal = schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded["sub"]),
+                type=decoded["sub_typ"],
+                identities=[
+                    schemas.Identity(id=identity["id"], provider=identity["idp"])
+                    for identity in decoded["ids"]
+                ],
+            )
+            scopes = decoded["scp"]
+        return principal, None, scopes
+    else:
+        return None, None, NO_SCOPES
+
+
 async def check_scopes(
     request: Request,
     security_scopes: SecurityScopes,
@@ -546,10 +609,10 @@ async def get_current_principal_websocket(
         if settings.allow_anonymous_access:
             return None
         else:
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED,
-                detail="Not authenticated. Provide an access_token query parameter or an API key.",
-            )
+            # No credentials provided. Return None to allow the WebSocket
+            # endpoint to attempt "first message" authentication.
+            # See https://github.com/bluesky/tiled/issues/1138
+            return None
 
 
 async def get_current_principal(
