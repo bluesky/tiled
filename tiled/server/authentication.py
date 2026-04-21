@@ -296,6 +296,23 @@ def get_api_key_websocket(
     return api_key
 
 
+def get_decoded_access_token_websocket(
+    websocket: WebSocket,
+    access_token: Optional[str] = Query(None),
+    settings: Settings = Depends(get_settings),
+) -> Optional[dict]:
+    """Decode a JWT access token passed as a query parameter on WebSocket connections."""
+    if not access_token:
+        return None
+    try:
+        return decode_token(access_token, settings.secret_keys, settings.authenticator)
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Access token has expired. Refresh token.",
+        )
+
+
 async def get_current_access_tags_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
@@ -392,6 +409,7 @@ async def get_current_scopes(
 async def get_current_scopes_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
+    decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
@@ -402,6 +420,11 @@ async def get_current_scopes_websocket(
             return await get_scopes_from_api_key(
                 api_key, settings, websocket.app.state.authenticated, db
             )
+    elif decoded_access_token is not None:
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            return set(decoded_access_token["scope"].split(" "))
+        else:
+            return decoded_access_token["scp"]
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
@@ -487,6 +510,7 @@ async def get_current_principal_from_api_key(
 async def get_current_principal_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
+    decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
@@ -502,13 +526,29 @@ async def get_current_principal_websocket(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
             )
         return principal
+    elif decoded_access_token is not None:
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            return schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                type=schemas.PrincipalType.external,
+                identities=[],
+            )
+        else:
+            return schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                type=decoded_access_token["sub_typ"],
+                identities=[
+                    schemas.Identity(id=identity["id"], provider=identity["idp"])
+                    for identity in decoded_access_token["ids"]
+                ],
+            )
     else:
         if settings.allow_anonymous_access:
             return None
         else:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
-                detail="No API key was provided with this request.",
+                detail="Not authenticated. Provide an access_token query parameter or an API key.",
             )
 
 
