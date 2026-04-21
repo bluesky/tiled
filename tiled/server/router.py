@@ -56,6 +56,7 @@ from ..type_aliases import AccessTags, Scopes
 from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
+from .connection_pool import get_database_session_factory
 from .authentication import (
     authenticate_websocket_first_message,
     check_scopes,
@@ -760,6 +761,7 @@ def get_router(
         ),
         authn_scopes: Scopes = Depends(get_current_scopes_websocket),
         settings: Settings = Depends(get_settings),
+        db_factory: Callable = Depends(get_database_session_factory),
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
@@ -771,9 +773,7 @@ def get_router(
         # message" carrying credentials.
         # See https://github.com/bluesky/tiled/issues/1138
         needs_first_message_auth = (
-            principal is None
-            and not settings.allow_anonymous_access
-            and websocket.app.state.authenticated
+            principal is None and not settings.allow_anonymous_access
         )
         if needs_first_message_auth:
             await websocket.accept()
@@ -788,24 +788,14 @@ def get_router(
                 )
                 return
             (
+                success,
                 principal,
                 authn_access_tags,
                 authn_scopes,
-            ) = await authenticate_websocket_first_message(websocket, message)
-            if principal is None:
-                await websocket.close(code=4003, reason="Authentication failed")
-                return
-            if not isinstance(message, dict) or message.get("type") != "auth":
-                await websocket.close(
-                    code=4001, reason='Expected {"type": "auth", ...}'
-                )
-                return
-            (
-                principal,
-                authn_access_tags,
-                authn_scopes,
-            ) = await authenticate_websocket_first_message(websocket, message)
-            if principal is None:
+            ) = await authenticate_websocket_first_message(
+                websocket, message, settings, db_factory
+            )
+            if not success:
                 await websocket.close(code=4003, reason="Authentication failed")
                 return
 

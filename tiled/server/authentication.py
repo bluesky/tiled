@@ -432,28 +432,33 @@ async def get_current_scopes_websocket(
 async def authenticate_websocket_first_message(
     websocket: WebSocket,
     message: dict,
-) -> tuple[Optional[schemas.Principal], Optional[set], set]:
+    settings: Settings,
+    db_factory: Callable,
+) -> tuple[bool, Optional[schemas.Principal], Optional[set], set]:
     """Authenticate a WebSocket connection from a 'first message' payload.
 
     Supports two credential types:
       {"type": "auth", "access_token": "..."}
       {"type": "auth", "api_key": "..."}
 
-    Returns (principal, access_tags, scopes), same as the dependency-based
-    WebSocket auth functions produce.
+    Returns (success, principal, access_tags, scopes). ``success`` is True if
+    credentials were valid, False otherwise.  ``principal`` may legitimately
+    be None in single-user API-key mode even when auth succeeds.
     """
-    settings = get_settings()
-    db_factory = get_database_session_factory()
     api_key = message.get("api_key")
     access_token = message.get("access_token")
 
     if api_key is not None:
-        async with db_factory() as db:
-            principal = await get_current_principal_from_api_key(
-                api_key, websocket.app.state.authenticated, db, settings
-            )
+        try:
+            async with db_factory() as db:
+                principal = await get_current_principal_from_api_key(
+                    api_key, websocket.app.state.authenticated, db, settings
+                )
+        except HTTPException:
+            return False, None, None, NO_SCOPES
         if (principal is None) and websocket.app.state.authenticated:
-            return None, None, NO_SCOPES
+            # In multi-user mode, None principal means key not found.
+            return False, None, None, NO_SCOPES
         async with db_factory() as db:
             access_tags = await get_access_tags_from_api_key(
                 api_key, websocket.app.state.authenticated, db
@@ -462,14 +467,14 @@ async def authenticate_websocket_first_message(
             scopes = await get_scopes_from_api_key(
                 api_key, settings, websocket.app.state.authenticated, db
             )
-        return principal, access_tags, scopes
+        return True, principal, access_tags, scopes
     elif access_token is not None:
         try:
             decoded = decode_token(
                 access_token, settings.secret_keys, settings.authenticator
             )
         except Exception:
-            return None, None, NO_SCOPES
+            return False, None, None, NO_SCOPES
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
             principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded["sub"]),
@@ -487,9 +492,9 @@ async def authenticate_websocket_first_message(
                 ],
             )
             scopes = decoded["scp"]
-        return principal, None, scopes
+        return True, principal, None, scopes
     else:
-        return None, None, NO_SCOPES
+        return False, None, None, NO_SCOPES
 
 
 async def check_scopes(

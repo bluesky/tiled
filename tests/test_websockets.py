@@ -455,7 +455,7 @@ def test_websocket_connection_wrong_api_key(tiled_websocket_context, envelope_fo
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 def test_websocket_connection_no_api_key(tiled_websocket_context, envelope_format):
-    """Test websocket connection with no API key fails with 401."""
+    """Test websocket connection with no credentials is accepted but expects first-message auth."""
 
     context = tiled_websocket_context
     client = from_context(context)
@@ -468,14 +468,89 @@ def test_websocket_connection_no_api_key(tiled_websocket_context, envelope_forma
     # Strip API key so requests below are unauthenticated.
     context.api_key = None
 
-    # Try to connect to websocket with no API key
-    with pytest.raises(WebSocketDenialResponse) as exc_info:
-        with test_client.websocket_connect(
-            f"/api/v1/stream/single/test_auth_websocket?envelope_format={envelope_format}",
-        ):
-            pass
+    # Connection is accepted (for first-message auth), but sending invalid
+    # auth should cause the server to close the connection.
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_auth_websocket?envelope_format={envelope_format}",
+    ) as websocket:
+        # Send an invalid auth message
+        websocket.send_json({"type": "auth", "access_token": "invalid_token"})
+        # Server should close the connection
+        msg = websocket.receive()
+        assert msg["type"] == "websocket.close"
 
-    assert exc_info.value.status_code == 401
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_first_message_auth_wrong_api_key(
+    tiled_websocket_context, envelope_format
+):
+    """Test websocket first-message authentication with a wrong API key."""
+
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_wrong_key_auth")
+
+    context.api_key = None
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_wrong_key_auth?envelope_format={envelope_format}",
+    ) as websocket:
+        websocket.send_json({"type": "auth", "api_key": "wrong_secret"})
+        msg = websocket.receive()
+        assert msg["type"] == "websocket.close"
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_first_message_auth_invalid_message(
+    tiled_websocket_context, envelope_format
+):
+    """Test websocket first-message with non-auth message type is rejected."""
+
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_invalid_msg_auth")
+
+    context.api_key = None
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_invalid_msg_auth?envelope_format={envelope_format}",
+    ) as websocket:
+        websocket.send_json({"type": "subscribe", "path": "foo"})
+        msg = websocket.receive()
+        assert msg["type"] == "websocket.close"
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_first_message_auth_with_api_key(
+    tiled_websocket_context, envelope_format
+):
+    """Test websocket first-message authentication with a valid API key."""
+
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    # Create streaming array node
+    arr = np.arange(10)
+    streaming_node = client.write_array(arr, key="test_first_msg_auth")
+
+    # Connect WITHOUT API key in headers — server will accept and wait for
+    # first-message auth.
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_first_msg_auth?envelope_format={envelope_format}",
+    ) as websocket:
+        # Send first-message auth with valid API key
+        websocket.send_json({"type": "auth", "api_key": "secret"})
+        # Send an update and receive it, proving auth worked
+        send_ws_updates(streaming_node, overwrite_array, count=1)
+        received = receive_ws_updates(websocket, count=1)
+        verify_ws_updates(received)
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
