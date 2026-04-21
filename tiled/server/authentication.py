@@ -832,6 +832,7 @@ def add_external_routes(
             "response_type": "code",
             "scope": "openid",
             "redirect_uri": redirect_uri,
+            "prompt": "login",
         }
         if state:
             params["state"] = state

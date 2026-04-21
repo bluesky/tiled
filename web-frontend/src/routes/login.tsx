@@ -58,9 +58,6 @@ function PasswordLogin({
   return (
     <Card variant="outlined" sx={{ maxWidth: 400, mx: "auto", mt: 2 }}>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          {provider.provider}
-        </Typography>
         {provider.confirmation_message && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {provider.confirmation_message}
@@ -77,6 +74,7 @@ function PasswordLogin({
               fullWidth
               size="small"
               autoFocus
+              InputLabelProps={{ required: false }}
             />
             <TextField
               label="Password"
@@ -86,6 +84,7 @@ function PasswordLogin({
               required
               fullWidth
               size="small"
+              InputLabelProps={{ required: false }}
             />
             <Button
               type="submit"
@@ -111,16 +110,13 @@ function ExternalLogin({ provider }: { provider: Provider }) {
   return (
     <Card variant="outlined" sx={{ maxWidth: 400, mx: "auto", mt: 2 }}>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          {provider.provider}
-        </Typography>
         {provider.confirmation_message && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {provider.confirmation_message}
           </Typography>
         )}
         <Button variant="contained" onClick={handleClick} fullWidth>
-          Log in with {provider.provider}
+          Log in with OIDC
         </Button>
       </CardContent>
     </Card>

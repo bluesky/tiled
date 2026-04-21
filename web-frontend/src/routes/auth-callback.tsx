@@ -28,7 +28,12 @@ export default function AuthCallback() {
       if (state) {
         try {
           const url = new URL(decodeURIComponent(state));
-          navigate(url.pathname + url.search, { replace: true });
+          // Strip the router basename to avoid double-prefix (e.g. /ui/ui/browse/)
+          const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+          const path = url.pathname.startsWith(base)
+            ? url.pathname.slice(base.length) || "/"
+            : url.pathname;
+          navigate(path + url.search, { replace: true });
           return;
         } catch {
           // invalid URL in state, fall through

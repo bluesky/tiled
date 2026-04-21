@@ -1,6 +1,9 @@
+import { useState } from "react";
 import AppBar from "@mui/material/AppBar";
 import Button from "@mui/material/Button";
 import Container from "@mui/material/Container";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import { Link, useNavigate } from "react-router-dom";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
@@ -11,8 +14,10 @@ import { axiosInstance } from "../../client";
 const TiledAppBar = () => {
   const { isAuthenticated, identity, authRequired, onLogout } = useAuth();
   const navigate = useNavigate();
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const handleLogout = async () => {
+    setAnchorEl(null);
     const refreshToken = getStoredRefreshToken();
     if (refreshToken) {
       try {
@@ -33,36 +38,45 @@ const TiledAppBar = () => {
     <AppBar position="static">
       <Container maxWidth="xl">
         <Toolbar disableGutters>
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{ mr: 3, display: "flex" }}
+          <Box
+            component={Link}
+            to="/browse/"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              textDecoration: "none",
+              color: "inherit",
+              mr: 3,
+            }}
           >
-            TILED
-          </Typography>
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{ mr: 2, display: "flex" }}
-          >
-            <Button component={Link} color="inherit" to="/browse/">
-              Browse
-            </Button>
-          </Typography>
+            <img
+              src={`${import.meta.env.BASE_URL}tiled_logo.svg`}
+              alt="Tiled logo"
+              style={{ height: 28, marginRight: 8 }}
+            />
+            <Typography variant="h6" noWrap>
+              TILED
+            </Typography>
+          </Box>
           <Box sx={{ flexGrow: 1 }} />
-          {isAuthenticated && (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              {identity && (
-                <Typography variant="body2" sx={{ mr: 1 }}>
-                  {identity.id}
-                </Typography>
-              )}
-              <Button color="inherit" onClick={handleLogout} size="small">
-                Log out
+          {isAuthenticated && identity && (
+            <>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={(e) => setAnchorEl(e.currentTarget)}
+                sx={{ textTransform: "none" }}
+              >
+                {identity.id}
               </Button>
-            </Box>
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={() => setAnchorEl(null)}
+              >
+                <MenuItem onClick={handleLogout}>Log out</MenuItem>
+              </Menu>
+            </>
           )}
           {!isAuthenticated && authRequired && (
             <Button
