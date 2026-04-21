@@ -5,9 +5,8 @@ import { Link, useNavigate } from "react-router-dom";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
-import { useAuth } from "../../context/auth";
+import { useAuth, getStoredRefreshToken } from "../../context/auth";
 import { axiosInstance } from "../../client";
-import { getStoredRefreshToken } from "../../context/auth";
 
 const TiledAppBar = () => {
   const { isAuthenticated, identity, authRequired, onLogout } = useAuth();

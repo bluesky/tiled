@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import Select, { SelectChangeEvent } from "@mui/material/Select";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useState } from "react";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -11,12 +11,10 @@ import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Popover from "@mui/material/Popover";
-import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
-import { about, axiosInstance } from "../../client";
-import { components } from "../../openapi_schemas";
+import { axiosInstance } from "../../client";
 import copy from "clipboard-copy";
 import { SettingsContext } from "../../context/settings";
 

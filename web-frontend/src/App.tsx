@@ -1,6 +1,6 @@
 import Container from "@mui/material/Container";
 import ErrorBoundary from "./components/error-boundary/error-boundary";
-import { Outlet, Navigate } from "react-router-dom";
+import { Outlet, Navigate, BrowserRouter, Route, Routes } from "react-router-dom";
 import TiledAppBar from "./components/tiled-app-bar/tiled-app-bar";
 import React, { useEffect, useState } from "react";
 import * as ReactDOM from "react-dom";
@@ -9,7 +9,6 @@ import { SettingsContext, emptySettings } from "./context/settings";
 import { AuthProvider, useAuth } from "./context/auth";
 import { about } from "./client";
 import { components } from "./openapi_schemas";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
 

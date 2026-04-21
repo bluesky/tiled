@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { components } from "../openapi_schemas";
 
 const ACCESS_TOKEN_KEY = "tiled_access_token";
