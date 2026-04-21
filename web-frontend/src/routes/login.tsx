@@ -110,13 +110,8 @@ function ExternalLogin({ provider }: { provider: Provider }) {
   return (
     <Card variant="outlined" sx={{ maxWidth: 400, mx: "auto", mt: 2 }}>
       <CardContent>
-        {provider.confirmation_message && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {provider.confirmation_message}
-          </Typography>
-        )}
         <Button variant="contained" onClick={handleClick} fullWidth>
-          Log in with OIDC
+          Log in with {provider.provider.charAt(0).toUpperCase() + provider.provider.slice(1)}
         </Button>
       </CardContent>
     </Card>
