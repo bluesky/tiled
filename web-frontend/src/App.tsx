@@ -1,11 +1,14 @@
 import Container from "@mui/material/Container";
 import ErrorBoundary from "./components/error-boundary/error-boundary";
-import { Outlet } from "react-router-dom";
+import { Outlet, Navigate } from "react-router-dom";
 import TiledAppBar from "./components/tiled-app-bar/tiled-app-bar";
 import React, { useEffect, useState } from "react";
 import * as ReactDOM from "react-dom";
 import { fetchSettings } from "./settings";
 import { SettingsContext, emptySettings } from "./context/settings";
+import { AuthProvider, useAuth } from "./context/auth";
+import { about } from "./client";
+import { components } from "./openapi_schemas";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import Skeleton from "@mui/material/Skeleton";
@@ -16,6 +19,8 @@ import Skeleton from "@mui/material/Skeleton";
 (window as any).ReactDOM = ReactDOM;
 
 const Browse = lazy(() => import("./routes/browse"));
+const LoginPage = lazy(() => import("./routes/login"));
+const AuthCallback = lazy(() => import("./routes/auth-callback"));
 
 function MainContainer() {
   return (
@@ -28,40 +33,74 @@ function MainContainer() {
   );
 }
 
+function RequireAuth({ children }: { children: React.ReactElement }) {
+  const { authRequired, isAuthenticated, initialized } = useAuth();
+  if (!initialized) return <Skeleton variant="rectangular" />;
+  if (authRequired && !isAuthenticated) return <Navigate to="/login" replace />;
+  return children;
+}
+
 // This is set in vite.config.js. It is the base path of the ui.
 const basename = import.meta.env.BASE_URL;
 
 function App() {
   const [settings, setSettings] = useState(emptySettings);
+  const [authentication, setAuthentication] =
+    useState<components["schemas"]["AboutAuthentication"] | null>(null);
+
   useEffect(() => {
     const controller = new AbortController();
-    async function initSettingsContext() {
-      const data = await fetchSettings(controller.signal);
-      setSettings(data);
+    async function init() {
+      try {
+        const [settingsData, aboutData] = await Promise.all([
+          fetchSettings(controller.signal),
+          about(),
+        ]);
+        setSettings(settingsData);
+        setAuthentication(aboutData.authentication);
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.error("Failed to initialize app:", err);
+          setAuthentication({ required: false, providers: [] });
+        }
+      }
     }
-    initSettingsContext();
+    init();
+    return () => controller.abort();
   }, []);
+
   return (
     <SettingsContext.Provider value={settings}>
-      <BrowserRouter basename={basename}>
-        <ErrorBoundary>
-          <Suspense fallback={<Skeleton variant="rectangular" />}>
-            <Routes>
-              <Route path="/" element={<MainContainer />}>
-                <Route path="/browse/*" element={<Browse />} />
-              </Route>
-              <Route
-                path="*"
-                element={
-                  <main style={{ padding: "1rem" }}>
-                    <p>There's nothing here!</p>
-                  </main>
-                }
-              />
-            </Routes>
-          </Suspense>
-        </ErrorBoundary>
-      </BrowserRouter>
+      <AuthProvider authentication={authentication}>
+        <BrowserRouter basename={basename}>
+          <ErrorBoundary>
+            <Suspense fallback={<Skeleton variant="rectangular" />}>
+              <Routes>
+                <Route path="/" element={<MainContainer />}>
+                  <Route
+                    path="/browse/*"
+                    element={
+                      <RequireAuth>
+                        <Browse />
+                      </RequireAuth>
+                    }
+                  />
+                </Route>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route
+                  path="*"
+                  element={
+                    <main style={{ padding: "1rem" }}>
+                      <p>There's nothing here!</p>
+                    </main>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+        </BrowserRouter>
+      </AuthProvider>
     </SettingsContext.Provider>
   );
 }
