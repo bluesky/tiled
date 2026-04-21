@@ -990,6 +990,75 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         client.write(container)
         return client
 
+    def write_ragged(
+        self,
+        array,
+        *,
+        key=None,
+        metadata=None,
+        dims=None,
+        specs=None,
+        access_tags=None,
+        max_partition_bytes=None,
+    ):
+        """
+        Write a ragged array.
+
+        Parameters
+        ----------
+        array: ragged.array | awkward.Array | list[list]
+        key : str, optional
+            Key (name) for this new node. If None, the server will provide a unique key.
+        metadata : dict, optional
+            User metadata. May be nested. Must contain only basic types
+            (e.g. numbers, strings, lists, dicts) that are JSON-serializable.
+        dims : List[str], optional
+            A label for each dimension of the array.
+        specs : List[Spec], optional
+            List of names that are used to label that the data and/or metadata
+            conform to some named standard specification.
+        access_tags: List[str], optional
+            Server-specific authZ tags in list form, used to confer access to the node.
+        max_partition_bytes: int, optional
+            Maximum number of bytes per partition.
+        """
+        import awkward
+        import ragged
+
+        from tiled.structures.ragged import (
+            RaggedStructure,
+            make_ragged_array,
+            make_ragged_partitions,
+        )
+
+        array = make_ragged_array(array)
+        partitions = make_ragged_partitions(
+            array, max_partition_bytes or self._SUGGESTED_MAX_UPLOAD_SIZE
+        )
+        structure = RaggedStructure.from_array(array, partitions=partitions, dims=dims)
+
+        client = self.new(
+            StructureFamily.ragged,
+            [
+                DataSource(
+                    structure=structure, structure_family=StructureFamily.ragged
+                ),
+            ],
+            key=key,
+            metadata=metadata,
+            specs=specs,
+            access_tags=access_tags,
+        )
+        if client.npartitions == 1:
+            client.write(array)
+        else:
+            starts = structure.partitions[:-1]
+            stops = structure.partitions[1:]
+            for block_id, (start, stop) in enumerate(zip(starts, stops, strict=True)):
+                block = awkward.to_packed(array[start:stop]._impl)  # noqa: SLF001
+                client.write_block(ragged.array(block), block=block_id)
+        return client
+
     def write_sparse(
         self,
         coords,
@@ -1321,6 +1390,7 @@ DEFAULT_STRUCTURE_CLIENT_DISPATCH = {
             "dataframe": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
             ),
+            "ragged": _LazyLoad(("..ragged", Container.__module__), "RaggedClient"),
             "sparse": _LazyLoad(("..sparse", Container.__module__), "SparseClient"),
             "table": _LazyLoad(
                 ("..dataframe", Container.__module__), "DataFrameClient"
