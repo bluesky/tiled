@@ -225,3 +225,61 @@ def test_create_mount_nodes_if_not_exist(sqlite_or_postgres_uri, tmpdir):
         # The leaf (mount node) should carry the configured specs.
         assert client["X"]["Y"]["Z"].specs == [Spec(name="MyCustomSpec", version="3.0")]
         assert client["X"]["Y"]["Z"].access_blob.get("tags") == ["_ROOT_NODE"]
+
+
+def test_create_mount_nodes_partial(sqlite_or_postgres_uri, tmpdir):
+    "Test auto-creation when some path segments already exist."
+    # Initialize catalog and create /A.
+    init_config = {
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "init_if_not_exists": True,
+                    "writable_storage": [tmpdir / "data"],
+                },
+            },
+        ]
+    }
+    with Context.from_app(build_app_from_config(init_config)) as context:
+        client = from_context(context)
+        client.create_container("A")
+
+    # Mount at /A/B/C with auto-create. /A exists, /A/B and /A/B/C do not.
+    mount_config = {
+        "create_mount_nodes_if_not_exist": True,
+        "trees": [
+            {
+                "path": "/",
+                "tree": "catalog",
+                "args": {
+                    "uri": sqlite_or_postgres_uri,
+                    "writable_storage": [tmpdir / "data"],
+                    "mount_node": "/A/B/C",
+                    "specs": [{"name": "PartialSpec", "version": "1.0"}],
+                    "top_level_access_blob": {"tags": ["_LEAF"]},
+                },
+            },
+        ],
+    }
+    with Context.from_app(build_app_from_config(mount_config)) as context:
+        client = from_context(context)
+        client.create_container("item")
+        assert list(client) == ["item"]
+
+    # Verify from root: /A should exist (pre-existing), /A/B and /A/B/C created.
+    with Context.from_app(build_app_from_config(init_config)) as context:
+        client = from_context(context)
+        assert "A" in list(client)
+        assert "B" in list(client["A"])
+        assert "C" in list(client["A"]["B"])
+        assert "item" in list(client["A"]["B"]["C"])
+        # Pre-existing /A should not have been modified (no specs).
+        assert client["A"].specs == []
+        # Intermediate /A/B should have empty specs.
+        assert client["A"]["B"].specs == []
+        # Leaf /A/B/C should carry the configured specs.
+        assert client["A"]["B"]["C"].specs == [Spec(name="PartialSpec", version="1.0")]
+        assert client["A"]["B"]["C"].access_blob.get("tags") == ["_LEAF"]
