@@ -427,9 +427,8 @@ def tiled_websocket_context_public(tmpdir, redis_uri):
 def tiled_websocket_context_multiuser(tmpdir, redis_uri, enter_username_password):
     """Fixture that provides a multi-user Tiled context with JWT auth and websocket support.
 
-    Returns (context, client, access_token) where access_token is a valid JWT for 'alice'.
-    Uses build_app_from_config (like the other websocket fixtures) so that Redis
-    connections are created in the correct event loop.
+    Logs in as 'alice' during setup so that context.tokens and from_context()
+    work without additional login steps in the test.
     """
     from tiled.server.app import build_app_from_config
 
@@ -459,9 +458,8 @@ def tiled_websocket_context_multiuser(tmpdir, redis_uri, enter_username_password
     app = build_app_from_config(config)
     with Context.from_app(app) as context:
         with enter_username_password("alice", "secret1"):
-            client = from_context(context)
-        access_token = context.tokens["access_token"]
-        yield context, client, access_token
+            from_context(context)  # triggers login, caches tokens
+        yield context
 
 
 @pytest.fixture

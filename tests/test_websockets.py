@@ -803,7 +803,9 @@ def test_first_message_auth_with_access_token(
     tiled_websocket_context_multiuser, envelope_format
 ):
     """Test websocket first-message authentication with a valid JWT access token."""
-    context, client, access_token = tiled_websocket_context_multiuser
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+    access_token = context.tokens["access_token"]
 
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_first_msg")
@@ -819,7 +821,9 @@ def test_first_message_auth_with_access_token(
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 def test_query_param_access_token(tiled_websocket_context_multiuser, envelope_format):
     """Test websocket connection with JWT access token as query parameter."""
-    context, client, access_token = tiled_websocket_context_multiuser
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+    access_token = context.tokens["access_token"]
 
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_query_param")
@@ -838,7 +842,8 @@ def test_expired_access_token_query_param(
     tiled_websocket_context_multiuser, envelope_format
 ):
     """Test that an expired JWT in the query parameter is rejected with 401."""
-    context, client, access_token = tiled_websocket_context_multiuser
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
 
     arr = np.arange(10)
     client.write_array(arr, key="test_expired_jwt")
@@ -880,7 +885,8 @@ def test_first_message_jwt_auth_rejected(
     tiled_websocket_context_multiuser, envelope_format, auth_message
 ):
     """First-message auth with missing or invalid JWT is rejected with close code 4003."""
-    context, client, _ = tiled_websocket_context_multiuser
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
 
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_rejected")
