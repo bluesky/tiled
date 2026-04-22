@@ -32,10 +32,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
   image loading and file downloads, and user menu with logout.
 - `TagBasedAccessPolicy` now accepts a list of providers in addition to a
   single provider string.
-- WebSocket "first message" authentication: browser clients can now
-  authenticate WebSocket connections by sending credentials in the first
-  message instead of exposing tokens in query parameters (#1138).
 - Tests for the WebSocket endpoints that stream tabular data.
+- WebSocket "first message" authentication: clients can now authenticate
+  WebSocket connections by sending credentials in the first message instead
+  of exposing tokens in query parameters (#1138).
 
 ## v0.2.7 (2026-02-27)
 
