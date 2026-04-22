@@ -1,5 +1,5 @@
+import contextlib
 import datetime
-import logging
 import sys
 import urllib.parse
 
@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from starlette.testclient import TestClient, WebSocketDenialResponse
+from starlette.testclient import WebSocketDenialResponse
 
 from tiled.client import from_context
 from tiled.config import parse_configs
@@ -783,26 +783,19 @@ def _receive_schema(websocket, envelope_format):
     return msg
 
 
-def _ws_connect_ignore_streaming_error(test_client, url, body=None):
-    """Connect to a websocket, optionally send a first message, receive schema,
-    and tolerate the Redis event-loop RuntimeError that occurs in multi-user
-    test fixtures (buffer_live_events background task).
+@contextlib.contextmanager
+def _unauthenticated(context):
+    """Temporarily strip auth from context.http_client for unauthenticated requests.
+
+    Reuses the same TestClient (and its event loop) to avoid creating a second
+    event loop that would conflict with Redis connections created at startup.
     """
-    # Suppress noisy ERROR log from buffer_live_events crashing.
-    streaming_logger = logging.getLogger("tiled.server.streaming")
-    prev_level = streaming_logger.level
-    streaming_logger.setLevel(logging.CRITICAL)
+    saved_auth = context.http_client.auth
+    context.http_client.auth = None
     try:
-        envelope_format = "json" if "json" in url else "msgpack"
-        with test_client.websocket_connect(url) as websocket:
-            if body is not None:
-                websocket.send_json(body)
-            _receive_schema(websocket, envelope_format)
-    except RuntimeError as exc:
-        if "attached to a different loop" not in str(exc):
-            raise
+        yield context.http_client
     finally:
-        streaming_logger.setLevel(prev_level)
+        context.http_client.auth = saved_auth
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
@@ -815,12 +808,12 @@ def test_first_message_auth_with_access_token(
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_first_msg")
 
-    unauthenticated = TestClient(context.http_client.app)
-    _ws_connect_ignore_streaming_error(
-        unauthenticated,
-        f"/api/v1/stream/single/test_jwt_first_msg?envelope_format={envelope_format}",
-        body={"type": "auth", "access_token": access_token},
-    )
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_jwt_first_msg?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json({"type": "auth", "access_token": access_token})
+            _receive_schema(websocket, envelope_format)
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
@@ -831,13 +824,13 @@ def test_query_param_access_token(tiled_websocket_context_multiuser, envelope_fo
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_query_param")
 
-    unauthenticated = TestClient(context.http_client.app)
     token_param = urllib.parse.quote(access_token, safe="")
-    _ws_connect_ignore_streaming_error(
-        unauthenticated,
-        f"/api/v1/stream/single/test_jwt_query_param"
-        f"?envelope_format={envelope_format}&access_token={token_param}",
-    )
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_jwt_query_param"
+            f"?envelope_format={envelope_format}&access_token={token_param}",
+        ) as websocket:
+            _receive_schema(websocket, envelope_format)
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
@@ -862,14 +855,14 @@ def test_expired_access_token_query_param(
         algorithm="HS256",
     )
     token_param = urllib.parse.quote(expired_token, safe="")
-    unauthenticated = TestClient(context.http_client.app)
-    with pytest.raises(WebSocketDenialResponse) as exc_info:
-        with unauthenticated.websocket_connect(
-            f"/api/v1/stream/single/test_expired_jwt"
-            f"?envelope_format={envelope_format}&access_token={token_param}",
-        ):
-            pass
-    assert exc_info.value.status_code == 401
+    with _unauthenticated(context) as test_client:
+        with pytest.raises(WebSocketDenialResponse) as exc_info:
+            with test_client.websocket_connect(
+                f"/api/v1/stream/single/test_expired_jwt"
+                f"?envelope_format={envelope_format}&access_token={token_param}",
+            ):
+                pass
+        assert exc_info.value.status_code == 401
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
@@ -892,11 +885,11 @@ def test_first_message_jwt_auth_rejected(
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_rejected")
 
-    unauthenticated = TestClient(context.http_client.app)
-    with unauthenticated.websocket_connect(
-        f"/api/v1/stream/single/test_jwt_rejected?envelope_format={envelope_format}",
-    ) as websocket:
-        websocket.send_json(auth_message)
-        msg = websocket.receive()
-        assert msg["type"] == "websocket.close"
-        assert msg.get("code") == 4003
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_jwt_rejected?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json(auth_message)
+            msg = websocket.receive()
+            assert msg["type"] == "websocket.close"
+            assert msg.get("code") == 4003
