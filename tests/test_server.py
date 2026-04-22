@@ -1,6 +1,3 @@
-import subprocess
-import sys
-
 import httpx
 import numpy
 import pytest

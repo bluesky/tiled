@@ -14,9 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled import profiles
 from tiled.catalog import from_uri, in_memory
-from tiled.client import Context
-from tiled.client import from_context
-from tiled.client.context import Context
+from tiled.client import Context, from_context
 from tiled.client.base import BaseClient
 from tiled.config import Authentication
 from tiled.server.app import build_app
