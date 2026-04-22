@@ -807,8 +807,7 @@ def test_first_message_auth_with_access_token(
     client = from_context(context)
     access_token = context.tokens["access_token"]
 
-    arr = np.arange(10)
-    client.write_array(arr, key="test_jwt_first_msg")
+    client.write_array(np.arange(10), key="test_jwt_first_msg")
 
     with _unauthenticated(context) as test_client:
         with test_client.websocket_connect(
@@ -825,8 +824,7 @@ def test_query_param_access_token(tiled_websocket_context_multiuser, envelope_fo
     client = from_context(context)
     access_token = context.tokens["access_token"]
 
-    arr = np.arange(10)
-    client.write_array(arr, key="test_jwt_query_param")
+    client.write_array(np.arange(10), key="test_jwt_query_param")
 
     token_param = urllib.parse.quote(access_token, safe="")
     with _unauthenticated(context) as test_client:
@@ -845,8 +843,7 @@ def test_expired_access_token_query_param(
     context = tiled_websocket_context_multiuser
     client = from_context(context)
 
-    arr = np.arange(10)
-    client.write_array(arr, key="test_expired_jwt")
+    client.write_array(np.arange(10), key="test_expired_jwt")
 
     # Create an expired token using the same secret key.
     expired_token = jose.jwt.encode(
@@ -888,8 +885,7 @@ def test_first_message_jwt_auth_rejected(
     context = tiled_websocket_context_multiuser
     client = from_context(context)
 
-    arr = np.arange(10)
-    client.write_array(arr, key="test_jwt_rejected")
+    client.write_array(np.arange(10), key="test_jwt_rejected")
 
     with _unauthenticated(context) as test_client:
         with test_client.websocket_connect(
