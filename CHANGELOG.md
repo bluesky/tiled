@@ -27,7 +27,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
-- Tests for the WebSocket endpoints that stream tabukar data.
+- Tests for the WebSocket endpoints that stream tabular data.
+- `TagBasedAccessPolicy` now accepts a list of providers in addition to a
+  single provider string.
 
 ## v0.2.7 (2026-02-27)
 
