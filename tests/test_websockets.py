@@ -799,6 +799,45 @@ def _unauthenticated(context):
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_first_message_auth_with_api_key_multiuser(
+    tiled_websocket_context_multiuser, envelope_format
+):
+    """Test first-message auth with a valid API key in multi-user mode."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+
+    key_info = context.create_api_key()
+    client.write_array(np.arange(10), key="test_apikey_multiuser")
+
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_apikey_multiuser?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json({"type": "auth", "api_key": key_info["secret"]})
+            _receive_schema(websocket, envelope_format)
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_first_message_auth_wrong_api_key_multiuser(
+    tiled_websocket_context_multiuser, envelope_format
+):
+    """Test first-message auth with a wrong API key in multi-user mode is rejected."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+
+    client.write_array(np.arange(10), key="test_bad_apikey_multiuser")
+
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_bad_apikey_multiuser?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json({"type": "auth", "api_key": "wrong-key"})
+            msg = websocket.receive()
+            assert msg["type"] == "websocket.close"
+            assert msg.get("code") == 4003
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 def test_first_message_auth_with_access_token(
     tiled_websocket_context_multiuser, envelope_format
 ):
