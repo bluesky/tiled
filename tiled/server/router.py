@@ -770,8 +770,7 @@ def get_router(
 
         # If no auth was provided via headers or query params on a server that
         # requires authentication, accept the connection and wait for a "first
-        # message" carrying credentials.
-        # See https://github.com/bluesky/tiled/issues/1138
+        # message" carrying credentials. See Issue #1138.
         needs_first_message_auth = (
             principal is None and not settings.allow_anonymous_access
         )

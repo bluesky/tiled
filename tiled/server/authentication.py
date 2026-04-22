@@ -615,8 +615,7 @@ async def get_current_principal_websocket(
             return None
         else:
             # No credentials provided. Return None to allow the WebSocket
-            # endpoint to attempt "first message" authentication.
-            # See https://github.com/bluesky/tiled/issues/1138
+            # endpoint to attempt "first message" authentication. See Issue #1138.
             return None
 
 
