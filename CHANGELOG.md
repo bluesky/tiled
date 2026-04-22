@@ -30,8 +30,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Authentication support in the web UI: login page with password and OIDC
   provider support, token persistence with automatic refresh, authenticated
   image loading and file downloads, and user menu with logout.
-- `TagBasedAccessPolicy` now accepts a list of providers in addition to a
-  single provider string.
 - Tests for the WebSocket endpoints that stream tabular data.
 - WebSocket "first message" authentication: clients can now authenticate
   WebSocket connections by sending credentials in the first message instead

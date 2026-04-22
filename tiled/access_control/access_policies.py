@@ -72,7 +72,7 @@ class TagBasedAccessPolicy(AccessPolicy):
         access_tags_parser,
         scopes=None,
     ):
-        self.providers = [provider] if isinstance(provider, str) else list(provider)
+        self.provider = provider
         self.scopes = scopes if (scopes is not None) else ALL_SCOPES
 
         access_tags_parser = import_object(access_tags_parser)
@@ -92,11 +92,11 @@ class TagBasedAccessPolicy(AccessPolicy):
 
     def _get_id(self, principal):
         for identity in principal.identities:
-            if identity.provider in self.providers:
+            if identity.provider == self.provider:
                 return identity.id
         else:
             raise ValueError(
-                f"Principal {principal} has no identity from providers {self.providers}."
+                f"Principal {principal} has no identity from provider {self.provider}."
                 f"The Principal's identities are: {principal.identities}"
             )
 
