@@ -764,13 +764,10 @@ def get_router(
         authn_scopes: Scopes = Depends(get_current_scopes_websocket),
         settings: Settings = Depends(get_settings),
         db_factory: Callable = Depends(get_database_session_factory),
-<<<<<<< HEAD
-=======
         api_key: Optional[str] = Depends(get_api_key_websocket),
         decoded_access_token: Optional[dict] = Depends(
             get_decoded_access_token_websocket
         ),
->>>>>>> websocket-first-message-auth
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
@@ -780,16 +777,11 @@ def get_router(
         # If no auth was provided via headers or query params on a server that
         # requires authentication, accept the connection and wait for a "first
         # message" carrying credentials. See Issue #1138.
-<<<<<<< HEAD
-        needs_first_message_auth = (
-            principal is None and not settings.allow_anonymous_access
-=======
         # In single-user (API-key-only) mode, principal is legitimately None
         # for valid keys, so we check whether any credentials were provided.
         has_credentials = api_key is not None or decoded_access_token is not None
         needs_first_message_auth = (
             not has_credentials and not settings.allow_anonymous_access
->>>>>>> websocket-first-message-auth
         )
         if needs_first_message_auth:
             await websocket.accept()
