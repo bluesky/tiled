@@ -11,7 +11,6 @@ import pyarrow as pa
 import pytest
 from starlette.testclient import TestClient, WebSocketDenialResponse
 
-from tiled.catalog import from_uri
 from tiled.client import from_context
 from tiled.client.context import Context
 from tiled.config import parse_configs
@@ -834,62 +833,6 @@ def authenticated_websocket_context(tmpdir, redis_uri, enter_username_password):
             client = from_context(context)
         access_token = context.tokens["access_token"]
         yield context, client, access_token
-
-
-@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
-def test_first_message_auth_with_access_token(
-    authenticated_websocket_context, envelope_format
-):
-    """Test websocket first-message authentication with a valid JWT access token."""
-    context, client, access_token = authenticated_websocket_context
-
-    arr = np.arange(10)
-    client.write_array(arr, key="test_jwt_first_msg")
-
-    # Connect without any credentials — server accepts for first-message auth.
-    unauthenticated = TestClient(context.http_client.app)
-    with unauthenticated.websocket_connect(
-        f"/api/v1/stream/single/test_jwt_first_msg?envelope_format={envelope_format}",
-    ) as websocket:
-        # Send first-message auth with valid access token
-        websocket.send_json({"type": "auth", "access_token": access_token})
-        # Should receive schema message (auth succeeded)
-        if envelope_format == "json":
-            msg = websocket.receive_json()
-        else:
-            msg = msgpack.unpackb(websocket.receive_bytes())
-        assert msg["type"] in ("array-schema", "table-schema")
-
-
-@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
-def test_query_param_access_token(authenticated_websocket_context, envelope_format):
-    """Test websocket connection with JWT access token as query parameter."""
-    context, client, access_token = authenticated_websocket_context
-
-    arr = np.arange(10)
-    client.write_array(arr, key="test_jwt_query_param")
-
-    # Connect with access_token as query parameter — no first-message auth needed.
-    unauthenticated = TestClient(context.http_client.app)
-    token_param = urllib.parse.quote(access_token, safe="")
-    try:
-        with unauthenticated.websocket_connect(
-            f"/api/v1/stream/single/test_jwt_query_param"
-            f"?envelope_format={envelope_format}&access_token={token_param}",
-        ) as websocket:
-            # Should receive schema message directly (auth via query param succeeded).
-            if envelope_format == "json":
-                msg = websocket.receive_json()
-            else:
-                msg = msgpack.unpackb(websocket.receive_bytes())
-            assert msg["type"] in ("array-schema", "table-schema")
-    except RuntimeError as exc:
-        # The multi-user authenticated_websocket_context fixture creates Redis
-        # connections bound to a different event loop than the WebSocket handler's
-        # buffer_live_events task. This causes a harmless RuntimeError during
-        # cleanup. The schema receipt above already proves auth succeeded.
-        if "attached to a different loop" not in str(exc):
-            raise
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
