@@ -1,3 +1,5 @@
+import copy
+
 import io
 import os
 import shutil
@@ -21,6 +23,7 @@ from tiled.client.context import PasswordRejected
 from tiled.server import authentication
 from tiled.server.app import build_app_from_config
 
+from .conftest import TOY_AUTHENTICATION
 from .utils import fail_with_status_code
 
 arr = ArrayAdapter.from_array(numpy.ones((5, 5)))
@@ -44,18 +47,7 @@ def config(sqlite_or_postgres_uri):
         capture_output=True,
     )
     return {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
-                    },
-                }
-            ],
-        },
+        "authentication": copy.deepcopy(TOY_AUTHENTICATION),
         "database": {
             "uri": database_uri,
         },

@@ -16,6 +16,7 @@ from tiled.config import Authentication
 from tiled.server.app import build_app, build_app_from_config
 from tiled.server.logging_config import LOGGING_CONFIG
 
+from .conftest import TOY_AUTHENTICATION, init_auth_database
 from .utils import Server
 
 router = APIRouter()
@@ -54,25 +55,9 @@ tree = MapAdapter({"A1": arr, "A2": arr})
 
 @pytest.fixture
 def multiuser_server(tmpdir):
-    database_uri = f"sqlite:///{tmpdir}/tiled.sqlite"
-    subprocess.run(
-        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
-        check=True,
-        capture_output=True,
-    )
+    database_uri = init_auth_database(tmpdir)
     config = {
-        "authentication": {
-            "secret_keys": ["SECRET"],
-            "providers": [
-                {
-                    "provider": "toy",
-                    "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                    "args": {
-                        "users_to_passwords": {"alice": "secret1", "bob": "secret2"}
-                    },
-                }
-            ],
-        },
+        "authentication": TOY_AUTHENTICATION,
         "database": {
             "uri": database_uri,
         },
