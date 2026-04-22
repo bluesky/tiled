@@ -1,4 +1,5 @@
 import datetime
+import logging
 import sys
 import urllib.parse
 
@@ -772,6 +773,38 @@ streaming_cache:
     assert config.streaming_cache.socket_connect_timeout == 12
 
 
+def _receive_schema(websocket, envelope_format):
+    """Receive and return the schema message from a websocket."""
+    if envelope_format == "json":
+        msg = websocket.receive_json()
+    else:
+        msg = msgpack.unpackb(websocket.receive_bytes())
+    assert msg["type"] in ("array-schema", "table-schema")
+    return msg
+
+
+def _ws_connect_ignore_streaming_error(test_client, url, body=None):
+    """Connect to a websocket, optionally send a first message, receive schema,
+    and tolerate the Redis event-loop RuntimeError that occurs in multi-user
+    test fixtures (buffer_live_events background task).
+    """
+    # Suppress noisy ERROR log from buffer_live_events crashing.
+    streaming_logger = logging.getLogger("tiled.server.streaming")
+    prev_level = streaming_logger.level
+    streaming_logger.setLevel(logging.CRITICAL)
+    try:
+        envelope_format = "json" if "json" in url else "msgpack"
+        with test_client.websocket_connect(url) as websocket:
+            if body is not None:
+                websocket.send_json(body)
+            _receive_schema(websocket, envelope_format)
+    except RuntimeError as exc:
+        if "attached to a different loop" not in str(exc):
+            raise
+    finally:
+        streaming_logger.setLevel(prev_level)
+
+
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
 def test_first_message_auth_with_access_token(
     tiled_websocket_context_multiuser, envelope_format
@@ -782,19 +815,12 @@ def test_first_message_auth_with_access_token(
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_first_msg")
 
-    # Connect without any credentials — server accepts for first-message auth.
     unauthenticated = TestClient(context.http_client.app)
-    with unauthenticated.websocket_connect(
+    _ws_connect_ignore_streaming_error(
+        unauthenticated,
         f"/api/v1/stream/single/test_jwt_first_msg?envelope_format={envelope_format}",
-    ) as websocket:
-        # Send first-message auth with valid access token
-        websocket.send_json({"type": "auth", "access_token": access_token})
-        # Should receive schema message (auth succeeded)
-        if envelope_format == "json":
-            msg = websocket.receive_json()
-        else:
-            msg = msgpack.unpackb(websocket.receive_bytes())
-        assert msg["type"] in ("array-schema", "table-schema")
+        body={"type": "auth", "access_token": access_token},
+    )
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
@@ -805,27 +831,13 @@ def test_query_param_access_token(tiled_websocket_context_multiuser, envelope_fo
     arr = np.arange(10)
     client.write_array(arr, key="test_jwt_query_param")
 
-    # Connect with access_token as query parameter — no first-message auth needed.
     unauthenticated = TestClient(context.http_client.app)
     token_param = urllib.parse.quote(access_token, safe="")
-    try:
-        with unauthenticated.websocket_connect(
-            f"/api/v1/stream/single/test_jwt_query_param"
-            f"?envelope_format={envelope_format}&access_token={token_param}",
-        ) as websocket:
-            # Should receive schema message directly (auth via query param succeeded).
-            if envelope_format == "json":
-                msg = websocket.receive_json()
-            else:
-                msg = msgpack.unpackb(websocket.receive_bytes())
-            assert msg["type"] in ("array-schema", "table-schema")
-    except RuntimeError as exc:
-        # The multi-user tiled_websocket_context_multiuser fixture creates Redis
-        # connections bound to a different event loop than the WebSocket handler's
-        # buffer_live_events task. This causes a harmless RuntimeError during
-        # cleanup. The schema receipt above already proves auth succeeded.
-        if "attached to a different loop" not in str(exc):
-            raise
+    _ws_connect_ignore_streaming_error(
+        unauthenticated,
+        f"/api/v1/stream/single/test_jwt_query_param"
+        f"?envelope_format={envelope_format}&access_token={token_param}",
+    )
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
