@@ -296,6 +296,23 @@ def get_api_key_websocket(
     return api_key
 
 
+def get_decoded_access_token_websocket(
+    websocket: WebSocket,
+    access_token: Optional[str] = Query(None),
+    settings: Settings = Depends(get_settings),
+) -> Optional[dict]:
+    """Decode a JWT access token passed as a query parameter on WebSocket connections."""
+    if not access_token:
+        return None
+    try:
+        return decode_token(access_token, settings.secret_keys, settings.authenticator)
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Access token has expired. Refresh token.",
+        )
+
+
 async def get_current_access_tags_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
@@ -392,6 +409,7 @@ async def get_current_scopes(
 async def get_current_scopes_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
+    decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
@@ -402,8 +420,81 @@ async def get_current_scopes_websocket(
             return await get_scopes_from_api_key(
                 api_key, settings, websocket.app.state.authenticated, db
             )
+    elif decoded_access_token is not None:
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            return set(decoded_access_token["scope"].split(" "))
+        else:
+            return decoded_access_token["scp"]
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
+
+
+async def authenticate_websocket_first_message(
+    websocket: WebSocket,
+    message: dict,
+    settings: Settings,
+    db_factory: Callable,
+) -> tuple[bool, Optional[schemas.Principal], Optional[set], set]:
+    """Authenticate a WebSocket connection from a 'first message' payload.
+
+    Supports two credential types:
+      {"type": "auth", "access_token": "..."}
+      {"type": "auth", "api_key": "..."}
+
+    Returns (success, principal, access_tags, scopes). ``success`` is True if
+    credentials were valid, False otherwise.  ``principal`` may legitimately
+    be None in single-user API-key mode even when auth succeeds.
+    """
+    api_key = message.get("api_key")
+    access_token = message.get("access_token")
+
+    if api_key is not None:
+        try:
+            async with db_factory() as db:
+                principal = await get_current_principal_from_api_key(
+                    api_key, websocket.app.state.authenticated, db, settings
+                )
+        except HTTPException:
+            return False, None, None, NO_SCOPES
+        if (principal is None) and websocket.app.state.authenticated:
+            # In multi-user mode, None principal means key not found.
+            return False, None, None, NO_SCOPES
+        async with db_factory() as db:
+            access_tags = await get_access_tags_from_api_key(
+                api_key, websocket.app.state.authenticated, db
+            )
+        async with db_factory() as db:
+            scopes = await get_scopes_from_api_key(
+                api_key, settings, websocket.app.state.authenticated, db
+            )
+        return True, principal, access_tags, scopes
+    elif access_token is not None:
+        try:
+            decoded = decode_token(
+                access_token, settings.secret_keys, settings.authenticator
+            )
+        except Exception:
+            return False, None, None, NO_SCOPES
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            principal = schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded["sub"]),
+                type=schemas.PrincipalType.external,
+                identities=[],
+            )
+            scopes = set(decoded["scope"].split(" "))
+        else:
+            principal = schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded["sub"]),
+                type=decoded["sub_typ"],
+                identities=[
+                    schemas.Identity(id=identity["id"], provider=identity["idp"])
+                    for identity in decoded["ids"]
+                ],
+            )
+            scopes = decoded["scp"]
+        return True, principal, None, scopes
+    else:
+        return False, None, None, NO_SCOPES
 
 
 async def check_scopes(
@@ -487,6 +578,7 @@ async def get_current_principal_from_api_key(
 async def get_current_principal_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
+    decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
         get_database_session_factory
@@ -502,14 +594,29 @@ async def get_current_principal_websocket(
                 status_code=HTTP_401_UNAUTHORIZED, detail="Invalid API key"
             )
         return principal
+    elif decoded_access_token is not None:
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            return schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                type=schemas.PrincipalType.external,
+                identities=[],
+            )
+        else:
+            return schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                type=decoded_access_token["sub_typ"],
+                identities=[
+                    schemas.Identity(id=identity["id"], provider=identity["idp"])
+                    for identity in decoded_access_token["ids"]
+                ],
+            )
     else:
         if settings.allow_anonymous_access:
             return None
         else:
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED,
-                detail="No API key was provided with this request.",
-            )
+            # No credentials provided. Return None to allow the WebSocket
+            # endpoint to attempt "first message" authentication. See Issue #1138.
+            return None
 
 
 async def get_current_principal(
@@ -792,6 +899,7 @@ def add_external_routes(
             "response_type": "code",
             "scope": "openid",
             "redirect_uri": redirect_uri,
+            "prompt": "login",
         }
         if state:
             params["state"] = state
