@@ -1,15 +1,19 @@
+import datetime
 import sys
 import urllib.parse
 
 import dask.array
+import jose.jwt
 import msgpack
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from starlette.testclient import WebSocketDenialResponse
+from starlette.testclient import TestClient, WebSocketDenialResponse
 
+from tiled.catalog import from_uri
 from tiled.client import from_context
+from tiled.client.context import Context
 from tiled.config import parse_configs
 
 pytestmark = pytest.mark.skipif(
@@ -804,3 +808,168 @@ streaming_cache:
     assert config.streaming_cache.seq_ttl == 60
     assert config.streaming_cache.socket_timeout == 11
     assert config.streaming_cache.socket_connect_timeout == 12
+
+
+@pytest.fixture(scope="function")
+def authenticated_websocket_context(tmpdir, redis_uri, enter_username_password):
+    """Fixture that provides a multi-user Tiled context with JWT auth and websocket support.
+
+    Returns (context, client, access_token) where access_token is a valid JWT for 'alice'.
+    """
+    from tiled.config import Authentication, AuthenticationProviderSpec
+    from tiled.server.app import build_app
+
+    tree = from_uri(
+        "sqlite:///:memory:",
+        writable_storage=[str(tmpdir / "data")],
+        init_if_not_exists=True,
+        cache_config={
+            "uri": redis_uri,
+            "data_ttl": 600,
+            "seq_ttl": 600,
+            "socket_timeout": 600,
+            "socket_connect_timeout": 10,
+        },
+    )
+    app = build_app(
+        tree,
+        authentication=Authentication(
+            secret_keys=["SECRET"],
+            providers=[
+                AuthenticationProviderSpec(
+                    provider="toy",
+                    authenticator="tiled.authenticators:DictionaryAuthenticator",
+                    args={"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
+                )
+            ],
+        ),
+    )
+    with Context.from_app(app) as context:
+        with enter_username_password("alice", "secret1"):
+            client = from_context(context)
+        access_token = context.tokens["access_token"]
+        yield context, client, access_token
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_first_message_auth_with_access_token(
+    authenticated_websocket_context, envelope_format
+):
+    """Test websocket first-message authentication with a valid JWT access token."""
+    context, client, access_token = authenticated_websocket_context
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_jwt_first_msg")
+
+    # Connect without any credentials — server accepts for first-message auth.
+    unauthenticated = TestClient(context.http_client.app)
+    with unauthenticated.websocket_connect(
+        f"/api/v1/stream/single/test_jwt_first_msg?envelope_format={envelope_format}",
+    ) as websocket:
+        # Send first-message auth with valid access token
+        websocket.send_json({"type": "auth", "access_token": access_token})
+        # Should receive schema message (auth succeeded)
+        if envelope_format == "json":
+            msg = websocket.receive_json()
+        else:
+            msg = msgpack.unpackb(websocket.receive_bytes())
+        assert msg["type"] in ("array-schema", "table-schema")
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_query_param_access_token(
+    authenticated_websocket_context, envelope_format
+):
+    """Test websocket connection with JWT access token as query parameter."""
+    context, client, access_token = authenticated_websocket_context
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_jwt_query_param")
+
+    # Connect with access_token as query parameter — no first-message auth needed.
+    unauthenticated = TestClient(context.http_client.app)
+    token_param = urllib.parse.quote(access_token, safe="")
+    with unauthenticated.websocket_connect(
+        f"/api/v1/stream/single/test_jwt_query_param"
+        f"?envelope_format={envelope_format}&access_token={token_param}",
+    ) as websocket:
+        # Should receive schema message directly (auth via query param succeeded).
+        if envelope_format == "json":
+            msg = websocket.receive_json()
+        else:
+            msg = msgpack.unpackb(websocket.receive_bytes())
+        assert msg["type"] in ("array-schema", "table-schema")
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_first_message_no_credentials(
+    authenticated_websocket_context, envelope_format
+):
+    """Test websocket first-message with neither api_key nor access_token is rejected."""
+    context, client, _ = authenticated_websocket_context
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_no_creds")
+
+    unauthenticated = TestClient(context.http_client.app)
+    with unauthenticated.websocket_connect(
+        f"/api/v1/stream/single/test_no_creds?envelope_format={envelope_format}",
+    ) as websocket:
+        # Send auth message with no credentials
+        websocket.send_json({"type": "auth"})
+        msg = websocket.receive()
+        assert msg["type"] == "websocket.close"
+        assert msg.get("code") == 4003
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_expired_access_token_query_param(
+    authenticated_websocket_context, envelope_format
+):
+    """Test that an expired JWT in the query parameter is rejected with 401."""
+    context, client, access_token = authenticated_websocket_context
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_expired_jwt")
+
+    # Create an expired token using the same secret key.
+    expired_token = jose.jwt.encode(
+        {
+            "sub": "fake",
+            "type": "access",
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(seconds=60),
+        },
+        "SECRET",
+        algorithm="HS256",
+    )
+    token_param = urllib.parse.quote(expired_token, safe="")
+    unauthenticated = TestClient(context.http_client.app)
+    with pytest.raises(WebSocketDenialResponse) as exc_info:
+        with unauthenticated.websocket_connect(
+            f"/api/v1/stream/single/test_expired_jwt"
+            f"?envelope_format={envelope_format}&access_token={token_param}",
+        ):
+            pass
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_websocket_first_message_auth_invalid_token(
+    authenticated_websocket_context, envelope_format
+):
+    """Test that a malformed JWT in first-message auth is rejected with close code 4003."""
+    context, client, _ = authenticated_websocket_context
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_invalid_jwt")
+
+    unauthenticated = TestClient(context.http_client.app)
+    with unauthenticated.websocket_connect(
+        f"/api/v1/stream/single/test_invalid_jwt?envelope_format={envelope_format}",
+    ) as websocket:
+        # Send first-message auth with a garbage token
+        websocket.send_json({"type": "auth", "access_token": "not.a.valid.jwt"})
+        msg = websocket.receive()
+        assert msg["type"] == "websocket.close"
+        assert msg.get("code") == 4003
