@@ -17,9 +17,15 @@ interface Spec {
   default_columns: string[];
 }
 
+interface SpecView {
+  spec: string;
+  url: string;
+}
+
 interface Settings {
   api_url: string;
   specs: Spec[];
+  spec_views?: SpecView[];
   structure_families: any;
 }
 

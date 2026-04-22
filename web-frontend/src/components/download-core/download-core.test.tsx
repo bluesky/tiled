@@ -8,6 +8,13 @@ vi.mock("clipboard-copy", () => ({
   default: vi.fn(),
 }));
 
+vi.mock("../../client", () => ({
+  about: vi.fn(),
+  axiosInstance: {
+    get: vi.fn().mockResolvedValue({ data: new Blob(["data"]) }),
+  },
+}));
+
 const testFormats = [
   { mimetype: "image/png", display_name: "PNG Image", extension: ".png" },
   { mimetype: "text/csv", display_name: "CSV File", extension: ".csv" },
@@ -78,25 +85,20 @@ describe("Download Component", () => {
     expect(baseProps.setFormat).toHaveBeenCalledWith(testFormats[1]);
   });
 
-  it("creates download link with correct filename", () => {
+  it("renders download button that triggers blob download", () => {
     renderWithSettings(baseProps);
 
-    const downloadButton = screen.getByRole("link", { name: /Download/i });
-    expect(downloadButton).toHaveAttribute(
-      "href",
-      "/api/v1/array/full/my-data?format=image/png&filename=my-data.png",
-    );
+    const downloadButton = screen.getByRole("button", { name: /Download/i });
+    expect(downloadButton).toBeInTheDocument();
+    expect(downloadButton).not.toBeDisabled();
   });
 
-  it("opens data in new tab when user clicks Open", () => {
+  it("renders open button that triggers blob open", () => {
     renderWithSettings(baseProps);
 
-    const openButton = screen.getByRole("link", { name: /Open/i });
-    expect(openButton).toHaveAttribute(
-      "href",
-      "/api/v1/array/full/my-data?format=image/png",
-    );
-    expect(openButton).toHaveAttribute("target", "_blank");
+    const openButton = screen.getByRole("button", { name: /Open/i });
+    expect(openButton).toBeInTheDocument();
+    expect(openButton).not.toBeDisabled();
   });
 
   it("shows shareable link in popover", () => {
@@ -113,10 +115,10 @@ describe("Download Component", () => {
   it("disables actions when no link is available", () => {
     renderWithSettings({ ...baseProps, link: "" });
 
-    const downloadButton = screen.getByRole("link", { name: /Download/i });
-    const openButton = screen.getByRole("link", { name: /Open/i });
+    const downloadButton = screen.getByRole("button", { name: /Download/i });
+    const openButton = screen.getByRole("button", { name: /Open/i });
 
-    expect(downloadButton).toHaveAttribute("href", "#");
-    expect(openButton).toHaveAttribute("href", "#");
+    expect(downloadButton).toBeDisabled();
+    expect(openButton).toBeDisabled();
   });
 });

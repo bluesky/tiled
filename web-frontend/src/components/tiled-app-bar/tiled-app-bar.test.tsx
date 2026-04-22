@@ -17,11 +17,11 @@ describe("TiledAppBar", () => {
     expect(screen.getByText("TILED")).toBeInTheDocument();
   });
 
-  it("has a working Browse button that links to the browse page", () => {
+  it("has a clickable TILED logo that links to the browse page", () => {
     renderAppBar();
-    const browseButton = screen.getByRole("link", { name: "Browse" });
-    expect(browseButton).toBeInTheDocument();
-    expect(browseButton).toHaveAttribute("href", "/browse/");
+    const homeLink = screen.getByRole("link", { name: /TILED/i });
+    expect(homeLink).toBeInTheDocument();
+    expect(homeLink).toHaveAttribute("href", "/browse/");
   });
 
   it("looks like a proper navigation bar", () => {
