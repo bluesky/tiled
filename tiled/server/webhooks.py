@@ -25,7 +25,7 @@ import logging
 import socket
 import uuid
 from datetime import datetime, timedelta, timezone
-
+from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -294,7 +294,9 @@ async def _prune_old_deliveries(
     wait = interval
     while True:
         await asyncio.sleep(wait)
-        cutoff = datetime.now(tz=timezone.utc).replace(tzinfo=None) - timedelta(days=max_age_days)
+        cutoff = datetime.now(tz=timezone.utc).replace(tzinfo=None) - timedelta(
+            days=max_age_days
+        )
         try:
             async with session_factory() as db:
                 await db.execute(

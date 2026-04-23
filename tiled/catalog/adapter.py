@@ -78,7 +78,6 @@ from ..server.schemas import (
     ContainerChildCreatedEvent,
     ContainerChildMetadataUpdatedEvent,
     DataSource,
-    EventType,
     Management,
     Revision,
     StreamClosedEvent,
@@ -1285,9 +1284,11 @@ class CatalogNodeAdapter:
                 else:
                     effective_metadata = self.node.metadata_ or {}
                 # Determine the effective specs after the update.
-                effective_specs = specs if specs is not None else (
-                    current.specs if not drop_revision else self.node.specs
-                ) or []
+                effective_specs = (
+                    specs
+                    if specs is not None
+                    else (current.specs if not drop_revision else self.node.specs) or []
+                )
                 ev = ContainerChildMetadataUpdatedEvent(
                     timestamp=datetime.now(tz=timezone.utc),
                     key=self.node.key,
