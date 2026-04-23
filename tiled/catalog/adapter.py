@@ -1299,7 +1299,8 @@ class CatalogNodeAdapter:
                 )
 
     async def close_stream(self):
-        await self.context.streaming_cache.close(self.node.id)
+        if self.context.streaming_cache:
+            await self.context.streaming_cache.close(self.node.id)
         if self.context.webhook_dispatcher:
             segments = list(await self.path_segments())
             await self.context.webhook_dispatcher.dispatch(
