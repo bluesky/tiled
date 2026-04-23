@@ -1,0 +1,592 @@
+"""Tests for the DB-backed webhook dispatcher."""
+
+import asyncio
+import hashlib
+import hmac
+import json
+import socket
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import quote as urlquote
+
+import anyio
+import httpx
+import pytest
+import respx
+import stamina
+from fastapi import FastAPI
+from httpx import Response
+from sqlalchemy import select as sa_select
+
+from tiled.catalog import in_memory
+from tiled.catalog.adapter import CatalogNodeAdapter
+from tiled.catalog.orm import Webhook
+from tiled.client import Context, from_context
+from tiled.client.container import Container
+from tiled.config import Authentication
+from tiled.server.app import build_app
+from tiled.server.schemas import (
+    DeliveryResponse,
+    EventType,
+    StreamClosedEvent,
+    WebhookRegistrationRequest,
+    WebhookResponse,
+)
+from tiled.server.webhooks import (
+    MAX_ATTEMPTS,
+    WebhookDispatcher,
+    _decrypt_secret,
+    _deliver,
+    _encrypt_secret,
+    _sign,
+    check_url_ssrf_safety,
+)
+
+WEBHOOK_URL = "https://webhook.example.com/tiled-events"
+
+
+def _wh_req(**kwargs: Any) -> dict[str, Any]:
+    """Build a webhook registration request payload for WEBHOOK_URL."""
+    return WebhookRegistrationRequest(url=WEBHOOK_URL, **kwargs).model_dump(mode="json")
+
+
+def _register_webhook(
+    http: httpx.Client, path: str = "", **kwargs: Any
+) -> WebhookResponse:
+    """Register a webhook on ``path`` (default: root) and return the validated response."""
+    encoded = urlquote(path, safe="/")
+    return WebhookResponse.model_validate(
+        http.post(f"/api/v1/webhook/target/{encoded}", json=_wh_req(**kwargs))
+        .raise_for_status()
+        .json()
+    )
+
+
+def _capturing_mock() -> list[dict[str, Any]]:
+    """Attach a respx side-effect that captures decoded payloads and returns 200."""
+    received: list[dict[str, Any]] = []
+    respx.post(WEBHOOK_URL).mock(
+        side_effect=lambda req: (
+            received.append(json.loads(req.content)),
+            Response(200),
+        )[-1]
+    )
+    return received
+
+
+@pytest.fixture(scope="module")
+def app(tmpdir_module: Any) -> FastAPI:
+    tree = in_memory(
+        writable_storage=[f"file://localhost{tmpdir_module / 'data'}"],
+    )
+    return build_app(
+        tree,
+        authentication=Authentication(single_user_api_key="secret"),
+    )
+
+
+@pytest.fixture(scope="module")
+def context(app: FastAPI) -> Generator[Context, None, None]:
+    with Context.from_app(app) as ctx:
+        yield ctx
+
+
+@pytest.fixture(scope="module")
+def http(context: Context) -> httpx.Client:
+    return context.http_client
+
+
+@pytest.fixture(scope="module")
+def client(context: Context) -> Container:
+    return from_context(context)
+
+
+@pytest.fixture
+def mock_delivery_session() -> tuple[MagicMock, MagicMock]:
+    """Return a (delivery, session_factory) pair backed by AsyncMock."""
+    delivery = MagicMock()
+    delivery.id = 1
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=delivery)
+    db.__aenter__ = AsyncMock(return_value=db)
+    db.__aexit__ = AsyncMock(return_value=False)
+    session_factory = MagicMock(return_value=db)
+    return delivery, session_factory
+
+
+@pytest.fixture
+def enable_retries() -> Generator[None, None, None]:
+    """Re-enable stamina retries for tests that specifically test retry behavior.
+
+    The session-scoped ``deactivate_retries`` autouse fixture in conftest.py
+    globally sets ``stamina.set_active(False)``.  Tests that exercise retry
+    logic must opt back in with this fixture.
+    """
+    stamina.set_active(True)
+    yield
+    stamina.set_active(False)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _sign / encrypt helpers
+# ---------------------------------------------------------------------------
+
+
+def test_sign_produces_hmac_sha256() -> None:
+    body = b'{"type": "test"}'
+    secret = "mysecret"
+    result = _sign(body, secret)
+    expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    assert result == expected
+
+
+def test_encrypt_decrypt_roundtrip() -> None:
+    secret_keys = ["key1", "key2"]
+    plaintext = "my-hmac-signing-secret"
+    encrypted = _encrypt_secret(plaintext, secret_keys)
+    # Must not store plaintext
+    assert plaintext not in encrypted
+    # Must round-trip correctly
+    assert _decrypt_secret(encrypted, secret_keys) == plaintext
+
+
+def test_decrypt_with_rotated_key() -> None:
+    """Secret encrypted with old key can be decrypted when that key is still
+    present in the list (key rotation support)."""
+    old_keys = ["old-key"]
+    new_keys = ["new-key", "old-key"]
+    plaintext = "rotation-test-secret"
+    encrypted = _encrypt_secret(plaintext, old_keys)
+    assert _decrypt_secret(encrypted, new_keys) == plaintext
+
+
+def test_decrypt_wrong_key_returns_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("CRITICAL"):  # suppress expected ERROR log
+        encrypted = _encrypt_secret("secret", ["correct-key"])
+        result = _decrypt_secret(encrypted, ["wrong-key"])
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _deliver retry logic
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deliver_success_updates_delivery_row(
+    mock_delivery_session: tuple[MagicMock, MagicMock],
+) -> None:
+    delivery, session_factory = mock_delivery_session
+    payload: dict[str, Any] = {"type": "container-child-created"}
+
+    with respx.mock:
+        respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+        async with httpx.AsyncClient() as c:
+            await _deliver(
+                client=c,
+                session_factory=session_factory,
+                delivery_id=1,
+                url=WEBHOOK_URL,
+                secret=None,
+                payload=payload,
+            )
+
+    assert delivery.outcome == "success"
+    assert delivery.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_deliver_retries_on_failure(
+    mock_delivery_session: tuple[MagicMock, MagicMock],
+    enable_retries: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    delivery, session_factory = mock_delivery_session
+    payload: dict[str, Any] = {"type": "container-child-created"}
+
+    with caplog.at_level("CRITICAL"):  # suppress expected retry WARNING/ERROR logs
+        with respx.mock:
+            respx.post(WEBHOOK_URL).mock(return_value=Response(500))
+            with stamina.set_testing(True, attempts=MAX_ATTEMPTS):
+                async with httpx.AsyncClient() as c:
+                    await _deliver(
+                        client=c,
+                        session_factory=session_factory,
+                        delivery_id=1,
+                        url=WEBHOOK_URL,
+                        secret=None,
+                        payload=payload,
+                    )
+
+    assert delivery.outcome == "failed"
+    assert delivery.attempts == MAX_ATTEMPTS
+
+
+# ---------------------------------------------------------------------------
+# Integration tests
+#
+# ---------------------------------------------------------------------------
+
+
+class TestWebhookIntegration:
+    @pytest.fixture(autouse=True)
+    def bypass_ssrf_check(self) -> Generator[None, None, None]:
+        """Disable the SSRF blocklist for integration tests."""
+        with patch("tiled.server.webhook_router.check_url_ssrf_safety"):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def cleanup_webhooks(self, http: httpx.Client) -> Generator[list[int], None, None]:
+        """Yield a collector list; delete every webhook ID added to it after the test."""
+        extra_ids: list[int] = []
+        yield extra_ids
+        # Auto-clean root-level webhooks.
+        root_ids = [wh["id"] for wh in http.get("/api/v1/webhook/target/").json()]
+        for wh_id in set(root_ids + extra_ids):
+            http.delete(f"/api/v1/webhook/{wh_id}")
+
+    @pytest.fixture
+    def node_key(self, request: pytest.FixtureRequest) -> str:
+        """Return a container key unique within the module (derived from test name)."""
+        return request.node.name.replace("[", "_").replace("]", "")
+
+    @pytest.fixture
+    def registered_webhook(self, http: httpx.Client) -> int:
+        """Register a catch-all webhook on the root node and return its id."""
+        return _register_webhook(http).id
+
+    @respx.mock
+    def test_register_webhook_and_fires_on_create_container(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        received = _capturing_mock()
+
+        _register_webhook(http, events=[EventType.container_child_created])
+        client.create_container(node_key, metadata={"material": "NiPS3"})
+
+        assert len(received) == 1
+        event = received[0]
+        assert event["type"] == EventType.container_child_created
+        assert event["key"] == node_key
+
+    @respx.mock
+    def test_register_webhook_returns_webhook_in_list(self, http: httpx.Client) -> None:
+        respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+
+        http.post(
+            "/api/v1/webhook/target/",
+            json=_wh_req(),
+        ).raise_for_status()
+
+        webhooks = [
+            WebhookResponse.model_validate(w)
+            for w in http.get("/api/v1/webhook/target/").raise_for_status().json()
+        ]
+
+        assert len(webhooks) == 1
+        assert webhooks[0].url.unicode_string() == WEBHOOK_URL
+
+    @respx.mock
+    def test_delete_webhook_stops_delivery(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        route = respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+        wh = _register_webhook(http)
+        http.delete(f"/api/v1/webhook/{wh.id}").raise_for_status()
+        client.create_container(node_key)
+        assert not route.called
+
+    @respx.mock
+    def test_dispatcher_hmac_signature(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        secret = "mysecret"
+        received_headers: dict[str, str] = {}
+
+        def capture(request: httpx.Request) -> Response:
+            received_headers.update(dict(request.headers))
+            return Response(200)
+
+        respx.post(WEBHOOK_URL).mock(side_effect=capture)
+        _register_webhook(http, secret=secret)
+        client.create_container(node_key)
+
+        sig = received_headers.get("x-tiled-signature", "")
+        assert sig.startswith("sha256=")
+
+    @respx.mock
+    def test_secret_stored_encrypted_not_plaintext(
+        self, app: FastAPI, http: httpx.Client
+    ) -> None:
+        secret = "super-secret-value"
+        respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+        _register_webhook(http, secret=secret)
+
+        # Directly query the DB to inspect the stored value.
+        # Use anyio.from_thread.start_blocking_portal() to safely run async
+        # code from a sync test context regardless of whether an event loop
+        # is already running in the current thread (e.g. under the httpx
+        # ASGI transport).
+        catalog_context = app.state.root_tree.context
+
+        async def _get_stored_secret() -> str:
+            async with catalog_context.session() as db:
+                row = (await db.execute(sa_select(Webhook))).scalars().first()
+                return row.secret
+
+        with anyio.from_thread.start_blocking_portal() as portal:
+            stored: str = portal.call(_get_stored_secret)
+
+        assert stored is not None
+        # Plaintext must not appear in the stored value
+        assert secret not in stored
+        # Fernet tokens are base64 and start with 'g' (version byte 0x80)
+        assert stored.startswith("g")
+
+    @respx.mock
+    def test_webhook_fires_for_descendant_node(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        received = _capturing_mock()
+        _register_webhook(http)
+
+        dataset = client.create_container(node_key)
+        dataset.create_container("child")
+
+        assert len(received) == 2
+        paths = [e["path"] for e in received]
+        assert [node_key] in paths
+        assert [node_key, "child"] in paths
+
+    @respx.mock
+    def test_delivery_history_endpoint(
+        self,
+        http: httpx.Client,
+        client: Container,
+        registered_webhook: int,
+        node_key: str,
+    ) -> None:
+        respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+
+        client.create_container(node_key)
+
+        history = [
+            DeliveryResponse.model_validate(d)
+            for d in http.get(f"/api/v1/webhook/history/{registered_webhook}")
+            .raise_for_status()
+            .json()
+        ]
+
+        assert len(history) >= 1
+        assert history[0].webhook_id == registered_webhook
+
+    @respx.mock
+    def test_subnode_webhook_fires_for_descendant_only(
+        self,
+        http: httpx.Client,
+        client: Container,
+        node_key: str,
+        cleanup_webhooks: list[int],
+    ) -> None:
+        """Webhook on a sub-node fires for events at or below that node,
+        but NOT for events on a sibling sub-node."""
+        dataset = client.create_container(node_key)
+        sibling_key = f"{node_key}_sibling"
+        sibling = client.create_container(sibling_key)
+
+        received = _capturing_mock()
+
+        # Register webhook on node_key only (not root, not sibling).
+        wh = _register_webhook(http, path=node_key)
+        cleanup_webhooks.append(wh.id)  # not visible to root list query
+
+        # Create a child under the watched node → should fire.
+        dataset.create_container("watched_child")
+        # Create a child under the sibling → must NOT fire.
+        sibling.create_container("unwatched_child")
+
+        paths = [e["path"] for e in received]
+        assert any(node_key in p for p in paths), "expected event for watched sub-tree"
+        assert not any(sibling_key in str(p) for p in paths), (
+            "unexpected event for sibling sub-tree"
+        )
+
+    @respx.mock
+    def test_subnode_webhook_in_list_for_its_path(
+        self,
+        http: httpx.Client,
+        client: Container,
+        node_key: str,
+        cleanup_webhooks: list[int],
+    ) -> None:
+        """A webhook registered on a sub-node is returned by GET /webhook/target/{node}
+        (webhooks on that node) but absent from GET /webhook/target/ (webhooks on root)."""
+        respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+
+        client.create_container(node_key)
+        wh = _register_webhook(http, path=node_key)
+        cleanup_webhooks.append(wh.id)  # not visible to root list query
+
+        encoded = urlquote(node_key, safe="/")
+        sub_webhooks = [
+            WebhookResponse.model_validate(w)
+            for w in http.get(f"/api/v1/webhook/target/{encoded}")
+            .raise_for_status()
+            .json()
+        ]
+        assert any(w.id == wh.id for w in sub_webhooks)
+
+        root_webhooks = [
+            WebhookResponse.model_validate(w)
+            for w in http.get("/api/v1/webhook/target/").raise_for_status().json()
+        ]
+        assert not any(w.id == wh.id for w in root_webhooks)
+
+    @respx.mock
+    def test_metadata_updated_fires_webhook(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        received = _capturing_mock()
+        _register_webhook(http, events=[EventType.container_child_metadata_updated])
+
+        node = client.create_container(node_key, metadata={"color": "blue"})
+        node.update_metadata(metadata={"color": "red"})
+
+        assert len(received) == 1
+        event = received[0]
+        assert event["type"] == EventType.container_child_metadata_updated
+        assert event["key"] == node_key
+
+
+# ---------------------------------------------------------------------------
+# Integration test: SSRF endpoint check
+# (must live outside TestWebhookIntegration, which bypasses check_url_ssrf_safety)
+# ---------------------------------------------------------------------------
+
+
+def test_ssrf_private_ip_rejected(http: httpx.Client) -> None:
+    original_getaddrinfo = socket.getaddrinfo
+
+    def _fake_getaddrinfo(host, port, *args, **kwargs):
+        if host == "internal.local":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 0))]
+        return original_getaddrinfo(host, port, *args, **kwargs)
+
+    with patch(
+        "tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake_getaddrinfo
+    ):
+        resp = http.post(
+            "/api/v1/webhook/target/",
+            json={"url": "https://internal.local/hook"},
+        )
+    assert resp.status_code == 400
+    assert "private" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: SSRF blocklist
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url,blocked_ip",
+    [
+        ("https://localhost/hook", "127.0.0.1"),
+        ("https://internal/hook", "10.0.0.1"),
+        ("https://dev/hook", "172.16.5.5"),
+        ("https://local/hook", "192.168.1.1"),
+        ("https://meta/hook", "169.254.169.254"),  # cloud metadata
+    ],
+)
+def test_ssrf_check_blocks_private_ips(url: str, blocked_ip: str) -> None:
+    original = socket.getaddrinfo
+
+    def _fake(host, port, *args, **kwargs):
+        parsed_host = url.split("//")[1].split("/")[0]
+        if host == parsed_host:
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (blocked_ip, 0))]
+        return original(host, port, *args, **kwargs)
+
+    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
+        with pytest.raises(ValueError, match="blocked"):
+            check_url_ssrf_safety(url)
+
+
+def test_ssrf_check_allows_public_ip() -> None:
+    """check_url_ssrf_safety does not raise for a public IP."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    with patch("tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake):
+        check_url_ssrf_safety("https://example.com/hook")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: WebhookDispatcher shutdown drains pending tasks
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_shutdown_waits_for_pending_tasks() -> None:
+    completed: list[str] = []
+
+    async def _slow_deliver() -> None:
+        await asyncio.sleep(0.05)
+        completed.append("done")
+
+    dispatcher = WebhookDispatcher(session_factory=AsyncMock(), _client=AsyncMock())
+    await dispatcher.startup()
+
+    # Inject a slow task directly into _pending_tasks.
+    task = asyncio.create_task(_slow_deliver())
+    dispatcher._pending_tasks.add(task)
+    task.add_done_callback(dispatcher._pending_tasks.discard)
+
+    await dispatcher.shutdown()
+
+    assert completed == ["done"], "shutdown() returned before pending task completed"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: close_stream webhook dispatch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_close_stream_dispatches_webhook() -> None:
+    dispatched: list[StreamClosedEvent] = []
+
+    mock_dispatcher = MagicMock()
+    mock_dispatcher.dispatch = AsyncMock(
+        side_effect=lambda event, **kw: dispatched.append(event) or None
+    )
+
+    mock_streaming_cache = MagicMock()
+    mock_streaming_cache.close = AsyncMock()
+
+    mock_context = MagicMock()
+    mock_context.webhook_dispatcher = mock_dispatcher
+    mock_context.streaming_cache = mock_streaming_cache
+    mock_context.session = MagicMock()
+
+    mock_node = MagicMock()
+    mock_node.id = 42
+    mock_node.parent = 1
+    mock_node.key = "my_stream"
+
+    # path_segments is an async method; patch it on the adapter instance.
+    adapter = object.__new__(CatalogNodeAdapter)
+    adapter.context = mock_context
+    adapter.node = mock_node
+    adapter.path_segments = AsyncMock(return_value=["my_stream"])
+
+    await adapter.close_stream()
+
+    assert len(dispatched) == 1
+    event = dispatched[0]
+    assert event.type == EventType.stream_closed
+    assert event.key == "my_stream"
