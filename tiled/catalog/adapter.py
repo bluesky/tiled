@@ -1270,21 +1270,35 @@ class CatalogNodeAdapter:
                 )
             if self.context.webhook_dispatcher:
                 segments = list(await self.path_segments())
+                # Determine the effective metadata after the update.  When
+                # metadata was not part of this call we fall back to the
+                # pre-update value captured in `current` (available whenever
+                # drop_revision=False) or to the cached node attribute.
+                if metadata is not None:
+                    effective_metadata = metadata
+                elif not drop_revision:
+                    effective_metadata = current.metadata_ or {}
+                else:
+                    effective_metadata = self.node.metadata_ or {}
+                # Determine the effective specs after the update.
+                effective_specs = specs if specs is not None else (
+                    current.specs if not drop_revision else self.node.specs
+                ) or []
                 ev = ContainerChildMetadataUpdatedEvent(
                     timestamp=datetime.now(tz=timezone.utc),
                     key=self.node.key,
-                    specs=[spec.model_dump() for spec in (specs or [])],
-                    metadata=values.get("metadata_") or {},
+                    specs=[spec.model_dump() for spec in effective_specs],
+                    metadata=effective_metadata,
                     path=segments,
                 )
                 await self.context.webhook_dispatcher.dispatch(
                     ev,
-                    node_id=self.node.parent,
+                    node_id=self.node.id,
                 )
 
     async def close_stream(self):
         await self.context.streaming_cache.close(self.node.id)
-        if self.context.webhook_dispatcher and self.node.parent is not None:
+        if self.context.webhook_dispatcher:
             segments = list(await self.path_segments())
             await self.context.webhook_dispatcher.dispatch(
                 StreamClosedEvent(
@@ -1292,7 +1306,9 @@ class CatalogNodeAdapter:
                     key=self.node.key,
                     path=segments,
                 ),
-                node_id=self.node.parent,
+                # Pass the stream node's own id so that webhooks registered
+                # directly on this node are included in the ancestor walk.
+                node_id=self.node.id,
             )
 
     def make_ws_handler(self, websocket, formatter, uri):
