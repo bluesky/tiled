@@ -10,7 +10,7 @@ import shutil
 import sys
 import uuid
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union, cast
@@ -73,9 +73,19 @@ from ..server.connection_pool import (
     is_memory_sqlite,
 )
 from ..server.core import NoEntry
-from ..server.schemas import Asset, DataSource, Management, Revision
-from ..server.settings import DatabaseSettings
+from ..server.schemas import (
+    Asset,
+    ContainerChildCreatedEvent,
+    ContainerChildMetadataUpdatedEvent,
+    DataSource,
+    EventType,
+    Management,
+    Revision,
+    StreamClosedEvent,
+)
+from ..server.settings import DatabaseSettings, get_settings
 from ..server.streaming import StreamingCache
+from ..server.webhooks import WebhookDispatcher
 from ..storage import (
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
@@ -219,6 +229,7 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
         self.cache_config = cache_config
+        self.webhook_dispatcher = None
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -247,7 +258,15 @@ class Context:
                 self.cache_config["datastore"] = "memory"
             self.streaming_cache = StreamingCache(self.cache_config)
 
+        self.webhook_dispatcher = WebhookDispatcher(
+            self.session,
+            secret_keys=get_settings().secret_keys,
+        )
+        await self.webhook_dispatcher.startup()
+
     async def shutdown(self):
+        if self.webhook_dispatcher is not None:
+            await self.webhook_dispatcher.shutdown()
         await close_database_connection_pool(self.database_settings)
 
 
@@ -846,6 +865,20 @@ class CatalogNodeAdapter:
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
                 await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+            if self.context.webhook_dispatcher:
+                segments = list(await self.path_segments())
+                child_path = segments + [key]
+                await self.context.webhook_dispatcher.dispatch(
+                    ContainerChildCreatedEvent(
+                        timestamp=datetime.now(tz=timezone.utc),
+                        key=key,
+                        structure_family=structure_family,
+                        specs=[spec.model_dump() for spec in (specs or [])],
+                        metadata=refreshed_node.metadata_ or {},
+                        path=child_path,
+                    ),
+                    node_id=self.node.id,
+                )
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
@@ -1235,9 +1268,32 @@ class CatalogNodeAdapter:
                 await self.context.streaming_cache.set(
                     self.node.parent, sequence, metadata
                 )
+            if self.context.webhook_dispatcher:
+                segments = list(await self.path_segments())
+                ev = ContainerChildMetadataUpdatedEvent(
+                    timestamp=datetime.now(tz=timezone.utc),
+                    key=self.node.key,
+                    specs=[spec.model_dump() for spec in (specs or [])],
+                    metadata=values.get("metadata_") or {},
+                    path=segments,
+                )
+                await self.context.webhook_dispatcher.dispatch(
+                    ev,
+                    node_id=self.node.parent,
+                )
 
     async def close_stream(self):
         await self.context.streaming_cache.close(self.node.id)
+        if self.context.webhook_dispatcher and self.node.parent is not None:
+            segments = list(await self.path_segments())
+            await self.context.webhook_dispatcher.dispatch(
+                StreamClosedEvent(
+                    timestamp=datetime.now(tz=timezone.utc),
+                    key=self.node.key,
+                    path=segments,
+                ),
+                node_id=self.node.parent,
+            )
 
     def make_ws_handler(self, websocket, formatter, uri):
         schema = self.make_ws_schema()
