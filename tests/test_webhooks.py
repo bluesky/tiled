@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from httpx import Response
 from sqlalchemy import select as sa_select
 
-from tiled.catalog import in_memory
+from tiled.catalog import from_uri, in_memory
 from tiled.catalog.adapter import CatalogNodeAdapter
 from tiled.catalog.orm import Webhook
 from tiled.client import Context, from_context
@@ -463,6 +463,47 @@ class TestWebhookIntegration:
         assert event["type"] == EventType.container_child_metadata_updated
         assert event["key"] == node_key
 
+    @respx.mock
+    def test_event_filter_excludes_wrong_type(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        """A webhook registered for container_child_created must NOT fire when
+        container_child_metadata_updated is dispatched."""
+        received = _capturing_mock()
+        _register_webhook(http, events=[EventType.container_child_created])
+
+        node = client.create_container(node_key, metadata={"x": 1})
+        received.clear()  # discard the create event itself
+        node.update_metadata(metadata={"x": 2})
+
+        assert received == [], (
+            "Webhook registered for container_child_created fired on "
+            "container_child_metadata_updated"
+        )
+
+    @respx.mock
+    def test_metadata_payload_correct_when_only_specs_updated(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        """When replace_metadata is called with specs only (no metadata argument),
+        the webhook payload must carry the pre-existing metadata, not an empty dict."""
+        received = _capturing_mock()
+        _register_webhook(http, events=[EventType.container_child_metadata_updated])
+
+        node = client.create_container(node_key, metadata={"color": "blue"})
+        received.clear()  # discard the create event
+
+        # Update only the specs, leave metadata unchanged.
+        node.update_metadata(specs=[])
+
+        assert len(received) == 1, "Expected exactly one metadata-updated webhook"
+        event = received[0]
+        assert event["type"] == EventType.container_child_metadata_updated
+        # The payload must reflect the existing metadata, not an empty dict.
+        assert event.get("metadata") == {"color": "blue"}, (
+            "Webhook payload should include pre-existing metadata when only specs changed"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Integration test: SSRF endpoint check
@@ -593,3 +634,280 @@ async def test_close_stream_dispatches_webhook() -> None:
     event = dispatched[0]
     assert event.type == EventType.stream_closed
     assert event.key == "my_stream"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: close_stream guards (no dispatcher, no streaming cache)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_close_stream_no_webhook_dispatcher() -> None:
+    """close_stream() must not raise when webhook_dispatcher is None (webhooks disabled)."""
+    mock_streaming_cache = MagicMock()
+    mock_streaming_cache.close = AsyncMock()
+
+    mock_context = MagicMock()
+    mock_context.webhook_dispatcher = None
+    mock_context.streaming_cache = mock_streaming_cache
+
+    mock_node = MagicMock()
+    mock_node.id = 42
+    mock_node.key = "stream"
+
+    adapter = object.__new__(CatalogNodeAdapter)
+    adapter.context = mock_context
+    adapter.node = mock_node
+    adapter.path_segments = AsyncMock(return_value=["stream"])
+
+    await adapter.close_stream()  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_close_stream_no_streaming_cache() -> None:
+    """close_stream() must not raise when streaming_cache is None (no Redis)."""
+    mock_dispatcher = MagicMock()
+    mock_dispatcher.dispatch = AsyncMock()
+
+    mock_context = MagicMock()
+    mock_context.webhook_dispatcher = mock_dispatcher
+    mock_context.streaming_cache = None
+
+    mock_node = MagicMock()
+    mock_node.id = 42
+    mock_node.key = "stream"
+
+    adapter = object.__new__(CatalogNodeAdapter)
+    adapter.context = mock_context
+    adapter.node = mock_node
+    adapter.path_segments = AsyncMock(return_value=["stream"])
+
+    await adapter.close_stream()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _deliver additional paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deliver_network_error_sets_outcome_failed(
+    mock_delivery_session: tuple[MagicMock, MagicMock],
+) -> None:
+    """A network-level exception (not HTTP) must set outcome=failed with status_code=None."""
+    delivery, session_factory = mock_delivery_session
+    payload: dict[str, Any] = {"type": "container-child-created"}
+
+    with respx.mock:
+        respx.post(WEBHOOK_URL).mock(side_effect=httpx.ConnectError("refused"))
+        async with httpx.AsyncClient() as c:
+            await _deliver(
+                client=c,
+                session_factory=session_factory,
+                delivery_id=1,
+                url=WEBHOOK_URL,
+                secret=None,
+                event_id="test-event-id",
+                payload=payload,
+            )
+
+    assert delivery.outcome == "failed"
+    assert delivery.status_code is None
+    assert delivery.error_detail is not None
+
+
+@pytest.mark.asyncio
+async def test_deliver_deleted_row_does_not_raise(
+    mock_delivery_session: tuple[MagicMock, MagicMock],
+) -> None:
+    """If the delivery row is deleted between task creation and the DB update,
+    _deliver() must not raise (the row-not-found guard handles it silently)."""
+    delivery, session_factory = mock_delivery_session
+    # Make db.get() return None — simulates the row being deleted mid-flight.
+    session_factory.return_value.__aenter__.return_value.get = AsyncMock(return_value=None)
+
+    payload: dict[str, Any] = {"type": "container-child-created"}
+
+    with respx.mock:
+        respx.post(WEBHOOK_URL).mock(return_value=Response(200))
+        async with httpx.AsyncClient() as c:
+            await _deliver(
+                client=c,
+                session_factory=session_factory,
+                delivery_id=1,
+                url=WEBHOOK_URL,
+                secret=None,
+                event_id="test-event-id",
+                payload=payload,
+            )  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_deliver_sends_event_id_header(
+    mock_delivery_session: tuple[MagicMock, MagicMock],
+) -> None:
+    """The X-Tiled-Event-ID header must be present in every outgoing request."""
+    delivery, session_factory = mock_delivery_session
+    sent_headers: list[dict] = []
+
+    def _capture(request: httpx.Request) -> Response:
+        sent_headers.append(dict(request.headers))
+        return Response(200)
+
+    payload: dict[str, Any] = {"type": "container-child-created"}
+
+    with respx.mock:
+        respx.post(WEBHOOK_URL).mock(side_effect=_capture)
+        async with httpx.AsyncClient() as c:
+            await _deliver(
+                client=c,
+                session_factory=session_factory,
+                delivery_id=1,
+                url=WEBHOOK_URL,
+                secret=None,
+                event_id="my-unique-event-id",
+                payload=payload,
+            )
+
+    assert sent_headers, "No request was captured"
+    assert sent_headers[0].get("x-tiled-event-id") == "my-unique-event-id"
+
+
+@pytest.mark.asyncio
+async def test_deliver_no_signature_when_no_secret(
+    mock_delivery_session: tuple[MagicMock, MagicMock],
+) -> None:
+    """X-Tiled-Signature must be absent when no secret is configured."""
+    delivery, session_factory = mock_delivery_session
+    sent_headers: list[dict] = []
+
+    def _capture(request: httpx.Request) -> Response:
+        sent_headers.append(dict(request.headers))
+        return Response(200)
+
+    payload: dict[str, Any] = {"type": "container-child-created"}
+
+    with respx.mock:
+        respx.post(WEBHOOK_URL).mock(side_effect=_capture)
+        async with httpx.AsyncClient() as c:
+            await _deliver(
+                client=c,
+                session_factory=session_factory,
+                delivery_id=1,
+                url=WEBHOOK_URL,
+                secret=None,
+                event_id="test-event-id",
+                payload=payload,
+            )
+
+    assert "x-tiled-signature" not in sent_headers[0]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: SSRF — unresolvable hostname
+# ---------------------------------------------------------------------------
+
+
+def test_ssrf_check_unresolvable_hostname() -> None:
+    """An unresolvable hostname must raise ValueError before any network call."""
+    with patch(
+        "tiled.server.webhooks.socket.getaddrinfo",
+        side_effect=socket.gaierror("Name or service not known"),
+    ):
+        with pytest.raises(ValueError, match="Cannot resolve"):
+            check_url_ssrf_safety("https://does-not-exist.invalid/hook")
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: webhooks-disabled path
+# ---------------------------------------------------------------------------
+
+
+def test_webhooks_disabled_router_not_mounted(tmp_path: Any) -> None:
+    """When no webhooks: config section is provided, the /api/v1/webhooks router
+    must not be mounted and all webhook endpoints must return 404."""
+    tree = from_uri(
+        f"sqlite+aiosqlite:///{tmp_path / 'disabled.db'}",
+        writable_storage=[str(tmp_path / "data")],
+        init_if_not_exists=True,
+    )
+    app_no_webhooks = build_app(
+        tree,
+        authentication=Authentication(single_user_api_key="secret"),
+        # No server_settings with webhooks key
+    )
+    with Context.from_app(app_no_webhooks) as ctx:
+        http = ctx.http_client
+        resp = http.get("/api/v1/webhooks/target/")
+        assert resp.status_code == 404, (
+            "Webhook router should not be mounted when webhooks: is absent from config"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: schema validators
+# ---------------------------------------------------------------------------
+
+
+def test_register_webhook_http_url_rejected(http: httpx.Client) -> None:
+    """A plain HTTP URL must be rejected at schema validation (HTTP 422)."""
+    resp = http.post(
+        "/api/v1/webhooks/target/",
+        json={"url": "http://example.com/hook"},
+    )
+    assert resp.status_code == 422
+
+
+def test_register_webhook_empty_events_normalized_to_none() -> None:
+    """An empty events list must be treated the same as omitting events (catch-all)."""
+    req = WebhookRegistrationRequest(url=WEBHOOK_URL, events=[])
+    assert req.events is None, "events=[] should be normalised to None (catch-all)"
+
+
+def test_register_webhook_secret_blocked_when_no_secret_keys(
+    tmp_path: Any,
+) -> None:
+    """Registering a webhook with a secret must return HTTP 400 when
+    WebhooksConfig.secret_keys is empty (no encryption keys configured)."""
+    tree = from_uri(
+        f"sqlite+aiosqlite:///{tmp_path / 'no-keys.db'}",
+        writable_storage=[str(tmp_path / "data")],
+        init_if_not_exists=True,
+    )
+    app_no_keys = build_app(
+        tree,
+        authentication=Authentication(single_user_api_key="secret"),
+        server_settings={"webhooks": WebhooksConfig(secret_keys=[])},
+    )
+    with Context.from_app(app_no_keys) as ctx:
+        http = ctx.http_client
+        with patch("tiled.server.webhook_router.check_url_ssrf_safety", return_value=None):
+            resp = http.post(
+                "/api/v1/webhooks/target/",
+                json=_wh_req(secret="my-signing-secret"),
+            )
+    assert resp.status_code == 400
+    assert "secret_keys" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: CRUD edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_delete_nonexistent_webhook_returns_404(http: httpx.Client) -> None:
+    """DELETE on a webhook ID that does not exist must return 404."""
+    resp = http.delete("/api/v1/webhooks/999999")
+    assert resp.status_code == 404
+
+
+def test_history_nonexistent_webhook_returns_404(http: httpx.Client) -> None:
+    """GET /history/{id} for a non-existent webhook must return 404."""
+    resp = http.get("/api/v1/webhooks/history/999999")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: event-type filter exclusion and metadata fallback
+# (inside TestWebhookIntegration to get bypass_ssrf_check autouse)
+# ---------------------------------------------------------------------------
