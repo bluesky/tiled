@@ -8,9 +8,12 @@ Create Date: 2026-04-22
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func, text
 
-from tiled.catalog.orm import JSONVariant
+# Inline definition so this migration remains self-contained and does not
+# depend on the live application ORM module (which may change in the future).
+JSONVariant = sa.JSON().with_variant(JSONB(), "postgresql")
 
 # revision identifiers, used by Alembic.
 revision = "85a47342e78e"
@@ -63,7 +66,7 @@ def upgrade():
             nullable=False,
             server_default=text("0"),
         ),
-        sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("delivered_at", sa.DateTime(timezone=False), nullable=True),
         sa.Column(
             "outcome",
             sa.Unicode(length=16),
