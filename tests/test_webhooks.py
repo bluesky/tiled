@@ -413,9 +413,9 @@ class TestWebhookIntegration:
 
         paths = [e["path"] for e in received]
         assert any(node_key in p for p in paths), "expected event for watched sub-tree"
-        assert not any(sibling_key in str(p) for p in paths), (
-            "unexpected event for sibling sub-tree"
-        )
+        assert not any(
+            sibling_key in str(p) for p in paths
+        ), "unexpected event for sibling sub-tree"
 
     @respx.mock
     def test_subnode_webhook_in_list_for_its_path(
@@ -426,7 +426,8 @@ class TestWebhookIntegration:
         cleanup_webhooks: list[int],
     ) -> None:
         """A webhook registered on a sub-node is returned by GET /webhooks/target/{node}
-        (webhooks on that node) but absent from GET /webhooks/target/ (webhooks on root)."""
+        (webhooks on that node) but absent from GET /webhooks/target/ (webhooks on root).
+        """
         respx.post(WEBHOOK_URL).mock(return_value=Response(200))
 
         client.create_container(node_key)
@@ -500,9 +501,9 @@ class TestWebhookIntegration:
         event = received[0]
         assert event["type"] == EventType.container_child_metadata_updated
         # The payload must reflect the existing metadata, not an empty dict.
-        assert event.get("metadata") == {"color": "blue"}, (
-            "Webhook payload should include pre-existing metadata when only specs changed"
-        )
+        assert event.get("metadata") == {
+            "color": "blue"
+        }, "Webhook payload should include pre-existing metadata when only specs changed"
 
 
 # ---------------------------------------------------------------------------
@@ -724,7 +725,9 @@ async def test_deliver_deleted_row_does_not_raise(
     _deliver() must not raise (the row-not-found guard handles it silently)."""
     delivery, session_factory = mock_delivery_session
     # Make db.get() return None — simulates the row being deleted mid-flight.
-    session_factory.return_value.__aenter__.return_value.get = AsyncMock(return_value=None)
+    session_factory.return_value.__aenter__.return_value.get = AsyncMock(
+        return_value=None
+    )
 
     payload: dict[str, Any] = {"type": "container-child-created"}
 
@@ -839,9 +842,9 @@ def test_webhooks_disabled_router_not_mounted(tmp_path: Any) -> None:
     with Context.from_app(app_no_webhooks) as ctx:
         http = ctx.http_client
         resp = http.get("/api/v1/webhooks/target/")
-        assert resp.status_code == 404, (
-            "Webhook router should not be mounted when webhooks: is absent from config"
-        )
+        assert (
+            resp.status_code == 404
+        ), "Webhook router should not be mounted when webhooks: is absent from config"
 
 
 # ---------------------------------------------------------------------------
@@ -881,7 +884,9 @@ def test_register_webhook_secret_blocked_when_no_secret_keys(
     )
     with Context.from_app(app_no_keys) as ctx:
         http = ctx.http_client
-        with patch("tiled.server.webhook_router.check_url_ssrf_safety", return_value=None):
+        with patch(
+            "tiled.server.webhook_router.check_url_ssrf_safety", return_value=None
+        ):
             resp = http.post(
                 "/api/v1/webhooks/target/",
                 json=_wh_req(secret="my-signing-secret"),

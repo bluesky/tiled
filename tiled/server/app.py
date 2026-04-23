@@ -64,8 +64,8 @@ from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
-from .zarr import get_zarr_router_v2, get_zarr_router_v3
 from .webhook_router import get_webhook_router
+from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -556,7 +556,9 @@ def build_app(
         context = getattr(tree, "context", None)
         if context is not None and hasattr(context, "webhook_secret_keys"):
             context.webhook_secret_keys = (
-                list(webhooks_config.secret_keys) if webhooks_config is not None else None
+                list(webhooks_config.secret_keys)
+                if webhooks_config is not None
+                else None
             )
 
         # Run startup tasks collected from trees (adapters).

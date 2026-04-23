@@ -19,12 +19,12 @@ from typing import (
 import pydantic.generics
 from pydantic import (
     AnyHttpUrl,
+    AwareDatetime,
     ConfigDict,
     Field,
     SecretStr,
     StringConstraints,
     field_validator,
-    AwareDatetime,
 )
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
@@ -625,9 +625,9 @@ class ContainerChildCreatedEvent(pydantic.BaseModel):
 
 
 class ContainerChildMetadataUpdatedEvent(pydantic.BaseModel):
-    type: Literal[EventType.container_child_metadata_updated] = (
+    type: Literal[
         EventType.container_child_metadata_updated
-    )
+    ] = EventType.container_child_metadata_updated
     timestamp: AwareDatetime
     key: str
     path: list[str]

@@ -12,16 +12,16 @@ All write endpoints require the ``write:metadata`` scope (same as creating
 nodes). Read endpoints require ``read:metadata``.
 """
 
-from typing import Optional
-
 import asyncio
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from sqlalchemy import select
 from starlette.status import HTTP_404_NOT_FOUND
 
 from ..catalog import orm
+from ..type_aliases import AccessTags, Scopes
 from .authentication import (
     check_scopes,
     get_current_access_tags,
@@ -37,14 +37,8 @@ from .schemas import (
     WebhookResponse,
 )
 from .webhooks import _encrypt_secret, check_url_ssrf_safety
-from ..type_aliases import AccessTags, Scopes
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _get_catalog_context(entry):
@@ -74,11 +68,6 @@ async def _node_path_from_id(ctx, node_id: int) -> str:
         )
         keys = (await db.execute(stmt)).scalars().all()
     return "/".join(keys)
-
-
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
 
 
 def get_webhook_router() -> APIRouter:
