@@ -65,6 +65,7 @@ from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
+from .webhook_router import get_webhook_router
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 SENSITIVE_COOKIES = {
@@ -392,6 +393,7 @@ def build_app(
         authenticators,
     )
     app.include_router(router, prefix="/api/v1")
+    app.include_router(get_webhook_router(), prefix="/api/v1")
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
