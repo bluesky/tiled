@@ -53,9 +53,7 @@ _DELIVERY_PRUNE_INTERVAL = 86_400  # seconds
 _DELIVERY_PRUNE_FAILURE_WAIT = 60  # seconds; retry sooner after a failure
 _DELIVERY_MAX_AGE_DAYS = 30
 
-# ---------------------------------------------------------------------------
-# Retry helper
-# ---------------------------------------------------------------------------
+# --- Retry helper ---
 
 
 class _DeliveryHTTPError(Exception):
@@ -71,9 +69,7 @@ class _DeliveryHTTPError(Exception):
         self.detail = detail
 
 
-# ---------------------------------------------------------------------------
-# SSRF protection — blocklist
-# ---------------------------------------------------------------------------
+# --- SSRF protection — blocklist ---
 # Webhook delivery makes outbound HTTP requests to user-supplied URLs, which
 # creates a Server-Side Request Forgery (SSRF) risk.  The blocklist below
 # blocks well-known private/internal ranges at registration time.
@@ -152,9 +148,7 @@ def check_url_ssrf_safety(url: str) -> None:
                 )
 
 
-# ---------------------------------------------------------------------------
-# Low-level: signing helper and secret encryption/decryption
-# ---------------------------------------------------------------------------
+# --- Low-level: signing helper and secret encryption/decryption ---
 
 
 def _sign(body: bytes, secret: str) -> str:
@@ -198,9 +192,7 @@ def _decrypt_secret(ciphertext: str, secret_keys: list[str]) -> str | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Delivery task: runs in the asyncio event loop background
-# ---------------------------------------------------------------------------
+# --- Delivery task: runs in the asyncio event loop background ---
 
 
 async def _deliver(
@@ -314,9 +306,7 @@ async def _prune_old_deliveries(
             wait = _DELIVERY_PRUNE_FAILURE_WAIT  # retry sooner after failure
 
 
-# ---------------------------------------------------------------------------
-# Dispatcher: attached to the catalog Context at startup
-# ---------------------------------------------------------------------------
+# --- Dispatcher: attached to the catalog Context at startup ---
 
 
 class WebhookDispatcher:
