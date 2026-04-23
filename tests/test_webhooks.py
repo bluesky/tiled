@@ -24,7 +24,7 @@ from tiled.catalog.adapter import CatalogNodeAdapter
 from tiled.catalog.orm import Webhook
 from tiled.client import Context, from_context
 from tiled.client.container import Container
-from tiled.config import Authentication
+from tiled.config import Authentication, WebhooksConfig
 from tiled.server.app import build_app
 from tiled.server.schemas import (
     DeliveryResponse,
@@ -83,6 +83,7 @@ def app(tmpdir_module: Any) -> FastAPI:
     return build_app(
         tree,
         authentication=Authentication(single_user_api_key="secret"),
+        server_settings={"webhooks": WebhooksConfig(secret_keys=["test-webhook-key"])},
     )
 
 
