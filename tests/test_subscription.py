@@ -707,29 +707,31 @@ def test_subscription_auto_reconnect_on_network_failure(
 
 
 def test_subscribe_no_api_key_rejected(tiled_websocket_context):
-    "Private server does not allow anonymous user to subscribe."
+    "Private server rejects unauthenticated first-message auth."
     context = tiled_websocket_context
     client = from_context(context)
 
     arr = np.arange(10)
-    streaming_node = client.write_array(
-        arr, key=f"test_stream_immediate_{uuid.uuid4().hex[:8]}"
-    )
+    node = client.write_array(arr, key=f"test_stream_immediate_{uuid.uuid4().hex[:8]}")
 
-    received_event = threading.Event()
+    # Build the websocket URL for this node's stream endpoint.
+    segments = node.uri.rsplit("/metadata/", 1)[-1]
+    ws_path = f"/api/v1/stream/single/{segments}"
+    ws_url = f"{ws_path}?envelope_format=msgpack&start=0"
 
-    def callback(update):
-        "Set event once any update has been received."
-        received_event.set()
+    # Connect without credentials — server accepts for first-message auth,
+    # then we send an invalid auth message and expect the server to close.
+    # We must NOT use context.http_client because it carries the API key header.
+    from starlette.testclient import TestClient
 
-    # Any further requests will be unauthenticated.
-    context.api_key = None
-
-    subscription = streaming_node.subscribe()
-    subscription.new_data.add_callback(callback)
-
-    with pytest.raises(WebSocketDenialResponse):
-        subscription.start(0)
+    unauthenticated_client = TestClient(context.http_client.app)
+    with unauthenticated_client.websocket_connect(ws_url) as ws:
+        # Send a first message with a bogus API key.
+        ws.send_json({"type": "auth", "api_key": "bad-key"})
+        # Server should close with code 4003.
+        response = ws.receive()
+        assert response["type"] == "websocket.close"
+        assert response.get("code") == 4003
 
 
 def test_subscribe_no_api_key_public(tiled_websocket_context_public):

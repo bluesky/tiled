@@ -1,7 +1,10 @@
+import contextlib
+import datetime
 import sys
 import urllib.parse
 
 import dask.array
+import jose.jwt
 import msgpack
 import numpy as np
 import pandas as pd
@@ -119,9 +122,7 @@ def test_subscribe_immediately_after_creation_websockets(
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
-def test_websocket_connection_to_non_existent_node(
-    tiled_websocket_context, envelope_format
-):
+def test_connection_to_non_existent_node(tiled_websocket_context, envelope_format):
     """Test websocket connection to non-existent node returns 404."""
     context = tiled_websocket_context
     test_client = context.http_client
@@ -431,7 +432,7 @@ def test_close_stream_not_found(tiled_websocket_context):
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
-def test_websocket_connection_wrong_api_key(tiled_websocket_context, envelope_format):
+def test_connection_wrong_api_key(tiled_websocket_context, envelope_format):
     """Test websocket connection with wrong API key fails with 401."""
 
     context = tiled_websocket_context
@@ -454,34 +455,75 @@ def test_websocket_connection_wrong_api_key(tiled_websocket_context, envelope_fo
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
-def test_websocket_connection_no_api_key(tiled_websocket_context, envelope_format):
-    """Test websocket connection with no API key fails with 401."""
+@pytest.mark.parametrize(
+    "auth_message,expected_close_code",
+    [
+        pytest.param(
+            {"type": "auth", "api_key": "wrong_secret"},
+            4003,
+            id="wrong-api-key",
+        ),
+        pytest.param(
+            {"type": "auth", "access_token": "invalid_token"},
+            4003,
+            id="invalid-access-token",
+        ),
+        pytest.param(
+            {"type": "subscribe", "path": "foo"},
+            4001,
+            id="non-auth-message-type",
+        ),
+    ],
+)
+def test_first_message_auth_rejected(
+    tiled_websocket_context, envelope_format, auth_message, expected_close_code
+):
+    """First-message auth with bad credentials or wrong message type is rejected."""
+    context = tiled_websocket_context
+    client = from_context(context)
+    test_client = context.http_client
+
+    arr = np.arange(10)
+    client.write_array(arr, key="test_first_msg_rejected")
+
+    context.api_key = None
+
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_first_msg_rejected?envelope_format={envelope_format}",
+    ) as websocket:
+        websocket.send_json(auth_message)
+        msg = websocket.receive()
+        assert msg["type"] == "websocket.close"
+        assert msg.get("code") == expected_close_code
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_first_message_auth_with_api_key(tiled_websocket_context, envelope_format):
+    """Test websocket first-message authentication with a valid API key."""
 
     context = tiled_websocket_context
     client = from_context(context)
     test_client = context.http_client
 
-    # Create streaming array node using correct key
+    # Create streaming array node
     arr = np.arange(10)
-    client.write_array(arr, key="test_auth_websocket")
+    streaming_node = client.write_array(arr, key="test_first_msg_auth")
 
-    # Strip API key so requests below are unauthenticated.
-    context.api_key = None
-
-    # Try to connect to websocket with no API key
-    with pytest.raises(WebSocketDenialResponse) as exc_info:
-        with test_client.websocket_connect(
-            f"/api/v1/stream/single/test_auth_websocket?envelope_format={envelope_format}",
-        ):
-            pass
-
-    assert exc_info.value.status_code == 401
+    # Connect WITHOUT API key in headers — server will accept and wait for
+    # first-message auth.
+    with test_client.websocket_connect(
+        f"/api/v1/stream/single/test_first_msg_auth?envelope_format={envelope_format}",
+    ) as websocket:
+        # Send first-message auth with valid API key
+        websocket.send_json({"type": "auth", "api_key": "secret"})
+        # Send an update and receive it, proving auth worked
+        send_ws_updates(streaming_node, overwrite_array, count=1)
+        received = receive_ws_updates(websocket, count=1)
+        verify_ws_updates(received)
 
 
 @pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
-def test_websocket_connection_public_no_api_key(
-    tiled_websocket_context_public, envelope_format
-):
+def test_connection_public_no_api_key(tiled_websocket_context_public, envelope_format):
     """Test websocket connection to a public server with no API key works."""
     context = tiled_websocket_context_public
     client = from_context(context)
@@ -729,3 +771,166 @@ streaming_cache:
     assert config.streaming_cache.seq_ttl == 60
     assert config.streaming_cache.socket_timeout == 11
     assert config.streaming_cache.socket_connect_timeout == 12
+
+
+def _receive_schema(websocket, envelope_format):
+    """Receive and return the schema message from a websocket."""
+    if envelope_format == "json":
+        msg = websocket.receive_json()
+    else:
+        msg = msgpack.unpackb(websocket.receive_bytes())
+    assert msg["type"] in ("array-schema", "table-schema")
+    return msg
+
+
+@contextlib.contextmanager
+def _unauthenticated(context):
+    """Temporarily strip auth from context.http_client for unauthenticated requests.
+
+    Reuses the same TestClient (and its event loop) to avoid creating a second
+    event loop that would conflict with Redis connections created at startup.
+    """
+    saved_auth = context.http_client.auth
+    context.http_client.auth = None
+    try:
+        yield context.http_client
+    finally:
+        context.http_client.auth = saved_auth
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_first_message_auth_with_api_key_multiuser(
+    tiled_websocket_context_multiuser, envelope_format
+):
+    """Test first-message auth with a valid API key in multi-user mode."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+
+    key_info = context.create_api_key()
+    client.write_array(np.arange(10), key="test_apikey_multiuser")
+
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_apikey_multiuser?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json({"type": "auth", "api_key": key_info["secret"]})
+            _receive_schema(websocket, envelope_format)
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_first_message_auth_wrong_api_key_multiuser(
+    tiled_websocket_context_multiuser, envelope_format
+):
+    """Test first-message auth with a wrong API key in multi-user mode is rejected."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+
+    client.write_array(np.arange(10), key="test_bad_apikey_multiuser")
+
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_bad_apikey_multiuser?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json({"type": "auth", "api_key": "wrong-key"})
+            msg = websocket.receive()
+            assert msg["type"] == "websocket.close"
+            assert msg.get("code") == 4003
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_first_message_auth_with_access_token(
+    tiled_websocket_context_multiuser, envelope_format
+):
+    """Test websocket first-message authentication with a valid JWT access token."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+    access_token = context.tokens["access_token"]
+
+    client.write_array(np.arange(10), key="test_jwt_first_msg")
+
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_jwt_first_msg?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json({"type": "auth", "access_token": access_token})
+            _receive_schema(websocket, envelope_format)
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_query_param_access_token(tiled_websocket_context_multiuser, envelope_format):
+    """Test websocket connection with JWT access token as query parameter."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+    access_token = context.tokens["access_token"]
+
+    client.write_array(np.arange(10), key="test_jwt_query_param")
+
+    token_param = urllib.parse.quote(access_token, safe="")
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_jwt_query_param"
+            f"?envelope_format={envelope_format}&access_token={token_param}",
+        ) as websocket:
+            _receive_schema(websocket, envelope_format)
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+def test_expired_access_token_query_param(
+    tiled_websocket_context_multiuser, envelope_format
+):
+    """Test that an expired JWT in the query parameter is rejected with 401."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+
+    client.write_array(np.arange(10), key="test_expired_jwt")
+
+    # Create an expired token using the same secret key.
+    expired_token = jose.jwt.encode(
+        {
+            "sub": "fake",
+            "type": "access",
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(seconds=60),
+        },
+        "SECRET",
+        algorithm="HS256",
+    )
+    token_param = urllib.parse.quote(expired_token, safe="")
+    with _unauthenticated(context) as test_client:
+        with pytest.raises(WebSocketDenialResponse) as exc_info:
+            with test_client.websocket_connect(
+                f"/api/v1/stream/single/test_expired_jwt"
+                f"?envelope_format={envelope_format}&access_token={token_param}",
+            ):
+                pass
+        assert exc_info.value.status_code == 401
+
+
+@pytest.mark.parametrize("envelope_format", (["msgpack", "json"]))
+@pytest.mark.parametrize(
+    "auth_message",
+    [
+        pytest.param({"type": "auth"}, id="no-credentials"),
+        pytest.param(
+            {"type": "auth", "access_token": "not.a.valid.jwt"},
+            id="invalid-jwt",
+        ),
+    ],
+)
+def test_first_message_jwt_auth_rejected(
+    tiled_websocket_context_multiuser, envelope_format, auth_message
+):
+    """First-message auth with missing or invalid JWT is rejected with close code 4003."""
+    context = tiled_websocket_context_multiuser
+    client = from_context(context)
+
+    client.write_array(np.arange(10), key="test_jwt_rejected")
+
+    with _unauthenticated(context) as test_client:
+        with test_client.websocket_connect(
+            f"/api/v1/stream/single/test_jwt_rejected?envelope_format={envelope_format}",
+        ) as websocket:
+            websocket.send_json(auth_message)
+            msg = websocket.receive()
+            assert msg["type"] == "websocket.close"
+            assert msg.get("code") == 4003

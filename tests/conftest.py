@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from tiled import profiles
 from tiled.catalog import from_uri, in_memory
-from tiled.client import Context
+from tiled.client import Context, from_context
 from tiled.client.base import BaseClient
 from tiled.config import Authentication
 from tiled.server.app import build_app
@@ -351,6 +351,35 @@ def minio_uri():
         raise pytest.skip("No TILED_TEST_BUCKET configured")
 
 
+# Shared authentication config for tests that need multi-user JWT auth.
+# Uses the toy DictionaryAuthenticator with alice/bob users.
+TOY_AUTHENTICATION = {
+    "secret_keys": ["SECRET"],
+    "providers": [
+        {
+            "provider": "toy",
+            "authenticator": "tiled.authenticators:DictionaryAuthenticator",
+            "args": {
+                "users_to_passwords": {"alice": "secret1", "bob": "secret2"},
+            },
+        }
+    ],
+}
+
+
+def init_auth_database(tmpdir):
+    """Initialize an auth database and return its URI."""
+    import subprocess
+
+    database_uri = f"sqlite:///{tmpdir / 'auth.db'}"
+    subprocess.run(
+        [sys.executable, "-m", "tiled", "admin", "initialize-database", database_uri],
+        check=True,
+        capture_output=True,
+    )
+    return database_uri
+
+
 def build_test_app(tmpdir, redis_uri, public=False):
     tree = from_uri(
         "sqlite:///:memory:",
@@ -391,6 +420,45 @@ def tiled_websocket_context(tmpdir, redis_uri):
 def tiled_websocket_context_public(tmpdir, redis_uri):
     """Fixture that provides a Tiled context with websocket support."""
     with Context.from_app(build_test_app(tmpdir, redis_uri, public=True)) as context:
+        yield context
+
+
+@pytest.fixture(scope="function")
+def tiled_websocket_context_multiuser(tmpdir, redis_uri, enter_username_password):
+    """Fixture that provides a multi-user Tiled context with JWT auth and websocket support.
+
+    Logs in as 'alice' during setup so that context.tokens and from_context()
+    work without additional login steps in the test.
+    """
+    from tiled.server.app import build_app_from_config
+
+    database_uri = init_auth_database(tmpdir)
+    config = {
+        "authentication": TOY_AUTHENTICATION,
+        "database": {"uri": database_uri},
+        "trees": [
+            {
+                "tree": "catalog",
+                "path": "/",
+                "args": {
+                    "uri": "sqlite:///:memory:",
+                    "writable_storage": [str(tmpdir / "data")],
+                    "init_if_not_exists": True,
+                },
+            },
+        ],
+        "streaming_cache": {
+            "uri": redis_uri,
+            "data_ttl": 600,
+            "seq_ttl": 600,
+            "socket_timeout": 600,
+            "socket_connect_timeout": 10,
+        },
+    }
+    app = build_app_from_config(config)
+    with Context.from_app(app) as context:
+        with enter_username_password("alice", "secret1"):
+            from_context(context)  # triggers login, caches tokens
         yield context
 
 
