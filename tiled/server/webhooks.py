@@ -25,7 +25,7 @@ import logging
 import socket
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Set
+
 from urllib.parse import urlparse
 
 import httpx
@@ -71,7 +71,6 @@ class _DeliveryHTTPError(Exception):
         self.detail = detail
 
 
-# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # SSRF protection — blocklist
 # ---------------------------------------------------------------------------
@@ -162,7 +161,7 @@ def _sign(body: bytes, secret: str) -> str:
     return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 
-def _make_multi_fernet(secret_keys: List[str]):
+def _make_multi_fernet(secret_keys: list[str]):
     """Derive a MultiFernet cipher from Tiled secret_key strings.
 
     The first key is used for encryption; all keys are tried for decryption,
@@ -177,12 +176,12 @@ def _make_multi_fernet(secret_keys: List[str]):
     return MultiFernet(fernets)
 
 
-def _encrypt_secret(plaintext: str, secret_keys: List[str]) -> str:
+def _encrypt_secret(plaintext: str, secret_keys: list[str]) -> str:
     """Encrypt a webhook HMAC signing secret for storage at rest."""
     return _make_multi_fernet(secret_keys).encrypt(plaintext.encode()).decode()
 
 
-def _decrypt_secret(ciphertext: str, secret_keys: List[str]) -> Optional[str]:
+def _decrypt_secret(ciphertext: str, secret_keys: list[str]) -> str | None:
     """Decrypt a stored webhook HMAC signing secret.
 
     Returns None and logs an error if decryption fails (e.g. wrong key).
@@ -210,7 +209,7 @@ async def _deliver(
     session_factory,
     delivery_id: int,
     url: str,
-    secret: Optional[str],
+    secret: str | None,
     event_id: str,
     payload: dict,
 ) -> None:
@@ -227,8 +226,8 @@ async def _deliver(
     if secret:
         headers["X-Tiled-Signature"] = _sign(body, secret)
 
-    status_code: Optional[int] = None
-    error_detail: Optional[str] = None
+    status_code: int | None = None
+    error_detail: str | None = None
     last_attempt = 0
 
     try:
@@ -270,7 +269,7 @@ async def _deliver(
             delivery.attempts = last_attempt
             delivery.outcome = outcome
             delivery.error_detail = error_detail
-            delivery.delivered_at = datetime.utcnow()
+            delivery.delivered_at = datetime.now(tz=timezone.utc).replace(tzinfo=None)
             await db.commit()
 
     if outcome == DeliveryOutcome.failed:
@@ -334,17 +333,17 @@ class WebhookDispatcher:
     def __init__(
         self,
         session_factory,
-        _client: Optional[httpx.AsyncClient] = None,
-        secret_keys: Optional[List[str]] = None,
+        _client: httpx.AsyncClient | None = None,
+        secret_keys: list[str] | None = None,
     ):
         self._session_factory = session_factory
         self._client = _client
         self._owns_client = _client is None
-        self.secret_keys: List[str] = secret_keys or []
+        self.secret_keys: list[str] = secret_keys or []
         # Initialised in startup() because asyncio primitives need a running loop.
-        self._sem: Optional[asyncio.Semaphore] = None
-        self._pending_tasks: Set[asyncio.Task] = set()
-        self._prune_task: Optional[asyncio.Task] = None
+        self._sem: asyncio.Semaphore | None = None
+        self._pending_tasks: set[asyncio.Task] = set()
+        self._prune_task: asyncio.Task | None = None
 
     async def startup(self) -> None:
         if self._owns_client:
@@ -429,7 +428,6 @@ class WebhookDispatcher:
             await db.commit()
 
         # Fire background tasks outside the session, bounded by the semaphore.
-        sem = self._sem
         n_pending = len(self._pending_tasks)
         if n_pending >= _PENDING_TASK_WARN_THRESHOLD:
             logger.warning(
@@ -446,7 +444,7 @@ class WebhookDispatcher:
                 _secret=plaintext_secret,
                 _event_id=event_id,
             ):
-                async with sem:
+                async with self._sem:
                     await _deliver(
                         client=self._client,
                         session_factory=self._session_factory,
