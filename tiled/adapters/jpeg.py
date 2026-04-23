@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 from numpy._typing import NDArray
@@ -106,13 +106,15 @@ class JPEGAdapter(ArrayAdapter):
 
 class JPEGSequenceAdapter(FileSequenceAdapter):
     def _load_from_files(
-        self, slice: Union[builtins.slice, int] = slice(None)
+        self, slice: Union[builtins.slice, int, Iterable[int]] = slice(None)
     ) -> NDArray[Any]:
         from PIL import Image
 
         if isinstance(slice, int):
             return np.asarray(Image.open(self.filepaths[slice]))[None, ...]
         else:
-            return np.asarray(
-                [np.asarray(Image.open(file)) for file in self.filepaths[slice]]
-            )
+            if isinstance(slice, Iterable):
+                selected = [self.filepaths[i] for i in slice]
+            else:
+                selected = self.filepaths[slice]
+            return np.asarray([np.asarray(Image.open(file)) for file in selected])
