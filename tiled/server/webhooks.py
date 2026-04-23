@@ -233,7 +233,7 @@ async def _deliver(
             wait_initial=RETRY_WAIT_INITIAL,
             wait_max=RETRY_WAIT_MAX,
             wait_exp_base=RETRY_WAIT_EXP_BASE,
-            wait_jitter=0.0,
+            wait_jitter=RETRY_WAIT_INITIAL,  # add randomness to avoid thundering herd
             timeout=None,
         ):
             last_attempt += 1
