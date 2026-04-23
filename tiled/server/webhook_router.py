@@ -12,7 +12,7 @@ All write endpoints require the ``write:metadata`` scope (same as creating
 nodes). Read endpoints require ``read:metadata``.
 """
 
-from typing import List, Optional
+from typing import Optional
 
 import asyncio
 import logging
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_catalog_context(entry):
-    """Extract the catalog Context from an adapter entry."""
+    """Extract the catalog Context from an adapter entry, or raise 404."""
     context = getattr(entry, "context", None)
     if context is None:
         raise HTTPException(
@@ -56,17 +56,6 @@ def _get_catalog_context(entry):
             detail="Webhooks are only supported on catalog-backed trees.",
         )
     return context
-
-
-def _require_root_context(root_tree):
-    """Return the catalog Context from the root tree, or raise 404."""
-    ctx = getattr(root_tree, "context", None)
-    if ctx is None:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail="Webhooks are only supported on catalog-backed trees.",
-        )
-    return ctx
 
 
 async def _node_path_from_id(ctx, node_id: int) -> str:
@@ -167,7 +156,7 @@ def get_webhook_router() -> APIRouter:
 
     @router.get(
         "/target/{path:path}",
-        response_model=List[WebhookResponse],
+        response_model=list[WebhookResponse],
         summary="List webhooks registered on a node",
     )
     async def list_webhooks(
@@ -195,15 +184,10 @@ def get_webhook_router() -> APIRouter:
         ctx = _get_catalog_context(entry)
 
         async with ctx.session() as db:
-            rows = (
-                (
-                    await db.execute(
-                        select(orm.Webhook).where(orm.Webhook.node_id == entry.node.id)
-                    )
-                )
-                .scalars()
-                .all()
+            result = await db.execute(
+                select(orm.Webhook).where(orm.Webhook.node_id == entry.node.id)
             )
+            rows = result.scalars().all()
 
         return [WebhookResponse.model_validate(wh) for wh in rows]
 
@@ -221,7 +205,7 @@ def get_webhook_router() -> APIRouter:
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["write:metadata"]),
     ):
-        root_ctx = _require_root_context(root_tree)
+        root_ctx = _get_catalog_context(root_tree)
 
         # Load webhook, verify caller access, and delete
         async with root_ctx.session() as db:
@@ -254,7 +238,7 @@ def get_webhook_router() -> APIRouter:
 
     @router.get(
         "/history/{webhook_id}",
-        response_model=List[DeliveryResponse],
+        response_model=list[DeliveryResponse],
         summary="Delivery history for a webhook",
     )
     async def webhook_history(
@@ -268,7 +252,7 @@ def get_webhook_router() -> APIRouter:
         session_state: dict = Depends(get_session_state),
         _=Security(check_scopes, scopes=["read:metadata"]),
     ):
-        root_ctx = _require_root_context(root_tree)
+        root_ctx = _get_catalog_context(root_tree)
 
         # Load the webhook to find which node it belongs to.
         async with root_ctx.session() as db:
@@ -295,18 +279,13 @@ def get_webhook_router() -> APIRouter:
         )
 
         async with root_ctx.session() as db:
-            rows = (
-                (
-                    await db.execute(
-                        select(orm.WebhookDelivery)
-                        .where(orm.WebhookDelivery.webhook_id == webhook_id)
-                        .order_by(orm.WebhookDelivery.time_created.desc())
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
+            result = await db.execute(
+                select(orm.WebhookDelivery)
+                .where(orm.WebhookDelivery.webhook_id == webhook_id)
+                .order_by(orm.WebhookDelivery.time_created.desc())
+                .limit(limit)
             )
+            rows = result.scalars().all()
 
         return [DeliveryResponse.model_validate(d) for d in rows]
 

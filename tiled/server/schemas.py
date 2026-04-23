@@ -685,7 +685,7 @@ class WebhookResponse(pydantic.BaseModel):
 
     @field_validator("time_created", mode="before")
     @classmethod
-    def ensure_time_created_tz(cls, v: datetime) -> datetime:
+    def ensure_tz(cls, v: datetime) -> datetime:
         if isinstance(v, datetime) and v.tzinfo is None:
             return v.replace(tzinfo=timezone.utc)
         return v

@@ -261,7 +261,7 @@ class Context:
             self.streaming_cache = StreamingCache(self.cache_config)
 
         self.webhook_dispatcher = None
-        if self.webhook_secret_keys is not None:
+        if self.webhook_secret_keys:
             self.webhook_dispatcher = WebhookDispatcher(
                 self.session,
                 secret_keys=self.webhook_secret_keys,
