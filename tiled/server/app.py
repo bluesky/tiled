@@ -547,6 +547,13 @@ def build_app(
                     + API_KEY_MSG
                 )
 
+        # Inject secret_keys into catalog contexts before startup tasks run,
+        # so WebhookDispatcher receives keys resolved through DI rather than
+        # calling get_settings() directly (which would bypass test overrides).
+        context = getattr(tree, "context", None)
+        if context is not None and hasattr(context, "webhook_secret_keys"):
+            context.webhook_secret_keys = list(settings.secret_keys or [])
+
         # Run startup tasks collected from trees (adapters).
         for task in tasks["startup"]:
             await task()

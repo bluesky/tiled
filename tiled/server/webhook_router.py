@@ -139,6 +139,15 @@ def get_webhook_router() -> APIRouter:
 
         encrypted_secret: Optional[str] = None
         if body.secret:
+            if not settings.secret_keys:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Webhook secrets cannot be stored: no secret_keys are configured. "
+                        "Add secret_keys to the authentication section of the Tiled "
+                        "configuration, or omit the secret field."
+                    ),
+                )
             encrypted_secret = _encrypt_secret(body.secret, settings.secret_keys)
 
         async with ctx.session() as db:

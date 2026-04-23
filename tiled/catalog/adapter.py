@@ -83,7 +83,7 @@ from ..server.schemas import (
     Revision,
     StreamClosedEvent,
 )
-from ..server.settings import DatabaseSettings, get_settings
+from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
 from ..server.webhooks import WebhookDispatcher
 from ..storage import (
@@ -184,6 +184,7 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=5,
         storage_max_overflow=10,
+        webhook_secret_keys: Optional[List[str]] = None,
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
@@ -229,6 +230,7 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
         self.cache_config = cache_config
+        self.webhook_secret_keys: List[str] = webhook_secret_keys or []
         self.webhook_dispatcher = None
 
     def session(self):
@@ -260,7 +262,7 @@ class Context:
 
         self.webhook_dispatcher = WebhookDispatcher(
             self.session,
-            secret_keys=get_settings().secret_keys,
+            secret_keys=self.webhook_secret_keys,
         )
         await self.webhook_dispatcher.startup()
 
