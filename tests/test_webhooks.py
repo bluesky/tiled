@@ -192,6 +192,7 @@ async def test_deliver_success_updates_delivery_row(
                 delivery_id=1,
                 url=WEBHOOK_URL,
                 secret=None,
+                event_id="test-event-id",
                 payload=payload,
             )
 
@@ -219,6 +220,7 @@ async def test_deliver_retries_on_failure(
                         delivery_id=1,
                         url=WEBHOOK_URL,
                         secret=None,
+                        event_id="test-event-id",
                         payload=payload,
                     )
 
