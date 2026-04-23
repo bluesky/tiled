@@ -3,10 +3,10 @@ REST API for managing webhooks.
 
 Endpoints
 ---------
-POST   /api/v1/webhook/target/{path}     Register a webhook on a node
-GET    /api/v1/webhook/target/{path}     List webhooks registered on a node
-DELETE /api/v1/webhook/{webhook_id}      Deactivate / remove a webhook
-GET    /api/v1/webhook/history/{webhook_id}  Recent delivery history
+POST   /api/v1/webhooks/target/{path}     Register a webhook on a node
+GET    /api/v1/webhooks/target/{path}     List webhooks registered on a node
+DELETE /api/v1/webhooks/{webhook_id}      Deactivate / remove a webhook
+GET    /api/v1/webhooks/history/{webhook_id}  Recent delivery history
 
 All write endpoints require the ``write:metadata`` scope (same as creating
 nodes). Read endpoints require ``read:metadata``.
@@ -94,7 +94,7 @@ async def _node_path_from_id(ctx, node_id: int) -> str:
 
 
 def get_webhook_router() -> APIRouter:
-    router = APIRouter(prefix="/webhook")
+    router = APIRouter(prefix="/webhooks")
 
     @router.post(
         "/target/{path:path}",

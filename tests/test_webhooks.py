@@ -57,7 +57,7 @@ def _register_webhook(
     """Register a webhook on ``path`` (default: root) and return the validated response."""
     encoded = urlquote(path, safe="/")
     return WebhookResponse.model_validate(
-        http.post(f"/api/v1/webhook/target/{encoded}", json=_wh_req(**kwargs))
+        http.post(f"/api/v1/webhooks/target/{encoded}", json=_wh_req(**kwargs))
         .raise_for_status()
         .json()
     )
@@ -244,9 +244,9 @@ class TestWebhookIntegration:
         extra_ids: list[int] = []
         yield extra_ids
         # Auto-clean root-level webhooks.
-        root_ids = [wh["id"] for wh in http.get("/api/v1/webhook/target/").json()]
+        root_ids = [wh["id"] for wh in http.get("/api/v1/webhooks/target/").json()]
         for wh_id in set(root_ids + extra_ids):
-            http.delete(f"/api/v1/webhook/{wh_id}")
+            http.delete(f"/api/v1/webhooks/{wh_id}")
 
     @pytest.fixture
     def node_key(self, request: pytest.FixtureRequest) -> str:
@@ -277,13 +277,13 @@ class TestWebhookIntegration:
         respx.post(WEBHOOK_URL).mock(return_value=Response(200))
 
         http.post(
-            "/api/v1/webhook/target/",
+            "/api/v1/webhooks/target/",
             json=_wh_req(),
         ).raise_for_status()
 
         webhooks = [
             WebhookResponse.model_validate(w)
-            for w in http.get("/api/v1/webhook/target/").raise_for_status().json()
+            for w in http.get("/api/v1/webhooks/target/").raise_for_status().json()
         ]
 
         assert len(webhooks) == 1
@@ -295,7 +295,7 @@ class TestWebhookIntegration:
     ) -> None:
         route = respx.post(WEBHOOK_URL).mock(return_value=Response(200))
         wh = _register_webhook(http)
-        http.delete(f"/api/v1/webhook/{wh.id}").raise_for_status()
+        http.delete(f"/api/v1/webhooks/{wh.id}").raise_for_status()
         client.create_container(node_key)
         assert not route.called
 
@@ -375,7 +375,7 @@ class TestWebhookIntegration:
 
         history = [
             DeliveryResponse.model_validate(d)
-            for d in http.get(f"/api/v1/webhook/history/{registered_webhook}")
+            for d in http.get(f"/api/v1/webhooks/history/{registered_webhook}")
             .raise_for_status()
             .json()
         ]
@@ -422,8 +422,8 @@ class TestWebhookIntegration:
         node_key: str,
         cleanup_webhooks: list[int],
     ) -> None:
-        """A webhook registered on a sub-node is returned by GET /webhook/target/{node}
-        (webhooks on that node) but absent from GET /webhook/target/ (webhooks on root)."""
+        """A webhook registered on a sub-node is returned by GET /webhooks/target/{node}
+        (webhooks on that node) but absent from GET /webhooks/target/ (webhooks on root)."""
         respx.post(WEBHOOK_URL).mock(return_value=Response(200))
 
         client.create_container(node_key)
@@ -433,7 +433,7 @@ class TestWebhookIntegration:
         encoded = urlquote(node_key, safe="/")
         sub_webhooks = [
             WebhookResponse.model_validate(w)
-            for w in http.get(f"/api/v1/webhook/target/{encoded}")
+            for w in http.get(f"/api/v1/webhooks/target/{encoded}")
             .raise_for_status()
             .json()
         ]
@@ -441,7 +441,7 @@ class TestWebhookIntegration:
 
         root_webhooks = [
             WebhookResponse.model_validate(w)
-            for w in http.get("/api/v1/webhook/target/").raise_for_status().json()
+            for w in http.get("/api/v1/webhooks/target/").raise_for_status().json()
         ]
         assert not any(w.id == wh.id for w in root_webhooks)
 
@@ -479,7 +479,7 @@ def test_ssrf_private_ip_rejected(http: httpx.Client) -> None:
         "tiled.server.webhooks.socket.getaddrinfo", side_effect=_fake_getaddrinfo
     ):
         resp = http.post(
-            "/api/v1/webhook/target/",
+            "/api/v1/webhooks/target/",
             json={"url": "https://internal.local/hook"},
         )
     assert resp.status_code == 400

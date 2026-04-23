@@ -3,9 +3,9 @@ DB-backed webhook dispatcher for Tiled server events.
 
 Webhooks are registered per-node via the REST API:
 
-    POST /api/v1/webhook/target/{path}   - register
-    GET  /api/v1/webhook/target/{path}   - list
-    DELETE /api/v1/webhook/{webhook_id}  - remove
+    POST /api/v1/webhooks/target/{path}   - register
+    GET  /api/v1/webhooks/target/{path}   - list
+    DELETE /api/v1/webhooks/{webhook_id}  - remove
 
 When a catalog event fires (e.g. container-child-created), Tiled:
 1. Writes a WebhookDelivery row (outcome="pending") to the catalog DB.
