@@ -642,9 +642,7 @@ class WebhookDelivery(Timestamped, Base):
     status_code = Column(Integer, nullable=True)
     # Total number of attempts made so far.
     attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    delivered_at = Column(
-        DateTime(timezone=True), nullable=True
-    )  # TODO/Question: why timezone=False in others?
+    delivered_at = Column(DateTime(timezone=False), nullable=True)
     # "pending" | "success" | "failed"
     outcome = Column(
         Unicode(16), nullable=False, default="pending", server_default=text("'pending'")

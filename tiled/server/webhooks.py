@@ -265,7 +265,7 @@ async def _deliver(
             delivery.attempts = last_attempt
             delivery.outcome = outcome
             delivery.error_detail = error_detail
-            delivery.delivered_at = datetime.now(tz=timezone.utc)
+            delivery.delivered_at = datetime.utcnow()
             await db.commit()
 
     if outcome == DeliveryOutcome.failed:
@@ -290,7 +290,7 @@ async def _prune_old_deliveries(
     wait = interval
     while True:
         await asyncio.sleep(wait)
-        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=max_age_days)
+        cutoff = datetime.now(tz=timezone.utc).replace(tzinfo=None) - timedelta(days=max_age_days)
         try:
             async with session_factory() as db:
                 await db.execute(
