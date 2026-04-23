@@ -630,7 +630,12 @@ class WebhookDelivery(Timestamped, Base):
         nullable=False,
         index=True,
     )
-    # Stable identifier for the logical event; retries share the same event_id.
+    # Stable identifier for the logical event sent in the webhook payload.
+    # Included in the POST body so that receiving endpoints can deduplicate
+    # deliveries: if an earlier attempt timed out and was retried, the remote
+    # may receive the same payload twice with the same event_id.  Retries
+    # within a single _deliver() call update this row in-place and share this
+    # event_id rather than creating a new delivery row.
     event_id = Column(Unicode(128), nullable=False, index=True)
     # Denormalised event info so history is queryable without joining to a
     # separate events table.

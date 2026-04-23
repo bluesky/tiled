@@ -678,8 +678,6 @@ class WebhookResponse(pydantic.BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    # TODO: do we want to expose node_id here?
-    node_id: int
     url: AnyHttpUrl
     events: Optional[List[EventType]]
     active: bool

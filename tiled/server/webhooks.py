@@ -211,6 +211,7 @@ async def _deliver(
     delivery_id: int,
     url: str,
     secret: Optional[str],
+    event_id: str,
     payload: dict,
 ) -> None:
     """
@@ -218,7 +219,11 @@ async def _deliver(
     row after every attempt.
     """
     body = json.dumps(payload).encode()
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        # Consumers can use this header to deduplicate retried deliveries.
+        "X-Tiled-Event-ID": event_id,
+    }
     if secret:
         headers["X-Tiled-Signature"] = _sign(body, secret)
 
@@ -391,16 +396,17 @@ class WebhookDispatcher:
                 if events_filter and event.type not in events_filter:
                     continue
 
+                event_id = uuid.uuid4().hex
                 delivery = orm.WebhookDelivery(
                     webhook_id=wh.id,
-                    event_id=uuid.uuid4().hex,
+                    event_id=event_id,
                     event_type=event.type,
                     payload=event_payload,
                     outcome=DeliveryOutcome.pending,
                     attempts=0,
                 )
                 db.add(delivery)
-                rows_to_insert.append((wh, delivery))
+                rows_to_insert.append((wh, delivery, event_id))
 
             if rows_to_insert:
                 await db.flush()  # assign delivery.id before leaving session
@@ -408,7 +414,7 @@ class WebhookDispatcher:
             # Decrypt secrets before leaving the session block; store
             # (webhook, delivery_id, plaintext_secret) for the tasks below.
             deliveries_to_fire = []
-            for wh, delivery in rows_to_insert:
+            for wh, delivery, event_id in rows_to_insert:
                 plaintext_secret: Optional[str] = None
                 if wh.secret:
                     if self.secret_keys:
@@ -419,7 +425,7 @@ class WebhookDispatcher:
                             "are configured; outgoing request will be unsigned.",
                             wh.id,
                         )
-                deliveries_to_fire.append((wh, delivery.id, plaintext_secret))
+                deliveries_to_fire.append((wh, delivery.id, plaintext_secret, event_id))
             await db.commit()
 
         # Fire background tasks outside the session, bounded by the semaphore.
@@ -432,10 +438,13 @@ class WebhookDispatcher:
                 "the capacity of the egress infrastructure.",
                 n_pending,
             )
-        for wh, delivery_id, plaintext_secret in deliveries_to_fire:
+        for wh, delivery_id, plaintext_secret, event_id in deliveries_to_fire:
 
             async def _guarded(
-                _delivery_id=delivery_id, _url=wh.url, _secret=plaintext_secret
+                _delivery_id=delivery_id,
+                _url=wh.url,
+                _secret=plaintext_secret,
+                _event_id=event_id,
             ):
                 async with sem:
                     await _deliver(
@@ -444,6 +453,7 @@ class WebhookDispatcher:
                         delivery_id=_delivery_id,
                         url=_url,
                         secret=_secret,
+                        event_id=_event_id,
                         payload=event_payload,
                     )
 
