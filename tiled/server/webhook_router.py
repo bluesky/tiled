@@ -36,7 +36,6 @@ from .schemas import (
     WebhookRegistrationRequest,
     WebhookResponse,
 )
-from .settings import Settings, get_settings
 from .webhooks import _encrypt_secret, check_url_ssrf_safety
 from ..type_aliases import AccessTags, Scopes
 
@@ -110,7 +109,6 @@ def get_webhook_router() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        settings: Settings = Depends(get_settings),
         _=Security(check_scopes, scopes=["write:metadata"]),
     ):
         entry = await get_entry(
@@ -139,16 +137,19 @@ def get_webhook_router() -> APIRouter:
 
         encrypted_secret: Optional[str] = None
         if body.secret:
-            if not settings.secret_keys:
+            # Use the same key source as the dispatcher (webhooks.secret_keys
+            # from config, injected into the catalog context at startup).
+            secret_keys = getattr(ctx, "webhook_secret_keys", None) or []
+            if not secret_keys:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "Webhook secrets cannot be stored: no secret_keys are configured. "
-                        "Add secret_keys to the authentication section of the Tiled "
-                        "configuration, or omit the secret field."
+                        "Webhook secrets cannot be stored: no secret_keys are configured "
+                        "in the webhooks section of the Tiled configuration. "
+                        "Add webhook_secret_keys or omit the secret field."
                     ),
                 )
-            encrypted_secret = _encrypt_secret(body.secret, settings.secret_keys)
+            encrypted_secret = _encrypt_secret(body.secret, secret_keys)
 
         async with ctx.session() as db:
             wh = orm.Webhook(
