@@ -57,15 +57,19 @@ from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import (
+    authenticate_websocket_first_message,
     check_scopes,
+    get_api_key_websocket,
     get_current_access_tags,
     get_current_access_tags_websocket,
     get_current_principal,
     get_current_principal_websocket,
     get_current_scopes,
     get_current_scopes_websocket,
+    get_decoded_access_token_websocket,
     get_session_state,
 )
+from .connection_pool import get_database_session_factory
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -758,11 +762,51 @@ def get_router(
             get_current_access_tags_websocket
         ),
         authn_scopes: Scopes = Depends(get_current_scopes_websocket),
+        settings: Settings = Depends(get_settings),
+        db_factory: Callable = Depends(get_database_session_factory),
+        api_key: Optional[str] = Depends(get_api_key_websocket),
+        decoded_access_token: Optional[dict] = Depends(
+            get_decoded_access_token_websocket
+        ),
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
             lambda: collections.defaultdict(lambda: 0)
         )
+
+        # If no auth was provided via headers or query params on a server that
+        # requires authentication, accept the connection and wait for a "first
+        # message" carrying credentials. See Issue #1138.
+        # In single-user (API-key-only) mode, principal is legitimately None
+        # for valid keys, so we check whether any credentials were provided.
+        has_credentials = api_key is not None or decoded_access_token is not None
+        needs_first_message_auth = (
+            not has_credentials and not settings.allow_anonymous_access
+        )
+        if needs_first_message_auth:
+            await websocket.accept()
+            try:
+                message = await websocket.receive_json()
+            except Exception:
+                await websocket.close(code=4001, reason="Expected JSON auth message")
+                return
+            if not isinstance(message, dict) or message.get("type") != "auth":
+                await websocket.close(
+                    code=4001, reason='Expected {"type": "auth", ...}'
+                )
+                return
+            (
+                success,
+                principal,
+                authn_access_tags,
+                authn_scopes,
+            ) = await authenticate_websocket_first_message(
+                websocket, message, settings, db_factory
+            )
+            if not success:
+                await websocket.close(code=4003, reason="Authentication failed")
+                return
+
         entry = await get_entry(
             path,
             ["read:data", "read:metadata"],
@@ -789,7 +833,7 @@ def get_router(
         path_str = "/".join(path_parts)
         uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
         handler = entry.make_ws_handler(websocket, formatter, uri)
-        await handler(start)
+        await handler(start, already_accepted=needs_first_message_auth)
 
     @router.get(
         "/table/partition/{path:path}",

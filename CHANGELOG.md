@@ -6,6 +6,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Support for slicing arrays backed by multipart adapters with modified shapes
+
 ### Fixed
 
 - A `mount_node` referencing a nonexistent path in the database no longer causes
@@ -35,6 +39,9 @@ Write the date in place of the "Unreleased" in the case a new version is release
   path does not exist in the database. Also settable via the
   `TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST` environment variable.
 - Tests for the WebSocket endpoints that stream tabukar data.
+- WebSocket "first message" authentication: clients can now authenticate
+  WebSocket connections by sending credentials in the first message instead
+  of exposing tokens in query parameters (#1138).
 
 ## v0.2.7 (2026-02-27)
 
