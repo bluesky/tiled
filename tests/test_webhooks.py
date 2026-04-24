@@ -933,9 +933,3 @@ def test_history_nonexistent_webhook_returns_404(http: httpx.Client) -> None:
     """GET /history/{id} for a non-existent webhook must return 404."""
     resp = http.get("/api/v1/webhooks/history/999999")
     assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Integration tests: event-type filter exclusion and metadata fallback
-# (inside TestWebhookIntegration to get bypass_ssrf_check autouse)
-# ---------------------------------------------------------------------------
