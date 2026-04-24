@@ -260,7 +260,10 @@ class Subscription(abc.ABC):
         Path to node of interest, given as a list of path segments
     executor : concurrent.futures.Executor, optional
         Launches tasks asynchronously, in response to updates. By default,
-        a concurrent.futures.ThreadPoolExecutor is used.
+        a concurrent.futures.ThreadPoolExecutor is used. It is
+        configured with a single worker thread, which guarantees that
+        updates will be processed sequentially in the order they are
+        received.
     """
 
     def __init__(
@@ -273,7 +276,7 @@ class Subscription(abc.ABC):
         self._context = context
         self._segments = segments
         self._executor = executor or concurrent.futures.ThreadPoolExecutor(
-            max_workers=5
+            max_workers=1
         )
         params = {"envelope_format": "msgpack"}
         scheme = "wss" if context.api_uri.scheme == "https" else "ws"
