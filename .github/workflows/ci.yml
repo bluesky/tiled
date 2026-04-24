@@ -89,9 +89,7 @@ jobs:
       shell: bash -l {0}
       run: |
         set -vxeuo pipefail
-        uv run coverage run -m pytest -v
-        uv run coverage report -m
-        uv run coverage xml -o cov.xml
+        uv run pytest -v --cov=tiled --cov-report=term-missing --cov-report=xml:cov.xml
       env:
         # Provide test suite with PostgreSQL and Redis databases to use.
         TILED_TEST_POSTGRESQL_URI: postgresql://postgres:secret@localhost:5432
