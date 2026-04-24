@@ -641,7 +641,6 @@ class WebhookDelivery(Timestamped, Base):
     # separate events table.
     event_type = Column(Unicode(128), nullable=False)
     # Full JSON payload that was (or would be) POSTed.
-    # TODO: keeping these in here may bloat database, we should consider expiry/pruning
     payload = Column(JSONVariant, nullable=False)
     # HTTP status code of the last attempt, NULL while pending.
     status_code = Column(Integer, nullable=True)
