@@ -867,34 +867,6 @@ def test_register_webhook_empty_events_normalized_to_none() -> None:
     assert req.events is None, "events=[] should be normalised to None (catch-all)"
 
 
-def test_register_webhook_secret_blocked_when_no_secret_keys(
-    tmp_path: Any,
-) -> None:
-    """Registering a webhook with a secret must return HTTP 400 when
-    WebhooksConfig.secret_keys is empty (no encryption keys configured)."""
-    tree = from_uri(
-        f"sqlite+aiosqlite:///{tmp_path / 'no-keys.db'}",
-        writable_storage=[str(tmp_path / "data")],
-        init_if_not_exists=True,
-    )
-    app_no_keys = build_app(
-        tree,
-        authentication=Authentication(single_user_api_key="secret"),
-        server_settings={"webhooks": WebhooksConfig(secret_keys=[])},
-    )
-    with Context.from_app(app_no_keys) as ctx:
-        http = ctx.http_client
-        with patch(
-            "tiled.server.webhook_router.check_url_ssrf_safety", return_value=None
-        ):
-            resp = http.post(
-                "/api/v1/webhooks/target/",
-                json=_wh_req(secret="my-signing-secret"),
-            )
-    assert resp.status_code == 400
-    assert "secret_keys" in resp.json()["detail"].lower()
-
-
 # ---------------------------------------------------------------------------
 # Integration tests: CRUD edge cases
 # ---------------------------------------------------------------------------

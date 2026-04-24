@@ -408,14 +408,7 @@ class WebhookDispatcher:
             for wh, delivery, event_id in rows_to_insert:
                 plaintext_secret: Optional[str] = None
                 if wh.secret:
-                    if self.secret_keys:
-                        plaintext_secret = _decrypt_secret(wh.secret, self.secret_keys)
-                    else:
-                        logger.warning(
-                            "Webhook %d has an encrypted secret but no secret_keys "
-                            "are configured; outgoing request will be unsigned.",
-                            wh.id,
-                        )
+                    plaintext_secret = _decrypt_secret(wh.secret, self.secret_keys)
                 deliveries_to_fire.append((wh, delivery.id, plaintext_secret, event_id))
             await db.commit()
 

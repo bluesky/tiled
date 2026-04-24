@@ -238,7 +238,7 @@ class StreamingCacheConfig(BaseSettings):
     settings_customise_sources = classmethod(settings_customise_sources)
 
 
-class WebhooksConfig(BaseModel):
+class WebhooksConfig(BaseSettings):
     """Configuration for the optional webhooks feature.
 
     When this section is present in the server configuration, the
@@ -247,14 +247,15 @@ class WebhooksConfig(BaseModel):
 
     Parameters
     ----------
-    secret_keys : list of str, optional
+    secret_keys : list of str
         Keys used to encrypt webhook HMAC signing secrets at rest.
-        Must be non-empty if users will register webhooks with secrets.
-        Supports key rotation: the first key is used for encryption; all
-        keys are tried during decryption.
+        Required; generate one with ``openssl rand -hex 32``.
     """
 
-    secret_keys: list[str] = []
+    secret_keys: list[str]
+
+    model_config = SettingsConfigDict(env_prefix="TILED_WEBHOOKS_")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class Config(BaseSettings):
@@ -306,6 +307,15 @@ class Config(BaseSettings):
                 self.streaming_cache = StreamingCacheConfig()
             except ValidationError:
                 pass  # uri not set, leave as None
+        return self
+
+    @model_validator(mode="after")
+    def populate_webhooks_from_env(self) -> "Config":
+        if self.webhooks is None:
+            try:
+                self.webhooks = WebhooksConfig()
+            except ValidationError:
+                pass  # secret_keys not set, leave as None
         return self
 
     @model_validator(mode="after")
