@@ -1904,6 +1904,7 @@ def in_memory(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     cache_config=None,
+    webhook_secret_keys: Optional[List[str]] = None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -1921,6 +1922,7 @@ def in_memory(
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
         cache_config=cache_config,
+        webhook_secret_keys=webhook_secret_keys,
     )
 
 
