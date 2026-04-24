@@ -13,6 +13,7 @@ from .orm import APIKey, Identity, PendingSession, Principal, Role, Session
 
 # This is list of all valid alembic revisions (from current to oldest).
 ALL_REVISIONS = [
+    "2d1b550e12e0",
     "d829476bc173",
     "27e069ba3bf5",
     "a806cc635ab2",
@@ -62,6 +63,8 @@ async def create_default_roles(db):
                 "read:principals",
                 "write:principals",
                 "metrics",
+                "read:webhooks",
+                "write:webhooks",
             ],
         ),
     ]

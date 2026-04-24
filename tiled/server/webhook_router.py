@@ -8,8 +8,9 @@ GET    /api/v1/webhooks/target/{path}     List webhooks registered on a node
 DELETE /api/v1/webhooks/{webhook_id}      Deactivate / remove a webhook
 GET    /api/v1/webhooks/history/{webhook_id}  Recent delivery history
 
-All write endpoints require the ``write:metadata`` scope (same as creating
-nodes). Read endpoints require ``read:metadata``.
+All write endpoints require the ``write:webhooks`` scope.
+Read endpoints require ``read:webhooks``.
+Both scopes are granted to admin users only.
 """
 
 import asyncio
@@ -87,11 +88,11 @@ def get_webhook_router() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata"]),
+        _=Security(check_scopes, scopes=["write:webhooks"]),
     ):
         entry = await get_entry(
             path=path,
-            security_scopes=["write:metadata"],
+            security_scopes=["write:webhooks"],
             principal=principal,
             authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
@@ -156,11 +157,11 @@ def get_webhook_router() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["read:metadata"]),
+        _=Security(check_scopes, scopes=["read:webhooks"]),
     ):
         entry = await get_entry(
             path=path,
-            security_scopes=["read:metadata"],
+            security_scopes=["read:webhooks"],
             principal=principal,
             authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
@@ -192,7 +193,7 @@ def get_webhook_router() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["write:metadata"]),
+        _=Security(check_scopes, scopes=["write:webhooks"]),
     ):
         root_ctx = _get_catalog_context(root_tree)
 
@@ -209,7 +210,7 @@ def get_webhook_router() -> APIRouter:
             node_path = await _node_path_from_id(root_ctx, node_id)
             await get_entry(
                 path=node_path,
-                security_scopes=["write:metadata"],
+                security_scopes=["write:webhooks"],
                 principal=principal,
                 authn_access_tags=authn_access_tags,
                 authn_scopes=authn_scopes,
@@ -239,7 +240,7 @@ def get_webhook_router() -> APIRouter:
         authn_scopes: Scopes = Depends(get_current_scopes),
         root_tree=Depends(get_root_tree),
         session_state: dict = Depends(get_session_state),
-        _=Security(check_scopes, scopes=["read:metadata"]),
+        _=Security(check_scopes, scopes=["read:webhooks"]),
     ):
         root_ctx = _get_catalog_context(root_tree)
 
@@ -256,7 +257,7 @@ def get_webhook_router() -> APIRouter:
         node_path = await _node_path_from_id(root_ctx, node_id)
         await get_entry(
             path=node_path,
-            security_scopes=["read:metadata"],
+            security_scopes=["read:webhooks"],
             principal=principal,
             authn_access_tags=authn_access_tags,
             authn_scopes=authn_scopes,
