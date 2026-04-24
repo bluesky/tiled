@@ -23,17 +23,11 @@ webhooks:
     - ${TILED_WEBHOOK_SECRET_KEY}
 ```
 
-`secret_keys` is optional, but must be provided if you want to register
-webhooks with an HMAC signing secret (see [Verifying deliveries](#verifying-deliveries)).
-Generate a key with:
+`secret_keys` is required.  Generate a key with:
 
 ```sh
 openssl rand -hex 32
 ```
-
-Keys support rotation: the **first** key is used for encryption; **all** keys
-are tried during decryption.  Add the new key at the top, redeploy, then remove
-the old key and redeploy again once in-flight webhooks have drained.
 
 ## Registering a webhook
 
@@ -55,9 +49,9 @@ curl -X POST https://my-tiled-server/api/v1/webhooks/target/my/container \
 |----------|----------|-------------|
 | `url`    | yes      | HTTPS endpoint that will receive `POST` requests |
 | `secret` | no       | HMAC signing secret; requires `secret_keys` in server config |
-| `events` | no       | List of event types to deliver; omit to receive all events |
+| `events` | no       | List of event types to deliver; set `"events": null` or omit to receive all events |
 
-Registering a webhook requires the `write:metadata` scope.
+Registering a webhook requires the `write:webhooks` scope (admin only).
 
 The webhook URL **must use HTTPS**.
 
@@ -106,7 +100,17 @@ def verify(body: bytes, secret: str, header: str) -> bool:
 ```
 
 Each delivery also carries an `X-Tiled-Event-ID` header — a unique hex string
-you can use to deduplicate retried deliveries.
+you can use to deduplicate retried deliveries, for example:
+
+```python
+seen = set()
+def handle(request):
+    event_id = request.headers["X-Tiled-Event-ID"]
+    if event_id in seen:
+        return  # duplicate delivery, ignore
+    seen.add(event_id)
+    ...
+```
 
 ## Managing webhooks
 
@@ -143,9 +147,13 @@ delivery history.
 ## Security notes
 
 * Webhook URLs must use HTTPS.
-* Tiled blocks registration of URLs that resolve to private, loopback, or
-  link-local addresses (SSRF protection).  For production, also route outbound
-  webhook requests through a network-level egress proxy (e.g.
-  [Smokescreen](https://github.com/stripe/smokescreen)) so that DNS-rebinding
-  attacks cannot bypass hostname-level checks.
+* Registering and listing webhooks requires the `write:webhooks` / `read:webhooks`
+  scope, which is granted to admin users only.  This is the primary access-control
+  layer preventing unauthorized webhook registration.
+* At registration time, Tiled additionally checks that the target URL does not
+  resolve to a private, loopback, or link-local address (SSRF protection).
+  Note that this hostname-level check can be bypassed by DNS-rebinding attacks;
+  for high-security deployments also route outbound webhook requests through a
+  network-level egress proxy (e.g.
+  [Smokescreen](https://github.com/stripe/smokescreen)).
 * HMAC signing secrets are encrypted at rest using the server's `secret_keys`.
