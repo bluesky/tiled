@@ -24,6 +24,7 @@ from tiled.catalog.adapter import CatalogNodeAdapter
 from tiled.catalog.orm import Webhook
 from tiled.client import Context, from_context
 from tiled.client.container import Container
+from tiled.client.context import password_grant
 from tiled.config import Authentication, WebhooksConfig
 from tiled.server.app import build_app
 from tiled.server.schemas import (
@@ -42,6 +43,9 @@ from tiled.server.webhooks import (
     _sign,
     check_url_ssrf_safety,
 )
+
+from .conftest import TOY_AUTHENTICATION
+from .utils import enter_username_password
 
 WEBHOOK_URL = "https://webhook.example.com/tiled-events"
 
@@ -82,7 +86,11 @@ def app(tmpdir_module: Any) -> FastAPI:
     )
     return build_app(
         tree,
-        authentication=Authentication(single_user_api_key="secret"),
+        authentication=Authentication(
+            providers=TOY_AUTHENTICATION["providers"],
+            secret_keys=TOY_AUTHENTICATION["secret_keys"],
+            tiled_admins=[{"provider": "toy", "id": "alice"}],
+        ),
         server_settings={"webhooks": WebhooksConfig(secret_keys=["test-webhook-key"])},
     )
 
@@ -90,6 +98,8 @@ def app(tmpdir_module: Any) -> FastAPI:
 @pytest.fixture(scope="module")
 def context(app: FastAPI) -> Generator[Context, None, None]:
     with Context.from_app(app) as ctx:
+        with enter_username_password("alice", "secret1"):
+            from_context(ctx)  # triggers login, caches tokens
         yield ctx
 
 
@@ -101,6 +111,23 @@ def http(context: Context) -> httpx.Client:
 @pytest.fixture(scope="module")
 def client(context: Context) -> Container:
     return from_context(context)
+
+
+@pytest.fixture(scope="module")
+def bob_http(context: Context) -> httpx.Client:
+    """Authenticated HTTP client for bob (non-admin user)."""
+    provider = context.server_info.authentication.providers[0]
+    auth_endpoint = provider.links["auth_endpoint"]
+    tokens = password_grant(
+        context.http_client, auth_endpoint, provider.provider, "bob", "secret2"
+    )
+    access_token = tokens["access_token"]
+    return httpx.Client(
+        transport=context.http_client._transport,
+        base_url=str(context.http_client.base_url),
+        headers={"Authorization": f"Bearer {access_token}"},
+        follow_redirects=True,
+    )
 
 
 @pytest.fixture
@@ -504,6 +531,30 @@ class TestWebhookIntegration:
         assert event.get("metadata") == {
             "color": "blue"
         }, "Webhook payload should include pre-existing metadata when only specs changed"
+
+    # -----------------------------------------------------------------------
+    # Scope enforcement: non-admin users must be rejected
+    # -----------------------------------------------------------------------
+
+    def test_non_admin_cannot_register_webhook(self, bob_http: httpx.Client) -> None:
+        """Non-admin user must get 401 when trying to register a webhook."""
+        resp = bob_http.post("/api/v1/webhooks/target/", json=_wh_req())
+        assert resp.status_code == 401
+
+    def test_non_admin_cannot_list_webhooks(self, bob_http: httpx.Client) -> None:
+        """Non-admin user must get 401 when trying to list webhooks."""
+        resp = bob_http.get("/api/v1/webhooks/target/")
+        assert resp.status_code == 401
+
+    def test_non_admin_cannot_delete_webhook(self, bob_http: httpx.Client) -> None:
+        """Non-admin user must get 401 when trying to delete a webhook."""
+        resp = bob_http.delete("/api/v1/webhooks/999999")
+        assert resp.status_code == 401
+
+    def test_non_admin_cannot_get_history(self, bob_http: httpx.Client) -> None:
+        """Non-admin user must get 401 when trying to read delivery history."""
+        resp = bob_http.get("/api/v1/webhooks/history/999999")
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
