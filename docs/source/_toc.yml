@@ -44,6 +44,7 @@ subtrees:
             - file: user-guide/tiled-authn-database
             - file: user-guide/register
             - file: user-guide/retries
+            - file: user-guide/webhooks
   - entries:
       - file: explanations/index
         subtrees:
