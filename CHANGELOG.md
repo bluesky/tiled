@@ -31,6 +31,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Array client fully supports slicing when communicating with the server
   and only fetches the data needed to satisfy the slice.
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
+- Stream updates are processed using a single worker thread, by
+  default, in order to guarantee that they are processed in order.
 
 ### Added
 
