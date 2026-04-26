@@ -31,6 +31,22 @@ def deactivate_retries():
     stamina.set_active(False)
 
 
+@pytest.fixture(autouse=True, scope="module")
+def reset_settings_module():
+    """
+    Clear the cached Settings before module-scoped fixtures run.
+
+    Without this, a previous module's build_app() can mutate the cached
+    Settings singleton (e.g. setting database_settings.uri to a postgres URI),
+    and module-scoped fixtures in the next module will see stale values
+    because function-scoped cleanup hasn't run yet.  This is critical under
+    pytest-xdist where multiple modules share a worker process.
+    """
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture(autouse=True)
 def reset_settings():
     """
