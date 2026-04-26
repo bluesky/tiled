@@ -532,6 +532,53 @@ class TestWebhookIntegration:
             "color": "blue"
         }, "Webhook payload should include pre-existing metadata when only specs changed"
 
+    @respx.mock
+    def test_webhook_cascade_deleted_when_node_deleted(
+        self,
+        http: httpx.Client,
+        client: Container,
+        node_key: str,
+    ) -> None:
+        """Deleting a node must cascade-delete its webhooks so that subsequent
+        events on other nodes do NOT trigger the now-deleted webhook."""
+        received = _capturing_mock()
+
+        # Create a sub-node and register a webhook on it.
+        client.create_container(node_key)
+        _register_webhook(
+            http, path=node_key, events=[EventType.container_child_created]
+        )
+
+        # Delete the sub-node (cascades the webhook via FK ON DELETE CASCADE).
+        client.delete_contents(keys=[node_key], recursive=True, external_only=False)
+
+        # Create an unrelated container at root — must NOT trigger the deleted webhook.
+        sibling_key = f"{node_key}_after_delete"
+        client.create_container(sibling_key)
+
+        assert received == [], (
+            "Webhook registered on a deleted node still fired after the node "
+            "was removed (CASCADE delete failed)"
+        )
+
+    @respx.mock
+    def test_close_stream_fires_webhook(
+        self, http: httpx.Client, client: Container, node_key: str
+    ) -> None:
+        """Calling close_stream on a node must dispatch a stream-closed webhook event."""
+        received = _capturing_mock()
+
+        client.create_container(node_key)
+        _register_webhook(http, events=[EventType.stream_closed])
+
+        # Hit the close-stream endpoint directly.
+        http.delete(f"/api/v1/stream/close/{node_key}").raise_for_status()
+
+        assert len(received) == 1
+        event = received[0]
+        assert event["type"] == EventType.stream_closed
+        assert event["key"] == node_key
+
     # -----------------------------------------------------------------------
     # Scope enforcement: non-admin users must be rejected
     # -----------------------------------------------------------------------
