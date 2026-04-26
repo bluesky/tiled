@@ -41,7 +41,7 @@ from starlette.status import (
     HTTP_409_CONFLICT,
 )
 
-from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, USER_SCOPES
+from tiled.access_control.scopes import NO_SCOPES, PUBLIC_SCOPES, SINGLE_USER_SCOPES
 from tiled.authenticators import ProxiedOIDCAuthenticator
 
 # To hide third-party warning
@@ -352,7 +352,7 @@ async def get_scopes_from_api_key(
     if not authenticated:
         # Tiled is in a "single user" mode with only one API key.
         return (
-            USER_SCOPES
+            SINGLE_USER_SCOPES
             if secrets.compare_digest(api_key, settings.single_user_api_key)
             else set()
         )

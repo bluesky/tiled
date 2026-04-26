@@ -29,7 +29,7 @@ SCOPES = {
 
 ALL_SCOPES: set[str] = frozenset(SCOPES)
 PUBLIC_SCOPES: set[str] = frozenset(("read:metadata", "read:data"))
-USER_SCOPES: set[str] = frozenset(
+SINGLE_USER_SCOPES: set[str] = frozenset(
     (
         "read:metadata",
         "read:data",
