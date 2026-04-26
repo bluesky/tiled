@@ -70,12 +70,12 @@ def _register_webhook(
 def _capturing_mock() -> list[dict[str, Any]]:
     """Attach a respx side-effect that captures decoded payloads and returns 200."""
     received: list[dict[str, Any]] = []
-    respx.post(WEBHOOK_URL).mock(
-        side_effect=lambda req: (
-            received.append(json.loads(req.content)),
-            Response(200),
-        )[-1]
-    )
+
+    def _capture(request: httpx.Request) -> Response:
+        received.append(json.loads(request.content))
+        return Response(200)
+
+    respx.post(WEBHOOK_URL).mock(side_effect=_capture)
     return received
 
 
@@ -536,24 +536,21 @@ class TestWebhookIntegration:
     # Scope enforcement: non-admin users must be rejected
     # -----------------------------------------------------------------------
 
-    def test_non_admin_cannot_register_webhook(self, bob_http: httpx.Client) -> None:
-        """Non-admin user must get 401 when trying to register a webhook."""
-        resp = bob_http.post("/api/v1/webhooks/target/", json=_wh_req())
-        assert resp.status_code == 401
-
-    def test_non_admin_cannot_list_webhooks(self, bob_http: httpx.Client) -> None:
-        """Non-admin user must get 401 when trying to list webhooks."""
-        resp = bob_http.get("/api/v1/webhooks/target/")
-        assert resp.status_code == 401
-
-    def test_non_admin_cannot_delete_webhook(self, bob_http: httpx.Client) -> None:
-        """Non-admin user must get 401 when trying to delete a webhook."""
-        resp = bob_http.delete("/api/v1/webhooks/999999")
-        assert resp.status_code == 401
-
-    def test_non_admin_cannot_get_history(self, bob_http: httpx.Client) -> None:
-        """Non-admin user must get 401 when trying to read delivery history."""
-        resp = bob_http.get("/api/v1/webhooks/history/999999")
+    @pytest.mark.parametrize(
+        "method,path,kwargs",
+        [
+            ("post", "/api/v1/webhooks/target/", {"json": _wh_req()}),
+            ("get", "/api/v1/webhooks/target/", {}),
+            ("delete", "/api/v1/webhooks/999999", {}),
+            ("get", "/api/v1/webhooks/history/999999", {}),
+        ],
+        ids=["register", "list", "delete", "history"],
+    )
+    def test_non_admin_rejected(
+        self, bob_http: httpx.Client, method: str, path: str, kwargs: dict
+    ) -> None:
+        """Non-admin user must get 401 for all webhook endpoints."""
+        resp = getattr(bob_http, method)(path, **kwargs)
         assert resp.status_code == 401
 
 
@@ -652,6 +649,26 @@ async def test_dispatcher_shutdown_waits_for_pending_tasks() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _make_close_stream_adapter(
+    *, webhook_dispatcher, streaming_cache, node_id=42, node_key="stream"
+) -> CatalogNodeAdapter:
+    """Build a CatalogNodeAdapter suitable for testing close_stream()."""
+    mock_context = MagicMock()
+    mock_context.webhook_dispatcher = webhook_dispatcher
+    mock_context.streaming_cache = streaming_cache
+
+    mock_node = MagicMock()
+    mock_node.id = node_id
+    mock_node.key = node_key
+    mock_node.structure_family = "container"
+    mock_node.specs = []
+    mock_node.access_blob = {}
+
+    adapter = CatalogNodeAdapter(mock_context, mock_node)
+    adapter.path_segments = AsyncMock(return_value=[node_key])
+    return adapter
+
+
 @pytest.mark.asyncio
 async def test_close_stream_dispatches_webhook() -> None:
     dispatched: list[StreamClosedEvent] = []
@@ -664,21 +681,11 @@ async def test_close_stream_dispatches_webhook() -> None:
     mock_streaming_cache = MagicMock()
     mock_streaming_cache.close = AsyncMock()
 
-    mock_context = MagicMock()
-    mock_context.webhook_dispatcher = mock_dispatcher
-    mock_context.streaming_cache = mock_streaming_cache
-    mock_context.session = MagicMock()
-
-    mock_node = MagicMock()
-    mock_node.id = 42
-    mock_node.parent = 1
-    mock_node.key = "my_stream"
-
-    # path_segments is an async method; patch it on the adapter instance.
-    adapter = object.__new__(CatalogNodeAdapter)
-    adapter.context = mock_context
-    adapter.node = mock_node
-    adapter.path_segments = AsyncMock(return_value=["my_stream"])
+    adapter = _make_close_stream_adapter(
+        webhook_dispatcher=mock_dispatcher,
+        streaming_cache=mock_streaming_cache,
+        node_key="my_stream",
+    )
 
     await adapter.close_stream()
 
@@ -699,18 +706,10 @@ async def test_close_stream_no_webhook_dispatcher() -> None:
     mock_streaming_cache = MagicMock()
     mock_streaming_cache.close = AsyncMock()
 
-    mock_context = MagicMock()
-    mock_context.webhook_dispatcher = None
-    mock_context.streaming_cache = mock_streaming_cache
-
-    mock_node = MagicMock()
-    mock_node.id = 42
-    mock_node.key = "stream"
-
-    adapter = object.__new__(CatalogNodeAdapter)
-    adapter.context = mock_context
-    adapter.node = mock_node
-    adapter.path_segments = AsyncMock(return_value=["stream"])
+    adapter = _make_close_stream_adapter(
+        webhook_dispatcher=None,
+        streaming_cache=mock_streaming_cache,
+    )
 
     await adapter.close_stream()  # must not raise
 
@@ -721,18 +720,10 @@ async def test_close_stream_no_streaming_cache() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = AsyncMock()
 
-    mock_context = MagicMock()
-    mock_context.webhook_dispatcher = mock_dispatcher
-    mock_context.streaming_cache = None
-
-    mock_node = MagicMock()
-    mock_node.id = 42
-    mock_node.key = "stream"
-
-    adapter = object.__new__(CatalogNodeAdapter)
-    adapter.context = mock_context
-    adapter.node = mock_node
-    adapter.path_segments = AsyncMock(return_value=["stream"])
+    adapter = _make_close_stream_adapter(
+        webhook_dispatcher=mock_dispatcher,
+        streaming_cache=None,
+    )
 
     await adapter.close_stream()  # must not raise
 
