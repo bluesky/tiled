@@ -27,7 +27,7 @@ async def walk(node, filter_for_access, pre=None):
     if node.structure_family != StructureFamily.array:
         filtered = await filter_for_access(node)
         if hasattr(filtered, "items_range"):
-            for key, value in await filtered.items_range(0, None):
+            for key, value in (await filtered.items_range())[0]:
                 async for d in walk(value, filter_for_access, pre + [key]):
                     yield d
         elif node.structure_family == StructureFamily.table:
