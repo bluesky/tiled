@@ -657,14 +657,15 @@ class WebhookRegistrationRequest(pydantic.BaseModel):
     secret: Optional[str] = None
     events: Optional[List[EventType]] = None
 
-    @field_validator("url")
-    @classmethod
-    def require_https(cls, v: AnyHttpUrl) -> AnyHttpUrl:
-        if v.scheme != "https":
+    def check_https(self) -> None:
+        """Raise ValueError if the URL scheme is not HTTPS.
+
+        Not a field validator so callers (e.g. dev_mode) can bypass it.
+        """
+        if self.url.scheme != "https":
             raise ValueError(
                 "Webhook URL must use HTTPS to protect the HMAC signature in transit."
             )
-        return v
 
     @field_validator("events", mode="before")
     @classmethod

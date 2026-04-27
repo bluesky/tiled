@@ -10,6 +10,7 @@ services:
       - TILED_CATALOG_WRITABLE_STORAGE=["file:///storage", "postgresql://tiled:${POSTGRES_PASSWORD}@postgres:5432/tiled_storage"]
       - TILED_STREAMING_CACHE_URI=redis://:${REDIS_PASSWORD}@redis:6379
       - TILED_WEBHOOKS_SECRET_KEYS=${TILED_WEBHOOKS_SECRET_KEYS:-}
+      - TILED_WEBHOOKS_DEV_MODE=${TILED_WEBHOOKS_DEV_MODE:-false}
     volumes:
       - tiled_data:/storage
     ports:

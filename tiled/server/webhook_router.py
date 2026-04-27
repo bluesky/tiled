@@ -42,6 +42,35 @@ from .webhooks import _encrypt_secret, check_url_ssrf_safety
 logger = logging.getLogger(__name__)
 
 
+async def _validate_webhook_url(
+    body: WebhookRegistrationRequest, *, dev_mode: bool
+) -> None:
+    """Validate the webhook URL, raising HTTPException on failure.
+
+    In dev_mode both the HTTPS requirement and the SSRF blocklist are
+    skipped — this should never be enabled in production.
+    """
+    if dev_mode:
+        logger.warning(
+            "Webhook dev_mode is enabled for %s — HTTPS is not required and SSRF "
+            "checks are disabled. DO NOT USE IN PRODUCTION.",
+            body.url,
+        )
+        return
+    try:
+        body.check_https()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        await asyncio.to_thread(check_url_ssrf_safety, str(body.url))
+    except ValueError as exc:
+        logger.info("Webhook registration blocked by SSRF check: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Webhook URL targets a private or reserved address and cannot be registered.",
+        ) from exc
+
+
 def _get_catalog_context(entry):
     """Extract the catalog Context from an adapter entry, or raise 404."""
     context = getattr(entry, "context", None)
@@ -104,15 +133,8 @@ def get_webhook_router() -> APIRouter:
         )
         ctx = _get_catalog_context(entry)
 
-        # SSRF check: block private/loopback/link-local targets.
-        try:
-            await asyncio.to_thread(check_url_ssrf_safety, str(body.url))
-        except ValueError as exc:
-            logger.info("Webhook registration blocked by SSRF check: %s", exc)
-            raise HTTPException(
-                status_code=400,
-                detail="Webhook URL targets a private or reserved address and cannot be registered.",
-            ) from exc
+        dev_mode = getattr(request.app.state, "webhooks_dev_mode", False)
+        await _validate_webhook_url(body, dev_mode=dev_mode)
 
         encrypted_secret: Optional[str] = None
         if body.secret:

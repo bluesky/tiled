@@ -394,6 +394,8 @@ def build_app(
     )
     app.include_router(router, prefix="/api/v1")
     if server_settings.get("webhooks") is not None:
+        webhooks_cfg = server_settings["webhooks"]
+        app.state.webhooks_dev_mode = getattr(webhooks_cfg, "dev_mode", False)
         app.include_router(get_webhook_router(), prefix="/api/v1")
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")

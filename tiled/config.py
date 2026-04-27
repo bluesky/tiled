@@ -250,9 +250,17 @@ class WebhooksConfig(BaseSettings):
     secret_keys : list of str
         Keys used to encrypt webhook HMAC signing secrets at rest.
         Required; generate one with ``openssl rand -hex 32``.
+    dev_mode : bool
+        When True, enables two relaxations intended **for local development
+        only** — never enable in production:
+
+        * HTTP webhook URLs are accepted (HTTPS is not required).
+        * The SSRF blocklist is skipped, allowing webhook targets on
+          private/loopback addresses (e.g. Docker-internal hostnames).
     """
 
     secret_keys: list[str]
+    dev_mode: bool = False
 
     model_config = SettingsConfigDict(env_prefix="TILED_WEBHOOKS_")
     settings_customise_sources = classmethod(settings_customise_sources)
