@@ -64,6 +64,7 @@ from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .webhook_router import get_webhook_router
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -392,6 +393,9 @@ def build_app(
         authenticators,
     )
     app.include_router(router, prefix="/api/v1")
+    webhooks_cfg = server_settings.get("webhooks")
+    if webhooks_cfg is not None:
+        app.include_router(get_webhook_router(webhooks_cfg), prefix="/api/v1")
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
@@ -544,6 +548,19 @@ def build_app(
                     )
                     + API_KEY_MSG
                 )
+
+        # Inject webhook_secret_keys into catalog contexts before startup tasks
+        # run. When a 'webhooks:' config section is present, pass its
+        # secret_keys (not the JWT auth keys). A non-None value enables the
+        # dispatcher; None keeps it disabled.
+        webhooks_config = server_settings.get("webhooks")
+        context = getattr(tree, "context", None)
+        if context is not None and hasattr(context, "webhook_secret_keys"):
+            context.webhook_secret_keys = (
+                list(webhooks_config.secret_keys)
+                if webhooks_config is not None
+                else None
+            )
 
         # Run startup tasks collected from trees (adapters).
         for task in tasks["startup"]:

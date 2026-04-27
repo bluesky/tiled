@@ -492,6 +492,15 @@ Uploaded data is streamed via the WebSocket connection before it is even saved
 to disk, which minimizes latency.
 ```
 
+```{note}
+**Webhooks** (experimental) offer a complementary, server-side push mechanism.
+Instead of a Python client subscribing over WebSocket, a webhook delivers an
+HTTP `POST` to any external HTTPS endpoint whenever a catalog event fires.
+This is useful for triggering pipelines or sending notifications from systems
+that cannot maintain a persistent connection.
+See the [Webhooks user guide](../user-guide/webhooks) for details.
+```
+
 ## Register data
 
 Detectors or analysis programs often write files directly to disk. Tiled can

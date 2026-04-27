@@ -571,3 +571,86 @@ class Revision(Timestamped, Base):
             name="node_id_revision_number_unique_constraint",
         ),
     )
+
+
+class Webhook(Timestamped, Base):
+    """
+    A registered webhook: fires an HTTP POST to a URL when an event occurs
+    on the watched node or any of its descendants.
+    """
+
+    __tablename__ = "webhooks"
+    __mapper_args__ = {"eager_defaults": True}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node_id = Column(
+        Integer,
+        ForeignKey("nodes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    url = Column(Unicode(2048), nullable=False)
+    # HMAC-SHA256 secret; NULL means no signature header is sent.
+    secret = Column(Unicode(512), nullable=True)
+    # JSON list of event type strings, e.g. ["container-child-created"].
+    # NULL / empty list means all events.
+    events = Column(JSONVariant, nullable=True)
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+
+    node: Mapped["Node"] = relationship(
+        backref="webhooks",
+        # Use noload: wh.node is never accessed in dispatch or router code.
+        # selectin would trigger a superfluous SELECT IN query for every Webhook
+        # batch loaded, e.g. during dispatch.
+        lazy="noload",
+    )
+
+    deliveries: Mapped[List["WebhookDelivery"]] = relationship(
+        back_populates="webhook",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class WebhookDelivery(Timestamped, Base):
+    """
+    One delivery attempt for a Webhook.
+
+    A single event may produce multiple rows (retries).  The most recent row
+    for a given webhook_id + event_id pair is the canonical outcome.
+    """
+
+    __tablename__ = "webhook_deliveries"
+    __mapper_args__ = {"eager_defaults": True}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    webhook_id = Column(
+        Integer,
+        ForeignKey("webhooks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Stable identifier for the logical event sent in the webhook payload.
+    # Included in the POST body so that receiving endpoints can deduplicate
+    # deliveries: if an earlier attempt timed out and was retried, the remote
+    # may receive the same payload twice with the same event_id.  Retries
+    # within a single _deliver() call update this row in-place and share this
+    # event_id rather than creating a new delivery row.
+    event_id = Column(Unicode(128), nullable=False, index=True)
+    # Denormalised event info so history is queryable without joining to a
+    # separate events table.
+    event_type = Column(Unicode(128), nullable=False)
+    # Full JSON payload that was (or would be) POSTed.
+    payload = Column(JSONVariant, nullable=False)
+    # HTTP status code of the last attempt, NULL while pending.
+    status_code = Column(Integer, nullable=True)
+    # Total number of attempts made so far.
+    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    delivered_at = Column(DateTime(timezone=False), nullable=True)
+    # "pending" | "success" | "failed"
+    outcome = Column(
+        Unicode(16), nullable=False, default="pending", server_default=text("'pending'")
+    )
+    error_detail = Column(Unicode(4096), nullable=True)
+
+    webhook: Mapped["Webhook"] = relationship(back_populates="deliveries")

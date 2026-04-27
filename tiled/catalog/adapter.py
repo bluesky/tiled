@@ -10,7 +10,7 @@ import shutil
 import sys
 import uuid
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union, cast
@@ -73,9 +73,18 @@ from ..server.connection_pool import (
     is_memory_sqlite,
 )
 from ..server.core import NoEntry
-from ..server.schemas import Asset, DataSource, Management, Revision
+from ..server.schemas import (
+    Asset,
+    ContainerChildCreatedEvent,
+    ContainerChildMetadataUpdatedEvent,
+    DataSource,
+    Management,
+    Revision,
+    StreamClosedEvent,
+)
 from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
+from ..server.webhooks import WebhookDispatcher
 from ..storage import (
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
@@ -174,6 +183,7 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=5,
         storage_max_overflow=10,
+        webhook_secret_keys: Optional[List[str]] = None,
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
@@ -219,6 +229,8 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
         self.cache_config = cache_config
+        self.webhook_secret_keys: List[str] = webhook_secret_keys or []
+        self.webhook_dispatcher = None
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -247,7 +259,17 @@ class Context:
                 self.cache_config["datastore"] = "memory"
             self.streaming_cache = StreamingCache(self.cache_config)
 
+        self.webhook_dispatcher = None
+        if self.webhook_secret_keys:
+            self.webhook_dispatcher = WebhookDispatcher(
+                self.session,
+                secret_keys=self.webhook_secret_keys,
+            )
+            await self.webhook_dispatcher.startup()
+
     async def shutdown(self):
+        if self.webhook_dispatcher is not None:
+            await self.webhook_dispatcher.shutdown()
         await close_database_connection_pool(self.database_settings)
 
 
@@ -846,6 +868,20 @@ class CatalogNodeAdapter:
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
                 await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+            if self.context.webhook_dispatcher:
+                segments = list(await self.path_segments())
+                child_path = segments + [key]
+                await self.context.webhook_dispatcher.dispatch(
+                    ContainerChildCreatedEvent(
+                        timestamp=datetime.now(tz=timezone.utc),
+                        key=key,
+                        structure_family=structure_family,
+                        specs=[spec.model_dump() for spec in (specs or [])],
+                        metadata=refreshed_node.metadata_ or {},
+                        path=child_path,
+                    ),
+                    node_id=self.node.id,
+                )
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
@@ -1235,9 +1271,51 @@ class CatalogNodeAdapter:
                 await self.context.streaming_cache.set(
                     self.node.parent, sequence, metadata
                 )
+            if self.context.webhook_dispatcher:
+                segments = list(await self.path_segments())
+                # Determine the effective metadata after the update.  When
+                # metadata was not part of this call we fall back to the
+                # pre-update value captured in `current` (available whenever
+                # drop_revision=False) or to the cached node attribute.
+                if metadata is not None:
+                    effective_metadata = metadata
+                elif not drop_revision:
+                    effective_metadata = current.metadata_ or {}
+                else:
+                    effective_metadata = self.node.metadata_ or {}
+                # Determine the effective specs after the update.
+                effective_specs = (
+                    specs
+                    if specs is not None
+                    else (current.specs if not drop_revision else self.node.specs) or []
+                )
+                ev = ContainerChildMetadataUpdatedEvent(
+                    timestamp=datetime.now(tz=timezone.utc),
+                    key=self.node.key,
+                    specs=[spec.model_dump() for spec in effective_specs],
+                    metadata=effective_metadata,
+                    path=segments,
+                )
+                await self.context.webhook_dispatcher.dispatch(
+                    ev,
+                    node_id=self.node.id,
+                )
 
     async def close_stream(self):
-        await self.context.streaming_cache.close(self.node.id)
+        if self.context.streaming_cache:
+            await self.context.streaming_cache.close(self.node.id)
+        if self.context.webhook_dispatcher:
+            segments = list(await self.path_segments())
+            await self.context.webhook_dispatcher.dispatch(
+                StreamClosedEvent(
+                    timestamp=datetime.now(tz=timezone.utc),
+                    key=self.node.key,
+                    path=segments,
+                ),
+                # Pass the stream node's own id so that webhooks registered
+                # directly on this node are included in the ancestor walk.
+                node_id=self.node.id,
+            )
 
     def make_ws_handler(self, websocket, formatter, uri):
         schema = self.make_ws_schema()
@@ -1826,6 +1904,7 @@ def in_memory(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     cache_config=None,
+    webhook_secret_keys: Optional[List[str]] = None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -1843,6 +1922,7 @@ def in_memory(
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
         cache_config=cache_config,
+        webhook_secret_keys=webhook_secret_keys,
     )
 
 
@@ -1904,6 +1984,7 @@ def from_uri(
     mount_node: Optional[Union[str, List[str]]] = None,
     create_mount_nodes_if_not_exist=False,
     cache_config=None,
+    webhook_secret_keys: Optional[List[str]] = None,
     catalog_pool_size=5,
     storage_pool_size=5,
     catalog_max_overflow=10,
@@ -1945,6 +2026,7 @@ def from_uri(
         cache_config,
         storage_pool_size=storage_pool_size,
         storage_max_overflow=storage_max_overflow,
+        webhook_secret_keys=webhook_secret_keys,
     )
     node = RootNode(metadata, specs, top_level_access_blob)
     mount_path = (
