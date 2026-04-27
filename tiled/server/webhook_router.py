@@ -22,6 +22,7 @@ from sqlalchemy import select
 from starlette.status import HTTP_404_NOT_FOUND
 
 from ..catalog import orm
+from ..config import WebhooksConfig
 from ..type_aliases import AccessTags, Scopes
 from .authentication import (
     check_scopes,
@@ -100,7 +101,7 @@ async def _node_path_from_id(ctx, node_id: int) -> str:
     return "/".join(keys)
 
 
-def get_webhook_router() -> APIRouter:
+def get_webhook_router(webhook_settings: WebhooksConfig) -> APIRouter:
     router = APIRouter(prefix="/webhooks")
 
     @router.post(
@@ -133,8 +134,7 @@ def get_webhook_router() -> APIRouter:
         )
         ctx = _get_catalog_context(entry)
 
-        dev_mode = getattr(request.app.state, "webhooks_dev_mode", False)
-        await _validate_webhook_url(body, dev_mode=dev_mode)
+        await _validate_webhook_url(body, dev_mode=webhook_settings.dev_mode)
 
         encrypted_secret: Optional[str] = None
         if body.secret:
