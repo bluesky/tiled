@@ -159,7 +159,7 @@ def decode_token(
         headers={"WWW-Authenticate": "Bearer"},
     )
     if proxied_authenticator:
-        return proxied_authenticator.decode_token(token)
+        return proxied_authenticator.decode_token(token, None)
     else:
         # The first key in settings.secret_keys is used for *encoding*.
         # All keys are tried for *decoding* until one works or they all
