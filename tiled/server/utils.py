@@ -85,6 +85,16 @@ def get_root_url_low_level(request_headers: Mapping[str, str], scope: Scope) -> 
     return f"{scheme}://{host}{root_path}"
 
 
+def get_current_user(principal: Principal) -> Optional[str]:
+    username = None
+    if principal is not None:
+        if len(principal.identities) > 0:
+            username = principal.identities[0].id
+        else:
+            username = f"service:{principal.uuid}"
+    return username
+
+
 async def filter_for_access(
     entry,
     access_policy: Optional[AccessPolicy],
