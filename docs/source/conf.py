@@ -153,6 +153,7 @@ html_context = {
 myst_enable_extensions = [
     "colon_fence",
 ]
+myst_fence_as_directive = ["mermaid"]
 
 
 # Theme options are theme-specific and customize the look and feel of a theme
