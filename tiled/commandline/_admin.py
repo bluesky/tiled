@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
@@ -191,3 +191,97 @@ def show_principal(
     context = get_context(profile)
     result = context.admin.show_principal(uuid)
     typer.echo(json.dumps(result, indent=2))
+
+
+@admin_app.command("create-service-principal")
+def create_service_principal(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    admin: bool = typer.Option(
+        False, help="Whether the new service principal should have admin privileges."
+    ),
+):
+    """
+    Create a new service principal. The new principal will have a random UUID.
+    """
+    import json
+
+    context = get_context(profile)
+    result = context.admin.create_service_principal("admin" if admin else None)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@admin_app.command("create-api-key")
+def create_api_key(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    principal_uuid: str = typer.Argument(
+        ..., help="UUID identifying Principal to create API key for"
+    ),
+    expires_in: Optional[str] = typer.Option(
+        None,
+        help=(
+            "Number of seconds until API key expires, given as integer seconds "
+            "or a string like: '3y' (years), '3d' (days), '5m' (minutes), '1h' "
+            "(hours), '30s' (seconds). If None, it will never expire or it will "
+            "have the maximum lifetime allowed by the server. "
+        ),
+    ),
+    scopes: Optional[List[str]] = typer.Option(
+        None,
+        help=(
+            "Restrict the access available to this API key by listing scopes. "
+            "By default, it will inherit the scopes of the Principal."
+        ),
+    ),
+    access_tags: Optional[List[str]] = typer.Option(
+        None,
+        help=(
+            "Restrict the access available to the API key by listing specific tags. "
+            "By default, it will have no limits on access tags."
+        ),
+    ),
+    note: Optional[str] = typer.Option(None, help="Add a note to label this API key."),
+):
+    """
+    Create an API key for a Principal.
+    """
+    import json
+
+    context = get_context(profile)
+    if not scopes:
+        # This is how typer interprets unspecified scopes.
+        # Replace with None to get default scopes.
+        scopes = None
+    if expires_in and expires_in.isdigit():
+        expires_in = int(expires_in)
+    info = context.admin.create_api_key(
+        principal_uuid,
+        expires_in=expires_in,
+        scopes=scopes,
+        access_tags=access_tags,
+        note=note,
+    )
+    # TODO Print other info to the stderr?
+    typer.echo(info["secret"])
+
+
+@admin_app.command("revoke-api-key")
+def revoke_api_key(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    principal_uuid: str = typer.Argument(
+        ..., help="UUID identifying Principal to create API key for"
+    ),
+    first_eight: str = typer.Argument(
+        ..., help="First eight characters of API key (or the whole key)"
+    ),
+):
+    """
+    Revoke an API key.
+    """
+    context = get_context(profile)
+    context.admin.revoke_api_key(principal_uuid, first_eight[:8])
