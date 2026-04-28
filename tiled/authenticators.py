@@ -359,11 +359,13 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
 
         # Translate Entra scopes to tiled scopes
         entra_scopes = claims["scp"].split(" ")
-        tiled_scope_set = {
-            tiled_scope
-            for scope in entra_scopes
-            for tiled_scope in self.scopes_map[scope]
-        }
+        tiled_scope_set = set()
+        for scope in entra_scopes:
+            mapped_scopes = self.scopes_map.get(scope)
+            if mapped_scopes is None:
+                logger.warning("Unmapped Entra scope in 'scp': %s", scope)
+                continue
+            tiled_scope_set.update(mapped_scopes)
         claims["scope"] = " ".join(tiled_scope_set)
 
         return claims
