@@ -5,19 +5,12 @@ from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context
 from tiled.server.app import build_app_from_config
 
+from .conftest import TOY_AUTHENTICATION
+
 # Basic authenticated server config
 tree = MapAdapter({})
 config = {
-    "authentication": {
-        "secret_keys": ["SECRET"],
-        "providers": [
-            {
-                "provider": "toy",
-                "authenticator": "tiled.authenticators:DictionaryAuthenticator",
-                "args": {"users_to_passwords": {"alice": "secret1", "bob": "secret2"}},
-            }
-        ],
-    },
+    "authentication": TOY_AUTHENTICATION,
     "trees": [
         {
             "tree": f"{__name__}:tree",

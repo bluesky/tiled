@@ -442,6 +442,7 @@ c['x'].write_array([4,5,6], key='b')
 c['x']
 ```
 
+(stream)=
 ## Stream
 
 So far we've been pulling data from Tiled on demand. Streaming flips this
@@ -490,6 +491,16 @@ subscriptions can receive data as it arrives rather than polling the server repe
 
 Uploaded data is streamed via the WebSocket connection before it is even saved
 to disk, which minimizes latency.
+```
+
+```{note}
+**Webhooks** (experimental) offer a complementary, server-side push mechanism.
+Instead of a Python client subscribing over WebSocket, a webhook delivers an
+HTTP `POST` to any external HTTPS endpoint whenever a catalog event fires.
+This is useful for triggering pipelines or sending notifications from systems
+that cannot maintain a persistent connection.
+See [Webhooks](webhooks.md) for a hands-on walkthrough, or the
+[Webhooks user guide](../user-guide/webhooks) for the operator reference.
 ```
 
 ## Register data

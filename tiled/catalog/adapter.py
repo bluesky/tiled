@@ -10,7 +10,7 @@ import shutil
 import sys
 import uuid
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial, reduce
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union, cast
@@ -73,9 +73,18 @@ from ..server.connection_pool import (
     is_memory_sqlite,
 )
 from ..server.core import NoEntry
-from ..server.schemas import Asset, DataSource, Management, Revision
+from ..server.schemas import (
+    Asset,
+    ContainerChildCreatedEvent,
+    ContainerChildMetadataUpdatedEvent,
+    DataSource,
+    Management,
+    Revision,
+    StreamClosedEvent,
+)
 from ..server.settings import DatabaseSettings
 from ..server.streaming import StreamingCache
+from ..server.webhooks import WebhookDispatcher
 from ..storage import (
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
@@ -174,6 +183,7 @@ class Context:
         key_maker=lambda: str(uuid.uuid4()),
         storage_pool_size=5,
         storage_max_overflow=10,
+        webhook_secret_keys: Optional[List[str]] = None,
     ):
         self.engine = get_database_engine(database_settings)
         self.database_settings = database_settings
@@ -219,6 +229,8 @@ class Context:
         )
         self.adapters_by_mimetype = merged_adapters_by_mimetype
         self.cache_config = cache_config
+        self.webhook_secret_keys: List[str] = webhook_secret_keys or []
+        self.webhook_dispatcher = None
 
     def session(self):
         "Convenience method for constructing an AsyncSession context"
@@ -247,7 +259,17 @@ class Context:
                 self.cache_config["datastore"] = "memory"
             self.streaming_cache = StreamingCache(self.cache_config)
 
+        self.webhook_dispatcher = None
+        if self.webhook_secret_keys:
+            self.webhook_dispatcher = WebhookDispatcher(
+                self.session,
+                secret_keys=self.webhook_secret_keys,
+            )
+            await self.webhook_dispatcher.startup()
+
     async def shutdown(self):
+        if self.webhook_dispatcher is not None:
+            await self.webhook_dispatcher.shutdown()
         await close_database_connection_pool(self.database_settings)
 
 
@@ -265,6 +287,7 @@ class CatalogNodeAdapter:
         queries=None,
         sorting=None,
         mount_path: Optional[list[str]] = None,
+        create_mount_nodes_if_not_exist: bool = False,
     ):
         self.context = context
         self.node = node
@@ -276,7 +299,15 @@ class CatalogNodeAdapter:
         self.specs = [Spec(**spec) for spec in node.specs]
         self.startup_tasks = [self.startup]
         if mount_path:
-            self.startup_tasks.append(partial(self.create_mount, mount_path))
+            self.startup_tasks.append(
+                partial(
+                    self.create_mount,
+                    mount_path,
+                    create_if_not_exist=create_mount_nodes_if_not_exist,
+                    specs=node.specs,
+                    access_blob=node.access_blob,
+                )
+            )
         self.shutdown_tasks = [self.shutdown]
 
     async def path_segments(self):
@@ -301,10 +332,41 @@ class CatalogNodeAdapter:
     async def startup(self):
         await self.context.startup()
 
-    async def create_mount(self, mount_path: list[str]):
+    async def create_mount(
+        self,
+        mount_path: list[str],
+        *,
+        create_if_not_exist=False,
+        specs=None,
+        access_blob=None,
+    ):
         statement = node_from_segments(mount_path).with_only_columns(orm.Node.id)
         async with self.context.engine.connect() as conn:
             self.node.id = (await conn.execute(statement)).scalar()
+        if self.node.id is None:
+            path_str = "/" + "/".join(mount_path)
+            if create_if_not_exist:
+                logger.info(
+                    "mount_node %r does not exist in the database. "
+                    "Creating intermediate container nodes.",
+                    path_str,
+                )
+                await _create_mount_node_segments(
+                    self.context.engine,
+                    mount_path,
+                    specs=specs,
+                    access_blob=access_blob,
+                )
+                # Re-query to get the id of the newly created node.
+                async with self.context.engine.connect() as conn:
+                    self.node.id = (await conn.execute(statement)).scalar()
+            else:
+                raise ValueError(
+                    f"mount_node {path_str!r} was not found in the database. "
+                    "Create the node first (e.g. via the admin API or tiled CLI) "
+                    "and restart the server, or set "
+                    "create_mount_nodes_if_not_exist: true in the config."
+                )
         self.node.key = mount_path[-1]
 
     async def shutdown(self):
@@ -806,6 +868,20 @@ class CatalogNodeAdapter:
                 # Cache data in Redis with a TTL, and publish
                 # a notification about it.
                 await self.context.streaming_cache.set(self.node.id, sequence, metadata)
+            if self.context.webhook_dispatcher:
+                segments = list(await self.path_segments())
+                child_path = segments + [key]
+                await self.context.webhook_dispatcher.dispatch(
+                    ContainerChildCreatedEvent(
+                        timestamp=datetime.now(tz=timezone.utc),
+                        key=key,
+                        structure_family=structure_family,
+                        specs=[spec.model_dump() for spec in (specs or [])],
+                        metadata=refreshed_node.metadata_ or {},
+                        path=child_path,
+                    ),
+                    node_id=self.node.id,
+                )
             return type(self)(self.context, refreshed_node)
 
     async def _put_asset(self, db: AsyncSession, asset):
@@ -1195,9 +1271,51 @@ class CatalogNodeAdapter:
                 await self.context.streaming_cache.set(
                     self.node.parent, sequence, metadata
                 )
+            if self.context.webhook_dispatcher:
+                segments = list(await self.path_segments())
+                # Determine the effective metadata after the update.  When
+                # metadata was not part of this call we fall back to the
+                # pre-update value captured in `current` (available whenever
+                # drop_revision=False) or to the cached node attribute.
+                if metadata is not None:
+                    effective_metadata = metadata
+                elif not drop_revision:
+                    effective_metadata = current.metadata_ or {}
+                else:
+                    effective_metadata = self.node.metadata_ or {}
+                # Determine the effective specs after the update.
+                effective_specs = (
+                    specs
+                    if specs is not None
+                    else (current.specs if not drop_revision else self.node.specs) or []
+                )
+                ev = ContainerChildMetadataUpdatedEvent(
+                    timestamp=datetime.now(tz=timezone.utc),
+                    key=self.node.key,
+                    specs=[spec.model_dump() for spec in effective_specs],
+                    metadata=effective_metadata,
+                    path=segments,
+                )
+                await self.context.webhook_dispatcher.dispatch(
+                    ev,
+                    node_id=self.node.id,
+                )
 
     async def close_stream(self):
-        await self.context.streaming_cache.close(self.node.id)
+        if self.context.streaming_cache:
+            await self.context.streaming_cache.close(self.node.id)
+        if self.context.webhook_dispatcher:
+            segments = list(await self.path_segments())
+            await self.context.webhook_dispatcher.dispatch(
+                StreamClosedEvent(
+                    timestamp=datetime.now(tz=timezone.utc),
+                    key=self.node.key,
+                    path=segments,
+                ),
+                # Pass the stream node's own id so that webhooks registered
+                # directly on this node are included in the ancestor walk.
+                node_id=self.node.id,
+            )
 
     def make_ws_handler(self, websocket, formatter, uri):
         schema = self.make_ws_schema()
@@ -1786,6 +1904,7 @@ def in_memory(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     cache_config=None,
+    webhook_secret_keys: Optional[List[str]] = None,
 ):
     if not named_memory:
         uri = "sqlite:///:memory:"
@@ -1803,7 +1922,53 @@ def in_memory(
         adapters_by_mimetype=adapters_by_mimetype,
         top_level_access_blob=top_level_access_blob,
         cache_config=cache_config,
+        webhook_secret_keys=webhook_secret_keys,
     )
+
+
+async def _create_mount_node_segments(engine, mount_path, specs=None, access_blob=None):
+    """Create missing intermediate container nodes for a mount path.
+
+    Walks the path segments, creating any that don't exist yet.
+    DB triggers automatically maintain the nodes_closure table.
+    The leaf node (last segment) receives the given specs and access_blob;
+    intermediate nodes get empty defaults.
+    """
+    from sqlalchemy import insert
+
+    specs = specs or []
+    access_blob = access_blob or {}
+    async with engine.begin() as conn:
+        parent_id = 0  # root node id
+        for i, segment in enumerate(mount_path):
+            is_leaf = i == len(mount_path) - 1
+            # Check if this segment exists under parent_id
+            statement = (
+                select(orm.Node.id)
+                .where(orm.Node.parent == parent_id)
+                .where(orm.Node.key == segment)
+            )
+            node_id = (await conn.execute(statement)).scalar()
+            if node_id is None:
+                # Create the container node
+                result = await conn.execute(
+                    insert(orm.Node).values(
+                        key=segment,
+                        parent=parent_id,
+                        structure_family=StructureFamily.container,
+                        metadata_={},
+                        specs=specs if is_leaf else [],
+                        access_blob=access_blob if is_leaf else {},
+                    )
+                )
+                node_id = result.inserted_primary_key[0]
+                logger.info(
+                    "Created container node %r (id=%d) under parent_id=%d.",
+                    segment,
+                    node_id,
+                    parent_id,
+                )
+            parent_id = node_id
 
 
 def from_uri(
@@ -1817,7 +1982,9 @@ def from_uri(
     adapters_by_mimetype=None,
     top_level_access_blob=None,
     mount_node: Optional[Union[str, List[str]]] = None,
+    create_mount_nodes_if_not_exist=False,
     cache_config=None,
+    webhook_secret_keys: Optional[List[str]] = None,
     catalog_pool_size=5,
     storage_pool_size=5,
     catalog_max_overflow=10,
@@ -1859,6 +2026,7 @@ def from_uri(
         cache_config,
         storage_pool_size=storage_pool_size,
         storage_max_overflow=storage_max_overflow,
+        webhook_secret_keys=webhook_secret_keys,
     )
     node = RootNode(metadata, specs, top_level_access_blob)
     mount_path = (
@@ -1866,7 +2034,12 @@ def from_uri(
         if isinstance(mount_node, str)
         else mount_node
     )
-    adapter = CatalogContainerAdapter(context, node, mount_path=mount_path)
+    adapter = CatalogContainerAdapter(
+        context,
+        node,
+        mount_path=mount_path,
+        create_mount_nodes_if_not_exist=create_mount_nodes_if_not_exist,
+    )
 
     return adapter
 
@@ -1877,7 +2050,7 @@ def format_distinct_result(results, counts):
             {"value": value, "count": count} for value, count in results
         ]
     else:
-        formatted_result = [{"value": value} for value, in results]
+        formatted_result = [{"value": value} for (value,) in results]
     return formatted_result
 
 

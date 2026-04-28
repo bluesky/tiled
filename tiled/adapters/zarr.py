@@ -100,33 +100,26 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
     def dims(self) -> Optional[Tuple[str, ...]]:
         return self._structure.dims
 
-    def _stencil(self) -> Tuple[slice, ...]:
+    @property
+    def _stencil(self) -> NDSlice:
         """Trim overflow because Zarr always has equal-sized chunks."""
-        return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
+        return NDSlice(tuple(builtins.slice(0, dim) for dim in self.structure().shape))
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         return None
 
-    def read(
-        self,
-        slice: NDSlice = NDSlice(...),
-    ) -> NDArray[Any]:
-        arr = cast(NDArray, self._array[self._stencil()])
-        return arr[slice]
+    def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
+        return cast(NDArray, self._array[self._stencil[slice]])
 
     def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
         "Slice the block out of the whole array and optionally a sub-slice therein."
         block_slice = block.slice_from_chunks(self.structure().chunks)
-        return self._array[self._stencil()][block_slice][slice or ...]
+        return self._array[self._stencil[block_slice][slice or ...]]
 
-    def write(
-        self,
-        data: NDArray[Any],
-        slice: NDSlice = NDSlice(...),
-    ) -> None:
+    def write(self, data: NDArray[Any], slice: NDSlice = NDSlice(...)) -> None:
         if slice:
             raise NotImplementedError
-        self._array[self._stencil()] = data
+        self._array[self._stencil] = data
 
     def write_block(self, data: NDArray[Any], block: NDBlock) -> None:
         block_slice = block.slice_from_chunks(self.structure().chunks)

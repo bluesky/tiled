@@ -6,17 +6,44 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Support for slicing arrays backed by multipart adapters with modified shapes
+
 ### Fixed
 
+- A `mount_node` referencing a nonexistent path in the database no longer causes
+  silent data corruption. The server now raises a clear error at startup if the
+  mount node does not exist.
 - Writing chunked (dask) arrays with single chunk along all dimensions
-- OIDC authenticator was not quite compliant and was incompatible with
+- OIDC authenticator was not quite compfixedliant and was incompatible with
   at least some providers including Azure and ORCID.
+- Improved performance of reading zarr arrays when slicing by avoiding reading
+  the full arrays into memory, but using slice composition instead.
+- Ensure that JSON payloads in streaming endpoints is properly decoded.
+- A bug in `TiledAuth` when `token_directory` is `None` caused an
+  error during token refresh.
+- Resolve syntax error caused by a return statement in a finally block
+  on Python 3.14+.
 
 ### Changed
 
 - Array client fully supports slicing when communicating with the server
   and only fetches the data needed to satisfy the slice.
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
+- Stream updates are processed using a single worker thread, by
+  default, in order to guarantee that they are processed in order.
+
+### Added
+
+- New server config option `create_mount_nodes_if_not_exist` (default `false`)
+  that auto-creates missing intermediate container nodes when a `mount_node`
+  path does not exist in the database. Also settable via the
+  `TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST` environment variable.
+- Tests for the WebSocket endpoints that stream tabukar data.
+- WebSocket "first message" authentication: clients can now authenticate
+  WebSocket connections by sending credentials in the first message instead
+  of exposing tokens in query parameters (#1138).
 
 ## v0.2.7 (2026-02-27)
 

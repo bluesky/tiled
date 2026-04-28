@@ -2,11 +2,30 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, TypeVar, Union
+from datetime import datetime, timezone
+from http import HTTPStatus
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import pydantic.generics
-from pydantic import ConfigDict, Field, SecretStr, StringConstraints
+from pydantic import (
+    AnyHttpUrl,
+    AwareDatetime,
+    ConfigDict,
+    Field,
+    SecretStr,
+    StringConstraints,
+    field_validator,
+)
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
@@ -254,6 +273,7 @@ class ContainerMeta(pydantic.BaseModel):
 
 class Resource(pydantic.BaseModel, Generic[AttributesT, ResourceLinksT, ResourceMetaT]):
     "A JSON API Resource"
+
     id: Union[str, uuid.UUID]
     attributes: AttributesT
     links: Optional[ResourceLinksT] = None
@@ -373,6 +393,7 @@ class Session(pydantic.BaseModel):
 
 class Principal(pydantic.BaseModel):
     "Represents a User or Service"
+
     # The id field (primary key) is intentionally not exposed to the application.
     # It is left as an internal database concern.
     model_config = pydantic.ConfigDict(from_attributes=True)
@@ -579,6 +600,122 @@ SearchResponse = Response[
 class EnvelopeFormat(str, enum.Enum):
     json = "json"
     msgpack = "msgpack"
+
+
+class EventType(str, enum.Enum):
+    container_child_created = "container-child-created"
+    container_child_metadata_updated = "container-child-metadata-updated"
+    stream_closed = "stream-closed"
+
+
+class DeliveryOutcome(str, enum.Enum):
+    pending = "pending"
+    success = "success"
+    failed = "failed"
+
+
+class ContainerChildCreatedEvent(pydantic.BaseModel):
+    type: Literal[EventType.container_child_created] = EventType.container_child_created
+    timestamp: AwareDatetime
+    key: str
+    path: list[str]
+    structure_family: StructureFamily
+    specs: list[dict[str, Any]]
+    metadata: dict[str, Any]
+
+
+class ContainerChildMetadataUpdatedEvent(pydantic.BaseModel):
+    type: Literal[
+        EventType.container_child_metadata_updated
+    ] = EventType.container_child_metadata_updated
+    timestamp: AwareDatetime
+    key: str
+    path: list[str]
+    specs: list[dict[str, Any]]
+    metadata: dict[str, Any]
+
+
+class StreamClosedEvent(pydantic.BaseModel):
+    type: Literal[EventType.stream_closed] = EventType.stream_closed
+    timestamp: AwareDatetime
+    key: str
+    path: list[str]
+
+
+WebhookEvent = Annotated[
+    Union[
+        ContainerChildCreatedEvent,
+        ContainerChildMetadataUpdatedEvent,
+        StreamClosedEvent,
+    ],
+    Field(discriminator="type"),
+]
+
+
+class WebhookRegistrationRequest(pydantic.BaseModel):
+    url: AnyHttpUrl
+    secret: Optional[str] = None
+    events: Optional[List[EventType]] = None
+
+    def check_https(self) -> None:
+        """Raise ValueError if the URL scheme is not HTTPS.
+
+        Not a field validator so callers (e.g. _noop_url_validator) can bypass it.
+        """
+        if self.url.scheme != "https":
+            raise ValueError(
+                "Webhook URL must use HTTPS to protect the HMAC signature in transit."
+            )
+
+    @field_validator("events", mode="before")
+    @classmethod
+    def normalize_empty_events(cls, v):
+        if v == []:
+            return None
+        return v
+
+
+class WebhookResponse(pydantic.BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    url: AnyHttpUrl
+    events: Optional[List[EventType]]
+    active: bool
+    time_created: AwareDatetime
+
+    @field_validator("time_created", mode="before")
+    @classmethod
+    def ensure_tz(cls, v: datetime) -> datetime:
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
+
+
+class DeliveryResponse(pydantic.BaseModel):
+    """Response containing webhook delivery information."""
+
+    model_config = ConfigDict(
+        from_attributes=True, validate_by_name=True, validate_by_alias=True
+    )
+
+    id: int
+    webhook_id: int
+    event_type: EventType
+    payload: dict
+    status_code: Optional[HTTPStatus]
+    attempts: int
+    outcome: DeliveryOutcome
+    error_detail: Optional[str]
+    time_created: AwareDatetime
+    delivered_at: Optional[AwareDatetime]
+
+    @field_validator("time_created", "delivered_at", mode="before")
+    @classmethod
+    def ensure_tz(cls, v: datetime) -> datetime:
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 NodeStructure.model_rebuild()

@@ -1,12 +1,16 @@
+import builtins
 import pathlib
 
+import numpy as np
 import pytest
 from fastapi import Query
+from hypothesis import assume, given
+from hypothesis import strategies as st
 from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
 
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.ndslice import NDSlice
+from tiled.ndslice import NDSlice, compose_slices
 from tiled.server.app import build_app
 
 
@@ -225,3 +229,95 @@ def test_errors_in_slices():
         NDSlice(slice(1), slice(2), slice(3)).to_json(ndim=2)
     with pytest.raises(ValueError):
         NDSlice(slice(1), slice(2), Ellipsis).to_json(ndim=1)
+
+
+def slice_strategy(dim_len):
+    "Generate a Python slice that is valid for arrays up to dim_len."
+    return st.builds(
+        slice,
+        st.one_of(st.none(), st.integers(-dim_len, dim_len)),
+        st.one_of(st.none(), st.integers(-dim_len, dim_len)),
+        st.one_of(st.none(), st.integers(-3, 3).filter(lambda x: x != 0)),
+    ).filter(
+        lambda s: sum(
+            1
+            for _ in range(
+                s.start or 0, s.stop if s.stop is not None else dim_len, s.step or 1
+            )
+        )
+    )  # Remove empty slices
+
+
+def index_strategy(dim_len):
+    "Generate either an int index or a slice."
+    return st.one_of(
+        st.integers(-dim_len, dim_len - 1),
+        slice_strategy(dim_len),
+    )
+
+
+def ndslice_strategy(shape):
+    "Generate an N-dimensional slices (tuples of indices/slices/Ellipsis) for a given shape"
+
+    # Generate a fully explicit slice with no Ellipsis
+    def full_explicit(shape=shape):
+        return st.tuples(*(index_strategy(dim_len) for dim_len in shape))
+
+    # Case 1: No Ellipsis, possibly shorter, keep only the first k dimensions
+    def without_ellipsis():
+        k = st.integers(min_value=1, max_value=len(shape))
+        return k.flatmap(lambda k: full_explicit(shape[:k]))
+
+    # Case 2: With Ellipsis
+    def with_ellipsis():
+        if len(shape) == 0:
+            return full_explicit()  # nothing to ellipsize
+
+        el_start = st.integers(0, len(shape) - 1)
+        el_stop = st.integers(0, len(shape) - 1)
+
+        return full_explicit().flatmap(
+            lambda slc: st.tuples(el_start, el_stop).map(
+                lambda se: _insert_ellipsis(slc, *se)
+            )
+        )
+
+    def _insert_ellipsis(slc, start, stop):
+        # Normalize order
+        if start > stop:
+            start, stop = stop, start
+
+        # Replace [start:stop] with Ellipsis
+        return slc[:start] + (Ellipsis,) + slc[stop + 1 :]  # noqa: E203
+
+    return st.one_of(without_ellipsis(), with_ellipsis())
+
+
+@given(
+    shape=st.lists(st.integers(1, 6), min_size=1, max_size=4),
+    data=st.data(),
+)
+def test_compose_slices(shape, data):
+    arr = np.arange(np.prod(shape)).reshape(shape)
+
+    # Remove any Ellipsis for the first slice to ensure arr[slc1] is valid
+    slc1 = NDSlice(data.draw(ndslice_strategy(shape)))
+    slc1 = slc1.expand_for_shape(shape)
+    assume(all(s.start != s.stop for s in slc1 if isinstance(s, builtins.slice)))
+
+    # Build the second slice ensuring it is valid for the remaining shape
+    shape_after_slc1 = slc1.shape_after_slice(shape)
+    assume(shape_after_slc1)  # Skip if the first slice results in an empty array
+    slc2 = NDSlice(data.draw(ndslice_strategy(shape_after_slc1)))
+
+    # Apply slicing sequentially
+    arr1 = arr[slc1]
+    arr2 = arr1[slc2]
+
+    # Now compose the slices and apply once
+    slc_composed = compose_slices(slc1, slc2)
+    arr_composed = arr[tuple(slc_composed)]
+    np.testing.assert_array_equal(arr2, arr_composed)
+
+    # Test the composition via __getitem__
+    np.testing.assert_array_equal(arr[slc1][slc2], arr[slc1[slc2]])

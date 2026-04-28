@@ -64,6 +64,7 @@ from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .webhook_router import UrlValidator, get_webhook_router
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -127,6 +128,7 @@ def build_app(
     scalable=False,
     access_policy: Optional[AccessPolicy] = None,
     include_routers: Optional[list[APIRouter]] = None,
+    webhook_url_validator: Optional[UrlValidator] = None,
 ):
     """
     Serve a Tree
@@ -140,6 +142,13 @@ def build_app(
         Dict of other server configuration.
     access_policy: AccessPolicy, optional
         AccessPolicy object encoding rules for which users can see which entries.
+    webhook_url_validator : callable, optional
+        An async callable ``(WebhookRegistrationRequest) -> None`` invoked when
+        a webhook is registered.  Raise ``HTTPException`` to reject the request.
+        When ``None`` (default), a validator is built from ``WebhooksConfig``
+        (enforces HTTPS and blocks SSRF targets unless ``allow_http`` or
+        ``allow_private_addresses`` are set).  Pass ``_noop_url_validator`` to
+        skip all checks, e.g. for ``SimpleTiledServer``.
     """
     authentication = authentication or Authentication()
     authenticators = authentication.authenticators
@@ -239,9 +248,11 @@ def build_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         "Manage lifespan events for each event loop that the app runs in"
-        await startup_event()
-        yield
-        await shutdown_event()
+        try:
+            await startup_event()
+            yield
+        finally:
+            await shutdown_event()
 
     app = FastAPI(lifespan=lifespan, strict_content_type=False)
 
@@ -390,6 +401,12 @@ def build_app(
         authenticators,
     )
     app.include_router(router, prefix="/api/v1")
+    webhooks_cfg = server_settings.get("webhooks")
+    if webhooks_cfg is not None:
+        kwargs = {}
+        if webhook_url_validator is not None:
+            kwargs["webhook_url_validator"] = webhook_url_validator
+        app.include_router(get_webhook_router(webhooks_cfg, **kwargs), prefix="/api/v1")
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
@@ -542,6 +559,19 @@ def build_app(
                     )
                     + API_KEY_MSG
                 )
+
+        # Inject webhook_secret_keys into catalog contexts before startup tasks
+        # run. When a 'webhooks:' config section is present, pass its
+        # secret_keys (not the JWT auth keys). A non-None value enables the
+        # dispatcher; None keeps it disabled.
+        webhooks_config = server_settings.get("webhooks")
+        context = getattr(tree, "context", None)
+        if context is not None and hasattr(context, "webhook_secret_keys"):
+            context.webhook_secret_keys = (
+                list(webhooks_config.secret_keys)
+                if webhooks_config is not None
+                else None
+            )
 
         # Run startup tasks collected from trees (adapters).
         for task in tasks["startup"]:
@@ -699,7 +729,7 @@ def build_app(
             from .connection_pool import close_database_connection_pool
 
             await close_database_connection_pool(settings.database_settings)
-        for task in app.state.tasks:
+        for task in getattr(app.state, "tasks", []):
             task.cancel()
 
     app.add_middleware(

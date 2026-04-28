@@ -18,6 +18,7 @@ subtrees:
                 - entries:
                   - file: getting-started/integrations/plotly
                   - file: getting-started/integrations/zarr
+            - file: getting-started/webhooks
   - entries:
     - file: user-guide/index
       subtrees:
@@ -44,6 +45,7 @@ subtrees:
             - file: user-guide/tiled-authn-database
             - file: user-guide/register
             - file: user-guide/retries
+            - file: user-guide/webhooks
   - entries:
       - file: explanations/index
         subtrees:

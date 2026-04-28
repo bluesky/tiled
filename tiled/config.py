@@ -238,6 +238,35 @@ class StreamingCacheConfig(BaseSettings):
     settings_customise_sources = classmethod(settings_customise_sources)
 
 
+class WebhooksConfig(BaseSettings):
+    """Configuration for the optional webhooks feature.
+
+    When this section is present in the server configuration, the
+    ``/api/v1/webhooks`` router is mounted and the WebhookDispatcher is
+    started alongside the catalog.  When absent, webhooks are fully disabled.
+
+    Parameters
+    ----------
+    secret_keys : list of str
+        Keys used to encrypt webhook HMAC signing secrets at rest.
+        Required; generate one with ``openssl rand -hex 32``.
+    allow_http : bool
+        When ``True``, webhook URLs are allowed to use plain HTTP instead of
+        HTTPS.  Default ``False`` (HTTPS is required).
+    allow_private_addresses : bool
+        When ``True``, webhook URLs may target private, loopback, or reserved
+        IP addresses.  Default ``False`` (such addresses are blocked to
+        mitigate SSRF).
+    """
+
+    secret_keys: list[str] = []
+    allow_http: bool = False
+    allow_private_addresses: bool = False
+
+    model_config = SettingsConfigDict(env_prefix="TILED_WEBHOOKS_")
+    settings_customise_sources = classmethod(settings_customise_sources)
+
+
 class Config(BaseSettings):
     catalog: Optional[CatalogConfig] = None  # recommended
     trees: Optional[list[TreeSpec]] = None  # advanced alternative
@@ -257,6 +286,8 @@ class Config(BaseSettings):
     expose_raw_assets: bool = True
     routers: list[EntryPointString] = []
     streaming_cache: Optional[StreamingCacheConfig] = None
+    webhooks: Optional[WebhooksConfig] = None
+    create_mount_nodes_if_not_exist: bool = False
 
     # If recommended 'catalog' config is used, these parameters are
     # not used; they are set inside the CatalogConfig.
@@ -285,6 +316,15 @@ class Config(BaseSettings):
                 self.streaming_cache = StreamingCacheConfig()
             except ValidationError:
                 pass  # uri not set, leave as None
+        return self
+
+    @model_validator(mode="after")
+    def populate_webhooks_from_env(self) -> "Config":
+        if self.webhooks is None:
+            try:
+                self.webhooks = WebhooksConfig()
+            except ValidationError:
+                pass  # secret_keys not set, leave as None
         return self
 
     @model_validator(mode="after")
@@ -357,6 +397,13 @@ class Config(BaseSettings):
                 tree.args["cache_config"] = (
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
+                tree.args["webhook_secret_keys"] = (
+                    list(self.webhooks.secret_keys) if self.webhooks else None
+                )
+            if tree.tree_type is from_uri:
+                tree.args[
+                    "create_mount_nodes_if_not_exist"
+                ] = self.create_mount_nodes_if_not_exist
         return self
 
     @property
@@ -365,7 +412,10 @@ class Config(BaseSettings):
 
     @cached_property
     def merged_trees(self) -> Any:  # TODO: update when # 1047 is merged
-        trees = dict(tree.tree_entry for tree in self.trees)
+        trees = {
+            segments: tree
+            for segments, tree in (tree_spec.tree_entry for tree_spec in self.trees)
+        }
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = trees[()]
@@ -455,6 +505,7 @@ def construct_build_app_kwargs(config: Config):
         reject_undeclared_specs=config.reject_undeclared_specs,
         expose_raw_assets=config.expose_raw_assets,
         metrics=config.metrics,
+        webhooks=config.webhooks,
     )
     return dict(
         tree=config.merged_trees,

@@ -15,6 +15,8 @@ from tiled.utils import ensure_uri
 
 COLOR_SHAPE = (11, 17, 3)
 rng = numpy.random.default_rng(12345)
+tiff_data = rng.integers(0, 255, size=(12, 5, 7, 4), dtype="uint8")
+color_data = rng.integers(0, 255, size=COLOR_SHAPE, dtype="uint8")
 
 
 @pytest.fixture(scope="module")
@@ -22,12 +24,10 @@ def client(tmpdir_module):
     sequence_directory = Path(tmpdir_module, "sequence")
     sequence_directory.mkdir()
     filepaths = []
-    for i in range(3):
-        data = rng.integers(0, 255, size=(5, 7, 4), dtype="uint8")
+    for i in range(12):
         filepath = sequence_directory / f"temp{i:05}.tif"
-        tf.imwrite(filepath, data)
+        tf.imwrite(filepath, tiff_data[i, ...])
         filepaths.append(filepath)
-    color_data = rng.integers(0, 255, size=COLOR_SHAPE, dtype="uint8")
     path = Path(tmpdir_module, "color.tif")
     tf.imwrite(path, color_data)
     tree = MapAdapter(
@@ -36,16 +36,39 @@ def client(tmpdir_module):
             "sequence": TiffSequenceAdapter.from_uris(
                 *[ensure_uri(filepath) for filepath in filepaths]
             ),
+            # 5d sequence stacked along the leftmost dimension
             "5d_sequence": TiffSequenceAdapter(
-                [ensure_uri(filepath) for filepath in filepaths],
+                [ensure_uri(filepath) for filepath in filepaths[:3]],
                 structure=ArrayStructure(
                     shape=(3, 1, 5, 7, 4),
                     chunks=((1, 1, 1), (1,), (5,), (7,), (4,)),
                     data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
                 ),
             ),
+            # 5d sequence stacked along the second dimension
+            "5d_sequence_second_dim": TiffSequenceAdapter(
+                [ensure_uri(filepath) for filepath in filepaths[:3]],
+                structure=ArrayStructure(
+                    shape=(1, 3, 5, 7, 4),
+                    chunks=((1,), (1,) * 3, (5,), (7,), (4,)),
+                    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+                ),
+            ),
+            # 5d sequence stacked along the first and second dimensions
+            "5d_sequence_first_and_second_dim": TiffSequenceAdapter(
+                [ensure_uri(filepath) for filepath in filepaths],
+                structure=ArrayStructure(
+                    shape=(3, 4, 5, 7, 4),
+                    chunks=((1, 1, 1), (2, 2), (5,), (7,), (4,)),
+                    data_type=BuiltinDtype.from_numpy_dtype(numpy.dtype("uint8")),
+                ),
+            ),
         }
     )
+    # `_chunks` would be provided in data_source.properties if initialized from a catalog
+    tree["5d_sequence"]._chunks = ((1, 1, 1), (5,), (7,), (4,))
+    tree["5d_sequence_second_dim"]._chunks = ((1, 1, 1), (5,), (7,), (4,))
+    tree["5d_sequence_first_and_second_dim"]._chunks = ((1,) * 12, (5,), (7,), (4,))
     app = build_app(tree)
     with Context.from_app(app) as context:
         client = from_context(context)
@@ -55,20 +78,22 @@ def client(tmpdir_module):
 @pytest.mark.parametrize(
     "slice_input, correct_shape",
     [
-        (None, (3, 5, 7, 4)),
-        (0, (5, 7, 4)),
+        (None, (12, 5, 7, 4)),
+        (1, (5, 7, 4)),
         (slice(0, 3, 2), (2, 5, 7, 4)),
         ((1, slice(0, 3), slice(0, 3)), (3, 3, 4)),
         ((slice(0, 3), slice(0, 3), slice(0, 3)), (3, 3, 3, 4)),
-        ((..., 0, 0, 0), (3,)),
+        ((..., 0, 0, 0), (12,)),
         ((0, slice(0, 1), slice(0, 2), ...), (1, 2, 4)),
         ((0, ..., slice(0, 2)), (5, 7, 2)),
-        ((..., slice(0, 1)), (3, 5, 7, 1)),
+        ((..., slice(0, 1)), (12, 5, 7, 1)),
     ],
 )
 def test_tiff_sequence(client, slice_input, correct_shape):
     arr = client["sequence"].read(slice=slice_input)
     assert arr.shape == correct_shape
+    true_arr = tiff_data[slice_input or ()]
+    numpy.testing.assert_equal(arr, true_arr)
 
 
 @pytest.mark.parametrize(
@@ -77,7 +102,8 @@ def test_tiff_sequence(client, slice_input, correct_shape):
         (None, (3, 1, 5, 7, 4)),
         (..., (3, 1, 5, 7, 4)),
         ((), (3, 1, 5, 7, 4)),
-        (0, (1, 5, 7, 4)),
+        (1, (1, 5, 7, 4)),
+        ((slice(0, 10), 0), (3, 5, 7, 4)),
         (slice(0, 3, 2), (2, 1, 5, 7, 4)),
         ((1, slice(0, 10), slice(0, 3), slice(0, 3)), (1, 3, 3, 4)),
         ((slice(0, 3), 0, slice(0, 3), slice(0, 3)), (3, 3, 3, 4)),
@@ -90,6 +116,67 @@ def test_tiff_sequence(client, slice_input, correct_shape):
 def test_forced_reshaping(client, slice_input, correct_shape):
     arr = client["5d_sequence"].read(slice=slice_input)
     assert arr.shape == correct_shape
+    slice_input = () if slice_input is None else slice_input
+    true_arr = tiff_data[:3, ...].reshape(3, 1, 5, 7, 4)[slice_input]
+    numpy.testing.assert_equal(arr, true_arr)
+
+
+@pytest.mark.parametrize(
+    "slice_input, correct_shape",
+    [
+        (None, (1, 3, 5, 7, 4)),
+        (..., (1, 3, 5, 7, 4)),
+        ((), (1, 3, 5, 7, 4)),
+        (0, (3, 5, 7, 4)),
+        ((slice(0, 10), 1), (1, 5, 7, 4)),
+        (slice(0, 3, 2), (1, 3, 5, 7, 4)),
+        ((0, slice(0, 10), slice(0, 3), slice(0, 3)), (3, 3, 3, 4)),
+        ((slice(0, 3), 0, slice(0, 3), slice(0, 3)), (1, 3, 3, 4)),
+        ((..., 0, 0, 0, 0), (1,)),
+        ((0, slice(0, 1), slice(0, 1), slice(0, 2), ...), (1, 1, 2, 4)),
+        ((0, ..., slice(0, 2)), (3, 5, 7, 2)),
+        ((..., slice(0, 1)), (1, 3, 5, 7, 1)),
+    ],
+)
+def test_forced_reshaping_along_second_dimension(client, slice_input, correct_shape):
+    """Test that the presence of a frame per point dimension does not affect
+    the ability to read with a slice that would normally cause reshaping.
+    """
+    arr = client["5d_sequence_second_dim"].read(slice=slice_input)
+    assert arr.shape == correct_shape
+    slice_input = () if slice_input is None else slice_input
+    true_arr = tiff_data[:3, ...].reshape(1, 3, 5, 7, 4)[slice_input]
+    numpy.testing.assert_equal(arr, true_arr)
+
+
+@pytest.mark.parametrize(
+    "slice_input, correct_shape",
+    [
+        (None, (3, 4, 5, 7, 4)),
+        (..., (3, 4, 5, 7, 4)),
+        ((), (3, 4, 5, 7, 4)),
+        (0, (4, 5, 7, 4)),
+        ((slice(0, 10), 1), (3, 5, 7, 4)),
+        (slice(0, 3, 2), (2, 4, 5, 7, 4)),
+        ((0, slice(0, 10), slice(0, 3), slice(0, 3)), (4, 3, 3, 4)),
+        ((slice(0, 3), 0, slice(0, 3), slice(0, 3)), (3, 3, 3, 4)),
+        ((..., 0, 0, 0, 0), (3,)),
+        ((0, slice(0, 1), slice(0, 1), slice(0, 2), ...), (1, 1, 2, 4)),
+        ((0, ..., slice(0, 2)), (4, 5, 7, 2)),
+        ((..., slice(0, 1)), (3, 4, 5, 7, 1)),
+    ],
+)
+def test_forced_reshaping_along_first_and_second_dimensions(
+    client, slice_input, correct_shape
+):
+    """Test that the presence of a frame per point dimension does not affect
+    the ability to read with a slice that would normally cause reshaping.
+    """
+    arr = client["5d_sequence_first_and_second_dim"].read(slice=slice_input)
+    assert arr.shape == correct_shape
+    slice_input = () if slice_input is None else slice_input
+    true_arr = tiff_data.reshape(3, 4, 5, 7, 4)[slice_input]
+    numpy.testing.assert_equal(arr, true_arr)
 
 
 @pytest.mark.parametrize("block_input, correct_shape", [((0, 0, 0, 0), (1, 5, 7, 4))])
