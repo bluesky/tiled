@@ -7,7 +7,7 @@ import secrets
 import uuid
 from collections.abc import Iterable
 from datetime import timedelta
-from typing import Any, List, Mapping, Optional, cast
+from typing import Any, Dict, List, Mapping, Optional, cast
 
 import httpx
 from cachetools import TTLCache, cached
@@ -308,6 +308,26 @@ properties:
 
 
 class EntraAuthenticator(ProxiedOIDCAuthenticator):
+    def __init__(
+        self,
+        audience: str,
+        client_id: str,
+        well_known_uri: str,
+        device_flow_client_id: str,
+        scopes: Optional[List[str]] = None,
+        confirmation_message: str = "",
+        scopes_map: Optional[Dict[str, list[str]]] = None,
+    ):
+        super().__init__(
+            audience,
+            client_id,
+            well_known_uri,
+            device_flow_client_id,
+            scopes,
+            confirmation_message,
+        )
+        self.scopes_map = scopes_map if scopes_map is not None else {}
+
     def decode_token(self, id_token: str, access_token: str) -> dict[str, Any]:
         claims = super().decode_token(id_token, access_token)
 
@@ -318,9 +338,34 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         claims["sub"] = uuid.uuid5(uuid.NAMESPACE_URL, f"{issuer}|{original_sub}").hex
         claims["entra_sub"] = original_sub
 
-        # Translate entra scopes to tiled
-        if "access_as_user" in claims["scp"]:
-            claims["scope"] = "read:metadata read:data"
+        # Get the correct username from token
+        # nameID must be explicitly set in the Entra app, not available by default
+        # preferred_username is available in v2 tokens
+        # "upn" is available in v1 tokens
+        claims["entra_username"] = (
+            claims.get("nameID")
+            or claims.get("preferred_username")
+            or claims.get("upn")
+            or claims.get("email")
+        )
+
+        if user := claims.get("entra_username"):
+            user = user.strip()
+            if "\\" in user:
+                user = user.rsplit("\\", 1)[-1]
+            elif "@" in user:
+                user = user.split("@", 1)[0]
+        claims["user"] = user
+
+        # Translate Entra scopes to tiled scopes
+        entra_scopes = claims["scp"].split(" ")
+        tiled_scope_set = {
+            tiled_scope
+            for scope in entra_scopes
+            for tiled_scope in self.scopes_map[scope]
+        }
+        claims["scope"] = " ".join(tiled_scope_set)
+
         return claims
 
 
