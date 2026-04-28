@@ -62,6 +62,7 @@ from ..mimetypes import (
     AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
+    RAGGED_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     TILED_SQL_TABLE_MIMETYPE,
     ZARR_MIMETYPE,
@@ -118,6 +119,7 @@ DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
     StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
+    StructureFamily.ragged: RAGGED_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
 }
 
@@ -145,6 +147,9 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
         TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sql", __name__
         ).SQLAdapter,
+        RAGGED_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.ragged_parquet", __name__
+        ).RaggedParquetAdapter,
     }
 )
 
@@ -1436,6 +1441,10 @@ class CatalogArrayAdapter(CatalogNodeAdapter):
             data = await ensure_awaitable(deserializer, body, dtype, shape)
         elif entry.structure_family == "sparse":
             data = await ensure_awaitable(deserializer, body)
+        elif entry.structure_family == "ragged":
+            dtype = entry.structure().data_type.to_numpy_dtype()
+            shape = entry.structure().shape
+            data = await ensure_awaitable(deserializer, body, dtype, shape)
         else:
             raise NotImplementedError(entry.structure_family)
         return await ensure_awaitable((await self.get_adapter()).write, data)
@@ -1510,6 +1519,22 @@ class CatalogAwkwardAdapter(CatalogNodeAdapter):
 
     async def write(self, *args, **kwargs):
         return await ensure_awaitable((await self.get_adapter()).write, *args, **kwargs)
+
+
+class CatalogRaggedAdapter(CatalogArrayAdapter):
+    async def write_block(
+        self, block, media_type, deserializer, entry, body, persist=True
+    ):
+        if entry.structure_family != "ragged":
+            return await super().write_block(
+                block, media_type, deserializer, entry, body, persist
+            )
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        shape = entry.structure().shape
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
+        return await ensure_awaitable(
+            (await self.get_adapter()).write_block, data, block
+        )
 
 
 class CatalogSparseAdapter(CatalogArrayAdapter):
@@ -2143,6 +2168,7 @@ STRUCTURES = {
     StructureFamily.array: CatalogArrayAdapter,
     StructureFamily.awkward: CatalogAwkwardAdapter,
     StructureFamily.container: CatalogContainerAdapter,
+    StructureFamily.ragged: CatalogRaggedAdapter,
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }

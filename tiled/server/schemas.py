@@ -29,6 +29,8 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 from typing_extensions import Annotated, TypedDict
 
+from tiled.structures.ragged import RaggedStructure
+
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import STRUCTURE_TYPES, Spec, StructureFamily
@@ -202,6 +204,7 @@ class NodeAttributes(pydantic.BaseModel):
         Union[
             ArrayStructure,
             AwkwardStructure,
+            RaggedStructure,
             SparseStructure,
             NodeStructure,
             TableStructure,
@@ -248,6 +251,12 @@ class DataFrameLinks(pydantic.BaseModel):
     partition: str
 
 
+class RaggedLinks(pydantic.BaseModel):
+    self: str
+    full: str
+    block: str
+
+
 class SparseLinks(pydantic.BaseModel):
     self: str
     full: str
@@ -258,6 +267,7 @@ resource_links_type_by_structure_family = {
     StructureFamily.array: ArrayLinks,
     StructureFamily.awkward: AwkwardLinks,
     StructureFamily.container: ContainerLinks,
+    StructureFamily.ragged: RaggedLinks,
     StructureFamily.sparse: SparseLinks,
     StructureFamily.table: DataFrameLinks,
 }

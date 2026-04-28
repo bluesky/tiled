@@ -1,9 +1,21 @@
 import copy
 import hashlib
+import logging
 import re
 from collections.abc import Set
 from contextlib import closing
-from typing import Any, Callable, Iterator, List, Literal, Optional, Tuple, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+)
 
 import numpy
 import pandas
@@ -25,6 +37,8 @@ from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
+from .awkward import AwkwardAdapter
+from .ragged import RaggedAdapter
 from .utils import init_adapter_from_catalog
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
@@ -55,6 +69,8 @@ FORBIDDEN_CHARACTERS = re.compile(
 # upper case letters is retained in the structure, but attempts to create columns
 # e.g. "A" and "a" will raise an error.
 # Furthermore, user-specified table names can only be in lower case.
+
+logger = logging.getLogger(__name__)
 
 
 class SQLAdapter(Adapter[TableStructure]):
@@ -216,7 +232,7 @@ class SQLAdapter(Adapter[TableStructure]):
         """
         return self._structure
 
-    def get(self, key: str) -> Union[ArrayAdapter, None]:
+    def get(self, key: str) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter, None]:
         """Get the data for a specific key
 
         Parameters
@@ -231,7 +247,9 @@ class SQLAdapter(Adapter[TableStructure]):
             return None
         return self[key]
 
-    def __getitem__(self, key: str) -> ArrayAdapter:
+    def __getitem__(
+        self, key: str
+    ) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]:
         """Get the data for a specific key.
 
         Parameters
@@ -244,9 +262,46 @@ class SQLAdapter(Adapter[TableStructure]):
         """
 
         # Must compute to determine shape.
-        return ArrayAdapter.from_array(self.read([key])[key].values)
+        array = self.read([key])[key].infer_objects().to_numpy()
+        if array.dtype.name != "object":
+            return ArrayAdapter.from_array(array)
 
-    def items(self) -> Iterator[Tuple[str, ArrayAdapter]]:
+        if (
+            array.dtype.name == "object"
+            and len(array)
+            and isinstance(array[0], numpy.ndarray)
+        ):
+            # accumulate errors until an attempt succeeds
+            errors: List[Exception] = []
+
+            try:
+                array = numpy.vstack(cast("Sequence[numpy.ndarray]", array))
+                return ArrayAdapter.from_array(array)
+            except ValueError as err:
+                errors.append(err)
+
+            try:
+                return RaggedAdapter.from_array(array)
+            except Exception as err:
+                errors.append(err)
+
+            try:
+                return AwkwardAdapter.from_array(array)
+            except Exception as err:
+                errors.append(err)
+
+            logger.error(
+                "No adapter found that accepts object-array at key %s. (%s)",
+                key,
+                errors,
+            )
+            # fallback to string representation conversion in ArrayAdapter
+
+        return ArrayAdapter.from_array(array)
+
+    def items(
+        self,
+    ) -> Iterator[Tuple[str, Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]]]:
         """Iterate over the SQLAdapter data.
 
         Returns

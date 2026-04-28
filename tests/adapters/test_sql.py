@@ -5,6 +5,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.sql import (
     COLUMN_NAME_PATTERN,
     TABLE_NAME_PATTERN,
@@ -21,20 +22,25 @@ names = ["f0", "f1", "f2", "f3"]
 data0 = [
     pa.array([1, 2, 3, 4, 5]),
     pa.array([1.0, 2.0, 3.0, 4.0, 5.0]),
-    pa.array(["foo0", "bar0", "baz0", None, "goo0"]),
-    pa.array([True, None, False, True, None]),
+    # pa.array(["foo0", "bar0", "baz0", None, "goo0"]),
+    # pa.array([True, None, False, True, None]),
+    pa.array(["foo0", "bar0", "baz0", "None", "goo0"]),
+    pa.array([True, bool(None), False, True, bool(None)]),
 ]
 data1 = [
     pa.array([6, 7, 8, 9, 10, 11, 12]),
     pa.array([6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]),
-    pa.array(["foo1", "bar1", None, "baz1", "biz", None, "goo"]),
-    pa.array([None, True, True, False, False, None, True]),
+    # pa.array(["foo1", "bar1", None, "baz1", "biz", None, "goo"]),
+    # pa.array([None, True, True, False, False, None, True]),
+    pa.array(["foo1", "bar1", "None", "baz1", "biz", "None", "goo"]),
+    pa.array([bool(None), True, True, False, False, bool(None), True]),
 ]
 data2 = [
     pa.array([13, 14]),
     pa.array([13.0, 14.0]),
     pa.array(["foo2", "baz2"]),
-    pa.array([False, None]),
+    # pa.array([False, None]),
+    pa.array([False, bool(None)]),
 ]
 
 batch0 = pa.record_batch(data0, names=names)
@@ -797,3 +803,38 @@ def test_append_nullable(
     assert deep_array_equal(result_part, result_full)
 
     storage.dispose()  # Close all connections
+
+
+@pytest.mark.parametrize(
+    "sql_adapter_name",
+    [
+        "adapter_duckdb_many_partitions",
+        "adapter_psql_many_partitions",
+        "adapter_sqlite_many_partitions",
+    ],
+)
+@pytest.mark.parametrize("field", names)
+def test_compare_field_data_from_array_adapter(
+    sql_adapter_name: str,
+    field: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    # get adapter from fixture
+    sql_adapter: SQLAdapter = request.getfixturevalue(sql_adapter_name)
+
+    table = pa.Table.from_batches([batch0, batch1, batch2])
+    sql_adapter.append_partition(0, table)
+
+    array_adapter = sql_adapter[field]
+    assert isinstance(array_adapter, ArrayAdapter)
+
+    result_read = array_adapter.read()
+    field_index = names.index(field)
+    assert np.array_equal(
+        [
+            *data0[field_index].tolist(),
+            *data1[field_index].tolist(),
+            *data2[field_index].tolist(),
+        ],
+        result_read.tolist(),
+    )

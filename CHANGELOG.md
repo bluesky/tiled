@@ -6,9 +6,12 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+
 ### Added
 
 - Support for slicing arrays backed by multipart adapters with modified shapes
+- Support for interacting with irregular-shaped numeric arrays via
+  [`ragged`](https://github.com/scikit-hep/ragged).
 
 ### Fixed
 
