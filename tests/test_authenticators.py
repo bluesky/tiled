@@ -140,11 +140,11 @@ def test_oidc_decoding(
 
     if not expired:
         # Decode does not currently care if issued_at_time > current time
-        assert authenticator.decode_token(encrypted_access_token, "placeholder") == access_token
+        assert authenticator.decode_token(encrypted_access_token) == access_token
 
     else:
         with pytest.raises(ExpiredSignatureError):
-            authenticator.decode_token(encrypted_access_token, "placeholder")
+            authenticator.decode_token(encrypted_access_token)
 
 
 @pytest.fixture

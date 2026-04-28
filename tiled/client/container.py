@@ -1055,7 +1055,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             starts = structure.partitions[:-1]
             stops = structure.partitions[1:]
             for block_id, (start, stop) in enumerate(zip(starts, stops, strict=True)):
-                block = awkward.to_packed(array[start:stop]._impl)  # noqa: SLF001
+                block = awkward.to_packed(array[start:stop]._impl)
                 client.write_block(ragged.array(block), block=block_id)
         return client
 

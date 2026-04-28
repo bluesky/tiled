@@ -872,7 +872,7 @@ def get_router(
         with record_timing(request.state.metrics, "read"):
             ragged_array: ragged.array = await ensure_awaitable(entry.read, slice)
 
-        if ragged_array._impl.nbytes > settings.response_bytesize_limit:  # noqa: SLF001
+        if ragged_array._impl.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=(

@@ -206,7 +206,9 @@ properties:
     def keys(self) -> List[str]:
         return httpx.get(self.jwks_uri).raise_for_status().json().get("keys", [])
 
-    def decode_token(self, id_token: str, access_token: str) -> dict[str, Any]:
+    def decode_token(
+        self, id_token: str, access_token: Optional[str] = None
+    ) -> dict[str, Any]:
         return jwt.decode(
             id_token,
             key=self.keys(),

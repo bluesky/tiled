@@ -110,9 +110,9 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         if self._structure.npartitions != 1:
             raise NotImplementedError
         uri = self._block_paths[0]
-        _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001
+        _ = awkward.to_parquet(array._impl, uri)
 
     def write_block(self, array: ragged.array, block: NDBlock) -> None:
         """Write a single block of the ragged array to storage."""
         uri = self._block_paths[block[0]]
-        _ = awkward.to_parquet(array._impl, uri)  # noqa: SLF001
+        _ = awkward.to_parquet(array._impl, uri)

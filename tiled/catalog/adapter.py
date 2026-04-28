@@ -118,9 +118,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
     StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
-    StructureFamily.table: PARQUET_MIMETYPE,
     StructureFamily.ragged: RAGGED_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
+    StructureFamily.table: PARQUET_MIMETYPE,
 }
 
 # TODO: make type[Adapter] after #1047

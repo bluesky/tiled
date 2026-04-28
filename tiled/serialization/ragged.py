@@ -62,7 +62,7 @@ def _deconstruct_ragged(
     np.ndarray, list[OffsetArrayType | StartAndStopArraysType], tuple[int | None, ...]
 ]:
     offsets: list[OffsetArrayType | StartAndStopArraysType] = []
-    content = array._impl  # noqa: SLF001
+    content = array._impl
     if hasattr(content, "layout"):
         content = content.layout
 
@@ -162,7 +162,7 @@ if modules_available("pyarrow"):
         msg = "Cannot serialize scalar value to Arrow."
         if array.ndim == 0:
             raise SerializationError(msg)
-        components = awkward.to_buffers(array._impl)  # noqa: SLF001
+        components = awkward.to_buffers(array._impl)
         return awkward_serialization.to_arrow(mimetype, components, metadata)
 
     @default_serialization_registry.register(StructureFamily.ragged, PARQUET_MIMETYPE)
@@ -170,5 +170,5 @@ if modules_available("pyarrow"):
         msg = "Cannot serialize scalar value to Parquet."
         if array.ndim == 0:
             raise SerializationError(msg)
-        components = awkward.to_buffers(array._impl)  # noqa: SLF001
+        components = awkward.to_buffers(array._impl)
         return awkward_serialization.to_parquet(mimetype, components, metadata)

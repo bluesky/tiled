@@ -23,20 +23,20 @@ if TYPE_CHECKING:
 
 @dataclass(kw_only=True)
 class RaggedStructure(Structure):
+    # Serializable representation of the array's data type
     data_type: BuiltinDtype | StructDtype
-    """Serializable representation of the array's data type"""
+    # The shape of the array, where the first dimension is always a known integer,
+    # and any variable dimensions are represented by None.
     shape: tuple[int | None, ...]
-    """The shape of the array, where the first dimension is always a known integer,
-    and any variable dimensions are represented by None."""
+    # The total number of elements in the array
     size: int
-    """The total number of elements in the array."""
+    # Defines the boundaries for partitioning the array.
+    # Note that the final value is the row count from `shape[0]`.
     partitions: tuple[int, ...]
-    """Defines the boundaries for partitioning the array.
-    Note that the final value is the row count from `shape[0]`."""
+    # The size of the underlying dataset in bytes.
     nbytes: int
-    """The size of the underlying dataset in bytes."""
-    dims: tuple[str, ...] | None = None  # None or tuple of names like ("x", "y")
-    """Optional tuple of dimension names."""
+    # Optional tuple of dimension names, e.g. ("time", "x"), or None for unnamed dimensions
+    dims: tuple[str, ...] | None = None
     resizable: bool | tuple[bool, ...] = False
 
     @property
@@ -73,7 +73,7 @@ class RaggedStructure(Structure):
             shape = array.shape
 
         size = cast("int", array.size)
-        nbytes = array._impl.nbytes  # noqa: SLF001
+        nbytes = array._impl.nbytes
 
         if partitions is None:
             # default to a single partition containing the whole array
@@ -91,7 +91,7 @@ class RaggedStructure(Structure):
             resizable=False,
             size=size,
             partitions=partitions,
-            nbytes=nbytes
+            nbytes=nbytes,
         )
 
     @classmethod
@@ -136,7 +136,7 @@ def make_ragged_array(array: Iterable) -> ragged.array:
 
 def make_ragged_partitions(array: ragged.array, limit_bytes: int) -> tuple[int, ...]:
     """Row-wise partitioning of a ragged array into blocks of at most ``limit_bytes`` bytes."""
-    ak_array = awkward.Array(array._impl)  # noqa: SLF001
+    ak_array = awkward.Array(array._impl)
     if ak_array.nbytes <= limit_bytes:
         return (0, len(ak_array))
 
