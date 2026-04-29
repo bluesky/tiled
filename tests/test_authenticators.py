@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from typing import Any, Tuple
@@ -12,6 +13,7 @@ from respx import MockRouter
 from starlette.datastructures import URL, QueryParams
 
 from tiled.authenticators import (
+    EntraAuthenticator,
     LDAPAuthenticator,
     OIDCAuthenticator,
     ProxiedOIDCAuthenticator,
@@ -145,6 +147,36 @@ def test_oidc_decoding(
     else:
         with pytest.raises(ExpiredSignatureError):
             authenticator.decode_token(encrypted_access_token)
+
+
+def test_entra_decoding_ignores_unmapped_scopes(caplog):
+    def mock_decode_token(self, id_token, access_token):
+        return {
+            "iss": "https://login.microsoftonline.com/example-tenant/v2.0",
+            "sub": "opaque-sub",
+            "preferred_username": "alice@example.org",
+            "scp": "known.scope unknown.scope",
+        }
+
+    original_decode_token = OIDCAuthenticator.decode_token
+    OIDCAuthenticator.decode_token = mock_decode_token
+    try:
+        caplog.set_level(logging.WARNING)
+
+        authenticator = object.__new__(EntraAuthenticator)
+        authenticator.scopes_map = {"known.scope": ["read:metadata"]}
+        claims = authenticator.decode_token("id-token", "access-token")
+
+        assert claims["entra_sub"] == "opaque-sub"
+        assert claims["entra_username"] == "alice@example.org"
+        assert claims["user"] == "alice"
+        assert claims["scope"] == "read:metadata"
+        assert any(
+            "Unmapped Entra scope in 'scp': unknown.scope" in record.message
+            for record in caplog.records
+        )
+    finally:
+        OIDCAuthenticator.decode_token = original_decode_token
 
 
 @pytest.fixture

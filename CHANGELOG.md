@@ -12,6 +12,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Support for slicing arrays backed by multipart adapters with modified shapes
 - Support for interacting with irregular-shaped numeric arrays via
   [`ragged`](https://github.com/scikit-hep/ragged).
+- OIDC Authenticator for Azure Entra
 
 ### Fixed
 
@@ -19,7 +20,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   silent data corruption. The server now raises a clear error at startup if the
   mount node does not exist.
 - Writing chunked (dask) arrays with single chunk along all dimensions
-- OIDC authenticator was not quite compfixedliant and was incompatible with
+- OIDC authenticator was not quite compliant and was incompatible with
   at least some providers including Azure and ORCID.
 - Improved performance of reading zarr arrays when slicing by avoiding reading
   the full arrays into memory, but using slice composition instead.
@@ -36,9 +37,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
 - Stream updates are processed using a single worker thread, by
   default, in order to guarantee that they are processed in order.
+- Refactored AwkwardAdapter to generalize its array buffer storage.
 
 ### Added
 
+- Authentication support in the web UI: login page with password and OIDC
+  provider support, token persistence with automatic refresh, authenticated
+  image loading and file downloads, and user menu with logout.
+- Tests for the WebSocket endpoints that stream tabular data.
 - New server config option `create_mount_nodes_if_not_exist` (default `false`)
   that auto-creates missing intermediate container nodes when a `mount_node`
   path does not exist in the database. Also settable via the
