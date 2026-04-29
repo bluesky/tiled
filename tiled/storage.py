@@ -24,6 +24,16 @@ __all__ = [
     "Storage",
     "get_storage",
     "parse_storage",
+__all__ = [
+    "DirectoryContainer",
+    "EmbeddedSQLStorage",
+    "RemoteSQLStorage",
+    "FileStorage",
+    "SQLStorage",
+    "ObjectStorage",
+    "Storage",
+    "get_storage",
+    "parse_storage",
 ]
 
 
