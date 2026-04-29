@@ -1,7 +1,7 @@
 import copy
 from collections.abc import Set
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote_plus
 
 import awkward
@@ -17,7 +17,6 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
-from .utils import init_adapter_from_catalog
 
 
 class AwkwardAdapter(Adapter[AwkwardStructure]):
@@ -25,27 +24,23 @@ class AwkwardAdapter(Adapter[AwkwardStructure]):
 
     def __init__(
         self,
-        data_uri: str,
+        container: Union[DirectoryContainer, Dict[str, bytes]],
         structure: AwkwardStructure,
         *,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ):
-        directory: Path = path_from_uri(data_uri)
-        if not directory.is_dir():
-            raise ValueError(f"Not a directory: {directory}")
-        self._container = DirectoryContainer(directory)
+        self._container = container
         super().__init__(structure=structure, metadata=metadata, specs=specs)
 
     @classmethod
     def from_catalog(
-        cls,
-        data_source: DataSource[AwkwardStructure],
-        node: Node,
-        /,
-        **kwargs: Optional[Any],
+        cls, data_source: DataSource[AwkwardStructure], node: Node
     ) -> "AwkwardAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+        container = DirectoryContainer(path_from_uri(data_source.assets[0].data_uri))
+        return cls(
+            container, data_source.structure, metadata=node.metadata_, specs=node.specs
+        )
 
     @classmethod
     def from_array(
