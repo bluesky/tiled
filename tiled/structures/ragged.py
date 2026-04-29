@@ -33,8 +33,6 @@ class RaggedStructure(Structure):
     # Defines the boundaries for partitioning the array.
     # Note that the final value is the row count from `shape[0]`.
     partitions: tuple[int, ...]
-    # The size of the underlying dataset in bytes.
-    nbytes: int
     # Optional tuple of dimension names, e.g. ("time", "x"), or None for unnamed dimensions
     dims: tuple[str, ...] | None = None
     resizable: bool | tuple[bool, ...] = False
@@ -73,7 +71,6 @@ class RaggedStructure(Structure):
             shape = array.shape
 
         size = cast("int", array.size)
-        nbytes = array._impl.nbytes
 
         if partitions is None:
             # default to a single partition containing the whole array
@@ -91,7 +88,6 @@ class RaggedStructure(Structure):
             resizable=False,
             size=size,
             partitions=partitions,
-            nbytes=nbytes,
         )
 
     @classmethod
@@ -110,7 +106,6 @@ class RaggedStructure(Structure):
             dims=dims,
             resizable=structure.get("resizable", False),
             size=structure["size"],
-            nbytes=structure["nbytes"],
             partitions=tuple(structure.get("partitions", (0, structure["size"]))),
         )
 

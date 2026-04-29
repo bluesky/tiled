@@ -234,12 +234,6 @@ class RaggedClient(BaseClient):
         return structure.data_type.to_numpy_dtype()
 
     @property
-    def nbytes(self) -> int:
-        """The size of the array in bytes."""
-        structure = cast("RaggedStructure", self.structure())
-        return structure.nbytes
-
-    @property
     def partitions(self) -> tuple[int, ...]:
         """The partition boundaries of the array, of form ``(0, [p1, ..., pN], rows)``."""
         structure = cast("RaggedStructure", self.structure())
