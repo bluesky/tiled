@@ -16,15 +16,6 @@ if TYPE_CHECKING:
     from obstore.store import AzureStore, GCSStore, LocalStore, S3Store
 
 __all__ = [
-    "EmbeddedSQLStorage",
-    "RemoteSQLStorage",
-    "FileStorage",
-    "SQLStorage",
-    "ObjectStorage",
-    "Storage",
-    "get_storage",
-    "parse_storage",
-__all__ = [
     "DirectoryContainer",
     "EmbeddedSQLStorage",
     "RemoteSQLStorage",
