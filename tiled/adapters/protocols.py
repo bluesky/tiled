@@ -8,14 +8,13 @@ import sparse
 from numpy.typing import NDArray
 
 from ..ndslice import NDSlice
-from ..storage import Storage
+from ..storage import DirectoryContainer, Storage
 from ..structures.array import ArrayStructure
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.sparse import SparseStructure
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
-from .awkward_directory_container import DirectoryContainer
 
 
 class BaseAdapter(Protocol):

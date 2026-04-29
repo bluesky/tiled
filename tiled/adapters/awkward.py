@@ -11,13 +11,12 @@ from numpy.typing import NDArray
 from tiled.adapters.core import Adapter
 
 from ..catalog.orm import Node
-from ..storage import FileStorage, Storage
+from ..storage import DirectoryContainer, FileStorage, Storage
 from ..structures.awkward import AwkwardStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..type_aliases import JSON
 from ..utils import path_from_uri
-from .awkward_directory_container import DirectoryContainer
 from .utils import init_adapter_from_catalog
 
 
@@ -118,4 +117,3 @@ def is_ragged_form(form: awkward.forms.form.Form) -> bool:
         return is_ragged_form(form.content)
     else:
         return False
-    
