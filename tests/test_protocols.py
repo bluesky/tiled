@@ -164,7 +164,7 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
 
     metadata: JSON = {"foo": "bar"}
     anyslice = NDSlice(1, 1, 1)
-    container = DirectoryContainer(directory=Path("somedirectory"), form={})
+    container = DirectoryContainer(directory=Path("somedirectory"))
     form_keys = ["a", "b", "c"]
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
@@ -442,7 +442,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     structure = AwkwardStructure(length=2, form={"a": "b"})
 
     metadata: JSON = {"foo": "bar"}
-    container = DirectoryContainer(directory=Path("somedirectory"), form={})
+    container = DirectoryContainer(directory=Path("somedirectory"))
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )

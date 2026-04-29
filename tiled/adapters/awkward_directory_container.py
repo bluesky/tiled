@@ -4,75 +4,28 @@ from typing import Any, Iterator
 
 
 class DirectoryContainer(Mapping[str, bytes]):
-    """ """
+    """A storage container for byte-arrays representing Awkward Array buffers
 
-    def __init__(self, directory: Path, form: Any):
-        """
+    Each buffer is stored as a separate file in a given directory, with the
+    filename corresponding to the form key.
+    """
 
-        Parameters
-        ----------
-        directory :
-        form :
-        """
+    def __init__(self, directory: Path):
         self.directory = directory
-        self.form = form
 
-    def __getitem__(self, form_key: str) -> bytes:
-        """
-
-        Parameters
-        ----------
-        form_key :
-
-        Returns
-        -------
-
-        """
-        with open(self.directory / form_key, "rb") as file:
+    def __getitem__(self, key: str) -> bytes:
+        with open(self.directory / key, "rb") as file:
             return file.read()
 
-    def __setitem__(self, form_key: str, value: bytes) -> None:
-        """
-
-        Parameters
-        ----------
-        form_key :
-        value :
-
-        Returns
-        -------
-
-        """
-        with open(self.directory / form_key, "wb") as file:
+    def __setitem__(self, key: str, value: bytes) -> None:
+        with open(self.directory / key, "wb") as file:
             file.write(value)
 
-    def __delitem__(self, form_key: str) -> None:
-        """
-
-        Parameters
-        ----------
-        form_key :
-
-        Returns
-        -------
-
-        """
-        (self.directory / form_key).unlink(missing_ok=True)
+    def __delitem__(self, key: str) -> None:
+        (self.directory / key).unlink(missing_ok=True)
 
     def __iter__(self) -> Iterator[str]:
-        """
-
-        Returns
-        -------
-
-        """
-        yield from self.form.expected_from_buffers()
+        yield from (p.name for p in self.directory.iterdir())
 
     def __len__(self) -> int:
-        """
-
-        Returns
-        -------
-
-        """
-        return len(self.form.expected_from_buffers())
+        return sum(1 for _ in self.__iter__())
