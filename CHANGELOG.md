@@ -34,6 +34,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
 - Stream updates are processed using a single worker thread, by
   default, in order to guarantee that they are processed in order.
+- Refactored AwkwardAdapter to generalize its array buffer storage.
 
 ### Added
 
