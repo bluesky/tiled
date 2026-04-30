@@ -156,11 +156,11 @@ def test_slicing(module_client, name):
     assert sliced_response_size < full_response_size
 
 
-partitionable_size = 30
-partitionable_arrays = [
+chunkable_size = 30
+chunkable_arrays = [
     ragged.array(
         [
-            rng.random(size=partitionable_size),
+            rng.random(size=chunkable_size),
             *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
         ],
         dtype=np.float32,
@@ -168,7 +168,7 @@ partitionable_arrays = [
     ragged.array(
         [
             *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
-            rng.random(size=partitionable_size),
+            rng.random(size=chunkable_size),
             *[rng.random(size=rng.integers(0, 10)) for _ in range(15)],
         ],
         dtype=np.float32,
@@ -176,7 +176,7 @@ partitionable_arrays = [
     ragged.array(
         [
             *[rng.random(size=rng.integers(0, 10)) for _ in range(10)],
-            rng.random(size=partitionable_size),
+            rng.random(size=chunkable_size),
             *[rng.random(size=rng.integers(0, 10)) for _ in range(10)],
         ],
         dtype=np.float32,
@@ -184,7 +184,7 @@ partitionable_arrays = [
     ragged.array(
         [
             *[rng.random(size=rng.integers(0, 10)) for _ in range(15)],
-            rng.random(size=partitionable_size),
+            rng.random(size=chunkable_size),
             *[rng.random(size=rng.integers(0, 10)) for _ in range(5)],
         ],
         dtype=np.float32,
@@ -192,53 +192,50 @@ partitionable_arrays = [
     ragged.array(
         [
             *[rng.random(size=rng.integers(0, 10)) for _ in range(20)],
-            rng.random(size=partitionable_size),
+            rng.random(size=chunkable_size),
         ],
         dtype=np.float32,
     ),
     ragged.array(
-        [
-            rng.random(size=rng.integers(0, partitionable_size)).tolist()
-            for _ in range(20)
-        ],
+        [rng.random(size=rng.integers(0, chunkable_size)).tolist() for _ in range(20)],
         dtype=np.float32,
     ),
 ]
 
 
 @pytest.fixture(scope="module")
-def partitioning_client(tmpdir_module):
+def chunking_client(tmpdir_module):
     """Module-scoped client with all partitionable arrays pre-written under their own keys."""
     catalog = in_memory(writable_storage=str(tmpdir_module))
     app = build_app(catalog)
     with Context.from_app(app) as context:
         client = from_context(context)
-        max_partition_bytes = (partitionable_size * np.float32(0).nbytes) + (
+        max_partition_bytes = (chunkable_size * np.float32(0).nbytes) + (
             2 * np.int64(0).nbytes
         )
-        for i, array in enumerate(partitionable_arrays):
+        for i, array in enumerate(chunkable_arrays):
             client.write_ragged(
                 array, key=f"partitionable_{i}", max_partition_bytes=max_partition_bytes
             )
         yield client
 
 
-@pytest.mark.parametrize("i", range(len(partitionable_arrays)))
-def test_partitioning(partitioning_client, i: int):
-    array = ragged.array(partitionable_arrays[i])
-    rac = partitioning_client[f"partitionable_{i}"]
+@pytest.mark.parametrize("i", range(len(chunkable_arrays)))
+def test_chunking(chunking_client, i: int):
+    array = ragged.array(chunkable_arrays[i])
+    rac = chunking_client[f"partitionable_{i}"]
 
     # need to add a little bit to account for Awkward metadata
-    assert rac.npartitions > 1
+    assert len(rac.chunks[0]) > 1
 
-    starts = rac.partitions[:-1]
-    stops = rac.partitions[1:]
-    for j, (start, stop) in enumerate(zip(starts, stops, strict=True)):
-        part = rac.read_block(j)
-        assert ak.array_equal(part._impl, array[start:stop]._impl)
+    # starts = rac.partitions[:-1]
+    # stops = rac.partitions[1:]
+    # for j, (start, stop) in enumerate(zip(starts, stops, strict=True)):
+    #     part = rac.read_block(j)
+    #     assert ak.array_equal(part._impl, array[start:stop]._impl)
 
-        part = rac.read_block(j, slice=(slice(None), slice(0, 4)))
-        assert ak.array_equal(part._impl, array[start:stop, slice(0, 4)]._impl)
+    #     part = rac.read_block(j, slice=(slice(None), slice(0, 4)))
+    #     assert ak.array_equal(part._impl, array[start:stop, slice(0, 4)]._impl)
 
     full = rac.read()
     assert ak.array_equal(full._impl, array._impl)

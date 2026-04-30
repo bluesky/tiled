@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import itertools
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
@@ -61,14 +62,18 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         )
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
+
+        num_blocks = (
+            range(len(n) if n is not None else 1) for n in data_source.structure.chunks
+        )
         assets = [
             Asset(
-                data_uri=f"{data_uri}/block-{i}.parquet",
+                data_uri=f"{data_uri}/block-{'.'.join(map(str, block))}.parquet",
                 is_directory=False,
                 parameter="data_uris",
                 num=i,
             )
-            for i in range(data_source.structure.npartitions)
+            for i, block in enumerate(itertools.product(*num_blocks))
         ]
         data_source.assets.extend(assets)
         return data_source
@@ -85,7 +90,7 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
 
     def read(self, slice: NDSlice | None = None) -> ragged.array:
         """Read ragged array data from storage."""
-        if self._structure.npartitions == 1:
+        if len(self._block_paths) == 1:
             data = self._read_from_cache_or_file(self._block_paths[0])
         else:
             data = self._read_multiple_from_cache_or_files(self._block_paths)
@@ -107,7 +112,7 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
 
     def write(self, array: ragged.array) -> None:
         """Write ragged array data to storage."""
-        if self._structure.npartitions != 1:
+        if len(self._block_paths) != 1:
             raise NotImplementedError
         uri = self._block_paths[0]
         _ = awkward.to_parquet(array._impl, uri)
