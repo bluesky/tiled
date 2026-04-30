@@ -99,9 +99,9 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
 
     def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
         """Read a single block of the ragged array from storage."""
-        paths = self._block_paths[block[0]]
-        if isinstance(paths, Path):
-            paths = [paths]
+        block_indices = list(map(range, self._structure.shape_from_chunks))
+        blocks = list(itertools.product(*block_indices))
+        paths = [self._block_paths[blocks.index(block)]]
         data = self._read_multiple_from_cache_or_files(paths)
         sliced_data = data[tuple(slice)] if slice else data
         return ragged.array(
@@ -117,5 +117,7 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
 
     def write_block(self, array: ragged.array, block: NDBlock) -> None:
         """Write a single block of the ragged array to storage."""
-        uri = self._block_paths[block[0]]
+        block_indices = list(map(range, self._structure.shape_from_chunks))
+        blocks = list(itertools.product(*block_indices))
+        uri = self._block_paths[blocks.index(block)]
         _ = awkward.to_parquet(array._impl, uri)

@@ -232,10 +232,10 @@ def test_chunking(chunking_client, i: int):
     starts = divisions[:-1]
     stops = divisions[1:]
     for j, (start, stop) in enumerate(zip(starts, stops, strict=True)):
-        part = rac.read_block(j)
+        part = rac.read_block((j, 0))
         assert ak.array_equal(part._impl, array[start:stop]._impl)
 
-        part = rac.read_block(j, slice=(slice(None), slice(0, 4)))
+        part = rac.read_block((j, 0), slice=(slice(None), slice(0, 4)))
         assert ak.array_equal(part._impl, array[start:stop, slice(0, 4)]._impl)
 
     full = rac.read()
