@@ -63,9 +63,7 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
         directory = path_from_uri(data_uri)
         directory.mkdir(parents=True, exist_ok=True)
 
-        num_blocks = (
-            range(len(n) if n is not None else 1) for n in data_source.structure.chunks
-        )
+        block_indices = map(range, data_source.structure.shape_from_chunks)
         assets = [
             Asset(
                 data_uri=f"{data_uri}/block-{'.'.join(map(str, block))}.parquet",
@@ -73,7 +71,7 @@ class RaggedParquetAdapter(Adapter[RaggedStructure]):
                 parameter="data_uris",
                 num=i,
             )
-            for i, block in enumerate(itertools.product(*num_blocks))
+            for i, block in enumerate(itertools.product(*block_indices))
         ]
         data_source.assets.extend(assets)
         return data_source

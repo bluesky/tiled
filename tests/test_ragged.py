@@ -228,14 +228,15 @@ def test_chunking(chunking_client, i: int):
     # need to add a little bit to account for Awkward metadata
     assert len(rac.chunks[0]) > 1
 
-    # starts = rac.partitions[:-1]
-    # stops = rac.partitions[1:]
-    # for j, (start, stop) in enumerate(zip(starts, stops, strict=True)):
-    #     part = rac.read_block(j)
-    #     assert ak.array_equal(part._impl, array[start:stop]._impl)
+    divisions = np.cumsum((0, *rac.chunks[0]))
+    starts = divisions[:-1]
+    stops = divisions[1:]
+    for j, (start, stop) in enumerate(zip(starts, stops, strict=True)):
+        part = rac.read_block(j)
+        assert ak.array_equal(part._impl, array[start:stop]._impl)
 
-    #     part = rac.read_block(j, slice=(slice(None), slice(0, 4)))
-    #     assert ak.array_equal(part._impl, array[start:stop, slice(0, 4)]._impl)
+        part = rac.read_block(j, slice=(slice(None), slice(0, 4)))
+        assert ak.array_equal(part._impl, array[start:stop, slice(0, 4)]._impl)
 
     full = rac.read()
     assert ak.array_equal(full._impl, array._impl)

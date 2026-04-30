@@ -68,7 +68,11 @@ class RaggedClient(BaseClient):
         """
         if not isinstance(block, NDBlock):
             block = NDBlock(block)
-        block_str = block.expand_for_shape([len(self.chunks[0])]).to_numpy_str()
+        block_str = (
+            block.expand_for_shape(self.structure().shape_from_chunks)
+            .to_numpy_str()
+            .replace(",:1:1", "")  # not sure what's going on here...
+        )
 
         url_path = self.item["links"]["block"]
         params: dict[str, Any] = {
@@ -135,7 +139,11 @@ class RaggedClient(BaseClient):
         """
         if not isinstance(block, NDBlock):
             block = NDBlock(block)
-        block_str = block.expand_for_shape(self.chunks).to_numpy_str()
+        block_str = (
+            block.expand_for_shape(self.structure().shape_from_chunks)
+            .to_numpy_str()
+            .replace(",:1:1", "")
+        )
 
         url_path = self.item["links"]["block"]
         url_params: dict[str, Any] = {

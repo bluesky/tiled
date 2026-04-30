@@ -107,6 +107,12 @@ class RaggedStructure(Structure):
             ),
         )
 
+    @property
+    def shape_from_chunks(self) -> tuple[int, ...]:
+        """Derive the chunked-shape of the array."""
+        # currently this should return the shape (npartitions, 1, 1, ...)
+        return tuple(len(dim) if dim is not None else 1 for dim in self.chunks)
+
 
 _SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
 

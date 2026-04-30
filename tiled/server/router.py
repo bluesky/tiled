@@ -946,11 +946,11 @@ def get_router(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=("Block parameter is only supported in the first dimension."),
             )
-        if not block.is_valid_for_shape((structure.npartitions,)):
+        if not block.is_valid_for_shape(structure.shape_from_chunks):
             raise HTTPException(
                 status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
-                    f"Block parameter is not valid for {structure.npartitions} partitions."
+                    f"Block parameter is not valid for {structure.chunks} partitions."
                 ),
             )
         try:

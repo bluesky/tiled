@@ -1053,7 +1053,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
         if not client.chunked:
             client.write(array)
         else:
-            divisions = numpy.cumsum([0, *structure.chunks[0]])
+            divisions = numpy.cumsum((0, *structure.chunks[0]))
             starts = divisions[:-1]
             stops = divisions[1:]
             for block_id, (start, stop) in enumerate(zip(starts, stops, strict=True)):
