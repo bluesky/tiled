@@ -240,6 +240,7 @@ def create_api_key(
         None,
         help=(
             "Restrict the access available to the API key by listing specific tags. "
+            "If set, restrictive access scopes must also be specified (see --scopes). "
             "By default, it will have no limits on access tags."
         ),
     ),
@@ -248,8 +249,6 @@ def create_api_key(
     """
     Create an API key for a Principal.
     """
-    import json
-
     context = get_context(profile)
     if not scopes:
         # This is how typer interprets unspecified scopes.
