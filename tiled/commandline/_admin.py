@@ -101,7 +101,7 @@ def downgrade_database(
     revision: str = typer.Argument(..., help="The ID of a revision to downgrade to."),
 ):
     """
-    Upgrade the database schema to the latest version.
+    Downgrade the database schema to a prior version.
     """
     import asyncio
 
