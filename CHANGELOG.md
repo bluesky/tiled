@@ -10,6 +10,8 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Support for slicing arrays backed by multipart adapters with modified shapes
 - OIDC Authenticator for Azure Entra
+- Add more administrative CLI commands centered around the creation of service
+  principals and their API keys
 
 ### Fixed
 
