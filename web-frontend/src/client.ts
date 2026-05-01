@@ -1,14 +1,58 @@
 import axios from "axios";
 import { components } from "./openapi_schemas";
 
-const axiosInstance = axios.create();
+export const axiosInstance = axios.create();
+
+// Transform absolute URLs in "links" fields to relative paths so the UI
+// works regardless of the origin the server reports.
+function toRelativePath(urlString: string): string {
+  try {
+    const url = new URL(urlString);
+    return url.pathname + url.search + url.hash;
+  } catch {
+    return urlString;
+  }
+}
+
+function transformLinks(data: any): any {
+  if (typeof data === "object" && data !== null) {
+    const transformed: any = Array.isArray(data) ? [] : {};
+    for (const key in data) {
+      if (key === "links" && typeof data[key] === "object") {
+        transformed[key] = {};
+        for (const linkKey in data[key]) {
+          const linkValue = data[key][linkKey];
+          transformed[key][linkKey] =
+            typeof linkValue === "string"
+              ? toRelativePath(linkValue)
+              : linkValue;
+        }
+      } else {
+        transformed[key] = transformLinks(data[key]);
+      }
+    }
+    return transformed;
+  }
+  return data;
+}
+
+axiosInstance.interceptors.response.use(
+  (response) => {
+    if (response.config.responseType === "blob") {
+      return response;
+    }
+    response.data = transformLinks(response.data);
+    return response;
+  },
+  (error) => Promise.reject(error),
+);
 
 export const search = async (
   apiURL: string,
   segments: string[],
   signal: AbortSignal,
   fields: string[] = [],
-  selectMetadata: any = null,
+  selectMetadata: string | null = null,
   pageOffset: number = 0,
   pageLimit: number = 100,
   sort: string | null = null,
@@ -48,8 +92,6 @@ export const metadata = async (
 };
 
 export const about = async (): Promise<components["schemas"]["About"]> => {
-  const response = await axiosInstance.get("/");
+  const response = await axiosInstance.get("/api/v1/");
   return response.data;
 };
-
-export { axiosInstance };

@@ -7,8 +7,9 @@ import Typography from "@mui/material/Typography";
 import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "@mui/material/styles";
+import { axiosInstance } from "../../client";
 
 interface IProps {
   segments: string[];
@@ -97,6 +98,7 @@ interface ImageDisplayProps {
 }
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const sliceParts = props.cuts.map(c => c.toString());
   if (props.stride !== 1) {
     sliceParts.push(`::${props.stride}`, `::${props.stride}`);
@@ -104,13 +106,30 @@ const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   const url = sliceParts.length > 0
     ? `${props.link}?format=image/png&slice=${sliceParts.join(",")}`
     : `${props.link}?format=image/png`;
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    const controller = new AbortController();
+    axiosInstance
+      .get(url, { responseType: "blob", signal: controller.signal })
+      .then((resp) => {
+        objectUrl = URL.createObjectURL(resp.data);
+        setBlobUrl(objectUrl);
+      })
+      .catch(() => {});
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  if (!blobUrl) return null;
   return (
     <Box
       component="img"
       sx={{ maxWidth: 1 }}
       alt="Data rendered"
-      src={url}
-      loading="lazy"
+      src={blobUrl}
     />
   );
 };

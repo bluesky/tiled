@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { vi, describe, expect, it } from "vitest";
 import ArrayND from "../array-nd/array-nd";
@@ -15,18 +15,17 @@ vi.mock("@mui/material/styles", () => ({
   }),
 }));
 
-vi.mock("../components/cut-clider/cut-slider", () => ({
-  default: ({ min, max, value, setValue }: any) => (
-    <input
-      type="range"
-      min={min}
-      max={max}
-      value={value}
-      onChange={(e) => setValue(Number(e.target.value))}
-      data-testid={`cut-slider-${min}-${max}`}
-    />
-  ),
+// Mock axiosInstance to return a fake blob
+const fakeBlob = new Blob(["fake-image"], { type: "image/png" });
+const mockGet = vi.fn().mockResolvedValue({ data: fakeBlob });
+vi.mock("../../client", () => ({
+  axiosInstance: { get: (...args: any[]) => mockGet(...args) },
 }));
+
+// Mock URL.createObjectURL/revokeObjectURL
+const mockObjectUrl = "blob:http://localhost/fake";
+globalThis.URL.createObjectURL = vi.fn().mockReturnValue(mockObjectUrl);
+globalThis.URL.revokeObjectURL = vi.fn();
 
 describe("ArrayND", () => {
   const baseProps = {
@@ -38,10 +37,16 @@ describe("ArrayND", () => {
     },
   };
 
-  it("renders image with correct URL for stride=1", () => {
+  it("renders image after fetching via axiosInstance", async () => {
     render(<ArrayND {...baseProps} />);
-    const img = screen.getByRole("img", { name: /Data rendered/i });
-    expect(img).toHaveAttribute("src", "/api/array?format=image/png&slice=2,2");
+    const img = await waitFor(() =>
+      screen.getByRole("img", { name: /Data rendered/i }),
+    );
+    expect(img).toHaveAttribute("src", mockObjectUrl);
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/array?format=image/png&slice=2,2",
+      expect.objectContaining({ responseType: "blob" }),
+    );
   });
 
   it("shows sliders for multi-dimensional arrays", () => {
@@ -69,34 +74,44 @@ describe("ArrayND", () => {
     ).toBeInTheDocument();
   });
 
-  it("handles different array shapes correctly", () => {
+  it("handles different array shapes correctly", async () => {
     const props = {
       ...baseProps,
       structure: { shape: [1, 4, 3, 2] }, // First dimension is 1
     };
     render(<ArrayND {...props} />);
 
-    expect(screen.getByRole("img")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("img")).toBeInTheDocument());
     expect(screen.getByText(/4-dimensional array/i)).toBeInTheDocument();
   });
 
-  it("renders 2D array with no stride without slice parameter", () => {
+  it("renders 2D array without slice parameter", async () => {
     const props = {
       ...baseProps,
-      structure: { shape: [512, 512] }, // 2D array
+      structure: { shape: [512, 512] },
     };
     render(<ArrayND {...props} />);
-    const img = screen.getByRole("img", { name: /Data rendered/i });
-    expect(img).toHaveAttribute("src", "/api/array?format=image/png");
+    await waitFor(() =>
+      screen.getByRole("img", { name: /Data rendered/i }),
+    );
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/array?format=image/png",
+      expect.objectContaining({ responseType: "blob" }),
+    );
   });
 
-  it("renders 2D array with stride using slice parameter", () => {
+  it("renders 2D array with stride using slice parameter", async () => {
     const props = {
       ...baseProps,
-      structure: { shape: [3000, 3000] }, // 2D array, stride=3
+      structure: { shape: [3000, 3000] }, // stride=3
     };
     render(<ArrayND {...props} />);
-    const img = screen.getByRole("img", { name: /Data rendered/i });
-    expect(img).toHaveAttribute("src", "/api/array?format=image/png&slice=::3,::3");
+    await waitFor(() =>
+      screen.getByRole("img", { name: /Data rendered/i }),
+    );
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/array?format=image/png&slice=::3,::3",
+      expect.objectContaining({ responseType: "blob" }),
+    );
   });
 });
