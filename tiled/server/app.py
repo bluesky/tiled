@@ -265,6 +265,13 @@ def build_app(
     if SHARE_TILED_PATH:
         # If the distribution includes static assets, serve UI routes.
 
+        @app.get("/favicon.ico", include_in_schema=False)
+        async def favicon():
+            icon_path = Path(SHARE_TILED_PATH, "ui", "tiled-icon.ico")
+            if icon_path.is_file():
+                return FileResponse(icon_path)
+            raise HTTPException(status_code=HTTP_404_NOT_FOUND)
+
         @app.get("/ui/{path:path}")
         async def ui(
             path,

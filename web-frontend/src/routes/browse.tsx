@@ -1,7 +1,6 @@
 import * as React from "react";
 
-import { Suspense, lazy } from "react";
-import { useContext, useEffect, useState } from "react";
+import { Suspense, lazy, useContext, useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import ErrorBoundary from "../components/error-boundary/error-boundary";
@@ -39,6 +38,84 @@ const MetadataView = lazy(
 const NodeOverview = lazy(
   () => import("../components/overview-generic-node/overview-generic-node"),
 );
+
+// Cache of loaded script URLs to avoid duplicate <script> tags.
+// Once a script has loaded and its IIFE has executed (registering the
+// component on window.__TILED_SPEC_VIEWS__), there is no need to load
+// it again — even if the <script> element is removed from the DOM.
+const loadedScripts = new Set<string>();
+
+function loadScript(url: string): Promise<void> {
+  if (loadedScripts.has(url)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = url;
+    script.async = true;
+    script.onload = () => {
+      loadedScripts.add(url);
+      resolve();
+    };
+    script.onerror = () => {
+      // Remove failed script so a retry is possible.
+      script.remove();
+      reject(new Error(`Failed to load spec view: ${url}`));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * Dynamically loads and renders an external spec view component.
+ *
+ * The external JS bundle (IIFE) is expected to register its component at:
+ *   window.__TILED_SPEC_VIEWS__[specName]
+ *
+ * The component receives the same props as built-in overview components:
+ *   { segments, item }
+ */
+function DynamicSpecView({
+  specName,
+  url,
+  segments,
+  item,
+}: {
+  specName: string;
+  url: string;
+  segments: string[];
+  item: any;
+}) {
+  const [Component, setComponent] = useState<React.ComponentType<any> | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadScript(url)
+      .then(() => {
+        if (cancelled) return;
+        const registry = (window as any).__TILED_SPEC_VIEWS__;
+        const comp = registry?.[specName];
+        if (comp) {
+          setComponent(() => comp);
+        } else {
+          setError(
+            `Spec view "${specName}" not found in window.__TILED_SPEC_VIEWS__ after loading ${url}`,
+          );
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [specName, url]);
+
+  if (error) return <div>Error loading spec view: {error}</div>;
+  if (!Component) return <Skeleton variant="rectangular" />;
+  return <Component segments={segments} item={item} />;
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -135,10 +212,36 @@ export const DownloadDispatch: React.FunctionComponent<DispatchProps> = (
 export const OverviewDispatch: React.FunctionComponent<DispatchProps> = (
   props,
 ) => {
+  const settings = useContext(SettingsContext);
+
   // Dispatch to a specific overview component based on the structure family.
-  // In the future we will extend this to consider 'specs' as well.
+  // If spec_views are configured, check for a matching spec first.
   if (props.item !== undefined) {
-    const structureFamily = props.item!.data!.attributes!.structure_family;
+    const attributes = props.item!.data!.attributes!;
+
+    // Check for external spec_views (plugin components loaded at runtime)
+    if (settings.spec_views && settings.spec_views.length > 0) {
+      const specs = (attributes.specs || []) as any[];
+      const specNames = specs.map((s: any) =>
+        typeof s === "string" ? s : s.name || "",
+      );
+      for (const sv of settings.spec_views) {
+        if (specNames.includes(sv.spec)) {
+          return (
+            <ErrorBoundary>
+              <DynamicSpecView
+                specName={sv.spec}
+                url={sv.url}
+                segments={props.segments}
+                item={props.item}
+              />
+            </ErrorBoundary>
+          );
+        }
+      }
+    }
+
+    const structureFamily = attributes.structure_family;
     switch (structureFamily) {
       case "container":
         return <NodeOverview segments={props.segments} item={props.item} />;
