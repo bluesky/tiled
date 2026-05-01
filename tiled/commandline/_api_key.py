@@ -2,7 +2,7 @@ from typing import List, Optional
 
 import typer
 
-from ._utils import get_context
+from ._utils import echo_api_keys_table, get_context
 
 api_key_app = typer.Typer(no_args_is_help=True)
 
@@ -63,64 +63,7 @@ def list_api_keys(
     if not info["api_keys"]:
         typer.echo("No API keys found", err=True)
         return
-    max_note_len = max(len(api_key["note"] or "") for api_key in info["api_keys"])
-    if (starting_notes_pad := max_note_len) < len("Note"):
-        starting_notes_pad += 4 - max_note_len
-    max_scopes_len = max(
-        sum(len(scope) for scope in api_key["scopes"]) + len(api_key["scopes"]) - 1
-        for api_key in info["api_keys"]
-    )
-    if (starting_scopes_pad := max_scopes_len) < len("Scopes"):
-        starting_scopes_pad += 6 - max_scopes_len
-    COLUMNS = (
-        f"First 8   Expires at (UTC)     "
-        f"Latest activity      Note{' ' * (max_note_len - 4)}    "
-        f"Scopes{' ' * (max_scopes_len - 6)}    Access tags"
-    )
-    typer.echo(COLUMNS)
-    for api_key in info["api_keys"]:
-        note_padding = 4 + starting_notes_pad - len(api_key["note"] or "")
-        # the '1' subtraction works in all cases because the amount of spaces
-        #   in a sentence is count(words) - 1, and also because we otherwise
-        #   print a single 'dash' for an empty list
-        scopes_padding = (
-            4
-            + starting_scopes_pad
-            - sum(len(scope) for scope in api_key["scopes"])
-            + len(api_key["scopes"])
-            - 1
-        )
-        if api_key["expiration_time"] is None:
-            expiration_time = "-"
-        else:
-            expiration_time = (
-                api_key["expiration_time"]
-                .replace(microsecond=0, tzinfo=None)
-                .isoformat()
-            )
-        if api_key["latest_activity"] is None:
-            latest_activity = "-"
-        else:
-            latest_activity = (
-                api_key["latest_activity"]
-                .replace(microsecond=0, tzinfo=None)
-                .isoformat()
-            )
-        access_tags = (
-            " ".join([tag.replace(" ", "\\ ") for tag in api_key["access_tags"]])
-            if api_key["access_tags"] is not None
-            else "-"
-        )
-        typer.echo(
-            (
-                f"{api_key['first_eight']:10}"
-                f"{expiration_time:21}"
-                f"{latest_activity:21}"
-                f"{(api_key['note'] or '')}{' ' * note_padding}"
-                f"{' '.join(api_key['scopes']) or '-'}{' ' * scopes_padding}"
-                f"{access_tags}"
-            )
-        )
+    echo_api_keys_table(info["api_keys"])
 
 
 @api_key_app.command("revoke")
