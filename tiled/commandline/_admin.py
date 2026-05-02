@@ -213,5 +213,5 @@ def create_service_principal(
     import json
 
     context = get_context(profile)
-    result = context.admin.create_service_principal("admin" if admin else None)
+    result = context.admin.create_service_principal("admin" if admin else "user")
     typer.echo(json.dumps(result, indent=2))
