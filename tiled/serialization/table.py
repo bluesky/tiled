@@ -1,6 +1,9 @@
 import io
 import mimetypes
 
+import numpy
+import pandas
+
 from ..media_type_registration import (
     default_deserialization_registry,
     default_serialization_registry,
@@ -109,11 +112,37 @@ if modules_available("openpyxl", "pandas"):
 if modules_available("orjson"):
     import orjson
 
+    def _series_to_json_safe(series):
+        """Convert a pandas Series to a list of JSON-serializable Python values.
+
+        orjson is stricter than stdlib json: it rejects numpy scalars (float32,
+        int32, ...), pandas NA, and pandas NaT. Convert all of these to their
+        Python-native equivalents, with missing values becoming None.
+        """
+        arr = series.to_numpy(dtype=object, na_value=None)
+
+        def to_native(v):
+            if v is None:
+                return None
+            if isinstance(v, float) and numpy.isnan(v):
+                return None
+            if v is pandas.NaT:
+                return None
+            if isinstance(v, numpy.integer):
+                return int(v)
+            if isinstance(v, numpy.floating):
+                return float(v)
+            if isinstance(v, pandas.Timestamp):
+                return v.isoformat()
+            return v
+
+        return [to_native(v) for v in arr]
+
     default_serialization_registry.register(
         StructureFamily.table,
         "application/json",
         lambda mimetype, df, metadata: orjson.dumps(
-            {column: df[column].tolist() for column in df},
+            {column: _series_to_json_safe(df[column]) for column in df},
         ),
     )
 
@@ -131,15 +160,17 @@ if modules_available("orjson"):
         "application/json-seq",  # official mimetype for newline-delimited JSON
     )
     def json_sequence(mimetype, df, metadata):
-        if rows := df.to_dict(orient="records"):
-            # The first row is a special case; the rest start with a newline.
-            yield orjson.dumps(rows[0])
-            # Emit the remaining rows, prepending newline.
-            for row in rows[1:]:
-                yield b"\n" + orjson.dumps(row)
-        else:
-            # No rows
+        # Build a JSON-safe version of the dataframe once, then emit row-by-row.
+        safe = {column: _series_to_json_safe(df[column]) for column in df}
+        n = len(df)
+        if n == 0:
             yield b""
+            return
+        columns = list(safe)
+        # First row has no leading newline; subsequent rows do.
+        yield orjson.dumps({col: safe[col][0] for col in columns})
+        for i in range(1, n):
+            yield b"\n" + orjson.dumps({col: safe[col][i] for col in columns})
 
 
 if modules_available("h5py"):
