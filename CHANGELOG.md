@@ -13,6 +13,11 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- JSON serialization of tables now correctly handles numpy scalar types
+  (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
+  `Timestamp` when using the `orjson` backend. Previously these raised a
+  `TypeError` because orjson is stricter than the stdlib `json` module.
+  Affects both `application/json` and `application/json-seq` responses.
 - A `mount_node` referencing a nonexistent path in the database no longer causes
   silent data corruption. The server now raises a clear error at startup if the
   mount node does not exist.
