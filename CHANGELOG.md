@@ -10,6 +10,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Support for slicing arrays backed by multipart adapters with modified shapes
 - OIDC Authenticator for Azure Entra
+- Including `metadata` field in NodeTabs item fetch for spec views in the web UI
 
 ### Fixed
 
