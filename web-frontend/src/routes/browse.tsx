@@ -305,7 +305,7 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
         settings.api_url,
         props.segments,
         controller.signal,
-        ["structure_family", "structure", "specs"],
+        ["structure_family", "structure", "specs", "metadata"],
       );
       if (result !== undefined) {
         setItem(result);
