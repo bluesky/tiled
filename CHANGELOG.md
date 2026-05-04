@@ -14,6 +14,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Fixed
 
+- Display of color images in the web UI array viewer.
 - JSON serialization of tables now correctly handles numpy scalar types
   (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
   `Timestamp` when using the `orjson` backend.
