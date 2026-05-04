@@ -1,8 +1,5 @@
 """Tests for JSON serialization of tables containing numpy/pandas types that
 orjson cannot handle natively (numpy scalars, pd.NA, NaT, Timestamp).
-
-Regression test for the _series_to_json_safe fix in
-tiled/serialization/table.py.
 """
 
 import io
@@ -31,7 +28,11 @@ _df = pandas.DataFrame(
         "nullable_float": pandas.array([1.1, pandas.NA, 3.3], dtype="Float64"),
         "datetime_col": pandas.to_datetime(["2024-01-01", "NaT", "2024-03-01"]),
         "timestamp_obj": pandas.array(
-            [pandas.Timestamp("2024-01-01"), pandas.NaT, pandas.Timestamp("2024-03-01")],
+            [
+                pandas.Timestamp("2024-01-01"),
+                pandas.NaT,
+                pandas.Timestamp("2024-03-01"),
+            ],
             dtype=object,
         ),
     }
@@ -129,7 +130,7 @@ def test_nat_datetime(client, reader):
     else:
         col = [row["datetime_col"] for row in result]
     assert col[0] is not None  # valid date → ISO string
-    assert col[1] is None      # NaT → None
+    assert col[1] is None  # NaT → None
     assert col[2] is not None
 
 
