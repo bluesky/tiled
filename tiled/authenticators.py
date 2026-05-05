@@ -282,6 +282,44 @@ class EntraInternalAuthenticator(OIDCAuthenticator):
 
         return claims
 
+    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+        code = request.query_params.get("code")
+        if not code:
+            logger.warning(
+                "Authentication failed: No authorization code parameter provided."
+            )
+            return None
+        # A proxy in the middle may make the request into something like
+        # 'http://localhost:8000/...' so we fix the first part but keep
+        # the original URI path.
+        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        response = await exchange_code(
+            self.token_endpoint,
+            code,
+            self._client_id,
+            self._client_secret.get_secret_value(),
+            redirect_uri,
+        )
+        response_body = response.json()
+        if response.is_error:
+            logger.error("Authentication error: %r", response_body)
+            return None
+        response_body = response.json()
+        id_token = response_body["id_token"]
+        access_token = response_body["access_token"]
+        try:
+            verified_body = self.decode_token(id_token, access_token)
+        except JWTError:
+            logger.exception(
+                "Authentication error. Unverified token: %r",
+                jwt.get_unverified_claims(id_token),
+            )
+            return None
+        # HACK!
+        # We should probably capture both "sub" and "user" (meaning display name)
+        # in UserSessionState, not override sub here.
+        return UserSessionState(verified_body["user"], {})
+
 
 class ProxiedOIDCAuthenticator(OIDCAuthenticator):
     configuration_schema = """
