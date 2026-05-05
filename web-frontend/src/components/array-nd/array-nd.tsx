@@ -18,13 +18,32 @@ interface IProps {
   structure: components["schemas"]["Structure"];
 }
 
+/**
+ * Returns true if the last dimension of the shape looks like a color channel
+ * (RGB = 3, RGBA = 4). This lets us treat (H, W, 3) and (H, W, 4) arrays as
+ * color images rather than stacks of 2-D planes.
+ */
+function isColorImage(shape: number[]): boolean {
+  return shape.length >= 3 && (shape[shape.length - 1] === 3 || shape[shape.length - 1] === 4);
+}
+
 const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const shape = props.structure!.shape as number[];
   const ndim = shape.length;
-  // Find the middle slice in all dimensions except the last two.
+
+  // Determine how many trailing dimensions belong to the image plane.
+  // For color images (last dim == 3 or 4) the image plane is (H, W, C) → 3 dims.
+  // For grayscale the image plane is (H, W) → 2 dims.
+  const imageDims = isColorImage(shape) ? 3 : 2;
+
+  // The number of "stack" dimensions that get sliders.
+  const stackDims = ndim - imageDims;
+
+  // Find the middle slice index for each stack dimension.
   const middles = shape
-    .slice(0, ndim - 2)
+    .slice(0, stackDims)
     .map((size: number) => Math.floor(size / 2));
+
   // Request an image from the server that is downsampled to be at most
   // 2X as big as it will be displayed.
   const theme = useTheme();
@@ -38,16 +57,22 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   } else {
     maxImageSize = theme.breakpoints.values.lg;
   }
-  // Compute a downsampling stride based on the largest dimension
-  // among the last two.
-  const stride = Math.ceil(
-    Math.max(...shape.slice(ndim - 2, ndim)) / maxImageSize,
-  );
+
+  // Compute a downsampling stride based on the largest spatial dimension
+  // (H and W, i.e. the two dimensions just before the optional color channel).
+  const spatialDims = shape.slice(stackDims, stackDims + 2);
+  const stride = Math.ceil(Math.max(...spatialDims) / maxImageSize);
+
   const [cuts, setCuts] = useState<number[]>(middles);
   return (
     <Box>
-      <ImageDisplay link={props.link} cuts={cuts} stride={stride} />
-      {shape.length > 2 ? (
+      <ImageDisplay
+        link={props.link}
+        cuts={cuts}
+        stride={stride}
+        isColor={isColorImage(shape)}
+      />
+      {stackDims > 0 ? (
         <Typography id="input-slider" gutterBottom>
           Choose a planar cut through this {shape.length}-dimensional array.
         </Typography>
@@ -63,7 +88,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
       ) : (
         ""
       )}
-      {shape.slice(0, ndim - 2).map((size: number, index: number) => {
+      {shape.slice(0, stackDims).map((size: number, index: number) => {
         if (size > 1) {
           return (
             <CutSlider
@@ -95,13 +120,23 @@ interface ImageDisplayProps {
   link: string;
   cuts: number[];
   stride: number;
+  isColor: boolean;
 }
 
 const ImageDisplay: React.FunctionComponent<ImageDisplayProps> = (props) => {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  // Build the slice string:
+  //   - One integer per stack dimension (the "cut" value)
+  //   - ::stride for H (height)
+  //   - ::stride for W (width)
+  //   - For color images, no striding on the color channel (just ":" to select all)
   const sliceParts = props.cuts.map(c => c.toString());
   if (props.stride !== 1) {
     sliceParts.push(`::${props.stride}`, `::${props.stride}`);
+    if (props.isColor) {
+      sliceParts.push(`:`);
+    }
   }
   const url = sliceParts.length > 0
     ? `${props.link}?format=image/png&slice=${sliceParts.join(",")}`

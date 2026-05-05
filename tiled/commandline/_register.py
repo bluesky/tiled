@@ -1,6 +1,6 @@
 import asyncio
 import re
-from typing import List
+from typing import List, Optional
 
 import typer
 
@@ -32,6 +32,15 @@ def register(
             "This is discouraged because it leaks details about the storage "
             "format to the client, such that changing the storage in the future "
             "may break user (client-side) code."
+        ),
+    ),
+    include_ext: Optional[List[str]] = typer.Option(
+        None,
+        "--include-ext",
+        help=(
+            "Include only given file extensions, e.g., "
+            "--include-ext .csv --include-ext .tiff "
+            "Include the leading '.' in the file extension."
         ),
     ),
     ext: List[str] = typer.Option(
@@ -75,6 +84,15 @@ def register(
         "--api-key",
     ),
 ):
+    from ..client.register import default_filter
+
+    if include_ext is not None:
+
+        def filter(path):
+            return default_filter(path) and path.suffix in include_ext
+
+    else:
+        filter = default_filter
     if keep_ext:
         from ..client.register import identity
 
@@ -126,6 +144,7 @@ def register(
                 adapters_by_mimetype=adapters_by_mimetype,
                 walkers=walkers,
                 key_from_filename=key_from_filename,
+                filter=filter,
             )
         )
     else:
@@ -139,5 +158,6 @@ def register(
                 adapters_by_mimetype=adapters_by_mimetype,
                 walkers=walkers,
                 key_from_filename=key_from_filename,
+                filter=filter,
             )
         )

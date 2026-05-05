@@ -114,4 +114,56 @@ describe("ArrayND", () => {
       expect.objectContaining({ responseType: "blob" }),
     );
   });
+
+  it("renders 3D RGB color image (H, W, 3) without any sliders", async () => {
+    const props = {
+      ...baseProps,
+      structure: { shape: [300, 451, 3] }, // color image: H=300, W=451, C=3
+    };
+    render(<ArrayND {...props} />);
+    await waitFor(() =>
+      screen.getByRole("img", { name: /Data rendered/i }),
+    );
+    // No cuts needed — last dim is the color channel
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/array?format=image/png",
+      expect.objectContaining({ responseType: "blob" }),
+    );
+    // No sliders for a single color image
+    expect(screen.queryAllByRole("slider")).toHaveLength(0);
+  });
+
+  it("renders 4D stack of RGB color images (N, H, W, 3) with one slider", async () => {
+    const props = {
+      ...baseProps,
+      structure: { shape: [10, 300, 451, 3] }, // stack of 10 color images
+    };
+    render(<ArrayND {...props} />);
+    await waitFor(() =>
+      screen.getByRole("img", { name: /Data rendered/i }),
+    );
+    // Cut at middle of stack dim (floor(10/2) = 5)
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/array?format=image/png&slice=5",
+      expect.objectContaining({ responseType: "blob" }),
+    );
+    // One slider for the N dimension
+    expect(screen.queryAllByRole("slider")).toHaveLength(1);
+  });
+
+  it("includes color channel in stride slice for large color images", async () => {
+    const props = {
+      ...baseProps,
+      structure: { shape: [3000, 3000, 3] }, // large RGB image, stride=3
+    };
+    render(<ArrayND {...props} />);
+    await waitFor(() =>
+      screen.getByRole("img", { name: /Data rendered/i }),
+    );
+    // Stride applied to H and W, color channel kept whole
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/array?format=image/png&slice=::3,::3,:",
+      expect.objectContaining({ responseType: "blob" }),
+    );
+  });
 });

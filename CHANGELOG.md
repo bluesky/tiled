@@ -12,9 +12,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - OIDC Authenticator for Azure Entra
 - Add more administrative CLI commands centered around the creation of service
   principals and their API keys
+- Including `metadata` field in NodeTabs item fetch for spec views in the web UI
 
 ### Fixed
 
+- Display of color images in the web UI array viewer.
+- JSON serialization of tables now correctly handles numpy scalar types
+  (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
+  `Timestamp` when using the `orjson` backend.
 - A `mount_node` referencing a nonexistent path in the database no longer causes
   silent data corruption. The server now raises a clear error at startup if the
   mount node does not exist.
