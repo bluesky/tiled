@@ -203,8 +203,8 @@ def create_service_principal(
     profile: Optional[str] = typer.Option(
         None, help="If you use more than one Tiled server, use this to specify which."
     ),
-    admin: bool = typer.Option(
-        False, help="Whether the new service principal should have admin privileges."
+    role: Optional[str] = typer.Option(
+        "user", help="Role of the new service principal (e.g. 'admin' or 'user')."
     ),
 ):
     """
@@ -213,5 +213,5 @@ def create_service_principal(
     import json
 
     context = get_context(profile)
-    result = context.admin.create_service_principal("admin" if admin else "user")
+    result = context.admin.create_service_principal(role or "user")
     typer.echo(json.dumps(result, indent=2))
