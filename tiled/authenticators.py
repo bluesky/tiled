@@ -255,6 +255,34 @@ properties:
         return UserSessionState(verified_body["sub"], {})
 
 
+class EntraInternalAuthenticator(OIDCAuthenticator):
+    def decode_token(
+        self, id_token: str, access_token: Optional[str] = None
+    ) -> dict[str, Any]:
+        claims = super().decode_token(id_token, access_token)
+
+        claims["entra_username"] = (
+            claims.get("nameID")
+            or claims.get("preferred_username")
+            or claims.get("upn")
+            or claims.get("email")
+        )
+
+        # Make a copy of the entra app user id
+        # in case its needed later
+        claims["entra_userid"] = claims.get("user")
+
+        if user := claims.get("entra_username"):
+            user = user.strip()
+            if "\\" in user:
+                user = user.rsplit("\\", 1)[-1]
+            elif "@" in user:
+                user = user.split("@", 1)[0]
+        claims["user"] = user
+
+        return claims
+
+
 class ProxiedOIDCAuthenticator(OIDCAuthenticator):
     configuration_schema = """
 $schema": http://json-schema.org/draft-07/schema#
