@@ -268,6 +268,7 @@ function dtypeToTypedArray(
   // We still carry the flag for correctness.
   const needsByteSwap = false;
   switch (`${kind}${itemsize}`) {
+    case "b1": return { ArrayType: Uint8Array, needsByteSwap };
     case "u1": return { ArrayType: Uint8Array, needsByteSwap };
     case "u2": return { ArrayType: Uint16Array, needsByteSwap };
     case "u4": return { ArrayType: Uint32Array, needsByteSwap };
