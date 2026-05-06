@@ -258,7 +258,7 @@ describe("NodeTabs Component", () => {
         expect.any(String),
         ["test"],
         expect.any(AbortSignal),
-        ["structure_family", "structure", "specs"],
+        ["structure_family", "structure", "specs", "metadata"],
       );
 
       expect(metadata).toHaveBeenCalledWith(
