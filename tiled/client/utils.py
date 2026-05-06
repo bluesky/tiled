@@ -130,11 +130,10 @@ def retry_context():
 
 
 def should_poll_for_tokens(exception: Exception) -> bool:
-    # If the error is an HTTP status error, only retry on 400.
-    if isinstance(exception, httpx.HTTPStatusError):
-        return exception.response.status_code == httpx.codes.BAD_REQUEST
-    else:
-        return False
+    # Retry on transient network errors during device flow polling.
+    if isinstance(exception, (httpx.ConnectError, httpx.TimeoutException)):
+        return True
+    return False
 
 
 def polling_retry_context(timeout: float):
