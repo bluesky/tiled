@@ -39,6 +39,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
 - Stream updates are processed using a single worker thread, by
   default, in order to guarantee that they are processed in order.
+- WebUI: fetch grayscale images as `application/octet-stream` instead of
+  `image/png` and apply optional colormap and log-normalization client-side.
+- WebUI: reduce the number of significant digits to 4 when displaying numeric
+  values.
 
 ### Added
 
