@@ -36,10 +36,11 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
     async function loadRows() {
       const response = await axiosInstance.get(
         `${templated_link}&format=application/json-seq`,
-        { signal: controller.signal },
+        { signal: controller.signal, responseType: "text" },
       );
       const rows = response.data
         .split("\n")
+        .filter((line: string) => line.trim() !== "")
         .map((line: string) => JSON.parse(line)) as any[];
       setRows(rows);
       setRowsAreLoaded(true);
