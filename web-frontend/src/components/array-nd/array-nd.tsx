@@ -181,8 +181,8 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
 // ---------------------------------------------------------------------------
 const imageSx = {
   width: "100%",
+  height: "auto",
   maxHeight: "60vh",
-  objectFit: "contain" as const,
   display: "block",
 };
 
