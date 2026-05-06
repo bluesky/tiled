@@ -217,6 +217,13 @@ export const OverviewDispatch: React.FunctionComponent<DispatchProps> = (
   // Dispatch to a specific overview component based on the structure family.
   // If spec_views are configured, check for a matching spec first.
   if (props.item !== undefined) {
+    // Guard against stale item: if the item's id doesn't match the current
+    // last segment, the metadata fetch for the new path hasn't resolved yet.
+    // Show a skeleton rather than rendering (and fetching) with wrong segments.
+    const currentId = props.segments[props.segments.length - 1] ?? "";
+    if (props.item.data?.id !== currentId) {
+      return <Skeleton variant="rectangular" />;
+    }
     const attributes = props.item!.data!.attributes!;
 
     // Check for external spec_views (plugin components loaded at runtime)
