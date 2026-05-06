@@ -89,7 +89,9 @@ def register(
     if include_ext is not None:
 
         def filter(path):
-            return default_filter(path) and path.suffix in include_ext
+            return default_filter(path) and (
+                path.is_dir() or path.suffix in include_ext
+            )
 
     else:
         filter = default_filter
