@@ -150,15 +150,17 @@ const DEFAULT_PAGE_SIZE = 10;
 
 /**
  * Format a cell value for display.  Floating-point numbers are rounded to 4
- * significant figures and shown in scientific notation when appropriate, so
- * values like 10.000001037645621 display as "10.00" rather than the full
- * floating-point representation.  Non-numeric values are left as-is.
+ * significant figures, preserving at least one decimal place so that values
+ * like 10.0000001 display as "10.00" rather than "10" (which would imply an
+ * integer dtype).  Non-numeric values are left as-is.
  */
 function formatCellValue(value: unknown): string {
   if (typeof value === "number" && !Number.isInteger(value)) {
-    // toPrecision gives 4 sig-figs; parseFloat strips trailing zeros;
-    // String() uses scientific notation automatically for very large/small values.
-    return String(parseFloat(value.toPrecision(4)));
+    // toPrecision(4) gives 4 significant figures and preserves trailing zeros
+    // within that precision, e.g. 10.0000001 → "10.00", 1.23456 → "1.235",
+    // 12345678.9 → "1.235e+7".  We use it as-is rather than passing through
+    // parseFloat() (which would strip the trailing zeros and turn "10.00" into "10").
+    return value.toPrecision(4);
   }
   return String(value ?? "");
 }
