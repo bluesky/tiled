@@ -1126,7 +1126,7 @@ and enter the code:
                         else access_response.json()["detail"]["error"]
                     )
                     if access_response_error == "authorization_pending":
-                        print(".", end="\n", flush=True)
+                        print(".", end="", flush=True)
                         # Don't raise -- this is expected during polling.
                         # Just break out of the retry context and let the
                         # outer while loop sleep and try again.
