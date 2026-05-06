@@ -148,12 +148,28 @@ interface IDataDisplayProps {
 
 const DEFAULT_PAGE_SIZE = 10;
 
+/**
+ * Format a cell value for display.  Floating-point numbers are rounded to 4
+ * significant figures and shown in scientific notation when appropriate, so
+ * values like 10.000001037645621 display as "10.00" rather than the full
+ * floating-point representation.  Non-numeric values are left as-is.
+ */
+function formatCellValue(value: unknown): string {
+  if (typeof value === "number" && !Number.isInteger(value)) {
+    // toPrecision gives 4 sig-figs; parseFloat strips trailing zeros;
+    // String() uses scientific notation automatically for very large/small values.
+    return String(parseFloat(value.toPrecision(4)));
+  }
+  return String(value ?? "");
+}
+
 const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const data_columns = props.columns.map((column) => ({
     field: column,
     headerName: column,
     width: 200,
+    valueFormatter: (value: unknown) => formatCellValue(value),
   }));
   const data_rows = props.rows.map((row, index) => {
     row.id = index;
