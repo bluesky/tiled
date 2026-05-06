@@ -1,3 +1,28 @@
+import urllib.parse
+from copy import copy
+from logging import LogRecord
+
+from uvicorn.logging import AccessFormatter as _UvicornAccessFormatter
+
+
+class AccessFormatter(_UvicornAccessFormatter):
+    """Uvicorn AccessFormatter that decodes percent-encoded URLs in logs."""
+
+    def formatMessage(self, record: LogRecord) -> str:
+        recordcopy = copy(record)
+        (
+            client_addr,
+            method,
+            full_path,
+            http_version,
+            status_code,
+        ) = recordcopy.args  # type: ignore[misc]
+        # Decode percent-encoded characters for readability
+        full_path = urllib.parse.unquote(full_path)
+        recordcopy.args = (client_addr, method, full_path, http_version, status_code)
+        return super().formatMessage(recordcopy)
+
+
 LOGGING_CONFIG = {
     "disable_existing_loggers": False,
     "filters": {
@@ -12,7 +37,7 @@ LOGGING_CONFIG = {
     },
     "formatters": {
         "access": {
-            "()": "uvicorn.logging.AccessFormatter",
+            "()": "tiled.server.logging_config.AccessFormatter",
             "datefmt": "%Y-%m-%dT%H:%M:%S",
             "format": (
                 "[%(correlation_id)s] "

@@ -2,6 +2,7 @@ import collections
 import contextlib
 import logging
 import os
+import urllib.parse
 
 from ..utils import bytesize_repr
 
@@ -18,7 +19,7 @@ class ClientLogRecord(logging.LogRecord):
                 size = f"({bytesize_repr(int(request.headers['content-length']))})"
             else:
                 size = ""
-            message = f"-> {size} {request.method} '{request.url}' " + " ".join(
+            message = f"-> {size} {request.method} '{urllib.parse.unquote(str(request.url))}' " + " ".join(
                 f"'{k}:{v}'" for k, v in request.headers.items() if k != "authorization"
             )
             # Handle the authorization header specially.
