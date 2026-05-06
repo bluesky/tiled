@@ -175,6 +175,7 @@ def test_device_flow_success(
 
 
         Waiting...
+
         You have logged in with Proxied OIDC as external user.
     """
     )
