@@ -1085,7 +1085,8 @@ and enter the code:
 
 {verification['user_code']}
 
-"""
+""",
+        end="",
     )
     import webbrowser
 
@@ -1125,11 +1126,22 @@ and enter the code:
                         else access_response.json()["detail"]["error"]
                     )
                     if access_response_error == "authorization_pending":
-                        print(".", end="", flush=True)
-                        time.sleep(verification["interval"])
-                        access_response.raise_for_status()
+                        print(".", end="\n", flush=True)
+                        # Don't raise -- this is expected during polling.
+                        # Just break out of the retry context and let the
+                        # outer while loop sleep and try again.
+                        break
+                    # Other 400 errors are genuine failures.
+                    access_response.raise_for_status()
                 handle_error(access_response)
-        print("")
-        break
+        else:
+            # The for/else means we exhausted retries without break.
+            # This happens when handle_error(access_response) succeeds,
+            # meaning we got a successful response.
+            print("\n")
+            break
+        # We broke out of the for loop due to authorization_pending.
+        # Continue the outer while loop to poll again.
+        continue
     tokens = access_response.json()
     return tokens
