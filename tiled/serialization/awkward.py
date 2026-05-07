@@ -28,10 +28,14 @@ def to_zipped_buffers(mimetype, components, metadata):
 @default_deserialization_registry.register(StructureFamily.awkward, "application/zip")
 def from_zipped_buffers(buffer, form, length):
     file = io.BytesIO(buffer)
+    expected_form_keys = set(awkward.forms.from_dict(form).expected_from_buffers())
     with zipfile.ZipFile(file, "r") as zip:
-        form_keys = zip.namelist()
         container = {}
-        for form_key in form_keys:
+        for form_key in zip.namelist():
+            if form_key not in expected_form_keys:
+                raise ValueError(
+                    f"Zip file contains unexpected Awkward buffer key: {form_key!r}"
+                )
             container[form_key] = zip.read(form_key)
     return container
 
