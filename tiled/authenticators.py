@@ -319,6 +319,8 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         extra_scopes: Optional[List[str]] = None,
         confirmation_message: str = "",
         scopes_map: Optional[Dict[str, list[str]]] = None,
+        client_secret: str = "",
+        redirect_on_success: Optional[str] = None,
     ):
         self.scopes_map = scopes_map if scopes_map is not None else {}
         self.extra_scopes = extra_scopes or []
@@ -330,6 +332,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             scopes=None,  # not used by Entra; enforcement is via scopes_map
             confirmation_message=confirmation_message,
         )
+        # Override the empty secret from ProxiedOIDCAuthenticator if provided.
+        if client_secret:
+            self._client_secret = Secret(client_secret)
+        self.redirect_on_success = redirect_on_success
 
         @property
         def scopes(self):
@@ -373,18 +379,61 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
                 user = user.split("@", 1)[0]
         claims["user"] = user
 
-        # Translate Entra scopes to tiled scopes
-        entra_scopes = claims["scp"].split(" ")
+        # Translate Entra scopes to tiled scopes.
+        # The "scp" claim is present in access tokens but may be absent from
+        # id_tokens (e.g. during the authorization code flow).  When absent,
+        # assume all mapped scopes were granted (Entra would not have issued
+        # the tokens if the user lacked the requested scopes).
+        scp_raw = claims.get("scp", "")
         tiled_scope_set = set()
-        for scope in entra_scopes:
-            mapped_scopes = self.scopes_map.get(scope)
-            if mapped_scopes is None:
-                logger.warning("Unmapped Entra scope in 'scp': %s", scope)
-                continue
-            tiled_scope_set.update(mapped_scopes)
+        if scp_raw:
+            for scope in scp_raw.split(" "):
+                mapped_scopes = self.scopes_map.get(scope)
+                if mapped_scopes is None:
+                    logger.warning("Unmapped Entra scope in 'scp': %s", scope)
+                    continue
+                tiled_scope_set.update(mapped_scopes)
+        else:
+            # No scp claim — grant all tiled scopes from the map.
+            for mapped_scopes in self.scopes_map.values():
+                tiled_scope_set.update(mapped_scopes)
         claims["scope"] = " ".join(tiled_scope_set)
 
         return claims
+
+    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+        code = request.query_params.get("code")
+        if not code:
+            logger.warning(
+                "Authentication failed: No authorization code parameter provided."
+            )
+            return None
+        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        response = await exchange_code(
+            self.token_endpoint,
+            code,
+            self._client_id,
+            self._client_secret.get_secret_value(),
+            redirect_uri,
+        )
+        response_body = response.json()
+        if response.is_error:
+            logger.error("Authentication error: %r", response_body)
+            return None
+        id_token = response_body["id_token"]
+        access_token = response_body.get("access_token")
+        try:
+            verified_body = self.decode_token(id_token, access_token)
+        except JWTError:
+            logger.exception(
+                "Authentication error. Unverified token: %r",
+                jwt.get_unverified_claims(id_token),
+            )
+            return None
+        # Use the human-readable username (e.g. "dallan") instead of the
+        # opaque UUID-based "sub" that OIDCAuthenticator would use.
+        username = verified_body.get("user") or verified_body["sub"]
+        return UserSessionState(username, {})
 
 
 async def exchange_code(
