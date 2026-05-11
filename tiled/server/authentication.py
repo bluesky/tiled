@@ -379,6 +379,24 @@ async def get_scopes_from_api_key(
         return scopes
 
 
+def _extract_scopes(
+    decoded_access_token: dict[str, Any],
+    authenticator: Optional[ProxiedOIDCAuthenticator],
+) -> set[str]:
+    """Extract scopes from a decoded access token.
+
+    Tiled-minted tokens (auth code flow) store scopes as a list under "scp".
+    OIDC-provider tokens (device code flow) store them as a space-separated
+    string under "scope".  Handle both.
+    """
+    if "scp" in decoded_access_token:
+        scp = decoded_access_token["scp"]
+        return set(scp) if isinstance(scp, list) else set(scp.split(" "))
+    if "scope" in decoded_access_token:
+        return set(decoded_access_token["scope"].split(" "))
+    return set()
+
+
 async def get_current_scopes(
     request: Request,
     decoded_access_token: Optional[dict[str, Any]] = Depends(get_decoded_access_token),
@@ -394,10 +412,7 @@ async def get_current_scopes(
                 api_key, settings, request.app.state.authenticated, db
             )
     elif decoded_access_token is not None:
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            return set(decoded_access_token["scope"].split(" "))
-        else:
-            return decoded_access_token["scp"]
+        return _extract_scopes(decoded_access_token, settings.authenticator)
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
@@ -417,10 +432,7 @@ async def get_current_scopes_websocket(
                 api_key, settings, websocket.app.state.authenticated, db
             )
     elif decoded_access_token is not None:
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            return set(decoded_access_token["scope"].split(" "))
-        else:
-            return decoded_access_token["scp"]
+        return _extract_scopes(decoded_access_token, settings.authenticator)
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
@@ -472,12 +484,24 @@ async def authenticate_websocket_first_message(
         except Exception:
             return False, None, None, NO_SCOPES
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            principal = schemas.Principal(
-                uuid=uuid_module.UUID(hex=decoded["sub"]),
-                type=schemas.PrincipalType.user,
-                identities=[],
-            )
-            scopes = set(decoded["scope"].split(" "))
+            # Tiled-minted tokens (auth code flow) include "sub_typ" and "ids";
+            # Entra-minted tokens (device code flow) do not.
+            if "sub_typ" in decoded:
+                principal = schemas.Principal(
+                    uuid=uuid_module.UUID(hex=decoded["sub"]),
+                    type=decoded["sub_typ"],
+                    identities=[
+                        schemas.Identity(id=identity["id"], provider=identity["idp"])
+                        for identity in decoded["ids"]
+                    ],
+                )
+            else:
+                principal = schemas.Principal(
+                    uuid=uuid_module.UUID(hex=decoded["sub"]),
+                    type=schemas.PrincipalType.user,
+                    identities=[],
+                )
+            scopes = _extract_scopes(decoded, settings.authenticator)
         else:
             principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded["sub"]),
@@ -592,22 +616,34 @@ async def get_current_principal_websocket(
         return principal
     elif decoded_access_token is not None:
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            identity_id = (
-                decoded_access_token.get("user") or decoded_access_token["sub"]
-            )
-            provider = websocket.app.state.provider
-            async with db_factory() as db:
-                session = await create_session(
-                    settings,
-                    db,
-                    provider,
-                    identity_id,
+            if "sub_typ" in decoded_access_token:
+                # Tiled-minted token (auth code flow).
+                principal = schemas.Principal(
+                    uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                    type=decoded_access_token["sub_typ"],
+                    identities=[
+                        schemas.Identity(id=identity["id"], provider=identity["idp"])
+                        for identity in decoded_access_token["ids"]
+                    ],
                 )
-            principal = schemas.Principal(
-                uuid=session.principal.uuid,
-                type=schemas.PrincipalType.user,
-                identities=[schemas.Identity(id=identity_id, provider=provider)],
-            )
+            else:
+                # Entra-minted token (device code flow).
+                identity_id = (
+                    decoded_access_token.get("user") or decoded_access_token["sub"]
+                )
+                provider = websocket.app.state.provider
+                async with db_factory() as db:
+                    session = await create_session(
+                        settings,
+                        db,
+                        provider,
+                        identity_id,
+                    )
+                principal = schemas.Principal(
+                    uuid=session.principal.uuid,
+                    type=schemas.PrincipalType.user,
+                    identities=[schemas.Identity(id=identity_id, provider=provider)],
+                )
         else:
             return schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
@@ -666,22 +702,34 @@ async def get_current_principal(
             )
     elif decoded_access_token is not None:
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            identity_id = (
-                decoded_access_token.get("user") or decoded_access_token["sub"]
-            )
-            provider = request.app.state.provider
-            async with db_factory() as db:
-                session = await create_session(
-                    settings,
-                    db,
-                    provider,
-                    identity_id,
+            if "sub_typ" in decoded_access_token:
+                # Tiled-minted token (auth code flow): use the full claims.
+                principal = schemas.Principal(
+                    uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                    type=decoded_access_token["sub_typ"],
+                    identities=[
+                        schemas.Identity(id=identity["id"], provider=identity["idp"])
+                        for identity in decoded_access_token["ids"]
+                    ],
                 )
-            principal = schemas.Principal(
-                uuid=session.principal.uuid,
-                type=schemas.PrincipalType.user,
-                identities=[schemas.Identity(id=identity_id, provider=provider)],
-            )
+            else:
+                # Entra-minted token (device code flow): look up / create session.
+                identity_id = (
+                    decoded_access_token.get("user") or decoded_access_token["sub"]
+                )
+                provider = request.app.state.provider
+                async with db_factory() as db:
+                    session = await create_session(
+                        settings,
+                        db,
+                        provider,
+                        identity_id,
+                    )
+                principal = schemas.Principal(
+                    uuid=session.principal.uuid,
+                    type=schemas.PrincipalType.user,
+                    identities=[schemas.Identity(id=identity_id, provider=provider)],
+                )
         else:
             principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),

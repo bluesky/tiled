@@ -401,6 +401,39 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
 
         return claims
 
+    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+        code = request.query_params.get("code")
+        if not code:
+            logger.warning(
+                "Authentication failed: No authorization code parameter provided."
+            )
+            return None
+        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        response = await exchange_code(
+            self.token_endpoint,
+            code,
+            self._client_id,
+            self._client_secret.get_secret_value(),
+            redirect_uri,
+        )
+        response_body = response.json()
+        if response.is_error:
+            logger.error("Authentication error: %r", response_body)
+            return None
+        id_token = response_body["id_token"]
+        access_token = response_body.get("access_token")
+        try:
+            verified_body = self.decode_token(id_token, access_token)
+        except JWTError:
+            logger.exception(
+                "Authentication error. Unverified token: %r",
+                jwt.get_unverified_claims(id_token),
+            )
+            return None
+        # Use the human-readable username (e.g. "dallan") instead of the
+        # opaque UUID-based "sub" that OIDCAuthenticator would use.
+        return UserSessionState(verified_body["user"], {})
+
 
 async def exchange_code(
     token_uri: str,
