@@ -1,6 +1,7 @@
 import io
 import zipfile
 from collections.abc import Mapping
+from pathlib import PurePosixPath
 
 import awkward
 
@@ -29,17 +30,13 @@ def to_zipped_buffers(mimetype, components, metadata):
 @default_deserialization_registry.register(StructureFamily.awkward, "application/zip")
 def from_zipped_buffers(buffer, form, length):
     file = io.BytesIO(buffer)
-    if isinstance(form, Mapping):
-        normalized_form = awkward.forms.from_dict(form)
-    else:
-        normalized_form = form
-    expected_form_keys = set(normalized_form.expected_from_buffers())
     with zipfile.ZipFile(file, "r") as zip:
         container = {}
         for form_key in zip.namelist():
-            if form_key not in expected_form_keys:
+            parsed = PurePosixPath(form_key)
+            if parsed.is_absolute() or ".." in parsed.parts:
                 raise ValueError(
-                    f"Zip file contains unexpected Awkward buffer key: {form_key!r}"
+                    f"Zip file contains unsafe Awkward buffer key: {form_key!r}"
                 )
             container[form_key] = zip.read(form_key)
     return container

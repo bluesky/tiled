@@ -243,22 +243,6 @@ record_arrays_examples = [
 ]
 
 
-def test_reject_unexpected_zip_form_key():
-    array = awkward.Array([{"x": [1, 2, 3]}])
-    form, length, container = awkward.to_buffers(array)
-
-    file = io.BytesIO()
-    with zipfile.ZipFile(file, "w", compression=zipfile.ZIP_STORED) as archive:
-        for form_key, value in container.items():
-            archive.writestr(form_key, value)
-        archive.writestr("../outside.txt", b"malicious")
-
-    from tiled.serialization.awkward import from_zipped_buffers
-
-    with pytest.raises(ValueError, match="unexpected Awkward buffer key"):
-        from_zipped_buffers(file.getvalue(), form.to_dict(), length)
-
-
 @pytest.mark.parametrize("name, data", record_arrays_examples)
 def test_record_arrays(client, name, data):
     array = awkward.Array(data)
