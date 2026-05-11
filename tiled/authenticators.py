@@ -432,7 +432,8 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             return None
         # Use the human-readable username (e.g. "dallan") instead of the
         # opaque UUID-based "sub" that OIDCAuthenticator would use.
-        return UserSessionState(verified_body["user"], {})
+        username = verified_body.get("user") or verified_body["sub"]
+        return UserSessionState(username, {})
 
 
 async def exchange_code(
