@@ -140,6 +140,7 @@ def test_about_endpoint(
     assert response.status_code == httpx.codes.OK
     assert response.json()["authentication"]["providers"][0]["links"] == {
         "auth_endpoint": well_known_response["device_authorization_endpoint"],
+        "authorize_endpoint": f"{context.http_client.base_url}/api/v1/auth/provider/keycloak_oidc/authorize",
         "client_id": oidc_config["authentication"]["providers"][0]["args"][
             "device_flow_client_id"
         ],

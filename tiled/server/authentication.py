@@ -511,7 +511,7 @@ async def authenticate_websocket_first_message(
                     for identity in decoded["ids"]
                 ],
             )
-            scopes = decoded["scp"]
+            scopes = set(decoded["scp"])
         return True, principal, None, scopes
     else:
         return False, None, None, NO_SCOPES
@@ -644,6 +644,7 @@ async def get_current_principal_websocket(
                     type=schemas.PrincipalType.user,
                     identities=[schemas.Identity(id=identity_id, provider=provider)],
                 )
+            return principal
         else:
             return schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
