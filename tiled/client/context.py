@@ -138,7 +138,9 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
-        scopes = " ".join({"openid", "offline_access"} | set(spec.extra_scopes or []))
+        scopes = " ".join(
+            sorted({"openid", "offline_access"} | set(spec.extra_scopes or []))
+        )
         tokens = device_code_grant(
             http_client,
             auth_endpoint,
