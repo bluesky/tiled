@@ -319,6 +319,8 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         extra_scopes: Optional[List[str]] = None,
         confirmation_message: str = "",
         scopes_map: Optional[Dict[str, list[str]]] = None,
+        client_secret: str = "",
+        redirect_on_success: Optional[str] = None,
     ):
         self.scopes_map = scopes_map if scopes_map is not None else {}
         self.extra_scopes = extra_scopes or []
@@ -330,6 +332,10 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             scopes=None,  # not used by Entra; enforcement is via scopes_map
             confirmation_message=confirmation_message,
         )
+        # Override the empty secret from ProxiedOIDCAuthenticator if provided.
+        if client_secret:
+            self._client_secret = Secret(client_secret)
+        self.redirect_on_success = redirect_on_success
 
         @property
         def scopes(self):
