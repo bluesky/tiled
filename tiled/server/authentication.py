@@ -478,7 +478,7 @@ async def authenticate_websocket_first_message(
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
             principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded["sub"]),
-                type=schemas.PrincipalType.external,
+                type=schemas.PrincipalType.user,
                 identities=[],
             )
             scopes = set(decoded["scope"].split(" "))
@@ -596,10 +596,21 @@ async def get_current_principal_websocket(
         return principal
     elif decoded_access_token is not None:
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            return schemas.Principal(
-                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-                type=schemas.PrincipalType.external,
-                identities=[],
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
+            provider = websocket.app.state.provider
+            async with db_factory() as db:
+                session = await create_session(
+                    settings,
+                    db,
+                    provider,
+                    identity_id,
+                )
+            principal = schemas.Principal(
+                uuid=session.principal.uuid,
+                type=schemas.PrincipalType.user,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
             )
         else:
             return schemas.Principal(
@@ -657,26 +668,33 @@ async def get_current_principal(
                 detail="Invalid API key",
                 headers=headers_for_401(request, security_scopes),
             )
-    elif decoded_access_token is not None and not isinstance(
-        settings.authenticator, ProxiedOIDCAuthenticator
-    ):
-        principal = schemas.Principal(
-            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-            type=decoded_access_token["sub_typ"],
-            identities=[
-                schemas.Identity(id=identity["id"], provider=identity["idp"])
-                for identity in decoded_access_token["ids"]
-            ],
-        )
-    elif decoded_access_token is not None and isinstance(
-        settings.authenticator, ProxiedOIDCAuthenticator
-    ):
-        principal = schemas.Principal(
-            uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-            type=schemas.PrincipalType.external,
-            identities=[],
-            access_token=access_token,
-        )
+    elif decoded_access_token is not None:
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
+            provider = request.app.state.provider
+            async with db_factory() as db:
+                session = await create_session(
+                    settings,
+                    db,
+                    provider,
+                    identity_id,
+                )
+            principal = schemas.Principal(
+                uuid=session.principal.uuid,
+                type=schemas.PrincipalType.user,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
+            )
+        else:
+            principal = schemas.Principal(
+                uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
+                type=decoded_access_token["sub_typ"],
+                identities=[
+                    schemas.Identity(id=identity["id"], provider=identity["idp"])
+                    for identity in decoded_access_token["ids"]
+                ],
+            )
     else:
         # No form of authentication is present.
         principal = None
@@ -1596,12 +1614,6 @@ def authentication_router() -> APIRouter:
         request.state.endpoint = "auth"
         if principal is None:
             return json_or_msgpack(request, None)
-
-        if principal and principal.type == schemas.PrincipalType.external:
-            return json_or_msgpack(
-                request,
-                principal.model_dump(),
-            )
 
         # The principal from get_current_principal tells us everything that the
         # access_token carries around, but the database knows more than that.

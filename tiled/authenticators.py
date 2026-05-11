@@ -316,19 +316,31 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         client_id: str,
         well_known_uri: str,
         device_flow_client_id: str,
-        scopes: Optional[List[str]] = None,
+        extra_scopes: Optional[List[str]] = None,
         confirmation_message: str = "",
         scopes_map: Optional[Dict[str, list[str]]] = None,
     ):
+        self.scopes_map = scopes_map if scopes_map is not None else {}
+        self.extra_scopes = extra_scopes or []
         super().__init__(
             audience,
             client_id,
             well_known_uri,
             device_flow_client_id,
-            scopes,
-            confirmation_message,
+            scopes=None,  # not used by Entra; enforcement is via scopes_map
+            confirmation_message=confirmation_message,
         )
-        self.scopes_map = scopes_map if scopes_map is not None else {}
+
+        @property
+        def scopes(self):
+            mapped = set()
+            for tiled_scopes in self.scopes_map.values():
+                mapped.update(tiled_scopes)
+            return list(mapped)
+
+        @scopes.setter
+        def scopes(self, value):
+            pass  # ignored; scopes are derived from scopes_map
 
     def decode_token(
         self, id_token: str, access_token: Optional[str] = None

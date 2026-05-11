@@ -455,6 +455,8 @@ def build_app(
                 add_internal_routes(authentication_router, provider, authenticator)
             elif isinstance(authenticator, ExternalAuthenticator):
                 add_external_routes(authentication_router, provider, authenticator)
+                if isinstance(authenticator, ProxiedOIDCAuthenticator):
+                    app.state.provider = provider
             else:
                 raise ValueError(f"unknown authenticator type {type(authenticator)}")
             for custom_router in getattr(authenticator, "include_routers", []):

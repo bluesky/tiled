@@ -236,6 +236,7 @@ def get_router(
                         "client_id": authenticator.device_flow_client_id,
                         "token_endpoint": authenticator.token_endpoint,
                     },
+                    "extra_scopes": getattr(authenticator, "extra_scopes", []),
                     "confirmation_message": getattr(
                         authenticator, "confirmation_message", None
                     ),

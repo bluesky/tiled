@@ -37,8 +37,8 @@ def external_policy() -> ExternalPolicyDecisionPoint:
 @pytest.fixture
 def principal() -> Principal:
     return Principal(
-        type=PrincipalType.external,
-        identities=[],
+        type=PrincipalType.user,
+        identities=[{"id": "alice", "provider": "dummy"}],
         uuid=uuid.uuid4(),
         access_token=SecretStr("token123"),
     )
