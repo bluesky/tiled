@@ -7,11 +7,13 @@ import dask.array
 import httpx
 import numpy
 import pytest
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_406_NOT_ACCEPTABLE
+from starlette.status import HTTP_406_NOT_ACCEPTABLE, HTTP_422_UNPROCESSABLE_CONTENT
 
 from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.mapping import MapAdapter
-from tiled.client import Context, from_context
+from tiled.client import Context, from_context, record_history
+from tiled.client.array import ArrayClient
+from tiled.ndslice import NDSlice
 from tiled.serialization.array import as_buffer
 from tiled.server.app import build_app
 
@@ -43,6 +45,10 @@ scalar_tree = MapAdapter(
 cube_cases = {
     "tiny_cube": numpy.random.random((10, 10, 10)),
     "tiny_hypercube": numpy.random.random((10, 10, 10, 10, 10)),
+    "chunked": dask.array.from_array(
+        numpy.arange(1_200_000, dtype="uint64").reshape((10, 300, 400)),
+        chunks=(1, 300, 200),
+    ),
 }
 cube_tree = MapAdapter({k: ArrayAdapter.from_array(v) for k, v in cube_cases.items()})
 inf_tree = MapAdapter(
@@ -146,12 +152,16 @@ def test_nan_infinity_handler(tmpdir, context):
 
 
 def test_block_validation(context):
-    "Verify that block must be fully specified."
+    "Verify that block is correctly specified."
     client = from_context(context, "dask")["cube"]["tiny_cube"]
     block_url = httpx.URL(client.item["links"]["block"])
     # Malformed because it has only 2 dimensions, not 3.
     malformed_block_url = block_url.copy_with(params={"block": "0,0"})
-    with fail_with_status_code(HTTP_400_BAD_REQUEST):
+    with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
+        client.context.http_client.get(malformed_block_url).raise_for_status()
+    # Malformed because it has 4 dimensions, not 3.
+    malformed_block_url = block_url.copy_with(params={"block": "0,0,0,0"})
+    with fail_with_status_code(HTTP_422_UNPROCESSABLE_CONTENT):
         client.context.http_client.get(malformed_block_url).raise_for_status()
 
 
@@ -166,7 +176,59 @@ def test_dask(context):
 def test_array_format_shape_from_cube(context):
     client = from_context(context)["cube"]
     with fail_with_status_code(HTTP_406_NOT_ACCEPTABLE):
-        hyper_cube = client["tiny_hypercube"].export("test.png")  # noqa: F841
+        client["tiny_hypercube"].export("test.png")
+
+
+@pytest.mark.parametrize(
+    "bytesize_limit, num_gets_expected",
+    [
+        (None, 1),  # Default, Entire array fits in one response
+        (300 * 400 * 8, 10),  # Each frame fits in one response
+        (300 * 400 * 8 - 1, 20),  # Just under the limit, each frame is split in half
+        (300 * 400 * 16, 5),  # Two frames fit in one response
+        (300 * 100 * 8, 40),  # Each chunk is split in half
+    ],
+)
+def test_request_chunking(context, bytesize_limit, num_gets_expected, monkeypatch):
+    # Try reading a (10, 300, 400) array with (1, 300, 200) chunks and count requests
+    bytesize_limit = bytesize_limit or ArrayClient.RESPONSE_BYTESIZE_LIMIT
+    monkeypatch.setattr(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", bytesize_limit)
+    client = from_context(context)["cube/chunked"]
+    with record_history() as h:
+        arr = client.read()
+    num_gets = sum(1 for entry in h.requests if entry.method == "GET")
+    assert num_gets == num_gets_expected
+    assert all("/array/full" in req.url.path for req in h.requests)
+    numpy.testing.assert_equal(arr, cube_cases["chunked"])
+
+
+def test_request_slicing(context):
+    # One slice that requires data from all chunks
+    client = from_context(context)["cube/chunked"]
+    expected = cube_cases["chunked"][:, 42, 100:300]
+    with record_history() as h:
+        actual = client[:, 42, 100:300]
+    assert len(h.requests) == 1
+    numpy.testing.assert_equal(actual, expected)
+
+
+def test_request_empty_slice(context):
+    # When reading an entire array, `slice=` should not be requested
+    client = from_context(context)["cube/chunked"]
+    with record_history() as h:
+        client.read()
+        client.read(slice=None)
+        client.read(slice=())
+        client.read(slice=Ellipsis)
+        client.read(slice=NDSlice())
+        client[...]
+        client[()]
+        client[:, :, :]
+        client[:]
+        client[:, ..., :]
+    assert len(h.requests) == 10
+    assert all("expected_shape" in req.url.params for req in h.requests)
+    assert all("slice" not in req.url.params for req in h.requests)
 
 
 def test_array_interface(context):
@@ -198,7 +260,8 @@ def test_unparsable_nested_array_stringified(kind, context):
     client = from_context(context)["nested_arrays"][kind]
     assert "<U" in client.dtype.str
     assert "<U" in client.read().dtype.str
-    assert isinstance(client[0], str)
+    assert client[0].dtype.kind == "U"
+    assert isinstance(client[0].item(), str)
 
 
 @pytest.mark.parametrize("kind", list(array_cases))

@@ -1,0 +1,7 @@
+---
+services:
+  tiled:
+    environment:
+      - TILED_CONFIG=/deploy/config
+    volumes:
+      - ./my-custom-config-dir:/deploy/config:ro

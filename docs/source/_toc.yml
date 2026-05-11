@@ -11,15 +11,25 @@ subtrees:
           - entries:
             - file: getting-started/what-is-tiled
             - file: getting-started/10-minutes-to-tiled
+            - file: getting-started/cheat-sheet
+              title: Cheat Sheet
             - file: getting-started/integrations/index
               subtrees:
                 - entries:
                   - file: getting-started/integrations/plotly
                   - file: getting-started/integrations/zarr
+            - file: getting-started/webhooks
   - entries:
     - file: user-guide/index
       subtrees:
         - entries:
+            - file: user-guide/deploy-tiled-server
+              subtrees:
+                - entries:
+                  - file: user-guide/simple-server
+                  - file: user-guide/deploy-tiled-single-node
+                  - file: user-guide/deploy-tiled-multi-node
+                  - file: user-guide/example-server-config
             - file: user-guide/authentication
             - file: user-guide/profiles
             - file: user-guide/client-logger
@@ -35,6 +45,7 @@ subtrees:
             - file: user-guide/tiled-authn-database
             - file: user-guide/register
             - file: user-guide/retries
+            - file: user-guide/webhooks
   - entries:
       - file: explanations/index
         subtrees:

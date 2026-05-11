@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import numpy
 from numpy._typing import NDArray
@@ -104,9 +104,13 @@ class NPYAdapter(Adapter[ArrayStructure]):
 
 class NPYSequenceAdapter(FileSequenceAdapter):
     def _load_from_files(
-        self, slice: Union[builtins.slice, int] = slice(None)
+        self, slice: Union[builtins.slice, int, Iterable[int]] = slice(None)
     ) -> NDArray[Any]:
         if isinstance(slice, int):
             return numpy.load(self.filepaths[slice])[None, ...]
         else:
-            return numpy.asarray([numpy.load(file) for file in self.filepaths[slice]])
+            if isinstance(slice, Iterable):
+                selected = [self.filepaths[i] for i in slice]
+            else:
+                selected = self.filepaths[slice]
+            return numpy.asarray([numpy.load(file) for file in selected])

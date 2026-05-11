@@ -1,4 +1,6 @@
+import builtins
 import copy
+import itertools
 import os
 import sys
 import warnings
@@ -7,10 +9,10 @@ from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import dask
 import dask.array
-import dask.delayed
 import h5py
 import hdf5plugin  # noqa: F401
 import numpy
+from dask.highlevelgraph import HighLevelGraph
 from numpy._typing import NDArray
 
 from tiled.adapters.container import ContainerAdapter
@@ -27,12 +29,14 @@ from ..structures.data_source import DataSource
 from ..type_aliases import JSON
 from ..utils import BrokenLink, Sentinel, node_repr, path_from_uri
 from .array import ArrayAdapter
+from .utils import split_chunks
 
 SWMR_DEFAULT = bool(int(os.getenv("TILED_HDF5_SWMR_DEFAULT", "0")))
 INLINED_DEPTH = int(os.getenv("TILED_HDF5_INLINED_CONTENTS_MAX_DEPTH", "7"))
 
 HDF5_DATASET = Sentinel("HDF5_DATASET")
 HDF5_BROKEN_LINK = Sentinel("HDF5_BROKEN_LINK")
+MIN_CHUNK_SIZE = 1  # Minimum chunk size along the concatenation axis
 
 
 def parse_hdf5_tree(
@@ -160,18 +164,22 @@ class HDF5ArrayAdapter(ArrayAdapter):
             Whether to use file locking when accessing the files
         """
 
-        # Define helper functions for reading and getting specs of HDF5 arrays with dask.delayed
-        def _read_hdf5_array(fpath: Union[str, Path]) -> NDArray[Any]:
-            f = h5py.File(fpath, "r", swmr=swmr, libver=libver, locking=locking)
-            return numpy.array(f[dataset] if dataset else f)
-
-        def _get_hdf5_specs(
-            fpath: Union[str, Path]
-        ) -> Tuple[Tuple[int, ...], Union[Tuple[int, ...], None], numpy.dtype]:
+        # Define helper functions for reading and getting specs of HDF5 arrays
+        def _read_hdf5_array(
+            fpath: Union[str, Path], slice: tuple[builtins.slice, ...]
+        ) -> NDArray:
             with h5open(
                 fpath, dataset, swmr=swmr, libver=libver, locking=locking
             ) as ds:
-                result = ds.shape, ds.chunks, ds.dtype
+                return ds[slice]
+
+        def _get_hdf5_specs(
+            fpath: Union[str, Path]
+        ) -> Tuple[Tuple[int, ...], Tuple[int, ...], numpy.dtype]:
+            with h5open(
+                fpath, dataset, swmr=swmr, libver=libver, locking=locking
+            ) as ds:
+                result = ds.shape, ds.chunks or ds.shape, ds.dtype
             return result
 
         # Need to know shapes/dtypes of constituent arrays to load them lazily
@@ -208,21 +216,77 @@ class HDF5ArrayAdapter(ArrayAdapter):
                 return arr
             return dask.array.empty(shape=())
 
-        if not any([shape for shape, _, _ in shapes_chunks_dtypes]):
-            # All shapes are empty -> all arrays are zero-dimensional (scalars)
-            array = dask.array.stack([_read_hdf5_array(fp)[()] for fp in file_paths])
+        if all((not shp) or (0 in shp) for shp, _, _ in shapes_chunks_dtypes):
+            # Treat empty arrays and scalars separately: all shapes are empty or has 0
+            array = dask.array.stack([_read_hdf5_array(fp, ()) for fp in file_paths])
+
         else:
-            # Use delayed loading to read the arrays from the files
-            delayed = [dask.delayed(_read_hdf5_array)(fpath) for fpath in file_paths]
-            arrs = [
-                dask.array.from_delayed(val, shape=shape, dtype=dtype).rechunk(
-                    chunks=chunk_shape or "auto"
+            # Use delayed loading to read and conactenate arrays from multiple files
+            # First, find chunks along the left axis (split per file),
+            # and chunks in the rest of the dimensions (same for each file)
+            file_chunks = tuple(
+                split_chunks(shp[0], max(chk[0], MIN_CHUNK_SIZE))
+                for shp, chk, _ in shapes_chunks_dtypes
+            )
+            # Shape of the rest of dimensions
+            rest_shape = shapes_chunks_dtypes[0][0][1:]
+            rest_chunks = tuple(
+                split_chunks(shp, min(chk[i + 1] for _, chk, _ in shapes_chunks_dtypes))
+                for i, shp in enumerate(rest_shape)
+            )
+            dim0_chunks = tuple(size for fc in file_chunks for size in fc)
+            chunks_final = (dim0_chunks, *[tuple(d) for d in rest_chunks])
+
+            # Prepare slice tuples and indices for the rightmost dimensions (same for each file)
+            key_rest: Tuple[Tuple[int, ...], ...]
+            slc_rest: Tuple[Tuple[builtins.slice, ...], ...]
+            if not rest_chunks or (max(len(dim) for dim in rest_chunks) == 1):
+                # All dimensions have only one chunk per each: use full slices
+                key_rest = (tuple(0 for _ in rest_chunks),)
+                slc_rest = (tuple(builtins.slice(None) for _ in rest_chunks),)
+            else:
+                # Multiple chunks in at least one of the dimensions:
+                # build full product of indices and corresponding slices
+                key_rest = tuple(
+                    itertools.product(*(range(len(dim)) for dim in rest_chunks))
                 )
-                for (val, (shape, chunk_shape, dtype)) in zip(
-                    delayed, shapes_chunks_dtypes
+                rest_bounds = tuple(
+                    numpy.cumsum((0,) + dim).tolist() for dim in rest_chunks
                 )
-            ]
-            array = dask.array.concatenate(arrs, axis=0) if len(arrs) > 1 else arrs[0]
+                rest_starts = itertools.product(
+                    *(bounds[:-1] for bounds in rest_bounds)
+                )
+                rest_stops = itertools.product(*(bounds[1:] for bounds in rest_bounds))
+                slc_rest = tuple(
+                    tuple(
+                        builtins.slice(start, stop)
+                        for start, stop in zip(dim_starts, dim_stops)
+                    )
+                    for dim_starts, dim_stops in zip(rest_starts, rest_stops)
+                )
+
+            # Define the Dask tasks for loading each chunk from the files
+            name = "hdf5-stack-" + str(hash(tuple([dataset, *file_paths])))
+            dsk = {}  # mapping of (name: task + args) for delayed read task
+            dim0_chunk_idx = 0  # global chunk index along the leftmost dimension
+            for fpath, dim0_chunks in zip(file_paths, file_chunks):
+                # Main loop over the chunks for the leftmost dimension for each file
+                dim0_start = 0
+                for dim0_chunk_size in dim0_chunks:
+                    dim0_stop = dim0_start + dim0_chunk_size
+                    slc = (builtins.slice(dim0_start, dim0_stop),)
+                    key = (name, dim0_chunk_idx)
+
+                    # Inner loop over the rest of dimensions
+                    for kr, sr in zip(key_rest, slc_rest):
+                        dsk[key + kr] = (_read_hdf5_array, fpath, slc + sr)
+
+                    dim0_start = dim0_stop
+                    dim0_chunk_idx += 1
+
+            # Build the high-level graph and the resulting Dask array
+            hlg = HighLevelGraph.from_collections(name, dsk, dependencies=[])
+            array = dask.array.Array(hlg, name, chunks=chunks_final, dtype=dtype)
 
         return array
 

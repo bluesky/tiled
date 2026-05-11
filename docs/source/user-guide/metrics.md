@@ -13,7 +13,7 @@ Tiled ships with some example configuration to make it easy to try this.
 
 2. Install `podman-compose` or `docker-compose`. Either can be installed using `pip install`.
 
-3. Run `TILED_SINGLE_USER_API_KEY=secret podman-compose up`.
+3. Run `TILED_SINGLE_USER_API_KEY=secret podman-compose -f compose.monitoring.yml up`.
 
 4. Open Grafana by navigating a web browser to
    [http://localhost:3000/d/Hnvd_TA4z/tiled-dashboard](http://localhost:3000/d/Hnvd_TA4z/tiled-dashboard).
@@ -29,7 +29,7 @@ list(c)
 ```
 
 To clean up, escape `podman-compose` using Ctrl+C, and then run `podman-compose
-down`. This must be run before running `podman-compose up` again. (Ditto for
+-f compose.monitoring.yml down`. This must be run before running `podman-compose ... up` again. (Ditto for
 `docker-compose`.)
 
 

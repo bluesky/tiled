@@ -119,8 +119,8 @@ async def len_or_approx(tree, exact=False, threshold=5000):
             return await anyio.to_thread.run_sync(operator.length_hint, tree)
     except TypeError:
         pass
-    finally:
-        return await anyio.to_thread.run_sync(len, tree)
+
+    return await anyio.to_thread.run_sync(len, tree)
 
 
 def pagination_links(base_url, route, path_parts, offset, limit, length_hint):
@@ -769,28 +769,39 @@ def get_websocket_envelope_formatter(
             payload_bytes: Optional[bytes],
         ):
             if payload_bytes is not None:
-                media_type = metadata.get("content-type", "application/octet-stream")
+                media_type = metadata.get("mimetype") or metadata.get(
+                    "content-type", "application/octet-stream"
+                )
                 if media_type == "application/json":
-                    # nothing to do, the payload is already JSON
+                    # Nothing to do, the payload is already JSON
                     payload_decoded = payload_bytes
                 else:
-                    # Transcode to payload to JSON.
+                    # Transcode the payload to JSON.
                     metadata["content-type"] = "application/json"
-                    structure_family = (
-                        StructureFamily.array
-                    )  # TODO: generalize beyond array
-                    structure = entry.structure()
-                    deserializer = deserialization_registry.dispatch(
-                        structure_family, media_type
-                    )
-                    payload_decoded = deserializer(
-                        payload_bytes,
-                        structure.data_type.to_numpy_dtype(),
-                        metadata.get("shape"),
-                    )
+                    msg_type = metadata.get("type", "")
+                    if msg_type == "table-data":
+                        deserializer = deserialization_registry.dispatch(
+                            StructureFamily.table, media_type
+                        )
+                        df = deserializer(payload_bytes)
+                        payload_decoded = {col: df[col].tolist() for col in df}
+                    else:
+                        structure = entry.structure()
+                        deserializer = deserialization_registry.dispatch(
+                            StructureFamily.array, media_type
+                        )
+                        payload_decoded = deserializer(
+                            payload_bytes,
+                            structure.data_type.to_numpy_dtype(),
+                            metadata.get("shape"),
+                        )
                 metadata["payload"] = payload_decoded
+            # Convert non-serializable schema objects (e.g. pyarrow.Schema)
+            # to their string representation for JSON transport.
+            if "arrow_schema" in metadata:
+                metadata["arrow_schema"] = str(metadata["arrow_schema"])
             data = safe_json_dump(metadata)
-            await websocket.send_text(data)
+            await websocket.send_text(data.decode())
 
         return stream_json
 

@@ -182,7 +182,7 @@ def test_example_configs(path):
 
 
 def test_pydantic_config():
-    Config.model_validate({"trees": []})
+    Config.model_validate({"catalog": {"uri": "sqlite:///:memory:"}})
 
 
 def test_duplicate_auth_providers():

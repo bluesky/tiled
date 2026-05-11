@@ -23,11 +23,13 @@ SCOPES = {
     "write:principals": {
         "description": "Edit list of all users and services and their attributes."
     },
+    "read:webhooks": {"description": "Read webhooks and delivery history."},
+    "write:webhooks": {"description": "Register and delete webhooks."},
 }
 
 ALL_SCOPES: set[str] = frozenset(SCOPES)
 PUBLIC_SCOPES: set[str] = frozenset(("read:metadata", "read:data"))
-USER_SCOPES: set[str] = frozenset(
+SINGLE_USER_SCOPES: set[str] = frozenset(
     (
         "read:metadata",
         "read:data",
@@ -38,6 +40,8 @@ USER_SCOPES: set[str] = frozenset(
         "create:node",
         "register",
         "metrics",
+        "read:webhooks",
+        "write:webhooks",
     )
 )
 NO_SCOPES: set[str] = frozenset()

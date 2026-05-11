@@ -173,8 +173,8 @@ def test_device_flow_success(
 
         LCWE-ROXW
 
-
         Waiting...
+
         You have logged in with Proxied OIDC as external user.
     """
     )
@@ -183,7 +183,6 @@ def test_device_flow_success(
     assert tokens == tokens_response
 
 
-@pytest.mark.xfail(reason="This should not fail,but needs investigation in stamina")
 @patch("tiled.client.context.time.sleep")
 def test_device_flow_polling(
     _: MagicMock,
@@ -224,8 +223,8 @@ def test_device_flow_polling(
 
         LCWE-ROXW
 
+        Waiting....
 
-        Waiting...
         You have logged in with Proxied OIDC as external user.
     """
     )

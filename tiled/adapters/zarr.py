@@ -17,7 +17,7 @@ from tiled.structures.container import ContainerStructure
 from ..adapters.utils import IndexersMixin
 from ..catalog.orm import Node
 from ..iterviews import ItemsView, KeysView, ValuesView
-from ..ndslice import NDSlice
+from ..ndslice import NDBlock, NDSlice
 from ..storage import (
     SUPPORTED_OBJECT_URI_SCHEMES,
     FileStorage,
@@ -28,9 +28,9 @@ from ..storage import (
 from ..structures.array import ArrayStructure
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
-from ..type_aliases import JSON
+from ..type_aliases import JSON, Chunks
 from ..utils import Conflicts, node_repr, path_from_uri
-from .array import ArrayAdapter, slice_and_shape_from_block_and_chunks
+from .array import ArrayAdapter
 
 ZARR_LIB_V2 = Version(version("zarr")) < Version("3")
 if ZARR_LIB_V2:
@@ -100,59 +100,29 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
     def dims(self) -> Optional[Tuple[str, ...]]:
         return self._structure.dims
 
-    def _stencil(self) -> Tuple[slice, ...]:
+    @property
+    def _stencil(self) -> NDSlice:
         """Trim overflow because Zarr always has equal-sized chunks."""
-        return tuple(builtins.slice(0, dim) for dim in self.structure().shape)
+        return NDSlice(tuple(builtins.slice(0, dim) for dim in self.structure().shape))
 
     def get(self, key: str) -> Union[ArrayAdapter, None]:
         return None
 
-    def read(
-        self,
-        slice: NDSlice = NDSlice(...),
-    ) -> NDArray[Any]:
-        """
+    def read(self, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
+        return cast(NDArray, self._array[self._stencil[slice]])
 
-        Parameters
-        ----------
-        slice :
+    def read_block(self, block: NDBlock, slice: NDSlice = NDSlice(...)) -> NDArray[Any]:
+        "Slice the block out of the whole array and optionally a sub-slice therein."
+        block_slice = block.slice_from_chunks(self.structure().chunks)
+        return self._array[self._stencil[block_slice][slice or ...]]
 
-        Returns
-        -------
-
-        """
-        arr = cast(NDArray, self._array[self._stencil()])
-        return arr[slice]
-
-    def read_block(
-        self,
-        block: Tuple[int, ...],
-        slice: NDSlice = NDSlice(...),
-    ) -> NDArray[Any]:
-        block_slice, _ = slice_and_shape_from_block_and_chunks(
-            block, self.structure().chunks
-        )
-        # Slice the block out of the whole array,
-        # and optionally a sub-slice therein.
-        return self._array[self._stencil()][block_slice][slice or ...]
-
-    def write(
-        self,
-        data: NDArray[Any],
-        slice: NDSlice = NDSlice(...),
-    ) -> None:
+    def write(self, data: NDArray[Any], slice: NDSlice = NDSlice(...)) -> None:
         if slice:
             raise NotImplementedError
-        self._array[self._stencil()] = data
+        self._array[self._stencil] = data
 
-    def write_block(
-        self,
-        data: NDArray[Any],
-        block: Tuple[int, ...],
-    ) -> None:
-        block_slice, shape = slice_and_shape_from_block_and_chunks(
-            block, self.structure().chunks
-        )
+    def write_block(self, data: NDArray[Any], block: NDBlock) -> None:
+        block_slice = block.slice_from_chunks(self.structure().chunks)
         self._array[block_slice] = data
 
     def patch(
@@ -160,7 +130,7 @@ class ZarrArrayAdapter(Adapter[ArrayStructure]):
         data: NDArray[Any],
         offset: Tuple[int, ...],
         extend: bool = False,
-    ) -> Tuple[Tuple[int, ...], Tuple[Tuple[int, ...], ...]]:
+    ) -> Tuple[Tuple[int, ...], Chunks]:
         """
         Write data into a slice of the array, maybe extending it.
 

@@ -36,6 +36,7 @@ from starlette.status import (
     HTTP_406_NOT_ACCEPTABLE,
     HTTP_410_GONE,
     HTTP_422_UNPROCESSABLE_CONTENT,
+    HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
 from tiled.adapters.protocols import AnyAdapter
@@ -48,7 +49,7 @@ from tiled.server.schemas import Principal
 
 from .. import __version__
 from ..links import links_for_node
-from ..ndslice import NDSlice
+from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily
 from ..type_aliases import AccessTags, Scopes
@@ -56,15 +57,19 @@ from ..utils import BrokenLink, ensure_awaitable, patch_mimetypes, path_from_uri
 from ..validation_registration import ValidationError, ValidationRegistry
 from . import schemas
 from .authentication import (
+    authenticate_websocket_first_message,
     check_scopes,
+    get_api_key_websocket,
     get_current_access_tags,
     get_current_access_tags_websocket,
     get_current_principal,
     get_current_principal_websocket,
     get_current_scopes,
     get_current_scopes_websocket,
+    get_decoded_access_token_websocket,
     get_session_state,
 )
+from .connection_pool import get_database_session_factory
 from .core import (
     DEFAULT_PAGE_SIZE,
     DEPTH_LIMIT,
@@ -82,11 +87,12 @@ from .core import (
     resolve_media_type,
 )
 from .dependencies import (
-    block,
     expected_shape,
     get_entry,
     get_root_tree,
     offset_param,
+    parse_block_param,
+    parse_slice_param,
     patch_offset_param,
     patch_shape_param,
     shape_param,
@@ -341,7 +347,7 @@ def get_router(
         request.state.endpoint = "search"
         try:
             (
-                resource,
+                response,
                 metadata_stale_at,
                 must_revalidate,
             ) = await construct_entries_response(
@@ -362,6 +368,9 @@ def get_router(
                 max_depth=max_depth,
                 exact_count_limit=settings.exact_count_limit,
             )
+            # NOTE: Back-compatibility for clients older than v0.2.4
+            response_model_dump = _model_dump_backcompat(request, response)
+
             # We only get one Expires header, so if different parts
             # of this response become stale at different times, we
             # cite the earliest one.
@@ -375,7 +384,7 @@ def get_router(
                 headers["Cache-Control"] = "must-revalidate"
             return json_or_msgpack(
                 request,
-                resource.model_dump(),
+                response_model_dump,
                 expires=expires,
                 headers=headers,
             )
@@ -499,10 +508,13 @@ def get_router(
                 detail=f"Malformed 'select_metadata' parameter raised JMESPathError: {err}",
             )
         meta = {"root_path": request.scope.get("root_path") or "/"} if root_path else {}
+        response = schemas.Response(data=resource, meta=meta)
 
+        # NOTE: Back-compatibility for clients older than v0.2.4
+        response_model_dump = _model_dump_backcompat(request, response)
         return json_or_msgpack(
             request,
-            schemas.Response(data=resource, meta=meta).model_dump(),
+            response_model_dump,
             expires=getattr(entry, "metadata_stale_at", None),
         )
 
@@ -512,8 +524,8 @@ def get_router(
     async def array_block(
         request: Request,
         path: str,
-        block=Depends(block),
-        slice=Depends(NDSlice.from_query),
+        block: NDBlock = Depends(parse_block_param),
+        slice: NDSlice = Depends(parse_slice_param),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -540,24 +552,56 @@ def get_router(
             {StructureFamily.array, StructureFamily.sparse},
             getattr(request.app.state, "access_policy", None),
         )
-        shape = entry.structure().shape
-        # Check that block dimensionality matches array dimensionality.
+        shape, chunks = entry.structure().shape, entry.structure().chunks
         ndim = len(shape)
+
+        # Check that request block matches the chunks dimensionality
+        if block == () and ndim > 0:
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Requested scalar but shape is {shape}",
+            )
         if len(block) != ndim:
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
                     f"Block parameter must have {ndim} comma-separated parameters, "
                     f"corresponding to the dimensions of this {ndim}-dimensional array."
                 ),
             )
-        if block == ():
+        if not block.is_valid_for_shape(tuple(map(len, chunks))):
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Block parameter does not match the chunks dimensionality. "
+                    f"Expected {ndim} comma-separated integers, "
+                    f"that index {chunks}, got {block}."
+                ),
+            )
+
+        block_shape = block.shape_from_chunks(chunks)
+        if not slice.is_valid_for_shape(block_shape):
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"Slice parameter {slice} is not valid for the shape {block_shape} "
+                    "that would result from the requested block."
+                ),
+            )
+
+        # Check if resulting shape matches expected and raise before even loading the data
+        resulting_shape = slice.shape_after_slice(block_shape)
+        if (expected_shape is not None) and (expected_shape != resulting_shape):
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"The expected shape {expected_shape} does not match the actual shape "
+                    f"{resulting_shape} that would result from the requested block and slice."
+                ),
+            )
+
+        if ndim == 0:
             # Handle special case of numpy scalar.
-            if shape != ():
-                raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"Requested scalar but shape is {entry.structure().shape}",
-                )
             with record_timing(request.state.metrics, "read"):
                 array = await ensure_awaitable(entry.read)
         else:
@@ -566,12 +610,15 @@ def get_router(
                     array = await ensure_awaitable(entry.read_block, block, slice)
             except IndexError:
                 raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
+                    status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Block index out of range",
                 )
+            # Something is wrong with the shape of the data vs the value in the structure
             if (expected_shape is not None) and (expected_shape != array.shape):
                 raise HTTPException(
-                    status_code=HTTP_400_BAD_REQUEST,
-                    detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+                    status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"The shape expected from the structure {expected_shape} "
+                    f"does not match the actual data shape {array.shape}",
                 )
         if array.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
@@ -595,7 +642,6 @@ def get_router(
                     filename=filename,
                 )
         except UnsupportedMediaTypes as err:
-            # raise HTTPException(status_code=406, detail=", ".join(err.supported))
             raise HTTPException(status_code=HTTP_406_NOT_ACCEPTABLE, detail=err.args[0])
 
     @router.get(
@@ -604,7 +650,7 @@ def get_router(
     async def array_full(
         path: str,
         request: Request,
-        slice=Depends(NDSlice.from_query),
+        slice: NDSlice = Depends(parse_slice_param),
         expected_shape=Depends(expected_shape),
         format: Optional[str] = None,
         filename: Optional[str] = None,
@@ -640,15 +686,19 @@ def get_router(
             with record_timing(request.state.metrics, "read"):
                 array = await ensure_awaitable(entry.read, slice)
             if structure_family == StructureFamily.array:
-                array = numpy.asarray(array)  # Force dask or PIMS or ... to do I/O.
+                # Force dask or PIMS or ... to do I/O. Ensure dtype is preserved.
+                array = numpy.asarray(
+                    array, dtype=entry.structure().data_type.to_numpy_dtype()
+                )
         except IndexError:
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST, detail="Block index out of range"
             )
         if (expected_shape is not None) and (expected_shape != array.shape):
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=f"The expected_shape {expected_shape} does not match the actual shape {array.shape}",
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"The shape expected from the structure {expected_shape} "
+                f"does not match the actual data shape {array.shape}",
             )
         if array.nbytes > settings.response_bytesize_limit:
             raise HTTPException(
@@ -712,11 +762,51 @@ def get_router(
             get_current_access_tags_websocket
         ),
         authn_scopes: Scopes = Depends(get_current_scopes_websocket),
+        settings: Settings = Depends(get_settings),
+        db_factory: Callable = Depends(get_database_session_factory),
+        api_key: Optional[str] = Depends(get_api_key_websocket),
+        decoded_access_token: Optional[dict] = Depends(
+            get_decoded_access_token_websocket
+        ),
     ):
         root_tree = websocket.app.state.root_tree
         websocket.state.metrics = collections.defaultdict(
             lambda: collections.defaultdict(lambda: 0)
         )
+
+        # If no auth was provided via headers or query params on a server that
+        # requires authentication, accept the connection and wait for a "first
+        # message" carrying credentials. See Issue #1138.
+        # In single-user (API-key-only) mode, principal is legitimately None
+        # for valid keys, so we check whether any credentials were provided.
+        has_credentials = api_key is not None or decoded_access_token is not None
+        needs_first_message_auth = (
+            not has_credentials and not settings.allow_anonymous_access
+        )
+        if needs_first_message_auth:
+            await websocket.accept()
+            try:
+                message = await websocket.receive_json()
+            except Exception:
+                await websocket.close(code=4001, reason="Expected JSON auth message")
+                return
+            if not isinstance(message, dict) or message.get("type") != "auth":
+                await websocket.close(
+                    code=4001, reason='Expected {"type": "auth", ...}'
+                )
+                return
+            (
+                success,
+                principal,
+                authn_access_tags,
+                authn_scopes,
+            ) = await authenticate_websocket_first_message(
+                websocket, message, settings, db_factory
+            )
+            if not success:
+                await websocket.close(code=4003, reason="Authentication failed")
+                return
+
         entry = await get_entry(
             path,
             ["read:data", "read:metadata"],
@@ -743,7 +833,7 @@ def get_router(
         path_str = "/".join(path_parts)
         uri = f"{base_websocket_url.replace(scheme=scheme)}/array/full/{path_str}"
         handler = entry.make_ws_handler(websocket, formatter, uri)
-        await handler(start)
+        await handler(start, already_accepted=needs_first_message_auth)
 
     @router.get(
         "/table/partition/{path:path}",
@@ -1757,7 +1847,7 @@ def get_router(
     async def put_array_block(
         request: Request,
         path: str,
-        block=Depends(block),
+        block: NDBlock = Depends(parse_block_param),
         persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),
@@ -2509,3 +2599,28 @@ def get_metrics_router() -> APIRouter:
         return Response(data, headers={"Content-Type": CONTENT_TYPE_LATEST})
 
     return router
+
+
+def _model_dump_backcompat(request: Request, response: schemas.Response) -> dict:
+    """Backwards compatibility for clients older than v0.2.4
+
+    Older clients expect "data_sources" in the response to not include "properties".
+    To be removed in a future major release.
+    Issue: https://github.com/bluesky/tiled/issues/1300
+    """
+    response_dict = response.model_dump()
+    user_agent = request.headers.get("user-agent", "")
+    if user_agent.startswith("python-tiled/"):
+        agent, _, raw_version = user_agent.partition("/")
+        try:
+            parsed_version = packaging.version.parse(raw_version)
+            if parsed_version < packaging.version.parse("0.2.4"):
+                for ds in response_dict["data"]["attributes"]["data_sources"]:
+                    ds.pop("properties", None)
+
+                return response_dict
+
+        except Exception:
+            pass
+
+    return response_dict

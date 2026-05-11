@@ -6,6 +6,61 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ## Unreleased
 
+### Added
+
+- Support for slicing arrays backed by multipart adapters with modified shapes
+- OIDC Authenticator for Azure Entra
+- Including `metadata` field in NodeTabs item fetch for spec views in the web UI
+
+### Fixed
+
+- Display of color images in the web UI array viewer.
+- JSON serialization of tables now correctly handles numpy scalar types
+  (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
+  `Timestamp` when using the `orjson` backend.
+- A `mount_node` referencing a nonexistent path in the database no longer causes
+  silent data corruption. The server now raises a clear error at startup if the
+  mount node does not exist.
+- Writing chunked (dask) arrays with single chunk along all dimensions
+- OIDC authenticator was not quite compliant and was incompatible with
+  at least some providers including Azure and ORCID.
+- Improved performance of reading zarr arrays when slicing by avoiding reading
+  the full arrays into memory, but using slice composition instead.
+- Ensure that JSON payloads in streaming endpoints is properly decoded.
+- A bug in `TiledAuth` when `token_directory` is `None` caused an
+  error during token refresh.
+- Resolve syntax error caused by a return statement in a finally block
+  on Python 3.14+.
+
+### Changed
+
+- Array client fully supports slicing when communicating with the server
+  and only fetches the data needed to satisfy the slice.
+- CSVArrayAdapter supports reading heterogenous tables as structured arrays
+- Stream updates are processed using a single worker thread, by
+  default, in order to guarantee that they are processed in order.
+- WebUI: fetch grayscale images as `application/octet-stream` instead of
+  `image/png` and apply optional colormap and log-normalization client-side.
+- WebUI: reduce the number of significant digits to 4 when displaying numeric
+  values.
+
+### Added
+
+- Authentication support in the web UI: login page with password and OIDC
+  provider support, token persistence with automatic refresh, authenticated
+  image loading and file downloads, and user menu with logout.
+- Tests for the WebSocket endpoints that stream tabular data.
+- New server config option `create_mount_nodes_if_not_exist` (default `false`)
+  that auto-creates missing intermediate container nodes when a `mount_node`
+  path does not exist in the database. Also settable via the
+  `TILED_CREATE_MOUNT_NODES_IF_NOT_EXIST` environment variable.
+- Tests for the WebSocket endpoints that stream tabukar data.
+- WebSocket "first message" authentication: clients can now authenticate
+  WebSocket connections by sending credentials in the first message instead
+  of exposing tokens in query parameters (#1138).
+
+## v0.2.7 (2026-02-27)
+
 ### Fixed
 
 - A potential race condition when subscribing to an already started stream
@@ -13,11 +68,24 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Tests and examples that use example config files; specifically an external
   NeXus file used as an example of the structure is generated dynamically at
   test time now.
+- Type hint for `readable_storage` parameter for `SimpleTiledServer` indicated it
+  should be a string or `Path`, but it actually was required to be a list of strings
+  or list of `Paths`. This has been fixed.
+- Missing docstring for `readable_storage` parameter added.
+- Missing `properties` field in the `put_data_source` method on the adapter.
+- Web frontend image retrieval for 2D arrays with downsampling.
 
 ### Changed
 
 - The `start_in_thread` method of `Subscription` now waits until the WebSocket
   connection is established before returning.
+- Allow for passing a single string or `Path` to `SimpleTiledServer`'s `readable_storage`
+  parameter. Generally, when using `SimpleTiledServer` one usually just passes `/tmp` or
+  `tmp_path` in unit tests.
+- Unit test that confirms that the `readable_storage` setting works as expected, with
+  it being passed as a string, `Path`, list of strings, or list of `Path`s.
+- Cancel previous CI runs on a PR when further commits are pushed to reduce
+  CI processing time.
 
 ## v0.2.7 (2026-02-27)
 

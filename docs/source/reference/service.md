@@ -139,3 +139,12 @@ See {doc}`../explanations/structures` for more context.
    tiled.adapters.resource_cache.default_resource_cache
    tiled.adapters.resource_cache.with_resource_cache
 ```
+
+## Simple Tiled Server
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   tiled.server.SimpleTiledServer
+```

@@ -9,6 +9,8 @@ import numpy
 
 from tiled.structures.root import Structure
 
+from ..type_aliases import Chunks
+
 # from dtype.descr
 FieldDescr = Union[Tuple[str, str], Tuple[str, str, Tuple[int, ...]]]
 NumpyDescr = List[FieldDescr]
@@ -230,7 +232,7 @@ class StructDtype:
 @dataclass
 class ArrayStructure(Structure):
     data_type: Union[BuiltinDtype, StructDtype]
-    chunks: Tuple[Tuple[int, ...], ...]  # tuple-of-tuples-of-ints like ((3,), (3,))
+    chunks: Chunks  # tuple-of-tuples-of-ints like ((3,), (3,))
     shape: Tuple[int, ...]  # tuple of ints like (3, 3)
     dims: Optional[Tuple[str, ...]] = None  # None or tuple of names like ("x", "y")
     resizable: Union[bool, Tuple[bool, ...]] = False

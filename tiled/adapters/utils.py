@@ -107,3 +107,9 @@ def force_reshape(
     raise ValueError(
         f"Can not reshape {arr.shape} array data to {tuple(desired_shape)}"
     )
+
+
+def split_chunks(total: int, chunk: int) -> tuple[int, ...]:
+    "Split total into repeated chunks of size `chunk`, with a remainder at the end."
+    num_full_chunks, remainder = divmod(total, chunk)
+    return tuple([chunk] * num_full_chunks + ([remainder] if remainder else []))

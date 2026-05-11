@@ -224,8 +224,9 @@ def _make_ws_handler_common(
     - Ensures cleanup of resources (e.g., live stream subscriptions) on exit.
     """
 
-    async def handler(sequence: Optional[int] = None):
-        await websocket.accept()
+    async def handler(sequence: Optional[int] = None, already_accepted: bool = False):
+        if not already_accepted:
+            await websocket.accept()
         end_stream = asyncio.Event()
 
         # Send schema to provide client context to interpret what follows.
@@ -247,7 +248,7 @@ def _make_ws_handler_common(
             if metadata.get("type") == "array-ref":
                 if metadata.get("patch"):
                     s = ",".join(
-                        f"{offset}:{offset+shape}"
+                        f"{offset}:{offset + shape}"
                         for offset, shape in zip(
                             metadata["patch"]["offset"], metadata["patch"]["shape"]
                         )

@@ -10,7 +10,12 @@ from functools import cached_property
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from tiled.authenticators import ProxiedOIDCAuthenticator
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
@@ -37,6 +42,38 @@ TREE_ALIASES = {"catalog": "tiled.catalog:from_uri"}
 def sub_paths(segments: tuple[str, ...]) -> Iterator[tuple[str, ...]]:
     for i in range(len(segments)):
         yield segments[:i]
+
+
+def settings_customise_sources(
+    # Give env vars priority over config file.
+    # https://docs.pydantic.dev/latest/concepts/pydantic_settings/#changing-priority
+    cls,
+    settings_cls: type[BaseSettings],
+    init_settings: PydanticBaseSettingsSource,
+    env_settings: PydanticBaseSettingsSource,
+    dotenv_settings: PydanticBaseSettingsSource,
+    file_secret_settings: PydanticBaseSettingsSource,
+) -> tuple[PydanticBaseSettingsSource, ...]:
+    return env_settings, init_settings, file_secret_settings
+
+
+class CatalogConfig(BaseSettings):
+    uri: str
+    metadata: Optional[dict] = None
+    specs: Optional[list[Spec]] = None
+    writable_storage: Optional[list[str]] = None
+    readable_storage: Optional[list[str]] = None
+    init_if_not_exists: bool = False
+    adapters_by_mimetype: Optional[list[EntryPointString]] = None
+    top_level_access_blob: Optional[dict] = None
+    mount_node: Optional[Union[str, list[str]]] = None
+    catalog_pool_size: int = 5
+    storage_pool_size: int = 5
+    catalog_max_overflow: int = 10
+    storage_max_overflow: int = 10
+
+    model_config = SettingsConfigDict(env_prefix="TILED_CATALOG_")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
 
 class TreeSpec(BaseModel):
@@ -103,7 +140,7 @@ class TiledAdmin(BaseModel):
     id: str
 
 
-class Authentication(BaseModel):
+class Authentication(BaseSettings):
     # Defaults are all left as None to differentiate between unset and set to the default
     providers: Optional[list[AuthenticationProviderSpec]] = None
     tiled_admins: Optional[list[TiledAdmin]] = None
@@ -149,42 +186,90 @@ class Authentication(BaseModel):
 
         return self
 
+    model_config = SettingsConfigDict(env_prefix="TILED_AUTHN")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
-class Database(BaseModel):
+
+class Database(BaseSettings):
     uri: Optional[str] = None
     init_if_not_exists: Optional[bool] = None
     pool_pre_ping: Optional[bool] = None
     pool_size: Annotated[Optional[int], Field(ge=2)] = 5
     max_overflow: Optional[int] = 10
 
+    model_config = SettingsConfigDict(env_prefix="TILED_AUTHN_DATABASSE")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
-class AccessControl(BaseModel):
+
+class AccessControl(BaseSettings):
     access_policy: EntryPointString
     args: Optional[dict[str, Any]]
 
     def build(self):
         return self.access_policy(**(self.args or {}))
 
+    model_config = SettingsConfigDict(env_prefix="TILED_ACCESS_CONTROL")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
-class MetricsConfig(BaseModel):
+
+class MetricsConfig(BaseSettings):
     prometheus: bool = True
 
+    model_config = SettingsConfigDict(env_prefix="TILED_METRICS")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
-class ValidationSpec(BaseModel):
+
+class ValidationSpec(BaseSettings):
     spec: str
     validator: Optional[EntryPointString] = None
 
+    model_config = SettingsConfigDict(env_prefix="TILED_VALIDATORS")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
-class StreamingCacheConfig(BaseModel):
+
+class StreamingCacheConfig(BaseSettings):
     uri: str
     data_ttl: int = 3600  # 1 hr
     seq_ttl: int = 2592000  # 30 days
     socket_timeout: int = 86400  # 1 day
     socket_connect_timeout: int = 10
 
+    model_config = SettingsConfigDict(env_prefix="TILED_STREAMING_CACHE_")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
-class Config(BaseModel):
-    trees: list[TreeSpec]
+
+class WebhooksConfig(BaseSettings):
+    """Configuration for the optional webhooks feature.
+
+    When this section is present in the server configuration, the
+    ``/api/v1/webhooks`` router is mounted and the WebhookDispatcher is
+    started alongside the catalog.  When absent, webhooks are fully disabled.
+
+    Parameters
+    ----------
+    secret_keys : list of str
+        Keys used to encrypt webhook HMAC signing secrets at rest.
+        Required; generate one with ``openssl rand -hex 32``.
+    allow_http : bool
+        When ``True``, webhook URLs are allowed to use plain HTTP instead of
+        HTTPS.  Default ``False`` (HTTPS is required).
+    allow_private_addresses : bool
+        When ``True``, webhook URLs may target private, loopback, or reserved
+        IP addresses.  Default ``False`` (such addresses are blocked to
+        mitigate SSRF).
+    """
+
+    secret_keys: list[str] = []
+    allow_http: bool = False
+    allow_private_addresses: bool = False
+
+    model_config = SettingsConfigDict(env_prefix="TILED_WEBHOOKS_")
+    settings_customise_sources = classmethod(settings_customise_sources)
+
+
+class Config(BaseSettings):
+    catalog: Optional[CatalogConfig] = None  # recommended
+    trees: Optional[list[TreeSpec]] = None  # advanced alternative
     media_types: dict[str, dict[str, EntryPointString]] = {}
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
@@ -200,27 +285,86 @@ class Config(BaseModel):
     reject_undeclared_specs: bool = False
     expose_raw_assets: bool = True
     routers: list[EntryPointString] = []
+    streaming_cache: Optional[StreamingCacheConfig] = None
+    webhooks: Optional[WebhooksConfig] = None
+    create_mount_nodes_if_not_exist: bool = False
 
+    # If recommended 'catalog' config is used, these parameters are
+    # not used; they are set inside the CatalogConfig.
+    # If legacy / flexible 'trees' config is used, these are used.
     catalog_pool_size: int = 5
     storage_pool_size: int = 5
     catalog_max_overflow: int = 10
     storage_max_overflow: int = 10
 
-    streaming_cache: Optional[StreamingCacheConfig] = None
+    model_config = SettingsConfigDict(env_prefix="TILED_")
+    settings_customise_sources = classmethod(settings_customise_sources)
 
     @field_validator("access_policy")
     @classmethod
     def check_access_policy(cls, value: Any) -> Any:
         """Convert the access policy spec into the construct instance"""
+        if value is None:
+            return None
         access = AccessControl.model_validate(value)
         return access.build()
+
+    @model_validator(mode="after")
+    def populate_streaming_cache_from_env(self) -> "Config":
+        if self.streaming_cache is None:
+            try:
+                self.streaming_cache = StreamingCacheConfig()
+            except ValidationError:
+                pass  # uri not set, leave as None
+        return self
+
+    @model_validator(mode="after")
+    def populate_webhooks_from_env(self) -> "Config":
+        if self.webhooks is None:
+            try:
+                self.webhooks = WebhooksConfig()
+            except ValidationError:
+                pass  # secret_keys not set, leave as None
+        return self
+
+    @model_validator(mode="after")
+    def reconcile_catalog_and_trees(self):
+        """
+        The 'catalog' and 'trees' config are mutually exclusive.
+
+        The 'catalog' (recommended) specifies one catalog; 'trees' (advanced)
+        can specify multiple catalogs, mounted at different prefixes.
+        """
+        if self.catalog is not None:
+            if self.trees:
+                raise ValueError(
+                    "The configuration 'catalog' specifies a single catalog, "
+                    "whereas 'trees' can specify multiple catalogs. "
+                    "It is not allowed to use both 'catalog' and 'trees'."
+                )
+            # Build a TreeSpec out of the catalog.
+            tree = TreeSpec(
+                tree="catalog",
+                path="/",
+                args=self.catalog.model_dump(),
+            )
+            self.trees = [tree]
+            # Having parsed the catalog into a tree, put the model in a
+            # self-consistent state.
+            # (The model cannot have *both* catalog and trees.)
+            self.catalog = None
+        elif not self.trees:
+            raise ValueError(
+                "Configuration must specific 'catalog' or 'trees' (multiple catalogs)."
+            )
+        return self
 
     @field_validator("trees")
     @classmethod
     def non_overlapping_trees(cls, trees: list[TreeSpec]) -> list[TreeSpec]:
         """Ensure that paths to trees do not collide"""
         paths = set()
-        for path in sorted((t.segments for t in trees), key=len):
+        for path in sorted((t.segments for t in (trees or [])), key=len):
             for sub in (*sub_paths(path), path):
                 if sub in paths:
                     raise ValueError(
@@ -232,7 +376,7 @@ class Config(BaseModel):
     @model_validator(mode="after")
     def fudge_tree_args(self):
         # Needing to fudge the args of tree specs is awful
-        for tree in self.trees:
+        for tree in self.trees or []:
             tree.args = tree.args or {}
             if tree.tree_type is from_uri:
                 defaults = get_settings()
@@ -253,6 +397,13 @@ class Config(BaseModel):
                 tree.args["cache_config"] = (
                     self.streaming_cache.model_dump() if self.streaming_cache else None
                 )
+                tree.args["webhook_secret_keys"] = (
+                    list(self.webhooks.secret_keys) if self.webhooks else None
+                )
+            if tree.tree_type is from_uri:
+                tree.args[
+                    "create_mount_nodes_if_not_exist"
+                ] = self.create_mount_nodes_if_not_exist
         return self
 
     @property
@@ -261,7 +412,10 @@ class Config(BaseModel):
 
     @cached_property
     def merged_trees(self) -> Any:  # TODO: update when # 1047 is merged
-        trees = dict(tree.tree_entry for tree in self.trees)
+        trees = {
+            segments: tree
+            for segments, tree in (tree_spec.tree_entry for tree_spec in self.trees)
+        }
         if list(trees) == [()]:
             # Simple case: there is one tree, served at the root path /.
             root_tree = trees[()]
@@ -351,6 +505,7 @@ def construct_build_app_kwargs(config: Config):
         reject_undeclared_specs=config.reject_undeclared_specs,
         expose_raw_assets=config.expose_raw_assets,
         metrics=config.metrics,
+        webhooks=config.webhooks,
     )
     return dict(
         tree=config.merged_trees,
