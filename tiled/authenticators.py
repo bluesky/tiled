@@ -379,15 +379,24 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
                 user = user.split("@", 1)[0]
         claims["user"] = user
 
-        # Translate Entra scopes to tiled scopes
-        entra_scopes = claims["scp"].split(" ")
+        # Translate Entra scopes to tiled scopes.
+        # The "scp" claim is present in access tokens but may be absent from
+        # id_tokens (e.g. during the authorization code flow).  When absent,
+        # assume all mapped scopes were granted (Entra would not have issued
+        # the tokens if the user lacked the requested scopes).
+        scp_raw = claims.get("scp", "")
         tiled_scope_set = set()
-        for scope in entra_scopes:
-            mapped_scopes = self.scopes_map.get(scope)
-            if mapped_scopes is None:
-                logger.warning("Unmapped Entra scope in 'scp': %s", scope)
-                continue
-            tiled_scope_set.update(mapped_scopes)
+        if scp_raw:
+            for scope in scp_raw.split(" "):
+                mapped_scopes = self.scopes_map.get(scope)
+                if mapped_scopes is None:
+                    logger.warning("Unmapped Entra scope in 'scp': %s", scope)
+                    continue
+                tiled_scope_set.update(mapped_scopes)
+        else:
+            # No scp claim — grant all tiled scopes from the map.
+            for mapped_scopes in self.scopes_map.values():
+                tiled_scope_set.update(mapped_scopes)
         claims["scope"] = " ".join(tiled_scope_set)
 
         return claims
