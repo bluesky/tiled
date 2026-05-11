@@ -1,6 +1,5 @@
 import io
 import zipfile
-from collections.abc import Mapping
 from pathlib import PurePosixPath
 
 import awkward
