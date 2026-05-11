@@ -596,8 +596,10 @@ async def get_current_principal_websocket(
         return principal
     elif decoded_access_token is not None:
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            identity_id = decoded_access_token.get("user") or decoded_access_token["sub"]
-            provider = request.app.state.provider
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
+            provider = websocket.app.state.provider
             async with db_factory() as db:
                 session = await create_session(
                     settings,
@@ -608,10 +610,7 @@ async def get_current_principal_websocket(
             principal = schemas.Principal(
                 uuid=session.principal.uuid,
                 type=schemas.PrincipalType.user,
-                identities=[
-                    schemas.Identity(id=identity_id, provider=provider)
-                ],
-                access_token=access_token,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
             )
         else:
             return schemas.Principal(
@@ -671,7 +670,9 @@ async def get_current_principal(
             )
     elif decoded_access_token is not None:
         if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            identity_id = decoded_access_token.get("user") or decoded_access_token["sub"]
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
             provider = request.app.state.provider
             async with db_factory() as db:
                 session = await create_session(
@@ -683,10 +684,7 @@ async def get_current_principal(
             principal = schemas.Principal(
                 uuid=session.principal.uuid,
                 type=schemas.PrincipalType.user,
-                identities=[
-                    schemas.Identity(id=identity_id, provider=provider)
-                ],
-                access_token=access_token,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
             )
         else:
             principal = schemas.Principal(
