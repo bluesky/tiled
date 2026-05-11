@@ -158,25 +158,21 @@ def decode_token(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    # Try tiled-issued keys first (covers both normal auth and auth-code flow
+    # tokens issued via create_tokens_from_session).
+    for secret_key in secret_keys:
+        try:
+            payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+            return payload
+        except ExpiredSignatureError:
+            raise
+        except JWTError:
+            continue
+    # If none of the tiled keys worked, try the proxied authenticator
+    # (e.g. tokens issued directly by an OIDC provider in the device code flow).
     if proxied_authenticator:
         return proxied_authenticator.decode_token(token)
-    else:
-        # The first key in settings.secret_keys is used for *encoding*.
-        # All keys are tried for *decoding* until one works or they all
-        # fail. They supports key rotation.
-        for secret_key in secret_keys:
-            try:
-                payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
-                break
-            except ExpiredSignatureError:
-                # Do not let this be caught below with the other JWTError types.
-                raise
-            except JWTError:
-                # Try the next key in the key rotation.
-                continue
-        else:
-            raise credentials_exception
-    return payload
+    raise credentials_exception
 
 
 async def get_api_key(
@@ -912,10 +908,12 @@ def add_external_routes(
 
         redirect_uri = f"{get_base_url(request)}/auth/provider/{provider}/code"
 
+        scopes = {"openid", "offline_access"}
+        scopes.update(getattr(authenticator, "extra_scopes", []))
         params = {
             "client_id": authenticator.client_id,
             "response_type": "code",
-            "scope": "openid",
+            "scope": " ".join(sorted(scopes)),
             "redirect_uri": redirect_uri,
             "prompt": "login",
         }
