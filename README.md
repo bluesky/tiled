@@ -35,5 +35,8 @@ See [Getting Started][] for more detailed installation instructions.
 See [What is Tiled?][] for an overview of Tiled's goals. Then see
 [10 Minutes to Tiled][] for a walkthrough of some key features.
 
+[open source]: https://github.com/bluesky/tiled/blob/main/LICENSE
+[governance model]: https://github.com/bluesky/governance
 [Getting Started]: https://blueskyproject.io/tiled/getting-started/index.html
+[What is Tiled?]: https://blueskyproject.io/tiled/getting-started/what-is-tiled.html
 [10 Minutes to Tiled]: https://blueskyproject.io/tiled/getting-started/10-minutes-to-tiled.html
