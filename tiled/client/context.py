@@ -297,6 +297,17 @@ class Context:
             if len(self.server_info.authentication.providers) == 1
             else None
         )
+        provider = (
+            self.server_info.authentication.providers[0]
+            if len(self.server_info.authentication.providers) == 1
+            else None
+        )
+        extra_scopes = getattr(provider, "extra_scopes", None) or []
+        self.scopes = (
+            " ".join(sorted({"openid", "offline_access"} | set(extra_scopes)))
+            if extra_scopes
+            else None
+        )
         # To determine httpx.Auth used by Tiled client is TiledAuth(internal) or external Auth
         self.has_external_auth = False
 
@@ -716,7 +727,9 @@ class Context:
             temp_auth.sync_clear_token("refresh_token")
             # Store tokens in memory only, with no syncing to disk.
             token_directory = None
-        auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        auth = TiledAuth(
+            refresh_url, csrf_token, token_directory, self.client_id, self.scopes
+        )
         auth.sync_tokens(tokens)
         self.http_client.auth = auth
 
@@ -777,7 +790,11 @@ class Context:
         # We have to make an HTTP request to let the server validate whether we
         # have a valid session.
         self.http_client.auth = TiledAuth(
-            refresh_url, csrf_token, token_directory, self.client_id
+            refresh_url,
+            csrf_token,
+            token_directory,
+            self.client_id,
+            self.scopes,
         )
         # This will either:
         # * Use an access_token and succeed.
@@ -816,6 +833,7 @@ class Context:
             refresh_token,
             csrf_token,
             self.http_client.auth.client_id,
+            self.http_client.auth.scopes,
         )
         for attempt in retry_context():
             with attempt:
