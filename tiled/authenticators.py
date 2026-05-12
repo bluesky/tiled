@@ -443,12 +443,6 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         id_token = response_body["id_token"]
         access_token = response_body.get("access_token")
         refresh_token = response_body.get("refresh_token")
-        logger.info(
-            "EntraAuthenticator.authenticate: access_token present=%s, "
-            "refresh_token present=%s",
-            bool(access_token),
-            bool(refresh_token),
-        )
         try:
             verified_body = self.decode_token(id_token, access_token)
         except JWTError:
