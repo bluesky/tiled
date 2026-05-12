@@ -2,7 +2,7 @@
 
 ## Path to v1.0.0 Release
 
-We aim to release v1.0.0 in by September 2025.
+We aim to release v1.0.0 in by September 2026.
 
 - Optimize performance and scalability. Build out nascent
   [asv](https://asv.readthedocs.io/en/latest/) benchmarks, and
