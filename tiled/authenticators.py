@@ -402,6 +402,26 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         return claims
 
     async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+        """Complete the Entra OIDC authorization-code flow and return a session.
+
+        After a successful code exchange the Entra ``access_token`` and
+        ``refresh_token`` are stored in ``UserSessionState.state`` under the
+        keys ``entra_access_token`` and ``entra_refresh_token`` respectively.
+        Tiled persists this state in the session DB and embeds it verbatim in
+        every Tiled HMAC access token, making the tokens available to downstream
+        services that rely on Tiled authentication via ``get_session_state()``.
+
+        Security note: the Entra access token is therefore visible inside the
+        Tiled JWT (base64-encoded, not encrypted).  The Tiled access token is
+        short-lived (default 15 min) and only transmitted over HTTPS, which
+        limits the exposure window.
+
+        The ``refresh_token`` enables silent renewal: when the Entra access
+        token expires (~1 h), a downstream service can call the Entra token
+        endpoint with ``grant_type=refresh_token`` to obtain a fresh pair and
+        write it back to the session DB so subsequent Tiled ``slide_session``
+        calls propagate the update automatically.
+        """
         code = request.query_params.get("code")
         if not code:
             logger.warning(
@@ -422,6 +442,7 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
             return None
         id_token = response_body["id_token"]
         access_token = response_body.get("access_token")
+        refresh_token = response_body.get("refresh_token")
         try:
             verified_body = self.decode_token(id_token, access_token)
         except JWTError:
@@ -433,7 +454,16 @@ class EntraAuthenticator(ProxiedOIDCAuthenticator):
         # Use the human-readable username (e.g. "dallan") instead of the
         # opaque UUID-based "sub" that OIDCAuthenticator would use.
         username = verified_body.get("user") or verified_body["sub"]
-        return UserSessionState(username, {})
+        # Store the Entra access and refresh tokens so that downstream
+        # services that rely on Tiled authentication can perform an OBO exchange
+        # to obtain per-user tokens for other services.  The refresh token
+        # allows silent renewal without requiring the user to re-authenticate.
+        state: dict = {}
+        if access_token:
+            state["entra_access_token"] = access_token
+        if refresh_token:
+            state["entra_refresh_token"] = refresh_token
+        return UserSessionState(username, state)
 
 
 async def exchange_code(
@@ -443,10 +473,14 @@ async def exchange_code(
     client_secret: str,
     redirect_uri: str,
 ) -> httpx.Response:
-    """Method that talks to an IdP to exchange a code for an access_token and/or id_token
-    Args:
-        token_url ([type]): [description]
-        auth_code ([type]): [description]
+    """Exchange an authorization code for tokens at the IdP token endpoint.
+
+    Explicitly requests ``openid offline_access`` scopes in the token POST body
+    so that the IdP returns a ``refresh_token`` unconditionally.  This is safe
+    even when ``offline_access`` was already included in the authorization URL
+    scope — the IdP simply ignores duplicates.  Including it here makes the
+    refresh token reliable regardless of how the authorization URL was
+    constructed, which is important for downstream OBO refresh flows.
     """
     auth_value = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     response = httpx.post(
@@ -457,6 +491,10 @@ async def exchange_code(
             "redirect_uri": redirect_uri,
             "code": auth_code,
             "client_secret": client_secret,
+            # Request openid + offline_access explicitly so the IdP always
+            # returns a refresh_token.  Harmless if already granted via the
+            # authorization URL scope; duplicates are ignored by Entra.
+            "scope": "openid offline_access",
         },
         headers={"Authorization": f"Basic {auth_value}"},
     )
