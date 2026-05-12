@@ -412,7 +412,25 @@ async def get_current_scopes(
                 api_key, settings, request.app.state.authenticated, db
             )
     elif decoded_access_token is not None:
-        return _extract_scopes(decoded_access_token, settings.authenticator)
+        token_scopes = _extract_scopes(decoded_access_token, settings.authenticator)
+        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
+            async with db_factory() as db:
+                principal_orm = (
+                    await db.execute(
+                        select(orm.Principal)
+                        .options(selectinload(orm.Principal.roles))
+                        .filter(
+                            orm.Principal.uuid
+                            == uuid_module.UUID(hex=decoded_access_token["sub"])
+                        )
+                    )
+                ).scalar()
+            if principal_orm:
+                role_scopes = set().union(
+                    *[role.scopes for role in principal_orm.roles]
+                )
+                return token_scopes | role_scopes
+        return token_scopes
     else:
         return PUBLIC_SCOPES if settings.allow_anonymous_access else NO_SCOPES
 
