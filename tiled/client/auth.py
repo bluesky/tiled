@@ -78,7 +78,7 @@ class TiledAuth(httpx.Auth):
     def sync_set_token(self, key, value):
         with self._sync_lock:
             if not isinstance(value, str):
-                raise ValueError("Expected string value, got {value!r}")
+                raise ValueError(f"Expected string value, got {value!r}")
             if self.token_directory is not None:
                 filepath = self.token_directory / key
                 filepath.touch(mode=0o600)  # Set permissions.
