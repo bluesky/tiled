@@ -111,6 +111,7 @@ starlette = ">=0.48.0"
 uvicorn = "*"
 zarr = "*"
 
+
 [feature.sparse.dependencies]
 ndindex = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
@@ -138,11 +139,17 @@ python-blosc2 = "*"
 python = "3.13.*"
 python-blosc2 = "*"
 
+[feature.casbin.pypi-dependencies]
+casbin = "*"
+casbin_sqlalchemy_adapter = "*"
+
+
+
 [environments]
 default = { solve-group = "default" }
-all = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
+all = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "server", "sparse", "xarray", "casbin"], solve-group = "default" }
 client = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "sparse", "xarray"], solve-group = "default" }
-dev = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray"], solve-group = "default" }
+dev = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "casbin"], solve-group = "default" }
 server = { features = ["array", "awkward", "compression", "dataframe", "formats", "server", "sparse", "xarray"], solve-group = "default" }
 
 py310 = { features = ["array", "awkward", "client", "compression", "dataframe", "formats", "dev", "server", "sparse", "xarray", "py310"] }

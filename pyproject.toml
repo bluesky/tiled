@@ -258,6 +258,11 @@ xarray = [
     "xarray",
 ]
 
+casbin = [
+    "casbin>=1.36",
+    "casbin-sqlalchemy-adapter>=1.4",
+]
+
 [dependency-groups]
 test = [
     "aiohttp",
