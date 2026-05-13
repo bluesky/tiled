@@ -270,7 +270,7 @@ def _paginate_all(client, sort=None, page_size=2):
 
 
 def test_cursor_pagination_default_sort(sorted_client):
-    """Default-sort first two pages are disjoint and next link is cursor-based."""
+    """Default-sort first two pages are disjoint, cursor-linked, and contain the right items."""
     http_client = sorted_client.context.http_client
     search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
 
@@ -293,6 +293,8 @@ def test_cursor_pagination_default_sort(sorted_client):
     assert (
         set(page1_keys) & set(page2_keys) == set()
     ), f"Pages overlap: {page1_keys}, {page2_keys}"
+    # Together they must be exactly the first four items (insertion order: e,b,d,a,c).
+    assert set(page1_keys) | set(page2_keys) == {"e", "b", "d", "a"}
 
 
 def test_offset_fallback_non_default_sort_second_page(sorted_client):
@@ -324,11 +326,31 @@ def test_offset_fallback_non_default_sort_second_page(sorted_client):
     assert page2_keys == ["c", "d"], f"Wrong page 2 for 'id' sort: {page2_keys}"
 
 
+def test_full_traversal_default_sort_descending(sorted_client):
+    """Full traversal with default-key descending sort (sort=-) yields all items once,
+    in reverse insertion order, using cursor-based next links.
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    resp = http_client.get(search_url, params={"sort": "-", "page[limit]": 2})
+    assert (
+        resp.status_code == 200
+    ), f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    next_link = resp.json()["links"]["next"]
+    assert next_link is not None
+    assert "page[cursor]=" in next_link
+
+    all_keys = _paginate_all(sorted_client, sort="-", page_size=2)
+    # Insertion order: e, b, d, a, c — descending reverses this.
+    assert all_keys == ["c", "a", "d", "b", "e"]
+
+
 def test_full_traversal_default_sort(sorted_client):
-    """Full traversal with default sort yields all items exactly once."""
+    """Full traversal with default sort yields all items exactly once, in insertion order."""
     all_keys = _paginate_all(sorted_client)
-    assert len(all_keys) == 5
-    assert len(set(all_keys)) == 5
+    # Insertion order: e, b, d, a, c
+    assert all_keys == ["e", "b", "d", "a", "c"]
 
 
 def test_full_traversal_asc_sort(sorted_client):
@@ -408,3 +430,87 @@ def test_plus_prefix_reverse_does_not_produce_malformed_sort(sorted_client):
         params={"sort": "-id", "page[limit]": 5},
     )
     assert resp.status_code == 200, "'-id' (correct reversal of '+id') must be accepted"
+
+
+def test_limit_zero_returns_empty(sorted_client):
+    """page[limit]=0 must return an empty page with no error, but still include links."""
+    resp = sorted_client.context.http_client.get(
+        sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
+        params={"page[limit]": 0},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"] == []
+    assert "first" in body["links"]
+    assert "next" in body["links"]
+
+
+def test_cursor_for_offset_past_end(sorted_client):
+    """cursor_for_offset with an offset beyond the collection returns None,
+    falling back to offset-based pagination (empty page, no crash, no next link).
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+    # There are 5 items; offset=100 is well past the end.
+    resp = http_client.get(search_url, params={"page[offset]": 100, "page[limit]": 2})
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []
+    assert resp.json()["links"]["next"] is None
+
+
+def test_offset_request_migrates_to_cursor_next_link(sorted_client):
+    """A page[offset] request on the default sort should return a cursor-based
+    next link and following it should return the correct remaining items without duplication.
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    # Request page 2 using an explicit offset (not a cursor).
+    resp = http_client.get(search_url, params={"page[offset]": 2, "page[limit]": 2})
+    assert resp.status_code == 200
+    body = resp.json()
+    page2_keys = [item["id"] for item in body["data"]]
+    assert len(page2_keys) == 2
+
+    next_link = body["links"]["next"]
+    assert next_link is not None, "Should have a next link (one more item remains)"
+    assert "page[cursor]=" in next_link
+    assert "page[offset]=" not in next_link
+
+    # Following the cursor next link should return the remaining item without overlap.
+    resp3 = http_client.get(search_url, params=_params_from_next_link(next_link))
+    assert resp3.status_code == 200
+    page3_keys = [item["id"] for item in resp3.json()["data"]]
+    assert len(page3_keys) == 1, f"Expected 1 remaining item, got {page3_keys}"
+    assert set(page3_keys) & set(page2_keys) == set()
+    assert resp3.json()["links"]["next"] is None
+
+
+def test_slice_by_offset_no_limit():
+    """slice_by_offset with limit=None returns all items and next_offset=None."""
+    from tiled.catalog.adapter import slice_by_offset
+
+    items = [1, 2, 3, 4, 5]
+    result, next_offset = slice_by_offset(items, offset=2, limit=None)
+    assert result == [3, 4, 5]
+    assert next_offset is None
+
+
+def test_slice_by_offset_exact_fit():
+    """slice_by_offset where items exactly fill the limit has next_offset=None."""
+    from tiled.catalog.adapter import slice_by_offset
+
+    items = [1, 2, 3]
+    result, next_offset = slice_by_offset(items, offset=0, limit=3)
+    assert result == [1, 2, 3]
+    assert next_offset is None
+
+
+def test_slice_by_offset_has_next():
+    """slice_by_offset where more items follow reports next_offset correctly."""
+    from tiled.catalog.adapter import slice_by_offset
+
+    items = [1, 2, 3, 4, 5]
+    result, next_offset = slice_by_offset(items, offset=0, limit=3)
+    assert result == [1, 2, 3]
+    assert next_offset == 3
