@@ -25,7 +25,9 @@ def upgrade():
         sa.Column("properties", sa.JSON, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_index("entities_type_created_idx", "entities", ["entity_type", "created_at"])
+    op.create_index(
+        "entities_type_created_idx", "entities", ["entity_type", "created_at"]
+    )
     op.create_index("entities_uri_idx", "entities", ["uri"])
 
     op.create_table(
@@ -49,7 +51,9 @@ def upgrade():
     )
     op.create_index("links_subject_predicate_idx", "links", ["subject_id", "predicate"])
     op.create_index("links_predicate_object_idx", "links", ["predicate", "object_id"])
-    op.create_index("links_triple_idx", "links", ["subject_id", "predicate", "object_id"])
+    op.create_index(
+        "links_triple_idx", "links", ["subject_id", "predicate", "object_id"]
+    )
 
 
 def downgrade():
