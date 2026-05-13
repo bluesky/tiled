@@ -238,6 +238,13 @@ class StreamingCacheConfig(BaseSettings):
     settings_customise_sources = classmethod(settings_customise_sources)
 
 
+class LinksDatabase(BaseSettings):
+    uri: Optional[str] = None
+
+    model_config = SettingsConfigDict(env_prefix="TILED_LINKS_DATABASE_")
+    settings_customise_sources = classmethod(settings_customise_sources)
+
+
 class WebhooksConfig(BaseSettings):
     """Configuration for the optional webhooks feature.
 
@@ -274,6 +281,7 @@ class Config(BaseSettings):
     file_extensions: dict[str, str] = {}
     authentication: Authentication = Authentication()
     database: Optional[Database] = None
+    links_database: Optional[LinksDatabase] = None
     # TODO: Replace Any with AccessPolicy when #1044 is merged
     access_policy: Annotated[Optional[Any], Field(alias="access_control")] = None
     response_bytesize_limit: int = 300_000_000
@@ -502,6 +510,7 @@ def construct_build_app_kwargs(config: Config):
         response_bytesize_limit=config.response_bytesize_limit,
         exact_count_limit=config.exact_count_limit,
         database=config.database,
+        links_database=config.links_database,
         reject_undeclared_specs=config.reject_undeclared_specs,
         expose_raw_assets=config.expose_raw_assets,
         metrics=config.metrics,

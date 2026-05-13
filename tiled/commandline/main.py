@@ -32,6 +32,7 @@ cli_app = typer.Typer(no_args_is_help=True)
 from ._admin import admin_app  # noqa: E402
 from ._api_key import api_key_app  # noqa: E402
 from ._catalog import catalog_app  # noqa: E402
+from ._links import graph_app  # noqa: E402
 from ._profile import profile_app  # noqa: E402
 from ._register import register  # noqa: E402
 from ._serve import serve_app  # noqa: E402
@@ -51,6 +52,11 @@ cli_app.add_typer(
     admin_app,
     name="admin",
     help="Administrative utilities for managing large deployments.",
+)
+cli_app.add_typer(
+    graph_app,
+    name="graph",
+    help="Manage the graph (links) database.",
 )
 
 
