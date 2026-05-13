@@ -64,6 +64,11 @@ from .protocols import ExternalAuthenticator, InternalAuthenticator
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
+from .webdav import (  # noqa: F401 (re-exported)
+    TILED_WEBDAV_NS,
+    WebDAVBasicAuthMiddleware,
+    get_webdav_router,
+)
 from .webhook_router import UrlValidator, get_webhook_router
 from .zarr import get_zarr_router_v2, get_zarr_router_v3
 
@@ -386,6 +391,7 @@ def build_app(
         # allow_headers=["X-Requested-With", "X-Tiled-Request-ID"],
         expose_headers=["X-Tiled-Request-ID"],
     )
+    app.add_middleware(WebDAVBasicAuthMiddleware)
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
@@ -417,6 +423,7 @@ def build_app(
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
+    app.include_router(get_webdav_router(), prefix="/api/webdav")
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this

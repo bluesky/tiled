@@ -25,6 +25,8 @@ SCOPES = {
     },
     "read:webhooks": {"description": "Read webhooks and delivery history."},
     "write:webhooks": {"description": "Register and delete webhooks."},
+    "webdav:read": {"description": "Read data and metadata via WebDAV."},
+    "webdav:write": {"description": "Write data via WebDAV."},
 }
 
 ALL_SCOPES: set[str] = frozenset(SCOPES)
@@ -42,6 +44,8 @@ SINGLE_USER_SCOPES: set[str] = frozenset(
         "metrics",
         "read:webhooks",
         "write:webhooks",
+        "webdav:read",
+        "webdav:write",
     )
 )
 NO_SCOPES: set[str] = frozenset()
