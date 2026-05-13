@@ -17,7 +17,6 @@ Write the date in place of the "Unreleased" in the case a new version is release
   The new `page[cursor]` query parameter is accepted alongside the existing
   `page[offset]` and `page[limit]` parameters; supplying both at once is
   rejected with HTTP 400.
-
 - Support for slicing arrays backed by multipart adapters with modified shapes
 - OIDC Authenticator for Azure Entra
 - Add more administrative CLI commands centered around the creation of service
