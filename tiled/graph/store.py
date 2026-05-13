@@ -84,10 +84,12 @@ class Store(abc.ABC):
         name: str,
         uri: Optional[str] = None,
         properties: Optional[dict] = None,
-    ) -> EntityRecord: ...
+    ) -> EntityRecord:
+        ...
 
     @abc.abstractmethod
-    def get_entity(self, id: str) -> Optional[EntityRecord]: ...
+    def get_entity(self, id: str) -> Optional[EntityRecord]:
+        ...
 
     @abc.abstractmethod
     def list_entities(
@@ -95,10 +97,12 @@ class Store(abc.ABC):
         entity_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[EntityRecord]: ...
+    ) -> list[EntityRecord]:
+        ...
 
     @abc.abstractmethod
-    def delete_entity(self, id: str) -> bool: ...
+    def delete_entity(self, id: str) -> bool:
+        ...
 
     @abc.abstractmethod
     def update_entity(
@@ -107,7 +111,8 @@ class Store(abc.ABC):
         name: Optional[str] = None,
         uri: Optional[str] = None,
         entity_type: Optional[str] = None,
-    ) -> Optional[EntityRecord]: ...
+    ) -> Optional[EntityRecord]:
+        ...
 
     @abc.abstractmethod
     def create_link(
@@ -116,10 +121,12 @@ class Store(abc.ABC):
         predicate: str,
         object_id: str,
         properties: Optional[dict] = None,
-    ) -> LinkRecord: ...
+    ) -> LinkRecord:
+        ...
 
     @abc.abstractmethod
-    def get_link(self, id: str) -> Optional[LinkRecord]: ...
+    def get_link(self, id: str) -> Optional[LinkRecord]:
+        ...
 
     @abc.abstractmethod
     def find_links(
@@ -129,16 +136,20 @@ class Store(abc.ABC):
         object_id: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[LinkRecord]: ...
+    ) -> list[LinkRecord]:
+        ...
 
     @abc.abstractmethod
-    def delete_link(self, id: str) -> bool: ...
+    def delete_link(self, id: str) -> bool:
+        ...
 
     @abc.abstractmethod
-    def update_link(self, id: str, predicate: str) -> Optional[LinkRecord]: ...
+    def update_link(self, id: str, predicate: str) -> Optional[LinkRecord]:
+        ...
 
     @abc.abstractmethod
-    def close(self) -> None: ...
+    def close(self) -> None:
+        ...
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +175,19 @@ _links = Table(
     "links",
     _metadata,
     Column("id", String, primary_key=True),
-    Column("subject_id", String, ForeignKey("entities.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "subject_id",
+        String,
+        ForeignKey("entities.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("predicate", String, nullable=False),
-    Column("object_id", String, ForeignKey("entities.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "object_id",
+        String,
+        ForeignKey("entities.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("properties", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("links_subject_predicate_idx", "subject_id", "predicate"),
@@ -279,7 +300,9 @@ class SQLAlchemyStore(Store):
 
     def get_entity(self, id: str) -> Optional[EntityRecord]:
         with self._engine.connect() as conn:
-            row = conn.execute(select(_entities).where(_entities.c.id == id)).one_or_none()
+            row = conn.execute(
+                select(_entities).where(_entities.c.id == id)
+            ).one_or_none()
         return self._to_entity(row) if row else None
 
     def list_entities(
@@ -288,7 +311,12 @@ class SQLAlchemyStore(Store):
         limit: int = 100,
         offset: int = 0,
     ) -> list[EntityRecord]:
-        stmt = select(_entities).order_by(_entities.c.created_at).limit(limit).offset(offset)
+        stmt = (
+            select(_entities)
+            .order_by(_entities.c.created_at)
+            .limit(limit)
+            .offset(offset)
+        )
         if entity_type is not None:
             stmt = stmt.where(_entities.c.entity_type == entity_type)
         with self._engine.connect() as conn:
@@ -316,8 +344,12 @@ class SQLAlchemyStore(Store):
             values["entity_type"] = entity_type
         with self._engine.begin() as conn:
             if values:
-                conn.execute(update(_entities).where(_entities.c.id == id).values(**values))
-            row = conn.execute(select(_entities).where(_entities.c.id == id)).one_or_none()
+                conn.execute(
+                    update(_entities).where(_entities.c.id == id).values(**values)
+                )
+            row = conn.execute(
+                select(_entities).where(_entities.c.id == id)
+            ).one_or_none()
         return self._to_entity(row) if row else None
 
     # ------------------------------------------------------------------
@@ -383,7 +415,9 @@ class SQLAlchemyStore(Store):
 
     def update_link(self, id: str, predicate: str) -> Optional[LinkRecord]:
         with self._engine.begin() as conn:
-            conn.execute(update(_links).where(_links.c.id == id).values(predicate=predicate))
+            conn.execute(
+                update(_links).where(_links.c.id == id).values(predicate=predicate)
+            )
             row = conn.execute(select(_links).where(_links.c.id == id)).one_or_none()
         return self._to_link(row) if row else None
 

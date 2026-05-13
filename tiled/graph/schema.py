@@ -66,7 +66,9 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
-        records = _store(info).find_links(subject_id=str(self.id), predicate=predicate, limit=limit, offset=offset)
+        records = _store(info).find_links(
+            subject_id=str(self.id), predicate=predicate, limit=limit, offset=offset
+        )
         return [_link_from_record(r) for r in records]
 
     @strawberry.field(description="Links where this entity is the object.")
@@ -77,7 +79,9 @@ class Entity:
         limit: int = 100,
         offset: int = 0,
     ) -> list["Link"]:
-        records = _store(info).find_links(object_id=str(self.id), predicate=predicate, limit=limit, offset=offset)
+        records = _store(info).find_links(
+            object_id=str(self.id), predicate=predicate, limit=limit, offset=offset
+        )
         return [_link_from_record(r) for r in records]
 
 
@@ -181,7 +185,9 @@ class Query:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Entity]:
-        records = _store(info).list_entities(entity_type=entity_type, limit=limit, offset=offset)
+        records = _store(info).list_entities(
+            entity_type=entity_type, limit=limit, offset=offset
+        )
         return [_entity_from_record(r) for r in records]
 
     @strawberry.field
@@ -189,7 +195,9 @@ class Query:
         record = _store(info).get_link(str(id))
         return _link_from_record(record) if record else None
 
-    @strawberry.field(description="Find links, optionally filtered by subject, predicate, and/or object.")
+    @strawberry.field(
+        description="Find links, optionally filtered by subject, predicate, and/or object."
+    )
     def links(
         self,
         info: Info,
@@ -219,7 +227,12 @@ class Mutation:
             uri=input.uri,
             properties=input.properties,
         )
-        logger.info("Created entity type=%r name=%r id=%s", record.entity_type, record.name, record.id)
+        logger.info(
+            "Created entity type=%r name=%r id=%s",
+            record.entity_type,
+            record.name,
+            record.id,
+        )
         return _entity_from_record(record)
 
     @strawberry.mutation
@@ -239,7 +252,9 @@ class Mutation:
         )
         return _link_from_record(record)
 
-    @strawberry.mutation(description="Delete an entity and all its attached links. Returns true if found.")
+    @strawberry.mutation(
+        description="Delete an entity and all its attached links. Returns true if found."
+    )
     def delete_entity(self, info: Info, id: strawberry.ID) -> bool:
         deleted = _store(info).delete_entity(str(id))
         if deleted:
@@ -247,7 +262,9 @@ class Mutation:
         return deleted
 
     @strawberry.mutation(description="Update an entity's name, uri, or entity_type.")
-    def update_entity(self, info: Info, id: strawberry.ID, input: UpdateEntityInput) -> Optional[Entity]:
+    def update_entity(
+        self, info: Info, id: strawberry.ID, input: UpdateEntityInput
+    ) -> Optional[Entity]:
         record = _store(info).update_entity(
             str(id),
             name=input.name,
@@ -266,7 +283,9 @@ class Mutation:
         return deleted
 
     @strawberry.mutation(description="Update a link's predicate.")
-    def update_link(self, info: Info, id: strawberry.ID, input: UpdateLinkInput) -> Optional[Link]:
+    def update_link(
+        self, info: Info, id: strawberry.ID, input: UpdateLinkInput
+    ) -> Optional[Link]:
         record = _store(info).update_link(str(id), predicate=input.predicate)
         if record:
             logger.info("Updated link id=%s predicate=%r", id, input.predicate)

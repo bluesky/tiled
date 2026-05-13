@@ -47,6 +47,7 @@ from ..config import (
     construct_build_app_kwargs,
     parse_configs,
 )
+from ..graph.router import create_router as get_links_router
 from ..media_type_registration import (
     CompressionRegistry,
     SerializationRegistry,
@@ -61,7 +62,6 @@ from ..validation_registration import ValidationRegistry, default_validation_reg
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
 from .protocols import ExternalAuthenticator, InternalAuthenticator
-from ..graph.router import create_router as get_links_router
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
@@ -755,11 +755,16 @@ def build_app(
                 UninitializedDatabase,
                 check_database,
             )
-            from ..graph.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
-            from ..graph.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
+            from ..graph.core import (
+                ALL_REVISIONS,
+                REQUIRED_REVISION,
+                initialize_database,
+            )
             from ..utils import ensure_specified_sql_driver
 
-            graph_engine = create_async_engine(ensure_specified_sql_driver(links_db_uri))
+            graph_engine = create_async_engine(
+                ensure_specified_sql_driver(links_db_uri)
+            )
             redacted_graph_url = graph_engine.url._replace(password="[redacted]")
             try:
                 await check_database(graph_engine, REQUIRED_REVISION, ALL_REVISIONS)
@@ -811,7 +816,9 @@ def build_app(
                 )
                 raise err from None
             else:
-                logger.info(f"Connected to existing graph database at {redacted_graph_url}.")
+                logger.info(
+                    f"Connected to existing graph database at {redacted_graph_url}."
+                )
             await graph_engine.dispose()
 
     async def shutdown_event():
