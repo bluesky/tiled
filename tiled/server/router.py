@@ -47,8 +47,8 @@ from tiled.schemas import About
 from tiled.server.protocols import ExternalAuthenticator, InternalAuthenticator
 from tiled.server.schemas import Principal
 
-from .. import __version_
-from ..links import links_for_node_
+from .. import __version__
+from ..links import links_for_node
 from ..ndslice import NDBlock, NDSlice
 from ..stream_messages import ArrayPatch
 from ..structures.core import Spec, StructureFamily

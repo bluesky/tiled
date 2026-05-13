@@ -61,6 +61,7 @@ from ..validation_registration import ValidationRegistry, default_validation_reg
 from .authentication import move_api_key
 from .compression import CompressionMiddleware
 from .protocols import ExternalAuthenticator, InternalAuthenticator
+from ..graph.router import create_router as get_links_router
 from .router import get_metrics_router, get_router
 from .settings import Settings, get_settings
 from .utils import API_KEY_COOKIE_NAME, CSRF_COOKIE_NAME, get_root_url, record_timing
@@ -417,6 +418,9 @@ def build_app(
 
     app.include_router(get_zarr_router_v2(), prefix="/zarr/v2")
     app.include_router(get_zarr_router_v3(), prefix="/zarr/v3")
+    links_db_config = server_settings.get("links_database")
+    links_db_uri = links_db_config.uri if links_db_config is not None else None
+    app.include_router(get_links_router(links_db_uri))
 
     # The Tree and Authenticator have the opportunity to add custom routes to
     # the server here. (Just for example, a Tree of BlueskyRuns uses this
@@ -740,6 +744,75 @@ def build_app(
             app.state.tasks.append(
                 asyncio.create_task(purge_expired_sessions_and_api_keys())
             )
+
+        if links_db_uri is not None and ":memory:" not in links_db_uri:
+            import sys
+
+            from sqlalchemy.ext.asyncio import create_async_engine
+
+            from ..alembic_utils import (
+                DatabaseUpgradeNeeded,
+                UninitializedDatabase,
+                check_database,
+            )
+            from ..graph.alembic_constants import ALEMBIC_DIR, ALEMBIC_INI_TEMPLATE_PATH
+            from ..graph.core import ALL_REVISIONS, REQUIRED_REVISION, initialize_database
+            from ..utils import ensure_specified_sql_driver
+
+            graph_engine = create_async_engine(ensure_specified_sql_driver(links_db_uri))
+            redacted_graph_url = graph_engine.url._replace(password="[redacted]")
+            try:
+                await check_database(graph_engine, REQUIRED_REVISION, ALL_REVISIONS)
+            except UninitializedDatabase:
+                if settings.database_init_if_not_exists:
+                    import subprocess
+
+                    subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "tiled",
+                            "graph",
+                            "initialize-database",
+                            str(graph_engine.url),
+                        ],
+                        capture_output=True,
+                        check=True,
+                    )
+                else:
+                    print(
+                        dedent(
+                            f"""
+
+                            No graph database found at {redacted_graph_url}
+
+                            To create one, run:
+
+                                tiled graph initialize-database {redacted_graph_url}
+                            """
+                        ),
+                        file=sys.stderr,
+                    )
+                    raise
+            except DatabaseUpgradeNeeded as err:
+                print(
+                    dedent(
+                        f"""
+
+                        The graph database at {redacted_graph_url} was created by an older
+                        version of Tiled. It needs to be upgraded.
+
+                        Back up the database, and then run:
+
+                            tiled graph upgrade-database {redacted_graph_url}
+                        """
+                    ),
+                    file=sys.stderr,
+                )
+                raise err from None
+            else:
+                logger.info(f"Connected to existing graph database at {redacted_graph_url}.")
+            await graph_engine.dispose()
 
     async def shutdown_event():
         # Run shutdown tasks collected from trees (adapters).

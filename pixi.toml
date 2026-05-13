@@ -110,6 +110,9 @@ starlette = ">=0.48.0"
 uvicorn = "*"
 zarr = "*"
 
+[feature.server.pypi-dependencies]
+strawberry-graphql = {version = ">=0.315.3", extras = ["fastapi"]}
+
 [feature.sparse.dependencies]
 ndindex = "*"
 pyarrow-all = ">=14.0.1"  # includes fix to CVE 2023-47248
