@@ -10,9 +10,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 - Support for slicing arrays backed by multipart adapters with modified shapes
 - OIDC Authenticator for Azure Entra
+- Add more administrative CLI commands centered around the creation of service
+  principals and their API keys
+- Including `metadata` field in NodeTabs item fetch for spec views in the web UI
 
 ### Fixed
 
+- Display of color images in the web UI array viewer.
+- JSON serialization of tables now correctly handles numpy scalar types
+  (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
+  `Timestamp` when using the `orjson` backend.
 - A `mount_node` referencing a nonexistent path in the database no longer causes
   silent data corruption. The server now raises a clear error at startup if the
   mount node does not exist.
@@ -35,6 +42,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Stream updates are processed using a single worker thread, by
   default, in order to guarantee that they are processed in order.
 - Refactored AwkwardAdapter to generalize its array buffer storage.
+- WebUI: fetch grayscale images as `application/octet-stream` instead of
+  `image/png` and apply optional colormap and log-normalization client-side.
+- WebUI: reduce the number of significant digits to 4 when displaying numeric
+  values.
 
 ### Added
 

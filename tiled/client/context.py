@@ -138,8 +138,15 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
+        scopes = " ".join(
+            sorted({"openid", "offline_access"} | set(spec.extra_scopes or []))
+        )
         tokens = device_code_grant(
-            http_client, auth_endpoint, client_id, token_endpoint
+            http_client,
+            auth_endpoint,
+            client_id,
+            token_endpoint,
+            scopes,
         )
     else:
         raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
@@ -1061,39 +1068,60 @@ def device_code_grant(
     for attempt in retry_context():
         with attempt:
             if client_id and token_endpoint:
+                # The device code will be given to the external OIDC provider.
                 oauth2_spec = True
-                uri = "verification_uri_complete"
                 verification_response = http_client.post(
                     auth_endpoint,
                     data={"client_id": client_id, "scope": scopes},
                 )
+                handle_error(verification_response)
+                verification = verification_response.json()
+                keys = [
+                    "verification_uri_complete",  # includes code
+                    "verification_uri",
+                    "verification_url",  # non-standard Entra
+                ]
+                for key in keys:
+                    verification_uri = verification.get(key)
+                    if verification_uri:
+                        break
+                else:
+                    raise KeyError(
+                        "Verification response is missing expected keys. "
+                        f"Expected one of {keys}. Got: {verification}"
+                    )
 
             else:
+                # The device code will be given to Tiled's own implementation
+                # of device code flow. Tiled will do authorization code from with the
+                # external providers. (This handles cases that ORCID and Globus that do
+                # not support device code flow.)
                 oauth2_spec = False
-                uri = "authorization_uri"
                 verification_response = http_client.post(auth_endpoint)
-            handle_error(verification_response)
-    verification = verification_response.json()
-    authorization_uri = verification[uri]
+                handle_error(verification_response)
+                verification = verification_response.json()
+                token_endpoint = verification["authorization_uri"]
+                verification_uri = verification["verification_uri"]
     print(
         f"""
 You have {int(verification['expires_in']) // 60} minutes to visit this URL
 
-{authorization_uri}
+{verification_uri}
 
 and enter the code:
 
 {verification['user_code']}
 
-"""
+""",
+        end="",
     )
     import webbrowser
 
-    webbrowser.open(authorization_uri)
-    deadline = verification["expires_in"] + time.monotonic()
+    webbrowser.open(verification_uri)
+    deadline = float(verification["expires_in"]) + time.monotonic()
     print("Waiting...", end="", flush=True)
     while True:
-        time.sleep(verification["interval"])
+        time.sleep(float(verification["interval"]))
         if time.monotonic() > deadline:
             raise Exception("Deadline expired.")
         for attempt in polling_retry_context(timeout=verification["expires_in"]):
@@ -1111,7 +1139,7 @@ and enter the code:
                     )
                 else:
                     access_response = http_client.post(
-                        verification["verification_uri"],
+                        token_endpoint,
                         json={
                             "device_code": verification["device_code"],
                             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -1126,10 +1154,21 @@ and enter the code:
                     )
                     if access_response_error == "authorization_pending":
                         print(".", end="", flush=True)
-                        time.sleep(verification["interval"])
-                        access_response.raise_for_status()
+                        # Don't raise -- this is expected during polling.
+                        # Just break out of the retry context and let the
+                        # outer while loop sleep and try again.
+                        break
+                    # Other 400 errors are genuine failures.
+                    access_response.raise_for_status()
                 handle_error(access_response)
-        print("")
-        break
+        else:
+            # The for/else means we exhausted retries without break.
+            # This happens when handle_error(access_response) succeeds,
+            # meaning we got a successful response.
+            print("\n")
+            break
+        # We broke out of the for loop due to authorization_pending.
+        # Continue the outer while loop to poll again.
+        continue
     tokens = access_response.json()
     return tokens

@@ -38,7 +38,10 @@ function transformLinks(data: any): any {
 
 axiosInstance.interceptors.response.use(
   (response) => {
-    if (response.config.responseType === "blob") {
+    // Skip JSON transformation for binary response types — transformLinks
+    // would corrupt ArrayBuffer/Blob data by treating them as plain objects.
+    const rt = response.config.responseType;
+    if (rt === "blob" || rt === "arraybuffer") {
       return response;
     }
     response.data = transformLinks(response.data);

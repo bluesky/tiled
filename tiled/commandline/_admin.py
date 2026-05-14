@@ -3,9 +3,14 @@ from typing import Optional
 
 import typer
 
+from ._admin_api_key import admin_api_key_app
 from ._utils import get_context, get_profile  # noqa E402
 
 admin_app = typer.Typer(no_args_is_help=True)
+
+admin_app.add_typer(
+    admin_api_key_app, name="api-key", help="Manage API keys for Principals."
+)
 
 
 @admin_app.command("initialize-database")
@@ -101,7 +106,7 @@ def downgrade_database(
     revision: str = typer.Argument(..., help="The ID of a revision to downgrade to."),
 ):
     """
-    Upgrade the database schema to the latest version.
+    Downgrade the database schema to a prior version.
     """
     import asyncio
 
@@ -190,4 +195,23 @@ def show_principal(
 
     context = get_context(profile)
     result = context.admin.show_principal(uuid)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@admin_app.command("create-service-principal")
+def create_service_principal(
+    profile: Optional[str] = typer.Option(
+        None, help="If you use more than one Tiled server, use this to specify which."
+    ),
+    role: Optional[str] = typer.Option(
+        "user", help="Role of the new service principal (e.g. 'admin' or 'user')."
+    ),
+):
+    """
+    Create a new service principal. The new principal will have a random UUID.
+    """
+    import json
+
+    context = get_context(profile)
+    result = context.admin.create_service_principal(role or "user")
     typer.echo(json.dumps(result, indent=2))
