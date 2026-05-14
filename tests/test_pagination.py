@@ -373,9 +373,9 @@ def test_keys_range_non_default_sort(sorted_client):
     resp = http_client.get(
         search_url, params={"sort": "id", "fields": "", "page[limit]": 10}
     )
-    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    assert resp.status_code == 200
     keys = [item["id"] for item in resp.json()["data"]]
-    assert keys == sorted(keys), f"Expected ascending id order, got: {keys}"
+    assert keys == sorted(keys)
     assert len(keys) == 5
 
 
