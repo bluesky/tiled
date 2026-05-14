@@ -1328,7 +1328,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         """True when no user-specified sort key is active.
 
         Cursor-based pagination is only correct when the ORDER BY is purely
-        (time_created, id) — i.e. the default.  Any custom leading sort key
+        id ASC or id DESC — i.e. the default.  Any custom leading sort key
         changes the row order in a way that the id-only cursor cannot track.
         """
         return all(key == "" for key, _ in self.sorting)
@@ -1340,6 +1340,10 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         the extra row used to detect whether a next page exists.
         Only call this when cursor is None (first page) or a valid cursor id.
         Do not call this for offset-based pagination — use keys_range/items_range instead.
+
+        The default ORDER BY is id ASC (or DESC), so the cursor condition
+        id > cursor (or id < cursor) is exact with no need for a secondary
+        time_created column.
         """
         if cursor is not None:
             if self.default_sorting_direction == 1:
@@ -1815,12 +1819,15 @@ def construct_order_by_clauses(sorting):
             clause = clause.desc()
         clauses.append(clause)
 
-    # Ensure deterministic ordering for all queries by sorting by
-    # 'time_created' and then by 'id' last.
-    for clause in [orm.Node.time_created, orm.Node.id]:
-        if default_sorting_direction == -1:
-            clause = clause.desc()
-        clauses.append(clause)
+    # Ensure deterministic ordering by id, which is strictly monotonic
+    # (auto-increment) and therefore a sufficient tiebreaker on its own.
+    # time_created is intentionally omitted: id already encodes insertion
+    # order, and including time_created would require a two-column cursor
+    # (time_created, id) for correct keyset pagination.
+    clause = orm.Node.id
+    if default_sorting_direction == -1:
+        clause = clause.desc()
+    clauses.append(clause)
 
     return clauses, default_sorting_direction
 
