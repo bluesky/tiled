@@ -23,7 +23,7 @@ def sorted_client(catalog_adapter):
     Insertion order: e, b, d, a, c
     Alphabetical (key/id) order: a, b, c, d, e
 
-    The scrambled insertion order means default (time-based) sort != id sort,
+    The scrambled insertion order means default (id-based) sort != alphabetical key sort,
     which is required for the cursor vs offset pagination tests to be meaningful.
     """
     app = build_app(catalog_adapter)
@@ -300,8 +300,8 @@ def test_cursor_pagination_default_sort(sorted_client):
 def test_offset_fallback_non_default_sort_second_page(sorted_client):
     """Non-default sort falls back to offset-based next links.
 
-    Insertion order is e,b,d,a,c so default time order != alphabetical key order.
-    Sorted by 'id': a,b,c,d,e  →  page 1=[a,b], page 2=[c,d].
+    Insertion order is e,b,d,a,c so default (id) order != alphabetical key order.
+    Sorted by 'id' (key): a,b,c,d,e  →  page 1=[a,b], page 2=[c,d].
     The next link must be offset-based (not cursor-based) for non-default sorts.
     """
     http_client = sorted_client.context.http_client

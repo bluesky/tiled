@@ -101,8 +101,8 @@ class Node(Timestamped, Base):
         Index(
             "top_level_metadata",
             "parent",
-            # include the keys of the default sorting ('time_created', 'id'),
-            # used to avoid creating a temp sort index
+            # include 'time_created' and 'id' so the planner can satisfy an
+            # ORDER BY id without a separate sort step (index-only scan path).
             "time_created",
             "id",
             "metadata",

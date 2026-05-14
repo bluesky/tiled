@@ -1341,9 +1341,9 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
         Only call this when cursor is None (first page) or a valid cursor id.
         Do not call this for offset-based pagination — use keys_range/items_range instead.
 
-        The default ORDER BY is id ASC (or DESC), so the cursor condition
-        id > cursor (or id < cursor) is exact with no need for a secondary
-        time_created column.
+        The default ORDER BY is `id` ASC (or DESC); the cursor condition
+        `id > cursor` (or `id < cursor`) is therefore exact with no need
+        for a secondary column.
         """
         if cursor is not None:
             if self.default_sorting_direction == 1:
@@ -1370,7 +1370,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             The maximum number of items to return in the page. If None, return all remaining items.
 
         Only valid for the default sort order; raises ValueError otherwise.
-        External callers should use ``keys_range(offset, limit)`` instead.
+        External callers should use `keys_range(offset, limit)` instead.
         """
         if cursor is not None and not self._is_default_sort:
             raise ValueError(
@@ -1449,7 +1449,7 @@ class CatalogContainerAdapter(CatalogNodeAdapter):
             The maximum number of items to return in the page. If None, return all remaining items.
 
         Only valid for the default sort order; raises ValueError otherwise.
-        External callers should use ``items_range(offset, limit)`` instead.
+        External callers should use `items_range(offset, limit)` instead.
         """
         if cursor is not None and not self._is_default_sort:
             raise ValueError(
