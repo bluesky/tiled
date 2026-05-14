@@ -109,6 +109,10 @@ class Node(Timestamped, Base):
             "access_blob",
             postgresql_using="gin",
         ),
+        # B-tree index supporting cursor-based pagination (WHERE parent = ?
+        # AND id > cursor ORDER BY id) and cursor_for_offset (OFFSET N LIMIT 1
+        # ORDER BY id). Serves both SQLite and PostgreSQL efficiently.
+        Index("ix_nodes_parent_id", "parent", "id"),
     )
 
 
