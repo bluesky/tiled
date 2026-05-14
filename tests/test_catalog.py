@@ -177,39 +177,45 @@ async def test_search(a):
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(example_data_adapter):
     a = example_data_adapter  # for succinctness below
-    # Check that an index (specifically the 'top_level_metadata' index) is used
-    # by inspecting the content of an 'EXPLAIN ...' query. The exact content
-    # is intended for humans and is not an API, but we can coarsely check
-    # that the index of interest is mentioned.
+    # Check that an index is used by inspecting the content of an 'EXPLAIN ...'
+    # query. The exact content is intended for humans and is not an API, but we
+    # can coarsely check that the index of interest is mentioned.
+    # The 'top_level_metadata' GIN index is PostgreSQL-only. SQLite uses a
+    # B-tree covering index instead; we just verify any index is used.
+    dialect = a.context.engine.url.get_dialect().name
+    if dialect == "postgresql":
+        expected_index = "top_level_metadata"
+    else:
+        expected_index = "ix_nodes_parent"  # B-tree index on parent (or parent, id)
     await a.startup()
     with record_explanations() as e:
         results = await a.search(Key("number_as_string") == "3").keys_page(limit=5)
         assert len(results[0]) == 1
-        assert "top_level_metadata" in str(e)
+        assert expected_index in str(e)
     with record_explanations() as e:
         results = await a.search(Key("number") == 3).keys_page(limit=5)
         assert len(results[0]) == 1
-        assert "top_level_metadata" in str(e)
+        assert expected_index in str(e)
     with record_explanations() as e:
         results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: #712
         assert len(results[0]) == 1
-        assert "top_level_metadata" in str(e)
+        assert expected_index in str(e)
     with record_explanations() as e:
         results = await a.search(Key("nested.number_as_string") == "3").keys_page(
             limit=5
         )
         assert len(results[0]) == 1
-        assert "top_level_metadata" in str(e)
+        assert expected_index in str(e)
     with record_explanations() as e:
         results = await a.search(Key("nested.number") == 3).keys_page(limit=5)
         assert len(results[0]) == 1
-        assert "top_level_metadata" in str(e)
+        assert expected_index in str(e)
     with record_explanations() as e:
         results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: #712
             limit=5
         )
         assert len(results[0]) == 1
-        assert "top_level_metadata" in str(e)
+        assert expected_index in str(e)
     await a.shutdown()
 
 
