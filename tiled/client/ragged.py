@@ -41,9 +41,7 @@ class RaggedClient(BaseClient):
                     self.context.http_client.put(
                         self.item["links"]["full"],
                         content=to_zipped_buffers(
-                            mimetype="application/zip",
-                            array=array,
-                            metadata={},
+                            mimetype="application/zip", array=array, metadata={}
                         ),
                         headers={"Content-Type": "application/zip"},
                     )
@@ -70,7 +68,9 @@ class RaggedClient(BaseClient):
         """
         if not isinstance(block, NDBlock):
             block = NDBlock(block)
-        block_str = block.expand_for_shape((self.npartitions,)).to_numpy_str()
+        block_str = block.expand_for_shape(
+            self.structure().shape_from_chunks
+        ).to_numpy_str()
 
         url_path = self.item["links"]["block"]
         params: dict[str, Any] = {
@@ -86,9 +86,7 @@ class RaggedClient(BaseClient):
                     self.context.http_client.put(
                         url_path,
                         content=to_zipped_buffers(
-                            mimetype="application/zip",
-                            array=array_part,
-                            metadata={},
+                            mimetype="application/zip", array=array_part, metadata={}
                         ),
                         headers={"Content-Type": "application/zip"},
                         params=params,
@@ -119,13 +117,10 @@ class RaggedClient(BaseClient):
                         url_path,
                         headers={"Accept": "application/zip"},
                         params=url_params,
-                    ),
+                    )
                 ).read()
 
-        return from_zipped_buffers(
-            buffer=content,
-            dtype=self.dtype,
-        )
+        return from_zipped_buffers(buffer=content, dtype=self.dtype)
 
     def read_block(self, block: Any, slice: Any | None = None) -> ragged.array:
         """
@@ -142,7 +137,9 @@ class RaggedClient(BaseClient):
         """
         if not isinstance(block, NDBlock):
             block = NDBlock(block)
-        block_str = block.expand_for_shape((self.npartitions,)).to_numpy_str()
+        block_str = block.expand_for_shape(
+            self.structure().shape_from_chunks
+        ).to_numpy_str()
 
         url_path = self.item["links"]["block"]
         url_params: dict[str, Any] = {
@@ -160,13 +157,10 @@ class RaggedClient(BaseClient):
                         url_path,
                         headers={"Accept": "application/zip"},
                         params=url_params,
-                    ),
+                    )
                 ).read()
 
-        return from_zipped_buffers(
-            buffer=content,
-            dtype=self.dtype,
-        )
+        return from_zipped_buffers(buffer=content, dtype=self.dtype)
 
     def __getitem__(self, _slice: Any) -> ragged.array:
         """
@@ -234,22 +228,17 @@ class RaggedClient(BaseClient):
         return structure.data_type.to_numpy_dtype()
 
     @property
-    def nbytes(self) -> int:
-        """The size of the array in bytes."""
+    def chunks(self) -> tuple[tuple[int, ...] | None, ...]:
+        """The dask-like chunks of the array, where the first dimension is always
+        partitioned into known integer chunks, and any variable dimensions are null.
+        """
         structure = cast("RaggedStructure", self.structure())
-        return structure.nbytes
+        return structure.chunks
 
     @property
-    def partitions(self) -> tuple[int, ...]:
-        """The partition boundaries of the array, of form ``(0, [p1, ..., pN], rows)``."""
-        structure = cast("RaggedStructure", self.structure())
-        return structure.partitions
-
-    @property
-    def npartitions(self) -> int:
-        """The number of partitions stored by the array."""
-        structure = cast("RaggedStructure", self.structure())
-        return structure.npartitions
+    def chunked(self) -> bool:
+        """Whether the array is chunked along any dimension."""
+        return any(c is not None and len(c) > 1 for c in self.chunks)
 
     @property
     def ndim(self) -> int:
@@ -261,7 +250,7 @@ class RaggedClient(BaseClient):
         attrs: dict[str, Any] = {
             "shape": self.shape,
             "size": self.size,
-            "npartitions": self.npartitions,
+            "chunks": self.chunks,
             "dtype": self.dtype,
         }
         if self.dims:

@@ -30,26 +30,19 @@ class RaggedStructure(Structure):
     shape: tuple[int | None, ...]
     # The total number of elements in the array
     size: int
-    # Defines the boundaries for partitioning the array.
-    # Note that the final value is the row count from `shape[0]`.
-    partitions: tuple[int, ...]
-    # The size of the underlying dataset in bytes.
-    nbytes: int
+    # The dask-like chunks of the array, where the first dimension is always
+    # partitioned into known integer chunks, and any variable dimensions are null.
+    chunks: tuple[tuple[int, ...] | None, ...]
     # Optional tuple of dimension names, e.g. ("time", "x"), or None for unnamed dimensions
     dims: tuple[str, ...] | None = None
     resizable: bool | tuple[bool, ...] = False
-
-    @property
-    def npartitions(self) -> int:
-        # partitions are of the form (0, [i1, ..., iN], shape[0]), so subtract by 1
-        return len(self.partitions) - 1
 
     @classmethod
     def from_array(
         cls,
         array: Iterable,
         shape: tuple[int | None, ...] | None = None,
-        partitions: tuple[int, ...] | None = None,
+        chunks: tuple[tuple[int, ...] | None, ...] | None = None,
         dims: tuple[str, ...] | None = None,
     ) -> Self:
         """
@@ -61,7 +54,7 @@ class RaggedStructure(Structure):
             The array-like object to extract information from.
         shape : tuple[int | None, ...] | None, optional
             The shape of the array. If None, the shape is inferred from the array.
-        partitions : tuple[int, ...] | None, optional
+        chunks : tuple[tuple[int, ...] | None, ...] | None, optional
             Defines the boundaries for partitioning the array.
             This defaults to ``(0, shape[0])`` for a single partition.
         dims : tuple[str, ...] | None, optional
@@ -73,11 +66,10 @@ class RaggedStructure(Structure):
             shape = array.shape
 
         size = cast("int", array.size)
-        nbytes = array._impl.nbytes
 
-        if partitions is None:
+        if chunks is None:
             # default to a single partition containing the whole array
-            partitions = (0, cast("int", shape[0]))
+            chunks = ((0, cast("int", shape[0])),) + (None,) * (len(shape) - 1)
 
         if array.dtype.fields is not None:
             data_type = StructDtype.from_numpy_dtype(array.dtype)
@@ -90,8 +82,7 @@ class RaggedStructure(Structure):
             dims=dims,
             resizable=False,
             size=size,
-            partitions=partitions,
-            nbytes=nbytes,
+            chunks=chunks,
         )
 
     @classmethod
@@ -104,15 +95,23 @@ class RaggedStructure(Structure):
         dims = structure["dims"]
         if dims is not None:
             dims = tuple(dims)
+        shape = tuple(structure["shape"])
         return cls(
             data_type=data_type,
-            shape=tuple(structure["shape"]),
+            shape=shape,
             dims=dims,
             resizable=structure.get("resizable", False),
             size=structure["size"],
-            nbytes=structure["nbytes"],
-            partitions=tuple(structure.get("partitions", (0, structure["size"]))),
+            chunks=structure.get(
+                "chunks", ((0, cast("int", shape[0])),) + (None,) * (len(shape) - 1)
+            ),
         )
+
+    @property
+    def shape_from_chunks(self) -> tuple[int, ...]:
+        """Derive the chunked-shape of the array."""
+        # currently this should return the shape (npartitions, 1, 1, ...)
+        return tuple(len(dim) if dim is not None else 1 for dim in self.chunks)
 
 
 _SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
@@ -156,3 +155,14 @@ def make_ragged_partitions(array: ragged.array, limit_bytes: int) -> tuple[int, 
         else:
             partition_index += 1
     return tuple(partitions)
+
+
+def make_ragged_chunks(
+    array: ragged.array, limit_bytes: int
+) -> tuple[tuple[int, ...] | None, ...]:
+    """Yield the byte content of each partition of a ragged array in the specified format."""
+    partitions = make_ragged_partitions(array, limit_bytes)
+    chunks: list[tuple[int, ...] | None] = [None for _ in array.shape]
+    # get the first-dimension chunk sizes from the partition boundary ranges
+    chunks[0] = tuple(np.diff(partitions).astype(int))
+    return tuple(chunks)

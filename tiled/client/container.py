@@ -1023,19 +1023,20 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             Maximum number of bytes per partition.
         """
         import awkward
+        import numpy
         import ragged
 
         from tiled.structures.ragged import (
             RaggedStructure,
             make_ragged_array,
-            make_ragged_partitions,
+            make_ragged_chunks,
         )
 
         array = make_ragged_array(array)
-        partitions = make_ragged_partitions(
+        chunks = make_ragged_chunks(
             array, max_partition_bytes or self._SUGGESTED_MAX_UPLOAD_SIZE
         )
-        structure = RaggedStructure.from_array(array, partitions=partitions, dims=dims)
+        structure = RaggedStructure.from_array(array, chunks=chunks, dims=dims)
 
         client = self.new(
             StructureFamily.ragged,
@@ -1049,14 +1050,17 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             specs=specs,
             access_tags=access_tags,
         )
-        if client.npartitions == 1:
+        if not client.chunked:
             client.write(array)
         else:
-            starts = structure.partitions[:-1]
-            stops = structure.partitions[1:]
+            divisions = numpy.cumsum((0, *structure.chunks[0]))
+            starts = divisions[:-1]
+            stops = divisions[1:]
+            shape_rest = (0,) * (len(structure.shape) - 1)
             for block_id, (start, stop) in enumerate(zip(starts, stops, strict=True)):
-                block = awkward.to_packed(array[start:stop]._impl)
-                client.write_block(ragged.array(block), block=block_id)
+                block_data = awkward.to_packed(array[start:stop]._impl)
+                block_slice = (block_id,) + shape_rest
+                client.write_block(ragged.array(block_data), block=block_slice)
         return client
 
     def write_sparse(
