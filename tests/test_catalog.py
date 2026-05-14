@@ -1,9 +1,9 @@
+import asyncio
 import random
 import string
 from contextlib import closing
 from dataclasses import asdict
 from typing import cast
-import asyncio
 
 import dask.array
 import numpy
@@ -733,8 +733,10 @@ def catalog_adapter_for_hypothesis(request):
     page_size=st.integers(min_value=1, max_value=20),
     direction=st.sampled_from([1, -1]),
 )
-@settings(deadline=None, max_examples=30)
-def test_cursor_pagination_completeness(catalog_adapter_for_hypothesis, n_items, page_size, direction):
+@settings(deadline=None, max_examples=50)
+def test_cursor_pagination_completeness(
+    catalog_adapter_for_hypothesis, n_items, page_size, direction
+):
     """Traversing all cursor pages yields every item exactly once, in order.
 
     Properties checked:
@@ -748,8 +750,9 @@ def test_cursor_pagination_completeness(catalog_adapter_for_hypothesis, n_items,
     async def run():
         # Use a unique container key so parallel/sequential examples don't collide.
         import uuid
+
         container_key = uuid.uuid4().hex
-        container = await adapter.create_node(
+        await adapter.create_node(
             key=container_key,
             metadata={},
             structure_family=StructureFamily.container,
