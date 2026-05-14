@@ -3,6 +3,8 @@ import string
 from contextlib import closing
 from dataclasses import asdict
 from typing import cast
+import asyncio
+import tempfile
 
 import dask.array
 import numpy
@@ -14,6 +16,8 @@ import pytest_asyncio
 import sqlalchemy.exc
 import tifffile
 import xarray
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
@@ -661,7 +665,70 @@ async def test_delete_sql_assets(sql_storage_uri):
         assert len(assets_after_delete) == 1
 
         # Close and dispose the SQL storage
-        storage.dispose()
+    storage.dispose()
+
+
+async def _traverse_all_pages(n_items, page_size, direction):
+    """Build a fresh in-memory catalog, populate it, then walk every cursor page.
+
+    Returns (keys_inserted, keys_collected) where both are lists of strings.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        adapter = in_memory(writable_storage=tmpdir)
+        await adapter.startup()
+        try:
+            keys_inserted = [str(i) for i in range(n_items)]
+            for key in keys_inserted:
+                await adapter.create_node(
+                    key=key,
+                    metadata={},
+                    structure_family=StructureFamily.container,
+                    specs=[],
+                )
+            sorted_adapter = adapter.sort([("", direction)])
+            collected = []
+            cursor = None
+            while True:
+                page, next_cursor = await sorted_adapter.keys_page(
+                    cursor=cursor, limit=page_size
+                )
+                collected.extend(page)
+                if next_cursor is None:
+                    break
+                cursor = next_cursor
+            return keys_inserted, collected
+        finally:
+            await adapter.shutdown()
+
+
+@given(
+    n_items=st.integers(min_value=0, max_value=50),
+    page_size=st.integers(min_value=1, max_value=20),
+    direction=st.sampled_from([1, -1]),
+)
+@settings(deadline=None, max_examples=30)
+def test_cursor_pagination_completeness(n_items, page_size, direction):
+    """Traversing all cursor pages yields every item exactly once, in order.
+
+    Properties checked:
+    - total count matches n_items
+    - no duplicates across pages
+    - order matches insertion order (ASC) or reverse insertion order (DESC),
+      since id is strictly monotonic
+    """
+    keys_inserted, collected = asyncio.run(
+        _traverse_all_pages(n_items, page_size, direction)
+    )
+
+    assert len(collected) == n_items, "total item count must match"
+    assert len(set(collected)) == len(collected), "no duplicates across pages"
+
+    if direction == 1:
+        assert collected == keys_inserted, "ASC traversal must match insertion order"
+    else:
+        assert collected == list(
+            reversed(keys_inserted)
+        ), "DESC traversal must match reverse insertion order"
 
 
 @pytest.mark.asyncio
