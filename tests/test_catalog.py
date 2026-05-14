@@ -186,7 +186,7 @@ async def test_metadata_index_is_used(example_data_adapter):
     if dialect == "postgresql":
         expected_index = "top_level_metadata"
     else:
-        expected_index = "ix_nodes_parent"  # B-tree index on parent (or parent, id)
+        expected_index = "nodes_parent"  # B-tree index on parent (name varies by Alembic/SQLite version)
     await a.startup()
     with record_explanations() as e:
         results = await a.search(Key("number_as_string") == "3").keys_page(limit=5)
