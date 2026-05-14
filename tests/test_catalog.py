@@ -4,7 +4,6 @@ from contextlib import closing
 from dataclasses import asdict
 from typing import cast
 import asyncio
-import tempfile
 
 import dask.array
 import numpy
@@ -668,37 +667,65 @@ async def test_delete_sql_assets(sql_storage_uri):
     storage.dispose()
 
 
-async def _traverse_all_pages(n_items, page_size, direction):
-    """Build a fresh in-memory catalog, populate it, then walk every cursor page.
+# ---------------------------------------------------------------------------
+# Hypothesis: pagination completeness
+# ---------------------------------------------------------------------------
+# The adapter is started once per module (per dialect) and reused across all
+# hypothesis examples. Each example creates a fresh child container, runs its
+# traversal inside it, then deletes it, keeping the shared DB clean.
+#
+# asyncio: hypothesis does not support async test functions, so we keep a
+# single event loop alive for the lifetime of the fixture and drive all
+# coroutines with loop.run_until_complete().
+# ---------------------------------------------------------------------------
 
-    Returns (keys_inserted, keys_collected) where both are lists of strings.
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        adapter = in_memory(writable_storage=tmpdir)
+
+@pytest.fixture(scope="module")
+def sqlite_adapter_for_hypothesis(tmp_path_factory):
+    loop = asyncio.new_event_loop()
+    tmpdir = tmp_path_factory.mktemp("hyp_sqlite")
+    adapter = in_memory(writable_storage=str(tmpdir))
+    loop.run_until_complete(adapter.startup())
+    yield adapter, loop
+    loop.run_until_complete(adapter.shutdown())
+    loop.close()
+
+
+@pytest.fixture(scope="module")
+def postgresql_adapter_for_hypothesis(tmp_path_factory):
+    from tiled.catalog import from_uri
+
+    from .conftest import TILED_TEST_POSTGRESQL_URI, temp_postgres
+
+    if not TILED_TEST_POSTGRESQL_URI:
+        pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    loop = asyncio.new_event_loop()
+    tmpdir = tmp_path_factory.mktemp("hyp_pg")
+
+    async def _setup():
+        ctx = temp_postgres(TILED_TEST_POSTGRESQL_URI)
+        uri = await ctx.__aenter__()
+        adapter = from_uri(uri, writable_storage=str(tmpdir), init_if_not_exists=True)
         await adapter.startup()
-        try:
-            keys_inserted = [str(i) for i in range(n_items)]
-            for key in keys_inserted:
-                await adapter.create_node(
-                    key=key,
-                    metadata={},
-                    structure_family=StructureFamily.container,
-                    specs=[],
-                )
-            sorted_adapter = adapter.sort([("", direction)])
-            collected = []
-            cursor = None
-            while True:
-                page, next_cursor = await sorted_adapter.keys_page(
-                    cursor=cursor, limit=page_size
-                )
-                collected.extend(page)
-                if next_cursor is None:
-                    break
-                cursor = next_cursor
-            return keys_inserted, collected
-        finally:
-            await adapter.shutdown()
+        return adapter, ctx
+
+    adapter, ctx = loop.run_until_complete(_setup())
+    yield adapter, loop
+
+    async def _teardown():
+        await adapter.shutdown()
+        await ctx.__aexit__(None, None, None)
+
+    loop.run_until_complete(_teardown())
+    loop.close()
+
+
+@pytest.fixture(
+    scope="module",
+    params=["sqlite_adapter_for_hypothesis", "postgresql_adapter_for_hypothesis"],
+)
+def catalog_adapter_for_hypothesis(request):
+    yield request.getfixturevalue(request.param)
 
 
 @given(
@@ -707,7 +734,7 @@ async def _traverse_all_pages(n_items, page_size, direction):
     direction=st.sampled_from([1, -1]),
 )
 @settings(deadline=None, max_examples=30)
-def test_cursor_pagination_completeness(n_items, page_size, direction):
+def test_cursor_pagination_completeness(catalog_adapter_for_hypothesis, n_items, page_size, direction):
     """Traversing all cursor pages yields every item exactly once, in order.
 
     Properties checked:
@@ -716,13 +743,48 @@ def test_cursor_pagination_completeness(n_items, page_size, direction):
     - order matches insertion order (ASC) or reverse insertion order (DESC),
       since id is strictly monotonic
     """
-    keys_inserted, collected = asyncio.run(
-        _traverse_all_pages(n_items, page_size, direction)
-    )
+    adapter, loop = catalog_adapter_for_hypothesis
+
+    async def run():
+        # Use a unique container key so parallel/sequential examples don't collide.
+        import uuid
+        container_key = uuid.uuid4().hex
+        container = await adapter.create_node(
+            key=container_key,
+            metadata={},
+            structure_family=StructureFamily.container,
+            specs=[],
+        )
+        child = await adapter.lookup_adapter([container_key])
+        try:
+            keys_inserted = [str(i) for i in range(n_items)]
+            for key in keys_inserted:
+                await child.create_node(
+                    key=key,
+                    metadata={},
+                    structure_family=StructureFamily.container,
+                    specs=[],
+                )
+            sorted_child = child.sort([("", direction)])
+            collected = []
+            cursor = None
+            while True:
+                page, next_cursor = await sorted_child.keys_page(
+                    cursor=cursor, limit=page_size
+                )
+                collected.extend(page)
+                if next_cursor is None:
+                    break
+                cursor = next_cursor
+            return keys_inserted, collected
+        finally:
+            child_adapter = await adapter.lookup_adapter([container_key])
+            await child_adapter.delete(recursive=True, external_only=False)
+
+    keys_inserted, collected = loop.run_until_complete(run())
 
     assert len(collected) == n_items, "total item count must match"
     assert len(set(collected)) == len(collected), "no duplicates across pages"
-
     if direction == 1:
         assert collected == keys_inserted, "ASC traversal must match insertion order"
     else:
