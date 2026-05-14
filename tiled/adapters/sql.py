@@ -109,15 +109,6 @@ class SQLAdapter(Adapter[TableStructure]):
         self.dataset_id = dataset_id
         super().__init__(structure, metadata=metadata, specs=specs)
 
-    def metadata(self) -> JSON:
-        """The metadata representing the actual data.
-
-        Returns
-        -------
-        The metadata representing the actual data.
-        """
-        return self._metadata
-
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
         return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
@@ -129,8 +120,7 @@ class SQLAdapter(Adapter[TableStructure]):
         data_source: DataSource[TableStructure],
         path_parts: Optional[List[str]] = None,
     ) -> DataSource[TableStructure]:
-        """
-        Class to initialize the list of assets for given uri.
+        """Initialize (or update) a data source, including the list of assets, for given uri.
 
         Parameters
         ----------
@@ -541,6 +531,12 @@ def arrow_field_to_pg_type(field: Union[pyarrow.Field, pyarrow.DataType]) -> str
         if pyarrow.types.is_large_list(arrow_type):
             value_type = _resolve_type(arrow_type.value_type)
             return f"{value_type} ARRAY"
+
+        # Handle Awkward byte arrays
+        from awkward._connect.pyarrow.extn_types import AwkwardArrowType
+
+        if isinstance(arrow_type, AwkwardArrowType):
+            return "BYTEA"
 
         # TODO Consider adding support for these types, with testing.
 

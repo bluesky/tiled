@@ -1,3 +1,4 @@
+import itertools
 from collections.abc import Callable
 from typing import cast
 
@@ -229,8 +230,7 @@ def test_chunking(chunking_client, i: int):
     assert len(rac.chunks[0]) > 1
 
     divisions = np.cumsum((0, *rac.chunks[0]))
-    starts = divisions[:-1]
-    stops = divisions[1:]
+    starts, stops = divisions[:-1], divisions[1:]
     for j, (start, stop) in enumerate(zip(starts, stops, strict=True)):
         part = rac.read_block((j, 0))
         assert ak.array_equal(part._impl, array[start:stop]._impl)
