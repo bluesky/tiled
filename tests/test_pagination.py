@@ -361,6 +361,24 @@ def test_full_traversal_asc_sort(sorted_client):
     assert len(set(all_keys)) == 5
 
 
+def test_keys_range_non_default_sort(sorted_client):
+    """keys_range is exercised by a keys-only (fields=) request with a non-default sort.
+
+    The client sends fields= to request only keys (no metadata), which routes through
+    keys_range instead of items_range when the sort is non-default.
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    resp = http_client.get(
+        search_url, params={"sort": "id", "fields": "", "page[limit]": 10}
+    )
+    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    keys = [item["id"] for item in resp.json()["data"]]
+    assert keys == sorted(keys), f"Expected ascending id order, got: {keys}"
+    assert len(keys) == 5
+
+
 def test_full_traversal_desc_sort(sorted_client):
     """Full traversal under descending 'id' sort yields all items once, in reverse order."""
     all_keys = _paginate_all(sorted_client, sort="-id")
