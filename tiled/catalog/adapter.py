@@ -551,6 +551,10 @@ class CatalogNodeAdapter:
                 if catalog_adapter.data_sources:
                     adapter = await catalog_adapter.get_adapter()
                     for segment in segments[i:]:
+                        if not hasattr(
+                            adapter, "get"
+                        ):  # TiffSequenceAdapter doesn't have 'get'
+                            raise NoEntry(segments)
                         adapter = await anyio.to_thread.run_sync(adapter.get, segment)
                         if adapter is None:
                             raise NoEntry(segments)

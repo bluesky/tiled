@@ -45,6 +45,8 @@ async def create_default_roles(db):
                 "delete:node",
                 "create:apikeys",
                 "revoke:apikeys",
+                "webdav:read",
+                "webdav:write",
             ],
         ),
         Role(
@@ -65,19 +67,28 @@ async def create_default_roles(db):
                 "metrics",
                 "read:webhooks",
                 "write:webhooks",
+                "webdav:read",
+                "webdav:write",
             ],
         ),
     ]
 
-    roles_result = await db.execute(select(Role.name))
-    existing_role_names = set(roles_result.scalars().all())
-    roles_to_add = [
-        role for role in default_roles if role.name not in existing_role_names
-    ]
+    roles_result = await db.execute(select(Role))
+    existing_roles = {role.name: role for role in roles_result.scalars().all()}
 
-    if roles_to_add:
-        db.add_all(roles_to_add)
-        await db.commit()
+    for default_role in default_roles:
+        if default_role.name not in existing_roles:
+            db.add(default_role)
+        else:
+            # Merge any new scopes from the default definition into the existing role.
+            # Only adds; never removes scopes that were manually granted.
+            existing = existing_roles[default_role.name]
+            existing_scopes = set(existing.scopes or [])
+            new_scopes = set(default_role.scopes) - existing_scopes
+            if new_scopes:
+                existing.scopes = sorted(existing_scopes | new_scopes)
+
+    await db.commit()
 
 
 async def initialize_database(engine: AsyncEngine) -> None:

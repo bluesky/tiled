@@ -40,9 +40,11 @@ from .authentication import (
 from .dependencies import get_entry, get_root_tree
 from .schemas import Principal
 
+# Namespaces are important for the XML documents that we generate.
+# DAV_NS is the standard WebDAV namespace, and
+# TILED_WEBDAV_NS is a custom namespace for Tiled-specific properties.s
 DAV_NS = "DAV:"
 TILED_WEBDAV_NS = "https://blueskiyproject.io/tiled"
-
 _WEBDAV_PREFIX = "/api/webdav"
 
 
