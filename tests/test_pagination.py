@@ -1,21 +1,37 @@
 import pytest
 
-from tiled.catalog import in_memory
 from tiled.client import Context, from_context, record_history
 from tiled.server.app import build_app
 
 N = 10  # number of items generated in sample
 
 
-@pytest.fixture(scope="module")
-def client(tmpdir_module):
-    catalog = in_memory(writable_storage=[tmpdir_module])
-    app = build_app(catalog)
+@pytest.fixture
+def client(catalog_adapter):
+    app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         client = from_context(context)
         for i in range(N):
             client.create_container(metadata={"num": i}, key=str(i))
         yield client
+
+
+@pytest.fixture
+def sorted_client(catalog_adapter):
+    """Client pre-populated with 5 items inserted in scrambled order.
+
+    Insertion order: e, b, d, a, c
+    Alphabetical (key/id) order: a, b, c, d, e
+
+    The scrambled insertion order means default (id-based) sort != alphabetical key sort,
+    which is required for the cursor vs offset pagination tests to be meaningful.
+    """
+    app = build_app(catalog_adapter)
+    with Context.from_app(app) as context:
+        c = from_context(context)
+        for letter in ["e", "b", "d", "a", "c"]:
+            c.create_container(metadata={"letter": letter}, key=letter)
+        yield c
 
 
 def test_first_value(client):
@@ -208,3 +224,311 @@ def test_unbounded_keys_slice(client):
     actual_nums = [int(key) for key in keys]
     expected_nums = [3, 4, 5, 6, 7, 8, 9]
     assert actual_nums == expected_nums
+
+
+def _params_from_next_link(next_link, sort=None, page_size=2):
+    """Parse a pagination 'next' link into request params for the following page.
+
+    Handles both cursor-based (?page[cursor]=...) and offset-based
+    (?page[offset]=...) next links transparently.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    qs = parse_qs(urlparse(next_link).query)
+    params = {"page[limit]": page_size}
+    if "page[cursor]" in qs:
+        params["page[cursor]"] = qs["page[cursor]"][0]
+    elif "page[offset]" in qs:
+        params["page[offset]"] = qs["page[offset]"][0]
+    if sort is not None:
+        params["sort"] = sort
+    return params
+
+
+def _paginate_all(client, sort=None, page_size=2):
+    """Walk all pages via next links and return the concatenated list of item ids."""
+    params = {"page[limit]": page_size}
+    if sort is not None:
+        params["sort"] = sort
+    http_client = client.context.http_client
+    all_keys = []
+    while True:
+        resp = http_client.get(
+            client.uri.replace("/api/v1/metadata/", "/api/v1/search/"), params=params
+        )
+        assert (
+            resp.status_code == 200
+        ), f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+        body = resp.json()
+        page_keys = [item["id"] for item in body["data"]]
+        all_keys.extend(page_keys)
+        next_link = body["links"]["next"]
+        if not next_link or not page_keys:
+            break
+        params = _params_from_next_link(next_link, sort=sort, page_size=page_size)
+    return all_keys
+
+
+def test_cursor_pagination_default_sort(sorted_client):
+    """Default-sort first two pages are disjoint, cursor-linked, and contain the right items."""
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    resp1 = http_client.get(search_url, params={"page[limit]": 2})
+    assert resp1.status_code == 200
+    body1 = resp1.json()
+    page1_keys = [item["id"] for item in body1["data"]]
+    assert len(page1_keys) == 2
+
+    next_link = body1["links"]["next"]
+    assert next_link is not None, "Expected a 'next' link after the first page"
+    assert (
+        "page[cursor]=" in next_link
+    ), "Default sort should produce a cursor-based next link"
+
+    resp2 = http_client.get(search_url, params=_params_from_next_link(next_link))
+    assert resp2.status_code == 200
+    page2_keys = [item["id"] for item in resp2.json()["data"]]
+    assert len(page2_keys) == 2
+    assert (
+        set(page1_keys) & set(page2_keys) == set()
+    ), f"Pages overlap: {page1_keys}, {page2_keys}"
+    # Together they must be exactly the first four items (insertion order: e,b,d,a,c).
+    assert set(page1_keys) | set(page2_keys) == {"e", "b", "d", "a"}
+
+
+def test_offset_fallback_non_default_sort_second_page(sorted_client):
+    """Non-default sort falls back to offset-based next links.
+
+    Insertion order is e,b,d,a,c so default (id) order != alphabetical key order.
+    Sorted by 'id' (key): a,b,c,d,e  →  page 1=[a,b], page 2=[c,d].
+    The next link must be offset-based (not cursor-based) for non-default sorts.
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    resp1 = http_client.get(search_url, params={"sort": "id", "page[limit]": 2})
+    assert resp1.status_code == 200
+    page1_keys = [item["id"] for item in resp1.json()["data"]]
+    assert page1_keys == ["a", "b"], f"Unexpected page 1: {page1_keys}"
+
+    next_link = resp1.json()["links"]["next"]
+    assert next_link is not None, "Expected a 'next' link"
+    assert (
+        "page[offset]=" in next_link
+    ), "Non-default sort should produce an offset-based next link, not a cursor"
+
+    resp2 = http_client.get(
+        search_url, params=_params_from_next_link(next_link, sort="id")
+    )
+    assert resp2.status_code == 200
+    page2_keys = [item["id"] for item in resp2.json()["data"]]
+    assert page2_keys == ["c", "d"], f"Wrong page 2 for 'id' sort: {page2_keys}"
+
+
+def test_full_traversal_default_sort_descending(sorted_client):
+    """Full traversal with default-key descending sort (sort=-) yields all items once,
+    in reverse insertion order, using cursor-based next links.
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    resp = http_client.get(search_url, params={"sort": "-", "page[limit]": 2})
+    assert (
+        resp.status_code == 200
+    ), f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    next_link = resp.json()["links"]["next"]
+    assert next_link is not None
+    assert "page[cursor]=" in next_link
+
+    all_keys = _paginate_all(sorted_client, sort="-", page_size=2)
+    # Insertion order: e, b, d, a, c — descending reverses this.
+    assert all_keys == ["c", "a", "d", "b", "e"]
+
+
+def test_full_traversal_default_sort(sorted_client):
+    """Full traversal with default sort yields all items exactly once, in insertion order."""
+    all_keys = _paginate_all(sorted_client)
+    # Insertion order: e, b, d, a, c
+    assert all_keys == ["e", "b", "d", "a", "c"]
+
+
+def test_full_traversal_asc_sort(sorted_client):
+    """Full traversal under ascending 'id' sort yields all items once, in order."""
+    all_keys = _paginate_all(sorted_client, sort="id")
+    assert all_keys == sorted(all_keys), f"Out of order: {all_keys}"
+    assert len(all_keys) == 5
+    assert len(set(all_keys)) == 5
+
+
+def test_keys_range_non_default_sort(sorted_client):
+    """keys_range is exercised by a keys-only (fields=) request with a non-default sort.
+
+    The client sends fields= to request only keys (no metadata), which routes through
+    keys_range instead of items_range when the sort is non-default.
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    resp = http_client.get(
+        search_url, params={"sort": "id", "fields": "", "page[limit]": 10}
+    )
+    assert resp.status_code == 200
+    keys = [item["id"] for item in resp.json()["data"]]
+    assert keys == sorted(keys)
+    assert len(keys) == 5
+
+
+def test_full_traversal_desc_sort(sorted_client):
+    """Full traversal under descending 'id' sort yields all items once, in reverse order."""
+    all_keys = _paginate_all(sorted_client, sort="-id")
+    assert all_keys == sorted(all_keys, reverse=True)
+    assert len(all_keys) == 5
+    assert len(set(all_keys)) == 5
+
+
+def test_sort_by_dotted_metadata_key_accepted(sorted_client):
+    """?sort=metadata.letter must return 200, not 422."""
+    resp = sorted_client.context.http_client.get(
+        sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
+        params={"sort": "metadata.letter", "page[limit]": 5},
+    )
+    assert resp.status_code == 200
+
+
+def test_sort_by_dotted_metadata_key_order(sorted_client):
+    """?sort=metadata.letter returns items in alphabetical letter order."""
+    resp = sorted_client.context.http_client.get(
+        sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
+        params={"sort": "metadata.letter", "page[limit]": 10},
+    )
+    assert resp.status_code == 200
+    keys = [item["id"] for item in resp.json()["data"]]
+    assert keys == sorted(keys)
+
+
+def test_full_traversal_dotted_metadata_sort(sorted_client):
+    """Full traversal with metadata.letter sort yields all items once, in order.
+
+    Exercises both: dotted sort key accepted and correct
+    multi-page results for non-default sort via offset fallback.
+    """
+    all_keys = _paginate_all(sorted_client, sort="metadata.letter")
+    assert all_keys == sorted(all_keys)
+    assert len(all_keys) == 5
+    assert len(set(all_keys)) == 5
+
+
+def test_plus_prefix_sort_accepted(sorted_client):
+    """?sort=+id (explicit ascending prefix) must return 200, not 422."""
+    resp = sorted_client.context.http_client.get(
+        sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
+        params={"sort": "+id", "page[limit]": 5},
+    )
+    assert (
+        resp.status_code == 200
+    ), f"HTTP {resp.status_code}: {resp.json().get('detail')}"
+    keys = [item["id"] for item in resp.json()["data"]]
+    assert keys == sorted(keys)
+
+
+def test_plus_prefix_reverse_does_not_produce_malformed_sort(sorted_client):
+    """Reversing a +id sort must send -id, not -+id, to the server."""
+    # Simulate what the client does when reversing a +-prefixed sort field.
+    # If the bug were present, reversed_sorting_list would contain "-+id" and
+    # the server would reject it with 422.
+    resp = sorted_client.context.http_client.get(
+        sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
+        params={"sort": "-+id", "page[limit]": 5},
+    )
+    assert resp.status_code == 422, "'-+id' is malformed and should be rejected"
+
+    resp = sorted_client.context.http_client.get(
+        sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
+        params={"sort": "-id", "page[limit]": 5},
+    )
+    assert resp.status_code == 200, "'-id' (correct reversal of '+id') must be accepted"
+
+
+def test_limit_zero_returns_empty(sorted_client):
+    """page[limit]=0 must return an empty page with no error, but still include links."""
+    resp = sorted_client.context.http_client.get(
+        sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/"),
+        params={"page[limit]": 0},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"] == []
+    assert "first" in body["links"]
+    assert "next" in body["links"]
+
+
+def test_cursor_for_offset_past_end(sorted_client):
+    """cursor_for_offset with an offset beyond the collection returns None,
+    falling back to offset-based pagination (empty page, no crash, no next link).
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+    # There are 5 items; offset=100 is well past the end.
+    resp = http_client.get(search_url, params={"page[offset]": 100, "page[limit]": 2})
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []
+    assert resp.json()["links"]["next"] is None
+
+
+def test_offset_request_migrates_to_cursor_next_link(sorted_client):
+    """A page[offset] request on the default sort should return a cursor-based
+    next link and following it should return the correct remaining items without duplication.
+    """
+    http_client = sorted_client.context.http_client
+    search_url = sorted_client.uri.replace("/api/v1/metadata/", "/api/v1/search/")
+
+    # Request page 2 using an explicit offset (not a cursor).
+    resp = http_client.get(search_url, params={"page[offset]": 2, "page[limit]": 2})
+    assert resp.status_code == 200
+    body = resp.json()
+    page2_keys = [item["id"] for item in body["data"]]
+    assert len(page2_keys) == 2
+
+    next_link = body["links"]["next"]
+    assert next_link is not None, "Should have a next link (one more item remains)"
+    assert "page[cursor]=" in next_link
+    assert "page[offset]=" not in next_link
+
+    # Following the cursor next link should return the remaining item without overlap.
+    resp3 = http_client.get(search_url, params=_params_from_next_link(next_link))
+    assert resp3.status_code == 200
+    page3_keys = [item["id"] for item in resp3.json()["data"]]
+    assert len(page3_keys) == 1, f"Expected 1 remaining item, got {page3_keys}"
+    assert set(page3_keys) & set(page2_keys) == set()
+    assert resp3.json()["links"]["next"] is None
+
+
+def test_slice_by_offset_no_limit():
+    """slice_by_offset with limit=None returns all items and next_offset=None."""
+    from tiled.catalog.adapter import slice_by_offset
+
+    items = [1, 2, 3, 4, 5]
+    result, next_offset = slice_by_offset(items, offset=2, limit=None)
+    assert result == [3, 4, 5]
+    assert next_offset is None
+
+
+def test_slice_by_offset_exact_fit():
+    """slice_by_offset where items exactly fill the limit has next_offset=None."""
+    from tiled.catalog.adapter import slice_by_offset
+
+    items = [1, 2, 3]
+    result, next_offset = slice_by_offset(items, offset=0, limit=3)
+    assert result == [1, 2, 3]
+    assert next_offset is None
+
+
+def test_slice_by_offset_has_next():
+    """slice_by_offset where more items follow reports next_offset correctly."""
+    from tiled.catalog.adapter import slice_by_offset
+
+    items = [1, 2, 3, 4, 5]
+    result, next_offset = slice_by_offset(items, offset=0, limit=3)
+    assert result == [1, 2, 3]
+    assert next_offset == 3

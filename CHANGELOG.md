@@ -8,6 +8,15 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Cursor-based pagination for catalog containers on the default sort order.
+  The server now uses the node `id` as an opaque cursor, eliminating the
+  duplicate-and-skip problem that offset pagination suffers when items are
+  inserted concurrently. Non-default sort orders continue to use offset
+  pagination. Clients that supply `page[offset]` on the default sort are
+  transparently migrated to cursor pagination from the second page onward.
+  The new `page[cursor]` query parameter is accepted alongside the existing
+  `page[offset]` and `page[limit]` parameters; supplying both at once is
+  rejected with HTTP 400.
 - Support for slicing arrays backed by multipart adapters with modified shapes
 - OIDC Authenticator for Azure Entra
 - Add more administrative CLI commands centered around the creation of service

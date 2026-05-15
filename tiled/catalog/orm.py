@@ -101,14 +101,18 @@ class Node(Timestamped, Base):
         Index(
             "top_level_metadata",
             "parent",
-            # include the keys of the default sorting ('time_created', 'id'),
-            # used to avoid creating a temp sort index
+            # include 'time_created' and 'id' so the planner can satisfy an
+            # ORDER BY id without a separate sort step (index-only scan path).
             "time_created",
             "id",
             "metadata",
             "access_blob",
             postgresql_using="gin",
         ),
+        # B-tree index supporting cursor-based pagination (WHERE parent = ?
+        # AND id > cursor ORDER BY id) and cursor_for_offset (OFFSET N LIMIT 1
+        # ORDER BY id). Serves both SQLite and PostgreSQL efficiently.
+        Index("ix_nodes_parent_id", "parent", "id"),
     )
 
 

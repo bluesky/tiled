@@ -1,3 +1,4 @@
+import asyncio
 import random
 import string
 from contextlib import closing
@@ -14,6 +15,8 @@ import pytest_asyncio
 import sqlalchemy.exc
 import tifffile
 import xarray
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool, StaticPool
@@ -39,16 +42,16 @@ from .utils import sql_table_exists
 
 
 @pytest_asyncio.fixture
-async def a(adapter):
+async def a(catalog_adapter):
     "Raw adapter, not to be used within an app because it is manually started and stopped."
-    await adapter.startup()
-    yield adapter
-    await adapter.shutdown()
+    await catalog_adapter.startup()
+    yield catalog_adapter
+    await catalog_adapter.shutdown()
 
 
 @pytest_asyncio.fixture
-async def client(adapter):
-    app = build_app(adapter)
+async def client(catalog_adapter):
+    app = build_app(catalog_adapter)
     with Context.from_app(app) as context:
         yield from_context(context)
 
@@ -71,11 +74,11 @@ async def test_nested_node_creation(a):
     c = await b.lookup_adapter(["c"])
     assert await b.path_segments() == ["b"]
     assert await c.path_segments() == ["b", "c"]
-    assert (await a.keys_range(0, 1)) == ["b"]
-    assert (await b.keys_range(0, 1)) == ["c"]
+    assert (await a.keys_page(limit=1))[0] == ["b"]
+    assert (await b.keys_page(limit=1))[0] == ["c"]
     # smoke test
-    await a.items_range(0, 1)
-    await b.items_range(0, 1)
+    await a.items_page(limit=1)
+    await b.items_page(limit=1)
     await a.shutdown()
 
 
@@ -100,32 +103,36 @@ async def test_sorting(a):
         )
 
     # Default sorting is _not_ ordered.
-    default_key_order = await a.keys_range(0, 10)
+    default_key_order = (await a.keys_page(limit=10))[0]
     assert default_key_order != ordered_letters
+    assert set(default_key_order) == set(ordered_letters)
     # Sorting by ("", -1) gives reversed default order.
-    reversed_default_key_order = await a.sort([("", -1)]).keys_range(0, 10)
+    reversed_default_key_order = (await a.sort([("", -1)]).keys_page(limit=10))[0]
     assert reversed_default_key_order == list(reversed(default_key_order))
 
     # Sort by key.
-    assert await a.sort([("id", 1)]).keys_range(0, 10) == ordered_letters
-    # Test again, with items_range.
+    assert (await a.sort([("id", 1)]).keys_page(limit=10))[0] == ordered_letters
+    # Test again, with items_page.
     assert [
-        k for k, v in await a.sort([("id", 1)]).items_range(0, 10)
+        k for k, v in (await a.sort([("id", 1)]).items_page(limit=10))[0]
     ] == ordered_letters
 
     # Sort by letter metadata.
     # Use explicit 'metadata.{key}' namespace.
-    assert (await a.sort([("metadata.letter", 1)]).keys_range(0, 10)) == ordered_letters
+    assert (await a.sort([("metadata.letter", 1)]).keys_page(limit=10))[
+        0
+    ] == ordered_letters
 
     # Sort by letter metadata.
     # Use implicit '{key}' (more convenient, and necessary for back-compat).
-    assert (await a.sort([("letter", 1)]).keys_range(0, 10)) == ordered_letters
+    assert (await a.sort([("letter", 1)]).keys_page(limit=10))[0] == ordered_letters
 
     # Sort by number and then by letter.
     # Use explicit 'metadata.{key}' namespace.
-    items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_range(
-        0, 10
+    items = await a.sort([("metadata.number", 1), ("metadata.letter", 1)]).items_page(
+        limit=10
     )
+    items = items[0]
     numbers = [v.metadata()["number"] for k, v in items]
     letters = [v.metadata()["letter"] for k, v in items]
     keys = [k for k, v in items]
@@ -145,9 +152,9 @@ async def test_search(a):
             structure_family=StructureFamily.container,
             specs=[],
         )
-    assert "c" in await a.keys_range(0, 5)
-    assert await a.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
-    assert await a.search(Eq("number", 2)).keys_range(0, 5) == ["c"]
+    assert "c" in (await a.keys_page(limit=5))[0]
+    assert (await a.search(Eq("letter", "c")).keys_page(limit=5))[0] == ["c"]
+    assert (await a.search(Eq("number", 2)).keys_page(limit=5))[0] == ["c"]
 
     # Looking up "d" inside search results should find nothing when
     # "d" is filtered out by a search query first.
@@ -156,8 +163,7 @@ async def test_search(a):
         await a.search(Eq("letter", "c")).lookup_adapter(["d"])
 
     # Search on nested key.
-    assert await a.search(Eq("x.y.z", "c")).keys_range(0, 5) == ["c"]
-
+    assert (await a.search(Eq("x.y.z", "c")).keys_page(limit=5))[0] == ["c"]
     # Created nested nodes and search on them.
     d = await a.lookup_adapter(["d"])
     for letter, number in zip(string.ascii_lowercase[:5], range(10, 15)):
@@ -167,44 +173,52 @@ async def test_search(a):
             structure_family=StructureFamily.container,
             specs=[],
         )
-    assert await d.search(Eq("letter", "c")).keys_range(0, 5) == ["c"]
-    assert await d.search(Eq("number", 12)).keys_range(0, 5) == ["c"]
+    assert (await d.search(Eq("letter", "c")).keys_page(limit=5))[0] == ["c"]
+    assert (await d.search(Eq("number", 12)).keys_page(limit=5))[0] == ["c"]
 
 
 @pytest.mark.asyncio
 async def test_metadata_index_is_used(example_data_adapter):
     a = example_data_adapter  # for succinctness below
-    # Check that an index (specifically the 'top_level_metadata' index) is used
-    # by inspecting the content of an 'EXPLAIN ...' query. The exact content
-    # is intended for humans and is not an API, but we can coarsely check
-    # that the index of interest is mentioned.
+    # Check that an index is used by inspecting the content of an 'EXPLAIN ...'
+    # query. The exact content is intended for humans and is not an API, but we
+    # can coarsely check that the index of interest is mentioned.
+    # The 'top_level_metadata' GIN index is PostgreSQL-only. SQLite uses a
+    # B-tree covering index instead; we just verify any index is used.
+    dialect = a.context.engine.url.get_dialect().name
+    if dialect == "postgresql":
+        expected_index = "top_level_metadata"
+    else:
+        expected_index = "nodes_parent"  # B-tree index on parent (name varies by Alembic/SQLite version)
     await a.startup()
     with record_explanations() as e:
-        results = await a.search(Key("number_as_string") == "3").keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        results = await a.search(Key("number_as_string") == "3").keys_page(limit=5)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("number") == 3).keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        results = await a.search(Key("number") == 3).keys_page(limit=5)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("bool") == False).keys_range(0, 5)  # noqa: #712
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        results = await a.search(Key("bool") == False).keys_page(limit=5)  # noqa: #712
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     with record_explanations() as e:
-        results = await a.search(Key("nested.number_as_string") == "3").keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
-    with record_explanations() as e:
-        results = await a.search(Key("nested.number") == 3).keys_range(0, 5)
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
-    with record_explanations() as e:
-        results = await a.search(Key("nested.bool") == False).keys_range(  # noqa: #712
-            0, 5
+        results = await a.search(Key("nested.number_as_string") == "3").keys_page(
+            limit=5
         )
-        assert len(results) == 1
-        assert "top_level_metadata" in str(e)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
+    with record_explanations() as e:
+        results = await a.search(Key("nested.number") == 3).keys_page(limit=5)
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
+    with record_explanations() as e:
+        results = await a.search(Key("nested.bool") == False).keys_page(  # noqa: #712
+            limit=5
+        )
+        assert len(results[0]) == 1
+        assert expected_index in str(e)
     await a.shutdown()
 
 
@@ -650,7 +664,136 @@ async def test_delete_sql_assets(sql_storage_uri):
         assert len(assets_after_delete) == 1
 
         # Close and dispose the SQL storage
-        storage.dispose()
+    storage.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Hypothesis: pagination completeness
+# ---------------------------------------------------------------------------
+# The adapter is started once per module (per dialect) and reused across all
+# hypothesis examples. Each example creates a fresh child container, runs its
+# traversal inside it, then deletes it, keeping the shared DB clean.
+#
+# asyncio: hypothesis does not support async test functions, so we keep a
+# single event loop alive for the lifetime of the fixture and drive all
+# coroutines with loop.run_until_complete().
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def sqlite_adapter_for_hypothesis(tmp_path_factory):
+    loop = asyncio.new_event_loop()
+    tmpdir = tmp_path_factory.mktemp("hyp_sqlite")
+    adapter = in_memory(writable_storage=str(tmpdir))
+    loop.run_until_complete(adapter.startup())
+    yield adapter, loop
+    loop.run_until_complete(adapter.shutdown())
+    loop.close()
+
+
+@pytest.fixture(scope="module")
+def postgresql_adapter_for_hypothesis(tmp_path_factory):
+    from tiled.catalog import from_uri
+
+    from .conftest import TILED_TEST_POSTGRESQL_URI, temp_postgres
+
+    if not TILED_TEST_POSTGRESQL_URI:
+        pytest.skip("No TILED_TEST_POSTGRESQL_URI configured")
+    loop = asyncio.new_event_loop()
+    tmpdir = tmp_path_factory.mktemp("hyp_pg")
+
+    async def _setup():
+        ctx = temp_postgres(TILED_TEST_POSTGRESQL_URI)
+        uri = await ctx.__aenter__()
+        adapter = from_uri(uri, writable_storage=str(tmpdir), init_if_not_exists=True)
+        await adapter.startup()
+        return adapter, ctx
+
+    adapter, ctx = loop.run_until_complete(_setup())
+    yield adapter, loop
+
+    async def _teardown():
+        await adapter.shutdown()
+        await ctx.__aexit__(None, None, None)
+
+    loop.run_until_complete(_teardown())
+    loop.close()
+
+
+@pytest.fixture(
+    scope="module",
+    params=["sqlite_adapter_for_hypothesis", "postgresql_adapter_for_hypothesis"],
+)
+def catalog_adapter_for_hypothesis(request):
+    yield request.getfixturevalue(request.param)
+
+
+@given(
+    n_items=st.integers(min_value=0, max_value=50),
+    page_size=st.integers(min_value=1, max_value=20),
+    direction=st.sampled_from([1, -1]),
+)
+@settings(deadline=None, max_examples=50)
+def test_cursor_pagination_completeness(
+    catalog_adapter_for_hypothesis, n_items, page_size, direction
+):
+    """Traversing all cursor pages yields every item exactly once, in order.
+
+    Properties checked:
+    - total count matches n_items
+    - no duplicates across pages
+    - order matches insertion order (ASC) or reverse insertion order (DESC),
+      since id is strictly monotonic
+    """
+    adapter, loop = catalog_adapter_for_hypothesis
+
+    async def run():
+        # Use a unique container key so parallel/sequential examples don't collide.
+        import uuid
+
+        container_key = uuid.uuid4().hex
+        await adapter.create_node(
+            key=container_key,
+            metadata={},
+            structure_family=StructureFamily.container,
+            specs=[],
+        )
+        child = await adapter.lookup_adapter([container_key])
+        try:
+            keys_inserted = [str(i) for i in range(n_items)]
+            for key in keys_inserted:
+                await child.create_node(
+                    key=key,
+                    metadata={},
+                    structure_family=StructureFamily.container,
+                    specs=[],
+                )
+            sorted_child = child.sort([("", direction)])
+            collected = []
+            cursor = None
+            while True:
+                page, next_cursor = await sorted_child.keys_page(
+                    cursor=cursor, limit=page_size
+                )
+                collected.extend(page)
+                if next_cursor is None:
+                    break
+                cursor = next_cursor
+            return keys_inserted, collected
+        finally:
+            child_adapter = await adapter.lookup_adapter([container_key])
+            await child_adapter.delete(recursive=True, external_only=False)
+
+    keys_inserted, collected = loop.run_until_complete(run())
+
+    assert len(collected) == n_items, "total item count must match"
+    assert len(set(collected)) == len(collected), "no duplicates across pages"
+    if direction == 1:
+        assert collected == keys_inserted, "ASC traversal must match insertion order"
+    else:
+        assert collected == list(
+            reversed(keys_inserted)
+        ), "DESC traversal must match reverse insertion order"
 
 
 @pytest.mark.asyncio
