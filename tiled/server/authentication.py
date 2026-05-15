@@ -57,6 +57,7 @@ from ..authn_database import orm
 from ..authn_database.core import (
     create_service,
     create_user,
+    get_or_create_principal,
     latest_principal_activity,
     lookup_valid_api_key,
     lookup_valid_pending_session_by_device_code,
@@ -512,12 +513,14 @@ async def authenticate_websocket_first_message(
                         schemas.Identity(id=identity["id"], provider=identity["idp"])
                         for identity in decoded["ids"]
                     ],
+                    access_token=decoded,
                 )
             else:
                 principal = schemas.Principal(
                     uuid=uuid_module.UUID(hex=decoded["sub"]),
                     type=schemas.PrincipalType.user,
                     identities=[],
+                    access_token=decoded,
                 )
             scopes = _extract_scopes(decoded, settings.authenticator)
         else:
@@ -528,6 +531,7 @@ async def authenticate_websocket_first_message(
                     schemas.Identity(id=identity["id"], provider=identity["idp"])
                     for identity in decoded["ids"]
                 ],
+                access_token=decoded,
             )
             scopes = set(decoded["scp"])
         return True, principal, None, scopes
@@ -633,45 +637,36 @@ async def get_current_principal_websocket(
             )
         return principal
     elif decoded_access_token is not None:
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            if "sub_typ" in decoded_access_token:
-                # Tiled-minted token (auth code flow).
-                principal = schemas.Principal(
-                    uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-                    type=decoded_access_token["sub_typ"],
-                    identities=[
-                        schemas.Identity(id=identity["id"], provider=identity["idp"])
-                        for identity in decoded_access_token["ids"]
-                    ],
-                )
-            else:
-                # Entra-minted token (device code flow).
-                identity_id = (
-                    decoded_access_token.get("user") or decoded_access_token["sub"]
-                )
-                provider = websocket.app.state.provider
-                async with db_factory() as db:
-                    session = await create_session(
-                        settings,
-                        db,
-                        provider,
-                        identity_id,
-                    )
-                principal = schemas.Principal(
-                    uuid=session.principal.uuid,
-                    type=schemas.PrincipalType.user,
-                    identities=[schemas.Identity(id=identity_id, provider=provider)],
-                )
-            return principal
-        else:
-            return schemas.Principal(
+        if "sub_typ" in decoded_access_token:
+            # Token minted by Tiled's OAuth2 implementation
+            principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
                 type=decoded_access_token["sub_typ"],
                 identities=[
                     schemas.Identity(id=identity["id"], provider=identity["idp"])
                     for identity in decoded_access_token["ids"]
                 ],
+                access_token=decoded_access_token,
             )
+        else:
+            # Token minted by external OIDC provider
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
+            provider = websocket.app.state.provider
+            async with db_factory() as db:
+                session = await get_or_create_principal(
+                    db,
+                    provider,
+                    identity_id,
+                )
+            principal = schemas.Principal(
+                uuid=session.principal.uuid,
+                type=schemas.PrincipalType.user,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
+                access_token=decoded_access_token,
+            )
+        return principal
     else:
         if settings.allow_anonymous_access:
             return None
@@ -720,36 +715,8 @@ async def get_current_principal(
                 headers=headers_for_401(request, security_scopes),
             )
     elif decoded_access_token is not None:
-        if isinstance(settings.authenticator, ProxiedOIDCAuthenticator):
-            if "sub_typ" in decoded_access_token:
-                # Tiled-minted token (auth code flow): use the full claims.
-                principal = schemas.Principal(
-                    uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
-                    type=decoded_access_token["sub_typ"],
-                    identities=[
-                        schemas.Identity(id=identity["id"], provider=identity["idp"])
-                        for identity in decoded_access_token["ids"]
-                    ],
-                )
-            else:
-                # Entra-minted token (device code flow): look up / create session.
-                identity_id = (
-                    decoded_access_token.get("user") or decoded_access_token["sub"]
-                )
-                provider = request.app.state.provider
-                async with db_factory() as db:
-                    session = await create_session(
-                        settings,
-                        db,
-                        provider,
-                        identity_id,
-                    )
-                principal = schemas.Principal(
-                    uuid=session.principal.uuid,
-                    type=schemas.PrincipalType.user,
-                    identities=[schemas.Identity(id=identity_id, provider=provider)],
-                )
-        else:
+        if "sub_typ" in decoded_access_token:
+            # Token minted by Tiled's OAuth2 implementation
             principal = schemas.Principal(
                 uuid=uuid_module.UUID(hex=decoded_access_token["sub"]),
                 type=decoded_access_token["sub_typ"],
@@ -757,6 +724,23 @@ async def get_current_principal(
                     schemas.Identity(id=identity["id"], provider=identity["idp"])
                     for identity in decoded_access_token["ids"]
                 ],
+            )
+        else:
+            # Token minted by external OIDC provider
+            identity_id = (
+                decoded_access_token.get("user") or decoded_access_token["sub"]
+            )
+            provider = request.app.state.provider
+            async with db_factory() as db:
+                principal = await get_or_create_principal(
+                    db,
+                    provider,
+                    identity_id,
+                )
+            principal = schemas.Principal(
+                uuid=principal.uuid,
+                type=schemas.PrincipalType.user,
+                identities=[schemas.Identity(id=identity_id, provider=provider)],
             )
     else:
         # No form of authentication is present.
