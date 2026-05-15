@@ -15,8 +15,8 @@ const NodeBreadcrumbs: React.FunctionComponent<IProps> = (props) => {
       <Box mt={3} mb={2}>
         <Breadcrumbs
           aria-label="breadcrumb"
-          maxItems={4}
-          itemsAfterCollapse={2}
+          maxItems={7}
+          itemsAfterCollapse={3}
           itemsBeforeCollapse={1}
         >
           <Link key="breadcrumb-0" component={RouterLink} to="/browse/">
