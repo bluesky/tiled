@@ -223,7 +223,14 @@ const NodeLazyContents: React.FunctionComponent<NodeLazyContentsProps> = (
             page: number;
             pageSize: number;
           }) => {
-            setRowsState((prev) => ({ ...prev, page, pageSize }));
+            setRowsState((prev) => ({
+              ...prev,
+              // Reset to page 0 when page size changes to avoid landing
+              // at an out-of-range page (e.g. page 5 of 10-item pages
+              // becomes page 5 of 100-item pages = offset 500).
+              page: pageSize !== prev.pageSize ? 0 : page,
+              pageSize,
+            }));
           }}
           onRowClick={(params: GridRowParams) => {
             navigate(
