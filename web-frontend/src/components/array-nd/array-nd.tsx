@@ -15,7 +15,7 @@ import { COLORMAP_LABELS, COLORMAPS, ColormapName } from "./colormaps";
 import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useTheme } from "@mui/material/styles";
 import { axiosInstance } from "../../client";
 
@@ -79,6 +79,14 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const [colormap, setColormap] = useState<ColormapName>("gray");
   const [logScale, setLogScale] = useState<boolean>(false);
 
+  const onFirstLoad = useCallback(
+    (suggested: { logScale: boolean; colormap: ColormapName }) => {
+      setLogScale(suggested.logScale);
+      setColormap(suggested.colormap);
+    },
+    [],
+  );
+
   return (
     <Box>
       {color ? (
@@ -96,6 +104,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
           structure={props.structure}
           colormap={colormap}
           logScale={logScale}
+          onFirstLoad={onFirstLoad}
         />
       )}
 
@@ -249,6 +258,44 @@ interface GrayscaleImageDisplayProps {
   structure: components["schemas"]["Structure"];
   colormap: ColormapName;
   logScale: boolean;
+  onFirstLoad?: (settings: { logScale: boolean; colormap: ColormapName }) => void;
+}
+
+/**
+ * Suggest initial display settings from the pixel distribution of a
+ * freshly-fetched grayscale slice.
+ *
+ * Heuristic: scientific/detector images tend to be heavily right-skewed —
+ * most pixels are near zero with a few very bright ones. We detect this by
+ * comparing the 99th percentile to the median:
+ *   - p99 / (p50 + ε) > 10  →  log scale + Viridis
+ *   - otherwise              →  linear + Gray (photograph-like)
+ */
+function suggestSettings(raw: ArrayLike<number>): { logScale: boolean; colormap: ColormapName } {
+  const n = raw.length;
+  if (n === 0) return { logScale: false, colormap: "gray" };
+
+  // Collect finite values and sort for percentile calculation
+  const values: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const v = raw[i];
+    if (isFinite(v)) values.push(v);
+  }
+  if (values.length === 0) return { logScale: false, colormap: "gray" };
+  values.sort((a, b) => a - b);
+
+  const at = (p: number) => values[Math.floor(p * (values.length - 1))];
+  const p50 = at(0.5);
+  const p99 = at(0.99);
+  const lo = values[0];
+
+  // Shift by minimum so comparisons work even for negative data (e.g. int16)
+  const p50s = p50 - lo;
+  const p99s = p99 - lo;
+
+  const logScale = p99s > 10 * (p50s + 1e-6);
+  const colormap: ColormapName = logScale ? "viridis" : "gray";
+  return { logScale, colormap };
 }
 
 /**
@@ -285,7 +332,9 @@ const GrayscaleImageDisplay: React.FunctionComponent<
   GrayscaleImageDisplayProps
 > = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { link, cuts, stride, structure, colormap, logScale } = props;
+  const { link, cuts, stride, structure, colormap, logScale, onFirstLoad } = props;
+  // Fire onFirstLoad only once per mount (not on colormap/logScale changes).
+  const firstLoadFired = useRef(false);
 
   const dataType = (structure as any).data_type as {
     kind: string;
@@ -317,6 +366,14 @@ const GrayscaleImageDisplay: React.FunctionComponent<
         );
         const raw = new ArrayType(resp.data as ArrayBuffer) as ArrayLike<number>;
         const n = raw.length;
+
+        // On first load, suggest colormap/logScale from the pixel distribution
+        // and propagate to the parent. Only fires once per mount so user
+        // changes to the controls are not overridden on subsequent fetches.
+        if (!firstLoadFired.current && onFirstLoad) {
+          firstLoadFired.current = true;
+          onFirstLoad(suggestSettings(raw));
+        }
 
         // --- Normalise to [0, 255] ----------------------------------------
         // Find finite min/max (skip NaN/Inf for float arrays)
