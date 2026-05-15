@@ -4,13 +4,11 @@ import { Suspense, lazy, useContext, useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import ErrorBoundary from "../components/error-boundary/error-boundary";
-import NodeBreadcrumbs from "../components/node-breadcrumbs/node-breadcrumbs";
 import Paper from "@mui/material/Paper";
 import PropTypes from "prop-types";
 import Skeleton from "@mui/material/Skeleton";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
-import Typography from "@mui/material/Typography";
 import { components } from "../openapi_schemas";
 import { metadata } from "../client";
 import { SettingsContext } from "../context/settings";
@@ -281,7 +279,6 @@ function Browse() {
   if (segments !== undefined) {
     return (
       <Box sx={{ width: "100%" }}>
-        <NodeBreadcrumbs segments={segments} />
         <NodeTabs segments={segments} />
       </Box>
     );

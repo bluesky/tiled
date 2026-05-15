@@ -1,7 +1,9 @@
 import Container from "@mui/material/Container";
+import Paper from "@mui/material/Paper";
 import ErrorBoundary from "./components/error-boundary/error-boundary";
-import { Outlet, Navigate, BrowserRouter, Route, Routes } from "react-router-dom";
+import { Outlet, Navigate, BrowserRouter, Route, Routes, useParams } from "react-router-dom";
 import TiledAppBar from "./components/tiled-app-bar/tiled-app-bar";
+import NodeBreadcrumbs from "./components/node-breadcrumbs/node-breadcrumbs";
 import React, { useEffect, useState } from "react";
 import * as ReactDOM from "react-dom";
 import { fetchSettings } from "./settings";
@@ -21,6 +23,29 @@ import Skeleton from "@mui/material/Skeleton";
 const Browse = lazy(() => import("./routes/browse"));
 const LoginPage = lazy(() => import("./routes/login"));
 const AuthCallback = lazy(() => import("./routes/auth-callback"));
+
+function BreadcrumbBar() {
+  const params = useParams<{ "*": string }>();
+  const segments = (params["*"] || "").split("/").filter(Boolean);
+  return (
+    <Paper
+      elevation={0}
+      square
+      sx={{
+        position: "sticky",
+        top: 0,
+        zIndex: (theme) => theme.zIndex.appBar - 1,
+        borderBottom: 1,
+        borderColor: "divider",
+        px: 3,
+        py: 0.75,
+        backgroundColor: "background.default",
+      }}
+    >
+      <NodeBreadcrumbs segments={segments} />
+    </Paper>
+  );
+}
 
 function MainContainer() {
   return (
@@ -90,7 +115,10 @@ function App() {
                     path="/browse/*"
                     element={
                       <RequireAuth>
-                        <Browse />
+                        <>
+                          <BreadcrumbBar />
+                          <Browse />
+                        </>
                       </RequireAuth>
                     }
                   />
