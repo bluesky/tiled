@@ -4,6 +4,7 @@ import { Suspense, lazy, useContext, useEffect, useState } from "react";
 
 import Box from "@mui/material/Box";
 import ErrorBoundary from "../components/error-boundary/error-boundary";
+import NodeBreadcrumbs from "../components/node-breadcrumbs/node-breadcrumbs";
 import Paper from "@mui/material/Paper";
 import PropTypes from "prop-types";
 import Skeleton from "@mui/material/Skeleton";
@@ -352,7 +353,17 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
   }, [props.segments]);
   return (
     <Box sx={{ width: "100%" }}>
-      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+      {/* On mobile: breadcrumbs above, tabs below.
+          On wider screens: tabs left, breadcrumbs right on the same line. */}
+      <Box
+        sx={{
+          borderBottom: 1,
+          borderColor: "divider",
+          display: "flex",
+          flexDirection: { xs: "column", md: "row" },
+          alignItems: { md: "flex-end" },
+        }}
+      >
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
@@ -363,6 +374,16 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
           <Tab label="Metadata" {...a11yProps(2)} />
           <Tab label="Detail" {...a11yProps(3)} />
         </Tabs>
+        <Box
+          sx={{
+            ml: { md: "auto" },
+            px: 1,
+            pb: { xs: 1, md: 0.75 },
+            pt: { xs: 0.5, md: 0 },
+          }}
+        >
+          <NodeBreadcrumbs segments={props.segments} />
+        </Box>
       </Box>
       <TabPanel value={tabValue} index={0}>
         <Paper elevation={3} sx={{ px: 3, py: 3 }}>
