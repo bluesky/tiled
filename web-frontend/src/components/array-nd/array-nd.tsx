@@ -265,17 +265,23 @@ interface GrayscaleImageDisplayProps {
  * Suggest initial display settings from the pixel distribution of a
  * freshly-fetched grayscale slice.
  *
- * Heuristic: scientific/detector images tend to be heavily right-skewed —
- * most pixels are near zero with a few very bright ones. We detect this by
- * comparing the 99th percentile to the median:
- *   - p99 / (p50 + ε) > 10  →  log scale + Viridis
- *   - otherwise              →  linear + Gray (photograph-like)
+ * Detector/scientific images with sparse bright pixels have a huge gap
+ * between the 99th percentile and the maximum value — most photons land
+ * on a small number of pixels, leaving the rest near zero. We detect
+ * this with:
+ *
+ *   max / (p99 + ε) > 10  →  log scale + Viridis
+ *   otherwise             →  linear + Gray
+ *
+ * This correctly handles:
+ *   - Photographs / microscopy with smooth histograms (ratio ~1)
+ *   - Binary/boolean images (ratio ~1)
+ *   - Detector images with outlier bright pixels (ratio >> 10)
  */
 function suggestSettings(raw: ArrayLike<number>): { logScale: boolean; colormap: ColormapName } {
   const n = raw.length;
   if (n === 0) return { logScale: false, colormap: "gray" };
 
-  // Collect finite values and sort for percentile calculation
   const values: number[] = [];
   for (let i = 0; i < n; i++) {
     const v = raw[i];
@@ -284,16 +290,15 @@ function suggestSettings(raw: ArrayLike<number>): { logScale: boolean; colormap:
   if (values.length === 0) return { logScale: false, colormap: "gray" };
   values.sort((a, b) => a - b);
 
-  const at = (p: number) => values[Math.floor(p * (values.length - 1))];
-  const p50 = at(0.5);
-  const p99 = at(0.99);
   const lo = values[0];
+  const hi = values[values.length - 1];
+  const p99 = values[Math.floor(0.99 * (values.length - 1))];
 
-  // Shift by minimum so comparisons work even for negative data (e.g. int16)
-  const p50s = p50 - lo;
-  const p99s = p99 - lo;
+  // Shift by minimum to handle data with a large DC offset or negative values
+  const hiS  = hi  - lo;
+  const p99S = p99 - lo;
 
-  const logScale = p99s > 10 * (p50s + 1e-6);
+  const logScale = hiS > 10 * (p99S + 1e-6);
   const colormap: ColormapName = logScale ? "viridis" : "gray";
   return { logScale, colormap };
 }
