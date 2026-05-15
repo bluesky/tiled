@@ -13,7 +13,12 @@ const NodeBreadcrumbs: React.FunctionComponent<IProps> = (props) => {
   if (props.segments !== undefined) {
     return (
       <Box mt={3} mb={2}>
-        <Breadcrumbs aria-label="breadcrumb">
+        <Breadcrumbs
+          aria-label="breadcrumb"
+          maxItems={4}
+          itemsAfterCollapse={2}
+          itemsBeforeCollapse={1}
+        >
           <Link key="breadcrumb-0" component={RouterLink} to="/browse/">
             Top
           </Link>

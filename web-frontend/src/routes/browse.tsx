@@ -368,11 +368,6 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
         </Tabs>
       </Box>
       <TabPanel value={tabValue} index={0}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          {props.segments.length > 0
-            ? props.segments[props.segments.length - 1]
-            : ""}
-        </Typography>
         <Paper elevation={3} sx={{ px: 3, py: 3 }}>
           <ErrorBoundary>
             <Suspense fallback={<Skeleton variant="rectangular" />}>
