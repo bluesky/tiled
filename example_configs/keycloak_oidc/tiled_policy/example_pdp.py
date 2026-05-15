@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import HttpUrl
 
 from tiled.access_control.access_policies import ExternalPolicyDecisionPoint
-from tiled.server.schemas import Principal, PrincipalType
+from tiled.server.schemas import Principal
 from tiled.type_aliases import AccessBlob, AccessTags, Scopes
 
 
@@ -42,10 +42,7 @@ class ExampleAuthorizationPolicy(ExternalPolicyDecisionPoint):
     ) -> str:
         _input = {"audience": self._token_audience}
 
-        if (
-            principal.type is PrincipalType.external
-            and principal.access_token is not None
-        ):
+        if principal.access_token is not None:
             _input["token"] = principal.access_token.get_secret_value()
 
         if access_blob is not None:
