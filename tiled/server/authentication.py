@@ -513,14 +513,13 @@ async def authenticate_websocket_first_message(
                         schemas.Identity(id=identity["id"], provider=identity["idp"])
                         for identity in decoded["ids"]
                     ],
-                    access_token=decoded,
                 )
             else:
                 principal = schemas.Principal(
                     uuid=uuid_module.UUID(hex=decoded["sub"]),
                     type=schemas.PrincipalType.user,
                     identities=[],
-                    access_token=decoded,
+                    access_token=access_token,
                 )
             scopes = _extract_scopes(decoded, settings.authenticator)
         else:
@@ -531,7 +530,7 @@ async def authenticate_websocket_first_message(
                     schemas.Identity(id=identity["id"], provider=identity["idp"])
                     for identity in decoded["ids"]
                 ],
-                access_token=decoded,
+                access_token=access_token,
             )
             scopes = set(decoded["scp"])
         return True, principal, None, scopes
@@ -620,6 +619,7 @@ async def get_current_principal_from_api_key(
 async def get_current_principal_websocket(
     websocket: WebSocket,
     api_key: Optional[str] = Depends(get_api_key_websocket),
+    access_token: Optional[str] = Query(None),
     decoded_access_token: Optional[dict] = Depends(get_decoded_access_token_websocket),
     settings: Settings = Depends(get_settings),
     db_factory: Callable[[], Optional[AsyncSession]] = Depends(
@@ -646,7 +646,6 @@ async def get_current_principal_websocket(
                     schemas.Identity(id=identity["id"], provider=identity["idp"])
                     for identity in decoded_access_token["ids"]
                 ],
-                access_token=decoded_access_token,
             )
         else:
             # Token minted by external OIDC provider
@@ -664,7 +663,7 @@ async def get_current_principal_websocket(
                 uuid=session.principal.uuid,
                 type=schemas.PrincipalType.user,
                 identities=[schemas.Identity(id=identity_id, provider=provider)],
-                access_token=decoded_access_token,
+                access_token=access_token,
             )
         return principal
     else:
@@ -741,6 +740,7 @@ async def get_current_principal(
                 uuid=principal.uuid,
                 type=schemas.PrincipalType.user,
                 identities=[schemas.Identity(id=identity_id, provider=provider)],
+                access_token=access_token,
             )
     else:
         # No form of authentication is present.
