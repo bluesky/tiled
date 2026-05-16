@@ -1,5 +1,6 @@
 import collections
 import collections.abc
+import logging
 import pathlib
 import threading
 import warnings
@@ -10,8 +11,10 @@ import httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
-from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
+from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context, password_grant
 from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
+
+logger = logging.getLogger(__name__)
 
 
 def from_uri(
@@ -267,6 +270,122 @@ def from_profile(name, structure_clients=None, **kwargs):
         return from_context(context, **merged)
     else:
         return from_uri(**merged)
+
+
+def from_provider(
+    uri: str,
+    provider: str,
+    username: str,
+    password: str,
+    structure_clients="numpy",
+    *,
+    include_data_sources=False,
+):
+    """
+    Connect to a tiled server and authenticate via a named provider.
+
+    Uses ``Context.from_any_uri()`` to connect without triggering tiled's
+    built-in interactive login flow, then authenticates via an OAuth2
+    password grant and returns a tiled client.
+
+    This only supports providers with mode ``"internal"`` (password-based
+    authentication).  External (e.g. OIDC) providers are not supported
+    by this function; use ``from_uri`` with the interactive flow instead.
+
+    Example::
+
+        from tiled.client import from_provider
+
+        client = from_provider(
+            uri="http://localhost:8000",
+            provider="MyAuthenticator",
+            username="joe_user",
+            password="secret",
+        )
+        print(f"{list(client)=}")
+
+    Parameters
+    ----------
+    uri : str
+        Tiled server URI (e.g. ``"http://localhost:8000"``).
+    provider : str
+        Authentication provider name as configured on the server
+        (e.g. ``"MyAuthenticator"``).
+    username : str
+        Username for authentication.
+    password : str
+        Password for authentication.
+    structure_clients : str or dict, optional
+        Use "dask" for delayed data loading and "numpy" for immediate
+        in-memory structures (e.g. normal numpy arrays, pandas
+        DataFrames). For advanced use, provide dict mapping a
+        structure_family or a spec to a client object.
+    include_data_sources : bool, optional
+        Default False. If True, fetch information about underlying data sources.
+
+    Returns
+    -------
+    client
+        An authenticated tiled client (the return value of
+        ``tiled.client.constructors.from_context``).
+
+    Raises
+    ------
+    ValueError
+        If the named *provider* is not offered by the server, or if the
+        provider does not use password-based (internal) authentication.
+    """
+    # Connect without triggering interactive login.
+    logger.debug("Connecting to %s ...", uri)
+    context, node_path_parts = Context.from_any_uri(uri)
+
+    # Resolve the authentication provider.
+    providers = context.server_info.authentication.providers
+    provider_spec = None
+    for p in providers:
+        if p.provider == provider:
+            provider_spec = p
+            break
+
+    if provider_spec is None:
+        available = [p.provider for p in providers]
+        raise ValueError(
+            f"Provider {provider!r} not found on server {uri}. "
+            f"Available providers: {available}"
+        )
+
+    # Only internal (password-based) providers support the password grant.
+    # "password" is a back-compat alias for "internal".
+    if provider_spec.mode not in ("internal", "password"):
+        raise ValueError(
+            f"Provider {provider!r} uses mode {provider_spec.mode!r}, "
+            f"which does not support password-based authentication. "
+            f"Use from_uri() with the interactive login flow instead."
+        )
+
+    auth_endpoint = provider_spec.links["auth_endpoint"]
+
+    # Authenticate via OAuth2 password grant.
+    logger.debug("Authenticating %r via %s ...", username, provider)
+    tokens = password_grant(
+        context.http_client,
+        auth_endpoint,
+        provider,
+        username,
+        password,
+    )
+    context.configure_auth(tokens)
+
+    # Mark authentication as externally handled so that from_context()
+    # does not attempt to re-authenticate or overwrite the tokens.
+    context.has_external_auth = True
+
+    return from_context(
+        context,
+        structure_clients=structure_clients,
+        node_path_parts=node_path_parts,
+        include_data_sources=include_data_sources,
+    )
 
 
 def simple(
