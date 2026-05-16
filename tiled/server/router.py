@@ -2094,6 +2094,14 @@ def get_router(
         data = await ensure_awaitable(
             deserializer, body, structure.form, structure.length
         )
+        expected_form_keys = set(structure.form.expected_from_buffers())
+        unexpected_form_keys = set(data) - expected_form_keys
+        if unexpected_form_keys:
+            first_unexpected = sorted(unexpected_form_keys)[0]
+            raise HTTPException(
+                status_code=HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Unexpected Awkward buffer key: {first_unexpected!r}",
+            )
         await ensure_awaitable(entry.write, data)
         return json_or_msgpack(request, None)
 

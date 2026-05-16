@@ -1,5 +1,6 @@
 import io
 import zipfile
+from pathlib import PurePosixPath
 
 import awkward
 
@@ -29,9 +30,13 @@ def to_zipped_buffers(mimetype, components, metadata):
 def from_zipped_buffers(buffer, form, length):
     file = io.BytesIO(buffer)
     with zipfile.ZipFile(file, "r") as zip:
-        form_keys = zip.namelist()
         container = {}
-        for form_key in form_keys:
+        for form_key in zip.namelist():
+            parsed = PurePosixPath(form_key)
+            if parsed.is_absolute() or ".." in parsed.parts:
+                raise ValueError(
+                    f"Zip file contains unsafe Awkward buffer key: {form_key!r}"
+                )
             container[form_key] = zip.read(form_key)
     return container
 
