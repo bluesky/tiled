@@ -255,6 +255,72 @@ properties:
         return UserSessionState(verified_body["sub"], {})
 
 
+class EntraInternalAuthenticator(OIDCAuthenticator):
+    def decode_token(
+        self, id_token: str, access_token: Optional[str] = None
+    ) -> dict[str, Any]:
+        claims = super().decode_token(id_token, access_token)
+
+        claims["entra_username"] = (
+            claims.get("nameID")
+            or claims.get("preferred_username")
+            or claims.get("upn")
+            or claims.get("email")
+        )
+
+        # Make a copy of the entra app user id
+        # in case its needed later
+        claims["entra_userid"] = claims.get("user")
+
+        if user := claims.get("entra_username"):
+            user = user.strip()
+            if "\\" in user:
+                user = user.rsplit("\\", 1)[-1]
+            elif "@" in user:
+                user = user.split("@", 1)[0]
+        claims["user"] = user
+
+        return claims
+
+    async def authenticate(self, request: Request) -> Optional[UserSessionState]:
+        code = request.query_params.get("code")
+        if not code:
+            logger.warning(
+                "Authentication failed: No authorization code parameter provided."
+            )
+            return None
+        # A proxy in the middle may make the request into something like
+        # 'http://localhost:8000/...' so we fix the first part but keep
+        # the original URI path.
+        redirect_uri = f"{get_root_url(request)}{request.url.path}"
+        response = await exchange_code(
+            self.token_endpoint,
+            code,
+            self._client_id,
+            self._client_secret.get_secret_value(),
+            redirect_uri,
+        )
+        response_body = response.json()
+        if response.is_error:
+            logger.error("Authentication error: %r", response_body)
+            return None
+        response_body = response.json()
+        id_token = response_body["id_token"]
+        access_token = response_body["access_token"]
+        try:
+            verified_body = self.decode_token(id_token, access_token)
+        except JWTError:
+            logger.exception(
+                "Authentication error. Unverified token: %r",
+                jwt.get_unverified_claims(id_token),
+            )
+            return None
+        # HACK!
+        # We should probably capture both "sub" and "user" (meaning display name)
+        # in UserSessionState, not override sub here.
+        return UserSessionState(verified_body["user"], {})
+
+
 class ProxiedOIDCAuthenticator(OIDCAuthenticator):
     configuration_schema = """
 $schema": http://json-schema.org/draft-07/schema#
