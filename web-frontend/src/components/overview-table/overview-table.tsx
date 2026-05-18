@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Checkbox from "@mui/material/Checkbox";
 import ChoosePartition from "../choose-partition/choose-partition";
 import Container from "@mui/material/Container";
 import { DataGrid } from "@mui/x-data-grid";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import { axiosInstance } from "../../client";
@@ -152,10 +154,6 @@ const DEFAULT_PAGE_SIZE = 10;
  */
 function formatCellValue(value: unknown): string {
   if (typeof value === "number" && !Number.isInteger(value)) {
-    // toPrecision(4) gives 4 significant figures and preserves trailing zeros
-    // within that precision, e.g. 10.0000001 → "10.00", 1.23456 → "1.235",
-    // 12345678.9 → "1.235e+7".  We use it as-is rather than passing through
-    // parseFloat() (which would strip the trailing zeros and turn "10.00" into "10").
     return value.toPrecision(4);
   }
   return String(value ?? "");
@@ -163,16 +161,55 @@ function formatCellValue(value: unknown): string {
 
 const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
-  const data_columns = props.columns.map((column) => ({
-    field: column,
-    headerName: column,
-    width: 200,
-    valueFormatter: (value: unknown) => formatCellValue(value),
-  }));
-  const data_rows = props.rows.map((row, index) => {
-    row.id = index;
-    return row;
-  });
+  // Auto-transpose when columns outnumber rows (wide tables look better transposed).
+  // User can always override.
+  const autoTranspose =
+    !props.loading &&
+    props.rows.length > 0 &&
+    props.columns.length > props.rows.length;
+  const [transposed, setTransposed] = React.useState<boolean>(false);
+  // Apply auto-transpose once when data first loads
+  const [autoApplied, setAutoApplied] = React.useState<boolean>(false);
+  React.useEffect(() => {
+    if (!props.loading && props.rows.length > 0 && !autoApplied) {
+      setTransposed(autoTranspose);
+      setAutoApplied(true);
+    }
+  }, [props.loading, props.rows.length, autoTranspose, autoApplied]);
+
+  let data_columns;
+  let data_rows;
+
+  if (!transposed) {
+    data_columns = props.columns.map((column) => ({
+      field: column,
+      headerName: column,
+      width: 200,
+      valueFormatter: (value: unknown) => formatCellValue(value),
+    }));
+    data_rows = props.rows.map((row, index) => ({ ...row, id: index }));
+  } else {
+    // Transposed: original column names become row labels; original rows
+    // become columns named row_0, row_1, …
+    const rowKeys = props.rows.map((_, i) => `row_${i}`);
+    data_columns = [
+      { field: "__column__", headerName: "Column", width: 160 },
+      ...rowKeys.map((key) => ({
+        field: key,
+        headerName: key,
+        width: 160,
+        valueFormatter: (value: unknown) => formatCellValue(value),
+      })),
+    ];
+    data_rows = props.columns.map((col) => {
+      const row: Record<string, any> = { id: col, __column__: col };
+      props.rows.forEach((r, i) => {
+        row[`row_${i}`] = r[col];
+      });
+      return row;
+    });
+  }
+
   return (
     <Box>
       <DataGrid
@@ -185,19 +222,31 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
         onPaginationModelChange={(model) => setPageSize(model.pageSize)}
         autoHeight
       />
-      {/* "Go to Column" sits in a bar flush with the DataGrid footer */}
+      {/* Footer bar: "Go to Column" and "Transpose" at the same level as "Rows per page" */}
       <Box
         sx={{
           display: "flex",
           alignItems: "center",
+          gap: 2,
           px: 1,
           py: 0.5,
-          borderTop: 0,
-          borderColor: "divider",
           backgroundColor: "background.paper",
         }}
       >
-        <VisitColumns segments={props.segments} columns={props.columns} />
+        {!transposed && (
+          <VisitColumns segments={props.segments} columns={props.columns} />
+        )}
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={transposed}
+              onChange={(e) => setTransposed(e.target.checked)}
+              size="small"
+            />
+          }
+          label="Transpose"
+          sx={{ ml: "auto" }}
+        />
       </Box>
     </Box>
   );
