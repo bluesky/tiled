@@ -161,6 +161,7 @@ function formatCellValue(value: unknown): string {
 
 const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
+  const [page, setPage] = React.useState<number>(0);
   // Auto-transpose when columns outnumber rows (wide tables look better transposed).
   // User can always override.
   const autoTranspose =
@@ -217,9 +218,12 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
         rows={data_rows}
         columns={data_columns}
         pagination
-        paginationModel={{ pageSize, page: 0 }}
+        paginationModel={{ pageSize, page }}
         pageSizeOptions={[10, 30, 100]}
-        onPaginationModelChange={(model) => setPageSize(model.pageSize)}
+        onPaginationModelChange={(model) => {
+          setPage(model.page);
+          setPageSize(model.pageSize);
+        }}
         autoHeight
       />
       {/* Footer bar: "Go to Column" and "Transpose" at the same level as "Rows per page" */}
