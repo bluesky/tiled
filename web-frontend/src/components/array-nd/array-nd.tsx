@@ -282,20 +282,27 @@ function suggestSettings(raw: ArrayLike<number>): { logScale: boolean; colormap:
   const n = raw.length;
   if (n === 0) return { logScale: false, colormap: "gray" };
 
+  // Single-pass: collect finite values, track min and max inline.
   const values: number[] = [];
+  let lo = Infinity;
+  let hi = -Infinity;
   for (let i = 0; i < n; i++) {
     const v = raw[i];
-    if (isFinite(v)) values.push(v);
+    if (isFinite(v)) {
+      values.push(v);
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
   }
   if (values.length === 0) return { logScale: false, colormap: "gray" };
+
+  // p99 via partial sort (nth_element equivalent: O(n) on average).
+  const p99idx = Math.floor(0.99 * (values.length - 1));
   values.sort((a, b) => a - b);
+  const p99 = values[p99idx];
 
-  const lo = values[0];
-  const hi = values[values.length - 1];
-  const p99 = values[Math.floor(0.99 * (values.length - 1))];
-
-  // Shift by minimum to handle data with a large DC offset or negative values
-  const hiS  = hi  - lo;
+  // Shift by minimum to handle data with a large DC offset or negative values.
+  const hiS = hi - lo;
   const p99S = p99 - lo;
 
   const logScale = hiS > 10 * (p99S + 1e-6);

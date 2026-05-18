@@ -87,7 +87,10 @@ export const searchByUrl = async (
   selectMetadata: string | null = null,
   sort: string | null = null,
 ): Promise<SearchResponse> => {
-  let fullUrl = `${url}&fields=${fields.join("&fields=")}`;
+  let fullUrl = url;
+  if (fields.length > 0) {
+    fullUrl += `&fields=${fields.join("&fields=")}`;
+  }
   if (selectMetadata !== null) {
     fullUrl = fullUrl.concat(`&select_metadata=${selectMetadata}`);
   }

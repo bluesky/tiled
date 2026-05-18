@@ -27,26 +27,38 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
   const [rows, setRows] = useState<any[]>([]);
   const [rowsAreLoaded, setRowsAreLoaded] = useState<boolean>(false);
   const columns = props.item.data.attributes.structure.columns;
+
   useEffect(() => {
+    let active = true;
     const controller = new AbortController();
     const templated_link = props.item.data.links.partition.replace(
       "{index}",
       partition,
     );
-    async function loadRows() {
-      const response = await axiosInstance.get(
-        `${templated_link}&format=application/json-seq`,
-        { signal: controller.signal, responseType: "text" },
-      );
-      const rows = response.data
-        .split("\n")
-        .filter((line: string) => line.trim() !== "")
-        .map((line: string) => JSON.parse(line)) as any[];
-      setRows(rows);
-      setRowsAreLoaded(true);
-    }
-    loadRows();
+
+    (async () => {
+      try {
+        const response = await axiosInstance.get(
+          `${templated_link}&format=application/json-seq`,
+          { signal: controller.signal, responseType: "text" },
+        );
+        const parsed = response.data
+          .split("\n")
+          .filter((line: string) => line.trim() !== "")
+          .map((line: string) => JSON.parse(line)) as any[];
+        if (!active) return;
+        setRows(parsed);
+        setRowsAreLoaded(true);
+      } catch (err: any) {
+        if (err?.name === "CanceledError" || err?.name === "AbortError") return;
+        if (!active) return;
+        // On error, mark as loaded (stops the spinner) with empty rows.
+        setRowsAreLoaded(true);
+      }
+    })();
+
     return () => {
+      active = false;
       controller.abort();
     };
   }, [
@@ -57,12 +69,11 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
   ]);
 
   const setPartitionAndClearRows = (partition: number | string) => {
-    // First clear the current contents and reactive the loading spinner.
     setRows([]);
     setRowsAreLoaded(false);
-    // And then update the select box and begin downloading the new partition.
     setPartition(partition);
   };
+
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
@@ -104,16 +115,12 @@ interface VisitColumnsProps {
 }
 
 const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
-  let navigate = useNavigate();
+  const navigate = useNavigate();
 
   const handleChange = (event: SelectChangeEvent) => {
     const column = event.target.value;
     navigate(
-      `/browse${props.segments
-        .map(function (segment) {
-          return "/" + segment;
-        })
-        .join("")}/${column}`,
+      `/browse${props.segments.map((segment) => "/" + segment).join("")}/${column}`,
     );
   };
 
@@ -147,10 +154,9 @@ interface IDataDisplayProps {
 const DEFAULT_PAGE_SIZE = 10;
 
 /**
- * Format a cell value for display.  Floating-point numbers are rounded to 4
- * significant figures, preserving at least one decimal place so that values
- * like 10.0000001 display as "10.00" rather than "10" (which would imply an
- * integer dtype).  Non-numeric values are left as-is.
+ * Format a cell value for display. Floating-point numbers are rounded to 4
+ * significant figures, preserving trailing zeros (e.g. 10.0000001 → "10.00",
+ * 1.23456 → "1.235"). Non-numeric values are left as-is.
  */
 function formatCellValue(value: unknown): string {
   if (typeof value === "number" && !Number.isInteger(value)) {
@@ -162,21 +168,27 @@ function formatCellValue(value: unknown): string {
 const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const [page, setPage] = React.useState<number>(0);
-  // Auto-transpose when columns outnumber rows (wide tables look better transposed).
-  // User can always override.
-  const autoTranspose =
-    !props.loading &&
-    props.rows.length > 0 &&
-    props.columns.length > props.rows.length;
   const [transposed, setTransposed] = React.useState<boolean>(false);
-  // Apply auto-transpose once when data first loads
   const [autoApplied, setAutoApplied] = React.useState<boolean>(false);
+
+  // Reset pagination, transpose, and auto-apply flag when the table identity
+  // changes (different segments = different table node).
+  React.useEffect(() => {
+    setPage(0);
+    setTransposed(false);
+    setAutoApplied(false);
+  }, [props.segments, props.columns]);
+
+  // Auto-transpose once when data first arrives: if columns outnumber rows,
+  // a transposed layout is easier to read.
   React.useEffect(() => {
     if (!props.loading && props.rows.length > 0 && !autoApplied) {
-      setTransposed(autoTranspose);
       setAutoApplied(true);
+      if (props.columns.length > props.rows.length) {
+        setTransposed(true);
+      }
     }
-  }, [props.loading, props.rows.length, autoTranspose, autoApplied]);
+  }, [props.loading, props.rows.length, props.columns.length, autoApplied]);
 
   let data_columns;
   let data_rows;
@@ -192,12 +204,11 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   } else {
     // Transposed: original column names become row labels; original rows
     // become columns named row_0, row_1, …
-    const rowKeys = props.rows.map((_, i) => `row_${i}`);
     data_columns = [
       { field: "__column__", headerName: "Column", width: 160 },
-      ...rowKeys.map((key) => ({
-        field: key,
-        headerName: key,
+      ...props.rows.map((_, i) => ({
+        field: `row_${i}`,
+        headerName: `row_${i}`,
         width: 160,
         valueFormatter: (value: unknown) => formatCellValue(value),
       })),
