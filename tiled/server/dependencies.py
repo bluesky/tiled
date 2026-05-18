@@ -21,8 +21,9 @@ from .schemas import Principal
 from .utils import filter_for_access, record_timing
 
 # Template for the "sort" query parameters.
-# Empty sting is NOT allowed, should be at least "-" or "+"
-SortField = constr(pattern=r"^(?:[+-][a-zA-Z0-9_.]*|[a-zA-Z0-9_.]+)$")
+# An empty string is allowed here for back-compatibility with old clients
+# that send sort= when no sort is specified. Non-empty values must be a valid sort field.
+SortField = constr(pattern=r"^(?:[+-][a-zA-Z0-9_.]*|[a-zA-Z0-9_.]+)?$")
 
 # Limits for pagination parameters
 DEFAULT_PAGE_SIZE = 100
@@ -219,6 +220,12 @@ def sorting_param(
 ):
     "Specify and parse a sorting parameter."
     if sort is None:
+        return None
+
+    # Backcompatibility: Old clients send sort= (empty string) when no sort is
+    # specified. Filter these out to avoid a spurious error.
+    sort = [s for s in sort if s]
+    if not sort:
         return None
 
     result = {}
