@@ -104,3 +104,21 @@ def test_sort_missing():
         client = from_context(context)
         client_sorted = client.sort(("stuff", 1))
         list(client_sorted)  # Just check for no errors.
+
+
+def test_empty_sort_param_ignored(client):
+    """An empty sort= query parameter (sent by old clients) is silently ignored.
+
+    Old tiled client versions serialised the default sort as sort= (empty string).
+    The server should treat this identically to the parameter being absent rather
+    than returning a 422.
+    """
+    app = build_app(tree)
+    with Context.from_app(app) as context:
+        http_client = context.http_client
+        # Simulate old client behaviour: send sort= explicitly.
+        response = http_client.get(
+            str(context.api_uri) + "search/",
+            params={"sort": ""},
+        )
+        assert response.status_code == 200, response.text
