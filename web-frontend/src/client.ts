@@ -50,6 +50,9 @@ axiosInstance.interceptors.response.use(
   (error) => Promise.reject(error),
 );
 
+type SearchResponse =
+  components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"];
+
 export const search = async (
   apiURL: string,
   segments: string[],
@@ -59,9 +62,7 @@ export const search = async (
   pageOffset: number = 0,
   pageLimit: number = 100,
   sort: string | null = null,
-): Promise<
-  components["schemas"]["Response_List_tiled.server.router.Resource_NodeAttributes__dict__dict____PaginationLinks__dict_"]
-> => {
+): Promise<SearchResponse> => {
   let url = `${apiURL}/search/${segments.join(
     "/",
   )}?page[offset]=${pageOffset}&page[limit]=${pageLimit}&fields=${fields.join(
@@ -74,6 +75,29 @@ export const search = async (
     url = url.concat(`&sort=${encodeURIComponent(sort)}`);
   }
   const response = await axiosInstance.get(url, { signal: signal });
+  return response.data;
+};
+
+// Fetch a search page using a pre-built URL (e.g. a cursor URL from links.next).
+// Extra params (fields, select_metadata, sort) are appended if provided.
+export const searchByUrl = async (
+  url: string,
+  signal: AbortSignal,
+  fields: string[] = [],
+  selectMetadata: string | null = null,
+  sort: string | null = null,
+): Promise<SearchResponse> => {
+  let fullUrl = url;
+  if (fields.length > 0) {
+    fullUrl += `&fields=${fields.join("&fields=")}`;
+  }
+  if (selectMetadata !== null) {
+    fullUrl = fullUrl.concat(`&select_metadata=${selectMetadata}`);
+  }
+  if (sort) {
+    fullUrl = fullUrl.concat(`&sort=${encodeURIComponent(sort)}`);
+  }
+  const response = await axiosInstance.get(fullUrl, { signal });
   return response.data;
 };
 

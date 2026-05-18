@@ -15,7 +15,7 @@ import { COLORMAP_LABELS, COLORMAPS, ColormapName } from "./colormaps";
 import { components } from "../../openapi_schemas";
 import { debounce } from "ts-debounce";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useTheme } from "@mui/material/styles";
 import { axiosInstance } from "../../client";
 
@@ -79,6 +79,14 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
   const [colormap, setColormap] = useState<ColormapName>("gray");
   const [logScale, setLogScale] = useState<boolean>(false);
 
+  const onFirstLoad = useCallback(
+    (suggested: { logScale: boolean; colormap: ColormapName }) => {
+      setLogScale(suggested.logScale);
+      setColormap(suggested.colormap);
+    },
+    [],
+  );
+
   return (
     <Box>
       {color ? (
@@ -96,6 +104,7 @@ const ArrayND: React.FunctionComponent<IProps> = (props) => {
           structure={props.structure}
           colormap={colormap}
           logScale={logScale}
+          onFirstLoad={onFirstLoad}
         />
       )}
 
@@ -249,6 +258,56 @@ interface GrayscaleImageDisplayProps {
   structure: components["schemas"]["Structure"];
   colormap: ColormapName;
   logScale: boolean;
+  onFirstLoad?: (settings: { logScale: boolean; colormap: ColormapName }) => void;
+}
+
+/**
+ * Suggest initial display settings from the pixel distribution of a
+ * freshly-fetched grayscale slice.
+ *
+ * Detector/scientific images with sparse bright pixels have a huge gap
+ * between the 99th percentile and the maximum value — most photons land
+ * on a small number of pixels, leaving the rest near zero. We detect
+ * this with:
+ *
+ *   max / (p99 + ε) > 10  →  log scale + Viridis
+ *   otherwise             →  linear + Gray
+ *
+ * This correctly handles:
+ *   - Photographs / microscopy with smooth histograms (ratio ~1)
+ *   - Binary/boolean images (ratio ~1)
+ *   - Detector images with outlier bright pixels (ratio >> 10)
+ */
+function suggestSettings(raw: ArrayLike<number>): { logScale: boolean; colormap: ColormapName } {
+  const n = raw.length;
+  if (n === 0) return { logScale: false, colormap: "gray" };
+
+  // Single-pass: collect finite values, track min and max inline.
+  const values: number[] = [];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const v = raw[i];
+    if (isFinite(v)) {
+      values.push(v);
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  if (values.length === 0) return { logScale: false, colormap: "gray" };
+
+  // p99 via partial sort (nth_element equivalent: O(n) on average).
+  const p99idx = Math.floor(0.99 * (values.length - 1));
+  values.sort((a, b) => a - b);
+  const p99 = values[p99idx];
+
+  // Shift by minimum to handle data with a large DC offset or negative values.
+  const hiS = hi - lo;
+  const p99S = p99 - lo;
+
+  const logScale = hiS > 10 * (p99S + 1e-6);
+  const colormap: ColormapName = logScale ? "viridis" : "gray";
+  return { logScale, colormap };
 }
 
 /**
@@ -285,7 +344,9 @@ const GrayscaleImageDisplay: React.FunctionComponent<
   GrayscaleImageDisplayProps
 > = (props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { link, cuts, stride, structure, colormap, logScale } = props;
+  const { link, cuts, stride, structure, colormap, logScale, onFirstLoad } = props;
+  // Fire onFirstLoad only once per mount (not on colormap/logScale changes).
+  const firstLoadFired = useRef(false);
 
   const dataType = (structure as any).data_type as {
     kind: string;
@@ -317,6 +378,14 @@ const GrayscaleImageDisplay: React.FunctionComponent<
         );
         const raw = new ArrayType(resp.data as ArrayBuffer) as ArrayLike<number>;
         const n = raw.length;
+
+        // On first load, suggest colormap/logScale from the pixel distribution
+        // and propagate to the parent. Only fires once per mount so user
+        // changes to the controls are not overridden on subsequent fetches.
+        if (!firstLoadFired.current && onFirstLoad) {
+          firstLoadFired.current = true;
+          onFirstLoad(suggestSettings(raw));
+        }
 
         // --- Normalise to [0, 255] ----------------------------------------
         // Find finite min/max (skip NaN/Inf for float arrays)

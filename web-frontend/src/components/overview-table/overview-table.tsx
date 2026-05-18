@@ -5,14 +5,14 @@ import { useEffect, useState } from "react";
 
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Checkbox from "@mui/material/Checkbox";
 import ChoosePartition from "../choose-partition/choose-partition";
 import Container from "@mui/material/Container";
 import { DataGrid } from "@mui/x-data-grid";
 import FormControl from "@mui/material/FormControl";
-import FormHelperText from "@mui/material/FormHelperText";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Typography from "@mui/material/Typography";
 import { axiosInstance } from "../../client";
 import { useNavigate } from "react-router-dom";
 
@@ -27,26 +27,38 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
   const [rows, setRows] = useState<any[]>([]);
   const [rowsAreLoaded, setRowsAreLoaded] = useState<boolean>(false);
   const columns = props.item.data.attributes.structure.columns;
+
   useEffect(() => {
+    let active = true;
     const controller = new AbortController();
     const templated_link = props.item.data.links.partition.replace(
       "{index}",
       partition,
     );
-    async function loadRows() {
-      const response = await axiosInstance.get(
-        `${templated_link}&format=application/json-seq`,
-        { signal: controller.signal, responseType: "text" },
-      );
-      const rows = response.data
-        .split("\n")
-        .filter((line: string) => line.trim() !== "")
-        .map((line: string) => JSON.parse(line)) as any[];
-      setRows(rows);
-      setRowsAreLoaded(true);
-    }
-    loadRows();
+
+    (async () => {
+      try {
+        const response = await axiosInstance.get(
+          `${templated_link}&format=application/json-seq`,
+          { signal: controller.signal, responseType: "text" },
+        );
+        const parsed = response.data
+          .split("\n")
+          .filter((line: string) => line.trim() !== "")
+          .map((line: string) => JSON.parse(line)) as any[];
+        if (!active) return;
+        setRows(parsed);
+        setRowsAreLoaded(true);
+      } catch (err: any) {
+        if (err?.name === "CanceledError" || err?.name === "AbortError") return;
+        if (!active) return;
+        // On error, mark as loaded (stops the spinner) with empty rows.
+        setRowsAreLoaded(true);
+      }
+    })();
+
     return () => {
+      active = false;
       controller.abort();
     };
   }, [
@@ -57,20 +69,15 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
   ]);
 
   const setPartitionAndClearRows = (partition: number | string) => {
-    // First clear the current contents and reactive the loading spinner.
     setRows([]);
     setRowsAreLoaded(false);
-    // And then update the select box and begin downloading the new partition.
     setPartition(partition);
   };
+
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
-        <VisitColumns segments={props.segments} columns={columns} />
         <Box width="100%" mt={5}>
-          <Typography id="table-title" variant="h6" component="h2">
-            Table
-          </Typography>
           {npartitions > 1 ? (
             <Box>
               <Alert severity="info">
@@ -90,7 +97,12 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
           ) : (
             ""
           )}
-          <DataDisplay rows={rows} columns={columns} loading={!rowsAreLoaded} />
+          <DataDisplay
+            rows={rows}
+            columns={columns}
+            loading={!rowsAreLoaded}
+            segments={props.segments}
+          />
         </Box>
       </Container>
     </Box>
@@ -103,41 +115,32 @@ interface VisitColumnsProps {
 }
 
 const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
-  let navigate = useNavigate();
+  const navigate = useNavigate();
 
   const handleChange = (event: SelectChangeEvent) => {
     const column = event.target.value;
     navigate(
-      `/browse${props.segments
-        .map(function (segment) {
-          return "/" + segment;
-        })
-        .join("")}/${column}`,
+      `/browse${props.segments.map((segment) => "/" + segment).join("")}/${column}`,
     );
   };
 
   return (
-    <Box>
-      <FormControl>
-        <InputLabel id="column-select-helper-label">Go to Column</InputLabel>
-        <Select
-          labelId="column-select-label"
-          id="column-select"
-          value=""
-          label="Column"
-          onChange={handleChange}
-        >
-          {props.columns.map((column) => {
-            return (
-              <MenuItem key={`column-${column}`} value={column}>
-                {column}
-              </MenuItem>
-            );
-          })}
-        </Select>
-        <FormHelperText>Access a single column as an Array.</FormHelperText>
-      </FormControl>
-    </Box>
+    <FormControl size="small" sx={{ minWidth: 160 }}>
+      <InputLabel id="column-select-helper-label">Go to Column</InputLabel>
+      <Select
+        labelId="column-select-label"
+        id="column-select"
+        value=""
+        label="Go to Column"
+        onChange={handleChange}
+      >
+        {props.columns.map((column) => (
+          <MenuItem key={`column-${column}`} value={column}>
+            {column}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
   );
 };
 
@@ -145,22 +148,18 @@ interface IDataDisplayProps {
   columns: string[];
   rows: any[];
   loading: boolean;
+  segments: string[];
 }
 
 const DEFAULT_PAGE_SIZE = 10;
 
 /**
- * Format a cell value for display.  Floating-point numbers are rounded to 4
- * significant figures, preserving at least one decimal place so that values
- * like 10.0000001 display as "10.00" rather than "10" (which would imply an
- * integer dtype).  Non-numeric values are left as-is.
+ * Format a cell value for display. Floating-point numbers are rounded to 4
+ * significant figures, preserving trailing zeros (e.g. 10.0000001 → "10.00",
+ * 1.23456 → "1.235"). Non-numeric values are left as-is.
  */
 function formatCellValue(value: unknown): string {
   if (typeof value === "number" && !Number.isInteger(value)) {
-    // toPrecision(4) gives 4 significant figures and preserves trailing zeros
-    // within that precision, e.g. 10.0000001 → "10.00", 1.23456 → "1.235",
-    // 12345678.9 → "1.235e+7".  We use it as-is rather than passing through
-    // parseFloat() (which would strip the trailing zeros and turn "10.00" into "10").
     return value.toPrecision(4);
   }
   return String(value ?? "");
@@ -168,27 +167,103 @@ function formatCellValue(value: unknown): string {
 
 const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
   const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
-  const data_columns = props.columns.map((column) => ({
-    field: column,
-    headerName: column,
-    width: 200,
-    valueFormatter: (value: unknown) => formatCellValue(value),
-  }));
-  const data_rows = props.rows.map((row, index) => {
-    row.id = index;
-    return row;
-  });
+  const [page, setPage] = React.useState<number>(0);
+  const [transposed, setTransposed] = React.useState<boolean>(false);
+  const [autoApplied, setAutoApplied] = React.useState<boolean>(false);
+
+  // Reset pagination, transpose, and auto-apply flag when the table identity
+  // changes (different segments = different table node).
+  React.useEffect(() => {
+    setPage(0);
+    setTransposed(false);
+    setAutoApplied(false);
+  }, [props.segments, props.columns]);
+
+  // Auto-transpose once when data first arrives: if columns outnumber rows,
+  // a transposed layout is easier to read.
+  React.useEffect(() => {
+    if (!props.loading && props.rows.length > 0 && !autoApplied) {
+      setAutoApplied(true);
+      if (props.columns.length > props.rows.length) {
+        setTransposed(true);
+      }
+    }
+  }, [props.loading, props.rows.length, props.columns.length, autoApplied]);
+
+  let data_columns;
+  let data_rows;
+
+  if (!transposed) {
+    data_columns = props.columns.map((column) => ({
+      field: column,
+      headerName: column,
+      width: 200,
+      valueFormatter: (value: unknown) => formatCellValue(value),
+    }));
+    data_rows = props.rows.map((row, index) => ({ ...row, id: index }));
+  } else {
+    // Transposed: original column names become row labels; original rows
+    // become columns named row_0, row_1, …
+    data_columns = [
+      { field: "__column__", headerName: "Column", width: 160 },
+      ...props.rows.map((_, i) => ({
+        field: `row_${i}`,
+        headerName: `row_${i}`,
+        width: 160,
+        valueFormatter: (value: unknown) => formatCellValue(value),
+      })),
+    ];
+    data_rows = props.columns.map((col) => {
+      const row: Record<string, any> = { id: col, __column__: col };
+      props.rows.forEach((r, i) => {
+        row[`row_${i}`] = r[col];
+      });
+      return row;
+    });
+  }
+
   return (
-    <DataGrid
-      {...(props.loading ? { loading: true } : {})}
-      rows={data_rows}
-      columns={data_columns}
-      pagination
-      paginationModel={{ pageSize, page: 0 }}
-      pageSizeOptions={[10, 30, 100]}
-      onPaginationModelChange={(model) => setPageSize(model.pageSize)}
-      autoHeight
-    />
+    <Box>
+      <DataGrid
+        {...(props.loading ? { loading: true } : {})}
+        rows={data_rows}
+        columns={data_columns}
+        pagination
+        paginationModel={{ pageSize, page }}
+        pageSizeOptions={[10, 30, 100]}
+        onPaginationModelChange={(model) => {
+          setPage(model.page);
+          setPageSize(model.pageSize);
+        }}
+        autoHeight
+      />
+      {/* Footer bar: "Go to Column" and "Transpose" at the same level as "Rows per page" */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          px: 1,
+          py: 0.5,
+          backgroundColor: "background.paper",
+        }}
+      >
+        {!transposed && (
+          <VisitColumns segments={props.segments} columns={props.columns} />
+        )}
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={transposed}
+              onChange={(e) => setTransposed(e.target.checked)}
+              size="small"
+            />
+          }
+          label="Transpose"
+          sx={{ ml: "auto" }}
+        />
+      </Box>
+    </Box>
   );
 };
 
