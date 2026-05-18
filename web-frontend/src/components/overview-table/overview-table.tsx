@@ -9,10 +9,8 @@ import ChoosePartition from "../choose-partition/choose-partition";
 import Container from "@mui/material/Container";
 import { DataGrid } from "@mui/x-data-grid";
 import FormControl from "@mui/material/FormControl";
-import FormHelperText from "@mui/material/FormHelperText";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Typography from "@mui/material/Typography";
 import { axiosInstance } from "../../client";
 import { useNavigate } from "react-router-dom";
 
@@ -66,11 +64,7 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
   return (
     <Box sx={{ my: 4 }}>
       <Container maxWidth="lg">
-        <VisitColumns segments={props.segments} columns={columns} />
         <Box width="100%" mt={5}>
-          <Typography id="table-title" variant="h6" component="h2">
-            Table
-          </Typography>
           {npartitions > 1 ? (
             <Box>
               <Alert severity="info">
@@ -90,7 +84,12 @@ const TableOverview: React.FunctionComponent<IProps> = (props) => {
           ) : (
             ""
           )}
-          <DataDisplay rows={rows} columns={columns} loading={!rowsAreLoaded} />
+          <DataDisplay
+            rows={rows}
+            columns={columns}
+            loading={!rowsAreLoaded}
+            segments={props.segments}
+          />
         </Box>
       </Container>
     </Box>
@@ -117,27 +116,22 @@ const VisitColumns: React.FunctionComponent<VisitColumnsProps> = (props) => {
   };
 
   return (
-    <Box>
-      <FormControl>
-        <InputLabel id="column-select-helper-label">Go to Column</InputLabel>
-        <Select
-          labelId="column-select-label"
-          id="column-select"
-          value=""
-          label="Column"
-          onChange={handleChange}
-        >
-          {props.columns.map((column) => {
-            return (
-              <MenuItem key={`column-${column}`} value={column}>
-                {column}
-              </MenuItem>
-            );
-          })}
-        </Select>
-        <FormHelperText>Access a single column as an Array.</FormHelperText>
-      </FormControl>
-    </Box>
+    <FormControl size="small" sx={{ minWidth: 160 }}>
+      <InputLabel id="column-select-helper-label">Go to Column</InputLabel>
+      <Select
+        labelId="column-select-label"
+        id="column-select"
+        value=""
+        label="Go to Column"
+        onChange={handleChange}
+      >
+        {props.columns.map((column) => (
+          <MenuItem key={`column-${column}`} value={column}>
+            {column}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
   );
 };
 
@@ -145,6 +139,7 @@ interface IDataDisplayProps {
   columns: string[];
   rows: any[];
   loading: boolean;
+  segments: string[];
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -179,16 +174,32 @@ const DataDisplay: React.FunctionComponent<IDataDisplayProps> = (props) => {
     return row;
   });
   return (
-    <DataGrid
-      {...(props.loading ? { loading: true } : {})}
-      rows={data_rows}
-      columns={data_columns}
-      pagination
-      paginationModel={{ pageSize, page: 0 }}
-      pageSizeOptions={[10, 30, 100]}
-      onPaginationModelChange={(model) => setPageSize(model.pageSize)}
-      autoHeight
-    />
+    <Box>
+      <DataGrid
+        {...(props.loading ? { loading: true } : {})}
+        rows={data_rows}
+        columns={data_columns}
+        pagination
+        paginationModel={{ pageSize, page: 0 }}
+        pageSizeOptions={[10, 30, 100]}
+        onPaginationModelChange={(model) => setPageSize(model.pageSize)}
+        autoHeight
+      />
+      {/* "Go to Column" sits in a bar flush with the DataGrid footer */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          px: 1,
+          py: 0.5,
+          borderTop: 0,
+          borderColor: "divider",
+          backgroundColor: "background.paper",
+        }}
+      >
+        <VisitColumns segments={props.segments} columns={props.columns} />
+      </Box>
+    </Box>
   );
 };
 
