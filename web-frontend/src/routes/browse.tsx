@@ -364,6 +364,16 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
           alignItems: { md: "flex-end" },
         }}
       >
+        <Box
+          sx={{
+            mr: { md: "auto" },
+            px: 1,
+            pb: { xs: 1, md: 0.75 },
+            pt: { xs: 0.5, md: 0 },
+          }}
+        >
+          <NodeBreadcrumbs segments={props.segments} />
+        </Box>
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
@@ -374,16 +384,6 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
           <Tab label="Metadata" {...a11yProps(2)} />
           <Tab label="Detail" {...a11yProps(3)} />
         </Tabs>
-        <Box
-          sx={{
-            ml: { md: "auto" },
-            px: 1,
-            pb: { xs: 1, md: 0.75 },
-            pt: { xs: 0.5, md: 0 },
-          }}
-        >
-          <NodeBreadcrumbs segments={props.segments} />
-        </Box>
       </Box>
       <TabPanel value={tabValue} index={0}>
         <Paper elevation={3} sx={{ px: 3, py: 3 }}>
