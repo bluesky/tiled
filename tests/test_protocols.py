@@ -12,7 +12,6 @@ from pytest_mock import MockFixture
 from tiled.access_control.access_policies import ALL_ACCESS
 from tiled.access_control.protocols import AccessPolicy
 from tiled.access_control.scopes import ALL_SCOPES
-from tiled.adapters.awkward_directory_container import DirectoryContainer
 from tiled.adapters.protocols import (
     ArrayAdapter,
     AwkwardAdapter,
@@ -22,7 +21,7 @@ from tiled.adapters.protocols import (
 )
 from tiled.ndslice import NDSlice
 from tiled.server.schemas import Principal, PrincipalType
-from tiled.storage import Storage
+from tiled.storage import DirectoryContainer, Storage
 from tiled.structures.array import ArrayStructure, BuiltinDtype
 from tiled.structures.awkward import AwkwardStructure
 from tiled.structures.core import Spec, StructureFamily
@@ -164,7 +163,7 @@ def test_awkwardadapter_protocol(mocker: MockFixture) -> None:
 
     metadata: JSON = {"foo": "bar"}
     anyslice = NDSlice(1, 1, 1)
-    container = DirectoryContainer(directory=Path("somedirectory"), form={})
+    container = DirectoryContainer(directory=Path("somedirectory"))
     form_keys = ["a", "b", "c"]
 
     anyawkwardadapter = CustomAwkwardAdapter(container, structure, metadata=metadata)
@@ -442,7 +441,7 @@ async def test_accesspolicy_protocol(mocker: MockFixture) -> None:
     structure = AwkwardStructure(length=2, form={"a": "b"})
 
     metadata: JSON = {"foo": "bar"}
-    container = DirectoryContainer(directory=Path("somedirectory"), form={})
+    container = DirectoryContainer(directory=Path("somedirectory"))
     principal = Principal(
         uuid="12345678124123412345678123456781", type=PrincipalType.user
     )
