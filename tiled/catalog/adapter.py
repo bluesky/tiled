@@ -1956,55 +1956,20 @@ def specs(query, tree):
 
 
 def access_blob_filter(query, tree):
-    '''
+    """
     Not sure what's going on here...this filter adds the intersection of acces tags the user
     has and either the tags in the access_blob of a node or the id of the user.
 
-    So we need to also add to the query a clause that uses the closure table to 
+    So we need to also add to the query a clause that uses the closure table to
     find tags up the hierarchy:
 
-    IF 
+    IF
         node has just an access blob
-    THEN 
+    THEN
         find first node up the hierachy that has a tag, use those tags
         in the check for an intersection with the user's tags
 
-    '''
-    dialect_name = tree.context.engine.url.get_dialect().name
-    access_blob = orm.Node.access_blob
-    if not (query.user_id or query.tags):
-        # Results cannot possibly match an empty value or list,
-        # so put a False condition in the list ensuring that
-        # there are no rows returned.
-        condition = false()
-    elif dialect_name == "sqlite":
-        attr_id = access_blob["user"]
-        attr_tags = access_blob["tags"]
-        access_tags_json = func.json_each(attr_tags).table_valued("value")
-        condition = (
-            select(1)access_tags_json
-            .select_from(access_tags_json)
-            .where(access_tags_json.c.value.in_(query.tags))
-            .exists()
-        )
-        if query.user_id is not None:
-            user_match = (
-                func.json_extract(func.json_quote(attr_id), "$") == query.user_id
-            )
-            condition = or_(condition, user_match)
-    elif dialect_name == "postgresql":
-        access_blob_jsonb = type_coerce(access_blob, JSONB)
-        condition = access_blob_jsonb["tags"].has_any(sql_cast(query.tags, ARRAY(TEXT)))
-        if query.user_id is not None:
-            user_match = access_blob_jsonb["user"].astext == query.user_id
-            condition = or_(condition, user_match)
-    else:
-        raise UnsupportedQueryType("access_blob_filter")
-
-    return tree.new_variation(conditions=tree.conditions + [condition])
-
-
-def access_blob_inherited_filter(query, tree):
+    """
     dialect_name = tree.context.engine.url.get_dialect().name
     access_blob = orm.Node.access_blob
     if not (query.user_id or query.tags):
@@ -2037,6 +2002,91 @@ def access_blob_inherited_filter(query, tree):
         raise UnsupportedQueryType("access_blob_filter")
 
     return tree.new_variation(conditions=tree.conditions + [condition])
+
+
+def access_blob_inherited_filter(query, tree):
+    """
+    Filter using closure-table tag inheritance.
+
+    Finds the nearest ancestor of each node (by depth in nodes_closure) that
+    carries tags in its access_blob, then checks whether the user's tags
+    intersect with those inherited tags.  A direct {"user": user_id} match on
+    the node itself is also honoured.
+    """
+    if not (query.user_id or query.tags):
+        return tree.new_variation(conditions=tree.conditions + [false()])
+
+    dialect_name = tree.context.engine.url.get_dialect().name
+
+    nc_depth = aliased(orm.NodesClosure)  # used by SQLite MIN subquery
+    anc_depth = aliased(orm.Node)
+    nc_tags = aliased(orm.NodesClosure)
+    anc_tags = aliased(orm.Node)
+
+    if dialect_name == "sqlite":
+        # Subquery: minimum depth of an ancestor that has a non-empty tags array
+        min_tagged_depth = (
+            select(func.min(nc_depth.depth))
+            .select_from(nc_depth)
+            .join(anc_depth, anc_depth.id == nc_depth.ancestor)
+            .where(nc_depth.descendant == orm.Node.id)
+            .where(func.json_type(anc_depth.access_blob, "$.tags") == "array")
+            .where(func.json_array_length(anc_depth.access_blob["tags"]) > 0)
+            .correlate(orm.Node)
+            .scalar_subquery()
+        )
+        # Condition: closest tagged ancestor has a tag in query.tags
+        tags_json = func.json_each(anc_tags.access_blob["tags"]).table_valued("value")
+        condition = (
+            select(1)
+            .select_from(nc_tags)
+            .join(anc_tags, anc_tags.id == nc_tags.ancestor)
+            .join(tags_json, true())
+            .where(nc_tags.descendant == orm.Node.id)
+            .where(nc_tags.depth == min_tagged_depth)
+            .where(tags_json.c.value.in_(query.tags))
+            .correlate(orm.Node)
+            .exists()
+        )
+        if query.user_id is not None:
+            user_match = (
+                func.json_extract(func.json_quote(orm.Node.access_blob["user"]), "$")
+                == query.user_id
+            )
+            condition = or_(condition, user_match)
+
+    elif dialect_name == "postgresql":
+        # LATERAL: for each node, find the nearest ancestor with tags in one
+        # ordered scan (stops at depth=0 for self, then walks up), then check
+        # tag intersection. Avoids a double correlated subquery.
+        nearest = (
+            select(type_coerce(anc_tags.access_blob, JSONB)["tags"].label("tags"))
+            .select_from(nc_tags)
+            .join(anc_tags, anc_tags.id == nc_tags.ancestor)
+            .where(nc_tags.descendant == orm.Node.id)
+            .where(type_coerce(anc_tags.access_blob, JSONB)["tags"].has_key("0"))
+            .order_by(nc_tags.depth)
+            .limit(1)
+            .correlate(orm.Node)
+            .lateral()
+        )
+        condition = (
+            select(1)
+            .select_from(nearest)
+            .where(nearest.c.tags.has_any(sql_cast(query.tags, ARRAY(TEXT))))
+            .exists()
+        )
+        if query.user_id is not None:
+            user_match = (
+                type_coerce(orm.Node.access_blob, JSONB)["user"].astext == query.user_id
+            )
+            condition = or_(condition, user_match)
+
+    else:
+        raise UnsupportedQueryType("access_blob_inherited_filter")
+
+    return tree.new_variation(conditions=tree.conditions + [condition])
+
 
 def in_or_not_in_sqlite(query, tree, method):
     keys = query.key.split(".")
@@ -2132,7 +2182,9 @@ CatalogNodeAdapter.register_query(KeysFilter, keys_filter)
 CatalogNodeAdapter.register_query(StructureFamilyQuery, structure_family)
 CatalogNodeAdapter.register_query(SpecsQuery, specs)
 CatalogNodeAdapter.register_query(AccessBlobFilter, access_blob_filter)
-CatalogNodeAdapter.register_query(AccessBlobInheritedFilter, access_blob_finherited_filter)
+CatalogNodeAdapter.register_query(
+    AccessBlobInheritedFilter, access_blob_inherited_filter
+)
 CatalogNodeAdapter.register_query(FullText, full_text)
 CatalogNodeAdapter.register_query(Like, like)
 

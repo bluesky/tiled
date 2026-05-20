@@ -511,29 +511,26 @@ def SpecQuery(spec):
 
     return SpecsQuery([spec])
 
+
 @register(name="access_blob_inherited_filter")
 @dataclass
 class AccessBlobInheritedFilter:
     """
-    Perform a query against the access_blob with two conditions.
-    1. Query for a user id (i.e. username) match against the "user" field
-    2. Query for if any tag in a list of tags is present in the "tags" field
-    The values for these conditions are independent.
+    Filter nodes by access tags using closure-table inheritance.
+
+    Instead of checking the node's own access_blob, walks up the nodes_closure
+    table to find the nearest ancestor that has tags, then checks whether the
+    user's tags intersect with those inherited tags.
+
+    A node with ``{"user": user_id}`` in its own access_blob is also matched
+    directly (same semantics as AccessBlobFilter).
 
     Parameters
     ----------
     user_id : str
-        e.g. "bill", "amanda"
-    tags : List[JSONSerializable]
-        e.g. ["tag_for_bill", "amanda_only"]
-
-
-    Examples
-    --------
-
-    Search for user "bill", as well as tags in ["tag_for_bill", "useful_data"]
-
-    >>> c.search(AccessBlobFilter("bill", ["tag_for_bill", "useful_data"]))
+        e.g. "bill"
+    tags : List[str]
+        Tags the user holds, e.g. ["project-x", "public"]
     """
 
     user_id: Optional[str]
@@ -551,7 +548,8 @@ class AccessBlobInheritedFilter:
             user_id=user_id,
             tags=tags,
         )
-    
+
+
 @register(name="access_blob_filter")
 @dataclass
 class AccessBlobFilter:

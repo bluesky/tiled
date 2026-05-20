@@ -1,6 +1,5 @@
 import logging
 import os
-import time
 from abc import ABC, abstractmethod
 from typing import Generic, Optional, Tuple, TypeVar
 
@@ -62,8 +61,6 @@ class DummyAccessPolicy(AccessPolicy):
     ) -> Filters:
         "Always impose no filtering on results."
         return ALL_ACCESS
-
-
 
 
 class TagBasedAccessPolicy(AccessPolicy):
@@ -573,3 +570,28 @@ class ExternalPolicyDecisionPoint(AccessPolicy, ABC):
         if scopes:
             return scopes.result
         return NO_SCOPES
+
+
+class SimpleExternalDecisionPolicy(ExternalPolicyDecisionPoint):
+    """Connects Tiled to the als_computing_hub PDP endpoints."""
+
+    def build_input(
+        self,
+        principal: Principal,
+        authn_access_tags: Optional[AccessTags],
+        authn_scopes: Scopes,
+        access_blob: Optional[AccessBlob] = None,
+    ) -> str:
+        import json
+
+        user_id = None
+        if principal is not None:
+            if principal.type == "service":
+                user_id = str(principal.uuid)
+            else:
+                for identity in principal.identities:
+                    if identity.provider == self._provider:
+                        user_id = identity.id
+                        break
+
+        return json.dumps({"user_id": user_id, "access_blob": access_blob})
