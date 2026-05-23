@@ -15,7 +15,9 @@ import logging
 import re
 from collections.abc import Set
 from contextlib import closing
+from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Iterator,
@@ -27,6 +29,24 @@ from typing import (
     Union,
     cast,
 )
+from urllib.parse import quote_plus
+
+import awkward
+import ragged
+
+from tiled.adapters.core import Adapter
+from tiled.adapters.resource_cache import with_resource_cache
+from tiled.adapters.utils import init_adapter_from_catalog
+from tiled.ndslice import NDBlock, NDSlice
+from tiled.storage import FileStorage, Storage
+from tiled.structures.data_source import Asset, DataSource
+from tiled.structures.ragged import RaggedStructure
+from tiled.utils import path_from_uri
+
+if TYPE_CHECKING:
+    from tiled.catalog.orm import Node
+    from tiled.structures.core import Spec
+    from tiled.type_aliases import JSON
 
 import numpy
 import pandas
@@ -34,9 +54,6 @@ import pyarrow
 import ragged
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
-from tiled.adapters.core import Adapter
-from tiled.adapters.utils import init_adapter_from_catalog
-from tiled.catalog.orm import Node
 from tiled.ndslice import NDBlock, NDSlice
 from tiled.structures.core import Spec, StructureFamily
 from tiled.structures.data_source import DataSource
@@ -54,9 +71,7 @@ from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
-from .array import ArrayAdapter
-from .awkward import AwkwardAdapter
-from .ragged import RaggedAdapter
+from .sql import SQLAdapter
 from .utils import init_adapter_from_catalog
 
 if TYPE_CHECKING:
@@ -152,57 +167,81 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
     def supported_storage(cls) -> Set[type[Storage]]:
         return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
 
-    def __init__(
-        self,
+    @classmethod
+    def _data_source_for_table(
+        cls, data_source: DataSource[RaggedStructure]
+    ) -> DataSource[TableStructure]:
+        "Convert a DataSource with a RaggedStructure to one with a TableStructure"
+        awk_schema = data_source.structure.awk_container_schema
+        empty_table_dict = {col: [numpy.empty(0, dtype=typ)] for col, typ in awk_schema.items()}
+        empty_table_dict["chunk_index"] = [0]
+        structure = TableStructure.from_dict(empty_table_dict)
+
+        return DataSource(
+            structure_family=StructureFamily.table,
+            structure=structure,
+            parameters=data_source.parameters | {"order_by": [("chunk_index", "asc")]},
+            properties=data_source.properties,
+            mimetype="application/x-tiled-sql-table",
+            assets=data_source.assets,
+            management=data_source.management,
+        )
+
+    @classmethod
+    def init_storage(
+        cls,
         storage: SQLStorage,
-        table_name: str,
-        dataset_id: int,
-        structure: RaggedStructure,
-        metadata: JSON | None = None,
-        specs: list[Spec] | None = None,
-    ) -> None:
-        """Create an adapter for the given ragged array and structure."""
-        self._array = array
-        self.storage = storage
-        self._metadata = metadata or {}
-        self._structure = structure
-        self.specs = list(specs or [])
-        self.table_name = table_name
-        self.dataset_id = dataset_id
-        super().__init__(structure, metadata=metadata, specs=specs)
+        data_source: DataSource[RaggedStructure],
+        path_parts: Optional[List[str]] = None,
+    ) -> DataSource[RaggedStructure]:
+        "Initialize an SQL storage for the data source."
+
+        data_source = copy.deepcopy(data_source)  # Do not mutate caller input
+
+        tabular_data_source = SQLAdapter.init_storage(
+            storage=storage, data_source=cls._data_source_for_table(data_source)
+        )
+
+        data_source.assets.extend(tabular_data_source.assets)
+        data_source.parameters["table_name"] = tabular_data_source.parameters["table_name"]
+        data_source.parameters["dataset_id"] = tabular_data_source.parameters["dataset_id"]
+
+        return data_source
 
     @classmethod
     def from_catalog(cls, data_source: DataSource[RaggedStructure], node: Node) -> Self:
-        storage: SQLStorage = cast(
-            SQLStorage, get_storage(data_source.assets[0].data_uri)
+        tabular_adapter = SQLAdapter.from_catalog(
+            cls._data_source_for_table(data_source), node
         )
 
         return cls(
-            storage, data_source.structure, metadata=node.metadata_, specs=node.specs
+            tabular_adapter=tabular_adapter,
+            structure=data_source.structure,
+            metadata=node.metadata_,
+            specs=node.specs,
         )
 
-    @classmethod
-    def from_array(
-        cls,
-        array: ragged.array | awkward.Array | NDArray[Any] | Iterable[Iterable[Any]],
-        metadata: JSON | None = None,
-        specs: list[Spec] | None = None,
-    ) -> Self:
-        """Create a RaggedAdapter wrapping a given array."""
-        array = make_ragged_array(array)
-        structure = RaggedStructure.from_array(array)
-        return cls(
-            array,
-            structure,
-            metadata=metadata,
-            specs=specs,
-        )
+    def __init__(
+        self,
+        tabular_adapter: SQLAdapter,
+        structure: RaggedStructure,
+        *,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+    ) -> None:
+        self._tabular_adapter = tabular_adapter
+        self._structure = structure
+        self._metadata = metadata or {}
+        self.specs = list(specs or [])
 
     def read(self, slice: NDSlice | None = None) -> ragged.array:
         """Read a slice of data from the ragged array."""
-        if self._array is None:
-            raise NotImplementedError
-        return self._array[slice] if slice else self._array
+        table = self._tabular_adapter._read_full_table_or_partition()
+        container = table.to_pylist()[0]  # Expecting a single row with the container dict
+        container = {k:numpy.array(v) for k,v in container.items() if k != "chunk_index"}  # Remove chunk_index from container
+        form = self._structure.awk_form
+        length = len(container["node0-offsets"]) - 1
+        return ragged.array(awkward.from_buffers(self._structure.awk_form, length, container))
 
     def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
         """Read a single partition block of the ragged array."""
@@ -216,9 +255,22 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         data = self._array[start:stop]
         return data[slice] if slice else data
 
-    def write(self, array: ragged.array) -> None:
-        """Write the full ragged array (in-memory, replaces existing data)."""
-        self._array = make_ragged_array(array)
+    def write(self, data: ragged.array, slice: NDSlice = NDSlice(...)) -> None:
+        if slice:
+            raise NotImplementedError
+
+        form, _, container = awkward.to_buffers(make_ragged_array(data)._impl)
+
+        if self.structure().awk_form != form:
+            raise ValueError(
+                "The structure of the provided data does not match the adapter's structure."
+            )
+
+        if not self._tabular_adapter.read(fields=["chunk_index"]).empty:
+            raise NotImplementedError("Overwriting of existing data is not supported.")
+        
+        container["chunk_index"] = 0
+        self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([container]))
 
     def write_block(self, array: ragged.array, block: NDBlock) -> None:
         """Write a single partition block (not supported for in-memory adapter)."""
@@ -229,31 +281,6 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"
-
-
-from __future__ import annotations
-
-import copy
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
-from urllib.parse import quote_plus
-
-import awkward
-import ragged
-
-from tiled.adapters.core import Adapter
-from tiled.adapters.resource_cache import with_resource_cache
-from tiled.adapters.utils import init_adapter_from_catalog
-from tiled.ndslice import NDBlock, NDSlice
-from tiled.storage import FileStorage, Storage
-from tiled.structures.data_source import Asset, DataSource
-from tiled.structures.ragged import RaggedStructure
-from tiled.utils import path_from_uri
-
-if TYPE_CHECKING:
-    from tiled.catalog.orm import Node
-    from tiled.structures.core import Spec
-    from tiled.type_aliases import JSON
 
 
 class RaggedParquetAdapter(Adapter[RaggedStructure]):

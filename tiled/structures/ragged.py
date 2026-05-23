@@ -10,7 +10,7 @@ else:
     from typing_extensions import Self
 
 import awkward
-import numpy as np
+import numpy
 import ragged
 from ragged._typing import SupportsDLPack
 
@@ -41,6 +41,8 @@ class RaggedStructure(Structure):
     chunks : tuple[tuple[int, ...] | None, ...]
         The dask-like chunks of the array, where the first dimension is always
         partitioned into known integer chunks, and any variable dimensions are null.
+        From the storage perspective, each chunk represents a row in the underlying table,
+        which may contain information about multiple rows of the ragged array.
     dims : tuple[str, ...] | None, optional
         Optional tuple of dimension names, e.g. ("time", "x"), or None for unnamed dimensions.
     resizable : bool | tuple[bool, ...], optional
@@ -96,10 +98,7 @@ class RaggedStructure(Structure):
 
     @classmethod
     def from_json(cls, structure: Mapping[str, Any]) -> Self:
-        """Construct a RaggedStructure from a dictionary mapping.
-        
-        For internal use.
-        """
+        "Construct a RaggedStructure from a dictionary mapping"
 
         if "fields" in structure["data_type"]:
             data_type = StructDtype.from_json(structure["data_type"])
@@ -119,6 +118,39 @@ class RaggedStructure(Structure):
             resizable=structure.get("resizable", False),
         )
 
+    @property
+    def awk_form(self) -> awkward.forms.Form:
+        "Construct an Awkward Form representing the ragged array structure"
+        ndims = len(self.shape)
+        primitive = awkward.types.numpytype.dtype_to_primitive(
+            self.data_type.to_numpy_dtype()
+        )
+        form = awkward.forms.NumpyForm(primitive=primitive, form_key=f"node{ndims-1}")
+        for dim in range(ndims - 1, 0, -1):
+            form = awkward.forms.ListOffsetForm(
+                offsets="i64",
+                content=form,
+                form_key=f"node{dim-1}",
+            )
+
+        return form
+
+    @property
+    def awk_length(self) -> int:
+        "Length of corresponding awkward buffers, i.e. the first dimension of the array"
+        return self.shape[0]
+
+    @property
+    def awk_container_schema(self) -> dict[str, numpy.dtype]:
+        "Schema of the corresponding awkward buffers, as a mapping of form keys to numpy dtypes"
+        ndims = len(self.shape)
+        offsets = {
+            f"node{dim}-offsets": numpy.dtype("int64") for dim in range(ndims - 1)
+        }
+        data = {f"node{ndims-1}-data": self.data_type.to_numpy_dtype()}
+
+        return offsets | data
+
 
 _SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
 
@@ -127,7 +159,7 @@ def make_ragged_array(array: Iterable) -> ragged.array:
     """Best-effort conversion of any numeric iterable to a `ragged` array."""
     if isinstance(array, ragged.array):
         return array
-    if isinstance(array, np.ndarray):
+    if isinstance(array, numpy.ndarray):
         # this assumes that any nested-arrays do *not* have an object dtype
         if array.dtype.name == "object":
             return ragged.array([row.tolist() for row in array])

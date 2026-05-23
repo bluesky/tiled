@@ -11,7 +11,8 @@ PARQUET_MIMETYPE = "application/x-parquet"
 SPARSE_BLOCKS_PARQUET_MIMETYPE = "application/x-parquet;structure=sparse"
 ZARR_MIMETYPE = "application/x-zarr"
 AWKWARD_BUFFERS_MIMETYPE = "application/x-awkward-buffers"
-RAGGED_MIMETYPE = "application/x-ragged"
+RAGGED_SQL_MIMETYPE = "application/x-ragged+sql"
+RAGGED_PARQUET_MIMETYPE = "application/x-ragged+parquet"
 TILED_SQL_TABLE_MIMETYPE = "application/x-tiled-sql-table"
 # TODO: make type[Adapter] after #1047
 DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
@@ -68,8 +69,11 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
         AWKWARD_BUFFERS_MIMETYPE: lambda: importlib.import_module(
             "..adapters.awkward", __name__
         ).AwkwardAdapter,
-        RAGGED_MIMETYPE: lambda: importlib.import_module(
-            "..adapters.ragged_parquet", __name__
+        RAGGED_SQL_MIMETYPE: lambda: importlib.import_module(
+            "..adapters.ragged", __name__
+        ).RaggedSQLAdapter,
+        RAGGED_PARQUET_MIMETYPE: lambda: importlib.import_module(
+            "..adapters.ragged", __name__
         ).RaggedParquetAdapter,
         APACHE_ARROW_FILE_MIME_TYPE: lambda: importlib.import_module(
             "..adapters.arrow", __name__

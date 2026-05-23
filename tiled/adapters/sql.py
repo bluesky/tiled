@@ -38,7 +38,8 @@ from ..structures.table import TableStructure
 from ..type_aliases import JSON
 from .array import ArrayAdapter
 from .awkward import AwkwardAdapter
-from .ragged import RaggedAdapter
+
+# from .ragged import RaggedAdapter
 from .utils import init_adapter_from_catalog
 
 DIALECTS = Literal["postgresql", "sqlite", "duckdb"]
@@ -98,6 +99,7 @@ class SQLAdapter(Adapter[TableStructure]):
         table_name: str,
         dataset_id: int,
         *,
+        order_by: Optional[List[tuple[str, Literal["asc", "desc"]]]] = None,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -107,6 +109,7 @@ class SQLAdapter(Adapter[TableStructure]):
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
+        self.order_by = order_by
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
@@ -210,19 +213,22 @@ class SQLAdapter(Adapter[TableStructure]):
         /,
         **kwargs: Optional[Any],
     ) -> "SQLAdapter":
-        return init_adapter_from_catalog(cls, data_source, node, **kwargs)
+        return cls(
+            data_source.assets[0].data_uri,
+            structure=data_source.structure,
+            table_name=data_source.parameters["table_name"],
+            dataset_id=data_source.parameters["dataset_id"],
+            order_by=data_source.parameters.get("order_by"),
+            metadata=node.metadata_,
+            specs=node.specs,
+        )
 
     def structure(self) -> TableStructure:
-        """
-        The structure of the actual data.
-
-        Returns
-        -------
-        The structure of the data.
-        """
         return self._structure
 
-    def get(self, key: str) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter, None]:
+    def get(
+        self, key: str
+    ) -> Union[ArrayAdapter, AwkwardAdapter, None]:  # RaggedAdapter,
         """Get the data for a specific key
 
         Parameters
@@ -239,7 +245,7 @@ class SQLAdapter(Adapter[TableStructure]):
 
     def __getitem__(
         self, key: str
-    ) -> Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]:
+    ) -> Union[ArrayAdapter, AwkwardAdapter, None]:  # RaggedAdapter,
         """Get the data for a specific key.
 
         Parameters
@@ -270,10 +276,10 @@ class SQLAdapter(Adapter[TableStructure]):
             except ValueError as err:
                 errors.append(err)
 
-            try:
-                return RaggedAdapter.from_array(array)
-            except Exception as err:
-                errors.append(err)
+            # try:
+            #     return RaggedAdapter.from_array(array)
+            # except Exception as err:
+            #     errors.append(err)
 
             try:
                 return AwkwardAdapter.from_array(array)
@@ -291,7 +297,7 @@ class SQLAdapter(Adapter[TableStructure]):
 
     def items(
         self,
-    ) -> Iterator[Tuple[str, Union[ArrayAdapter, AwkwardAdapter, RaggedAdapter]]]:
+    ) -> Iterator[Tuple[str, Union[ArrayAdapter, AwkwardAdapter]]]:  # , RaggedAdapter
         """Iterate over the SQLAdapter data.
 
         Returns

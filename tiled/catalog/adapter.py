@@ -62,7 +62,8 @@ from ..mimetypes import (
     AWKWARD_BUFFERS_MIMETYPE,
     DEFAULT_ADAPTERS_BY_MIMETYPE,
     PARQUET_MIMETYPE,
-    RAGGED_MIMETYPE,
+    RAGGED_PARQUET_MIMETYPE,
+    RAGGED_SQL_MIMETYPE,
     SPARSE_BLOCKS_PARQUET_MIMETYPE,
     TILED_SQL_TABLE_MIMETYPE,
     ZARR_MIMETYPE,
@@ -118,7 +119,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CREATION_MIMETYPE = {
     StructureFamily.array: ZARR_MIMETYPE,
     StructureFamily.awkward: AWKWARD_BUFFERS_MIMETYPE,
-    StructureFamily.ragged: RAGGED_MIMETYPE,
+    StructureFamily.ragged: RAGGED_SQL_MIMETYPE,
     StructureFamily.sparse: SPARSE_BLOCKS_PARQUET_MIMETYPE,
     StructureFamily.table: PARQUET_MIMETYPE,
 }
@@ -147,9 +148,9 @@ STORAGE_ADAPTERS_BY_MIMETYPE = OneShotCachedMap[str, type](
         TILED_SQL_TABLE_MIMETYPE: lambda: importlib.import_module(
             "...adapters.sql", __name__
         ).SQLAdapter,
-        RAGGED_MIMETYPE: lambda: importlib.import_module(
-            "...adapters.ragged_parquet", __name__
-        ).RaggedParquetAdapter,
+        RAGGED_SQL_MIMETYPE: lambda: importlib.import_module(
+            "...adapters.ragged", __name__
+        ).RaggedSQLAdapter,
     }
 )
 

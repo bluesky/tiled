@@ -269,6 +269,9 @@ class _DaskArrayClient(BaseClient):
         return dask_array
 
     def write(self, array, persist=True):
+        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
+            array = numpy.asarray(array)
+
         params = {}
         if persist is False:
             # Extend the query only for non-default behavior.
@@ -285,6 +288,9 @@ class _DaskArrayClient(BaseClient):
                 )
 
     def write_block(self, array, block, slice=..., persist=True):
+        if not (hasattr(array, "shape") and hasattr(array, "dtype")):
+            array = numpy.asarray(array)
+
         url_path = self.item["links"]["block"].format(*block)
         params = {
             **parse_qs(urlparse(url_path).query),
