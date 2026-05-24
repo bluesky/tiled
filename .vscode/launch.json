@@ -15,8 +15,7 @@
         ],
         "env": {
           // Point this at any of your YAML configs or a config directory
-          "TILED_CONFIG":
-"/home/dmcreynolds/dev/splash_tiled/tiled_config/config_dev.yaml",
+          "TILED_CONFIG": "${workspaceFolder}/example_configs/single_catalog_single_user.yml",
           "TILED_SINGLE_USER_API_KEY": "secret",
         },
         "console": "integratedTerminal",
