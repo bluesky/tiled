@@ -10,7 +10,7 @@ from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
 
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.ndslice import NDSlice, compose_slices
+from tiled.ndslice import NDBlock, NDSlice, block_for_slice, compose_slices
 from tiled.server.app import build_app
 
 
@@ -321,3 +321,177 @@ def test_compose_slices(shape, data):
 
     # Test the composition via __getitem__
     np.testing.assert_array_equal(arr[slc1][slc2], arr[slc1[slc2]])
+
+
+def chunks_strategy(shape):
+    """Generate valid chunking schemes for a given shape."""
+
+    def gen_chunks_for_dim(dim_size):
+        # Generate a list of chunk sizes that sum to dim_size
+        if dim_size == 0:
+            return st.just(())
+        # Generate between 1 and min(dim_size, 5) chunks
+        num_chunks = st.integers(1, min(dim_size, 5))
+        return num_chunks.flatmap(lambda n: _partition_into_chunks(dim_size, n))
+
+    def _partition_into_chunks(total, n_chunks):
+        """Partition total into n_chunks positive integers."""
+        if n_chunks == 1:
+            return st.just((total,))
+        # Generate n_chunks-1 split points
+        splits = st.lists(
+            st.integers(1, total - 1),
+            min_size=n_chunks - 1,
+            max_size=n_chunks - 1,
+            unique=True,
+        ).map(sorted)
+
+        def make_chunks(split_points):
+            points = [0] + split_points + [total]
+            return tuple(points[i + 1] - points[i] for i in range(len(points) - 1))
+
+        return splits.map(make_chunks)
+
+    return st.tuples(*(gen_chunks_for_dim(dim) for dim in shape))
+
+
+@given(
+    shape=st.lists(st.integers(5, 20), min_size=1, max_size=3),
+    data=st.data(),
+)
+def test_block_for_slice_correctness(shape, data):
+    """Test that block_for_slice produces correct results when applied to real arrays."""
+    # Create test array, valid slice, and chunking scheme
+    arr = np.arange(np.prod(shape)).reshape(shape)
+    chunks = data.draw(chunks_strategy(shape))
+    test_slice = data.draw(ndslice_strategy(shape))
+    expected = arr[test_slice] if test_slice else arr
+
+    # Get block and slice from block_for_slice
+    block, slice_in_block = block_for_slice(chunks, test_slice)
+
+    # Extract the selected blocks
+    num_chunks_per_dim = tuple(len(dim_chunks) for dim_chunks in chunks)
+    block_expanded = block.expand_for_shape(num_chunks_per_dim)
+
+    # Collect blocks
+    selected_blocks = []
+    for idx in np.ndindex(num_chunks_per_dim):
+        if all(
+            (isinstance(sel, int) and idx[i] == sel)
+            or (isinstance(sel, builtins.slice) and sel.start <= idx[i] < sel.stop)
+            for i, sel in enumerate(block_expanded)
+        ):
+            # Get this block from array
+            block_slices = tuple(
+                builtins.slice(
+                    sum(chunks[dim][: idx[dim]]), sum(chunks[dim][: idx[dim] + 1])
+                )
+                for dim in range(len(shape))
+            )
+            selected_blocks.append((idx, arr[block_slices]))
+
+    # Concatenate blocks if multiple, otherwise use single block
+    if len(selected_blocks) == 1:
+        concatenated = selected_blocks[0][1]
+    elif len(selected_blocks) > 1:
+        # Organize into grid for concatenation
+        grid_shape = tuple(
+            sel.stop - sel.start if isinstance(sel, builtins.slice) else 1
+            for sel in block_expanded
+        )
+        grid = {
+            tuple(
+                idx[i] - (sel.start if isinstance(sel, builtins.slice) else sel)
+                for i, sel in enumerate(block_expanded)
+            ): block_data
+            for idx, block_data in selected_blocks
+        }
+
+        # Concatenate based on dimensionality
+        if len(grid_shape) == 1:
+            concatenated = np.concatenate(
+                [grid[tuple([i])] for i in range(grid_shape[0])], axis=0
+            )
+        elif len(grid_shape) == 2:
+            rows = [
+                np.concatenate([grid[(i, j)] for j in range(grid_shape[1])], axis=1)
+                for i in range(grid_shape[0])
+            ]
+            concatenated = np.concatenate(rows, axis=0)
+        else:  # 3D
+            planes = []
+            for i in range(grid_shape[0]):
+                rows = [
+                    np.concatenate(
+                        [grid[(i, j, k)] for k in range(grid_shape[2])], axis=2
+                    )
+                    for j in range(grid_shape[1])
+                ]
+                planes.append(np.concatenate(rows, axis=1))
+            concatenated = np.concatenate(planes, axis=0)
+    else:
+        # No blocks selected - shouldn't happen with valid slices
+        assume(False)
+
+    # Apply slice_in_block and verify correctness
+    result = concatenated[slice_in_block] if slice_in_block else concatenated
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_block_for_slice_basic():
+    """Test basic block_for_slice functionality."""
+    # Full array
+    chunks = ((10, 10), (20, 20))
+    block, slice_in_block = block_for_slice(chunks, None)
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert slice_in_block == NDSlice()
+
+    # Single block
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(2, 8), builtins.slice(5, 15))
+    )
+    assert block == NDBlock(0, 0)
+
+    # Multiple blocks
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(5, 15), builtins.slice(15, 35))
+    )
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert isinstance(block, NDBlock)
+    assert isinstance(slice_in_block, NDSlice)
+    for item in block:
+        if isinstance(item, builtins.slice):
+            assert item.step in (None, 1)
+
+    # Integer index
+    block, slice_in_block = block_for_slice(chunks, (15, 25))
+    assert block == NDBlock(1, 1)
+    assert slice_in_block == NDSlice(5, 5)
+
+    # Slice with step
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(5, 25, 2), builtins.slice(10, 30))
+    )
+    assert slice_in_block[0].step == 2
+    assert slice_in_block[0].start == 5
+
+    # Negative step
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(15, 5, -1), builtins.slice(10, 30))
+    )
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert slice_in_block[0].step == -1
+    assert isinstance(block, NDBlock)
+
+    # Negative step to beginning (None)
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(None, None, -1), builtins.slice(10, 30))
+    )
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert slice_in_block[0].step == -1
+    assert slice_in_block[0].stop is None  # Should be None, not negative
+
+    # Slice indexing out of bounds
+    with pytest.raises(IndexError):
+        block_for_slice(chunks, (50, 10))
