@@ -2,22 +2,25 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Union, cast
 from urllib.parse import parse_qs, urlparse
+from ..structures.core import STRUCTURE_TYPES
+
+import httpx
 
 import numpy as np
 import ragged
 
-from tiled.client.base import BaseClient
-from tiled.client.utils import (
+from .base import BaseClient
+from .utils import (
     export_util,
     handle_error,
     params_from_slice,
     retry_context,
 )
-from tiled.ndslice import NDBlock
-from tiled.serialization.ragged import from_zipped_buffers, to_zipped_buffers
-from tiled.structures.ragged import RaggedStructure, make_ragged_array
+from ..ndslice import NDBlock
+from ..serialization.ragged import from_zipped_buffers, to_zipped_buffers
+from ..structures.ragged import RaggedStructure, make_ragged_array
 
 if TYPE_CHECKING:
     import awkward as ak
@@ -25,8 +28,7 @@ if TYPE_CHECKING:
 
 class RaggedClient(BaseClient):
     def write(self, array: ragged.array | ak.Array | Iterable[Iterable]):
-        """
-        Write a ragged array in full.
+        """Write a ragged array in full.
 
         Parameters
         ----------
@@ -53,8 +55,7 @@ class RaggedClient(BaseClient):
         block: Any,
         persist: bool = True,
     ):
-        """
-        Write a block of ragged array data.
+        """Write a block of ragged array data.
 
         Parameters
         ----------
@@ -92,6 +93,81 @@ class RaggedClient(BaseClient):
                         params=params,
                     )
                 )
+
+    def patch(
+        self,
+        array: ragged.array | ak.Array | Iterable[Iterable],
+        offset: Union[int, tuple[int, ...]],
+        extend=False,
+        persist=True,
+    ):
+        """Write data into a slice of an array, possibly extending the shape.
+
+        Parameters
+        ----------
+        array : ragged.array | ak.Array | Iterable[Iterable]
+            The data to write
+        offset : int | tuple[int, ...]
+            Where to place this data in the array
+        extend : bool
+            Extend the array shape to fit the new slice, if necessary
+        persist : bool | None
+            Persist the changes on server storage if True. [default behavior]
+            If False, the update is still streamed to subscribed listeners.
+        """
+        if not extend or not persist:
+            raise NotImplementedError("Only extend=True and persist=True are currently supported")
+
+        if not isinstance(offset, int) or offset != self.shape[0]:
+            raise NotImplementedError("Only appending to the end of the leftmost dimension is currently supported")
+
+        array = make_ragged_array(array)
+
+        if array.dtype != self.dtype:
+            raise ValueError(
+                f"Data given to patch has dtype {array.dtype} which does not "
+                f"match the dtype of this array {self.dtype}."
+            )
+
+        if isinstance(offset, int):
+            offset = (offset,)
+        url_path = self.item["links"]["full"]
+        params = {
+            **parse_qs(urlparse(url_path).query),
+            "shape": str(array.shape[0]),
+            "offset": ",".join(map(str, offset)),
+            "extend": bool(extend),
+        }
+        if persist is False:
+            # Extend the query only for non-default behavior.
+            params["persist"] = persist
+        for attempt in retry_context():
+            with attempt:
+                response = self.context.http_client.patch(
+                    url_path,
+                    content=to_zipped_buffers(
+                            mimetype="application/zip", array=array, metadata={}
+                        ),
+                    headers={"Content-Type": "application/zip"},
+                    params=params,
+                )
+                if response.status_code in [
+                    httpx.codes.BAD_REQUEST,
+                    httpx.codes.CONFLICT,
+                ]:
+                    raise ValueError(
+                        response.json()
+                        .get("detail", "Array parameters conflict.")
+                        .replace(
+                            "Use ?",  # URL query param
+                            "Pass keyword argument ",  # Python function argument
+                        )
+                    )
+                handle_error(response)
+        # Update cached structure.
+        new_structure = response.json()
+        structure_type = STRUCTURE_TYPES[self.structure_family]
+        self._structure = structure_type.from_json(new_structure)
 
     def read(self, slice: Any | None = None) -> ragged.array:
         """
@@ -206,34 +282,29 @@ class RaggedClient(BaseClient):
     @property
     def dims(self) -> tuple[str, ...] | None:
         """The dimension names of the array, if set."""
-        structure = cast("RaggedStructure", self.structure())
-        return structure.dims
+        return self.structure().dims
 
     @property
     def shape(self) -> tuple[int | None, ...]:
         """The shape of the array, where unknown variable dimensions are given as ``None``."""
-        structure = cast("RaggedStructure", self.structure())
-        return structure.shape
+        return self.structure().shape
 
     @property
     def size(self) -> int:
         """The total number of elements in the array."""
-        structure = cast("RaggedStructure", self.structure())
-        return structure.size
+        return self.structure().size
 
     @property
     def dtype(self) -> np.dtype:
         """The data type of the array."""
-        structure = cast("RaggedStructure", self.structure())
-        return structure.data_type.to_numpy_dtype()
+        return self.structure().data_type.to_numpy_dtype()
 
     @property
     def chunks(self) -> tuple[tuple[int, ...] | None, ...]:
         """The dask-like chunks of the array, where the first dimension is always
-        partitioned into known integer chunks, and any variable dimensions are null.
+        partitioned into known integer chunks, and any variable dimensions are `None`.
         """
-        structure = cast("RaggedStructure", self.structure())
-        return structure.chunks
+        return self.structure().chunks
 
     @property
     def chunked(self) -> bool:

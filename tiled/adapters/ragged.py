@@ -163,23 +163,35 @@ class RaggedAdapter(Adapter[RaggedStructure]):
 class RaggedSQLAdapter(Adapter[RaggedStructure]):
     structure_family = StructureFamily.ragged
 
+    def __init__(
+        self,
+        tabular_adapter: SQLAdapter,
+        structure: RaggedStructure,
+        *,
+        metadata: Optional[JSON] = None,
+        specs: Optional[List[Spec]] = None,
+    ) -> None:
+        self._tabular_adapter = tabular_adapter
+        self._structure = structure
+        self._metadata = metadata or {}
+        self.specs = list(specs or [])
+
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
         return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
 
     @classmethod
-    def _data_source_for_table(
+    def _get_tabular_data_source(
         cls, data_source: DataSource[RaggedStructure]
     ) -> DataSource[TableStructure]:
         "Convert a DataSource with a RaggedStructure to one with a TableStructure"
-        awk_schema = data_source.structure.awk_container_schema
+        awk_schema = data_source.structure.awk_form.expected_from_buffers()
         empty_table_dict = {col: [numpy.empty(0, dtype=typ)] for col, typ in awk_schema.items()}
         empty_table_dict["chunk_index"] = [0]
-        structure = TableStructure.from_dict(empty_table_dict)
 
         return DataSource(
             structure_family=StructureFamily.table,
-            structure=structure,
+            structure=TableStructure.from_dict(empty_table_dict),
             parameters=data_source.parameters | {"order_by": [("chunk_index", "asc")]},
             properties=data_source.properties,
             mimetype="application/x-tiled-sql-table",
@@ -199,7 +211,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input
 
         tabular_data_source = SQLAdapter.init_storage(
-            storage=storage, data_source=cls._data_source_for_table(data_source)
+            storage=storage, data_source=cls._get_tabular_data_source(data_source)
         )
 
         data_source.assets.extend(tabular_data_source.assets)
@@ -209,10 +221,9 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         return data_source
 
     @classmethod
-    def from_catalog(cls, data_source: DataSource[RaggedStructure], node: Node) -> Self:
-        tabular_adapter = SQLAdapter.from_catalog(
-            cls._data_source_for_table(data_source), node
-        )
+    def from_catalog(cls, data_source: DataSource[RaggedStructure], node: Node, **kwargs) -> Self:
+        tabular_data_source = cls._get_tabular_data_source(data_source)
+        tabular_adapter = SQLAdapter.from_catalog(tabular_data_source, node)
 
         return cls(
             tabular_adapter=tabular_adapter,
@@ -221,39 +232,27 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             specs=node.specs,
         )
 
-    def __init__(
-        self,
-        tabular_adapter: SQLAdapter,
-        structure: RaggedStructure,
-        *,
-        metadata: Optional[JSON] = None,
-        specs: Optional[List[Spec]] = None,
-    ) -> None:
-        self._tabular_adapter = tabular_adapter
-        self._structure = structure
-        self._metadata = metadata or {}
-        self.specs = list(specs or [])
-
     def read(self, slice: NDSlice | None = None) -> ragged.array:
-        """Read a slice of data from the ragged array."""
-        table = self._tabular_adapter._read_full_table_or_partition()
-        container = table.to_pylist()[0]  # Expecting a single row with the container dict
-        container = {k:numpy.array(v) for k,v in container.items() if k != "chunk_index"}  # Remove chunk_index from container
-        form = self._structure.awk_form
-        length = len(container["node0-offsets"]) - 1
-        return ragged.array(awkward.from_buffers(self._structure.awk_form, length, container))
+        "Read a slice of data from the ragged array."
+        rows = self._tabular_adapter._read_full_table_or_partition().to_pylist()
+
+        # Each row in the table represents an awkward container; concatenate them together
+        form = self._structure.awk_form  # awkward form should be the same for each row
+        containers = [{key: numpy.array(row[key], dtype=typ) for key, typ in form.expected_from_buffers().items()} for row in rows]
+        lengths = [len(container["node0-offsets"]) - 1 for container in containers]
+        awk_arrays = [awkward.from_buffers(form, l, c) for l, c in zip(lengths, containers)]
+
+        array = ragged.array(awkward.concatenate(awk_arrays))
+
+        return array[slice] if slice else array
 
     def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
-        """Read a single partition block of the ragged array."""
-        if self._array is None:
-            raise NotImplementedError
-        chunks = self._structure.chunks
-        stops = list(itertools.accumulate(chunks))
-        starts = [0] + stops[:-1]
-        start = starts[block[0]]
-        stop = stops[block[0]]
-        data = self._array[start:stop]
-        return data[slice] if slice else data
+        "Read a single block of chunks of the ragged array."
+
+        # Slice the whole array to get this block and then slice within the block
+        array = self.read(slice=block.slice_from_chunks(self._structure.chunks))
+
+        return array[slice] if slice else array
 
     def write(self, data: ragged.array, slice: NDSlice = NDSlice(...)) -> None:
         if slice:
@@ -262,22 +261,60 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         form, _, container = awkward.to_buffers(make_ragged_array(data)._impl)
 
         if self.structure().awk_form != form:
-            raise ValueError(
-                "The structure of the provided data does not match the adapter's structure."
-            )
+            raise ValueError("The structure of the provided data does not match the adapter")
 
+        # Check if the SQL table is empty before writing, to prevent overwriting existing data
         if not self._tabular_adapter.read(fields=["chunk_index"]).empty:
-            raise NotImplementedError("Overwriting of existing data is not supported.")
-        
+            raise NotImplementedError("Overwriting of existing data is not supported")
+
         container["chunk_index"] = 0
         self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([container]))
 
     def write_block(self, array: ragged.array, block: NDBlock) -> None:
-        """Write a single partition block (not supported for in-memory adapter)."""
-        raise NotImplementedError(
-            "write_block is not supported for the in-memory RaggedAdapter; "
-            "use RaggedParquetAdapter for persistent block-wise writes."
-        )
+        """Write a single partition block"""
+        raise NotImplementedError('...')
+    
+    def append(self, data: ragged.array) -> RaggedStructure:
+        raise NotImplementedError('...')
+
+    def patch(self, data: ragged.array, offset: int, extend: bool = False) -> RaggedStructure:
+        """Write data into a slice of the ragged array, possibly extending it.
+
+        If the specified slice does not fit into the array, and extend=True, the
+        array will be resized (expanded, never shrunk) to fit it.
+
+        Parameters
+        ----------
+        data : ragged array-like
+        offset : int
+            Where to place the new data along the first dimension of the array.
+        extend : bool
+            If slice does not fit wholly within the shape of the existing array,
+            reshape (expand) it to fit if this is True.
+
+        Raises
+        ------
+        ValueError :
+            If slice does not fit wholly with the shape of the existing array
+            and extend is False
+        """
+        data = make_ragged_array(data)
+        form, length, container = awkward.to_buffers(data._impl)
+
+        if self.structure().awk_form != form:
+            raise ValueError("The structure of the provided data does not match the adapter")
+        
+        container["chunk_index"] = len(self.structure().chunks[0])
+        
+        self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([container]))
+
+        # Update the structure to reflect the new data
+        self._structure.shape = (self._structure.shape[0] + length, *self._structure.shape[1:])
+        self._structure.chunks = (self._structure.chunks[0] + (length,), *self._structure.chunks[1:])
+        self._structure.size += data.size
+
+        return self._structure
+
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"

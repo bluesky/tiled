@@ -475,9 +475,7 @@ class PostMetadataRequest(pydantic.BaseModel):
             if self.structure_family != StructureFamily.container:
                 structure_cls = STRUCTURE_TYPES[self.structure_family]
                 if data_source.structure is not None:
-                    data_source.structure = structure_cls.from_json(
-                        data_source.structure
-                    )
+                    data_source.structure = structure_cls.from_json(data_source.structure)
         return self
 
 

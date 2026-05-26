@@ -1069,6 +1069,64 @@ def get_router(
         )
         return json_or_msgpack(request, None)
 
+    @router.patch("/ragged/full/{path:path}")
+    async def patch_ragged_full(
+        request: Request,
+        path: str,
+        shape=Depends(shape_param),
+        offset=Depends(offset_param),
+        extend: bool = Query(False, description="Extend the array shape to fit the new data"),
+        persist: bool = Query(True, description="Persist data to storage"),
+        principal: Optional[Principal] = Depends(get_current_principal),
+        root_tree=Depends(get_root_tree),
+        session_state: dict = Depends(get_session_state),
+        authn_access_tags: Optional[AccessTags] = Depends(get_current_access_tags),
+        authn_scopes: Scopes = Depends(get_current_scopes),
+        _=Security(check_scopes, scopes=["write:data"]),
+    ):
+        if extend and not persist:
+            msg = (
+                "Cannot PATCH a ragged array with both parameters"
+                " extend=True and persist=False."
+                " To extend the array, you must persist the changes."
+                " To skip persisting the changes, you must not extend the array."
+            )
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=msg)
+
+        entry = await get_entry(
+            path,
+            ["write:data"],
+            principal,
+            authn_access_tags,
+            authn_scopes,
+            root_tree,
+            session_state,
+            request.state.metrics,
+            {StructureFamily.ragged},
+            getattr(request.app.state, "access_policy", None),
+        )
+        if not hasattr(entry, "patch"):
+            raise HTTPException(
+                status_code=HTTP_405_METHOD_NOT_ALLOWED,
+                detail="This node does not support patching ragged array data.",
+            )
+
+        body = await request.body()
+        media_type = request.headers["content-type"]
+        deserializer = deserialization_registry.dispatch("ragged", media_type)
+        structure = await ensure_awaitable(
+            entry.patch,
+            shape,
+            offset,
+            extend,
+            media_type,
+            deserializer,
+            entry,
+            body,
+            persist,
+        )
+        return json_or_msgpack(request, structure)
+
     @router.get(
         "/table/partition/{path:path}",
         response_model=schemas.Response,

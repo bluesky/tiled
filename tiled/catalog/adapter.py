@@ -1536,6 +1536,47 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
         return await ensure_awaitable(
             (await self.get_adapter()).write_block, data, block
         )
+    
+    async def patch(
+        self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
+    ):
+        if self.context.streaming_cache:
+            await self._stream(media_type, entry, body, shape, offset=offset)
+        if not persist:
+            return entry.structure()
+        dtype = entry.structure().data_type.to_numpy_dtype()
+        data = await ensure_awaitable(deserializer, body, dtype, shape)
+
+        async with self.context.session() as db:
+            new_structure = await ensure_awaitable(
+                (await self.get_adapter()).patch, data, offset, extend
+            )
+            node = await db.get(orm.Node, self.node.id)
+            if len(node.data_sources) != 1:
+                raise NotImplementedError("Only handles one data source")
+            data_source = node.data_sources[0]
+            structure_row = await db.get(orm.Structure, data_source.structure_id)
+
+            # Get the current structure row, update the shape, and write it back
+            structure_dict = copy.deepcopy(structure_row.structure)
+            structure_dict["shape"], structure_dict["chunks"] = new_structure.shape, new_structure.chunks
+            new_structure_id = compute_structure_id(structure_dict)
+            statement = (
+                self.insert(orm.Structure)
+                .values(
+                    id=new_structure_id,
+                    structure=structure_dict,
+                )
+                .on_conflict_do_nothing(index_elements=["id"])
+            )
+            await db.execute(statement)
+            new_structure = await db.get(orm.Structure, new_structure_id)
+            data_source.structure = new_structure
+            data_source.structure_id = new_structure_id
+            db.add(data_source)
+            await db.commit()
+
+            return structure_dict
 
 
 class CatalogSparseAdapter(CatalogArrayAdapter):

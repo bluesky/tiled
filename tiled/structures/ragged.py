@@ -35,7 +35,8 @@ class RaggedStructure(Structure):
         Serializable representation of the array's data type.
     shape : tuple[int | None, ...]
         The shape of the array, where the first dimension is always a known integer,
-        and any variable dimensions are represented by None.
+        and any variable dimensions are represented by None. The shape must be at least 2D,
+        i.e. have at least one ragged dimension.
     size : int
         The total number of elements in the array.
     chunks : tuple[tuple[int, ...] | None, ...]
@@ -55,6 +56,16 @@ class RaggedStructure(Structure):
     chunks: tuple[tuple[int, ...] | None, ...]
     dims: tuple[str, ...] | None = None
     resizable: bool | tuple[bool, ...] = False
+
+    def __post_init__(self):
+        if len(self.shape) < 2:
+            raise ValueError("Ragged arrays must have at least 2 dimensions")
+        if self.shape[0] is None:
+            raise ValueError("The first dimension of a ragged array must be a known integer")
+        if self.chunks[0] is None:
+            raise ValueError("The first chunks dimension must be a known integer partitioning")
+        if len(self.shape) != len(self.chunks):
+            raise ValueError("Shape and chunks must have the same number of dimensions")
 
     @classmethod
     def from_array(
@@ -113,7 +124,7 @@ class RaggedStructure(Structure):
             data_type=data_type,
             shape=tuple(structure["shape"]),
             size=structure["size"],
-            chunks=tuple(map(tuple, structure["chunks"])),
+            chunks=tuple(tuple(c) if c is not None else None for c in structure["chunks"]),
             dims=dims,
             resizable=structure.get("resizable", False),
         )
@@ -140,16 +151,16 @@ class RaggedStructure(Structure):
         "Length of corresponding awkward buffers, i.e. the first dimension of the array"
         return self.shape[0]
 
-    @property
-    def awk_container_schema(self) -> dict[str, numpy.dtype]:
-        "Schema of the corresponding awkward buffers, as a mapping of form keys to numpy dtypes"
-        ndims = len(self.shape)
-        offsets = {
-            f"node{dim}-offsets": numpy.dtype("int64") for dim in range(ndims - 1)
-        }
-        data = {f"node{ndims-1}-data": self.data_type.to_numpy_dtype()}
+    # @property
+    # def awk_container_schema(self) -> dict[str, numpy.dtype]:
+    #     "Schema of the corresponding awkward buffers, as a mapping of form keys to numpy dtypes"
+    #     ndims = len(self.shape)
+    #     offsets = {
+    #         f"node{dim}-offsets": numpy.dtype("int64") for dim in range(ndims - 1)
+    #     }
+    #     data = {f"node{ndims-1}-data": self.data_type.to_numpy_dtype()}
 
-        return offsets | data
+    #     return offsets | data
 
 
 _SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
@@ -175,22 +186,22 @@ def make_ragged_chunks(array: ragged.array, limit_bytes: int) -> tuple[int, ...]
     """Row-wise partitioning of a ragged array into chunks of at most `limit_bytes` bytes."""
     ak_array = awkward.Array(array._impl)
     if ak_array.nbytes <= limit_bytes:
-        return (len(ak_array),)
+        return ((len(ak_array),), ) + (None,) * (ak_array.ndim - 1)
 
     # Work with boundary indices internally, convert to sizes at the end.
     boundaries: list[int] = [0, cast("int", array.shape[0])]
-    partition_index = 0
+    chunk_index = 0
 
-    while partition_index < len(boundaries) - 1:
-        start, end = boundaries[partition_index], boundaries[partition_index + 1]
+    while chunk_index < len(boundaries) - 1:
+        start, end = boundaries[chunk_index], boundaries[chunk_index + 1]
         part = awkward.to_packed(ak_array[start:end])
         if part.nbytes > limit_bytes:
             if end - start == 1:
                 msg = f"cannot partition individual rows to fit within {limit_bytes} bytes"
                 raise ValueError(msg)
             mid = start + (end - start) // 2
-            boundaries.insert(partition_index + 1, mid)
+            boundaries.insert(chunk_index + 1, mid)
         else:
-            partition_index += 1
+            chunk_index += 1
 
-    return tuple(end - start for start, end in zip(boundaries, boundaries[1:]))
+    return (tuple(end - start for start, end in zip(boundaries, boundaries[1:])),) + (None,) * (ak_array.ndim - 1)

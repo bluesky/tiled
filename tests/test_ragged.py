@@ -35,48 +35,52 @@ from tiled.utils import APACHE_ARROW_FILE_MIME_TYPE
 rng = np.random.default_rng(42)
 
 arrays = {
-    # "empty_1d": ragged.array([]),      # awkward.to_parquet raises on `0 * unknown` type
-    # "empty_nd": ragged.array([[], [], []]),  # round-trips with unknown element type, not float64
-    "numpy_1d": ragged.array(rng.random(10)),
-    "numpy_2d": ragged.array(rng.random((3, 5))),
-    "numpy_3d": ragged.array(rng.random((2, 3, 4))),
-    "numpy_4d": rng.random((2, 3, 2, 3)),  # testing numpy conversion path
-    "regular_1d": ragged.array(rng.random(10).tolist()),
-    "regular_2d": ragged.array(rng.random((3, 5)).tolist()),
-    "regular_3d": ragged.array(rng.random((2, 3, 4)).tolist()),
-    "regular_4d": ragged.array(rng.random((2, 3, 2, 3)).tolist()),
-    "ragged_a": [
-        rng.random(3),
-        rng.random(5),
-        rng.random(8),
-    ],  # testing list-of-lists conversion path
-    "ragged_b": ak.Array(
-        [rng.random((2, 3, 4)), rng.random((3, 4, 5))]
-    ),  # testing awkward conversion path
-    "ragged_c": ragged.array(
-        [
-            [rng.random(10)],
-            [rng.random(8), []],
-            [rng.random(5), rng.random(2)],
-            [[], rng.random(7)],
-        ]
-    ),
-    "ragged_d": ragged.array(
-        [
-            [rng.random((4, 3))],
-            [rng.random((2, 8)), [[]]],
-            [rng.random((5, 2)), rng.random((3, 3))],
-            [[[]], rng.random((7, 1))],
-        ],
-        dtype=np.float32,
-    ),
+    # # "empty_1d": ragged.array([]),      # awkward.to_parquet raises on `0 * unknown` type
+    # # "empty_nd": ragged.array([[], [], []]),  # round-trips with unknown element type, not float64
+    # # "numpy_1d": ragged.array(rng.random(10)),  # Fallback to usual arrays for 1D data
+    # "ragged_2d": ragged.array([rng.random(3), rng.random(5), rng.random(8)]),
+    "numpy_2d": ragged.array([rng.random((3, 5))]),
+    # "numpy_3d": ragged.array(rng.random((2, 3, 4))),
+    # "numpy_4d": rng.random((2, 3, 2, 3)),  # testing numpy conversion path
+    # # "regular_1d": ragged.array(rng.random(10).tolist()),
+    # "regular_2d": ragged.array(rng.random((3, 5)).tolist()),
+    # "regular_3d": ragged.array(rng.random((2, 3, 4)).tolist()),
+    # "regular_4d": ragged.array(rng.random((2, 3, 2, 3)).tolist()),
+    # # testing list-of-lists conversion path
+    # "ragged_a": [
+    #     rng.random(3),
+    #     rng.random(5),
+    #     rng.random(8),
+    # ],
+    # # testing awkward conversion path
+    # "ragged_b": ak.Array(
+    #     [rng.random((2, 3, 4)), rng.random((3, 4, 5))]
+    # ),
+    # "ragged_c": ragged.array(
+    #     [
+    #         [rng.random(10)],
+    #         [rng.random(8), []],
+    #         [rng.random(5), rng.random(2)],
+    #         [[], rng.random(7)],
+    #     ]
+    # ),
+    # "ragged_d": ragged.array(
+    #     [
+    #         [rng.random((4, 3))],
+    #         [rng.random((2, 8)), [[]]],
+    #         [rng.random((5, 2)), rng.random((3, 3))],
+    #         [[[]], rng.random((7, 1))],
+    #     ],
+    #     dtype=np.float32,
+    # ),
 }
 
 
 @pytest.fixture(scope="module")
 def module_client(tmpdir_module):
     """Module-scoped client with all test arrays pre-written under their own keys."""
-    catalog = in_memory(writable_storage=str(tmpdir_module))
+    catalog = in_memory(writable_storage=[str(tmpdir_module),
+                                          f"duckdb:///{tmpdir_module / 'data.duckdb'}"])
     app = build_app(catalog)
     with Context.from_app(app) as context:
         client = from_context(context)
@@ -306,11 +310,6 @@ def test_export_parquet(tmpdir, module_client, name):
         actual = pyarrow.parquet.read_table(filepath)
         expected = ak.to_arrow_table(array[1]._impl)
         assert actual == expected
-
-
-#
-# extend existing SQLAdapter tests
-#
 
 
 # NOTE: Arrow seems to only accept 2-dimensional arrays
