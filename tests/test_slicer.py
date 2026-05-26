@@ -495,3 +495,38 @@ def test_block_for_slice_basic():
     # Slice indexing out of bounds
     with pytest.raises(IndexError):
         block_for_slice(chunks, (50, 10))
+
+
+def test_ndblock_chunk_indices():
+    """Test NDBlock.chunk_indices method."""
+    chunks = ((10, 10, 10), (20, 20))
+
+    # Mix of int and slice
+    block = NDBlock(builtins.slice(0, 2), 1)
+    assert block.chunk_indices(chunks) == [(0, 1), (1, 1)]
+
+    # Opposite - int then slice
+    block = NDBlock(0, builtins.slice(0, 2))
+    assert block.chunk_indices(chunks) == [(0, 0), (0, 1)]
+
+    # All slices (2D grid)
+    block = NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert block.chunk_indices(chunks) == [(0, 0), (0, 1), (1, 0), (1, 1)]
+
+    # Single chunk (all integers)
+    block = NDBlock(1, 0)
+    assert block.chunk_indices(chunks) == [(1, 0)]
+
+    # 1D case
+    chunks_1d = ((10, 10, 10),)
+    block = NDBlock(builtins.slice(1, 3))
+    assert block.chunk_indices(chunks_1d) == [(1,), (2,)]
+
+    # 3D case
+    chunks_3d = ((5, 5), (10, 10), (20, 20))
+    block = NDBlock(0, builtins.slice(0, 2), 1)
+    assert block.chunk_indices(chunks_3d) == [(0, 0, 1), (0, 1, 1)]
+
+    # Larger slice range
+    block = NDBlock(builtins.slice(0, 3), 0)
+    assert block.chunk_indices(chunks) == [(0, 0), (1, 0), (2, 0)]

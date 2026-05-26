@@ -608,6 +608,40 @@ class NDBlock(NDSlice):
 
         return NDSlice(*slice_)
 
+    def chunk_indices(self, chunks: Chunks) -> list[tuple[int, ...]]:
+        """Return a list of all n-dimensional chunk indices in this block.
+
+        Expands any slice dimensions into individual indices while keeping
+        integer dimensions as-is. The result is a list of tuples where each
+        tuple represents the chunk index for one block.
+
+        Parameters
+        ----------
+        chunks : Chunks
+            The chunking scheme to determine the valid range of chunk indices.
+
+        Returns
+        -------
+        list[tuple[int, ...]]
+            List of n-dimensional chunk index tuples.
+        """
+        # Expand to get actual indices for each dimension
+        expanded = self.expand_for_shape(tuple(len(ch) for ch in chunks))
+
+        # Convert each dimension to a list of indices
+        dim_indices = []
+        for item in expanded:
+            if isinstance(item, int):
+                dim_indices.append([item])
+            elif isinstance(item, builtins.slice):
+                # Extract start, stop from the slice (step is guaranteed to be 1 or None)
+                start = item.start if item.start is not None else 0
+                stop = item.stop
+                dim_indices.append(list(range(start, stop)))
+
+        # Generate all combinations (Cartesian product)
+        return sorted(itertools.product(*dim_indices))
+
 
 def block_for_slice(
     chunks: Chunks, slice: Optional[Union[tuple, "NDSlice"]] = None
