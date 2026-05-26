@@ -1,3 +1,4 @@
+import bisect
 import builtins
 import itertools
 import math
@@ -660,45 +661,17 @@ def block_for_slice(
     ----------
     chunks : Chunks
         The chunking scheme as a tuple of tuples, where chunks[i] gives the sizes
-        of chunks along dimension i. For example: ((10, 10, 10), (50, 50))
-        represents an array chunked into 3 chunks of size 10 along axis 0 and
-        2 chunks of size 50 along axis 1.
+        of chunks along dimension i.
     slice : tuple or NDSlice, optional
-        The slice to apply to the full array. Can be:
-        - None: returns all blocks and identity slice
-        - tuple: e.g., (slice(10, 50), slice(20, 30))
-        - NDSlice: instance of NDSlice class
-        If the slice contains Ellipsis or unresolved dimensions, it will be
-        expanded using the shape derived from chunks.
+        The slice to apply to the full array.
 
     Returns
     -------
     block : NDBlock
-        The contiguous block indices touched by the slice. This is an NDBlock
-        (subclass of NDSlice) representing which chunks to read. Each dimension
-        contains either an integer (single chunk) or a slice with step=1
-        (contiguous range of chunks).
+        The contiguous block indices touched by the slice.
     slice_within_blocks : NDSlice
         The slice to apply to the array formed by concatenating the selected blocks
-        to produce the final result. This accounts for:
-        - Offsets within the first touched chunk
-        - Trimming of the last touched chunk
-        - Step sizes in the original slice
-
-    Examples
-    --------
-    >>> # Array with shape (100, 200), chunks ((10, 10, 10, ...), (50, 50, ...))
-    >>> chunks = ((10, 10, 10, 10, 10, 10, 10, 10, 10, 10), (50, 50, 50, 50))
-    >>>
-    >>> # Want to read arr[15:35, 40:110]
-    >>> block, slice_in_block = block_for_slice(chunks, (slice(15, 35), slice(40, 110)))
-    >>> # block = NDBlock(slice(1, 4), slice(0, 3))  # chunks [1:4, 0:3]
-    >>> # slice_in_block = NDSlice(slice(5, 25), slice(40, 60))  # within concatenated blocks
-    >>>
-    >>> # With step
-    >>> block, slice_in_block = block_for_slice(chunks, (slice(15, 35, 2), slice(40, 110)))
-    >>> # block = NDBlock(slice(1, 4), slice(0, 3))  # same blocks
-    >>> # slice_in_block = NDSlice(slice(5, 25, 2), slice(40, 60))  # step preserved
+        to produce the final result.
     """
 
     # If empty slice, return all blocks and identity slice
@@ -713,24 +686,21 @@ def block_for_slice(
     shape = tuple(sum(dim_chunks) for dim_chunks in chunks)
     slice = slice.expand_for_shape(shape)
 
-    # For each dimension, determine which chunks are touched and the adjusted slice
+    # For each dimension, determine which chunks are touched and how to slice concatenated blocks
     block_slices, adjusted_slices = [], []
-
     for dim_idx, (slc, dim_chunks) in enumerate(zip(slice, chunks)):
         # Compute chunk boundaries: [0, chunks[0], chunks[0]+chunks[1], ...]
         chunk_bounds = [0, *itertools.accumulate(dim_chunks)]
 
         if isinstance(slc, int):
-            # Single index - find which chunk it falls in and adjust
-            for chunk_idx in range(len(dim_chunks)):
-                if chunk_bounds[chunk_idx] <= slc < chunk_bounds[chunk_idx + 1]:
-                    block_slices.append(chunk_idx)
-                    adjusted_slices.append(slc - chunk_bounds[chunk_idx])
-                    break
-            else:
+            # Single index - find which chunk it falls in using binary search
+            chunk_idx = bisect.bisect_right(chunk_bounds, slc) - 1
+            if chunk_idx < 0 or chunk_idx >= len(dim_chunks):
                 raise IndexError(
                     f"Index {slc} out of bounds for dimension {dim_idx} with shape {shape[dim_idx]}"
                 )
+            block_slices.append(chunk_idx)
+            adjusted_slices.append(slc - chunk_bounds[chunk_idx])
 
         elif isinstance(slc, builtins.slice):
             # Normalize slice indices for this dimension
@@ -739,45 +709,27 @@ def block_for_slice(
             if step == 0:
                 raise ValueError("slice step cannot be zero")
 
-            # Find all chunks touched by this slice
-            touched_chunks = []
-
-            for chunk_idx in range(len(dim_chunks)):
-                chunk_start = chunk_bounds[chunk_idx]
-                chunk_end = chunk_bounds[chunk_idx + 1]
-
-                # Check if any element from range(start, stop, step) falls in [chunk_start, chunk_end)
-                if step > 0:
-                    # Forward iteration: find smallest k where start + k*step >= chunk_start
-                    k_min = (
-                        0
-                        if start >= chunk_start
-                        else (chunk_start - start + step - 1) // step
-                    )
-                    first_in_chunk = start + k_min * step
-
-                    # Check if this element is valid and within chunk
-                    if first_in_chunk < stop and first_in_chunk < chunk_end:
-                        touched_chunks.append(chunk_idx)
-
-                else:  # step < 0
-                    # Backward iteration: find smallest k where start + k*step < chunk_end
-                    k_min = 0 if start < chunk_end else (chunk_end - 1 - start) // step
-                    first_in_chunk = start + k_min * step
-
-                    # Check if this element is valid and within chunk
-                    if first_in_chunk > stop and first_in_chunk >= chunk_start:
-                        touched_chunks.append(chunk_idx)
-
-            if not touched_chunks:
-                # Empty slice - return empty block
-                block_slices.append(builtins.slice(0, 0))
-                adjusted_slices.append(builtins.slice(0, 0))
-                continue
-
-            # Chunks touched form a contiguous range
-            first_chunk = min(touched_chunks)
-            last_chunk = max(touched_chunks)
+            # Find first and last chunks touched by this slice
+            if step > 0:
+                if start >= stop:
+                    block_slices.append(builtins.slice(0, 0))
+                    adjusted_slices.append(builtins.slice(0, 0))
+                    continue  # Empty slice
+                first_chunk = bisect.bisect_right(chunk_bounds, start) - 1
+                last_chunk = bisect.bisect_right(chunk_bounds, stop - 1) - 1
+            else:  # step < 0
+                if start <= stop:
+                    block_slices.append(builtins.slice(0, 0))
+                    adjusted_slices.append(builtins.slice(0, 0))
+                    continue  # Empty slice
+                # Negative steps traverse from start down to stop (exclusive)
+                # so elements go from start to stop+1
+                first_chunk = bisect.bisect_right(chunk_bounds, start) - 1
+                last_chunk = bisect.bisect_right(chunk_bounds, stop + 1) - 1
+                # Ensure first_chunk <= last_chunk for contiguous block range
+                first_chunk, last_chunk = min(first_chunk, last_chunk), max(
+                    first_chunk, last_chunk
+                )
 
             # Block is the contiguous range of chunks
             if first_chunk == last_chunk:
@@ -795,27 +747,54 @@ def block_for_slice(
             if step < 0 and stop < first_chunk_start:
                 adjusted_stop = None
 
-            adjusted_slices.append(builtins.slice(adjusted_start, adjusted_stop, step))
+            # Normalize step=1 to step=None for consistency
+            normalized_step = None if step == 1 else step
+            adjusted_slices.append(
+                builtins.slice(adjusted_start, adjusted_stop, normalized_step)
+            )
 
-    # Simplify block slices: convert slice(n, n+1) to just n
-    simplified_block_slices = [
-        bs.start
-        if (
-            isinstance(bs, builtins.slice)
-            and bs.start is not None
-            and bs.stop == bs.start + 1
-            and (bs.step is None or bs.step == 1)
-        )
-        else bs
-        for bs in block_slices
+    return NDBlock(*block_slices), NDSlice(*adjusted_slices)
+
+
+def build_nested_grid(indices, callable=None, dim=0):
+    """Build a nested list structure from flat N-dimensional indices.
+
+    This function organizes a flat list of N-dimensional indices into a nested
+    list structure suitable for np.block(). The nesting depth matches the
+    dimensionality of the indices, with each level corresponding to one dimension.
+
+    This is particularly useful when you have a collection of array chunks indexed
+    by multi-dimensional coordinates and want to concatenate them efficiently using
+    np.block().
+
+    Parameters
+    ----------
+    indices : list[tuple[int, ...]]
+        A list of N-dimensional index tuples. The indices should be sorted in
+        lexicographic order (though groupby will work with any order that groups
+        consecutive identical prefixes together).
+    callable : callable, optional
+        Optional function to apply to each index tuple at the leaf level.
+        If None, the index tuple itself is returned. This is useful for
+        retrieving actual data arrays corresponding to each index.
+        For example: lambda idx: array_dict[idx]
+    dim : int, optional
+        Internal parameter used during recursion to track current dimension.
+        Should not be set by users (defaults to 0).
+
+    Returns
+    -------
+    nested_list : list or object
+        A nested list structure where the nesting depth equals len(indices[0]).
+        At the leaf level, either the index tuples themselves or the result of
+        callable(index) is stored.
+    """
+    if dim == len(indices[0]):
+        return callable(indices[0]) if callable else indices[0]
+
+    groups = [
+        build_nested_grid(list(g), callable, dim + 1)
+        for _, g in itertools.groupby(indices, key=lambda p: p[dim])
     ]
 
-    # Simplify adjusted slices: normalize step=1 to step=None for consistency
-    simplified_adjusted_slices = [
-        builtins.slice(adj.start, adj.stop, None)
-        if (isinstance(adj, builtins.slice) and adj.step == 1)
-        else adj
-        for adj in adjusted_slices
-    ]
-
-    return NDBlock(*simplified_block_slices), NDSlice(*simplified_adjusted_slices)
+    return groups
