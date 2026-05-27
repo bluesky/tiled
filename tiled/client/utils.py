@@ -1,4 +1,5 @@
 import builtins
+import logging
 import os
 import uuid
 from collections import defaultdict
@@ -12,7 +13,7 @@ from weakref import WeakValueDictionary
 
 import httpx
 import msgpack
-import stamina.instrumentation
+import stamina
 
 from ..structures.core import Spec
 from ..type_aliases import Chunks
@@ -119,14 +120,55 @@ TILED_RETRY_TIMEOUT = float(os.getenv("TILED_RETRY_TIMEOUT", "45.0"))
 
 TILED_DEVICE_FLOW_ATTEMPTS = int(os.getenv("TILED_DEVICE_FLOW_ATTEMPTS", "100"))
 
+_retry_logger = logging.getLogger("tiled.client")
+
+
+class _LoggingAttempt:
+    """Wraps a stamina ``Attempt`` to log retries to the ``tiled.client`` logger.
+
+    Logging happens at DEBUG level so messages are suppressed by default and
+    only appear when the user calls :func:`tiled.client.logger.show_logs`.
+
+    Using a wrapper here — rather than a global stamina ``RetryHook`` — means
+    tiled's retry logging is completely isolated: retries triggered by *other*
+    libraries that also use stamina are not affected, and tiled's own retries
+    are not routed through the global stamina hook machinery.
+    """
+
+    __slots__ = ("_attempt",)
+
+    def __init__(self, attempt):
+        self._attempt = attempt
+
+    @property
+    def num(self):
+        return self._attempt.num
+
+    def __enter__(self):
+        return self._attempt.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        result = self._attempt.__exit__(exc_type, exc_val, exc_tb)
+        # stamina returns True from __exit__ when it suppresses the exception
+        # and schedules a retry.  That is the moment we want to log.
+        if exc_val is not None and result:
+            _retry_logger.debug(
+                "Retry %d scheduled in %.2fs due to %r",
+                self._attempt.num,
+                self._attempt.next_wait,
+                exc_val,
+            )
+        return result
+
 
 def retry_context():
     "Iterable that yields a context manager per retry attempt"
-    return stamina.retry_context(
+    for attempt in stamina.retry_context(
         on=should_retry,
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
-    )
+    ):
+        yield _LoggingAttempt(attempt)
 
 
 def should_poll_for_tokens(exception: Exception) -> bool:
@@ -137,50 +179,12 @@ def should_poll_for_tokens(exception: Exception) -> bool:
 
 
 def polling_retry_context(timeout: float):
-    return stamina.retry_context(
+    for attempt in stamina.retry_context(
         on=should_poll_for_tokens,
         attempts=TILED_DEVICE_FLOW_ATTEMPTS,
         timeout=timeout,
-    )
-
-
-# Retries are logged at WARNING level.
-def init_retry_logging(log_level: int = 30) -> stamina.instrumentation.RetryHook:
-    """
-    Initialize logging using the standard library.
-
-    Returned hook logs scheduled retries at *log_level*.
-
-    .. versionadded:: 23.2.0
-    """
-    import logging
-
-    logger = logging.getLogger("stamina")
-
-    # Avoid Tiled-specific language here, because this hook will apply to any
-    # applications in this process that happen to use stamina.
-
-    def log_retries(details: stamina.instrumentation.RetryDetails) -> None:
-        logger.log(
-            logging.WARNING,
-            f"Scheduled retry in {details.wait_for:.2} seconds due to "
-            f"{details.caused_by!r} (attempt {details.retry_num})",
-            extra={
-                "stamina.callable": details.name,
-                "stamina.args": tuple(repr(a) for a in details.args),
-                "stamina.kwargs": dict(details.kwargs.items()),
-                "stamina.retry_num": details.retry_num,
-                "stamina.caused_by": repr(details.caused_by),
-                "stamina.wait_for": round(details.wait_for, 2),
-                "stamina.waited_so_far": round(details.waited_so_far, 2),
-            },
-        )
-
-    return log_retries
-
-
-LoggingOnRetryHook = stamina.instrumentation.RetryHookFactory(init_retry_logging)
-stamina.instrumentation.set_on_retry_hooks([LoggingOnRetryHook])
+    ):
+        yield _LoggingAttempt(attempt)
 
 
 class TiledResponse(httpx.Response):
