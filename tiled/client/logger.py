@@ -19,8 +19,13 @@ class ClientLogRecord(logging.LogRecord):
                 size = f"({bytesize_repr(int(request.headers['content-length']))})"
             else:
                 size = ""
-            message = f"-> {size} {request.method} '{urllib.parse.unquote(str(request.url))}' " + " ".join(
-                f"'{k}:{v}'" for k, v in request.headers.items() if k != "authorization"
+            message = (
+                f"-> {size} {request.method} '{urllib.parse.unquote(str(request.url))}' "
+                + " ".join(
+                    f"'{k}:{v}'"
+                    for k, v in request.headers.items()
+                    if k != "authorization"
+                )
             )
             # Handle the authorization header specially.
             # For debugging, it can be useful to show it so that the log message
