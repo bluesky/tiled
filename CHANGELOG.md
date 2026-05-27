@@ -9,6 +9,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 ### Added
 
 - Utility methods for fetching chunked arrays for a given slice.
+- Added `max_connections` parameter to `Context` (and `Context.from_app`) to
+  cap the number of simultaneous outgoing HTTP connections and concurrent
+  data-fetch requests (array chunks, dataframe partitions) issued by dask
+  workers. The default is 16. This prevents spike loads on the server when
+  computing large dask arrays or dataframes. The limit is enforced by both an
+  `httpx.Limits` connection pool on the HTTP client and a `threading.Semaphore`
+  acquired inside `_get_slice`, `_get_block`, and `_get_partition`.
 
 
 ## v0.2.10 (2026-05-22)
