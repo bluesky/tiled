@@ -2,6 +2,7 @@ import getpass
 import os
 import re
 import sys
+import threading
 import time
 import urllib.parse
 import warnings
@@ -30,6 +31,10 @@ from .utils import (
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
+# Default cap on simultaneous outgoing HTTP connections and in-flight
+# data-fetch requests.  Keeps spike loads on the server bounded while
+# still allowing reasonable parallelism from dask's threaded scheduler.
+MAX_CONCURRENT_CONNECTIONS = 10
 
 
 def raise_if_cannot_prompt():
@@ -173,6 +178,7 @@ class Context:
         verify=True,
         app=None,
         raise_server_exceptions=True,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -224,9 +230,13 @@ class Context:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
         if cache is UNSET:
             cache = None
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         if app is None:
             client = httpx.Client(
-                transport=Transport(cache=cache),
+                transport=Transport(cache=cache, limits=limits),
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
@@ -257,8 +267,6 @@ class Context:
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
 
-            import threading
-
             # The threading module has its own (internal) atexit
             # mechanism that runs at thread shutdown, prior to the atexit
             # mechanism that runs at interpreter shutdown.
@@ -270,6 +278,11 @@ class Context:
         self._verify = verify
         self._cache = cache
         self._token_cache = Path(TILED_CACHE_DIR / "tokens")
+        # Semaphore that caps the number of concurrent data-fetch requests
+        # (array blocks, dataframe partitions, etc.) issued by dask workers.
+        # This is intentionally separate from the HTTP connection pool limit so
+        # that it can be tuned independently; by default it mirrors the pool size.
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
@@ -480,6 +493,7 @@ class Context:
         api_key=UNSET,
         raise_server_exceptions=True,
         uri=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -492,6 +506,7 @@ class Context:
             timeout=timeout,
             app=app,
             raise_server_exceptions=raise_server_exceptions,
+            max_connections=max_connections,
         )
         if api_key is UNSET:
             if not context.server_info.authentication.providers:
