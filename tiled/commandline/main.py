@@ -173,7 +173,9 @@ if __name__ == "__main__":
 _app_click = typer.main.get_command(cli_app)
 typer_click_object = click.Group(
     name=_app_click.name,
-    commands={k: _app_click.get_command(None, k) for k in _app_click.list_commands(None)},
+    commands={
+        k: _app_click.get_command(None, k) for k in _app_click.list_commands(None)
+    },
     callback=_app_click.callback,
     params=_app_click.params,
 )
