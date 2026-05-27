@@ -34,7 +34,7 @@ API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
 # Default cap on simultaneous outgoing HTTP connections and in-flight
 # data-fetch requests.  Keeps spike loads on the server bounded while
 # still allowing reasonable parallelism from dask's threaded scheduler.
-MAX_CONCURRENT_CONNECTIONS = 10
+MAX_CONCURRENT_CONNECTIONS = 16
 
 
 def raise_if_cannot_prompt():
