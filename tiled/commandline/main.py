@@ -1,6 +1,7 @@
 from typing import Optional
 
 try:
+    import click
     import typer
 except Exception as err:
     raise Exception(
@@ -170,3 +171,5 @@ if __name__ == "__main__":
 
 # This object is used by the auto-generated documentation.
 typer_click_object = typer.main.get_command(cli_app)
+# Needed for typer >=0.26 to be compatible with sphinx-click
+typer_click_object.__class__ = click.Group
