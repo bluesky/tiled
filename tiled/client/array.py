@@ -130,15 +130,16 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": media_type},
-                        params=params,
-                    )
-                ).read()
+        with self.context._concurrent_request_semaphore:
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            url_path,
+                            headers={"Accept": media_type},
+                            params=params,
+                        )
+                    ).read()
 
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
@@ -176,15 +177,16 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": slice.to_numpy_str()} if slice else {})
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": media_type},
-                        params=params,
-                    )
-                ).read()
+        with self.context._concurrent_request_semaphore:
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        self.context.http_client.get(
+                            url_path,
+                            headers={"Accept": media_type},
+                            params=params,
+                        )
+                    ).read()
 
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 

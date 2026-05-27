@@ -10,7 +10,7 @@ import httpx
 
 from ..utils import import_object, prepend_to_sys_path
 from .container import DEFAULT_STRUCTURE_CLIENT_DISPATCH, Container
-from .context import DEFAULT_TIMEOUT_PARAMS, UNSET, Context
+from .context import DEFAULT_TIMEOUT_PARAMS, MAX_CONCURRENT_CONNECTIONS, UNSET, Context
 from .utils import MSGPACK_MIME_TYPE, client_for_item, handle_error, retry_context
 
 
@@ -29,6 +29,7 @@ def from_uri(
     timeout=None,
     include_data_sources=False,
     auth: Optional[httpx.Auth] = None,
+    max_connections: int = MAX_CONCURRENT_CONNECTIONS,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -65,6 +66,9 @@ def from_uri(
         Default False. If True, fetch information about underlying data sources.
     auth : httpx.Auth, optional
         Custom authentication handler.
+    max_connections : int, optional
+        If provided, use this value for the maximum number of concurrent
+        connections in the HTTP client.
     """
     EXPLAIN_LOGIN = """
 
@@ -91,6 +95,7 @@ For non-interactive authentication, use an API key or add custom auth
         headers=headers,
         timeout=timeout,
         verify=verify,
+        max_connections=max_connections,
     )
     if auth is not None:
         if isinstance(auth, httpx.Auth):
@@ -263,7 +268,8 @@ def from_profile(name, structure_clients=None, **kwargs):
         config = merged.pop("direct", None)
         with prepend_to_sys_path(filepath.parent):
             app = build_app_from_config(config)
-        context = Context.from_app(app)
+        max_connections = merged.pop("max_connections", MAX_CONCURRENT_CONNECTIONS)
+        context = Context.from_app(app, max_connections=max_connections)
         return from_context(context, **merged)
     else:
         return from_uri(**merged)

@@ -30,6 +30,7 @@ class Transport(httpx.BaseTransport):
         *,
         transport: tp.Optional[httpx.BaseTransport] = None,
         cache: tp.Optional[Cache] = None,
+        limits: tp.Optional[httpx.Limits] = None,
         cacheable_methods: tp.Tuple[str, ...] = ("GET",),
         cacheable_status_codes: tp.Tuple[int, ...] = (
             httpx.codes.OK,
@@ -45,7 +46,12 @@ class Transport(httpx.BaseTransport):
             cacheable_status_codes=cacheable_status_codes,
             always_cache=always_cache,
         )
-        self.transport = transport or httpx.HTTPTransport()
+        if transport is not None:
+            self.transport = transport
+        elif limits is not None:
+            self.transport = httpx.HTTPTransport(limits=limits)
+        else:
+            self.transport = httpx.HTTPTransport()
         self.cache = cache
 
     def close(self) -> None:

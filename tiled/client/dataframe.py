@@ -119,31 +119,32 @@ class _DaskDataFrameClient(BaseClient):
         url_length_for_get_request = len(URL_PATH) + sum(
             _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
         )
-        if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.post(
-                            URL_PATH,
-                            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                            json=columns,
-                            params=params,
-                        )
-                    ).read()
-        else:
-            if columns:
-                # Note: The singular/plural inconsistency here is because
-                # ["A", "B"] will be encoded in the URL as column=A&column=B
-                params["column"] = columns
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            URL_PATH,
-                            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                            params=params,
-                        )
-                    ).read()
+        with self.context._concurrent_request_semaphore:
+            if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
+                for attempt in retry_context():
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.post(
+                                URL_PATH,
+                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                                json=columns,
+                                params=params,
+                            )
+                        ).read()
+            else:
+                if columns:
+                    # Note: The singular/plural inconsistency here is because
+                    # ["A", "B"] will be encoded in the URL as column=A&column=B
+                    params["column"] = columns
+                for attempt in retry_context():
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.get(
+                                URL_PATH,
+                                headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+                                params=params,
+                            )
+                        ).read()
         return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):

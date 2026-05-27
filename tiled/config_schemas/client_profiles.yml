@@ -162,6 +162,11 @@ properties:
       subdirectory of `TILED_CACHE_DIR`, which is
       system-dependent and can be inspected at
       `tiled.client.context.TILED_CACHE_DIR`.
+  max_connections:
+    type: integer
+    description: |
+      If provided, use this value for the maximum number of concurrent
+      connections in the HTTP client. Default is 16.
   verify:
     type: boolean
     description: |
