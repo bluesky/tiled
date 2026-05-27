@@ -10,7 +10,13 @@ from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT
 
 from tiled.catalog import in_memory
 from tiled.client import Context, from_context
-from tiled.ndslice import NDSlice, compose_slices
+from tiled.ndslice import (
+    NDBlock,
+    NDSlice,
+    block_for_slice,
+    build_nested_grid,
+    compose_slices,
+)
 from tiled.server.app import build_app
 
 
@@ -321,3 +327,256 @@ def test_compose_slices(shape, data):
 
     # Test the composition via __getitem__
     np.testing.assert_array_equal(arr[slc1][slc2], arr[slc1[slc2]])
+
+
+def chunks_strategy(shape):
+    """Generate valid chunking schemes for a given shape."""
+
+    def gen_chunks_for_dim(dim_size):
+        # Generate a list of chunk sizes that sum to dim_size
+        if dim_size == 0:
+            return st.just(())
+        # Generate between 1 and min(dim_size, 5) chunks
+        num_chunks = st.integers(1, min(dim_size, 5))
+        return num_chunks.flatmap(lambda n: _partition_into_chunks(dim_size, n))
+
+    def _partition_into_chunks(total, n_chunks):
+        """Partition total into n_chunks positive integers."""
+        if n_chunks == 1:
+            return st.just((total,))
+        # Generate n_chunks-1 split points
+        splits = st.lists(
+            st.integers(1, total - 1),
+            min_size=n_chunks - 1,
+            max_size=n_chunks - 1,
+            unique=True,
+        ).map(sorted)
+
+        def make_chunks(split_points):
+            points = [0] + split_points + [total]
+            return tuple(points[i + 1] - points[i] for i in range(len(points) - 1))
+
+        return splits.map(make_chunks)
+
+    return st.tuples(*(gen_chunks_for_dim(dim) for dim in shape))
+
+
+@given(
+    shape=st.lists(st.integers(5, 20), min_size=1, max_size=3),
+    data=st.data(),
+)
+def test_block_for_slice_correctness(shape, data):
+    """Test that block_for_slice produces correct results when applied to real arrays."""
+    # Create test array, valid slice, and chunking scheme
+    arr = np.arange(np.prod(shape)).reshape(shape)
+    chunks = data.draw(chunks_strategy(shape))
+    test_slice = data.draw(ndslice_strategy(shape))
+    expected = arr[test_slice] if test_slice else arr
+
+    # Get block and slice from block_for_slice, list indices of all touched chunks
+    block, slice_in_block = block_for_slice(chunks, test_slice)
+    chunk_indices = block.chunk_indices(chunks)
+
+    # Extract each chunk, organize them into a grid, and concatenate them together
+    if not chunk_indices:
+        assume(False)  # No blocks selected
+
+    concatenated = np.block(
+        build_nested_grid(
+            chunk_indices, lambda idx: arr[NDBlock(*idx).slice_from_chunks(chunks)]
+        )
+    )
+
+    # Apply slice_in_block and verify correctness
+    result = concatenated[slice_in_block] if slice_in_block else concatenated
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_block_for_slice_basic():
+    """Test basic block_for_slice functionality."""
+    # Full array
+    chunks = ((10, 10), (20, 20))
+    block, slice_in_block = block_for_slice(chunks, None)
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert slice_in_block == NDSlice()
+
+    # Single block
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(2, 8), builtins.slice(5, 15))
+    )
+    assert block == NDBlock(0, 0)
+
+    # Multiple blocks
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(5, 15), builtins.slice(15, 35))
+    )
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert isinstance(block, NDBlock)
+    assert isinstance(slice_in_block, NDSlice)
+    for item in block:
+        if isinstance(item, builtins.slice):
+            assert item.step in (None, 1)
+
+    # Integer index
+    block, slice_in_block = block_for_slice(chunks, (15, 25))
+    assert block == NDBlock(1, 1)
+    assert slice_in_block == NDSlice(5, 5)
+
+    # Slice with step
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(5, 25, 2), builtins.slice(10, 30))
+    )
+    assert slice_in_block[0].step == 2
+    assert slice_in_block[0].start == 5
+
+    # Negative step
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(15, 5, -1), builtins.slice(10, 30))
+    )
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert slice_in_block[0].step == -1
+    assert isinstance(block, NDBlock)
+
+    # Negative step to beginning (None)
+    block, slice_in_block = block_for_slice(
+        chunks, (builtins.slice(None, None, -1), builtins.slice(10, 30))
+    )
+    assert block == NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert slice_in_block[0].step == -1
+    assert slice_in_block[0].stop is None  # Should be None, not negative
+
+    # Slice indexing out of bounds
+    with pytest.raises(IndexError):
+        block_for_slice(chunks, (50, 10))
+
+
+def test_ndblock_chunk_indices():
+    chunks = ((10, 10, 10), (20, 20))
+
+    # Mix of int and slice
+    block = NDBlock(builtins.slice(0, 2), 1)
+    assert block.chunk_indices(chunks) == [(0, 1), (1, 1)]
+
+    # Opposite - int then slice
+    block = NDBlock(0, builtins.slice(0, 2))
+    assert block.chunk_indices(chunks) == [(0, 0), (0, 1)]
+
+    # All slices (2D grid)
+    block = NDBlock(builtins.slice(0, 2), builtins.slice(0, 2))
+    assert block.chunk_indices(chunks) == [(0, 0), (0, 1), (1, 0), (1, 1)]
+
+    # Single chunk (all integers)
+    block = NDBlock(1, 0)
+    assert block.chunk_indices(chunks) == [(1, 0)]
+
+    # 1D case
+    chunks_1d = ((10, 10, 10),)
+    block = NDBlock(builtins.slice(1, 3))
+    assert block.chunk_indices(chunks_1d) == [(1,), (2,)]
+
+    # 3D case
+    chunks_3d = ((5, 5), (10, 10), (20, 20))
+    block = NDBlock(0, builtins.slice(0, 2), 1)
+    assert block.chunk_indices(chunks_3d) == [(0, 0, 1), (0, 1, 1)]
+
+    # Larger slice range
+    block = NDBlock(builtins.slice(0, 3), 0)
+    assert block.chunk_indices(chunks) == [(0, 0), (1, 0), (2, 0)]
+
+
+def test_build_nested_grid():
+    """Test build_nested_grid function for organizing multi-dimensional indices."""
+
+    # 1D case
+    indices_1d = [(0,), (1,), (2,)]
+    result_1d = build_nested_grid(indices_1d)
+    assert result_1d == [(0,), (1,), (2,)]
+
+    # 2D case - 2x3 grid
+    indices_2d = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]
+    result_2d = build_nested_grid(indices_2d)
+    assert result_2d == [[(0, 0), (0, 1), (0, 2)], [(1, 0), (1, 1), (1, 2)]]
+
+    # 2D case - single row
+    indices_2d_row = [(0, 0), (0, 1), (0, 2)]
+    result_2d_row = build_nested_grid(indices_2d_row)
+    assert result_2d_row == [[(0, 0), (0, 1), (0, 2)]]
+
+    # 2D case - single column
+    indices_2d_col = [(0, 0), (1, 0), (2, 0)]
+    result_2d_col = build_nested_grid(indices_2d_col)
+    assert result_2d_col == [[(0, 0)], [(1, 0)], [(2, 0)]]
+
+    # 3D case - 2x2x2 cube
+    indices_3d = [
+        (0, 0, 0),
+        (0, 0, 1),
+        (0, 1, 0),
+        (0, 1, 1),
+        (1, 0, 0),
+        (1, 0, 1),
+        (1, 1, 0),
+        (1, 1, 1),
+    ]
+    result_3d = build_nested_grid(indices_3d)
+    assert len(result_3d) == 2  # 2 groups along first dimension
+    assert len(result_3d[0]) == 2  # 2 groups along second dimension
+    assert len(result_3d[0][0]) == 2  # 2 elements along third dimension
+    assert result_3d[0][0][0] == (0, 0, 0)
+    assert result_3d[0][0][1] == (0, 0, 1)
+    assert result_3d[1][1][1] == (1, 1, 1)
+
+    # 3D case - irregular shape (2x1x3)
+    indices_3d_irregular = [
+        (0, 0, 0),
+        (0, 0, 1),
+        (0, 0, 2),
+        (1, 0, 0),
+        (1, 0, 1),
+        (1, 0, 2),
+    ]
+    result_3d_irregular = build_nested_grid(indices_3d_irregular)
+    assert len(result_3d_irregular) == 2
+    assert len(result_3d_irregular[0]) == 1
+    assert len(result_3d_irregular[0][0]) == 3
+
+    # With callable - simple transform
+    indices_with_callable = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    result_with_callable = build_nested_grid(
+        indices_with_callable, lambda idx: sum(idx)
+    )
+    assert result_with_callable == [[0, 1], [1, 2]]
+
+    # With callable - dictionary lookup
+    array_dict = {
+        (0, 0): np.array([[1, 2]]),
+        (0, 1): np.array([[3, 4]]),
+        (1, 0): np.array([[5, 6]]),
+        (1, 1): np.array([[7, 8]]),
+    }
+    indices_dict = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    result_dict = build_nested_grid(indices_dict, lambda idx: array_dict[idx])
+    # Verify structure by concatenating with np.block
+    concatenated = np.block(result_dict)
+    expected = np.array([[1, 2, 3, 4], [5, 6, 7, 8]])
+    np.testing.assert_array_equal(concatenated, expected)
+
+    # Single element
+    indices_single = [(5, 3, 2)]
+    result_single = build_nested_grid(indices_single)
+    # Single element still gets nested structure matching dimensionality
+    assert result_single == [[[(5, 3, 2)]]]
+
+    # Single element with callable
+    result_single_callable = build_nested_grid(indices_single, lambda idx: idx[0] * 10)
+    assert result_single_callable == [[[50]]]
+
+    # Single element 1D
+    indices_single_1d = [(3,)]
+    result_single_1d = build_nested_grid(indices_single_1d)
+    assert result_single_1d == [(3,)]
+
+    # Single element 2D
+    indices_single_2d = [(2, 1)]
+    result_single_2d = build_nested_grid(indices_single_2d)
+    assert result_single_2d == [[(2, 1)]]
