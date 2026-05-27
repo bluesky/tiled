@@ -1,4 +1,5 @@
 import builtins
+import logging
 import os
 import uuid
 from collections import defaultdict
@@ -144,25 +145,21 @@ def polling_retry_context(timeout: float):
     )
 
 
-# Retries are logged at WARNING level.
-def init_retry_logging(log_level: int = 30) -> stamina.instrumentation.RetryHook:
+# Retries are logged at DEBUG level on the tiled.client logger so they are
+# suppressed by default and only appear when the user calls show_logs().
+def init_retry_logging(log_level: int = logging.DEBUG) -> stamina.instrumentation.RetryHook:
     """
     Initialize logging using the standard library.
 
-    Returned hook logs scheduled retries at *log_level*.
-
-    .. versionadded:: 23.2.0
+    Returned hook logs scheduled retries at *log_level* on the ``tiled.client``
+    logger.  This means retry messages are hidden by default and only shown
+    when the user calls :func:`tiled.client.logger.show_logs`.
     """
-    import logging
-
-    logger = logging.getLogger("stamina")
-
-    # Avoid Tiled-specific language here, because this hook will apply to any
-    # applications in this process that happen to use stamina.
+    logger = logging.getLogger("tiled.client")
 
     def log_retries(details: stamina.instrumentation.RetryDetails) -> None:
         logger.log(
-            logging.WARNING,
+            log_level,
             f"Scheduled retry in {details.wait_for:.2} seconds due to "
             f"{details.caused_by!r} (attempt {details.retry_num})",
             extra={
