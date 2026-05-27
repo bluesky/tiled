@@ -291,6 +291,11 @@ class Context:
         # This is intentionally separate from the HTTP connection pool limit so
         # that it can be tuned independently; by default it mirrors the pool size.
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
+        # Slot used by tracking_progress(). Set to a (Progress, task_id) pair
+        # while a tracked .compute() is running; None at all other times.
+        # Assignment of a Python reference is atomic, so dask worker threads
+        # can safely read this without a lock.
+        self._progress_state = None
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
@@ -429,6 +434,7 @@ class Context:
         self._verify = verify
         self.server_info = server_info
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
+        self._progress_state = None
 
     @classmethod
     def from_any_uri(

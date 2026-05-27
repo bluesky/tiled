@@ -20,6 +20,7 @@ from .utils import (
     params_from_slice,
     retry_context,
     slices_to_dask_chunks,
+    tracking_progress,
 )
 
 if TYPE_CHECKING:
@@ -141,6 +142,8 @@ class _DaskArrayClient(BaseClient):
                         )
                     ).read()
 
+        if (ps := self.context._progress_state) is not None:
+            ps[0].advance(ps[1])
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def _get_slice(self, slice: NDSlice):
@@ -188,6 +191,8 @@ class _DaskArrayClient(BaseClient):
                         )
                     ).read()
 
+        if (ps := self.context._progress_state) is not None:
+            ps[0].advance(ps[1])
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def read_block(self, block, slice=None):
@@ -500,7 +505,9 @@ class DaskArrayClient(_DaskArrayClient):
 
     def compute(self):
         "Alias to client.read().compute()"
-        return self.read().compute()
+        dask_arr = self.read()
+        with tracking_progress(self.context, total=len(dask_arr.__dask_graph__())):
+            return dask_arr.compute()
 
 
 class ArrayClient(DaskArrayClient):
@@ -510,7 +517,9 @@ class ArrayClient(DaskArrayClient):
         """
         Access the entire array or a slice.
         """
-        return super().read(slice).compute()
+        dask_arr = super().read(slice)
+        with tracking_progress(self.context, total=len(dask_arr.__dask_graph__())):
+            return dask_arr.compute()
 
     def read_block(self, block, slice=None):
         """

@@ -18,6 +18,7 @@ from .utils import (
     export_util,
     handle_error,
     retry_context,
+    tracking_progress,
 )
 
 if TYPE_CHECKING:
@@ -145,6 +146,8 @@ class _DaskDataFrameClient(BaseClient):
                                 params=params,
                             )
                         ).read()
+        if (ps := self.context._progress_state) is not None:
+            ps[0].advance(ps[1])
         return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):
@@ -339,7 +342,9 @@ class DaskDataFrameClient(_DaskDataFrameClient):
 
     def compute(self):
         "Alias to client.read().compute()"
-        return self.read().compute()
+        ddf = self.read()
+        with tracking_progress(self.context, total=len(ddf.__dask_graph__())):
+            return ddf.compute()
 
 
 class DataFrameClient(_DaskDataFrameClient):
@@ -355,4 +360,6 @@ class DataFrameClient(_DaskDataFrameClient):
         """
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
-        return super().read(columns).compute()
+        ddf = super().read(columns)
+        with tracking_progress(self.context, total=len(ddf.__dask_graph__())):
+            return ddf.compute()

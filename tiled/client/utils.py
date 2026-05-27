@@ -1,8 +1,11 @@
 import builtins
+import logging
 import os
+import sys
 import uuid
 from collections import defaultdict
 from collections.abc import Hashable
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
@@ -144,8 +147,11 @@ def polling_retry_context(timeout: float):
     )
 
 
-# Retries are logged at WARNING level.
-def init_retry_logging(log_level: int = 30) -> stamina.instrumentation.RetryHook:
+# Retries are logged at DEBUG level on the tiled.client logger so they are
+# suppressed by default and only appear when the user calls show_logs().
+def init_retry_logging(
+    log_level: int = logging.DEBUG,
+) -> stamina.instrumentation.RetryHook:
     """
     Initialize logging using the standard library.
 
@@ -480,3 +486,66 @@ def slices_to_dask_chunks(slice_dict, shape):
     )
 
     return dask_chunks
+
+
+def _is_interactive():
+    """Return True when running in an interactive Python session (REPL, IPython, Jupyter)."""
+    try:
+        get_ipython = builtins.__dict__.get("get_ipython", None)
+        if get_ipython is not None and get_ipython() is not None:
+            return True
+    except Exception:
+        pass
+    return hasattr(sys, "ps1")
+
+
+@contextmanager
+def tracking_progress(context, total):
+    """Context manager that displays a rich progress bar during a dask compute.
+
+    While the context is active, ``context._progress_state`` is set to a
+    ``(Progress, task_id)`` pair so that fetch methods
+    (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
+    each time they complete a request.  The slot is reset to ``None`` on exit.
+
+    A bar is shown only when running interactively *and* ``total > 1``.
+    For scripted use or single-chunk fetches the context is a no-op.
+
+    Parameters
+    ----------
+    context : tiled Context
+        Must expose a ``_progress_state`` attribute (``None`` at rest).
+    total : int
+        Number of fetch tasks (chunks / partitions) expected.
+
+    Example
+    -------
+    >>> dask_arr = client.read()          # returns dask array, no fetch yet
+    >>> n = len(dask_arr.__dask_graph__())
+    >>> with tracking_progress(context, total=n):
+    ...     result = dask_arr.compute()
+    """
+    if total <= 1 or not _is_interactive():
+        yield
+        return
+
+    from rich.progress import (
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        TimeRemainingColumn,
+    )
+
+    with Progress(
+        "[progress.description]{task.description}",
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        transient=True,  # bar disappears when done
+    ) as progress:
+        task_id = progress.add_task("Fetching data…", total=total)
+        context._progress_state = (progress, task_id)
+        try:
+            yield progress
+        finally:
+            context._progress_state = None
