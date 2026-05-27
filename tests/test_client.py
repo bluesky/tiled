@@ -3,12 +3,15 @@ from pathlib import Path
 
 import httpx
 import pytest
+import stamina
 import yaml
 from pydantic import ValidationError
 from starlette.status import HTTP_400_BAD_REQUEST
 
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context, from_profile, record_history
+from tiled.client.logger import hide_logs
+from tiled.client.utils import retry_context
 from tiled.profiles import load_profiles, paths
 from tiled.queries import Key
 from tiled.server.app import build_app
@@ -164,3 +167,53 @@ def test_jump_down_tree():
     with record_history() as h:
         client["e"]["d"]["c"]["b"]["a"]
     assert len(h.requests) == 5
+
+
+def test_hide_logs_does_not_suppress_third_party_stamina(caplog):
+    "Calling hide_logs() must not suppress retry warnings from other libraries' stamina usage."
+    hide_logs()
+
+    # Simulate a third-party library retrying via stamina directly.
+    # Re-enable stamina for this test (conftest disables it globally for speed).
+    stamina.set_active(True)
+    try:
+        n = 0
+        with caplog.at_level(logging.WARNING, logger="stamina"):
+            for attempt in stamina.retry_context(on=Exception, attempts=2, timeout=10):
+                with attempt:
+                    n += 1
+                    if n < 2:
+                        raise ValueError("third-party transient error")
+
+        # The stamina logger should still have emitted its own WARNING for the retry.
+        stamina_messages = [r for r in caplog.records if r.name == "stamina"]
+        assert (
+            len(stamina_messages) >= 1
+        ), "Third-party stamina retries should still be logged after hide_logs()"
+    finally:
+        stamina.set_active(False)
+
+
+def test_tiled_retry_logging_follows_show_hide(caplog):
+    "Tiled retries log to tiled.client at DEBUG; hidden by default, visible after show_logs()."
+    hide_logs()
+
+    # Re-enable stamina for this test (conftest disables it globally for speed).
+    stamina.set_active(True)
+    try:
+        # Force a single retry inside tiled's retry_context.
+        n = 0
+        with caplog.at_level(logging.DEBUG, logger="tiled.client"):
+            for attempt in retry_context():
+                with attempt:
+                    n += 1
+                    if n < 2:
+                        raise httpx.ReadTimeout("simulated timeout")
+
+        tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
+        assert (
+            len(tiled_messages) >= 1
+        ), "Tiled retries should emit DEBUG messages on tiled.client logger"
+        assert all(r.levelno == logging.DEBUG for r in tiled_messages)
+    finally:
+        stamina.set_active(False)
