@@ -245,9 +245,17 @@ class Context:
             client.headers = headers
         else:
             # Set up an ASGI client.
-            # Because we have been handed an app, we can infer that
-            # starlette is available.
+            # Because we have been handed an app, we can infer that starlette is available.
             from starlette.testclient import TestClient
+
+            # Note: neither `timeout` nor `limits` (max_connections) are
+            # enforced in ASGI mode.  Starlette's _TestClientTransport
+            # dispatches requests in-process via anyio and bypasses the real
+            # HTTP stack entirely, so there is no I/O wait for timeouts to
+            # fire and no TCP connections for the pool limit to count.
+            # The semaphore (_concurrent_request_semaphore) is still
+            # effective because it is enforced in Python before the request
+            # is dispatched, regardless of transport.
 
             base_uri = f"{uri.scheme}://{uri.netloc}"
             # verify parameter is dropped, as there is no SSL in ASGI mode
@@ -374,6 +382,7 @@ class Context:
             self._token_cache,
             self.server_info,
             self.cache,
+            self._concurrent_request_semaphore._value,
         )
 
     def __setstate__(self, state):
@@ -388,6 +397,7 @@ class Context:
             token_cache,
             server_info,
             cache,
+            max_connections,
         ) = state
         if state_tiled_version != tiled_version:
             raise TypeError(
@@ -401,9 +411,13 @@ class Context:
             cookies.set(
                 cookie.name, cookie.value, domain=cookie.domain, path=cookie.path
             )
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         self.http_client = httpx.Client(
             verify=verify,
-            transport=Transport(cache=cache),
+            transport=Transport(cache=cache, limits=limits),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -414,6 +428,7 @@ class Context:
         self._cache = cache
         self._verify = verify
         self.server_info = server_info
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
 
     @classmethod
     def from_any_uri(
@@ -426,6 +441,7 @@ class Context:
         timeout=None,
         verify=True,
         app=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         """
         Accept a URI to a specific node.
@@ -479,6 +495,7 @@ class Context:
             timeout=timeout,
             verify=verify,
             app=app,
+            max_connections=max_connections,
         )
         return context, node_path_parts
 
