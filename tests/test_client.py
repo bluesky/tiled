@@ -228,6 +228,8 @@ def test_tiled_retry_logging_follows_show_hide(caplog):
         assert all(r.levelno == logging.DEBUG for r in tiled_messages)
     finally:
         stamina.set_active(False)
+
+
 class TrackingSemaphore:
     "Drop-in replacement for `threading.Semaphore` that also records peak concurrent holders"
 
