@@ -170,6 +170,10 @@ if __name__ == "__main__":
     main()
 
 # This object is used by the auto-generated documentation.
-typer_click_object = typer.main.get_command(cli_app)
-# Needed for typer >=0.26 to be compatible with sphinx-click
-typer_click_object.__class__ = click.Group
+_app_click = typer.main.get_command(cli_app)
+typer_click_object = click.Group(
+    name=_app_click.name,
+    commands={k: _app_click.get_command(None, k) for k in _app_click.list_commands(None)},
+    callback=_app_click.callback,
+    params=_app_click.params,
+)
