@@ -2,6 +2,7 @@ import getpass
 import os
 import re
 import sys
+import threading
 import time
 import urllib.parse
 import warnings
@@ -30,6 +31,10 @@ from .utils import (
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
+# Default cap on simultaneous outgoing HTTP connections and in-flight
+# data-fetch requests.  Keeps spike loads on the server bounded while
+# still allowing reasonable parallelism from dask's threaded scheduler.
+MAX_CONCURRENT_CONNECTIONS = 16
 
 
 def raise_if_cannot_prompt():
@@ -173,6 +178,7 @@ class Context:
         verify=True,
         app=None,
         raise_server_exceptions=True,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -224,9 +230,13 @@ class Context:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
         if cache is UNSET:
             cache = None
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         if app is None:
             client = httpx.Client(
-                transport=Transport(cache=cache),
+                transport=Transport(cache=cache, limits=limits),
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
@@ -235,9 +245,17 @@ class Context:
             client.headers = headers
         else:
             # Set up an ASGI client.
-            # Because we have been handed an app, we can infer that
-            # starlette is available.
+            # Because we have been handed an app, we can infer that starlette is available.
             from starlette.testclient import TestClient
+
+            # Note: neither `timeout` nor `limits` (max_connections) are
+            # enforced in ASGI mode.  Starlette's _TestClientTransport
+            # dispatches requests in-process via anyio and bypasses the real
+            # HTTP stack entirely, so there is no I/O wait for timeouts to
+            # fire and no TCP connections for the pool limit to count.
+            # The semaphore (_concurrent_request_semaphore) is still
+            # effective because it is enforced in Python before the request
+            # is dispatched, regardless of transport.
 
             base_uri = f"{uri.scheme}://{uri.netloc}"
             # verify parameter is dropped, as there is no SSL in ASGI mode
@@ -257,8 +275,6 @@ class Context:
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
 
-            import threading
-
             # The threading module has its own (internal) atexit
             # mechanism that runs at thread shutdown, prior to the atexit
             # mechanism that runs at interpreter shutdown.
@@ -270,6 +286,11 @@ class Context:
         self._verify = verify
         self._cache = cache
         self._token_cache = Path(TILED_CACHE_DIR / "tokens")
+        # Semaphore that caps the number of concurrent data-fetch requests
+        # (array blocks, dataframe partitions, etc.) issued by dask workers.
+        # This is intentionally separate from the HTTP connection pool limit so
+        # that it can be tuned independently; by default it mirrors the pool size.
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
@@ -361,6 +382,7 @@ class Context:
             self._token_cache,
             self.server_info,
             self.cache,
+            self._concurrent_request_semaphore._value,
         )
 
     def __setstate__(self, state):
@@ -375,6 +397,7 @@ class Context:
             token_cache,
             server_info,
             cache,
+            max_connections,
         ) = state
         if state_tiled_version != tiled_version:
             raise TypeError(
@@ -388,9 +411,13 @@ class Context:
             cookies.set(
                 cookie.name, cookie.value, domain=cookie.domain, path=cookie.path
             )
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         self.http_client = httpx.Client(
             verify=verify,
-            transport=Transport(cache=cache),
+            transport=Transport(cache=cache, limits=limits),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -401,6 +428,7 @@ class Context:
         self._cache = cache
         self._verify = verify
         self.server_info = server_info
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
 
     @classmethod
     def from_any_uri(
@@ -413,6 +441,7 @@ class Context:
         timeout=None,
         verify=True,
         app=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         """
         Accept a URI to a specific node.
@@ -466,6 +495,7 @@ class Context:
             timeout=timeout,
             verify=verify,
             app=app,
+            max_connections=max_connections,
         )
         return context, node_path_parts
 
@@ -480,6 +510,7 @@ class Context:
         api_key=UNSET,
         raise_server_exceptions=True,
         uri=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -492,6 +523,7 @@ class Context:
             timeout=timeout,
             app=app,
             raise_server_exceptions=raise_server_exceptions,
+            max_connections=max_connections,
         )
         if api_key is UNSET:
             if not context.server_info.authentication.providers:

@@ -1,12 +1,17 @@
 import logging
+import threading
 from pathlib import Path
 
 import httpx
+import numpy
+import pandas
 import pytest
 import yaml
 from pydantic import ValidationError
 from starlette.status import HTTP_400_BAD_REQUEST
 
+from tiled.adapters.array import ArrayAdapter
+from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context, from_profile, record_history
 from tiled.profiles import load_profiles, paths
@@ -22,6 +27,12 @@ def test_configurable_timeout():
     with Context.from_app(build_app(tree), timeout=httpx.Timeout(17)) as context:
         assert context.http_client.timeout.connect == 17
         assert context.http_client.timeout.read == 17
+
+
+def test_configurable_max_connections():
+    "max_connections is reflected in the semaphore on the Context."
+    with Context.from_app(build_app(tree), max_connections=3) as context:
+        assert context._concurrent_request_semaphore._value == 3
 
 
 def test_client_version_check(caplog):
@@ -164,3 +175,81 @@ def test_jump_down_tree():
     with record_history() as h:
         client["e"]["d"]["c"]["b"]["a"]
     assert len(h.requests) == 5
+
+
+class TrackingSemaphore:
+    "Drop-in replacement for `threading.Semaphore` that also records peak concurrent holders"
+
+    def __init__(self, value):
+        self._sem = threading.Semaphore(value)
+        self._lock = threading.Lock()
+        self.current = 0
+        self.peak = 0
+
+    def acquire(self, *args, **kwargs):
+        self._sem.acquire(*args, **kwargs)
+        with self._lock:
+            self.current += 1
+            if self.current > self.peak:
+                self.peak = self.current
+
+    def release(self):
+        with self._lock:
+            self.current -= 1
+        self._sem.release()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *_):
+        self.release()
+
+
+def test_semaphore_limits_concurrent_array_fetches():
+    """When dask computes a chunked array the semaphore must cap concurrent fetches.
+
+    We use max_connections=2 and an array split across 10 chunks so that dask
+    would fire all requests at once without the semaphore.
+    """
+    MAX_CONNECTIONS = 2
+
+    import dask.array as da
+
+    arr = da.zeros((10, 300, 400), chunks=(1, 300, 400), dtype="float32")
+    tree = MapAdapter({"data": ArrayAdapter.from_array(arr)})
+    app = build_app(tree)
+
+    with Context.from_app(app, max_connections=MAX_CONNECTIONS) as context:
+        sem = TrackingSemaphore(MAX_CONNECTIONS)
+        context._concurrent_request_semaphore = sem
+
+        client = from_context(context, structure_clients="dask")["data"]
+        client.read().compute()
+
+    assert sem.peak <= MAX_CONNECTIONS
+    # Sanity: 10 chunks > MAX_CONNECTIONS, so the cap had something to constrain.
+    assert sem.peak > 0
+
+
+def test_semaphore_limits_concurrent_partition_fetches():
+    "When dask computes a partitioned dataframe the semaphore must cap concurrent fetches"
+
+    MAX_CONNECTIONS = 2
+    N_PARTITIONS = 8  # well above the cap
+
+    df = pandas.DataFrame({"x": numpy.arange(N_PARTITIONS * 10, dtype="float64")})
+    tree = MapAdapter(
+        {"data": DataFrameAdapter.from_pandas(df, npartitions=N_PARTITIONS)}
+    )
+    app = build_app(tree)
+
+    with Context.from_app(app, max_connections=MAX_CONNECTIONS) as context:
+        sem = TrackingSemaphore(MAX_CONNECTIONS)
+        context._concurrent_request_semaphore = sem
+
+        client = from_context(context, structure_clients="dask")["data"]
+        client.read().compute()
+
+    assert sem.peak <= MAX_CONNECTIONS
+    assert sem.peak > 0
