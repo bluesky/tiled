@@ -1,3 +1,4 @@
+import bisect
 import builtins
 import itertools
 import math
@@ -607,3 +608,193 @@ class NDBlock(NDSlice):
                 slice_.append(slice(start, stop))
 
         return NDSlice(*slice_)
+
+    def chunk_indices(self, chunks: Chunks) -> list[tuple[int, ...]]:
+        """Return a list of all n-dimensional chunk indices in this block.
+
+        Expands any slice dimensions into individual indices while keeping
+        integer dimensions as-is. The result is a list of tuples where each
+        tuple represents the chunk index for one block.
+
+        Parameters
+        ----------
+        chunks : Chunks
+            The chunking scheme to determine the valid range of chunk indices.
+
+        Returns
+        -------
+        list[tuple[int, ...]]
+            List of n-dimensional chunk index tuples.
+        """
+        # Expand to get actual indices for each dimension
+        expanded = self.expand_for_shape(tuple(len(ch) for ch in chunks))
+
+        # Convert each dimension to a list of indices
+        dim_indices = []
+        for item in expanded:
+            if isinstance(item, int):
+                dim_indices.append([item])
+            elif isinstance(item, builtins.slice):
+                # Extract start, stop from the slice (step is guaranteed to be 1 or None)
+                start = item.start if item.start is not None else 0
+                stop = item.stop
+                dim_indices.append(list(range(start, stop)))
+
+        # Generate all combinations (Cartesian product)
+        return sorted(itertools.product(*dim_indices))
+
+
+def block_for_slice(
+    chunks: Chunks, slice: Optional[Union[tuple, "NDSlice"]] = None
+) -> tuple["NDBlock", "NDSlice"]:
+    """Convert a slice on a chunked array into block indices and a slice within the block
+
+    Given an array's chunking scheme and a slice to apply, this function determines:
+    1. Which blocks (chunks) are touched by the slice (returned as NDBlock)
+    2. What slice to apply within the concatenated blocks to get the final result
+
+    This is useful for reading data using block-based access (e.g., read_block()) instead
+    of full array slicing, which can be more efficient for large datasets by avoiding
+    expensive path resolution operations.
+
+    Parameters
+    ----------
+    chunks : Chunks
+        The chunking scheme as a tuple of tuples, where chunks[i] gives the sizes
+        of chunks along dimension i.
+    slice : tuple or NDSlice, optional
+        The slice to apply to the full array.
+
+    Returns
+    -------
+    block : NDBlock
+        The contiguous block indices touched by the slice.
+    slice_within_blocks : NDSlice
+        The slice to apply to the array formed by concatenating the selected blocks
+        to produce the final result.
+    """
+
+    # If empty slice, return all blocks and identity slice
+    slice = NDSlice(slice or ())
+    if not slice:
+        return (
+            NDBlock(*[builtins.slice(0, len(dim_chunks)) for dim_chunks in chunks]),
+            NDSlice(),
+        )
+
+    # Expand the slice for the specific shape (handles Ellipsis, etc.)
+    shape = tuple(sum(dim_chunks) for dim_chunks in chunks)
+    slice = slice.expand_for_shape(shape)
+
+    # For each dimension, determine which chunks are touched and how to slice concatenated blocks
+    block_slices, adjusted_slices = [], []
+    for dim_idx, (slc, dim_chunks) in enumerate(zip(slice, chunks)):
+        # Compute chunk boundaries: [0, chunks[0], chunks[0]+chunks[1], ...]
+        chunk_bounds = [0, *itertools.accumulate(dim_chunks)]
+
+        if isinstance(slc, int):
+            # Single index - find which chunk it falls in using binary search
+            chunk_idx = bisect.bisect_right(chunk_bounds, slc) - 1
+            if chunk_idx < 0 or chunk_idx >= len(dim_chunks):
+                raise IndexError(
+                    f"Index {slc} out of bounds for dimension {dim_idx} with shape {shape[dim_idx]}"
+                )
+            block_slices.append(chunk_idx)
+            adjusted_slices.append(slc - chunk_bounds[chunk_idx])
+
+        elif isinstance(slc, builtins.slice):
+            # Normalize slice indices for this dimension
+            start, stop, step = slc.indices(shape[dim_idx])
+
+            if step == 0:
+                raise ValueError("slice step cannot be zero")
+
+            # Find first and last chunks touched by this slice
+            if step > 0:
+                if start >= stop:
+                    block_slices.append(builtins.slice(0, 0))
+                    adjusted_slices.append(builtins.slice(0, 0))
+                    continue  # Empty slice
+                first_chunk = bisect.bisect_right(chunk_bounds, start) - 1
+                last_chunk = bisect.bisect_right(chunk_bounds, stop - 1) - 1
+            else:  # step < 0
+                if start <= stop:
+                    block_slices.append(builtins.slice(0, 0))
+                    adjusted_slices.append(builtins.slice(0, 0))
+                    continue  # Empty slice
+                # Negative steps traverse from start down to stop (exclusive)
+                # so elements go from start to stop+1
+                first_chunk = bisect.bisect_right(chunk_bounds, start) - 1
+                last_chunk = bisect.bisect_right(chunk_bounds, stop + 1) - 1
+                # Ensure first_chunk <= last_chunk for contiguous block range
+                first_chunk, last_chunk = min(first_chunk, last_chunk), max(
+                    first_chunk, last_chunk
+                )
+
+            # Block is the contiguous range of chunks
+            if first_chunk == last_chunk:
+                block_slices.append(first_chunk)
+            else:
+                block_slices.append(builtins.slice(first_chunk, last_chunk + 1))
+
+            # Compute adjusted slice within concatenated blocks
+            first_chunk_start = chunk_bounds[first_chunk]
+            adjusted_start = start - first_chunk_start
+            adjusted_stop = stop - first_chunk_start
+
+            # Special case: for negative steps, if stop would go before the start of
+            # the first chunk, set it to None to indicate "go to the beginning"
+            if step < 0 and stop < first_chunk_start:
+                adjusted_stop = None
+
+            # Normalize step=1 to step=None for consistency
+            normalized_step = None if step == 1 else step
+            adjusted_slices.append(
+                builtins.slice(adjusted_start, adjusted_stop, normalized_step)
+            )
+
+    return NDBlock(*block_slices), NDSlice(*adjusted_slices)
+
+
+def build_nested_grid(indices, callable=None, dim=0):
+    """Build a nested list structure from flat N-dimensional indices.
+
+    This function organizes a flat list of N-dimensional indices into a nested
+    list structure suitable for np.block(). The nesting depth matches the
+    dimensionality of the indices, with each level corresponding to one dimension.
+
+    This is particularly useful when you have a collection of array chunks indexed
+    by multi-dimensional coordinates and want to concatenate them efficiently using
+    np.block().
+
+    Parameters
+    ----------
+    indices : list[tuple[int, ...]]
+        A list of N-dimensional index tuples. The indices should be sorted in
+        lexicographic order (though groupby will work with any order that groups
+        consecutive identical prefixes together).
+    callable : callable, optional
+        Optional function to apply to each index tuple at the leaf level.
+        If None, the index tuple itself is returned. This is useful for
+        retrieving actual data arrays corresponding to each index.
+        For example: lambda idx: array_dict[idx]
+    dim : int, optional
+        Internal parameter used during recursion to track current dimension.
+        Should not be set by users (defaults to 0).
+
+    Returns
+    -------
+    nested_list : list or object
+        A nested list structure where the nesting depth equals len(indices[0]).
+        At the leaf level, either the index tuples themselves or the result of
+        callable(index) is stored.
+    """
+    if dim == len(indices[0]):
+        return callable(indices[0]) if callable else indices[0]
+
+    groups = [
+        build_nested_grid(list(g), callable, dim + 1)
+        for _, g in itertools.groupby(indices, key=lambda p: p[dim])
+    ]
+
+    return groups

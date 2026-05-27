@@ -8,6 +8,13 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Utility methods for fetching chunked arrays for a given slice.
+
+
+## v0.2.10 (2026-05-22)
+
+### Added
+
 - Cursor-based pagination for catalog containers on the default sort order.
   The server now uses the node `id` as an opaque cursor, eliminating the
   duplicate-and-skip problem that offset pagination suffers when items are
