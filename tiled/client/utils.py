@@ -516,24 +516,24 @@ def tracking_progress(context, total):
     (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
     each time they complete a request.  The slot is reset to ``None`` on exit.
 
-    A bar is shown only when running interactively *and* ``total > 1``.
-    For scripted use or single-chunk fetches the context is a no-op.
+    A bar is shown only when ``context.show_progress`` is True *and*
+    ``total > 1``.  Otherwise this is a no-op.
 
     Parameters
     ----------
     context : tiled Context
-        Must expose a ``_progress_state`` attribute (``None`` at rest).
+        Must expose ``show_progress`` and ``_progress_state`` attributes.
     total : int
         Number of fetch tasks (chunks / partitions) expected.
 
     Example
     -------
     >>> dask_arr = client.read()          # returns dask array, no fetch yet
-    >>> n = len(dask_arr.__dask_graph__())
+    >>> n = math.prod(len(c) for c in dask_arr.chunks)
     >>> with tracking_progress(context, total=n):
     ...     result = dask_arr.compute()
     """
-    if total <= 1 or not _is_interactive():
+    if total <= 1 or not context.show_progress:
         yield
         return
 

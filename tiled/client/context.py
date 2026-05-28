@@ -179,6 +179,7 @@ class Context:
         app=None,
         raise_server_exceptions=True,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -296,6 +297,13 @@ class Context:
         # Assignment of a Python reference is atomic, so dask worker threads
         # can safely read this without a lock.
         self._progress_state = None
+        # Whether to show a rich progress bar during multi-chunk fetches.
+        # None means use the TILED_SHOW_PROGRESS env var (default False).
+        if show_progress is None:
+            show_progress = os.getenv("TILED_SHOW_PROGRESS", "0").strip().lower() in (
+                "1", "true", "yes",
+            )
+        self.show_progress = show_progress
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
@@ -435,6 +443,7 @@ class Context:
         self.server_info = server_info
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
         self._progress_state = None
+        self.show_progress = False
 
     @classmethod
     def from_any_uri(
@@ -448,6 +457,7 @@ class Context:
         verify=True,
         app=None,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         """
         Accept a URI to a specific node.
@@ -502,6 +512,7 @@ class Context:
             verify=verify,
             app=app,
             max_connections=max_connections,
+            show_progress=show_progress,
         )
         return context, node_path_parts
 
@@ -517,6 +528,7 @@ class Context:
         raise_server_exceptions=True,
         uri=None,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -530,6 +542,7 @@ class Context:
             app=app,
             raise_server_exceptions=raise_server_exceptions,
             max_connections=max_connections,
+            show_progress=show_progress,
         )
         if api_key is UNSET:
             if not context.server_info.authentication.providers:
