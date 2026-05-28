@@ -533,7 +533,7 @@ def tracking_progress(context, total):
     >>> with tracking_progress(context, total=n):
     ...     result = dask_arr.compute()
     """
-    if total <= 1 or not context.show_progress:
+    if total <= 1 or not context.show_progress or not _is_interactive():
         yield
         return
 
