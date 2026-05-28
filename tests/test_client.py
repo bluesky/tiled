@@ -15,7 +15,7 @@ from tiled.adapters.array import ArrayAdapter
 from tiled.adapters.dataframe import DataFrameAdapter
 from tiled.adapters.mapping import MapAdapter
 from tiled.client import Context, from_context, from_profile, record_history
-from tiled.client.logger import hide_logs
+from tiled.client.logger import hide_logs, show_logs
 from tiled.client.utils import retry_context
 from tiled.profiles import load_profiles, paths
 from tiled.queries import Key
@@ -180,27 +180,51 @@ def test_jump_down_tree():
     assert len(h.requests) == 5
 
 
-def test_hide_logs_does_not_suppress_third_party_stamina(caplog):
-    "Calling hide_logs() must not suppress retry warnings from other libraries' stamina usage."
-    hide_logs()
+def test_hide_logs_does_not_suppress_third_party_stamina_after_show(caplog):
+    """After show_logs(), third-party stamina retries should be visible."""
+    show_logs()
 
-    # Simulate a third-party library retrying via stamina directly.
     # Re-enable stamina for this test (conftest disables it globally for speed).
     stamina.set_active(True)
     try:
         n = 0
-        with caplog.at_level(logging.WARNING, logger="stamina"):
+        with caplog.at_level(logging.DEBUG, logger="stamina"):
             for attempt in stamina.retry_context(on=Exception, attempts=2, timeout=10):
                 with attempt:
                     n += 1
                     if n < 2:
                         raise ValueError("third-party transient error")
 
-        # The stamina logger should still have emitted its own WARNING for the retry.
+        # The stamina logger should have emitted its WARNING for the retry.
         stamina_messages = [r for r in caplog.records if r.name == "stamina"]
-        assert (
-            len(stamina_messages) >= 1
-        ), "Third-party stamina retries should still be logged after hide_logs()"
+        assert len(stamina_messages) >= 1, (
+            "Third-party stamina retries should be visible after show_logs()"
+        )
+    finally:
+        stamina.set_active(False)
+        hide_logs()
+
+
+def test_stamina_silent_by_default(caplog):
+    """By default (hide_logs), stamina's own WARNING messages are suppressed."""
+    hide_logs()
+
+    stamina.set_active(True)
+    try:
+        n = 0
+        # Don't use caplog.at_level for stamina — we want to verify the logger
+        # stays at ERROR (our default), which means caplog won't capture anything.
+        with caplog.at_level(logging.DEBUG, logger="tiled.client"):
+            for attempt in stamina.retry_context(on=Exception, attempts=2, timeout=10):
+                with attempt:
+                    n += 1
+                    if n < 2:
+                        raise ValueError("third-party transient error")
+
+        stamina_messages = [r for r in caplog.records if r.name == "stamina"]
+        assert len(stamina_messages) == 0, (
+            "Stamina WARNING messages should be suppressed by default (hide_logs)"
+        )
     finally:
         stamina.set_active(False)
 

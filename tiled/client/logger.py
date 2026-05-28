@@ -84,6 +84,13 @@ logger.makeRecord = patched_make_record
 handler = logging.StreamHandler()
 log_format = "%(asctime)s.%(msecs)03d %(message)s"
 
+# Suppress stamina's default retry WARNING messages.  Tiled handles its own
+# retry logging via the _LoggingAttempt wrapper (routed to tiled.client at
+# DEBUG).  The stamina logger is restored by show_logs() so that users who
+# opt in can still see retry details from any library using stamina.
+_stamina_logger = logging.getLogger("stamina")
+_stamina_logger.setLevel(logging.ERROR)
+
 handler.setFormatter(logging.Formatter(log_format, datefmt="%H:%M:%S"))
 
 
@@ -110,9 +117,12 @@ def show_logs():
     Log network traffic and interactions with the cache.
 
     This is just a convenience function that makes some Python logging configuration calls.
+    Also lowers the stamina logger level so retry messages from all stamina-using
+    libraries become visible.
     """
     logger.setLevel("DEBUG")
     logger.addHandler(handler)
+    _stamina_logger.setLevel("DEBUG")
 
 
 def hide_logs():
@@ -122,6 +132,7 @@ def hide_logs():
     logger.setLevel("WARNING")
     if handler in logger.handlers:
         logger.removeHandler(handler)
+    _stamina_logger.setLevel("ERROR")
 
 
 History = collections.namedtuple("History", "requests responses")
