@@ -506,7 +506,8 @@ class DaskArrayClient(_DaskArrayClient):
     def compute(self):
         "Alias to client.read().compute()"
         dask_arr = self.read()
-        with tracking_progress(self.context, total=len(dask_arr.__dask_graph__())):
+        n = math.prod(len(c) for c in dask_arr.chunks)
+        with tracking_progress(self.context, total=n):
             return dask_arr.compute()
 
 
@@ -518,7 +519,8 @@ class ArrayClient(DaskArrayClient):
         Access the entire array or a slice.
         """
         dask_arr = super().read(slice)
-        with tracking_progress(self.context, total=len(dask_arr.__dask_graph__())):
+        n = math.prod(len(c) for c in dask_arr.chunks)
+        with tracking_progress(self.context, total=n):
             return dask_arr.compute()
 
     def read_block(self, block, slice=None):

@@ -343,7 +343,7 @@ class DaskDataFrameClient(_DaskDataFrameClient):
     def compute(self):
         "Alias to client.read().compute()"
         ddf = self.read()
-        with tracking_progress(self.context, total=len(ddf.__dask_graph__())):
+        with tracking_progress(self.context, total=ddf.npartitions):
             return ddf.compute()
 
 
@@ -361,5 +361,5 @@ class DataFrameClient(_DaskDataFrameClient):
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
         ddf = super().read(columns)
-        with tracking_progress(self.context, total=len(ddf.__dask_graph__())):
+        with tracking_progress(self.context, total=ddf.npartitions):
             return ddf.compute()
