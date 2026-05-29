@@ -216,7 +216,9 @@ class UnknownStructureFamily(KeyError):
 _PROGRESS_THRESHOLD = 10 * 1024 * 1024  # 10 MiB
 
 
-def _streaming_fetch(context, method, url, *, params=None, headers=None, json=None, output=None):
+def _streaming_fetch(
+    context, method, url, *, params=None, headers=None, json=None, output=None
+):
     """Fetch a URL with a streaming byte-level progress bar.
 
     If ``context.show_progress`` is True and the session is interactive, this
@@ -281,9 +283,7 @@ def _streaming_fetch(context, method, url, *, params=None, headers=None, json=No
 
     for attempt in retry_context():
         with attempt:
-            with context.http_client.stream(
-                method, url, **_request_kwargs
-            ) as response:
+            with context.http_client.stream(method, url, **_request_kwargs) as response:
                 handle_error(response)
                 total = int(response.headers.get("Content-Length", 0))
                 if total and total < _PROGRESS_THRESHOLD:
@@ -306,9 +306,7 @@ def _streaming_fetch(context, method, url, *, params=None, headers=None, json=No
                     TimeRemainingColumn(),
                     transient=True,
                 ) as progress:
-                    task_id = progress.add_task(
-                        "Downloading…", total=total or None
-                    )
+                    task_id = progress.add_task("Downloading…", total=total or None)
                     if isinstance(output, (str, Path)):
                         with open(output, "wb") as f:
                             for chunk in response.iter_bytes():
@@ -376,9 +374,7 @@ def export_util(file, format, get, link, params, context=None):
         else:
             for attempt in retry_context():
                 with attempt:
-                    content = handle_error(
-                        get(link, params=request_params)
-                    ).read()
+                    content = handle_error(get(link, params=request_params)).read()
             with open(file, "wb") as buffer:
                 buffer.write(content)
     else:
@@ -396,9 +392,7 @@ def export_util(file, format, get, link, params, context=None):
         else:
             for attempt in retry_context():
                 with attempt:
-                    content = handle_error(
-                        get(link, params=request_params)
-                    ).read()
+                    content = handle_error(get(link, params=request_params)).read()
             file.write(content)
 
 

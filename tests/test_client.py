@@ -197,9 +197,9 @@ def test_no_stamina_retry_scheduled_messages(caplog):
                         raise ValueError("transient error")
 
         stamina_messages = [r for r in caplog.records if r.name == "stamina"]
-        assert len(stamina_messages) == 0, (
-            "stamina's default hook should be disabled — no 'stamina.retry_scheduled' messages"
-        )
+        assert (
+            len(stamina_messages) == 0
+        ), "stamina's default hook should be disabled — no 'stamina.retry_scheduled' messages"
     finally:
         stamina.set_active(False)
 
@@ -219,9 +219,9 @@ def test_tiled_retry_logging_visible_after_show_logs(caplog):
                         raise httpx.ReadTimeout("simulated timeout")
 
         tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
-        assert len(tiled_messages) >= 1, (
-            "Tiled retries should emit DEBUG messages on tiled.client logger"
-        )
+        assert (
+            len(tiled_messages) >= 1
+        ), "Tiled retries should emit DEBUG messages on tiled.client logger"
         assert all(r.levelno == logging.DEBUG for r in tiled_messages)
     finally:
         stamina.set_active(False)
@@ -245,9 +245,9 @@ def test_tiled_retry_logging_silent_by_default(caplog):
 
         # No tiled.client messages should appear (logger is at WARNING).
         tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
-        assert len(tiled_messages) == 0, (
-            "Tiled retry messages should be silent by default"
-        )
+        assert (
+            len(tiled_messages) == 0
+        ), "Tiled retry messages should be silent by default"
     finally:
         stamina.set_active(False)
 
@@ -336,6 +336,7 @@ def test_semaphore_limits_concurrent_partition_fetches():
 def test_tracking_progress_sets_and_clears_state():
     """tracking_progress sets _progress_state during the context and clears it after."""
     from unittest.mock import patch
+
     from tiled.client.utils import tracking_progress
 
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
@@ -366,7 +367,8 @@ def test_tracking_progress_noop_when_show_progress_false():
 
 def test_tracking_progress_nesting_is_noop():
     """Inner tracking_progress defers to outer (no nested bars)."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
+
     from tiled.client.utils import tracking_progress
 
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
