@@ -1,3 +1,4 @@
+import math
 import threading
 from urllib.parse import parse_qs, urlparse
 
@@ -10,7 +11,7 @@ from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .base import BaseClient
 from .container import Container
-from .utils import handle_error
+from .utils import handle_error, tracking_progress
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -119,11 +120,14 @@ class DaskDatasetClient(Container):
 
 class DatasetClient(DaskDatasetClient):
     def read(self, variables=None, *, optimize_wide_table=True):
-        return (
-            super()
-            .read(variables=variables, optimize_wide_table=optimize_wide_table)
-            .load()
-        )
+        ds = super().read(variables=variables, optimize_wide_table=optimize_wide_table)
+        # Count total fetch tasks across all dask-backed variables.
+        total = 0
+        for var in list(ds.data_vars.values()) + list(ds.coords.values()):
+            if dask.is_dask_collection(var.data):
+                total += math.prod(len(c) for c in var.data.chunks)
+        with tracking_progress(self.context, total):
+            return ds.load()
 
 
 _EXTRA_CHARS_PER_ITEM = len("&field=")
