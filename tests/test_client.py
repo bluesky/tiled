@@ -480,13 +480,14 @@ def test_progress_state_show_retrying_no_name_error():
 
 
 def test_standalone_retry_indicator_show_hide():
-    """_StandaloneRetryIndicator writes to stderr on show() and erases on reset() (TTY)."""
+    """_StandaloneRetryIndicator: plain text on non-TTY, Live spinner on TTY."""
     import sys
     from io import StringIO
     from unittest.mock import MagicMock, patch
 
     from tiled.client.utils import _StandaloneRetryIndicator
 
+    # Non-TTY: plain text written once, reset() is a no-op
     indicator = _StandaloneRetryIndicator()
     assert indicator._showing is False
 
@@ -494,8 +495,7 @@ def test_standalone_retry_indicator_show_hide():
     with patch.object(sys, "stderr", fake_stderr):
         indicator.show()
         assert indicator._showing is True
-        output = fake_stderr.getvalue()
-        assert "Retrying" in output
+        assert "Retrying" in fake_stderr.getvalue()
 
         # Second show() is a no-op
         fake_stderr.truncate(0)
@@ -503,29 +503,35 @@ def test_standalone_retry_indicator_show_hide():
         indicator.show()
         assert fake_stderr.getvalue() == ""
 
-        # reset() clears _showing; on non-TTY (StringIO) no escape codes written
         indicator.reset()
         assert indicator._showing is False
 
         # reset() again is a no-op
-        fake_stderr.truncate(0)
-        fake_stderr.seek(0)
         indicator.reset()
-        assert fake_stderr.getvalue() == ""
+        assert indicator._showing is False
 
-    # On a TTY, reset() writes the erase sequence
-    tty_stderr = MagicMock()
-    tty_stderr.isatty = lambda: True
+    # TTY: show() starts a Live spinner; reset() stops it
+    mock_live = MagicMock()
     indicator2 = _StandaloneRetryIndicator()
-    with patch.object(sys, "stderr", tty_stderr):
-        indicator2.show()
-        indicator2.reset()
-        # Both show and reset should have written to stderr
-        assert tty_stderr.write.call_count == 2
-        written = "".join(call.args[0] for call in tty_stderr.write.call_args_list)
-        assert "Retrying" in written
-        # Erase sequence contains cursor-up escape
-        assert "\x1b[1A" in written
+    with patch("rich.live.Live", return_value=mock_live):
+        tty_stderr = MagicMock()
+        tty_stderr.isatty = lambda: True
+        with patch.object(sys, "stderr", tty_stderr):
+            indicator2.show()
+            assert indicator2._live is mock_live
+            mock_live.start.assert_called_once()
+
+            # Second show() is a no-op
+            indicator2.show()
+            mock_live.start.assert_called_once()
+
+            indicator2.reset()
+            assert indicator2._live is None
+            mock_live.stop.assert_called_once()
+
+            # reset() again is a no-op
+            indicator2.reset()
+            mock_live.stop.assert_called_once()
 
 
 def test_signal_retry_uses_standalone_indicator_when_no_progress():
@@ -552,6 +558,30 @@ def test_signal_retry_uses_standalone_indicator_when_no_progress():
             _signal_retry_resolved(context)
             assert context._retry_indicator._showing is False
 
+
+def test_retry_context_no_context_shows_indicator():
+    """retry_context() with no context still shows the standalone retry indicator."""
+    import sys
+    from io import StringIO
+    from unittest.mock import patch
+
+    import stamina
+
+    from tiled.client.utils import retry_context
+
+    fake_stderr = StringIO()
+    with patch.object(sys, "stderr", fake_stderr):
+        try:
+            stamina.set_active(True)
+            call_count = 0
+            for attempt in retry_context():  # no context
+                with attempt:
+                    call_count += 1
+                    if call_count < 3:
+                        raise httpx.ConnectError("test")
+            assert "Retrying" in fake_stderr.getvalue()
+        finally:
+            stamina.set_active(False)
 
 
 def test_signal_retry_uses_progress_state_when_available():
@@ -631,8 +661,9 @@ def test_retry_context_signals_retry_indicator():
 
 def test_keyboard_interrupt_cancels_retries():
     """KeyboardInterrupt during inter-retry sleep propagates and cancels remaining retries."""
-    import stamina
     from unittest.mock import patch
+
+    import stamina
 
     from tiled.client.utils import retry_context
 
@@ -662,8 +693,9 @@ def test_keyboard_interrupt_cancels_retries():
 
 def test_keyboard_interrupt_cleans_up_retry_indicator():
     """KeyboardInterrupt cancels retries and cleans up the retry indicator."""
-    import stamina
     from unittest.mock import MagicMock, patch
+
+    import stamina
 
     from tiled.client.utils import retry_context
 
@@ -692,7 +724,6 @@ def test_keyboard_interrupt_cleans_up_retry_indicator():
 
         # hide_retrying should have been called on Ctrl-C
         mock_state.hide_retrying.assert_called()
-
 
 
 def test_should_retry_returns_retry_after_for_429():

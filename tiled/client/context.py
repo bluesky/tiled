@@ -309,7 +309,9 @@ class Context:
                 "no",
             )
         self.show_progress = show_progress
-        self._retry_indicator = None  # Lazy-initialized _StandaloneRetryIndicator
+        self._retry_indicator = (
+            None  # Lazy-initialized _RetryIndicator (set by _signal_retry)
+        )
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.

@@ -158,11 +158,12 @@ class _LoggingAttempt:
     are not routed through the global stamina hook machinery.
     """
 
-    __slots__ = ("_attempt", "_context")
+    __slots__ = ("_attempt", "_context", "_standalone")
 
-    def __init__(self, attempt, context=None):
+    def __init__(self, attempt, context=None, standalone=None):
         self._attempt = attempt
         self._context = context
+        self._standalone = standalone
 
     @property
     def num(self):
@@ -184,29 +185,39 @@ class _LoggingAttempt:
             )
             if self._context is not None:
                 _signal_retry(self._context)
+            elif self._standalone is not None:
+                self._standalone.show()
         return result
 
 
 def retry_context(context=None):
     "Iterable that yields a context manager per retry attempt"
+    # When no context is provided (e.g. from_any_uri probing the server before
+    # a Context object exists), we still want to show the retry indicator.
+    # Use a standalone indicator owned by this generator so cleanup is guaranteed.
+    standalone = _StandaloneRetryIndicator() if context is None else None
     it = stamina.retry_context(
         on=should_retry,
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
     ).__iter__()
-    while True:
-        try:
-            attempt = next(it)
-        except StopIteration:
-            break
-        except KeyboardInterrupt:
-            # A KeyboardInterrupt raised during stamina's inter-attempt sleep
-            # would normally be swallowed by tenacity.  Re-raise it here so
-            # that Ctrl-C cancels all remaining retries immediately.
-            if context is not None:
-                _signal_retry_resolved(context)
-            raise
-        yield _LoggingAttempt(attempt, context=context)
+    try:
+        while True:
+            try:
+                attempt = next(it)
+            except StopIteration:
+                break
+            except KeyboardInterrupt:
+                # A KeyboardInterrupt raised during stamina's inter-attempt sleep
+                # would normally be swallowed by tenacity.  Re-raise it here so
+                # that Ctrl-C cancels all remaining retries immediately.
+                if context is not None:
+                    _signal_retry_resolved(context)
+                raise
+            yield _LoggingAttempt(attempt, context=context, standalone=standalone)
+    finally:
+        if standalone is not None:
+            standalone.reset()
 
 
 def should_poll_for_tokens(exception: Exception) -> bool:
@@ -643,32 +654,30 @@ class _ProgressState:
 
 
 class _StandaloneRetryIndicator:
-    """Prints a one-line "Retrying…" notice to stderr when retries begin,
-    and erases it (on a TTY) when retries resolve.
+    """Shows a spinner on stderr while retries are in progress.
 
-    Deliberately avoids Rich ``Live`` / background threads so it cannot
-    interfere with interactive prompts (``input()``, ``getpass``) or
-    IPython's output machinery.  Only operates from the main thread so
-    dask worker threads never write to the terminal.
+    On a TTY: starts a Rich ``Live`` spinner on first ``show()`` and stops it
+    on ``reset()``.  The ``Live`` instance runs for the full retry duration —
+    created once, never flickered — because the connection-retry path never
+    interleaves with interactive prompts (auth prompts come only after a
+    successful connection).
 
-    The notice is always printed when a retry occurs — it is not gated on
-    ``show_progress`` or ``_is_interactive()`` because silent retries are
-    confusing in any context.  On non-TTY stderr (CI, scripts, pipes) ANSI
-    escape codes are omitted so the output is clean plain text.
+    On non-TTY stderr (CI, pipes): writes a plain "Retrying…" line once.
+
+    Only operates from the main thread so dask worker threads never write to
+    the terminal.
     """
 
     def __init__(self):
         self._showing = False
+        self._live = None
 
     @staticmethod
     def _stderr_is_tty():
-        import sys
-
         return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
 
     def show(self):
-        """Print the retrying notice if not already shown."""
-        import sys
+        """Start the spinner (or print plain text) on first call; no-op thereafter."""
         import threading
 
         if threading.current_thread() is not threading.main_thread():
@@ -677,15 +686,20 @@ class _StandaloneRetryIndicator:
             return
         self._showing = True
         if self._stderr_is_tty():
-            # On a TTY: move to column 0, erase to EOL, print coloured notice.
-            sys.stderr.write("\r\x1b[K\x1b[33mRetrying…\x1b[0m\n")
+            from rich.console import Console
+            from rich.live import Live
+            from rich.spinner import Spinner
+
+            console = Console(stderr=True, highlight=False)
+            spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
+            self._live = Live(spinner, console=console, transient=True)
+            self._live.start()
         else:
             sys.stderr.write("Retrying…\n")
-        sys.stderr.flush()
+            sys.stderr.flush()
 
     def reset(self):
-        """Erase the retrying notice on a TTY; on non-TTY it stays (already scrolled)."""
-        import sys
+        """Stop the spinner (or no-op on non-TTY)."""
         import threading
 
         if threading.current_thread() is not threading.main_thread():
@@ -693,10 +707,9 @@ class _StandaloneRetryIndicator:
         if not self._showing:
             return
         self._showing = False
-        if self._stderr_is_tty():
-            # Move up one line and erase it, restoring the terminal.
-            sys.stderr.write("\x1b[1A\r\x1b[K")
-            sys.stderr.flush()
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
 
 
 def _signal_retry(context):
