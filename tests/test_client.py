@@ -528,3 +528,86 @@ def test_handle_error_lets_429_propagate():
 
     assert not isinstance(exc_info.value, ClientError)
     assert exc_info.value.response.status_code == 429
+
+
+def test_retry_context_retries_on_429():
+    """retry_context retries when a 429 HTTPStatusError is raised."""
+    stamina.set_active(True)
+    try:
+        attempts_made = 0
+        for attempt in retry_context():
+            with attempt:
+                attempts_made += 1
+                if attempts_made < 3:
+                    request = httpx.Request("GET", "http://example.com/data")
+                    response = httpx.Response(
+                        429,
+                        headers={"Retry-After": "0"},
+                        request=request,
+                    )
+                    raise httpx.HTTPStatusError(
+                        "Too Many Requests", request=request, response=response
+                    )
+        # Should have retried twice then succeeded on attempt 3.
+        assert attempts_made == 3
+    finally:
+        stamina.set_active(False)
+
+
+def test_retry_context_logs_429_retry(caplog):
+    """429 retries are logged at DEBUG on tiled.client logger."""
+    show_logs()
+    stamina.set_active(True)
+    try:
+        attempts_made = 0
+        with caplog.at_level(logging.DEBUG, logger="tiled.client"):
+            for attempt in retry_context():
+                with attempt:
+                    attempts_made += 1
+                    if attempts_made < 2:
+                        request = httpx.Request("GET", "http://example.com/data")
+                        response = httpx.Response(
+                            429,
+                            headers={"Retry-After": "0"},
+                            request=request,
+                        )
+                        raise httpx.HTTPStatusError(
+                            "Too Many Requests", request=request, response=response
+                        )
+
+        tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
+        assert len(tiled_messages) >= 1
+        assert "Retry" in tiled_messages[0].message
+    finally:
+        stamina.set_active(False)
+        hide_logs()
+
+
+def test_429_retry_with_real_server():
+    """Integration test: client retries on 429 from a mock transport."""
+    from tiled.client.utils import handle_error
+
+    call_count = {"n": 0}
+
+    class ThrottlingTransport(httpx.BaseTransport):
+        def handle_request(self, request):
+            call_count["n"] += 1
+            if call_count["n"] <= 2:
+                return httpx.Response(
+                    429,
+                    headers={"Retry-After": "0"},
+                )
+            return httpx.Response(200, json={"status": "ok"})
+
+    stamina.set_active(True)
+    try:
+        with httpx.Client(transport=ThrottlingTransport()) as client:
+            for attempt in retry_context():
+                with attempt:
+                    response = client.get("http://testserver/data")
+                    handle_error(response)
+
+        assert call_count["n"] == 3
+        assert response.json() == {"status": "ok"}
+    finally:
+        stamina.set_active(False)
