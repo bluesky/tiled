@@ -211,13 +211,15 @@ def retry_context(context=None):
                 # A KeyboardInterrupt raised during stamina's inter-attempt sleep
                 # would normally be swallowed by tenacity.  Re-raise it here so
                 # that Ctrl-C cancels all remaining retries immediately.
-                if context is not None:
-                    _signal_retry_resolved(context)
                 raise
             yield _LoggingAttempt(attempt, context=context, standalone=standalone)
     finally:
+        # Always clean up the retry indicator, whether the loop completed
+        # normally, was interrupted, or raised an exception.
         if standalone is not None:
             standalone.reset()
+        elif context is not None:
+            _signal_retry_resolved(context)
 
 
 def should_poll_for_tokens(exception: Exception) -> bool:
@@ -730,3 +732,4 @@ def _signal_retry_resolved(context):
         ps.hide_retrying()
     if context._retry_indicator is not None:
         context._retry_indicator.reset()
+        context._retry_indicator = None

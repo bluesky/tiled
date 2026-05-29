@@ -24,7 +24,6 @@ from .transport import Transport
 from .utils import (
     DEFAULT_TIMEOUT_PARAMS,
     MSGPACK_MIME_TYPE,
-    _signal_retry_resolved,
     handle_error,
     polling_retry_context,
     retry_context,
@@ -318,20 +317,17 @@ class Context:
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        try:
-            for attempt in retry_context(self):
-                with attempt:
-                    server_info = handle_error(
-                        self.http_client.get(
-                            self.api_uri,
-                            headers={
-                                "Accept": MSGPACK_MIME_TYPE,
-                                "Cache-Control": "no-cache, no-store",
-                            },
-                        )
-                    ).json()
-        finally:
-            _signal_retry_resolved(self)
+        for attempt in retry_context(self):
+            with attempt:
+                server_info = handle_error(
+                    self.http_client.get(
+                        self.api_uri,
+                        headers={
+                            "Accept": MSGPACK_MIME_TYPE,
+                            "Cache-Control": "no-cache, no-store",
+                        },
+                    )
+                ).json()
         self.server_info: About = TypeAdapter(About).validate_python(server_info)
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests

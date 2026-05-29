@@ -14,7 +14,6 @@ from .base import BaseClient
 from .utils import (
     MSGPACK_MIME_TYPE,
     ClientError,
-    _signal_retry_resolved,
     client_for_item,
     export_util,
     handle_error,
@@ -147,7 +146,6 @@ class _DaskDataFrameClient(BaseClient):
                                 params=params,
                             )
                         ).read()
-        _signal_retry_resolved(self.context)
         if (ps := self.context._progress_state) is not None:
             ps.advance()
         return deserialize_arrow(content)

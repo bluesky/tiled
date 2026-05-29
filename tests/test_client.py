@@ -556,7 +556,7 @@ def test_signal_retry_uses_standalone_indicator_when_no_progress():
             assert "Retrying" in fake_stderr.getvalue()
 
             _signal_retry_resolved(context)
-            assert context._retry_indicator._showing is False
+            assert context._retry_indicator is None
 
 
 def test_retry_context_no_context_shows_indicator():
@@ -625,6 +625,7 @@ def test_signal_retry_shows_regardless_of_show_progress():
             assert context._retry_indicator._showing is True
             assert "Retrying" in fake_stderr.getvalue()
             _signal_retry_resolved(context)
+            assert context._retry_indicator is None
 
 
 def test_retry_context_signals_retry_indicator():
