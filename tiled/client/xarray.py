@@ -36,6 +36,9 @@ class DaskDatasetClient(Container):
     def _build_arrays(self, variables, optimize_wide_table):
         data_vars = {}
         coords = {}
+        # Track which variables use direct fetch (not wide-table optimization).
+        # These are the ones whose dask arrays will advance the progress bar.
+        self._direct_fetch_names = set()
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
         coords_fetcher = _WideTableFetcher(
@@ -92,6 +95,7 @@ class DaskDatasetClient(Container):
                         "'xarray_coord' or 'xarray_data_var'."
                     )
             else:
+                self._direct_fetch_names.add(name)
                 if "xarray_coord" in spec_names:
                     coords[name] = (
                         array_client.dims,
@@ -121,11 +125,12 @@ class DaskDatasetClient(Container):
 class DatasetClient(DaskDatasetClient):
     def read(self, variables=None, *, optimize_wide_table=True):
         ds = super().read(variables=variables, optimize_wide_table=optimize_wide_table)
-        # Count total fetch tasks across all dask-backed variables.
+        # Count fetch tasks only for direct-fetch variables (not wide-table).
+        # Wide-table variables use dask.delayed and don't advance the bar.
+        direct_names = self._direct_fetch_names
         total = 0
-        print("Loading data from Tiled...")
-        for var in list(ds.data_vars.values()) + list(ds.coords.values()):
-            if dask.is_dask_collection(var.data):
+        for name, var in list(ds.data_vars.items()) + list(ds.coords.items()):
+            if name in direct_names and dask.is_dask_collection(var.data):
                 total += math.prod(len(c) for c in var.data.chunks)
         with tracking_progress(self.context, total):
             return ds.load()

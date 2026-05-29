@@ -178,13 +178,11 @@ class CompositeClient(Container):
                 if (variables is None) or (part in variables):
                     total_fetches += 1
             elif sf == StructureFamily.table:
-                table_client = self.base[part]
-                columns = set(variables or table_client.columns).intersection(
-                    table_client.columns
-                )
-                if columns:
+                structure = item["attributes"]["structure"]
+                columns = structure.get("columns", [])
+                requested = set(variables or columns).intersection(columns)
+                if requested:
                     # One fetch per partition.
-                    structure = item["attributes"]["structure"]
                     total_fetches += structure.get("npartitions", 1)
 
         with tracking_progress(self.context, total_fetches):
