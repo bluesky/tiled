@@ -435,9 +435,15 @@ def test_streaming_fetch_writes_to_file(tmp_path):
 
 def test_show_progress_from_env_var(monkeypatch):
     """TILED_SHOW_PROGRESS env var controls context.show_progress."""
-    monkeypatch.setenv("TILED_SHOW_PROGRESS", "1")
     tree_local = MapAdapter({})
     app = build_app(tree_local)
+
+    # Default (no env var) is True
+    monkeypatch.delenv("TILED_SHOW_PROGRESS", raising=False)
+    with Context.from_app(app) as context:
+        assert context.show_progress is True
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "1")
     with Context.from_app(app) as context:
         assert context.show_progress is True
 
@@ -445,11 +451,11 @@ def test_show_progress_from_env_var(monkeypatch):
     with Context.from_app(app) as context:
         assert context.show_progress is False
 
-    monkeypatch.setenv("TILED_SHOW_PROGRESS", "true")
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "false")
     with Context.from_app(app) as context:
-        assert context.show_progress is True
+        assert context.show_progress is False
 
-    monkeypatch.setenv("TILED_SHOW_PROGRESS", "banana")
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "no")
     with Context.from_app(app) as context:
         assert context.show_progress is False
 

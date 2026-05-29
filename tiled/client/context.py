@@ -298,10 +298,10 @@ class Context:
         # can safely read this without a lock.
         self._progress_state = None
         # Whether to show a rich progress bar during multi-chunk fetches.
-        # None means use the TILED_SHOW_PROGRESS env var (default False).
+        # None means use the TILED_SHOW_PROGRESS env var (default True).
         if show_progress is None:
-            show_progress = os.getenv("TILED_SHOW_PROGRESS", "0").strip().lower() in (
-                "1", "true", "yes",
+            show_progress = os.getenv("TILED_SHOW_PROGRESS", "1").strip().lower() not in (
+                "0", "false", "no",
             )
         self.show_progress = show_progress
 
