@@ -6,6 +6,7 @@ import threading
 import time
 import urllib.parse
 import warnings
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
@@ -24,6 +25,7 @@ from .transport import Transport
 from .utils import (
     DEFAULT_TIMEOUT_PARAMS,
     MSGPACK_MIME_TYPE,
+    StandaloneRetryIndicator,
     handle_error,
     polling_retry_context,
     retry_context,
@@ -291,8 +293,9 @@ class Context:
         # (array blocks, dataframe partitions, etc.) issued by dask workers.
         # This is intentionally separate from the HTTP connection pool limit so
         # that it can be tuned independently; by default it mirrors the pool size.
+        self._max_connections = max_connections
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
-        # Slot used by tracking_progress(). Set to a (Progress, task_id) pair
+        # Slot used by tracking_progress(). Set to a ProgressState instance
         # while a tracked .compute() is running; None at all other times.
         # Assignment of a Python reference is atomic, so dask worker threads
         # can safely read this without a lock.
@@ -302,15 +305,10 @@ class Context:
         if show_progress is None:
             show_progress = os.getenv(
                 "TILED_SHOW_PROGRESS", "1"
-            ).strip().lower() not in (
-                "0",
-                "false",
-                "no",
-            )
+            ).strip().lower() not in ("0", "false", "no")
         self.show_progress = show_progress
-        self._retry_indicator = (
-            None  # Lazy-initialized _RetryIndicator (set by _signal_retry)
-        )
+        # Lazy-initialized StandaloneRetryIndicator (set by signal_retry)
+        self._retry_indicator = None
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
@@ -448,12 +446,140 @@ class Context:
         self._cache = cache
         self._verify = verify
         self.server_info = server_info
+        self._max_connections = max_connections
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
         self._progress_state = None
         self._retry_indicator = None
         # Intentionally False: unpickled contexts run in dask workers which
         # are not interactive and should never render progress bars.
         self.show_progress = False
+
+    @property
+    def progress_state(self):
+        """Read-only access to the active progress state, or None."""
+        return self._progress_state
+
+    @contextmanager
+    def tracking_progress(self, total):
+        """Context manager that displays a rich progress bar during a multi-chunk fetch.
+
+        While the context is active, :attr:`progress_state` is set to a
+        ``ProgressState`` instance so that fetch methods
+        (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
+        and show a retry indicator.  The slot is reset to ``None`` on exit.
+
+        A bar is shown only when :attr:`show_progress` is True *and*
+        ``total > 1`` *and* the session is interactive.  Otherwise this is a
+        no-op context manager.
+
+        Parameters
+        ----------
+        total : int
+            Number of fetch tasks (chunks / partitions) expected.
+
+        Example
+        -------
+        >>> dask_arr = client.read()          # returns dask array, no fetch yet
+        >>> n = math.prod(len(c) for c in dask_arr.chunks)
+        >>> with context.tracking_progress(total=n):
+        ...     result = dask_arr.compute()
+        """
+        from .utils import ProgressState, is_interactive, is_jupyter
+
+        if total <= 1 or not self.show_progress or not is_interactive():
+            yield
+            return
+
+        # If an outer progress bar is already active, defer to it (no nested bars).
+        if self._progress_state is not None:
+            yield
+            return
+
+        from rich.console import Console
+        from rich.live import Live
+        from rich.progress import (
+            BarColumn,
+            MofNCompleteColumn,
+            Progress,
+            TimeRemainingColumn,
+        )
+        from rich.spinner import Spinner
+
+        # In Jupyter notebooks, use force_jupyter so Rich uses its HTML display
+        # path instead of ANSI escape codes (which Jupyter renders as two lines).
+        # In IPython terminal and plain REPLs, use force_terminal so the bar
+        # renders even though IPython replaces stderr with a non-TTY stream.
+        if is_jupyter():
+            console = Console(stderr=True, force_jupyter=True)
+        else:
+            console = Console(stderr=True, force_terminal=True)
+        progress = Progress(
+            "[progress.description]{task.description}",
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        )
+        task_id = progress.add_task("Fetching data…", total=total)
+        spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
+        state = ProgressState(progress, task_id, spinner)
+
+        with Live(progress, transient=True, console=console) as live:
+            state._live = live
+            self._progress_state = state
+            try:
+                yield state
+            finally:
+                self._progress_state = None
+
+    @property
+    def retry_indicator(self):
+        """Read-only access to the active standalone retry indicator, or None."""
+        return self._retry_indicator
+
+    def signal_retry(self):
+        """Signal that a retry is in progress.
+
+        Shows a retry indicator: a spinner below the active progress bar if one
+        is running, or a standalone animated spinner otherwise.  Always called
+        from the main thread (enforced internally).
+        """
+        if (ps := self._progress_state) is not None:
+            ps.show_retrying()
+        else:
+            # Always show retry notice regardless of show_progress / is_interactive().
+            # Silently retrying without any feedback is confusing in every context.
+            if self._retry_indicator is None:
+                self._retry_indicator = StandaloneRetryIndicator()
+            self._retry_indicator.show()
+
+    def signal_retry_resolved(self):
+        """Signal that retries have resolved — hide any retry indicator."""
+        if (ps := self._progress_state) is not None:
+            ps.hide_retrying()
+        if self._retry_indicator is not None:
+            self._retry_indicator.reset()
+            self._retry_indicator = None
+
+    def throttle(self):
+        """Context manager that throttles concurrent data-fetch requests.
+
+        Acquires the internal connection semaphore on entry and releases it on
+        exit.  Fetch methods (``_get_block``, ``_get_slice``,
+        ``_get_partition``) use this to cap the number of simultaneous
+        outgoing HTTP requests to the limit set by ``max_connections``.
+
+        Example
+        -------
+        >>> with self.context.throttle():
+        ...     response = self.context.http_client.get(url)
+        """
+        return self._concurrent_request_semaphore
+
+    @property
+    def max_connections(self):
+        """Maximum number of concurrent data-fetch requests."""
+        return self._max_connections
 
     @classmethod
     def from_any_uri(

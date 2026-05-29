@@ -35,7 +35,7 @@ def test_configurable_timeout():
 def test_configurable_max_connections():
     "max_connections is reflected in the semaphore on the Context."
     with Context.from_app(build_app(tree), max_connections=3) as context:
-        assert context._concurrent_request_semaphore._value == 3
+        assert context.max_connections == 3
 
 
 def test_client_version_check(caplog):
@@ -204,38 +204,18 @@ def test_no_stamina_retry_scheduled_messages(caplog):
         stamina.set_active(False)
 
 
-def test_tiled_retry_logging_visible_after_show_logs(caplog):
-    """After show_logs(), tiled retry messages appear on the tiled.client logger."""
-    show_logs()
-
-    stamina.set_active(True)
-    try:
-        n = 0
-        with caplog.at_level(logging.DEBUG, logger="tiled.client"):
-            for attempt in retry_context():
-                with attempt:
-                    n += 1
-                    if n < 2:
-                        raise httpx.ReadTimeout("simulated timeout")
-
-        tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
-        assert (
-            len(tiled_messages) >= 1
-        ), "Tiled retries should emit DEBUG messages on tiled.client logger"
-        assert all(r.levelno == logging.DEBUG for r in tiled_messages)
-    finally:
-        stamina.set_active(False)
+@pytest.mark.parametrize("logs_enabled", [True, False], ids=["show_logs", "hide_logs"])
+def test_tiled_retry_logging(caplog, logs_enabled):
+    """Tiled retry messages appear on tiled.client after show_logs(), silent otherwise."""
+    if logs_enabled:
+        show_logs()
+    else:
         hide_logs()
 
-
-def test_tiled_retry_logging_silent_by_default(caplog):
-    """By default (hide_logs), tiled retry messages are not visible."""
-    hide_logs()
-
     stamina.set_active(True)
     try:
         n = 0
-        # Capture at DEBUG to ensure we'd see it if it leaked through.
+        # Capture at DEBUG globally to detect any leakage in the hide_logs case.
         with caplog.at_level(logging.DEBUG):
             for attempt in retry_context():
                 with attempt:
@@ -243,13 +223,15 @@ def test_tiled_retry_logging_silent_by_default(caplog):
                     if n < 2:
                         raise httpx.ReadTimeout("simulated timeout")
 
-        # No tiled.client messages should appear (logger is at WARNING).
         tiled_messages = [r for r in caplog.records if r.name == "tiled.client"]
-        assert (
-            len(tiled_messages) == 0
-        ), "Tiled retry messages should be silent by default"
+        if logs_enabled:
+            assert len(tiled_messages) >= 1
+            assert all(r.levelno == logging.DEBUG for r in tiled_messages)
+        else:
+            assert len(tiled_messages) == 0
     finally:
         stamina.set_active(False)
+        hide_logs()
 
 
 class TrackingSemaphore:
@@ -337,55 +319,49 @@ def test_tracking_progress_sets_and_clears_state():
     """tracking_progress sets _progress_state during the context and clears it after."""
     from unittest.mock import patch
 
-    from tiled.client.utils import tracking_progress
-
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=True) as context:
         with patch("tiled.client.utils._is_interactive", return_value=True):
-            with tracking_progress(context, total=5):
-                assert context._progress_state is not None
-                state = context._progress_state
+            with context.tracking_progress(total=5):
+                assert context.progress_state is not None
+                state = context.progress_state
                 assert state._task_id is not None
 
         # After exit, state is cleared
-        assert context._progress_state is None
+        assert context.progress_state is None
 
 
 def test_tracking_progress_noop_when_show_progress_false():
     """tracking_progress is a no-op when show_progress is False."""
-    from tiled.client.utils import tracking_progress
-
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=False) as context:
-        with tracking_progress(context, total=10):
-            assert context._progress_state is None
+        with context.tracking_progress(total=10):
+            assert context.progress_state is None
 
 
 def test_tracking_progress_nesting_is_noop():
     """Inner tracking_progress defers to outer (no nested bars)."""
     from unittest.mock import patch
 
-    from tiled.client.utils import tracking_progress
-
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=True) as context:
         with patch("tiled.client.utils._is_interactive", return_value=True):
-            with tracking_progress(context, total=10):
-                outer_state = context._progress_state
+            with context.tracking_progress(total=10):
+                outer_state = context.progress_state
                 assert outer_state is not None
 
                 # Inner tracking_progress should NOT overwrite
-                with tracking_progress(context, total=5):
-                    assert context._progress_state is outer_state
+                with context.tracking_progress(total=5):
+                    assert context.progress_state is outer_state
 
             # After outer exits, state is cleared
-            assert context._progress_state is None
+            assert context.progress_state is None
 
 
 def test_show_progress_from_env_var(monkeypatch):
@@ -435,14 +411,12 @@ def test_progress_state_show_hide_retrying():
     """_ProgressState.show_retrying/hide_retrying toggle state and update Live."""
     from unittest.mock import patch
 
-    from tiled.client.utils import tracking_progress
-
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=True) as context:
         with patch("tiled.client.utils._is_interactive", return_value=True):
-            with tracking_progress(context, total=5) as state:
+            with context.tracking_progress(total=5) as state:
                 assert state._retrying is False
 
                 # Show retrying
@@ -460,23 +434,6 @@ def test_progress_state_show_hide_retrying():
                 # Calling hide again is a no-op
                 state.hide_retrying()
                 assert state._retrying is False
-
-
-def test_progress_state_show_retrying_no_name_error():
-    """_ProgressState.show_retrying does not raise NameError for Group import."""
-    from unittest.mock import patch
-
-    from tiled.client.utils import tracking_progress
-
-    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
-    app = build_app(tree)
-
-    with Context.from_app(app, show_progress=True) as context:
-        with patch("tiled.client.utils._is_interactive", return_value=True):
-            with tracking_progress(context, total=5) as state:
-                # This previously raised NameError: name 'Group' is not defined
-                state.show_retrying()
-                state.hide_retrying()
 
 
 def test_standalone_retry_indicator_show_hide():
@@ -534,32 +491,28 @@ def test_standalone_retry_indicator_show_hide():
             mock_live.stop.assert_called_once()
 
 
-def test_signal_retry_uses_standalone_indicator_when_no_progress():
-    """_signal_retry creates standalone indicator when no progress bar is active."""
+@pytest.mark.parametrize("show_progress", [True, False])
+def test_signal_retry_uses_standalone_indicator(show_progress):
+    """signal_retry creates a standalone indicator regardless of show_progress."""
     import sys
     from io import StringIO
     from unittest.mock import patch
 
-    from tiled.client.utils import _signal_retry, _signal_retry_resolved
-
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
     app = build_app(tree)
 
-    with Context.from_app(app, show_progress=True) as context:
-        assert context._retry_indicator is None
+    with Context.from_app(app, show_progress=show_progress) as context:
+        assert context.retry_indicator is None
 
         fake_stderr = StringIO()
         with patch.object(sys, "stderr", fake_stderr):
-            _signal_retry(context)
-            assert context._retry_indicator is not None
-            assert context._retry_indicator._showing is True
+            context.signal_retry()
+            assert context.retry_indicator is not None
+            assert context.retry_indicator._showing is True
             assert "Retrying" in fake_stderr.getvalue()
 
-            _signal_retry_resolved(context)
-            assert context._retry_indicator is None
-
-
-def test_retry_context_no_context_shows_indicator():
+            context.signal_retry_resolved()
+            assert context.retry_indicator is None
     """retry_context() with no context still shows the standalone retry indicator."""
     import sys
     from io import StringIO
@@ -585,10 +538,8 @@ def test_retry_context_no_context_shows_indicator():
 
 
 def test_signal_retry_uses_progress_state_when_available():
-    """_signal_retry calls show_retrying on _progress_state if set."""
+    """signal_retry calls show_retrying on _progress_state if set."""
     from unittest.mock import MagicMock
-
-    from tiled.client.utils import _signal_retry, _signal_retry_resolved
 
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
     app = build_app(tree)
@@ -597,35 +548,13 @@ def test_signal_retry_uses_progress_state_when_available():
         mock_state = MagicMock()
         context._progress_state = mock_state
 
-        _signal_retry(context)
+        context.signal_retry()
         mock_state.show_retrying.assert_called_once()
 
-        _signal_retry_resolved(context)
+        context.signal_retry_resolved()
         mock_state.hide_retrying.assert_called_once()
 
         context._progress_state = None
-
-
-def test_signal_retry_shows_regardless_of_show_progress():
-    """_signal_retry always shows indicator, even when show_progress is False."""
-    import sys
-    from io import StringIO
-    from unittest.mock import patch
-
-    from tiled.client.utils import _signal_retry, _signal_retry_resolved
-
-    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
-    app = build_app(tree)
-
-    with Context.from_app(app, show_progress=False) as context:
-        fake_stderr = StringIO()
-        with patch.object(sys, "stderr", fake_stderr):
-            _signal_retry(context)
-            assert context._retry_indicator is not None
-            assert context._retry_indicator._showing is True
-            assert "Retrying" in fake_stderr.getvalue()
-            _signal_retry_resolved(context)
-            assert context._retry_indicator is None
 
 
 def test_retry_context_signals_retry_indicator():
@@ -640,7 +569,7 @@ def test_retry_context_signals_retry_indicator():
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=True) as context:
-        with patch("tiled.client.utils._signal_retry") as mock_signal:
+        with patch.object(context, "signal_retry") as mock_signal:
             try:
                 stamina.set_active(True)
                 call_count = 0
@@ -650,7 +579,7 @@ def test_retry_context_signals_retry_indicator():
                         call_count += 1
                         if call_count < 3:
                             raise httpx.ConnectError("test")
-                # _signal_retry should have been called for attempts 2 and 3
+                # signal_retry should have been called for attempts 2 and 3
                 # (retry scheduled after attempt 1 and 2 fail)
                 assert mock_signal.call_count == 2
             finally:
@@ -727,37 +656,23 @@ def test_keyboard_interrupt_cleans_up_retry_indicator():
         mock_state.hide_retrying.assert_called()
 
 
-def test_should_retry_returns_retry_after_for_429():
-    """should_retry returns the Retry-After value as a float for 429 responses."""
+@pytest.mark.parametrize(
+    "status_code, headers, expected",
+    [
+        (429, {"Retry-After": "2.5"}, 2.5),  # 429 with header → Retry-After float
+        (429, {}, True),  # 429 without header → default backoff
+        (403, {}, False),  # other 4xx → do not retry
+    ],
+    ids=["429-retry-after", "429-no-header", "403-no-retry"],
+)
+def test_should_retry(status_code, headers, expected):
+    """should_retry returns Retry-After float, True, or False depending on the response."""
     from tiled.client.utils import should_retry
 
     request = httpx.Request("GET", "http://example.com/test")
-    response = httpx.Response(429, headers={"Retry-After": "2.5"}, request=request)
-    exc = httpx.HTTPStatusError("rate limited", request=request, response=response)
-    result = should_retry(exc)
-    assert result == 2.5
-
-
-def test_should_retry_returns_true_for_429_without_header():
-    """should_retry returns True (use default backoff) for 429 without Retry-After."""
-    from tiled.client.utils import should_retry
-
-    request = httpx.Request("GET", "http://example.com/test")
-    response = httpx.Response(429, request=request)
-    exc = httpx.HTTPStatusError("rate limited", request=request, response=response)
-    result = should_retry(exc)
-    assert result is True
-
-
-def test_should_retry_does_not_retry_other_4xx():
-    """should_retry returns False for non-429 client errors."""
-    from tiled.client.utils import should_retry
-
-    request = httpx.Request("GET", "http://example.com/test")
-    response = httpx.Response(403, request=request)
-    exc = httpx.HTTPStatusError("forbidden", request=request, response=response)
-    result = should_retry(exc)
-    assert result is False
+    response = httpx.Response(status_code, headers=headers, request=request)
+    exc = httpx.HTTPStatusError("error", request=request, response=response)
+    assert should_retry(exc) == expected
 
 
 def test_handle_error_lets_429_propagate():
@@ -773,30 +688,6 @@ def test_handle_error_lets_429_propagate():
 
     assert not isinstance(exc_info.value, ClientError)
     assert exc_info.value.response.status_code == 429
-
-
-def test_retry_context_retries_on_429():
-    """retry_context retries when a 429 HTTPStatusError is raised."""
-    stamina.set_active(True)
-    try:
-        attempts_made = 0
-        for attempt in retry_context():
-            with attempt:
-                attempts_made += 1
-                if attempts_made < 3:
-                    request = httpx.Request("GET", "http://example.com/data")
-                    response = httpx.Response(
-                        429,
-                        headers={"Retry-After": "0"},
-                        request=request,
-                    )
-                    raise httpx.HTTPStatusError(
-                        "Too Many Requests", request=request, response=response
-                    )
-        # Should have retried twice then succeeded on attempt 3.
-        assert attempts_made == 3
-    finally:
-        stamina.set_active(False)
 
 
 def test_retry_context_logs_429_retry(caplog):

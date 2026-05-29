@@ -5,7 +5,6 @@ import sys
 import uuid
 from collections import defaultdict
 from collections.abc import Hashable
-from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
@@ -184,7 +183,7 @@ class _LoggingAttempt:
                 exc_val,
             )
             if self._context is not None:
-                _signal_retry(self._context)
+                self._context.signal_retry()
             elif self._standalone is not None:
                 self._standalone.show()
         return result
@@ -195,7 +194,7 @@ def retry_context(context=None):
     # When no context is provided (e.g. from_any_uri probing the server before
     # a Context object exists), we still want to show the retry indicator.
     # Use a standalone indicator owned by this generator so cleanup is guaranteed.
-    standalone = _StandaloneRetryIndicator() if context is None else None
+    standalone = StandaloneRetryIndicator() if context is None else None
     it = stamina.retry_context(
         on=should_retry,
         attempts=TILED_RETRY_ATTEMPTS,
@@ -219,7 +218,7 @@ def retry_context(context=None):
         if standalone is not None:
             standalone.reset()
         elif context is not None:
-            _signal_retry_resolved(context)
+            context.signal_retry_resolved()
 
 
 def should_poll_for_tokens(exception: Exception) -> bool:
@@ -537,104 +536,36 @@ def slices_to_dask_chunks(slice_dict, shape):
     return dask_chunks
 
 
-def _is_interactive():
+def is_interactive():
     """Return True when running in an interactive Python session (REPL, IPython, Jupyter)."""
-    try:
-        get_ipython = builtins.__dict__.get("get_ipython", None)
-        if get_ipython is not None and get_ipython() is not None:
-            return True
-    except Exception:
-        pass
+    import importlib.util
+
+    if importlib.util.find_spec("IPython"):
+        # IPython is installed
+        from IPython import get_ipython
+
+        if get_ipython():
+            return True  # This Python process is an IPython process
+
     return hasattr(sys, "ps1")
 
 
-def _is_jupyter():
+def is_jupyter():
     """Return True when running inside a Jupyter notebook kernel."""
-    try:
-        get_ipython = builtins.__dict__.get("get_ipython", None)
-        if get_ipython is not None:
-            ip = get_ipython()
-            if ip is not None and "ZMQInteractiveShell" in type(ip).__name__:
+    import importlib.util
+
+    if importlib.util.find_spec("IPython"):
+        # IPython is installed
+        from IPython import get_ipython
+
+        if ip := get_ipython():
+            if "ZMQInteractiveShell" in type(ip).__name__:
                 return True
-    except Exception:
-        pass
+
     return False
 
 
-@contextmanager
-def tracking_progress(context, total):
-    """Context manager that displays a rich progress bar during a dask compute.
-
-    While the context is active, ``context._progress_state`` is set to a
-    ``_ProgressState`` instance so that fetch methods
-    (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
-    and show a retry indicator.  The slot is reset to ``None`` on exit.
-
-    A bar is shown only when ``context.show_progress`` is True *and*
-    ``total > 1``.  Otherwise this is a no-op.
-
-    Parameters
-    ----------
-    context : tiled Context
-        Must expose ``show_progress`` and ``_progress_state`` attributes.
-    total : int
-        Number of fetch tasks (chunks / partitions) expected.
-
-    Example
-    -------
-    >>> dask_arr = client.read()          # returns dask array, no fetch yet
-    >>> n = math.prod(len(c) for c in dask_arr.chunks)
-    >>> with tracking_progress(context, total=n):
-    ...     result = dask_arr.compute()
-    """
-    if total <= 1 or not context.show_progress or not _is_interactive():
-        yield
-        return
-
-    # If an outer progress bar is already active, defer to it (no nested bars).
-    if context._progress_state is not None:
-        yield
-        return
-
-    from rich.console import Console
-    from rich.live import Live
-    from rich.progress import (
-        BarColumn,
-        MofNCompleteColumn,
-        Progress,
-        TimeRemainingColumn,
-    )
-    from rich.spinner import Spinner
-
-    # In Jupyter notebooks, use force_jupyter so Rich uses its HTML display
-    # path instead of ANSI escape codes (which Jupyter renders as two lines).
-    # In IPython terminal and plain REPLs, use force_terminal so the bar
-    # renders even though IPython replaces stderr with a non-TTY stream.
-    if _is_jupyter():
-        console = Console(stderr=True, force_jupyter=True)
-    else:
-        console = Console(stderr=True, force_terminal=True)
-    progress = Progress(
-        "[progress.description]{task.description}",
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    )
-    task_id = progress.add_task("Fetching data…", total=total)
-    spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
-    state = _ProgressState(progress, task_id, spinner)
-
-    with Live(progress, transient=True, console=console) as live:
-        state._live = live
-        context._progress_state = state
-        try:
-            yield state
-        finally:
-            context._progress_state = None
-
-
-class _ProgressState:
+class ProgressState:
     """Holds progress bar state and retry indicator for fetch methods.
 
     Fetch methods call ``advance()`` after each successful request and
@@ -673,7 +604,7 @@ class _ProgressState:
             self._live.update(self._progress)
 
 
-class _StandaloneRetryIndicator:
+class StandaloneRetryIndicator:
     """Shows a spinner on stderr while retries are in progress.
 
     On a TTY or in a Jupyter notebook: starts a Rich ``Live`` spinner on first
@@ -705,12 +636,12 @@ class _StandaloneRetryIndicator:
         if self._showing:
             return
         self._showing = True
-        if self._stderr_is_tty() or _is_jupyter():
+        if self._stderr_is_tty() or is_jupyter():
             from rich.console import Console
             from rich.live import Live
             from rich.spinner import Spinner
 
-            if _is_jupyter():
+            if is_jupyter():
                 console = Console(stderr=True, force_jupyter=True, highlight=False)
             else:
                 console = Console(stderr=True, highlight=False)
@@ -733,24 +664,3 @@ class _StandaloneRetryIndicator:
         if self._live is not None:
             self._live.stop()
             self._live = None
-
-
-def _signal_retry(context):
-    """Signal that a retry is in progress — show indicator in the appropriate place."""
-    if (ps := context._progress_state) is not None:
-        ps.show_retrying()
-    else:
-        # Always show retry notice regardless of show_progress / _is_interactive().
-        # Silently retrying without any feedback is confusing in every context.
-        if context._retry_indicator is None:
-            context._retry_indicator = _StandaloneRetryIndicator()
-        context._retry_indicator.show()
-
-
-def _signal_retry_resolved(context):
-    """Signal that retries have resolved — hide any retry indicator."""
-    if (ps := context._progress_state) is not None:
-        ps.hide_retrying()
-    if context._retry_indicator is not None:
-        context._retry_indicator.reset()
-        context._retry_indicator = None

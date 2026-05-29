@@ -11,7 +11,7 @@ from ..structures.core import Spec
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .base import BaseClient
 from .container import Container
-from .utils import handle_error, tracking_progress
+from .utils import handle_error
 
 LENGTH_LIMIT_FOR_WIDE_TABLE_OPTIMIZATION = 1_000_000
 
@@ -138,7 +138,7 @@ class DatasetClient(DaskDatasetClient):
         for name, var in list(ds.data_vars.items()) + list(ds.coords.items()):
             if name in direct_fetch_names and dask.is_dask_collection(var.data):
                 total += math.prod(len(c) for c in var.data.chunks)
-        with tracking_progress(self.context, total):
+        with self.context.tracking_progress(total):
             return ds.load()
 
 

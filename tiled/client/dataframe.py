@@ -18,7 +18,6 @@ from .utils import (
     export_util,
     handle_error,
     retry_context,
-    tracking_progress,
 )
 
 if TYPE_CHECKING:
@@ -120,7 +119,7 @@ class _DaskDataFrameClient(BaseClient):
         url_length_for_get_request = len(URL_PATH) + sum(
             _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
         )
-        with self.context._concurrent_request_semaphore:
+        with self.context.throttle():
             if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
                 for attempt in retry_context(self.context):
                     with attempt:
@@ -146,7 +145,7 @@ class _DaskDataFrameClient(BaseClient):
                                 params=params,
                             )
                         ).read()
-        if (ps := self.context._progress_state) is not None:
+        if (ps := self.context.progress_state) is not None:
             ps.advance()
         return deserialize_arrow(content)
 
@@ -343,7 +342,7 @@ class DaskDataFrameClient(_DaskDataFrameClient):
     def compute(self):
         "Alias to client.read().compute()"
         ddf = self.read()
-        with tracking_progress(self.context, total=ddf.npartitions):
+        with self.context.tracking_progress(total=ddf.npartitions):
             return ddf.compute()
 
 
@@ -361,5 +360,5 @@ class DataFrameClient(_DaskDataFrameClient):
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
         ddf = super().read(columns)
-        with tracking_progress(self.context, total=ddf.npartitions):
+        with self.context.tracking_progress(total=ddf.npartitions):
             return ddf.compute()

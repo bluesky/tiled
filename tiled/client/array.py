@@ -20,7 +20,6 @@ from .utils import (
     params_from_slice,
     retry_context,
     slices_to_dask_chunks,
-    tracking_progress,
 )
 
 if TYPE_CHECKING:
@@ -131,7 +130,7 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
-        with self.context._concurrent_request_semaphore:
+        with self.context.throttle():
             for attempt in retry_context(self.context):
                 with attempt:
                     content = handle_error(
@@ -141,7 +140,7 @@ class _DaskArrayClient(BaseClient):
                             params=params,
                         )
                     ).read()
-        if (ps := self.context._progress_state) is not None:
+        if (ps := self.context.progress_state) is not None:
             ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
@@ -179,7 +178,7 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": slice.to_numpy_str()} if slice else {})
-        with self.context._concurrent_request_semaphore:
+        with self.context.throttle():
             for attempt in retry_context(self.context):
                 with attempt:
                     content = handle_error(
@@ -189,7 +188,7 @@ class _DaskArrayClient(BaseClient):
                             params=params,
                         )
                     ).read()
-        if (ps := self.context._progress_state) is not None:
+        if (ps := self.context.progress_state) is not None:
             ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
@@ -505,7 +504,7 @@ class DaskArrayClient(_DaskArrayClient):
         "Alias to client.read().compute()"
         dask_arr = self.read()
         n = math.prod(len(c) for c in dask_arr.chunks)
-        with tracking_progress(self.context, total=n):
+        with self.context.tracking_progress(total=n):
             return dask_arr.compute()
 
 
@@ -518,7 +517,7 @@ class ArrayClient(DaskArrayClient):
         """
         dask_arr = super().read(slice)
         n = math.prod(len(c) for c in dask_arr.chunks)
-        with tracking_progress(self.context, total=n):
+        with self.context.tracking_progress(total=n):
             return dask_arr.compute()
 
     def read_block(self, block, slice=None):
