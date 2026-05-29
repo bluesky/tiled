@@ -548,6 +548,19 @@ def _is_interactive():
     return hasattr(sys, "ps1")
 
 
+def _is_jupyter():
+    """Return True when running inside a Jupyter notebook kernel."""
+    try:
+        get_ipython = builtins.__dict__.get("get_ipython", None)
+        if get_ipython is not None:
+            ip = get_ipython()
+            if ip is not None and "ZMQInteractiveShell" in type(ip).__name__:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 @contextmanager
 def tracking_progress(context, total):
     """Context manager that displays a rich progress bar during a dask compute.
@@ -593,9 +606,14 @@ def tracking_progress(context, total):
     )
     from rich.spinner import Spinner
 
-    # Use stderr with force_terminal so the bar renders in IPython, where
-    # stdout is captured by the kernel and not a raw TTY.
-    console = Console(stderr=True, force_terminal=True)
+    # In Jupyter notebooks, use force_jupyter so Rich uses its HTML display
+    # path instead of ANSI escape codes (which Jupyter renders as two lines).
+    # In IPython terminal and plain REPLs, use force_terminal so the bar
+    # renders even though IPython replaces stderr with a non-TTY stream.
+    if _is_jupyter():
+        console = Console(stderr=True, force_jupyter=True)
+    else:
+        console = Console(stderr=True, force_terminal=True)
     progress = Progress(
         "[progress.description]{task.description}",
         BarColumn(),
@@ -658,11 +676,11 @@ class _ProgressState:
 class _StandaloneRetryIndicator:
     """Shows a spinner on stderr while retries are in progress.
 
-    On a TTY: starts a Rich ``Live`` spinner on first ``show()`` and stops it
-    on ``reset()``.  The ``Live`` instance runs for the full retry duration —
-    created once, never flickered — because the connection-retry path never
-    interleaves with interactive prompts (auth prompts come only after a
-    successful connection).
+    On a TTY or in a Jupyter notebook: starts a Rich ``Live`` spinner on first
+    ``show()`` and stops it on ``reset()``.  The ``Live`` instance runs for the
+    full retry duration — created once, never flickered — because the
+    connection-retry path never interleaves with interactive prompts (auth
+    prompts come only after a successful connection).
 
     On non-TTY stderr (CI, pipes): writes a plain "Retrying…" line once.
 
@@ -687,12 +705,15 @@ class _StandaloneRetryIndicator:
         if self._showing:
             return
         self._showing = True
-        if self._stderr_is_tty():
+        if self._stderr_is_tty() or _is_jupyter():
             from rich.console import Console
             from rich.live import Live
             from rich.spinner import Spinner
 
-            console = Console(stderr=True, highlight=False)
+            if _is_jupyter():
+                console = Console(stderr=True, force_jupyter=True, highlight=False)
+            else:
+                console = Console(stderr=True, highlight=False)
             spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
             self._live = Live(spinner, console=console, transient=True)
             self._live.start()

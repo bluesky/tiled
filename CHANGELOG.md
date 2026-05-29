@@ -11,8 +11,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Rich progress bar shown during multi-chunk array, dataframe, and dataset
   fetches. The bar is transient and only appears in interactive sessions
   (REPL, IPython, Jupyter). It can be disabled per-context or globally.
+  Jupyter notebooks use Rich's HTML display path to avoid duplicate lines.
 - Animated retry spinner shown on stderr whenever a stamina retry is scheduled
   for any tiled client request (connection failures, 5xx errors, 429 rate limits).
+  The spinner is animated in Jupyter notebooks as well as TTY terminals.
 - Respect the `Retry-After` header on HTTP 429 (Too Many Requests) responses.
 
 
