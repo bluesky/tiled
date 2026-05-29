@@ -169,9 +169,7 @@ class CompositeClient(Container):
                 if (variables is None) or (part in variables):
                     structure = item["attributes"]["structure"]
                     if "chunks" in structure and structure["chunks"]:
-                        total_fetches += math.prod(
-                            len(c) for c in structure["chunks"]
-                        )
+                        total_fetches += math.prod(len(c) for c in structure["chunks"])
                     else:
                         total_fetches += 1
             elif sf == StructureFamily.awkward:

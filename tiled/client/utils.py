@@ -19,16 +19,16 @@ import msgpack
 import stamina
 import stamina.instrumentation
 
+from ..structures.core import Spec
+from ..type_aliases import Chunks
+from ..utils import path_from_uri
+
 # Disable stamina's default retry logging hook.  Tiled handles its own retry
 # messages via the _LoggingAttempt wrapper (routed to tiled.client at DEBUG).
 # Other libraries that register their own stamina hooks are not affected —
 # only the built-in default hook (which emits "stamina.retry_scheduled" at
 # WARNING) is removed.
 stamina.instrumentation.set_on_retry_hooks([])
-
-from ..structures.core import Spec
-from ..type_aliases import Chunks
-from ..utils import path_from_uri
 
 MSGPACK_MIME_TYPE = "application/x-msgpack"
 
