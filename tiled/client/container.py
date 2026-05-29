@@ -654,6 +654,7 @@ class Container(BaseClient, collections.abc.Mapping, IndexersMixin):
             self.context.http_client.get,
             self.item["links"]["full"],
             params=params,
+            context=self.context,
         )
 
     def _ipython_key_completions_(self):

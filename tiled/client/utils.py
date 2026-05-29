@@ -1,4 +1,5 @@
 import builtins
+import io
 import logging
 import os
 import sys
@@ -211,7 +212,123 @@ class UnknownStructureFamily(KeyError):
     pass
 
 
-def export_util(file, format, get, link, params):
+# Minimum response size (bytes) to bother showing a streaming progress bar.
+_PROGRESS_THRESHOLD = 10 * 1024 * 1024  # 10 MiB
+
+
+def _streaming_fetch(context, method, url, *, params=None, headers=None, json=None, output=None):
+    """Fetch a URL with a streaming byte-level progress bar.
+
+    If ``context.show_progress`` is True and the session is interactive, this
+    streams the response and renders a Rich progress bar showing bytes
+    downloaded, transfer speed, and ETA.  Otherwise it falls back to a normal
+    buffered request.
+
+    Parameters
+    ----------
+    context : tiled Context
+    method : str
+        HTTP method ("GET" or "POST").
+    url : str
+        URL path to request.
+    params : dict, optional
+        Query parameters.
+    headers : dict, optional
+        Extra request headers.
+    json : any, optional
+        JSON-serializable body (for POST requests).
+    output : path-like or writable buffer, optional
+        If given, data is written here and ``None`` is returned.
+        If ``None``, the response bytes are returned.
+
+    Returns
+    -------
+    bytes or None
+        The response body if ``output`` is None, else None.
+    """
+    show = context.show_progress and _is_interactive()
+
+    # Build kwargs shared by both paths.
+    _request_kwargs = {"params": params, "headers": headers}
+    if json is not None:
+        _request_kwargs["json"] = json
+
+    if not show:
+        # Fast path: buffered request, no progress bar.
+        for attempt in retry_context():
+            with attempt:
+                response = handle_error(
+                    context.http_client.request(method, url, **_request_kwargs)
+                )
+                content = response.read()
+        if output is not None:
+            if isinstance(output, (str, Path)):
+                with open(output, "wb") as f:
+                    f.write(content)
+            else:
+                output.write(content)
+            return None
+        return content
+
+    # Streaming path with progress bar.
+    from rich.progress import (
+        BarColumn,
+        DownloadColumn,
+        Progress,
+        TimeRemainingColumn,
+        TransferSpeedColumn,
+    )
+
+    for attempt in retry_context():
+        with attempt:
+            with context.http_client.stream(
+                method, url, **_request_kwargs
+            ) as response:
+                handle_error(response)
+                total = int(response.headers.get("Content-Length", 0))
+                if total and total < _PROGRESS_THRESHOLD:
+                    # Small response — don't bother with a progress bar.
+                    content = response.read()
+                    if output is not None:
+                        if isinstance(output, (str, Path)):
+                            with open(output, "wb") as f:
+                                f.write(content)
+                        else:
+                            output.write(content)
+                        return None
+                    return content
+
+                with Progress(
+                    "[progress.description]{task.description}",
+                    BarColumn(),
+                    DownloadColumn(),
+                    TransferSpeedColumn(),
+                    TimeRemainingColumn(),
+                    transient=True,
+                ) as progress:
+                    task_id = progress.add_task(
+                        "Downloading…", total=total or None
+                    )
+                    if isinstance(output, (str, Path)):
+                        with open(output, "wb") as f:
+                            for chunk in response.iter_bytes():
+                                f.write(chunk)
+                                progress.advance(task_id, len(chunk))
+                        return None
+                    elif output is not None:
+                        for chunk in response.iter_bytes():
+                            output.write(chunk)
+                            progress.advance(task_id, len(chunk))
+                        return None
+                    else:
+                        buf = io.BytesIO()
+                        for chunk in response.iter_bytes():
+                            buf.write(chunk)
+                            progress.advance(task_id, len(chunk))
+                        return buf.getvalue()
+
+
+def export_util(file, format, get, link, params, context=None):
     """
     Download client data in some format and write to a file.
 
@@ -232,6 +349,9 @@ def export_util(file, format, get, link, params):
     params : dict
         Additional parameters for the request, which may be used to subselect
         or slice, for example.
+    context : tiled Context, optional
+        If provided and show_progress is enabled, uses streaming with a
+        byte-level progress bar.
     """
 
     # The server accpets a media type like "text/csv" or a file extension like
@@ -246,38 +366,40 @@ def export_util(file, format, get, link, params):
             format = ".".join(
                 suffix[1:] for suffix in Path(file).suffixes
             )  # e.g. "csv"
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    get(
-                        link,
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "format": format,
-                            **params,
-                        },
-                    )
-                ).read()
-        with open(file, "wb") as buffer:
-            buffer.write(content)
+        request_params = {
+            **parse_qs(urlparse(link).query),
+            "format": format,
+            **params,
+        }
+        if context is not None and context.show_progress:
+            _streaming_fetch(context, "GET", link, params=request_params, output=file)
+        else:
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        get(link, params=request_params)
+                    ).read()
+            with open(file, "wb") as buffer:
+                buffer.write(content)
     else:
         # Infer that `file` is a writeable buffer.
         if format is None:
             # We have no filepath to infer to format from.
             raise ValueError("format must be specified when file is writeable buffer")
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    get(
-                        link,
-                        params={
-                            **parse_qs(urlparse(link).query),
-                            "format": format,
-                            **params,
-                        },
-                    )
-                ).read()
-        file.write(content)
+        request_params = {
+            **parse_qs(urlparse(link).query),
+            "format": format,
+            **params,
+        }
+        if context is not None and context.show_progress:
+            _streaming_fetch(context, "GET", link, params=request_params, output=file)
+        else:
+            for attempt in retry_context():
+                with attempt:
+                    content = handle_error(
+                        get(link, params=request_params)
+                    ).read()
+            file.write(content)
 
 
 def client_for_item(

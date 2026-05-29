@@ -309,6 +309,7 @@ class _DaskDataFrameClient(BaseClient):
             self.context.http_client.get,
             self.item["links"]["full"],
             params=params,
+            context=self.context,
         )
 
     def subscribe(

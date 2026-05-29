@@ -7,7 +7,13 @@ from ndindex import ndindex
 from ..serialization.table import deserialize_arrow, serialize_arrow
 from ..utils import APACHE_ARROW_FILE_MIME_TYPE
 from .base import BaseClient
-from .utils import export_util, handle_error, params_from_slice, retry_context
+from .utils import (
+    _streaming_fetch,
+    export_util,
+    handle_error,
+    params_from_slice,
+    retry_context,
+)
 
 
 class SparseClient(BaseClient):
@@ -81,15 +87,13 @@ class SparseClient(BaseClient):
         structure = self.structure()
         url_path = self.item["links"]["full"]
         params = {**parse_qs(urlparse(url_path).query), **params_from_slice(slice)}
-        for attempt in retry_context():
-            with attempt:
-                content = handle_error(
-                    self.context.http_client.get(
-                        url_path,
-                        headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
-                        params=params,
-                    )
-                ).read()
+        content = _streaming_fetch(
+            self.context,
+            "GET",
+            url_path,
+            params=params,
+            headers={"Accept": APACHE_ARROW_FILE_MIME_TYPE},
+        )
         df = deserialize_arrow(content)
         original_shape = structure.shape
         if slice is not None:
@@ -178,4 +182,5 @@ class SparseClient(BaseClient):
             self.context.http_client.get,
             self.item["links"]["full"],
             params=params,
+            context=self.context,
         )

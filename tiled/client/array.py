@@ -472,6 +472,7 @@ class _DaskArrayClient(BaseClient):
             self.context.http_client.get,
             self.item["links"][link].format(**template_vars),
             params=params,
+            context=self.context,
         )
 
     def subscribe(
