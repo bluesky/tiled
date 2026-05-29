@@ -1,11 +1,12 @@
 import itertools as it
+import math
 import time
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 from urllib.parse import parse_qs, urlparse
 
 from ..structures.core import StructureFamily
 from .container import LENGTH_CACHE_TTL, Container
-from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context
+from .utils import MSGPACK_MIME_TYPE, handle_error, retry_context, tracking_progress
 
 if TYPE_CHECKING:
     import pyarrow
@@ -158,9 +159,45 @@ class CompositeClient(Container):
         import pandas
         import xarray
 
+        # First pass: count total fetch tasks for progress bar.
+        contents = self.get_contents()
+        total_fetches = 0
+        for part, item in contents.items():
+            sf = item["attributes"]["structure_family"]
+            if sf in {StructureFamily.array, StructureFamily.sparse}:
+                if (variables is None) or (part in variables):
+                    structure = item["attributes"]["structure"]
+                    # Count chunks: product of number of chunks per dimension.
+                    if "chunks" in structure and structure["chunks"]:
+                        total_fetches += math.prod(
+                            len(c) for c in structure["chunks"]
+                        )
+                    else:
+                        total_fetches += 1
+            elif sf == StructureFamily.awkward:
+                if (variables is None) or (part in variables):
+                    total_fetches += 1
+            elif sf == StructureFamily.table:
+                table_client = self.base[part]
+                columns = set(variables or table_client.columns).intersection(
+                    table_client.columns
+                )
+                if columns:
+                    # One fetch per partition.
+                    structure = item["attributes"]["structure"]
+                    total_fetches += structure.get("npartitions", 1)
+
+        with tracking_progress(self.context, total_fetches):
+            return self._read_inner(contents, variables, dim0)
+
+    def _read_inner(self, contents, variables, dim0):
+        """Inner read logic, separated so tracking_progress can wrap it."""
+        import pandas
+        import xarray
+
         array_dims = {}
         data_vars = {}
-        for part, item in self.get_contents().items():
+        for part, item in contents.items():
             # Read all or selective arrays/columns.
             if item["attributes"]["structure_family"] in {
                 StructureFamily.array,

@@ -123,6 +123,7 @@ class DatasetClient(DaskDatasetClient):
         ds = super().read(variables=variables, optimize_wide_table=optimize_wide_table)
         # Count total fetch tasks across all dask-backed variables.
         total = 0
+        print("Loading data from Tiled...")
         for var in list(ds.data_vars.values()) + list(ds.coords.values()):
             if dask.is_dask_collection(var.data):
                 total += math.prod(len(c) for c in var.data.chunks)

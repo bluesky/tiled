@@ -659,6 +659,11 @@ def tracking_progress(context, total):
         yield
         return
 
+    # If an outer progress bar is already active, defer to it (no nested bars).
+    if context._progress_state is not None:
+        yield
+        return
+
     from rich.progress import (
         BarColumn,
         MofNCompleteColumn,
