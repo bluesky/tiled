@@ -473,3 +473,58 @@ def test_show_progress_explicit_overrides_env(monkeypatch):
     monkeypatch.setenv("TILED_SHOW_PROGRESS", "1")
     with Context.from_app(app, show_progress=False) as context:
         assert context.show_progress is False
+
+
+# --- 429 Too Many Requests tests ---
+
+
+def test_should_retry_returns_retry_after_for_429():
+    """should_retry returns the Retry-After value as a float for 429 responses."""
+    from tiled.client.utils import should_retry
+
+    request = httpx.Request("GET", "http://example.com/test")
+    response = httpx.Response(
+        429, headers={"Retry-After": "2.5"}, request=request
+    )
+    exc = httpx.HTTPStatusError("rate limited", request=request, response=response)
+    result = should_retry(exc)
+    assert result == 2.5
+
+
+def test_should_retry_returns_true_for_429_without_header():
+    """should_retry returns True (use default backoff) for 429 without Retry-After."""
+    from tiled.client.utils import should_retry
+
+    request = httpx.Request("GET", "http://example.com/test")
+    response = httpx.Response(429, request=request)
+    exc = httpx.HTTPStatusError("rate limited", request=request, response=response)
+    result = should_retry(exc)
+    assert result is True
+
+
+def test_should_retry_does_not_retry_other_4xx():
+    """should_retry returns False for non-429 client errors."""
+    from tiled.client.utils import should_retry
+
+    request = httpx.Request("GET", "http://example.com/test")
+    response = httpx.Response(403, request=request)
+    exc = httpx.HTTPStatusError("forbidden", request=request, response=response)
+    result = should_retry(exc)
+    assert result is False
+
+
+def test_handle_error_lets_429_propagate():
+    """handle_error does not convert 429 into ClientError — lets it propagate for retry."""
+    from tiled.client.utils import handle_error
+
+    request = httpx.Request("GET", "http://example.com/test")
+    response = httpx.Response(
+        429, headers={"Retry-After": "5"}, request=request
+    )
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        handle_error(response)
+    # It should be a plain HTTPStatusError, not a ClientError
+    from tiled.client.utils import ClientError
+
+    assert not isinstance(exc_info.value, ClientError)
+    assert exc_info.value.response.status_code == 429

@@ -92,6 +92,9 @@ def handle_error(response):
         if response.status_code == httpx.codes.GONE:
             detail = response.reason_phrase
             raise KeyError(f"Unable to open object: likely a broken link. {detail}")
+        elif response.status_code == httpx.codes.TOO_MANY_REQUESTS:
+            # Let 429 propagate as-is so stamina can respect Retry-After.
+            raise
         elif response.status_code < httpx.codes.INTERNAL_SERVER_ERROR:
             # Include more detail that httpx does by default.
             if response.headers["Content-Type"] == "application/json":
@@ -113,9 +116,19 @@ class ClientError(httpx.HTTPStatusError):
         super().__init__(message=message, request=request, response=response)
 
 
-def should_retry(exception: Exception) -> bool:
-    # If the error is an HTTP status error, only retry on 5xx errors.
+def should_retry(exception: Exception) -> "bool | float":
     if isinstance(exception, httpx.HTTPStatusError):
+        if exception.response.status_code == 429:
+            # Respect Retry-After header from load balancer / server.
+            # Return the delay as a float so stamina uses it as the wait time.
+            retry_after = exception.response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    return float(retry_after)
+                except (ValueError, TypeError):
+                    pass
+            # No Retry-After header; retry with default backoff.
+            return True
         return exception.response.status_code >= 500
 
     # Otherwise retry on all httpx errors.
