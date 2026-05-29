@@ -323,7 +323,7 @@ def test_tracking_progress_sets_and_clears_state():
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=True) as context:
-        with patch("tiled.client.utils._is_interactive", return_value=True):
+        with patch("tiled.client.utils.is_interactive", return_value=True):
             with context.tracking_progress(total=5):
                 assert context.progress_state is not None
                 state = context.progress_state
@@ -351,7 +351,7 @@ def test_tracking_progress_nesting_is_noop():
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=True) as context:
-        with patch("tiled.client.utils._is_interactive", return_value=True):
+        with patch("tiled.client.utils.is_interactive", return_value=True):
             with context.tracking_progress(total=10):
                 outer_state = context.progress_state
                 assert outer_state is not None
@@ -408,14 +408,14 @@ def test_show_progress_explicit_overrides_env(monkeypatch):
 
 
 def test_progress_state_show_hide_retrying():
-    """_ProgressState.show_retrying/hide_retrying toggle state and update Live."""
+    """ProgressState.show_retrying/hide_retrying toggle state and update Live."""
     from unittest.mock import patch
 
     tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
     app = build_app(tree)
 
     with Context.from_app(app, show_progress=True) as context:
-        with patch("tiled.client.utils._is_interactive", return_value=True):
+        with patch("tiled.client.utils.is_interactive", return_value=True):
             with context.tracking_progress(total=5) as state:
                 assert state._retrying is False
 
@@ -437,15 +437,15 @@ def test_progress_state_show_hide_retrying():
 
 
 def test_standalone_retry_indicator_show_hide():
-    """_StandaloneRetryIndicator: plain text on non-TTY, Live spinner on TTY."""
+    """StandaloneRetryIndicator: plain text on non-TTY, Live spinner on TTY."""
     import sys
     from io import StringIO
     from unittest.mock import MagicMock, patch
 
-    from tiled.client.utils import _StandaloneRetryIndicator
+    from tiled.client.utils import StandaloneRetryIndicator
 
     # Non-TTY: plain text written once, reset() is a no-op
-    indicator = _StandaloneRetryIndicator()
+    indicator = StandaloneRetryIndicator()
     assert indicator._showing is False
 
     fake_stderr = StringIO()
@@ -469,7 +469,7 @@ def test_standalone_retry_indicator_show_hide():
 
     # TTY: show() starts a Live spinner; reset() stops it
     mock_live = MagicMock()
-    indicator2 = _StandaloneRetryIndicator()
+    indicator2 = StandaloneRetryIndicator()
     with patch("rich.live.Live", return_value=mock_live):
         tty_stderr = MagicMock()
         tty_stderr.isatty = lambda: True

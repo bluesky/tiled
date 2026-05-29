@@ -636,15 +636,22 @@ class StandaloneRetryIndicator:
         if self._showing:
             return
         self._showing = True
-        if self._stderr_is_tty() or is_jupyter():
+        if is_jupyter():
+            try:
+                import ipywidgets as widgets
+                from IPython.display import display
+
+                self._live = widgets.Label(value="⟳ Retrying…")
+                display(self._live)
+            except ImportError:
+                sys.stderr.write("Retrying…\n")
+                sys.stderr.flush()
+        elif self._stderr_is_tty():
             from rich.console import Console
             from rich.live import Live
             from rich.spinner import Spinner
 
-            if is_jupyter():
-                console = Console(stderr=True, force_jupyter=True, highlight=False)
-            else:
-                console = Console(stderr=True, highlight=False)
+            console = Console(stderr=True, highlight=False)
             spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
             self._live = Live(spinner, console=console, transient=True)
             self._live.start()
@@ -662,5 +669,11 @@ class StandaloneRetryIndicator:
             return
         self._showing = False
         if self._live is not None:
-            self._live.stop()
+            if is_jupyter():
+                try:
+                    self._live.close()
+                except Exception:
+                    pass
+            else:
+                self._live.stop()
             self._live = None

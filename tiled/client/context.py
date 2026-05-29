@@ -484,7 +484,7 @@ class Context:
         >>> with context.tracking_progress(total=n):
         ...     result = dask_arr.compute()
         """
-        from .utils import ProgressState, is_interactive, is_jupyter
+        from .utils import is_interactive, is_jupyter
 
         if total <= 1 or not self.show_progress or not is_interactive():
             yield
@@ -495,6 +495,101 @@ class Context:
             yield
             return
 
+        if is_jupyter():
+            yield from self._tracking_progress_jupyter(total)
+        else:
+            yield from self._tracking_progress_terminal(total)
+
+    def _tracking_progress_jupyter(self, total):
+        """Progress bar for Jupyter notebooks using ipywidgets.IntProgress.
+
+        Avoids Rich's Live/Console entirely in Jupyter to prevent the blank-line
+        and ZMQ socket issues that arise from Rich's ipython_display() path.
+        """
+        try:
+            import ipywidgets as widgets
+            from IPython.display import display
+        except ImportError:
+            # ipywidgets not available — fall back to terminal path
+            yield from self._tracking_progress_terminal(total)
+            return
+
+        bar = widgets.IntProgress(
+            value=0,
+            min=0,
+            max=total,
+            description="Fetching:",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="300px", height="16px", flex="0 0 auto"),
+        )
+        label = widgets.HTML(
+            f"<span style='font-size:var(--jp-widgets-font-size)'>0/{total} -:--:--</span>",
+            layout=widgets.Layout(width="180px"),
+        )
+        box = widgets.HBox(
+            [bar, label],
+            layout=widgets.Layout(align_items="center"),
+        )
+        display(box)
+
+        # Minimal ProgressState-compatible shim backed by the ipywidget
+        class _JupyterProgressState:
+            __slots__ = ("_bar", "_label", "_total", "_completed", "_start")
+
+            def __init__(self, bar, label, total):
+                self._bar = bar
+                self._label = label
+                self._total = total
+                self._completed = 0
+                self._start = None
+
+            def _fmt(self, suffix=""):
+                import time
+
+                count = f"{self._completed}/{self._total}"
+                if self._completed == 0 or self._start is None:
+                    eta = "-:--:--"
+                else:
+                    elapsed = time.monotonic() - self._start
+                    rate = self._completed / elapsed
+                    remaining_secs = (self._total - self._completed) / rate
+                    h, rem = divmod(int(remaining_secs), 3600)
+                    m, s = divmod(rem, 60)
+                    eta = f"{h}:{m:02d}:{s:02d}" if h else f"0:{m:02d}:{s:02d}"
+                text = f"{count} {eta}{suffix}"
+                return (
+                    f"<span style='font-size:var(--jp-widgets-font-size)'>{text}</span>"
+                )
+
+            def advance(self):
+                import time
+
+                if self._start is None:
+                    self._start = time.monotonic()
+                self._completed += 1
+                self._bar.value = self._completed
+                self._label.value = self._fmt()
+
+            def show_retrying(self):
+                self._label.value = self._fmt(" Retrying…")
+
+            def hide_retrying(self):
+                self._label.value = self._fmt()
+
+        state = _JupyterProgressState(bar, label, total)
+        self._progress_state = state
+        try:
+            yield state
+            # Top up in case dask.distributed workers dropped advance() calls
+            remaining = total - state._completed
+            for _ in range(remaining):
+                state.advance()
+        finally:
+            box.close()
+            self._progress_state = None
+
+    def _tracking_progress_terminal(self, total):
+        """Progress bar for terminal / IPython terminal using Rich Live."""
         from rich.console import Console
         from rich.live import Live
         from rich.progress import (
@@ -505,14 +600,11 @@ class Context:
         )
         from rich.spinner import Spinner
 
-        # In Jupyter notebooks, use force_jupyter so Rich uses its HTML display
-        # path instead of ANSI escape codes (which Jupyter renders as two lines).
-        # In IPython terminal and plain REPLs, use force_terminal so the bar
-        # renders even though IPython replaces stderr with a non-TTY stream.
-        if is_jupyter():
-            console = Console(stderr=True, force_jupyter=True)
-        else:
-            console = Console(stderr=True, force_terminal=True)
+        from .utils import ProgressState
+
+        # force_terminal so the bar renders even though IPython replaces
+        # stderr with a non-TTY stream in the terminal.
+        console = Console(stderr=True, force_terminal=True)
         progress = Progress(
             "[progress.description]{task.description}",
             BarColumn(),
@@ -530,6 +622,11 @@ class Context:
             try:
                 yield state
             finally:
+                # Top up in case dask.distributed workers dropped advance() calls
+                completed = progress.tasks[task_id].completed
+                remaining = total - completed
+                if remaining > 0:
+                    progress.advance(task_id, remaining)
                 self._progress_state = None
 
     @property

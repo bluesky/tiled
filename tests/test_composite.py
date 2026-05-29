@@ -679,3 +679,102 @@ def test_composite_validator(tree):
                 shape=sps_arr.shape,
                 specs=["composite"],
             )
+
+
+# ---------------------------------------------------------------------------
+# Progress bar total counting
+# ---------------------------------------------------------------------------
+
+
+def test_array_fetch_count(tmp_path):
+    """ArrayClient.fetch_count() returns the correct number of HTTP requests.
+
+    Small arrays (below RESPONSE_BYTESIZE_LIMIT) always need 1 request.
+    Large arrays are split by split_slice, so fetch_count() > 1.
+    We patch RESPONSE_BYTESIZE_LIMIT to a small value to exercise both paths
+    without allocating large arrays.
+    """
+    from unittest.mock import patch
+
+    from tiled.client.array import ArrayClient
+    from tiled.utils import ensure_uri
+
+    SMALL_LIMIT = 100  # bytes; (3,4)*float64=96B < limit, (10,10)*float64=800B > limit
+
+    tree = in_memory(writable_storage=[ensure_uri(tmp_path / "data")])
+    app = build_app(tree)
+    with Context.from_app(app, show_progress=False) as ctx:
+        client = from_context(ctx)
+        client.write_array(rng.random((3, 4)), key="small")  # 96 B < 100
+        client.write_array(rng.random((10, 10)), key="large")  # 800 B > 100
+
+        with patch.object(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", SMALL_LIMIT):
+            assert client["small"].fetch_count() == 1
+            assert client["large"].fetch_count() > 1
+
+
+def test_composite_progress_total_mixed_small_and_large_arrays(tmp_path):
+    """Progress bar total equals sum of fetch_count() across all arrays in a composite.
+
+    Covers both small arrays (1 request each) and large arrays (multiple requests),
+    ensuring the composite uses fetch_count() rather than dask chunk-boundary counts.
+    We patch RESPONSE_BYTESIZE_LIMIT to 100 bytes so the large/small boundary is
+    reachable with small test arrays.  Also verifies that when a subset of variables
+    is requested, only those variables are counted.
+    """
+    from contextlib import contextmanager
+    from unittest.mock import patch
+
+    from tiled.client.array import ArrayClient
+    from tiled.utils import ensure_uri
+
+    SMALL_LIMIT = 100  # bytes; (3,4)*float64=96B < limit, (10,10)*float64=800B > limit
+
+    tree = in_memory(writable_storage=[ensure_uri(tmp_path / "data")])
+    app = build_app(tree)
+    with Context.from_app(app, show_progress=False) as ctx:
+        client = from_context(ctx)
+        z = client.create_container(key="z", specs=["composite"])
+        z.write_array(rng.random((3, 4)), key="small_a")  # 96 B → 1 request
+        z.write_array(rng.random((3, 4)), key="small_b")  # 96 B → 1 request
+        z.write_array(rng.random((10, 10)), key="large_a")  # 800 B → multiple requests
+        z.write_array(rng.random((10, 10)), key="large_b")  # 800 B → multiple requests
+
+        with patch.object(ArrayClient, "RESPONSE_BYTESIZE_LIMIT", SMALL_LIMIT):
+            composite = from_context(ctx)["z"]
+
+            def capture_outermost_total(variables=None):
+                depth = [0]
+                outermost_totals = []
+                original_tp = ctx.tracking_progress
+
+                @contextmanager
+                def capturing_tp(total):
+                    is_outermost = depth[0] == 0
+                    depth[0] += 1
+                    if is_outermost:
+                        outermost_totals.append(total)
+                    with original_tp(total) as s:
+                        yield s
+                    depth[0] -= 1
+
+                with patch("tiled.client.utils.is_interactive", return_value=True):
+                    with patch.object(ctx, "tracking_progress", capturing_tp):
+                        ctx.show_progress = True
+                        composite.read(variables=variables)
+                        ctx.show_progress = False
+
+                return outermost_totals
+
+            # All four arrays
+            all_keys = ("small_a", "small_b", "large_a", "large_b")
+            expected_all = sum(composite.base[k].fetch_count() for k in all_keys)
+            assert capture_outermost_total() == [expected_all]
+
+            # Subset: one small, one large
+            subset = ["small_a", "large_b"]
+            expected_subset = sum(composite.base[k].fetch_count() for k in subset)
+            assert capture_outermost_total(variables=subset) == [expected_subset]
+
+            # Single variable
+            assert capture_outermost_total(variables=["small_b"]) == [1]

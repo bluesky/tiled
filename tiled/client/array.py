@@ -217,6 +217,30 @@ class _DaskArrayClient(BaseClient):
         )
         return dask_array
 
+    def fetch_count(self, slice=None) -> int:
+        """Return the number of HTTP requests that read(slice) will make.
+
+        Mirrors the split logic in read() so that callers (e.g. CompositeClient)
+        can compute an accurate progress-bar total without triggering any fetches.
+        """
+        arr_slice = NDSlice(slice).expand_for_shape(self.shape)
+        exp_shape = arr_slice.shape_after_slice(self.shape)
+        if 0 in exp_shape:
+            return 0
+        total_bytes = math.prod(exp_shape) * self.dtype.itemsize
+        if total_bytes < self.RESPONSE_BYTESIZE_LIMIT:
+            return 1
+        chunk_bounds = tuple(
+            tuple(itertools.accumulate(axis_chunks, initial=0))
+            for axis_chunks in self.chunks
+        )
+        indexed_slices = split_slice(
+            arr_slice,
+            max_size=self.RESPONSE_BYTESIZE_LIMIT // self.dtype.itemsize,
+            pref_splits=chunk_bounds,
+        )
+        return len(indexed_slices)
+
     def read(self, slice=None):
         """Access the entire array or its slice
 
@@ -516,7 +540,7 @@ class ArrayClient(DaskArrayClient):
         Access the entire array or a slice.
         """
         dask_arr = super().read(slice)
-        n = math.prod(len(c) for c in dask_arr.chunks)
+        n = self.fetch_count(slice)
         with self.context.tracking_progress(total=n):
             return dask_arr.compute()
 
