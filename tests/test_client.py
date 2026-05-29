@@ -328,3 +328,140 @@ def test_semaphore_limits_concurrent_partition_fetches():
 
     assert sem.peak <= MAX_CONNECTIONS
     assert sem.peak > 0
+
+
+# --- Progress bar tests ---
+
+
+def test_tracking_progress_sets_and_clears_state():
+    """tracking_progress sets _progress_state during the context and clears it after."""
+    from unittest.mock import patch
+    from tiled.client.utils import tracking_progress
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        with patch("tiled.client.utils._is_interactive", return_value=True):
+            with tracking_progress(context, total=5):
+                assert context._progress_state is not None
+                progress, task_id = context._progress_state
+                assert task_id is not None
+
+        # After exit, state is cleared
+        assert context._progress_state is None
+
+
+def test_tracking_progress_noop_when_show_progress_false():
+    """tracking_progress is a no-op when show_progress is False."""
+    from tiled.client.utils import tracking_progress
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=False) as context:
+        with tracking_progress(context, total=10):
+            assert context._progress_state is None
+
+
+def test_tracking_progress_nesting_is_noop():
+    """Inner tracking_progress defers to outer (no nested bars)."""
+    from unittest.mock import MagicMock, patch
+    from tiled.client.utils import tracking_progress
+
+    tree = MapAdapter({"data": ArrayAdapter.from_array(numpy.zeros((10,)))})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=True) as context:
+        with patch("tiled.client.utils._is_interactive", return_value=True):
+            with tracking_progress(context, total=10):
+                outer_state = context._progress_state
+                assert outer_state is not None
+
+                # Inner tracking_progress should NOT overwrite
+                with tracking_progress(context, total=5):
+                    assert context._progress_state is outer_state
+
+            # After outer exits, state is cleared
+            assert context._progress_state is None
+
+
+def test_streaming_fetch_returns_correct_bytes():
+    """_streaming_fetch returns correct response bytes with show_progress=False."""
+    from tiled.client.utils import _streaming_fetch
+
+    arr = numpy.arange(100, dtype="float64")
+    tree = MapAdapter({"data": ArrayAdapter.from_array(arr)})
+    app = build_app(tree)
+
+    with Context.from_app(app, show_progress=False) as context:
+        client = from_context(context)["data"]
+        url = client.item["links"]["full"]
+        content = _streaming_fetch(
+            context,
+            "GET",
+            url,
+            params={"expected_shape": "100"},
+            headers={"Accept": "application/octet-stream"},
+        )
+        result = numpy.frombuffer(content, dtype="float64")
+        numpy.testing.assert_array_equal(result, arr)
+
+
+def test_streaming_fetch_writes_to_file(tmp_path):
+    """_streaming_fetch writes response to a file when output is given."""
+    from tiled.client.utils import _streaming_fetch
+
+    arr = numpy.arange(50, dtype="float32")
+    tree = MapAdapter({"data": ArrayAdapter.from_array(arr)})
+    app = build_app(tree)
+
+    filepath = tmp_path / "output.bin"
+    with Context.from_app(app, show_progress=False) as context:
+        client = from_context(context)["data"]
+        url = client.item["links"]["full"]
+        result = _streaming_fetch(
+            context,
+            "GET",
+            url,
+            params={"expected_shape": "50"},
+            headers={"Accept": "application/octet-stream"},
+            output=filepath,
+        )
+        assert result is None
+        data = numpy.frombuffer(filepath.read_bytes(), dtype="float32")
+        numpy.testing.assert_array_equal(data, arr)
+
+
+def test_show_progress_from_env_var(monkeypatch):
+    """TILED_SHOW_PROGRESS env var controls context.show_progress."""
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "1")
+    tree_local = MapAdapter({})
+    app = build_app(tree_local)
+    with Context.from_app(app) as context:
+        assert context.show_progress is True
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "0")
+    with Context.from_app(app) as context:
+        assert context.show_progress is False
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "true")
+    with Context.from_app(app) as context:
+        assert context.show_progress is True
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "banana")
+    with Context.from_app(app) as context:
+        assert context.show_progress is False
+
+
+def test_show_progress_explicit_overrides_env(monkeypatch):
+    """Explicit show_progress=True/False overrides the env var."""
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "0")
+    tree_local = MapAdapter({})
+    app = build_app(tree_local)
+    with Context.from_app(app, show_progress=True) as context:
+        assert context.show_progress is True
+
+    monkeypatch.setenv("TILED_SHOW_PROGRESS", "1")
+    with Context.from_app(app, show_progress=False) as context:
+        assert context.show_progress is False
