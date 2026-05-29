@@ -14,6 +14,7 @@ from ..ndslice import NDBlock, NDSlice, split_slice
 from ..structures.core import STRUCTURE_TYPES
 from .base import BaseClient
 from .utils import (
+    _signal_retry_resolved,
     chunks_repr,
     export_util,
     handle_error,
@@ -131,19 +132,21 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": block_slice.to_numpy_str()} if block_slice else {})
-        with self.context._concurrent_request_semaphore:
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            url_path,
-                            headers={"Accept": media_type},
-                            params=params,
-                        )
-                    ).read()
-
+        try:
+            with self.context._concurrent_request_semaphore:
+                for attempt in retry_context(self.context):
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.get(
+                                url_path,
+                                headers={"Accept": media_type},
+                                params=params,
+                            )
+                        ).read()
+        finally:
+            _signal_retry_resolved(self.context)
         if (ps := self.context._progress_state) is not None:
-            ps[0].advance(ps[1])
+            ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def _get_slice(self, slice: NDSlice):
@@ -180,19 +183,21 @@ class _DaskArrayClient(BaseClient):
             "expected_shape": ",".join(map(str, exp_shape)) or "scalar",
         }
         params = params | ({"slice": slice.to_numpy_str()} if slice else {})
-        with self.context._concurrent_request_semaphore:
-            for attempt in retry_context():
-                with attempt:
-                    content = handle_error(
-                        self.context.http_client.get(
-                            url_path,
-                            headers={"Accept": media_type},
-                            params=params,
-                        )
-                    ).read()
-
+        try:
+            with self.context._concurrent_request_semaphore:
+                for attempt in retry_context(self.context):
+                    with attempt:
+                        content = handle_error(
+                            self.context.http_client.get(
+                                url_path,
+                                headers={"Accept": media_type},
+                                params=params,
+                            )
+                        ).read()
+        finally:
+            _signal_retry_resolved(self.context)
         if (ps := self.context._progress_state) is not None:
-            ps[0].advance(ps[1])
+            ps.advance()
         return numpy.frombuffer(content, dtype=self.dtype).reshape(exp_shape)
 
     def read_block(self, block, slice=None):

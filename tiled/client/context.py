@@ -24,6 +24,7 @@ from .transport import Transport
 from .utils import (
     DEFAULT_TIMEOUT_PARAMS,
     MSGPACK_MIME_TYPE,
+    _signal_retry_resolved,
     handle_error,
     polling_retry_context,
     retry_context,
@@ -308,23 +309,27 @@ class Context:
                 "no",
             )
         self.show_progress = show_progress
+        self._retry_indicator = None  # Lazy-initialized _StandaloneRetryIndicator
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        for attempt in retry_context():
-            with attempt:
-                server_info = handle_error(
-                    self.http_client.get(
-                        self.api_uri,
-                        headers={
-                            "Accept": MSGPACK_MIME_TYPE,
-                            "Cache-Control": "no-cache, no-store",
-                        },
-                    )
-                ).json()
+        try:
+            for attempt in retry_context(self):
+                with attempt:
+                    server_info = handle_error(
+                        self.http_client.get(
+                            self.api_uri,
+                            headers={
+                                "Accept": MSGPACK_MIME_TYPE,
+                                "Cache-Control": "no-cache, no-store",
+                            },
+                        )
+                    ).json()
+        finally:
+            _signal_retry_resolved(self)
         self.server_info: About = TypeAdapter(About).validate_python(server_info)
         self.api_key = api_key  # property setter sets Authorization header
         self.admin = Admin(self)  # accessor for admin-related requests
@@ -447,6 +452,7 @@ class Context:
         self.server_info = server_info
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
         self._progress_state = None
+        self._retry_indicator = None
         # Intentionally False: unpickled contexts run in dask workers which
         # are not interactive and should never render progress bars.
         self.show_progress = False
@@ -601,7 +607,7 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.get(
@@ -644,7 +650,7 @@ class Context:
                 "support generating additional API keys."
             )
 
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.post(
@@ -674,7 +680,7 @@ class Context:
             (Any additional characters passed will be truncated.)
         """
         url_path = self.server_info.authentication.links.apikey
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 handle_error(
                     self.http_client.delete(
@@ -892,7 +898,7 @@ class Context:
             self.http_client.auth.client_id,
             self.http_client.auth.scopes,
         )
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 token_response = self.http_client.send(refresh_request, auth=None)
                 if token_response.status_code == httpx.codes.UNAUTHORIZED:
@@ -906,7 +912,7 @@ class Context:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.get(
@@ -926,7 +932,7 @@ class Context:
 
         # Revoke the current session.
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 if self.client_id:
                     id_token = self.http_client.auth.sync_get_token("id_token")
@@ -966,7 +972,7 @@ class Context:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 handle_error(
                     self.http_client.delete(
@@ -993,7 +999,7 @@ class Admin:
             "offset": offset,
             "limit": limit,
         }
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.get(url_path, params=params)
@@ -1001,7 +1007,7 @@ class Admin:
 
     def show_principal(self, uuid):
         "Show one Principal (user or service) in the authentication database."
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.get(
@@ -1032,7 +1038,7 @@ class Admin:
             Restrict the access available to the API key by listing specific tags.
             By default, this will have no limits on access tags.
         """
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.post(
@@ -1060,7 +1066,7 @@ class Admin:
             Specify the role (e.g. user or admin)
         """
         url_path = f"{self.base_url}/auth/principal"
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.post(
@@ -1085,7 +1091,7 @@ class Admin:
             (Any additional characters passed will be truncated.)
         """
         url_path = f"{self.base_url}/auth/principal/{uuid}/apikey"
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.delete(

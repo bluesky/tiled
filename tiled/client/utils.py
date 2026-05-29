@@ -158,10 +158,11 @@ class _LoggingAttempt:
     are not routed through the global stamina hook machinery.
     """
 
-    __slots__ = ("_attempt",)
+    __slots__ = ("_attempt", "_context")
 
-    def __init__(self, attempt):
+    def __init__(self, attempt, context=None):
         self._attempt = attempt
+        self._context = context
 
     @property
     def num(self):
@@ -181,17 +182,31 @@ class _LoggingAttempt:
                 self._attempt.next_wait,
                 exc_val,
             )
+            if self._context is not None:
+                _signal_retry(self._context)
         return result
 
 
-def retry_context():
+def retry_context(context=None):
     "Iterable that yields a context manager per retry attempt"
-    for attempt in stamina.retry_context(
+    it = stamina.retry_context(
         on=should_retry,
         attempts=TILED_RETRY_ATTEMPTS,
         timeout=TILED_RETRY_TIMEOUT,
-    ):
-        yield _LoggingAttempt(attempt)
+    ).__iter__()
+    while True:
+        try:
+            attempt = next(it)
+        except StopIteration:
+            break
+        except KeyboardInterrupt:
+            # A KeyboardInterrupt raised during stamina's inter-attempt sleep
+            # would normally be swallowed by tenacity.  Re-raise it here so
+            # that Ctrl-C cancels all remaining retries immediately.
+            if context is not None:
+                _signal_retry_resolved(context)
+            raise
+        yield _LoggingAttempt(attempt, context=context)
 
 
 def should_poll_for_tokens(exception: Exception) -> bool:
@@ -525,9 +540,9 @@ def tracking_progress(context, total):
     """Context manager that displays a rich progress bar during a dask compute.
 
     While the context is active, ``context._progress_state`` is set to a
-    ``(Progress, task_id)`` pair so that fetch methods
+    ``_ProgressState`` instance so that fetch methods
     (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
-    each time they complete a request.  The slot is reset to ``None`` on exit.
+    and show a retry indicator.  The slot is reset to ``None`` on exit.
 
     A bar is shown only when ``context.show_progress`` is True *and*
     ``total > 1``.  Otherwise this is a no-op.
@@ -555,23 +570,150 @@ def tracking_progress(context, total):
         yield
         return
 
+    from rich.console import Console
+    from rich.live import Live
     from rich.progress import (
         BarColumn,
         MofNCompleteColumn,
         Progress,
         TimeRemainingColumn,
     )
+    from rich.spinner import Spinner
 
-    with Progress(
+    # Use stderr with force_terminal so the bar renders in IPython, where
+    # stdout is captured by the kernel and not a raw TTY.
+    console = Console(stderr=True, force_terminal=True)
+    progress = Progress(
         "[progress.description]{task.description}",
         BarColumn(),
         MofNCompleteColumn(),
         TimeRemainingColumn(),
-        transient=True,  # bar disappears when done
-    ) as progress:
-        task_id = progress.add_task("Fetching data…", total=total)
-        context._progress_state = (progress, task_id)
+        console=console,
+    )
+    task_id = progress.add_task("Fetching data…", total=total)
+    spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
+    state = _ProgressState(progress, task_id, spinner)
+
+    with Live(progress, transient=True, console=console) as live:
+        state._live = live
+        context._progress_state = state
         try:
-            yield progress
+            yield state
         finally:
             context._progress_state = None
+
+
+class _ProgressState:
+    """Holds progress bar state and retry indicator for fetch methods.
+
+    Fetch methods call ``advance()`` after each successful request and
+    ``show_retrying()`` / ``hide_retrying()`` around retries.
+    """
+
+    __slots__ = ("_progress", "_task_id", "_spinner", "_live", "_retrying")
+
+    def __init__(self, progress, task_id, spinner):
+        self._progress = progress
+        self._task_id = task_id
+        self._spinner = spinner
+        self._live = None
+        self._retrying = False
+
+    def advance(self):
+        """Advance the progress bar by one completed fetch."""
+        self._progress.advance(self._task_id)
+
+    def show_retrying(self):
+        """Show a spinner below the progress bar indicating a retry is in progress."""
+        if self._retrying:
+            return
+        self._retrying = True
+        if self._live is not None:
+            from rich.console import Group
+
+            self._live.update(Group(self._progress, self._spinner))
+
+    def hide_retrying(self):
+        """Remove the retry spinner, restoring the progress bar only."""
+        if not self._retrying:
+            return
+        self._retrying = False
+        if self._live is not None:
+            self._live.update(self._progress)
+
+
+class _StandaloneRetryIndicator:
+    """Prints a one-line "Retrying…" notice to stderr when retries begin,
+    and erases it (on a TTY) when retries resolve.
+
+    Deliberately avoids Rich ``Live`` / background threads so it cannot
+    interfere with interactive prompts (``input()``, ``getpass``) or
+    IPython's output machinery.  Only operates from the main thread so
+    dask worker threads never write to the terminal.
+
+    The notice is always printed when a retry occurs — it is not gated on
+    ``show_progress`` or ``_is_interactive()`` because silent retries are
+    confusing in any context.  On non-TTY stderr (CI, scripts, pipes) ANSI
+    escape codes are omitted so the output is clean plain text.
+    """
+
+    def __init__(self):
+        self._showing = False
+
+    @staticmethod
+    def _stderr_is_tty():
+        import sys
+
+        return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()
+
+    def show(self):
+        """Print the retrying notice if not already shown."""
+        import sys
+        import threading
+
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if self._showing:
+            return
+        self._showing = True
+        if self._stderr_is_tty():
+            # On a TTY: move to column 0, erase to EOL, print coloured notice.
+            sys.stderr.write("\r\x1b[K\x1b[33mRetrying…\x1b[0m\n")
+        else:
+            sys.stderr.write("Retrying…\n")
+        sys.stderr.flush()
+
+    def reset(self):
+        """Erase the retrying notice on a TTY; on non-TTY it stays (already scrolled)."""
+        import sys
+        import threading
+
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if not self._showing:
+            return
+        self._showing = False
+        if self._stderr_is_tty():
+            # Move up one line and erase it, restoring the terminal.
+            sys.stderr.write("\x1b[1A\r\x1b[K")
+            sys.stderr.flush()
+
+
+def _signal_retry(context):
+    """Signal that a retry is in progress — show indicator in the appropriate place."""
+    if (ps := context._progress_state) is not None:
+        ps.show_retrying()
+    else:
+        # Always show retry notice regardless of show_progress / _is_interactive().
+        # Silently retrying without any feedback is confusing in every context.
+        if context._retry_indicator is None:
+            context._retry_indicator = _StandaloneRetryIndicator()
+        context._retry_indicator.show()
+
+
+def _signal_retry_resolved(context):
+    """Signal that retries have resolved — hide any retry indicator."""
+    if (ps := context._progress_state) is not None:
+        ps.hide_retrying()
+    if context._retry_indicator is not None:
+        context._retry_indicator.reset()
