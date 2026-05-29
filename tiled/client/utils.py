@@ -96,7 +96,7 @@ def handle_error(response):
             raise
         elif response.status_code < httpx.codes.INTERNAL_SERVER_ERROR:
             # Include more detail that httpx does by default.
-            if response.headers["Content-Type"] == "application/json":
+            if response.headers.get("Content-Type") == "application/json":
                 detail = response.json().get("detail", "")
             else:
                 # This can happen when we get an error from a proxy,

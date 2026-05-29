@@ -447,6 +447,8 @@ class Context:
         self.server_info = server_info
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
         self._progress_state = None
+        # Intentionally False: unpickled contexts run in dask workers which
+        # are not interactive and should never render progress bars.
         self.show_progress = False
 
     @classmethod
