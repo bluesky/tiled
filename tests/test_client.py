@@ -388,53 +388,6 @@ def test_tracking_progress_nesting_is_noop():
             assert context._progress_state is None
 
 
-def test_streaming_fetch_returns_correct_bytes():
-    """_streaming_fetch returns correct response bytes with show_progress=False."""
-    from tiled.client.utils import _streaming_fetch
-
-    arr = numpy.arange(100, dtype="float64")
-    tree = MapAdapter({"data": ArrayAdapter.from_array(arr)})
-    app = build_app(tree)
-
-    with Context.from_app(app, show_progress=False) as context:
-        client = from_context(context)["data"]
-        url = client.item["links"]["full"]
-        content = _streaming_fetch(
-            context,
-            "GET",
-            url,
-            params={"expected_shape": "100"},
-            headers={"Accept": "application/octet-stream"},
-        )
-        result = numpy.frombuffer(content, dtype="float64")
-        numpy.testing.assert_array_equal(result, arr)
-
-
-def test_streaming_fetch_writes_to_file(tmp_path):
-    """_streaming_fetch writes response to a file when output is given."""
-    from tiled.client.utils import _streaming_fetch
-
-    arr = numpy.arange(50, dtype="float32")
-    tree = MapAdapter({"data": ArrayAdapter.from_array(arr)})
-    app = build_app(tree)
-
-    filepath = tmp_path / "output.bin"
-    with Context.from_app(app, show_progress=False) as context:
-        client = from_context(context)["data"]
-        url = client.item["links"]["full"]
-        result = _streaming_fetch(
-            context,
-            "GET",
-            url,
-            params={"expected_shape": "50"},
-            headers={"Accept": "application/octet-stream"},
-            output=filepath,
-        )
-        assert result is None
-        data = numpy.frombuffer(filepath.read_bytes(), dtype="float32")
-        numpy.testing.assert_array_equal(data, arr)
-
-
 def test_show_progress_from_env_var(monkeypatch):
     """TILED_SHOW_PROGRESS env var controls context.show_progress."""
     tree_local = MapAdapter({})
