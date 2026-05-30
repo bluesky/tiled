@@ -1075,7 +1075,9 @@ def get_router(
         path: str,
         shape=Depends(shape_param),
         offset=Depends(offset_param),
-        extend: bool = Query(False, description="Extend the array shape to fit the new data"),
+        extend: bool = Query(
+            False, description="Extend the array shape to fit the new data"
+        ),
         persist: bool = Query(True, description="Persist data to storage"),
         principal: Optional[Principal] = Depends(get_current_principal),
         root_tree=Depends(get_root_tree),

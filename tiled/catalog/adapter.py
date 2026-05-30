@@ -1536,7 +1536,7 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
         return await ensure_awaitable(
             (await self.get_adapter()).write_block, data, block
         )
-    
+
     async def patch(
         self, shape, offset, extend, media_type, deserializer, entry, body, persist=True
     ):
@@ -1559,7 +1559,10 @@ class CatalogRaggedAdapter(CatalogArrayAdapter):
 
             # Get the current structure row, update the shape, and write it back
             structure_dict = copy.deepcopy(structure_row.structure)
-            structure_dict["shape"], structure_dict["chunks"] = new_structure.shape, new_structure.chunks
+            structure_dict["shape"], structure_dict["chunks"] = (
+                new_structure.shape,
+                new_structure.chunks,
+            )
             new_structure_id = compute_structure_id(structure_dict)
             statement = (
                 self.insert(orm.Structure)

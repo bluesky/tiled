@@ -35,8 +35,7 @@ class RaggedStructure(Structure):
         Serializable representation of the array's data type.
     shape : tuple[int | None, ...]
         The shape of the array, where the first dimension is always a known integer,
-        and any variable dimensions are represented by None. The shape must be at least 2D,
-        i.e. have at least one ragged dimension.
+        and any variable dimensions are represented by None.
     size : int
         The total number of elements in the array.
     chunks : tuple[tuple[int, ...] | None, ...]
@@ -58,12 +57,14 @@ class RaggedStructure(Structure):
     resizable: bool | tuple[bool, ...] = False
 
     def __post_init__(self):
-        if len(self.shape) < 2:
-            raise ValueError("Ragged arrays must have at least 2 dimensions")
         if self.shape[0] is None:
-            raise ValueError("The first dimension of a ragged array must be a known integer")
+            raise ValueError(
+                "The first dimension of a ragged array must be a known integer"
+            )
         if self.chunks[0] is None:
-            raise ValueError("The first chunks dimension must be a known integer partitioning")
+            raise ValueError(
+                "The first chunks dimension must be a known integer partitioning"
+            )
         if len(self.shape) != len(self.chunks):
             raise ValueError("Shape and chunks must have the same number of dimensions")
 
@@ -92,7 +93,7 @@ class RaggedStructure(Structure):
 
         array = make_ragged_array(array)
         shape = shape or array.shape
-        chunks = chunks or ((shape[0],),) + (None,) * (len(shape) - 1)
+        chunks = chunks or tuple((sh,) if sh is not None else None for sh in shape)
 
         if array.dtype.fields is not None:
             data_type = StructDtype.from_numpy_dtype(array.dtype)
@@ -124,25 +125,59 @@ class RaggedStructure(Structure):
             data_type=data_type,
             shape=tuple(structure["shape"]),
             size=structure["size"],
-            chunks=tuple(tuple(c) if c is not None else None for c in structure["chunks"]),
+            chunks=tuple(
+                tuple(c) if c is not None else None for c in structure["chunks"]
+            ),
             dims=dims,
             resizable=structure.get("resizable", False),
         )
 
     @property
     def awk_form(self) -> awkward.forms.Form:
-        "Construct an Awkward Form representing the ragged array structure"
-        ndims = len(self.shape)
+        """Construct a canonical Awkward Form representing the ragged array structure
+
+        The Awkward Form is constructed by iterating through the dimensions of the array starting
+        from the innermost dimension. The innermost dimension is always represented by a NumpyForm
+        with the appropriate primitive type and inner_shape derived by greedily accumulating the
+        fixed-size inner dimensions.
+
+        For each subsequent dimension, if it is variable-length (None), a ListOffsetForm is used
+        with the appropriate offsets and content. If it is fixed-size, a RegularForm is created.
+        """
         primitive = awkward.types.numpytype.dtype_to_primitive(
             self.data_type.to_numpy_dtype()
         )
-        form = awkward.forms.NumpyForm(primitive=primitive, form_key=f"node{ndims-1}")
-        for dim in range(ndims - 1, 0, -1):
-            form = awkward.forms.ListOffsetForm(
-                offsets="i64",
-                content=form,
-                form_key=f"node{dim-1}",
-            )
+        inner_shape, form, ndims = (), None, len(self.shape)
+
+        for dim in reversed(range(1, ndims)):
+            if self.shape[dim] is None:
+                if form is None:
+                    # Encountered first inner variable-length dimension, create a NumpyForm
+                    form = awkward.forms.NumpyForm(
+                        primitive, inner_shape=inner_shape, form_key=f"node{dim}"
+                    )
+                # Subsequent variable-length dimension, wrap the existing form in a ListOffsetForm
+                form = awkward.forms.ListOffsetForm(
+                    offsets="i64",
+                    content=form,
+                    form_key=f"node{dim-1}",
+                )
+
+            elif form is not None:
+                # Fixed-size dimension, wrap the existing (variable-length) form in a RegularForm
+                form = awkward.forms.RegularForm(
+                    content=form,
+                    size=self.shape[dim],
+                    form_key=f"node{dim-1}",
+                )
+
+            else:
+                # Fixed-size inner dimension, accumulate it into the inner_shape of the NumpyForm
+                inner_shape = (self.shape[dim], *inner_shape)
+
+        # If the loop have completed but we haven't created a form yet,
+        # which means the array is fully fixed-size, Create a NumpyForm for the entire shape.
+        form = form or awkward.forms.NumpyForm(primitive, inner_shape, form_key="node0")
 
         return form
 
@@ -151,42 +186,121 @@ class RaggedStructure(Structure):
         "Length of corresponding awkward buffers, i.e. the first dimension of the array"
         return self.shape[0]
 
-    # @property
-    # def awk_container_schema(self) -> dict[str, numpy.dtype]:
-    #     "Schema of the corresponding awkward buffers, as a mapping of form keys to numpy dtypes"
-    #     ndims = len(self.shape)
-    #     offsets = {
-    #         f"node{dim}-offsets": numpy.dtype("int64") for dim in range(ndims - 1)
-    #     }
-    #     data = {f"node{ndims-1}-data": self.data_type.to_numpy_dtype()}
-
-    #     return offsets | data
-
 
 _SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
 
 
+def _canonicalize_awkward_layout(layout: ak.contents.Content) -> ak.contents.Content:
+    """Make a canonical Awkward layout with only ListOffsetForms for variable-length dimensions.
+
+    Convert an Awkward layout with possibly mixed ListForms and ListOffsetForms into a canonical
+    form with only ListOffsetForms for variable-length dimensions. RegularArrays are preserved as
+    they are already compatible with the RaggedStructure representation.
+
+    Even though the `ragged` library _may_ support ListForms, ListOffsetForms are preferred and is
+    the only officially supported variable-length dimension type for the RaggedStructure.
+
+    Arrays with ListOffsetForm provide several advantages:
+
+    * More compact metadata -- need N+1 offsets instead of N starts and N stops.
+    * Canonical representation -- one logical ragged structure maps to a unique offsets array; a
+      ListArray can represent the same logical array in many ways.
+    * Contiguous partitions of content buffer -- prefix-sum offsets are a standard representation
+      used by Arrow, Parquet, etc.
+    """
+
+    # Leaf nodes
+    if isinstance(layout, ak.contents.NumpyArray):
+        return layout
+
+    # ListArray -> ListOffsetArray
+    if isinstance(layout, ak.contents.ListArray):
+        layout = layout.to_ListOffsetArray64()
+        content = _canonicalize_awkward_layout(layout.content)
+        return ak.contents.ListOffsetArray(
+            layout.offsets,
+            content,
+            parameters=layout.parameters,
+        )
+
+    # Already ListOffsetArray
+    if isinstance(layout, ak.contents.ListOffsetArray):
+        content = _canonicalize_awkward_layout(layout.content)
+
+        if content is layout.content:
+            return layout  # Nothing has changed inside, return original layout
+
+        return ak.contents.ListOffsetArray(
+            layout.offsets,
+            content,
+            parameters=layout.parameters,
+        )
+
+    # RegularArray
+    if isinstance(layout, ak.contents.RegularArray):
+        # Check if this is a terminal chain of RegularArrays leading to a NumpyArray,
+        # which can be collapsed into a single NumpyArray with the right shape.
+        node, sizes = layout, []
+        while isinstance(node, ak.contents.RegularArray):
+            sizes.append(node.size)
+            node = node.content
+
+        if isinstance(node, ak.contents.NumpyArray):
+            return ak.contents.NumpyArray(
+                node.data.reshape(-1, *sizes),
+                parameters=node.parameters,
+            )
+
+        # Some of the nested content is ragged, preserve the RegularArray structure
+        content = _canonicalize_awkward_layout(layout.content)
+
+        if content is layout.content:
+            return layout  # Nothing has changed inside, return original layout
+
+        return ak.contents.RegularArray(
+            content,
+            layout.size,
+            parameters=layout.parameters,
+        )
+
+    raise TypeError(f"Unsupported layout type: {type(layout)}")
+
+
+def normalize_ragged(array: ragged.array) -> ragged.array:
+    return ragged.array(_canonicalize_awkward_layout(array._impl.layout))
+
+
 def make_ragged_array(array: Iterable) -> ragged.array:
-    """Best-effort conversion of any numeric iterable to a `ragged` array."""
+    """Best-effort conversion of any numeric iterable to a ``ragged`` array.
+
+    This function converts the underlying Awkward layout of the ragged array to a canonical form
+    with only ListOffsetForms for variable-length dimensions. This ensures that the array is in a
+    consistent format that is compatible with the RaggedStructure representation and can be
+    efficiently stored and processed.
+    """
+
     if isinstance(array, ragged.array):
-        return array
-    if isinstance(array, numpy.ndarray):
+        pass
+    elif isinstance(array, numpy.ndarray):
         # this assumes that any nested-arrays do *not* have an object dtype
         if array.dtype.name == "object":
-            return ragged.array([row.tolist() for row in array])
-        return ragged.array(array)
-    if isinstance(array, (awkward.Array, _SupportsDLPack)):
-        return ragged.array(array)
-    if hasattr(array, "tolist"):
-        return ragged.array(array.tolist())
-    return ragged.array(list(array))
+            array = ragged.array([row.tolist() for row in array])
+        array = ragged.array(array)
+    elif isinstance(array, (awkward.Array, _SupportsDLPack)):
+        array = ragged.array(array)
+    elif hasattr(array, "tolist"):
+        array = ragged.array(array.tolist())
+    else:
+        array = ragged.array(list(array))
+
+    return ragged.array(_canonicalize_awkward_layout(array._impl.layout))
 
 
 def make_ragged_chunks(array: ragged.array, limit_bytes: int) -> tuple[int, ...]:
     """Row-wise partitioning of a ragged array into chunks of at most `limit_bytes` bytes."""
     ak_array = awkward.Array(array._impl)
     if ak_array.nbytes <= limit_bytes:
-        return ((len(ak_array),), ) + (None,) * (ak_array.ndim - 1)
+        return ((len(ak_array),),) + (None,) * (ak_array.ndim - 1)
 
     # Work with boundary indices internally, convert to sizes at the end.
     boundaries: list[int] = [0, cast("int", array.shape[0])]
@@ -204,4 +318,51 @@ def make_ragged_chunks(array: ragged.array, limit_bytes: int) -> tuple[int, ...]
         else:
             chunk_index += 1
 
-    return (tuple(end - start for start, end in zip(boundaries, boundaries[1:])),) + (None,) * (ak_array.ndim - 1)
+    return (tuple(end - start for start, end in zip(boundaries, boundaries[1:])),) + (
+        None,
+    ) * (ak_array.ndim - 1)
+
+
+import awkward as ak
+from awkward.forms import ListForm, ListOffsetForm, NumpyForm, RegularForm
+
+
+def is_ragged_compatible_form(form):
+    if isinstance(form, NumpyForm):
+        return form.primitive in {
+            "bool",
+            "int8",
+            "int16",
+            "int32",
+            "int64",
+            "uint8",
+            "uint16",
+            "uint32",
+            "uint64",
+            "float32",
+            "float64",
+            "complex64",
+            "complex128",
+        }
+
+    if isinstance(form, (ListOffsetForm, RegularForm)):
+        return is_ragged_compatible_form(form.content)
+
+    return False
+
+
+def is_ragged_compatible(array):
+    return is_ragged_compatible_form(ak.to_layout(array).form)
+
+
+is_ragged_compatible(ak.Array([[1, 2], [3]]))
+# True
+
+is_ragged_compatible(ak.Array([{"x": 1}, {"x": 2}]))
+# False
+
+is_ragged_compatible(ak.Array([1, "two", 3]))
+# False
+
+is_ragged_compatible(ak.Array([[[1.1], []], [[2.2, 3.3]]]))
+# True

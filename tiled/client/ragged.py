@@ -4,23 +4,17 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Union, cast
 from urllib.parse import parse_qs, urlparse
-from ..structures.core import STRUCTURE_TYPES
 
 import httpx
-
 import numpy as np
 import ragged
 
-from .base import BaseClient
-from .utils import (
-    export_util,
-    handle_error,
-    params_from_slice,
-    retry_context,
-)
 from ..ndslice import NDBlock
 from ..serialization.ragged import from_zipped_buffers, to_zipped_buffers
+from ..structures.core import STRUCTURE_TYPES
 from ..structures.ragged import RaggedStructure, make_ragged_array
+from .base import BaseClient
+from .utils import export_util, handle_error, params_from_slice, retry_context
 
 if TYPE_CHECKING:
     import awkward as ak
@@ -116,10 +110,14 @@ class RaggedClient(BaseClient):
             If False, the update is still streamed to subscribed listeners.
         """
         if not extend or not persist:
-            raise NotImplementedError("Only extend=True and persist=True are currently supported")
+            raise NotImplementedError(
+                "Only extend=True and persist=True are currently supported"
+            )
 
         if not isinstance(offset, int) or offset != self.shape[0]:
-            raise NotImplementedError("Only appending to the end of the leftmost dimension is currently supported")
+            raise NotImplementedError(
+                "Only appending to the end of the leftmost dimension is currently supported"
+            )
 
         array = make_ragged_array(array)
 
@@ -146,8 +144,8 @@ class RaggedClient(BaseClient):
                 response = self.context.http_client.patch(
                     url_path,
                     content=to_zipped_buffers(
-                            mimetype="application/zip", array=array, metadata={}
-                        ),
+                        mimetype="application/zip", array=array, metadata={}
+                    ),
                     headers={"Content-Type": "application/zip"},
                     params=params,
                 )
