@@ -65,14 +65,16 @@ def adapter_from_data_source(
 
 
 @pytest.fixture
-def data_source_from_init_storage() -> Generator[
-    Callable[
-        [str, int, Optional[pa.Table], Optional[dict[str, Any]]],
-        DataSource[TableStructure],
-    ],
-    None,
-    None,
-]:
+def data_source_from_init_storage() -> (
+    Generator[
+        Callable[
+            [str, int, Optional[pa.Table], Optional[dict[str, Any]]],
+            DataSource[TableStructure],
+        ],
+        None,
+        None,
+    ]
+):
     registered: list[SQLStorage] = []
 
     def _data_source_from_init_storage(
