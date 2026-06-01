@@ -13,7 +13,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from functools import partial, reduce
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union, cast
+from typing import Callable, Dict, List, Literal, Optional, Union, cast
 from urllib.parse import urlparse
 
 import anyio
@@ -291,14 +291,17 @@ class CatalogNodeAdapter:
         *,
         conditions=None,
         queries=None,
-        sorting=None,
+        sorting: Optional[list[tuple[str, Literal[1, -1]]]] = None,
         mount_path: Optional[list[str]] = None,
         create_mount_nodes_if_not_exist: bool = False,
     ):
         self.context = context
         self.node = node
         self.sorting = sorting or [("", 1)]
-        self.order_by_clauses = order_by_clauses(self.sorting)
+        (
+            self.order_by_clauses,
+            self.default_sorting_direction,
+        ) = construct_order_by_clauses(self.sorting)
         self.conditions = conditions or []
         self.queries = queries or []
         self.structure_family = node.structure_family
@@ -614,13 +617,10 @@ class CatalogNodeAdapter:
         sorting=UNCHANGED,
         conditions=UNCHANGED,
         queries=UNCHANGED,
-        # must_revalidate=UNCHANGED,
         **kwargs,
     ):
         if sorting is UNCHANGED:
             sorting = self.sorting
-        # if must_revalidate is UNCHANGED:
-        #     must_revalidate = self.must_revalidate
         if conditions is UNCHANGED:
             conditions = self.conditions
         if queries is UNCHANGED:
@@ -630,9 +630,7 @@ class CatalogNodeAdapter:
             node=self.node,
             conditions=conditions,
             sorting=sorting,
-            # entries_stale_after=self.entries_stale_after,
-            # metadata_stale_after=self.entries_stale_after,
-            # must_revalidate=must_revalidate,
+            queries=queries,
             **kwargs,
         )
 
@@ -972,7 +970,7 @@ class CatalogNodeAdapter:
             # a notification about it.
             await self.context.streaming_cache.set(self.node.id, sequence, metadata)
 
-    async def revisions(self, offset, limit):
+    async def revisions(self, offset: int = 0, limit=None):
         async with self.context.session() as db:
             revision_orms = (
                 await db.execute(
@@ -1331,56 +1329,232 @@ class CatalogNodeAdapter:
 
 
 class CatalogContainerAdapter(CatalogNodeAdapter):
-    async def keys_range(self, offset, limit):
-        if self.data_sources:
-            return it.islice(
-                (await self.get_adapter()).keys(),
-                offset,
-                (offset + limit) if limit is not None else None,  # noqa: E203
-            )
-        statement = select(orm.Node.key).filter(orm.Node.parent == self.node.id)
-        statement = self.apply_conditions(statement)
-        async with self.context.session() as db:
-            return (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
+    @property
+    def _is_default_sort(self) -> bool:
+        """True when no user-specified sort key is active.
+
+        Cursor-based pagination is only correct when the ORDER BY is purely
+        id ASC or id DESC — i.e. the default.  Any custom leading sort key
+        changes the row order in a way that the id-only cursor cannot track.
+        """
+        return all(key == "" for key, _ in self.sorting)
+
+    def _apply_cursor_pagination(self, statement, cursor, limit):
+        """Apply cursor-based filtering, ordering, and limit to a statement.
+
+        Returns the modified statement. Callers must still execute it and trim
+        the extra row used to detect whether a next page exists.
+        Only call this when cursor is None (first page) or a valid cursor id.
+        Do not call this for offset-based pagination — use keys_range/items_range instead.
+
+        The default ORDER BY is `id` ASC (or DESC); the cursor condition
+        `id > cursor` (or `id < cursor`) is therefore exact with no need
+        for a secondary column.
+        """
+        if cursor is not None:
+            if self.default_sorting_direction == 1:
+                statement = statement.filter(orm.Node.id > cursor)
+            else:
+                statement = statement.filter(orm.Node.id < cursor)
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        if limit is not None:
+            statement = statement.limit(limit + 1)
+        return statement
+
+    async def keys_page(
+        self,
+        cursor: Optional[int] = None,
+        limit: Optional[int] = None,
+    ):
+        """Return a page of keys and the cursor for the next page.
+
+        Parameters
+        ----------
+        cursor : int, optional
+            The id of the last item on the previous page.
+        limit : int, optional
+            The maximum number of items to return in the page. If None, return all remaining items.
+
+        Only valid for the default sort order; raises ValueError otherwise.
+        External callers should use `keys_range(offset, limit)` instead.
+        """
+        if cursor is not None and not self._is_default_sort:
+            raise ValueError(
+                "page[cursor] is not supported with non-default sort orders"
             )
 
-    async def items_range(self, offset, limit):
+        # Case 1: Node has external data sources -- delegate to the associated adapter
         if self.data_sources:
-            return it.islice(
-                (await self.get_adapter()).items(),
-                offset,
-                (offset + limit) if limit is not None else None,  # noqa: E203
-            )
-        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
-        statement = self.apply_conditions(statement)
+            keys = (await self.get_adapter()).keys()
+            if self.default_sorting_direction == -1:
+                keys = reversed(keys)
+            start = (cursor + 1) if cursor is not None else 0
+            keys, next_offset = slice_by_offset(keys, offset=start, limit=limit)
+            next_cursor = None if next_offset is None else next_offset - 1
+            return keys, next_cursor
+
+        # Case 2: No external data sources -- query the database directly
+        if limit == 0:
+            return [], None
+
+        statement = select(orm.Node.key, orm.Node.id)
+        statement = statement.filter(orm.Node.parent == self.node.id)
+        statement = self._apply_cursor_pagination(statement, cursor, limit)
+
         async with self.context.session() as db:
-            nodes = (
-                (
-                    await db.execute(
-                        statement.order_by(*self.order_by_clauses)
-                        .offset(offset)
-                        .limit(limit)
-                    )
-                )
-                .scalars()
-                .all()
+            rows = (await db.execute(statement)).all()
+
+        next_cursor = None
+        if (limit is not None) and (len(rows) > limit):
+            rows.pop()
+            if self._is_default_sort:
+                next_cursor = rows[-1][1]
+
+        return [row[0] for row in rows], next_cursor
+
+    async def keys_range(self, offset: int = 0, limit: Optional[int] = None):
+        """Return a list of keys, starting at `offset` up to `limit`.
+
+        The server uses `keys_page()` internally for cursor-based pagination.
+        """
+        if self.data_sources:
+            keys = (await self.get_adapter()).keys()
+            if self.default_sorting_direction == -1:
+                keys = reversed(keys)
+            keys, _ = slice_by_offset(keys, offset=offset, limit=limit)
+            return keys
+
+        if limit == 0:
+            return []
+
+        statement = select(orm.Node.key)
+        statement = statement.filter(orm.Node.parent == self.node.id)
+        if offset:
+            statement = statement.offset(offset)
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        if limit is not None:
+            statement = statement.limit(limit)
+
+        async with self.context.session() as db:
+            rows = (await db.execute(statement)).all()
+
+        return [row[0] for row in rows]
+
+    async def items_page(
+        self,
+        cursor: Optional[int] = None,
+        limit: Optional[int] = None,
+    ):
+        """Return a page of (key, adapter) pairs and the cursor for the next page.
+
+        Parameters
+        ----------
+        cursor : int, optional
+            The id of the last item on the previous page.
+        limit : int, optional
+            The maximum number of items to return in the page. If None, return all remaining items.
+
+        Only valid for the default sort order; raises ValueError otherwise.
+        External callers should use `items_range(offset, limit)` instead.
+        """
+        if cursor is not None and not self._is_default_sort:
+            raise ValueError(
+                "page[cursor] is not supported with non-default sort orders"
             )
-            return [
+
+        # Case 1: Node has external data sources -- delegate to the associated adapter
+        if self.data_sources:
+            items = (await self.get_adapter()).items()
+            if self.default_sorting_direction == -1:
+                items = reversed(items)
+            start = (cursor + 1) if cursor is not None else 0
+            items, next_offset = slice_by_offset(items, offset=start, limit=limit)
+            next_cursor = None if next_offset is None else next_offset - 1
+            return items, next_cursor
+
+        # Case 2: No external data sources -- query the database directly
+        if limit == 0:
+            return [], None
+
+        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
+        statement = self._apply_cursor_pagination(statement, cursor, limit)
+
+        async with self.context.session() as db:
+            nodes = (await db.execute(statement)).scalars().all()
+
+        next_cursor = None
+        if (limit is not None) and (len(nodes) > limit):
+            nodes.pop()
+            if self._is_default_sort:
+                next_cursor = nodes[-1].id
+
+        return (
+            [
                 (
                     node.key,
                     STRUCTURES[node.structure_family](self.context, node),
                 )
                 for node in nodes
-            ]
+            ],
+            next_cursor,
+        )
+
+    async def items_range(self, offset: int = 0, limit: Optional[int] = None):
+        """Return a list of (key, adapter) pairs, starting at `offset` up to `limit`.
+
+        The server uses `items_page()` internally for cursor-based pagination.
+        """
+        if self.data_sources:
+            items = (await self.get_adapter()).items()
+            if self.default_sorting_direction == -1:
+                items = reversed(items)
+            items, _ = slice_by_offset(items, offset=offset, limit=limit)
+            return items
+
+        if limit == 0:
+            return []
+
+        statement = select(orm.Node).filter(orm.Node.parent == self.node.id)
+        if offset:
+            statement = statement.offset(offset)
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        if limit is not None:
+            statement = statement.limit(limit)
+
+        async with self.context.session() as db:
+            nodes = (await db.execute(statement)).scalars().all()
+
+        return [
+            (node.key, STRUCTURES[node.structure_family](self.context, node))
+            for node in nodes
+        ]
+
+    async def cursor_for_offset(self, offset: int) -> Optional[int]:
+        """Return the id of the node just before the given offset, for cursor pagination.
+
+        Returns None when cursor pagination is not applicable:
+        - offset is 0 (first page — no previous item)
+        - a non-default sort is active (cursor correctness requires default sort)
+        """
+        if offset == 0 or not self._is_default_sort:
+            return None
+
+        if self.data_sources:
+            # For nodes with external data sources the adapter manages its own
+            # iteration order and conditions are not applied at the DB level
+            # (see keys_page/items_page data_sources path). The offset is
+            # used as a positional index directly into the adapter's sequence,
+            # so offset - 1 is the correct "previous item" cursor here.
+            return offset - 1
+
+        statement = select(orm.Node.id).filter(orm.Node.parent == self.node.id)
+        statement = self.apply_conditions(statement).order_by(*self.order_by_clauses)
+        statement = statement.offset(offset - 1).limit(1)
+
+        async with self.context.session() as db:
+            row = (await db.execute(statement)).first()
+
+        return row[0] if row is not None else None
 
     async def read(self, *args, **kwargs):
         if not self.data_sources:
@@ -1693,37 +1867,56 @@ _STANDARD_SORT_KEYS = {
 }
 
 
-def order_by_clauses(sorting):
+def construct_order_by_clauses(sorting):
     clauses = []
     default_sorting_direction = 1
     for key, direction in sorting:
         if key == "":
             default_sorting_direction = direction
             continue
-            # TODO Really we should insist that if this is given, it is last,
-            # because we always apply the default sorting last.
         if key in _STANDARD_SORT_KEYS:
             clause = getattr(orm.Node, _STANDARD_SORT_KEYS[key])
         else:
-            clause = orm.Node.metadata_
             # This can be given bare like "color" or namedspaced like
             # "metadata.color" to avoid the possibility of a name collision
             # with the standard sort keys.
             if key.startswith("metadata."):
                 key = key[len("metadata.") :]  # noqa: E203
-
+            clause = orm.Node.metadata_
             for segment in key.split("."):
                 clause = clause[segment]
         if direction == -1:
             clause = clause.desc()
         clauses.append(clause)
-    # Ensure deterministic ordering for all queries by sorting by
-    # 'time_created' and then by 'id' last.
-    for clause in [orm.Node.time_created, orm.Node.id]:
-        if default_sorting_direction == -1:
-            clause = clause.desc()
-        clauses.append(clause)
-    return clauses
+
+    # Ensure deterministic ordering by id, which is strictly monotonic
+    # (auto-increment) and therefore a sufficient tiebreaker on its own.
+    # time_created is intentionally omitted: id already encodes insertion
+    # order, and including time_created would require a two-column cursor
+    # (time_created, id) for correct keyset pagination.
+    clause = orm.Node.id
+    if default_sorting_direction == -1:
+        clause = clause.desc()
+    clauses.append(clause)
+
+    return clauses, default_sorting_direction
+
+
+def slice_by_offset(items, offset=0, limit=None):
+    """Slice an iterable by offset and limit
+
+    Return the items and the next offset if there are more items.
+    """
+
+    stop = None if limit is None else offset + limit + 1
+    items = list(it.islice(items, offset, stop))
+
+    next_offset = None
+    if (limit is not None) and (len(items) > limit):
+        items.pop()  # Remove the extra item used to check for next page
+        next_offset = offset + limit
+
+    return items, next_offset
 
 
 _TYPE_CONVERSION_MAP = {

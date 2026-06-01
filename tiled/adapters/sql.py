@@ -99,7 +99,8 @@ class SQLAdapter(Adapter[TableStructure]):
         table_name: str,
         dataset_id: int,
         *,
-        order_by: Optional[List[tuple[str, Literal["asc", "desc"]]]] = None,
+        order_by_column: Optional[str] = None,
+        unique_ordering: bool = False,
         metadata: Optional[JSON] = None,
         specs: Optional[List[Spec]] = None,
     ) -> None:
@@ -109,12 +110,32 @@ class SQLAdapter(Adapter[TableStructure]):
         self.specs = list(specs or [])
         self.table_name = table_name
         self.dataset_id = dataset_id
-        self.order_by = order_by
+        if order_by_column in structure.columns:
+            self.order_by_column: Optional[str] = order_by_column
+            self.unique_ordering = unique_ordering
+        else:
+            self.order_by_column = None
+            self.unique_ordering = False
         super().__init__(structure, metadata=metadata, specs=specs)
 
     @classmethod
     def supported_storage(cls) -> Set[type[Storage]]:
         return {SQLStorage, EmbeddedSQLStorage, RemoteSQLStorage}
+
+    @classmethod
+    def get_table_name(cls, data_source: "DataSource[TableStructure]") -> str:
+        "If not defined, generate a default table name based on the Arrow schema and parameters"
+
+        if data_source.parameters.get("unique_ordering", False):
+            suffix = data_source.parameters.get("order_by_column", "")
+        else:
+            suffix = ""
+        encoded = (data_source.structure.arrow_schema + suffix).encode()
+        default = "table_" + hashlib.md5(encoded).hexdigest().lower()
+        table_name: str = data_source.parameters.setdefault("table_name", default)
+        is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
+
+        return table_name
 
     @classmethod
     def init_storage(
@@ -138,30 +159,38 @@ class SQLAdapter(Adapter[TableStructure]):
         """
         data_source = copy.deepcopy(data_source)  # Do not mutate caller input.
 
-        # Create a table_name based on the hash of Arrow schema
-        schema = data_source.structure.arrow_schema_decoded
-        encoded = schema.serialize()
-        default_table_name = "table_" + hashlib.md5(encoded).hexdigest().lower()
-        table_name = data_source.parameters.setdefault("table_name", default_table_name)
-        is_safe_identifier(table_name, TABLE_NAME_PATTERN, allow_reserved_words=False)
-
         # Prefix columns with internal _dataset_id, _partition_id, ...
+        table_name = cls.get_table_name(data_source)
+        schema = data_source.structure.arrow_schema_decoded
         schema = schema.insert(0, pyarrow.field("_partition_id", pyarrow.int16()))
         schema = schema.insert(0, pyarrow.field("_dataset_id", pyarrow.int32()))
         create_table_statement = arrow_schema_to_create_table(
             schema, table_name, cast(DIALECTS, storage.dialect)
         )
 
-        create_index_statement = (
-            "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
-            f'ON "{table_name}"(_dataset_id, _partition_id)'
-        )
-
         with closing(storage.connect()) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(create_table_statement)
+
+            # Create an index on the dataset_id and partition_id columns to speed up queries.
+            # If there is an order_by_column, include it in the index and ensure uniqueness.
+            create_index_statement = (
+                "CREATE INDEX IF NOT EXISTS dataset_and_partition_index "
+                f'ON "{table_name}"(_dataset_id, _partition_id)'
+            )
             with conn.cursor() as cursor:
                 cursor.execute(create_index_statement)
+
+            order_by_column = data_source.parameters.get("order_by_column")
+            unique_ordering = data_source.parameters.get("unique_ordering", False)
+            if order_by_column in data_source.structure.columns and unique_ordering:
+                create_unique_index_statement = (
+                    "CREATE UNIQUE INDEX IF NOT EXISTS unique_ordering_per_dataset_index "
+                    f'ON "{table_name}"(_dataset_id, {order_by_column.lower()})'
+                )
+                with conn.cursor() as cursor:
+                    cursor.execute(create_unique_index_statement)
+
             # Just once, create a SEQUENCE (or the closest analogue in SQLite) to
             # provide unique dataset_id for each dataset in this database.
             # (If it exists, do nothing.)
@@ -387,11 +416,19 @@ class SQLAdapter(Adapter[TableStructure]):
             f'FROM "{self.table_name}" '
             f"WHERE _dataset_id={self.dataset_id} "
         )
-        query += (
-            f"AND _partition_id={int(partition)}"
-            if partition is not None
-            else "ORDER BY _partition_id"
-        )
+
+        if partition is not None:
+            query += f"AND _partition_id={int(partition)}"
+            order_by_cols = [self.order_by_column] if self.order_by_column else []
+        else:
+            order_by_cols = [
+                c for c in [self.order_by_column, "_partition_id"] if c is not None
+            ]
+
+        if order_by_cols:
+            query += " ORDER BY " + ", ".join(
+                [f'"{c.lower()}"' for c in order_by_cols if c is not None]
+            )
 
         with closing(self.storage.connect()) as conn:
             with conn.cursor() as cursor:

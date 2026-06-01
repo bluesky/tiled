@@ -9,13 +9,45 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 ### Added
 
+- Utility methods for fetching chunked arrays for a given slice.
+- Added `max_connections` parameter to `Context` (and `Context.from_app`) to
+  cap the number of simultaneous outgoing HTTP connections and concurrent
+  data-fetch requests (array chunks, dataframe partitions) issued by dask
+  workers. The default is 16. This prevents spike loads on the server when
+  computing large dask arrays or dataframes. The limit is enforced by both an
+  `httpx.Limits` connection pool on the HTTP client and a `threading.Semaphore`
+  acquired inside `_get_slice`, `_get_block`, and `_get_partition`.
+- Deterministic row ordering in SQL-based adapters when an `order_by_column` is
+  specified in the data source parameters.
+
+
+## v0.2.10 (2026-05-22)
+
+### Added
+
+- Cursor-based pagination for catalog containers on the default sort order.
+  The server now uses the node `id` as an opaque cursor, eliminating the
+  duplicate-and-skip problem that offset pagination suffers when items are
+  inserted concurrently. Non-default sort orders continue to use offset
+  pagination. Clients that supply `page[offset]` on the default sort are
+  transparently migrated to cursor pagination from the second page onward.
+  The new `page[cursor]` query parameter is accepted alongside the existing
+  `page[offset]` and `page[limit]` parameters; supplying both at once is
+  rejected with HTTP 400.
 - Support for slicing arrays backed by multipart adapters with modified shapes
 - Support for interacting with irregular-shaped numeric arrays via
   [`ragged`](https://github.com/scikit-hep/ragged).
 - OIDC Authenticator for Azure Entra
+- Add more administrative CLI commands centered around the creation of service
+  principals and their API keys
+- Including `metadata` field in NodeTabs item fetch for spec views in the web UI
 
 ### Fixed
 
+- Display of color images in the web UI array viewer.
+- JSON serialization of tables now correctly handles numpy scalar types
+  (e.g. `float32`, `int64`), pandas nullable types (`pd.NA`), `NaT`, and
+  `Timestamp` when using the `orjson` backend.
 - A `mount_node` referencing a nonexistent path in the database no longer causes
   silent data corruption. The server now raises a clear error at startup if the
   mount node does not exist.
@@ -37,7 +69,10 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - CSVArrayAdapter supports reading heterogenous tables as structured arrays
 - Stream updates are processed using a single worker thread, by
   default, in order to guarantee that they are processed in order.
-- Refactored AwkwardAdapter to generalize its array buffer storage.
+- WebUI: fetch grayscale images as `application/octet-stream` instead of
+  `image/png` and apply optional colormap and log-normalization client-side.
+- WebUI: reduce the number of significant digits to 4 when displaying numeric
+  values.
 
 ### Added
 

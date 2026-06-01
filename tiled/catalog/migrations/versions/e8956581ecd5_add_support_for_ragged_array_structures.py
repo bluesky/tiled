@@ -1,7 +1,7 @@
 """Add support for ragged array structures
 
 Revision ID: e8956581ecd5
-Revises: 85a47342e78e
+Revises: bf2fe0eb8ee8
 Create Date: 2026-04-28 11:24:54.806141
 
 """
@@ -10,7 +10,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "e8956581ecd5"
-down_revision = "85a47342e78e"
+down_revision = "bf2fe0eb8ee8"
 branch_labels = None
 depends_on = None
 

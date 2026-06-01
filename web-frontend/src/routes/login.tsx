@@ -104,7 +104,10 @@ function PasswordLogin({
 function ExternalLogin({ provider }: { provider: Provider }) {
   const handleClick = () => {
     const state = encodeURIComponent(window.location.href);
-    window.location.href = `${provider.links.auth_endpoint}?state=${state}`;
+    // Prefer authorize_endpoint (browser auth code flow) over auth_endpoint
+    // (device code flow, for CLI clients).
+    const endpoint = provider.links.authorize_endpoint ?? provider.links.auth_endpoint;
+    window.location.href = `${endpoint}?state=${state}`;
   };
 
   return (

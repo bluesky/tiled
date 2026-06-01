@@ -2,7 +2,6 @@ import textwrap
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Union
 from unittest.mock import MagicMock, patch
-from uuid import UUID
 
 import httpx
 import pytest
@@ -16,7 +15,6 @@ from tiled.client.auth import TiledAuth
 from tiled.client.constructors import from_context
 from tiled.client.context import prompt_for_credentials
 from tiled.server.app import build_app_from_config
-from tiled.server.schemas import Principal, PrincipalType
 
 tree = MapAdapter({})
 
@@ -92,7 +90,7 @@ def mock_oidc_server(
 
     respx_mock.post(
         well_known_response["device_authorization_endpoint"],
-        data={"client_id": device_flow_client_id, "scope": "openid offline_access"},
+        data={"client_id": device_flow_client_id, "scope": "offline_access openid"},
     ).mock(
         return_value=httpx.Response(
             status_code=httpx.codes.OK,
@@ -142,6 +140,7 @@ def test_about_endpoint(
     assert response.status_code == httpx.codes.OK
     assert response.json()["authentication"]["providers"][0]["links"] == {
         "auth_endpoint": well_known_response["device_authorization_endpoint"],
+        "authorize_endpoint": f"{context.http_client.base_url}/api/v1/auth/provider/keycloak_oidc/authorize",
         "client_id": oidc_config["authentication"]["providers"][0]["args"][
             "device_flow_client_id"
         ],
@@ -173,8 +172,8 @@ def test_device_flow_success(
 
         LCWE-ROXW
 
-
         Waiting...
+
         You have logged in with Proxied OIDC as external user.
     """
     )
@@ -183,7 +182,6 @@ def test_device_flow_success(
     assert tokens == tokens_response
 
 
-@pytest.mark.xfail(reason="This should not fail,but needs investigation in stamina")
 @patch("tiled.client.context.time.sleep")
 def test_device_flow_polling(
     _: MagicMock,
@@ -224,8 +222,8 @@ def test_device_flow_polling(
 
         LCWE-ROXW
 
+        Waiting....
 
-        Waiting...
         You have logged in with Proxied OIDC as external user.
     """
     )
@@ -285,12 +283,7 @@ def test_whoami_endpoint(
 ):
     decode_token.return_value = decoded_token
     info = client.context.whoami()
-    assert info == Principal(
-        uuid=UUID(decoded_token["sub"]),
-        type=PrincipalType.external,
-        api_keys=[],
-        identities=[],
-    ).model_dump(mode="json")
+    assert info["identities"][0]["id"] == decoded_token["sub"]
 
 
 @patch("tiled.authenticators.OIDCAuthenticator.decode_token")

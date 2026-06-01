@@ -55,6 +55,15 @@ def serve_directory(
             "may break user (client-side) code."
         ),
     ),
+    include_ext: Optional[List[str]] = typer.Option(
+        None,
+        "--include-ext",
+        help=(
+            "Include only given file extensions, e.g., "
+            "--include-ext .csv --include-ext .tiff "
+            "Include the leading '.' in the file extension."
+        ),
+    ),
     ext: Optional[List[str]] = typer.Option(
         None,
         "--ext",
@@ -138,11 +147,19 @@ def serve_directory(
     stamp_head(ALEMBIC_INI_TEMPLATE_PATH, ALEMBIC_DIR, database)
 
     from ..catalog import from_uri as catalog_from_uri
+    from ..client.register import default_filter
     from ..config import Authentication
     from ..server.app import build_app, print_server_info
 
+    if include_ext is not None:
+
+        def filter(path):
+            return default_filter(path) and path.suffix in include_ext
+
+    else:
+        filter = default_filter
     if keep_ext:
-        from ..adapters.files import identity
+        from ..client.register import identity
 
         key_from_filename = identity
     else:
@@ -255,6 +272,7 @@ def serve_directory(
                     adapters_by_mimetype=adapters_by_mimetype,
                     walkers=walkers,
                     key_from_filename=key_from_filename,
+                    filter=filter,
                 )
             )
             await event.wait()
@@ -280,6 +298,7 @@ def serve_directory(
                 adapters_by_mimetype=adapters_by_mimetype,
                 walkers=walkers,
                 key_from_filename=key_from_filename,
+                filter=filter,
             )
             typer.echo("Indexing complete.")
             await server_task

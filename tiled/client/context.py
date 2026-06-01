@@ -2,6 +2,7 @@ import getpass
 import os
 import re
 import sys
+import threading
 import time
 import urllib.parse
 import warnings
@@ -30,6 +31,10 @@ from .utils import (
 
 USER_AGENT = f"python-tiled/{tiled_version}"
 API_KEY_AUTH_HEADER_PATTERN = re.compile(r"^Apikey (\w+)$")
+# Default cap on simultaneous outgoing HTTP connections and in-flight
+# data-fetch requests.  Keeps spike loads on the server bounded while
+# still allowing reasonable parallelism from dask's threaded scheduler.
+MAX_CONCURRENT_CONNECTIONS = 16
 
 
 def raise_if_cannot_prompt():
@@ -138,8 +143,15 @@ def prompt_for_credentials(http_client, providers: List[AboutAuthenticationProvi
     elif mode == "external":
         # Display link and access code, and try to open web browser.
         # Block while polling the server awaiting confirmation of authorization.
+        scopes = " ".join(
+            sorted({"openid", "offline_access"} | set(spec.extra_scopes or []))
+        )
         tokens = device_code_grant(
-            http_client, auth_endpoint, client_id, token_endpoint
+            http_client,
+            auth_endpoint,
+            client_id,
+            token_endpoint,
+            scopes,
         )
     else:
         raise ValueError(f"Server has unknown authentication mechanism {mode!r}")
@@ -166,6 +178,7 @@ class Context:
         verify=True,
         app=None,
         raise_server_exceptions=True,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -217,9 +230,13 @@ class Context:
             timeout = httpx.Timeout(**DEFAULT_TIMEOUT_PARAMS)
         if cache is UNSET:
             cache = None
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         if app is None:
             client = httpx.Client(
-                transport=Transport(cache=cache),
+                transport=Transport(cache=cache, limits=limits),
                 verify=verify,
                 timeout=timeout,
                 follow_redirects=True,
@@ -228,9 +245,17 @@ class Context:
             client.headers = headers
         else:
             # Set up an ASGI client.
-            # Because we have been handed an app, we can infer that
-            # starlette is available.
+            # Because we have been handed an app, we can infer that starlette is available.
             from starlette.testclient import TestClient
+
+            # Note: neither `timeout` nor `limits` (max_connections) are
+            # enforced in ASGI mode.  Starlette's _TestClientTransport
+            # dispatches requests in-process via anyio and bypasses the real
+            # HTTP stack entirely, so there is no I/O wait for timeouts to
+            # fire and no TCP connections for the pool limit to count.
+            # The semaphore (_concurrent_request_semaphore) is still
+            # effective because it is enforced in Python before the request
+            # is dispatched, regardless of transport.
 
             base_uri = f"{uri.scheme}://{uri.netloc}"
             # verify parameter is dropped, as there is no SSL in ASGI mode
@@ -250,8 +275,6 @@ class Context:
             # We are abusing it slightly to enable interactive use of the
             # TestClient.
 
-            import threading
-
             # The threading module has its own (internal) atexit
             # mechanism that runs at thread shutdown, prior to the atexit
             # mechanism that runs at interpreter shutdown.
@@ -263,6 +286,11 @@ class Context:
         self._verify = verify
         self._cache = cache
         self._token_cache = Path(TILED_CACHE_DIR / "tokens")
+        # Semaphore that caps the number of concurrent data-fetch requests
+        # (array blocks, dataframe partitions, etc.) issued by dask workers.
+        # This is intentionally separate from the HTTP connection pool limit so
+        # that it can be tuned independently; by default it mirrors the pool size.
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
@@ -288,6 +316,17 @@ class Context:
         self.client_id = (
             self.server_info.authentication.providers[0].links.get("client_id")
             if len(self.server_info.authentication.providers) == 1
+            else None
+        )
+        provider = (
+            self.server_info.authentication.providers[0]
+            if len(self.server_info.authentication.providers) == 1
+            else None
+        )
+        extra_scopes = getattr(provider, "extra_scopes", None) or []
+        self.scopes = (
+            " ".join(sorted({"openid", "offline_access"} | set(extra_scopes)))
+            if extra_scopes
             else None
         )
         # To determine httpx.Auth used by Tiled client is TiledAuth(internal) or external Auth
@@ -343,6 +382,7 @@ class Context:
             self._token_cache,
             self.server_info,
             self.cache,
+            self._concurrent_request_semaphore._value,
         )
 
     def __setstate__(self, state):
@@ -357,6 +397,7 @@ class Context:
             token_cache,
             server_info,
             cache,
+            max_connections,
         ) = state
         if state_tiled_version != tiled_version:
             raise TypeError(
@@ -370,9 +411,13 @@ class Context:
             cookies.set(
                 cookie.name, cookie.value, domain=cookie.domain, path=cookie.path
             )
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
         self.http_client = httpx.Client(
             verify=verify,
-            transport=Transport(cache=cache),
+            transport=Transport(cache=cache, limits=limits),
             cookies=cookies,
             timeout=timeout,
             headers=headers,
@@ -383,6 +428,7 @@ class Context:
         self._cache = cache
         self._verify = verify
         self.server_info = server_info
+        self._concurrent_request_semaphore = threading.Semaphore(max_connections)
 
     @classmethod
     def from_any_uri(
@@ -395,6 +441,7 @@ class Context:
         timeout=None,
         verify=True,
         app=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         """
         Accept a URI to a specific node.
@@ -448,6 +495,7 @@ class Context:
             timeout=timeout,
             verify=verify,
             app=app,
+            max_connections=max_connections,
         )
         return context, node_path_parts
 
@@ -462,6 +510,7 @@ class Context:
         api_key=UNSET,
         raise_server_exceptions=True,
         uri=None,
+        max_connections=MAX_CONCURRENT_CONNECTIONS,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -474,6 +523,7 @@ class Context:
             timeout=timeout,
             app=app,
             raise_server_exceptions=raise_server_exceptions,
+            max_connections=max_connections,
         )
         if api_key is UNSET:
             if not context.server_info.authentication.providers:
@@ -709,7 +759,9 @@ class Context:
             temp_auth.sync_clear_token("refresh_token")
             # Store tokens in memory only, with no syncing to disk.
             token_directory = None
-        auth = TiledAuth(refresh_url, csrf_token, token_directory)
+        auth = TiledAuth(
+            refresh_url, csrf_token, token_directory, self.client_id, self.scopes
+        )
         auth.sync_tokens(tokens)
         self.http_client.auth = auth
 
@@ -770,7 +822,11 @@ class Context:
         # We have to make an HTTP request to let the server validate whether we
         # have a valid session.
         self.http_client.auth = TiledAuth(
-            refresh_url, csrf_token, token_directory, self.client_id
+            refresh_url,
+            csrf_token,
+            token_directory,
+            self.client_id,
+            self.scopes,
         )
         # This will either:
         # * Use an access_token and succeed.
@@ -809,6 +865,7 @@ class Context:
             refresh_token,
             csrf_token,
             self.http_client.auth.client_id,
+            self.http_client.auth.scopes,
         )
         for attempt in retry_context():
             with attempt:
@@ -1061,39 +1118,60 @@ def device_code_grant(
     for attempt in retry_context():
         with attempt:
             if client_id and token_endpoint:
+                # The device code will be given to the external OIDC provider.
                 oauth2_spec = True
-                uri = "verification_uri_complete"
                 verification_response = http_client.post(
                     auth_endpoint,
                     data={"client_id": client_id, "scope": scopes},
                 )
+                handle_error(verification_response)
+                verification = verification_response.json()
+                keys = [
+                    "verification_uri_complete",  # includes code
+                    "verification_uri",
+                    "verification_url",  # non-standard Entra
+                ]
+                for key in keys:
+                    verification_uri = verification.get(key)
+                    if verification_uri:
+                        break
+                else:
+                    raise KeyError(
+                        "Verification response is missing expected keys. "
+                        f"Expected one of {keys}. Got: {verification}"
+                    )
 
             else:
+                # The device code will be given to Tiled's own implementation
+                # of device code flow. Tiled will do authorization code from with the
+                # external providers. (This handles cases that ORCID and Globus that do
+                # not support device code flow.)
                 oauth2_spec = False
-                uri = "authorization_uri"
                 verification_response = http_client.post(auth_endpoint)
-            handle_error(verification_response)
-    verification = verification_response.json()
-    authorization_uri = verification[uri]
+                handle_error(verification_response)
+                verification = verification_response.json()
+                token_endpoint = verification["authorization_uri"]
+                verification_uri = verification["verification_uri"]
     print(
         f"""
 You have {int(verification['expires_in']) // 60} minutes to visit this URL
 
-{authorization_uri}
+{verification_uri}
 
 and enter the code:
 
 {verification['user_code']}
 
-"""
+""",
+        end="",
     )
     import webbrowser
 
-    webbrowser.open(authorization_uri)
-    deadline = verification["expires_in"] + time.monotonic()
+    webbrowser.open(verification_uri)
+    deadline = float(verification["expires_in"]) + time.monotonic()
     print("Waiting...", end="", flush=True)
     while True:
-        time.sleep(verification["interval"])
+        time.sleep(float(verification["interval"]))
         if time.monotonic() > deadline:
             raise Exception("Deadline expired.")
         for attempt in polling_retry_context(timeout=verification["expires_in"]):
@@ -1111,7 +1189,7 @@ and enter the code:
                     )
                 else:
                     access_response = http_client.post(
-                        verification["verification_uri"],
+                        token_endpoint,
                         json={
                             "device_code": verification["device_code"],
                             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -1126,10 +1204,21 @@ and enter the code:
                     )
                     if access_response_error == "authorization_pending":
                         print(".", end="", flush=True)
-                        time.sleep(verification["interval"])
-                        access_response.raise_for_status()
+                        # Don't raise -- this is expected during polling.
+                        # Just break out of the retry context and let the
+                        # outer while loop sleep and try again.
+                        break
+                    # Other 400 errors are genuine failures.
+                    access_response.raise_for_status()
                 handle_error(access_response)
-        print("")
-        break
+        else:
+            # The for/else means we exhausted retries without break.
+            # This happens when handle_error(access_response) succeeds,
+            # meaning we got a successful response.
+            print("\n")
+            break
+        # We broke out of the for loop due to authorization_pending.
+        # Continue the outer while loop to poll again.
+        continue
     tokens = access_response.json()
     return tokens

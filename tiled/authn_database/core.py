@@ -331,3 +331,30 @@ async def latest_principal_activity(
     if all([t is None for t in all_activity]):
         return None
     return max(t for t in all_activity if t is not None)
+
+
+async def get_or_create_principal(
+    db: AsyncSession, identity_provider: str, id: str
+) -> Principal:
+    """
+    Look up a Principal by identity, creating one if it does not exist.
+    Does not create a Session -- intended for proxied OIDC where session
+    management is handled externally.
+    """
+    identity = (
+        await db.execute(
+            select(Identity)
+            .options(
+                selectinload(Identity.principal).selectinload(Principal.roles),
+                selectinload(Identity.principal).selectinload(Principal.identities),
+            )
+            .filter(Identity.id == id)
+            .filter(Identity.provider == identity_provider)
+        )
+    ).scalar()
+    if identity is not None:
+        now = datetime.now(timezone.utc)
+        identity.latest_login = now
+        await db.commit()
+        return identity.principal
+    return await create_user(db, identity_provider, id)

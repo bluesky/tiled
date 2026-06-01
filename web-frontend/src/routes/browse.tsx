@@ -10,7 +10,6 @@ import PropTypes from "prop-types";
 import Skeleton from "@mui/material/Skeleton";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
-import Typography from "@mui/material/Typography";
 import { components } from "../openapi_schemas";
 import { metadata } from "../client";
 import { SettingsContext } from "../context/settings";
@@ -217,6 +216,13 @@ export const OverviewDispatch: React.FunctionComponent<DispatchProps> = (
   // Dispatch to a specific overview component based on the structure family.
   // If spec_views are configured, check for a matching spec first.
   if (props.item !== undefined) {
+    // Guard against stale item: if the item's id doesn't match the current
+    // last segment, the metadata fetch for the new path hasn't resolved yet.
+    // Show a skeleton rather than rendering (and fetching) with wrong segments.
+    const currentId = props.segments[props.segments.length - 1] ?? "";
+    if (props.item.data?.id !== currentId) {
+      return <Skeleton variant="rectangular" />;
+    }
     const attributes = props.item!.data!.attributes!;
 
     // Check for external spec_views (plugin components loaded at runtime)
@@ -274,7 +280,6 @@ function Browse() {
   if (segments !== undefined) {
     return (
       <Box sx={{ width: "100%" }}>
-        <NodeBreadcrumbs segments={segments} />
         <NodeTabs segments={segments} />
       </Box>
     );
@@ -305,7 +310,7 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
         settings.api_url,
         props.segments,
         controller.signal,
-        ["structure_family", "structure", "specs"],
+        ["structure_family", "structure", "specs", "metadata"],
       );
       if (result !== undefined) {
         setItem(result);
@@ -348,7 +353,27 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
   }, [props.segments]);
   return (
     <Box sx={{ width: "100%" }}>
-      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+      {/* On mobile: breadcrumbs above, tabs below.
+          On wider screens: tabs left, breadcrumbs right on the same line. */}
+      <Box
+        sx={{
+          borderBottom: 1,
+          borderColor: "divider",
+          display: "flex",
+          flexDirection: { xs: "column", md: "row" },
+          alignItems: { md: "flex-end" },
+        }}
+      >
+        <Box
+          sx={{
+            mr: { md: "auto" },
+            px: 1,
+            pb: { xs: 1, md: 0.75 },
+            pt: { xs: 0.5, md: 0 },
+          }}
+        >
+          <NodeBreadcrumbs segments={props.segments} />
+        </Box>
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
@@ -361,11 +386,6 @@ export const NodeTabs: React.FunctionComponent<IProps> = (props) => {
         </Tabs>
       </Box>
       <TabPanel value={tabValue} index={0}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          {props.segments.length > 0
-            ? props.segments[props.segments.length - 1]
-            : ""}
-        </Typography>
         <Paper elevation={3} sx={{ px: 3, py: 3 }}>
           <ErrorBoundary>
             <Suspense fallback={<Skeleton variant="rectangular" />}>
