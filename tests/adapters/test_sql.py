@@ -11,11 +11,15 @@ from tiled.adapters.sql import (
     SQLAdapter,
     is_safe_identifier,
 )
-from tiled.storage import SQLStorage, get_storage, parse_storage, register_storage
+from tiled.storage import (
+    SQLStorage,
+    parse_storage,
+    register_storage,
+    unregister_storage,
+)
 from tiled.structures.core import StructureFamily
 from tiled.structures.data_source import DataSource, Management
 from tiled.structures.table import TableStructure
-from tiled.utils import sanitize_uri
 
 names = ["f0", "f1", "f2", "f3"]
 data0 = [
@@ -62,11 +66,17 @@ def adapter_from_data_source(
 
 @pytest.fixture
 def data_source_from_init_storage() -> (
-    Callable[
-        [str, int, Optional[pa.Table], Optional[dict[str, Any]]],
-        DataSource[TableStructure],
+    Generator[
+        Callable[
+            [str, int, Optional[pa.Table], Optional[dict[str, Any]]],
+            DataSource[TableStructure],
+        ],
+        None,
+        None,
     ]
 ):
+    registered: list[SQLStorage] = []
+
     def _data_source_from_init_storage(
         data_uri: str,
         num_partitions: int,
@@ -87,9 +97,14 @@ def data_source_from_init_storage() -> (
 
         storage = cast(SQLStorage, parse_storage(data_uri))
         register_storage(storage)
+        registered.append(storage)
         return SQLAdapter.init_storage(data_source=data_source, storage=storage)
 
-    return _data_source_from_init_storage
+    yield _data_source_from_init_storage
+
+    for storage in registered:
+        storage.dispose()
+        unregister_storage(storage)
 
 
 @pytest.fixture
@@ -162,10 +177,6 @@ def adapter_psql_one_partition(
     data_source = data_source_from_init_storage(postgres_uri, 1)
     yield adapter_from_data_source(data_source)
 
-    # Close all connections and dispose of the storage
-    storage = get_storage(sanitize_uri(postgres_uri)[0])
-    cast(SQLStorage, storage).dispose()
-
 
 @pytest.fixture
 def adapter_psql_many_partitions(
@@ -174,10 +185,6 @@ def adapter_psql_many_partitions(
 ) -> Generator[SQLAdapter, None, None]:
     data_source = data_source_from_init_storage(postgres_uri, 3)
     yield adapter_from_data_source(data_source)
-
-    # Close all connections and dispose of the storage
-    storage = get_storage(sanitize_uri(postgres_uri)[0])
-    cast(SQLStorage, storage).dispose()
 
 
 def test_psql(adapter_psql_one_partition: SQLAdapter) -> None:
