@@ -41,11 +41,15 @@ async def temp_postgres(uri):
         await connection.execute(text(f"CREATE DATABASE {database_name};"))
         await connection.commit()
     yield f"{uri}/{database_name}"
-    # Drop the database.
+    # Drop the database — terminate any lingering sessions first so DROP doesn't fail.
     async with engine.connect() as connection:
+        await connection.execute(text("COMMIT"))  # close the automatically-started transaction
         await connection.execute(
-            text("COMMIT")
-        )  # close the automatically-started transaction
+            text(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                f"WHERE datname = '{database_name}' AND pid <> pg_backend_pid();"
+            )
+        )
         await connection.execute(text(f"DROP DATABASE {database_name};"))
         await connection.commit()
 
