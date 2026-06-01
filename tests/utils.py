@@ -35,15 +35,15 @@ async def temp_postgres(uri):
     engine = create_async_engine(ensure_specified_sql_driver(uri))
     database_name = f"tiled_test_disposable_{uuid.uuid4().hex}"
     async with engine.connect() as connection:
-        await connection.execute(
-            text("COMMIT")
-        )  # close the automatically-started transaction
+        # close the automatically-started transaction
+        await connection.execute(text("COMMIT"))
         await connection.execute(text(f"CREATE DATABASE {database_name};"))
         await connection.commit()
     yield f"{uri}/{database_name}"
-    # Drop the database — terminate any lingering sessions first so DROP doesn't fail.
+    # Drop the database
     async with engine.connect() as connection:
-        await connection.execute(text("COMMIT"))  # close the automatically-started transaction
+        await connection.execute(text("COMMIT"))
+        # Terminate any lingering sessions first so DROP doesn't fail
         await connection.execute(
             text(
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
