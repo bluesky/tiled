@@ -1,3 +1,4 @@
+import math
 import threading
 from urllib.parse import parse_qs, urlparse
 
@@ -35,6 +36,11 @@ class DaskDatasetClient(Container):
     def _build_arrays(self, variables, optimize_wide_table):
         data_vars = {}
         coords = {}
+        # Track which variables use direct fetch (not wide-table optimization).
+        # These are the ones whose dask arrays will advance the progress bar.
+        # Returned as a value (not stored on self) to avoid shared-state issues
+        # if two threads call read() on the same client concurrently.
+        direct_fetch_names = set()
         # Optimization: Download scalar columns in batch as DataFrame.
         # on first access.
         coords_fetcher = _WideTableFetcher(
@@ -91,6 +97,7 @@ class DaskDatasetClient(Container):
                         "'xarray_coord' or 'xarray_data_var'."
                     )
             else:
+                direct_fetch_names.add(name)
                 if "xarray_coord" in spec_names:
                     coords[name] = (
                         array_client.dims,
@@ -108,10 +115,10 @@ class DaskDatasetClient(Container):
                         "Child nodes of xarray_dataset should include spec "
                         "'xarray_coord' or 'xarray_data_var'."
                     )
-        return data_vars, coords
+        return data_vars, coords, direct_fetch_names
 
     def read(self, variables=None, *, optimize_wide_table=True):
-        data_vars, coords = self._build_arrays(variables, optimize_wide_table)
+        data_vars, coords, _ = self._build_arrays(variables, optimize_wide_table)
         return xarray.Dataset(
             data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
         )
@@ -119,11 +126,20 @@ class DaskDatasetClient(Container):
 
 class DatasetClient(DaskDatasetClient):
     def read(self, variables=None, *, optimize_wide_table=True):
-        return (
-            super()
-            .read(variables=variables, optimize_wide_table=optimize_wide_table)
-            .load()
+        data_vars, coords, direct_fetch_names = self._build_arrays(
+            variables, optimize_wide_table
         )
+        ds = xarray.Dataset(
+            data_vars=data_vars, coords=coords, attrs=self.metadata["attrs"]
+        )
+        # Count fetch tasks only for direct-fetch variables (not wide-table).
+        # Wide-table variables use dask.delayed and don't advance the bar.
+        total = 0
+        for name, var in list(ds.data_vars.items()) + list(ds.coords.items()):
+            if name in direct_fetch_names and dask.is_dask_collection(var.data):
+                total += math.prod(len(c) for c in var.data.chunks)
+        with self.context.tracking_progress(total):
+            return ds.load()
 
 
 _EXTRA_CHARS_PER_ITEM = len("&field=")

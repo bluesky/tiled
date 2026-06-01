@@ -119,9 +119,9 @@ class _DaskDataFrameClient(BaseClient):
         url_length_for_get_request = len(URL_PATH) + sum(
             _EXTRA_CHARS_PER_ITEM + len(column) for column in (columns or ())
         )
-        with self.context._concurrent_request_semaphore:
+        with self.context.throttle():
             if url_length_for_get_request > self.URL_CHARACTER_LIMIT:
-                for attempt in retry_context():
+                for attempt in retry_context(self.context):
                     with attempt:
                         content = handle_error(
                             self.context.http_client.post(
@@ -136,7 +136,7 @@ class _DaskDataFrameClient(BaseClient):
                     # Note: The singular/plural inconsistency here is because
                     # ["A", "B"] will be encoded in the URL as column=A&column=B
                     params["column"] = columns
-                for attempt in retry_context():
+                for attempt in retry_context(self.context):
                     with attempt:
                         content = handle_error(
                             self.context.http_client.get(
@@ -145,6 +145,8 @@ class _DaskDataFrameClient(BaseClient):
                                 params=params,
                             )
                         ).read()
+        if (ps := self.context.progress_state) is not None:
+            ps.advance()
         return deserialize_arrow(content)
 
     def read_partition(self, partition, columns=None):
@@ -339,7 +341,9 @@ class DaskDataFrameClient(_DaskDataFrameClient):
 
     def compute(self):
         "Alias to client.read().compute()"
-        return self.read().compute()
+        ddf = self.read()
+        with self.context.tracking_progress(total=ddf.npartitions):
+            return ddf.compute()
 
 
 class DataFrameClient(_DaskDataFrameClient):
@@ -355,4 +359,6 @@ class DataFrameClient(_DaskDataFrameClient):
         """
         Access the entire DataFrame. Optionally select a subset of the columns.
         """
-        return super().read(columns).compute()
+        ddf = super().read(columns)
+        with self.context.tracking_progress(total=ddf.npartitions):
+            return ddf.compute()

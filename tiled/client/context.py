@@ -6,6 +6,7 @@ import threading
 import time
 import urllib.parse
 import warnings
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
@@ -24,6 +25,7 @@ from .transport import Transport
 from .utils import (
     DEFAULT_TIMEOUT_PARAMS,
     MSGPACK_MIME_TYPE,
+    StandaloneRetryIndicator,
     handle_error,
     polling_retry_context,
     retry_context,
@@ -179,6 +181,7 @@ class Context:
         app=None,
         raise_server_exceptions=True,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         # The uri is expected to reach the root API route.
         uri = httpx.URL(uri)
@@ -290,14 +293,29 @@ class Context:
         # (array blocks, dataframe partitions, etc.) issued by dask workers.
         # This is intentionally separate from the HTTP connection pool limit so
         # that it can be tuned independently; by default it mirrors the pool size.
+        self._max_connections = max_connections
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
+        # Slot used by tracking_progress(). Set to a ProgressState instance
+        # while a tracked .compute() is running; None at all other times.
+        # Assignment of a Python reference is atomic, so dask worker threads
+        # can safely read this without a lock.
+        self._progress_state = None
+        # Whether to show a rich progress bar during multi-chunk fetches.
+        # None means use the TILED_SHOW_PROGRESS env var (default True).
+        if show_progress is None:
+            show_progress = os.getenv(
+                "TILED_SHOW_PROGRESS", "1"
+            ).strip().lower() not in ("0", "false", "no")
+        self.show_progress = show_progress
+        # Lazy-initialized StandaloneRetryIndicator (set by signal_retry)
+        self._retry_indicator = None
 
         # Make an initial "safe" request to:
         # (1) Get the server_info.
         # (2) Let the server set the CSRF cookie.
         # No authentication has been set up yet, so these requests will be unauthenticated.
         # https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 server_info = handle_error(
                     self.http_client.get(
@@ -428,7 +446,237 @@ class Context:
         self._cache = cache
         self._verify = verify
         self.server_info = server_info
+        self._max_connections = max_connections
         self._concurrent_request_semaphore = threading.Semaphore(max_connections)
+        self._progress_state = None
+        self._retry_indicator = None
+        # Intentionally False: unpickled contexts run in dask workers which
+        # are not interactive and should never render progress bars.
+        self.show_progress = False
+
+    @property
+    def progress_state(self):
+        """Read-only access to the active progress state, or None."""
+        return self._progress_state
+
+    @contextmanager
+    def tracking_progress(self, total):
+        """Context manager that displays a rich progress bar during a multi-chunk fetch.
+
+        While the context is active, :attr:`progress_state` is set to a
+        ``ProgressState`` instance so that fetch methods
+        (``_get_slice``, ``_get_block``, ``_get_partition``) can advance the bar
+        and show a retry indicator.  The slot is reset to ``None`` on exit.
+
+        A bar is shown only when :attr:`show_progress` is True *and*
+        ``total > 1`` *and* the session is interactive.  Otherwise this is a
+        no-op context manager.
+
+        Parameters
+        ----------
+        total : int
+            Number of fetch tasks (chunks / partitions) expected.
+
+        Example
+        -------
+        >>> dask_arr = client.read()          # returns dask array, no fetch yet
+        >>> n = math.prod(len(c) for c in dask_arr.chunks)
+        >>> with context.tracking_progress(total=n):
+        ...     result = dask_arr.compute()
+        """
+        from .utils import is_interactive, is_jupyter
+
+        if total <= 1 or not self.show_progress or not is_interactive():
+            yield
+            return
+
+        # If an outer progress bar is already active, defer to it (no nested bars).
+        if self._progress_state is not None:
+            yield
+            return
+
+        if is_jupyter():
+            yield from self._tracking_progress_jupyter(total)
+        else:
+            yield from self._tracking_progress_terminal(total)
+
+    def _tracking_progress_jupyter(self, total):
+        """Progress bar for Jupyter notebooks using ipywidgets.IntProgress.
+
+        Avoids Rich's Live/Console entirely in Jupyter to prevent the blank-line
+        and ZMQ socket issues that arise from Rich's ipython_display() path.
+        """
+        try:
+            import ipywidgets as widgets
+            from IPython.display import display
+        except ImportError:
+            # ipywidgets not available — fall back to terminal path
+            yield from self._tracking_progress_terminal(total)
+            return
+
+        bar = widgets.IntProgress(
+            value=0,
+            min=0,
+            max=total,
+            description="Fetching:",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="300px", height="16px", flex="0 0 auto"),
+        )
+        label = widgets.HTML(
+            f"<span style='font-size:var(--jp-widgets-font-size)'>0/{total} -:--:--</span>",
+            layout=widgets.Layout(width="180px"),
+        )
+        box = widgets.HBox(
+            [bar, label],
+            layout=widgets.Layout(align_items="center"),
+        )
+        display(box)
+
+        # Minimal ProgressState-compatible shim backed by the ipywidget
+        class _JupyterProgressState:
+            __slots__ = ("_bar", "_label", "_total", "_completed", "_start")
+
+            def __init__(self, bar, label, total):
+                self._bar = bar
+                self._label = label
+                self._total = total
+                self._completed = 0
+                self._start = None
+
+            def _fmt(self, suffix=""):
+                import time
+
+                count = f"{self._completed}/{self._total}"
+                if self._completed == 0 or self._start is None:
+                    eta = "-:--:--"
+                else:
+                    elapsed = time.monotonic() - self._start
+                    rate = self._completed / elapsed
+                    remaining_secs = (self._total - self._completed) / rate
+                    h, rem = divmod(int(remaining_secs), 3600)
+                    m, s = divmod(rem, 60)
+                    eta = f"{h}:{m:02d}:{s:02d}" if h else f"0:{m:02d}:{s:02d}"
+                text = f"{count} {eta}{suffix}"
+                return (
+                    f"<span style='font-size:var(--jp-widgets-font-size)'>{text}</span>"
+                )
+
+            def advance(self):
+                import time
+
+                if self._start is None:
+                    self._start = time.monotonic()
+                self._completed += 1
+                self._bar.value = self._completed
+                self._label.value = self._fmt()
+
+            def show_retrying(self):
+                self._label.value = self._fmt(" Retrying…")
+
+            def hide_retrying(self):
+                self._label.value = self._fmt()
+
+        state = _JupyterProgressState(bar, label, total)
+        self._progress_state = state
+        try:
+            yield state
+            # Top up in case dask.distributed workers dropped advance() calls
+            remaining = total - state._completed
+            for _ in range(remaining):
+                state.advance()
+        finally:
+            box.close()
+            self._progress_state = None
+
+    def _tracking_progress_terminal(self, total):
+        """Progress bar for terminal / IPython terminal using Rich Live."""
+        from rich.console import Console
+        from rich.live import Live
+        from rich.progress import (
+            BarColumn,
+            MofNCompleteColumn,
+            Progress,
+            TimeRemainingColumn,
+        )
+        from rich.spinner import Spinner
+
+        from .utils import ProgressState
+
+        # force_terminal so the bar renders even though IPython replaces
+        # stderr with a non-TTY stream in the terminal.
+        console = Console(stderr=True, force_terminal=True)
+        progress = Progress(
+            "[progress.description]{task.description}",
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        )
+        task_id = progress.add_task("Fetching data…", total=total)
+        spinner = Spinner("dots", text="[yellow]Retrying…[/yellow]")
+        state = ProgressState(progress, task_id, spinner)
+
+        with Live(progress, transient=True, console=console) as live:
+            state._live = live
+            self._progress_state = state
+            try:
+                yield state
+            finally:
+                # Top up in case dask.distributed workers dropped advance() calls
+                completed = progress.tasks[task_id].completed
+                remaining = total - completed
+                if remaining > 0:
+                    progress.advance(task_id, remaining)
+                self._progress_state = None
+
+    @property
+    def retry_indicator(self):
+        """Read-only access to the active standalone retry indicator, or None."""
+        return self._retry_indicator
+
+    def signal_retry(self):
+        """Signal that a retry is in progress.
+
+        Shows a retry indicator: a spinner below the active progress bar if one
+        is running, or a standalone animated spinner otherwise.  Always called
+        from the main thread (enforced internally).
+        """
+        if (ps := self._progress_state) is not None:
+            ps.show_retrying()
+        else:
+            # Always show retry notice regardless of show_progress / is_interactive().
+            # Silently retrying without any feedback is confusing in every context.
+            if self._retry_indicator is None:
+                self._retry_indicator = StandaloneRetryIndicator()
+            self._retry_indicator.show()
+
+    def signal_retry_resolved(self):
+        """Signal that retries have resolved — hide any retry indicator."""
+        if (ps := self._progress_state) is not None:
+            ps.hide_retrying()
+        if self._retry_indicator is not None:
+            self._retry_indicator.reset()
+            self._retry_indicator = None
+
+    def throttle(self):
+        """Context manager that throttles concurrent data-fetch requests.
+
+        Acquires the internal connection semaphore on entry and releases it on
+        exit.  Fetch methods (``_get_block``, ``_get_slice``,
+        ``_get_partition``) use this to cap the number of simultaneous
+        outgoing HTTP requests to the limit set by ``max_connections``.
+
+        Example
+        -------
+        >>> with self.context.throttle():
+        ...     response = self.context.http_client.get(url)
+        """
+        return self._concurrent_request_semaphore
+
+    @property
+    def max_connections(self):
+        """Maximum number of concurrent data-fetch requests."""
+        return self._max_connections
 
     @classmethod
     def from_any_uri(
@@ -442,6 +690,7 @@ class Context:
         verify=True,
         app=None,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         """
         Accept a URI to a specific node.
@@ -496,6 +745,7 @@ class Context:
             verify=verify,
             app=app,
             max_connections=max_connections,
+            show_progress=show_progress,
         )
         return context, node_path_parts
 
@@ -511,6 +761,7 @@ class Context:
         raise_server_exceptions=True,
         uri=None,
         max_connections=MAX_CONCURRENT_CONNECTIONS,
+        show_progress=None,
     ):
         """
         Construct a Context around a FastAPI app. Primarily for testing.
@@ -524,6 +775,7 @@ class Context:
             app=app,
             raise_server_exceptions=raise_server_exceptions,
             max_connections=max_connections,
+            show_progress=show_progress,
         )
         if api_key is UNSET:
             if not context.server_info.authentication.providers:
@@ -576,7 +828,7 @@ class Context:
         """
         if not self.api_key:
             raise RuntimeError("Not API key is configured for the client.")
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.get(
@@ -619,7 +871,7 @@ class Context:
                 "support generating additional API keys."
             )
 
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.post(
@@ -649,7 +901,7 @@ class Context:
             (Any additional characters passed will be truncated.)
         """
         url_path = self.server_info.authentication.links.apikey
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 handle_error(
                     self.http_client.delete(
@@ -867,7 +1119,7 @@ class Context:
             self.http_client.auth.client_id,
             self.http_client.auth.scopes,
         )
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 token_response = self.http_client.send(refresh_request, auth=None)
                 if token_response.status_code == httpx.codes.UNAUTHORIZED:
@@ -881,7 +1133,7 @@ class Context:
 
     def whoami(self):
         "Return information about the currently-authenticated user or service."
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 return handle_error(
                     self.http_client.get(
@@ -901,7 +1153,7 @@ class Context:
 
         # Revoke the current session.
         refresh_token = self.http_client.auth.sync_get_token("refresh_token")
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 if self.client_id:
                     id_token = self.http_client.auth.sync_get_token("id_token")
@@ -941,7 +1193,7 @@ class Context:
 
         This may be done to ensure that a possibly-leaked refresh token cannot be used.
         """
-        for attempt in retry_context():
+        for attempt in retry_context(self):
             with attempt:
                 handle_error(
                     self.http_client.delete(
@@ -968,7 +1220,7 @@ class Admin:
             "offset": offset,
             "limit": limit,
         }
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.get(url_path, params=params)
@@ -976,7 +1228,7 @@ class Admin:
 
     def show_principal(self, uuid):
         "Show one Principal (user or service) in the authentication database."
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.get(
@@ -1007,7 +1259,7 @@ class Admin:
             Restrict the access available to the API key by listing specific tags.
             By default, this will have no limits on access tags.
         """
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.post(
@@ -1035,7 +1287,7 @@ class Admin:
             Specify the role (e.g. user or admin)
         """
         url_path = f"{self.base_url}/auth/principal"
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.post(
@@ -1060,7 +1312,7 @@ class Admin:
             (Any additional characters passed will be truncated.)
         """
         url_path = f"{self.base_url}/auth/principal/{uuid}/apikey"
-        for attempt in retry_context():
+        for attempt in retry_context(self.context):
             with attempt:
                 return handle_error(
                     self.context.http_client.delete(

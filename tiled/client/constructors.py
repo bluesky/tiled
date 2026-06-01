@@ -30,6 +30,7 @@ def from_uri(
     include_data_sources=False,
     auth: Optional[httpx.Auth] = None,
     max_connections: int = MAX_CONCURRENT_CONNECTIONS,
+    show_progress=None,
 ):
     """
     Connect to a Node on a local or remote server.
@@ -96,6 +97,7 @@ For non-interactive authentication, use an API key or add custom auth
         timeout=timeout,
         verify=verify,
         max_connections=max_connections,
+        show_progress=show_progress,
     )
     if auth is not None:
         if isinstance(auth, httpx.Auth):
@@ -269,7 +271,10 @@ def from_profile(name, structure_clients=None, **kwargs):
         with prepend_to_sys_path(filepath.parent):
             app = build_app_from_config(config)
         max_connections = merged.pop("max_connections", MAX_CONCURRENT_CONNECTIONS)
-        context = Context.from_app(app, max_connections=max_connections)
+        show_progress = merged.pop("show_progress", None)
+        context = Context.from_app(
+            app, max_connections=max_connections, show_progress=show_progress
+        )
         return from_context(context, **merged)
     else:
         return from_uri(**merged)
