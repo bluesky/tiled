@@ -247,7 +247,8 @@ class SQLAdapter(Adapter[TableStructure]):
             structure=data_source.structure,
             table_name=data_source.parameters["table_name"],
             dataset_id=data_source.parameters["dataset_id"],
-            order_by=data_source.parameters.get("order_by"),
+            order_by_column=data_source.parameters.get("order_by_column"),
+            unique_ordering=data_source.parameters.get("unique_ordering", False),
             metadata=node.metadata_,
             specs=node.specs,
         )

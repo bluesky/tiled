@@ -1,6 +1,7 @@
 import itertools
 from collections import namedtuple
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import cast
 
 import awkward as ak
@@ -383,10 +384,8 @@ def test_awkward_form_from_structure(name):
 
 
 @pytest.mark.parametrize("name", arrays.keys())
-def test_adapter_roundtrip(name, sql_storage):
-    DummyNode = namedtuple("node", "metadata_, specs")
-    node = DummyNode({}, [])
-
+def test_adapter_read_write_patch(name, sql_storage):
+    node = SimpleNamespace(metadata_={}, specs=[])
     array = make_ragged_array(arrays[name])
     structure = RaggedStructure.from_array(array)
     data_source = DataSource(
@@ -401,9 +400,19 @@ def test_adapter_roundtrip(name, sql_storage):
     )
     adp = RaggedSQLAdapter.from_catalog(data_source, node)
 
+    # Write the array, read it back, and check for equality
     adp.write(array)
-    array_from_adp = adp.read()
-    assert ak.array_equal(array._impl, array_from_adp._impl)
+    assert ak.array_equal(array._impl, adp.read()._impl)
+
+    # Append along the same data along the first dimension, read back
+    adp.patch(array, offset=(array.shape[0],), extend=True)
+    expected = ragged.concat([array, array], axis=0)
+    assert ak.array_equal(expected._impl, adp.read()._impl)
+
+    # Append again now that the first dimension is different, read back
+    adp.patch(array, offset=(2 * array.shape[0],), extend=True)
+    expected = ragged.concat([array, array, array], axis=0)
+    assert ak.array_equal(expected._impl, adp.read()._impl)
 
 
 @pytest.mark.parametrize("name", arrays.keys())

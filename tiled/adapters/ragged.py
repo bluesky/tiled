@@ -32,36 +32,17 @@ from typing import (
 from urllib.parse import quote_plus
 
 import awkward
-import ragged
-
-from tiled.adapters.core import Adapter
-from tiled.adapters.resource_cache import with_resource_cache
-from tiled.adapters.utils import init_adapter_from_catalog
-from tiled.ndslice import NDBlock, NDSlice
-from tiled.storage import FileStorage, Storage
-from tiled.structures.data_source import Asset, DataSource
-from tiled.structures.ragged import RaggedStructure
-from tiled.utils import path_from_uri
-
-if TYPE_CHECKING:
-    from tiled.catalog.orm import Node
-    from tiled.structures.core import Spec
-    from tiled.type_aliases import JSON
-
 import numpy
 import pandas
 import pyarrow
 import ragged
 from sqlalchemy.sql.compiler import RESERVED_WORDS
 
-from tiled.ndslice import NDBlock, NDSlice
-from tiled.structures.core import Spec, StructureFamily
-from tiled.structures.data_source import DataSource
-from tiled.structures.ragged import RaggedStructure, make_ragged_array
-
 from ..catalog.orm import Node
+from ..ndslice import NDBlock, NDSlice
 from ..storage import (
     EmbeddedSQLStorage,
+    FileStorage,
     RemoteSQLStorage,
     SQLStorage,
     Storage,
@@ -69,8 +50,12 @@ from ..storage import (
 )
 from ..structures.core import Spec, StructureFamily
 from ..structures.data_source import Asset, DataSource
+from ..structures.ragged import CanonicalRaggedArray, RaggedStructure, make_ragged_array
 from ..structures.table import TableStructure
 from ..type_aliases import JSON
+from ..utils import path_from_uri
+from .core import Adapter
+from .resource_cache import with_resource_cache
 from .sql import SQLAdapter
 from .utils import init_adapter_from_catalog
 
@@ -145,17 +130,6 @@ class RaggedAdapter(Adapter[RaggedStructure]):
         data = self._array[start:stop]
         return data[slice] if slice else data
 
-    def write(self, array: ragged.array) -> None:
-        """Write the full ragged array (in-memory, replaces existing data)."""
-        self._array = make_ragged_array(array)
-
-    def write_block(self, array: ragged.array, block: NDBlock) -> None:
-        """Write a single partition block (not supported for in-memory adapter)."""
-        raise NotImplementedError(
-            "write_block is not supported for the in-memory RaggedAdapter; "
-            "use RaggedParquetAdapter for persistent block-wise writes."
-        )
-
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._structure})"
 
@@ -194,7 +168,8 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
         return DataSource(
             structure_family=StructureFamily.table,
             structure=TableStructure.from_dict(empty_table_dict),
-            parameters=data_source.parameters | {"order_by": [("chunk_index", "asc")]},
+            parameters=data_source.parameters
+            | {"order_by_column": "chunk_index", "unique_ordering": True},
             properties=data_source.properties,
             mimetype="application/x-tiled-sql-table",
             assets=data_source.assets,
@@ -240,7 +215,7 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             specs=node.specs,
         )
 
-    def read(self, slice: NDSlice | None = None) -> ragged.array:
+    def read(self, slice: NDSlice | None = None) -> CanonicalRaggedArray:
         "Read a slice of data from the ragged array."
         rows = self._tabular_adapter._read_full_table_or_partition().to_pylist()
 
@@ -258,23 +233,27 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
             for l, b in zip(self._structure.chunks[0], buffers)
         ]
 
-        array = ragged.array(awkward.concatenate(awk_arrays))
+        array = make_ragged_array(awkward.concatenate(awk_arrays))
 
         return array[slice] if slice else array
 
-    def read_block(self, block: NDBlock, slice: NDSlice | None = None) -> ragged.array:
-        """Read a single block of chunks of the ragged array."""
+    def read_block(
+        self, block: NDBlock, slice: NDSlice | None = None
+    ) -> CanonicalRaggedArray:
+        """Read a single block of chunks of the ragged array.
 
-        # Slice the whole array to get this block and then slice within the block
+        Slices the whole array to get this block and then slices within the block
+        """
+
         array = self.read(slice=block.slice_from_chunks(self._structure.chunks))
 
         return array[slice] if slice else array
 
-    def write(self, data: ragged.array, slice: NDSlice = NDSlice(...)) -> None:
-        if slice:
-            raise NotImplementedError
+    def write(self, data: CanonicalRaggedArray) -> None:
+        self.write_block(data, block=NDBlock(0))
 
-        form, _, buffers = awkward.to_buffers(make_ragged_array(data)._impl)
+    def write_block(self, data: CanonicalRaggedArray, block: NDBlock) -> None:
+        form, _, buffers = awkward.to_buffers(data._impl)
         buffers = {key: val.ravel() for key, val in buffers.items()}
 
         if self.structure().awk_form != form:
@@ -282,22 +261,11 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
                 "The structure of the provided data does not match the adapter"
             )
 
-        # Check if the SQL table is empty before writing, to prevent overwriting existing data
-        if not self._tabular_adapter.read(fields=["chunk_index"]).empty:
-            raise NotImplementedError("Overwriting of existing data is not supported")
-
-        buffers["chunk_index"] = 0
+        buffers["chunk_index"] = block[0]
         self._tabular_adapter.append_partition(0, pyarrow.Table.from_pylist([buffers]))
 
-    def write_block(self, array: ragged.array, block: NDBlock) -> None:
-        """Write a single partition block"""
-        raise NotImplementedError("...")
-
-    def append(self, data: ragged.array, axis=0) -> RaggedStructure:
-        raise NotImplementedError("...")
-
     def patch(
-        self, data: ragged.array, offset: int, extend: bool = False
+        self, data: CanonicalRaggedArray, offset: Tuple[int, ...], extend: bool = False
     ) -> RaggedStructure:
         """Write data into a slice of the ragged array, possibly extending it.
 
@@ -306,26 +274,38 @@ class RaggedSQLAdapter(Adapter[RaggedStructure]):
 
         Parameters
         ----------
-        data : ragged array-like
-        offset : int
-            Where to place the new data along the first dimension of the array.
+        data : CanonicalRaggedArray
+            The data to write into the array.
+        offset : tuple[int, ...]
+            Where to place the new data along the leftmost fixed dimensions of the array.
         extend : bool
             If slice does not fit wholly within the shape of the existing array,
             reshape (expand) it to fit if this is True.
-
-        Raises
-        ------
-        ValueError :
-            If slice does not fit wholly with the shape of the existing array
-            and extend is False
         """
-        data = make_ragged_array(data)
+        if not extend:
+            raise NotImplementedError("Overwriting existing data is not supported")
+
+        ndim_fixed = self.structure().ndim_fixed
+        if (
+            (offset[0] != self.structure().shape[0])
+            or any(offset[1:])
+            or (len(offset) > ndim_fixed)
+        ):
+            raise NotImplementedError(
+                "Only appending along the leftmost dimension is supported"
+            )
+
+        if data.shape[1:ndim_fixed] != self.structure().shape[1:ndim_fixed]:
+            raise ValueError(
+                "The shape of the data does not match the existing array along the fixed dimensions"
+            )
+
         form, length, buffers = awkward.to_buffers(data._impl)
         buffers = {key: val.ravel() for key, val in buffers.items()}
 
         if self.structure().awk_form != form:
             raise ValueError(
-                "The structure of the provided data does not match the adapter"
+                "The structure (AwkwardForm) of the data does not match the adapter"
             )
 
         buffers["chunk_index"] = len(self.structure().chunks[0])

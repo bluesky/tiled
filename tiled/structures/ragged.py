@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Iterable, NewType, Union, cast, runtime_checkable
 
 if sys.version_info >= (3, 11):
     from typing import Self
@@ -14,11 +14,17 @@ import numpy
 import ragged
 from ragged._typing import SupportsDLPack
 
-from tiled.structures.array import BuiltinDtype, StructDtype
-from tiled.structures.root import Structure
+from ..type_aliases import JSON
+from .array import BuiltinDtype, StructDtype
+from .root import Structure
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+
+RaggedLikeType = Union[ragged.array, ak.Array, numpy.ndarray, SupportsDLPack, Iterable]
+CanonicalRaggedArray = NewType("CanonicalRaggedArray", ragged.array)
+
+_SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
 
 
 @dataclass(kw_only=True)
@@ -67,11 +73,16 @@ class RaggedStructure(Structure):
             )
         if len(self.shape) != len(self.chunks):
             raise ValueError("Shape and chunks must have the same number of dimensions")
+        for ch in self.chunks[1:]:
+            if (ch is not None) and (len(ch) != 1):
+                raise ValueError(
+                    "Only the first dimension can be partitioned into chunks"
+                )
 
     @classmethod
     def from_array(
         cls,
-        array: Iterable,
+        array: RaggedLikeType,
         shape: tuple[int | None, ...] | None = None,
         chunks: tuple[tuple[int, ...] | None, ...] | None = None,
         dims: tuple[str, ...] | None = None,
@@ -80,7 +91,7 @@ class RaggedStructure(Structure):
 
         Parameters
         ----------
-        array : Iterable
+        array : RaggedLikeType
             The array-like object to extract information from.
         shape : tuple[int | None, ...] | None, optional
             The shape of the array. If None, the shape is inferred from the array.
@@ -109,7 +120,7 @@ class RaggedStructure(Structure):
         )
 
     @classmethod
-    def from_json(cls, structure: Mapping[str, Any]) -> Self:
+    def from_json(cls, structure: JSON) -> Self:
         "Construct a RaggedStructure from a dictionary mapping"
 
         if "fields" in structure["data_type"]:
@@ -186,8 +197,10 @@ class RaggedStructure(Structure):
         "Length of corresponding awkward buffers, i.e. the first dimension of the array"
         return self.shape[0]
 
-
-_SupportsDLPack = runtime_checkable(cast("type[SupportsDLPack]", SupportsDLPack))
+    @property
+    def ndim_fixed(self) -> int:
+        "Number of fixed-size dimensions, i.e. leading dimensions with known integer shape"
+        return self.shape.index(None) if None in self.shape else len(self.shape)
 
 
 def _canonicalize_awkward_layout(layout: ak.contents.Content) -> ak.contents.Content:
@@ -266,7 +279,7 @@ def _canonicalize_awkward_layout(layout: ak.contents.Content) -> ak.contents.Con
     raise TypeError(f"Unsupported layout type: {type(layout)}")
 
 
-def make_ragged_array(array: Iterable) -> ragged.array:
+def make_ragged_array(array: RaggedLikeType) -> CanonicalRaggedArray:
     """Best-effort conversion of any numeric iterable to a ``ragged`` array.
 
     This function converts the underlying Awkward layout of the ragged array to a canonical form
@@ -289,7 +302,9 @@ def make_ragged_array(array: Iterable) -> ragged.array:
     else:
         array = ragged.array(list(array))
 
-    return ragged.array(_canonicalize_awkward_layout(array._impl.layout))
+    array = ragged.array(_canonicalize_awkward_layout(array._impl.layout))
+
+    return cast(CanonicalRaggedArray, array)
 
 
 def make_ragged_chunks(array: ragged.array, limit_bytes: int) -> tuple[int, ...]:
